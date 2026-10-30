@@ -45,7 +45,7 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-table :is(th, td) { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rv-color-border); }
 /* The header as every list's: muted 12 px, medium weight, on the raised surface. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table thead th { position: sticky; top: 0; z-index: 1; height: 44px; padding-block: 0; color: var(--rv-color-muted); vertical-align: middle; background: var(--rv-color-surface-raised); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; }
-.app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr { transition: background-color 120ms ease; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr > :is(th, td) { transition: background-color 120ms ease; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr:last-child :is(th, td) { border-bottom: 0; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table tbody th { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; background: transparent; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table small { display: block; margin-top: 2px; color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
@@ -104,8 +104,9 @@
 @media (prefers-reduced-motion: reduce) { .app-shell.stitch-shell main .commission-tariffs .commission-switch > span, .app-shell.stitch-shell main .commission-tariffs .commission-switch > span::after { transition: none; } }
 /* A model's row over its variants: a lighter band, a fold button, and the variants under it on a tree line. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-model { background: color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent); }
-/* A row under the pointer, a model's row and a picked one too (their own backgrounds would hide it otherwise). */
-.app-shell.stitch-shell main .commission-tariffs .commission-table.commission-table tbody tr:hover { background: color-mix(in srgb, var(--rv-color-primary) 7%, var(--rv-color-surface-soft)); }
+/* The row under the pointer takes the orders table's hover on every cell, so cells with their own background
+   (the fold column, a model's or a picked row) are covered too and the band runs the whole row. */
+.app-shell.stitch-shell main .commission-tariffs .commission-table.commission-table tbody tr:hover > :is(th, td) { background: var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-raised) 60%, transparent)); }
 /* The column left of the picture: a model's button that opens its sizes. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table :is(th, td).commission-expand { width: 52px; min-width: 52px; padding: 0; text-align: center; vertical-align: middle; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table tr.is-model > td.commission-expand { background: color-mix(in srgb, var(--rv-color-primary) 4%, transparent); }
