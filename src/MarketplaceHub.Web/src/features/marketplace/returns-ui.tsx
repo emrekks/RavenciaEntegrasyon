@@ -168,11 +168,20 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     pin({ position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', width: `${width}px`, transform: 'none', 'z-index': '1000' })
     // A tall list (İade Sebebi) stays inside the screen and scrolls within itself instead of running off the bottom.
     if (!sheet && top + box.height > window.innerHeight - 8) pin({ 'max-height': `${Math.max(160, window.innerHeight - top - 12)}px`, 'overflow-y': 'auto' })
+    // A positioned head-cell anchor (z-index 70) caps the pinned popover's z-index at its own, so a popover flipped
+    // above its row slid under the filter card (z-index 80); the anchor is lifted while it is open.
+    const hostZ = host.style.getPropertyValue('z-index')
+    const hostZPriority = host.style.getPropertyPriority('z-index')
+    if (!sheet) host.style.setProperty('z-index', '1000', 'important')
     const onScroll = (event: Event) => { if (!(event.target instanceof Node && pop.contains(event.target))) closePopover() }
     const onResize = () => closePopover()
     window.addEventListener('scroll', onScroll, true)
     window.addEventListener('resize', onResize)
-    return () => { window.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', onResize) }
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onResize)
+      if (!sheet) host.style.setProperty('z-index', hostZ, hostZPriority)
+    }
   }, [open, ref])
 }
 
