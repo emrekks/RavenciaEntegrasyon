@@ -74,6 +74,8 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Results.Ok(await service.ProductSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
         api.MapPost("/products/bulk-status", async (BulkProductStatusCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetStatusAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : MissingContext(http));
+        api.MapPost("/products/bulk-vat", async (BulkProductVatCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetVatAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : MissingContext(http));
         api.MapPost("/products/bulk-delete", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), count => Results.Ok(new { deletedCount = count })) : MissingContext(http));
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>

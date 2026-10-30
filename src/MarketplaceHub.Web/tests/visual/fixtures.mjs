@@ -5,5 +5,6 @@ import { shell } from './fixtures/shell.mjs'
 import { sales } from './fixtures/sales.mjs'
 import { catalog } from './fixtures/catalog.mjs'
 import { backOffice } from './fixtures/back-office.mjs'
+import { promotions } from './fixtures/promotions.mjs'
 
-export const fixtures = [...shell, ...sales, ...catalog, ...backOffice]
+export const fixtures = [...shell, ...sales, ...catalog, ...backOffice, ...promotions]

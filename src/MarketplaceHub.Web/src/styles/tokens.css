@@ -1,3 +1,31 @@
+/* Theme colour tokens registered as <color> so they can be transitioned: switching the theme from its button eases
+   every colour together (styles/motion.css, html.theme-transitioning) instead of each element animating on its own.
+   Only the tokens that differ between the light and dark themes are registered; the initial values are the dark
+   defaults below. Tokens built from these with color-mix()/var() follow them as they move. Shadows, gradients and
+   the light-only --rv-hover* tokens (read with a fallback, so they must stay unset in dark) are left unregistered. */
+@property --rv-color-bg { syntax: '<color>'; inherits: true; initial-value: #101014; }
+@property --rv-color-surface { syntax: '<color>'; inherits: true; initial-value: #17171c; }
+@property --rv-color-surface-raised { syntax: '<color>'; inherits: true; initial-value: #1d1d23; }
+@property --rv-color-surface-soft { syntax: '<color>'; inherits: true; initial-value: #22222a; }
+@property --rv-color-border { syntax: '<color>'; inherits: true; initial-value: #2a2a32; }
+@property --rv-color-border-strong { syntax: '<color>'; inherits: true; initial-value: #383842; }
+@property --rv-color-ink { syntax: '<color>'; inherits: true; initial-value: #ececf0; }
+@property --rv-color-muted { syntax: '<color>'; inherits: true; initial-value: #a3a3b0; }
+@property --rv-color-subtle { syntax: '<color>'; inherits: true; initial-value: #8a8a99; }
+@property --rv-color-primary { syntax: '<color>'; inherits: true; initial-value: #8b5cf6; }
+@property --rv-color-primary-hover { syntax: '<color>'; inherits: true; initial-value: #7c3aed; }
+@property --rv-color-primary-fill { syntax: '<color>'; inherits: true; initial-value: #7c3aed; }
+@property --rv-color-primary-fill-hover { syntax: '<color>'; inherits: true; initial-value: #6b32cc; }
+@property --rv-color-primary-soft { syntax: '<color>'; inherits: true; initial-value: #272139; }
+@property --rv-color-accent { syntax: '<color>'; inherits: true; initial-value: #46b98f; }
+@property --rv-color-accent-soft { syntax: '<color>'; inherits: true; initial-value: #1e2e2c; }
+@property --rv-color-warning { syntax: '<color>'; inherits: true; initial-value: #e2aa4b; }
+@property --rv-color-warning-soft { syntax: '<color>'; inherits: true; initial-value: #332c23; }
+@property --rv-color-danger { syntax: '<color>'; inherits: true; initial-value: #e4636f; }
+@property --rv-color-danger-soft { syntax: '<color>'; inherits: true; initial-value: #342228; }
+@property --rv-color-info { syntax: '<color>'; inherits: true; initial-value: #83b4ff; }
+@property --rv-color-sidebar { syntax: '<color>'; inherits: true; initial-value: #17171c; }
+
 :root {
   color-scheme: dark;
   --rv-color-bg: #101014;

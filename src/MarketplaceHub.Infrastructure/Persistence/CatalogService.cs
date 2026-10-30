@@ -622,6 +622,35 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return ServiceResult<int>.Ok(products.Count);
     }
 
+    // Toplu KDV Ata: sets KDV Oranı and KDV Dahil mi on the selected product cards. Only the cards change: an existing
+    // marketplace offer keeps its own VAT (changing it would send prices), and the card's VAT is read only when a new
+    // offer is created, so no marketplace link is marked dirty. A card that already has this VAT is left untouched.
+    public async Task<ServiceResult<BulkProductVatResult>> BulkSetVatAsync(Guid tenantId, BulkProductVatCommand command, CancellationToken cancellationToken)
+    {
+        var ids = (command.ProductIds ?? []).Distinct().ToArray();
+        if (ids.Length is 0 or > 500) return ServiceResult<BulkProductVatResult>.Fail("BULK_PRODUCT_LIMIT", "Toplu işlemde 1-500 ürün seçilebilir.", 422);
+        if (command.VatRate is null) return Invalid<BulkProductVatResult>("vatRate", VatRateRequired);
+        if (string.IsNullOrWhiteSpace(command.VatInclusion)) return Invalid<BulkProductVatResult>("vatInclusion", VatInclusionRequired);
+        if (ValidateProductVat(command.VatRate, command.VatInclusion) is { } vatError) return Invalid<BulkProductVatResult>(vatError.Field, vatError.Message);
+        var vatRate = command.VatRate.Value;
+        var vatInclusion = NormalizeVatInclusion(command.VatInclusion);
+
+        var products = await db.Products.Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).ToListAsync(cancellationToken);
+        if (products.Count != ids.Length) return ServiceResult<BulkProductVatResult>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
+        var now = timeProvider.GetUtcNow();
+        var updated = 0;
+        foreach (var product in products.Where(product => product.VatRate != vatRate || product.VatInclusion != vatInclusion))
+        {
+            product.VatRate = vatRate;
+            product.VatInclusion = vatInclusion;
+            product.UpdatedAt = now;
+            product.Version++;
+            updated++;
+        }
+        if (updated > 0) await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<BulkProductVatResult>.Ok(new(updated, products.Count - updated));
+    }
+
     // Ledger sources written by order and return flows; such a movement is stock history that a delete must keep.
     private static readonly string[] OrderMovementSourceTypes = ["ORDER_LINE", "RETURN_CLAIM"];
 

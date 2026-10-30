@@ -1,60 +1,68 @@
-/* Commission tariffs on a connection: the upload area, the uploaded periods and one period's price bands. */
-@layer features {
-  .commission-tariffs { display: grid; gap: var(--rv-space-3); min-width: 0; }
-  /* The panel lives on the reports page, outside the connection settings that style these elsewhere. */
-  .commission-tariffs .cs-sec-head h3 { margin: 0; font-size: 16px; font-weight: 600; }
-  .commission-tariffs .cs-sec-head p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
-  .commission-tariffs .cs-empty { margin: 8px 0 0; color: var(--rv-color-muted); font-size: 13px; }
-  .commission-dropzone { display: grid; justify-items: center; gap: 6px; padding: 22px 16px; text-align: center; background: var(--rv-color-surface-soft); border: 1px dashed var(--rv-color-border-strong); border-radius: 12px; transition: border-color 120ms ease, background-color 120ms ease; }
-  .commission-dropzone strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
-  .commission-dropzone span { color: var(--rv-color-muted); font-size: 12px; }
-  .commission-dropzone button { margin-top: 4px; min-height: 36px; border-radius: 7px; }
-  .commission-dropzone:hover, .commission-dropzone.is-dragging { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+/* Commission tariffs and promotion offers on Promosyon Kârlılık Analizi: the upload area, the uploaded periods and one
+   period's price bands. Every rule is scoped under the shell (.app-shell.stitch-shell main) like the reports page: in a
+   cascade layer the shell's own rules for buttons (44 px, centred), small text and inputs won over them. */
+.app-shell.stitch-shell main .commission-tariffs { display: grid; gap: 16px; min-width: 0; }
+.app-shell.stitch-shell main .commission-tariffs .cs-sec-head h3 { margin: 0; color: var(--rv-color-ink); font-size: 16px; font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .cs-sec-head p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.45; }
+.app-shell.stitch-shell main .commission-tariffs .cs-empty { margin: 0; color: var(--rv-color-muted); font-size: 13px; }
 
-  .commission-message { padding: 10px 12px; border: 1px solid var(--rv-color-border); border-radius: 12px; font-size: 13px; }
-  .commission-message p { margin: 0; }
-  .commission-message ul { margin: 6px 0 0; padding-left: 18px; color: var(--rv-color-muted); font-size: 12px; }
-  .commission-message.is-success { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-color: transparent; }
-  .commission-message.is-info { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
-  .commission-message.is-error { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: transparent; }
+/* The upload area: a dashed frame on the panel itself, as the invoice upload's. */
+.app-shell.stitch-shell main .commission-tariffs .commission-dropzone { display: grid; justify-items: center; gap: 6px; padding: 22px 16px; text-align: center; background: transparent; border: 1px dashed var(--rv-color-border-strong); border-radius: 12px; transition: border-color 120ms ease, background-color 120ms ease; }
+.app-shell.stitch-shell main .commission-tariffs .commission-dropzone strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .commission-dropzone span { color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-dropzone button { min-height: 0; height: 36px; margin-top: 4px; padding: 0 14px; border-radius: 7px; font-size: 13px; text-transform: none; }
+.app-shell.stitch-shell main .commission-tariffs .commission-dropzone:is(:hover, .is-dragging) { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
 
-  .commission-periods { display: grid; gap: var(--rv-space-2); }
-  .commission-period { display: flex; align-items: stretch; gap: 8px; min-width: 0; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; transition: background-color 120ms ease, border-color 120ms ease; }
-  .commission-period:hover { background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
-  .commission-period.is-on { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
-  .commission-period-main { display: grid; flex: 1; gap: 2px; min-width: 0; padding: 10px 12px; color: inherit; text-align: left; background: none; border: 0; border-radius: 12px; cursor: pointer; }
-  .commission-period-main:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
-  .commission-period-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
-  .commission-period-main small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-  .commission-period-delete { align-self: center; min-height: 36px; margin-right: 10px; border-radius: 7px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-message { padding: 10px 12px; border: 1px solid var(--rv-color-border); border-radius: 12px; font-size: 13px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-message p { margin: 0; color: inherit; }
+.app-shell.stitch-shell main .commission-tariffs .commission-message ul { margin: 6px 0 0; padding-left: 18px; color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-message.is-success { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-color: transparent; }
+.app-shell.stitch-shell main .commission-tariffs .commission-message.is-info { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .commission-tariffs .commission-message.is-error { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: transparent; }
 
-  .commission-badge { display: inline-flex; align-items: center; padding: 1px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; line-height: 18px; white-space: nowrap; }
-  .commission-badge.is-current { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
-  .commission-badge.is-unknown { color: var(--rv-color-muted); }
+/* The uploaded periods: a raised card each (as the price cards), the open one in the primary colour. */
+.app-shell.stitch-shell main .commission-tariffs .commission-periods { display: grid; gap: 8px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period { display: flex; align-items: center; gap: 8px; min-width: 0; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; transition: background-color 120ms ease, border-color 120ms ease; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period:hover { border-color: var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .commission-tariffs .commission-period.is-on { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-main { display: grid; flex: 1; justify-content: stretch; justify-items: start; gap: 2px; min-width: 0; min-height: 0; height: auto; margin: 0; padding: 10px 12px; color: inherit; font: inherit; text-align: left; text-transform: none; background: none; border: 0; border-radius: 12px; box-shadow: none; }
+.app-shell.stitch-shell main .commission-tariffs button.commission-period-main { cursor: pointer; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-main:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-main small { max-width: 100%; overflow: hidden; color: var(--rv-color-muted); font-size: 12px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-delete { flex: none; min-height: 0; height: 36px; margin-right: 12px; padding: 0 12px; border-radius: 7px; font-size: 13px; text-transform: none; }
 
-  .commission-rows { display: grid; gap: var(--rv-space-2); min-width: 0; }
-  .commission-rows-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--rv-space-2); }
-  .commission-rows-head strong { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; }
-  .commission-table-wrap { overflow: auto; border: 1px solid var(--rv-color-border); border-radius: 12px; }
-  .commission-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 13px; }
-  .commission-table :is(th, td) { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rv-color-border); }
-  .commission-table thead th { position: sticky; top: 0; z-index: 1; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
-  .commission-table tbody tr { transition: background-color 120ms ease; }
-  .commission-table tbody tr:hover { background: var(--rv-color-surface-soft); }
-  .commission-table tbody tr:last-child :is(th, td) { border-bottom: 0; }
-  .commission-table tbody th { color: var(--rv-color-ink); font-weight: 600; letter-spacing: 0; text-transform: none; background: transparent; }
-  .commission-table small { display: block; margin-top: 2px; color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
-  .commission-product { display: block; max-width: 280px; }
-  .commission-table small.commission-unmatched { color: var(--rv-color-warning); }
-  .commission-table small.commission-warn { color: var(--rv-color-warning); }
-  .commission-pager { display: flex; align-items: center; justify-content: flex-end; gap: var(--rv-space-2); color: var(--rv-color-muted); font-size: 13px; }
-  .commission-pager button { min-height: 36px; border-radius: 7px; }
-  @media (max-width: 560px) { .commission-period { flex-direction: column; } .commission-period-delete { align-self: flex-start; margin: 0 12px 10px; } }
-  @media (prefers-reduced-motion: reduce) { .commission-dropzone, .commission-period, .commission-table tbody tr, .commission-choice { transition: none; } }
+.app-shell.stitch-shell main .commission-tariffs .commission-badge { display: inline-flex; align-items: center; padding: 1px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; line-height: 18px; white-space: nowrap; }
+.app-shell.stitch-shell main .commission-tariffs .commission-badge.is-current { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
+.app-shell.stitch-shell main .commission-tariffs .commission-badge.is-unknown { color: var(--rv-color-muted); }
+
+/* One period's products: the title, the filter card, the plan bar, the table and its pages. */
+.app-shell.stitch-shell main .commission-tariffs .commission-rows { display: grid; gap: 12px; min-width: 0; }
+.app-shell.stitch-shell main .commission-tariffs .commission-rows-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-rows-head strong { color: var(--rv-color-ink); font-size: 15px; font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table-wrap { overflow: auto; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 13px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table :is(th, td) { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rv-color-border); }
+/* The header as every list's: muted 12 px, medium weight, on the raised surface. */
+.app-shell.stitch-shell main .commission-tariffs .commission-table thead th { position: sticky; top: 0; z-index: 1; height: 44px; padding-block: 0; color: var(--rv-color-muted); vertical-align: middle; background: var(--rv-color-surface-raised); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr { transition: background-color 120ms ease; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr:last-child :is(th, td) { border-bottom: 0; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table tbody th { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; background: transparent; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table small { display: block; margin-top: 2px; color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
+.app-shell.stitch-shell main .commission-tariffs .commission-product { display: block; max-width: 280px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table small:is(.commission-unmatched, .commission-warn), .app-shell.stitch-shell main .commission-tariffs .commission-own .commission-warn { color: var(--rv-color-warning); }
+.app-shell.stitch-shell main .commission-tariffs .commission-pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-pager button { min-height: 0; height: 36px; padding: 0 12px; border-radius: 7px; font-size: 13px; text-transform: none; }
+@media (max-width: 560px) {
+  .app-shell.stitch-shell main .commission-tariffs .commission-period { flex-direction: column; align-items: stretch; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-period-delete { align-self: flex-start; margin: 0 12px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell main .commission-tariffs :is(.commission-dropzone, .commission-period, .commission-choice), .app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr { transition: none; }
 }
 
-/* The plan sits outside the layer: the panel's global button rule (height, capitals) would otherwise win over it. */
-/* The plan: a bar to pick for every row and download, then each band of a product as a card to pick. */
+
+/* The plan:a bar to pick for every row and download, then each band of a product as a card to pick. */
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-count { flex: 1 1 160px; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-bar button { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; }
@@ -101,9 +109,9 @@
 /* The column left of the picture: a model's button that opens its sizes. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table :is(th, td).commission-expand { width: 52px; min-width: 52px; padding: 0; text-align: center; vertical-align: middle; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table tr.is-model > td.commission-expand { background: color-mix(in srgb, var(--rv-color-primary) 4%, transparent); }
-.app-shell.stitch-shell main .commission-tariffs .commission-model-toggle { display: inline-grid; place-items: center; width: 32px; min-height: 0; height: 32px; margin: 0 auto; padding: 0; color: var(--rv-color-primary); text-transform: none; background: var(--rv-color-surface-raised); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 35%, var(--rv-color-border)); border-radius: 999px; box-shadow: 0 1px 2px rgb(0 0 0 / 8%); cursor: pointer; transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
+.app-shell.stitch-shell main .commission-tariffs .commission-model-toggle { display: inline-grid; place-items: center; width: 32px; min-height: 0; height: 32px; margin: 0 auto; padding: 0; color: var(--rv-color-primary); text-transform: none; background: var(--rv-color-surface-raised); border: 1px solid color-mix(in srgb, var(--rv-color-primary) 35%, var(--rv-color-border)); border-radius: 999px; box-shadow: var(--rv-shadow-sm); cursor: pointer; transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
 .app-shell.stitch-shell main .commission-tariffs .commission-model-toggle svg { transition: transform 180ms ease; }
-.app-shell.stitch-shell main .commission-tariffs .commission-model-count { justify-self: start; margin-top: 4px; padding: 1px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 12px; font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table .commission-model-count { display: inline-block; justify-self: start; margin-top: 4px; padding: 1px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 12px; font-weight: 600; }
 .app-shell.stitch-shell main .commission-tariffs .commission-model-toggle:hover { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
 .app-shell.stitch-shell main .commission-tariffs .commission-model-toggle[aria-expanded="true"] { color: #fff; background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
 .app-shell.stitch-shell main .commission-tariffs .commission-model-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
@@ -116,16 +124,17 @@
 
 /* Toplu Seçim: a button that opens the bulk pick under it (column, criterion, comparison, value and the actions). */
 .app-shell.stitch-shell main .commission-tariffs .commission-bulk { position: relative; }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-trigger { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; font-weight: 500; }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-trigger.is-active { border-color: var(--rv-color-primary); color: var(--rv-color-primary); }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-trigger em { padding: 1px 7px; color: #fff; background: var(--rv-color-primary); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; display: grid; gap: 10px; width: min(340px, calc(100vw - 32px)); padding: 16px; background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover label { display: grid; gap: 4px; color: var(--rv-color-muted); font-size: 12px; }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover :is(select, input) { width: 100%; height: 36px; min-height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover :is(select, input):disabled { opacity: .55; }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover hr { width: 100%; margin: 2px 0; border: 0; border-top: 1px dashed var(--rv-color-border); }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover > button { width: 100%; min-height: 36px; height: 36px; justify-content: center; font-size: 13px; }
-.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover > button.is-danger { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border)); }
+.app-shell.stitch-shell main .commission-tariffs .commission-bulk-trigger { display: inline-flex; align-items: center; gap: 8px; min-height: 0; height: 36px; padding: 0 12px; color: var(--rv-color-ink); text-transform: none; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; font-weight: 500; }
+.app-shell.stitch-shell main .commission-tariffs .commission-bulk-trigger:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
+.app-shell.stitch-shell main .commission-tariffs .commission-bulk-trigger.is-active { color: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .commission-tariffs .commission-bulk-trigger em { padding: 1px 7px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; }
+/* The popover as the other filter popovers: the surface, a strong line, radius 12 and the popover shadow; its fields as
+   the filter card's (label above, 36 px, the surface colour). */
+.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover { position: absolute; z-index: 30; top: calc(100% + 8px); right: 0; display: grid; gap: 12px; width: min(340px, calc(100vw - 32px)); padding: 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover); }
+.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover label { display: grid; gap: 6px; min-width: 0; color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover hr { width: 100%; margin: 0; border: 0; border-top: 1px dashed var(--rv-color-border); }
+.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover > button { width: 100%; min-height: 0; height: 36px; justify-content: center; padding: 0 12px; border-radius: 7px; font-size: 13px; font-weight: 500; text-transform: none; }
+.app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover > button.is-danger { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border-strong)); }
 
 /* Promotion offers (Plus, advantage label, flash): each price a card to read, not to pick. */
 .app-shell.stitch-shell main .commission-tariffs .commission-choice.is-static { cursor: default; }
@@ -135,20 +144,25 @@
 .app-shell.stitch-shell main .commission-tariffs .promotion-gain { display: inline-flex; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-style: normal; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .app-shell.stitch-shell main .commission-tariffs .promotion-gain.is-up { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
 .app-shell.stitch-shell main .commission-tariffs .promotion-gain.is-down { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
-.app-shell.stitch-shell main .commission-tariffs .promotion-stars { color: var(--rv-color-muted); font-weight: 600; }
-.app-shell.stitch-shell main .commission-tariffs .promotion-stars:not(.is-0) { color: var(--rv-color-warning); }
+.app-shell.stitch-shell main .commission-tariffs .commission-table small.promotion-stars { color: var(--rv-color-muted); font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table small.promotion-stars:not(.is-0) { color: var(--rv-color-warning); }
 
-/* The filter panel: names, codes and the stock range on the first row, the lists on the second, the columns and the
-   buttons on the third, as four equal columns that fold to two and one on narrow screens. */
-.app-shell.stitch-shell main .commission-tariffs .commission-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.app-shell.stitch-shell main .commission-tariffs .commission-filters :is(input, select) { box-sizing: border-box; width: 100%; min-width: 0; height: 36px; min-height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; }
-.app-shell.stitch-shell main .commission-tariffs .commission-filters :is(input, select):focus-visible { border-color: var(--rv-color-primary); outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 35%, transparent); outline-offset: 1px; }
-.app-shell.stitch-shell main .commission-tariffs .commission-filters select:disabled { opacity: .6; }
+/* The filter card, as the filter cards of Siparişler, İadeler and Faturalar: the surface with a hairline, radius 12,
+   16 px inside; each field its label above (12 px, subtle); the inputs 36 px on the surface with a strong line and
+   radius 7; Temizle and Filtrele as ordinary buttons closing the card on the right. Names, codes and the stock range on
+   the first row, the lists on the second, as four columns that fold to two and one on narrow screens. */
+.app-shell.stitch-shell main .commission-tariffs .commission-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 12px; margin: 0; padding: 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .commission-tariffs :is(.commission-filters, .commission-bulk-popover) .commission-field { display: grid; gap: 6px; min-width: 0; margin: 0; }
+.app-shell.stitch-shell main .commission-tariffs .commission-field > span:first-child { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; line-height: 1.4; }
+.app-shell.stitch-shell main .commission-tariffs :is(.commission-filters, .commission-bulk-popover) :is(input, select) { box-sizing: border-box; width: 100%; min-width: 0; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400; outline: none; }
+.app-shell.stitch-shell main .commission-tariffs :is(.commission-filters, .commission-bulk-popover) select { padding-right: 34px; background-position: right 10px center; }
+.app-shell.stitch-shell main .commission-tariffs :is(.commission-filters, .commission-bulk-popover) input::placeholder { color: var(--rv-color-subtle); opacity: 1; }
+.app-shell.stitch-shell main .commission-tariffs :is(.commission-filters, .commission-bulk-popover) :is(input, select):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
+.app-shell.stitch-shell main .commission-tariffs :is(.commission-filters, .commission-bulk-popover) :is(input, select):disabled { opacity: .5; cursor: default; }
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-range { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.app-shell.stitch-shell main .commission-tariffs .commission-filter-range i { color: var(--rv-color-muted); font-style: normal; }
-.app-shell.stitch-shell main .commission-tariffs .commission-filters > button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 600; text-transform: none; }
-.app-shell.stitch-shell main .commission-tariffs .commission-filter-clear { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border: 1px solid color-mix(in srgb, var(--rv-color-danger) 35%, transparent); }
-.app-shell.stitch-shell main .commission-tariffs .commission-filter-clear:hover { background: color-mix(in srgb, var(--rv-color-danger) 18%, var(--rv-color-surface)); }
+.app-shell.stitch-shell main .commission-tariffs .commission-filter-range i { color: var(--rv-color-subtle); font-style: normal; }
+.app-shell.stitch-shell main .commission-tariffs .commission-filter-actions { display: flex; grid-column: 1 / -1; justify-content: flex-end; gap: 8px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-filter-actions > button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 500; text-transform: none; }
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-note { grid-column: 1 / -1; margin: 0; color: var(--rv-color-warning); font-size: 12px; }
 @media (max-width: 900px) { .app-shell.stitch-shell main .commission-tariffs .commission-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -159,14 +173,16 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-sort.is-on { color: var(--rv-color-primary); }
 .app-shell.stitch-shell main .commission-tariffs .commission-sort.is-on span { color: var(--rv-color-primary); font-weight: 700; }
 .app-shell.stitch-shell main .commission-tariffs .commission-sort:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; border-radius: 4px; }
-/* Fiyat Aralığı: a band picked beside the lists, then what its price leaves as two ranges (lira, per cent) below. */
+/* Kolon Seçimi: a column picked beside the lists, then what its price leaves as two ranges (lira, per cent) below. */
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-band { grid-column: span 2; }
-.app-shell.stitch-shell main .commission-tariffs .commission-filter-profit { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-@media (max-width: 520px) { .app-shell.stitch-shell main .commission-tariffs .commission-filter-band { grid-column: auto; } .app-shell.stitch-shell main .commission-tariffs .commission-filter-profit { grid-template-columns: minmax(0, 1fr); } }
-
-/* Kategori, marka and the price range fill the second row; the buttons close the third on the right. */
-.app-shell.stitch-shell main .commission-tariffs .commission-filter-clear { grid-column: 1; }
-@media (max-width: 900px) { .app-shell.stitch-shell main .commission-tariffs .commission-filter-clear { grid-column: auto; } }
+.app-shell.stitch-shell main .commission-tariffs .commission-filter-profit { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+/* On a phone one field a row, the buttons sharing the last one. */
+@media (max-width: 560px) {
+  .app-shell.stitch-shell main .commission-tariffs .commission-filters { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-filter-band { grid-column: auto; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-filter-profit { grid-template-columns: minmax(0, 1fr); }
+  .app-shell.stitch-shell main .commission-tariffs .commission-filter-actions > button { flex: 1 1 0; }
+}
 
 /* A price's profit: a badge that opens Hesaplama Kalemleri, its arrow always shown so a hover does not widen the card. */
 .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: auto; margin: 4px 0 0; padding: 2px 9px; color: var(--rv-color-accent); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; text-transform: none; background: var(--rv-color-accent-soft); border: 0; border-radius: 999px; box-shadow: none; }
@@ -191,3 +207,13 @@
 .unit-profit-modal .unit-profit-total strong { font-size: 18px; font-variant-numeric: tabular-nums; }
 .unit-profit-modal .unit-profit-total small { font-size: 11px; font-weight: 500; opacity: .8; }
 .unit-profit-modal .unit-profit-total.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+/* The whole left cell opens and closes the model's sizes, not only the round button: the button's hit area is
+   stretched over the cell while it keeps its round look. */
+.app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand:has(> .commission-model-toggle) { position: relative; cursor: pointer; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand > .commission-model-toggle::after { content: ""; position: absolute; inset: 0; }
+/* On a phone the Toplu Seçim popover opens under the whole plan bar, inside the page's gutters. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .commission-tariffs .commission-plan-bar { position: relative; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-bulk { position: static; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover { right: 0; left: 0; width: auto; }
+}

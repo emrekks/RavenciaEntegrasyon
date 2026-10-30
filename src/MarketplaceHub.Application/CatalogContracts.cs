@@ -153,6 +153,9 @@ public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, st
 public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null);
 public sealed record BulkProductStatusCommand(IReadOnlyList<Guid> ProductIds, string Status);
 public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
+// Toplu KDV Ata: the product cards' own VAT only; existing marketplace offers keep theirs.
+public sealed record BulkProductVatCommand(IReadOnlyList<Guid> ProductIds, decimal? VatRate, string? VatInclusion);
+public sealed record BulkProductVatResult(int UpdatedCount, int UnchangedCount);
 // Variant ekleme append-only'dir: envanter veya dış listeye bağlı mevcut satış satırları sessizce silinmez.
 // Product list "Platformlara Yayınla": every selected card to every selected marketplace. A new offer takes its VAT
 // from the product card (Product.VatRate/VatInclusion), then a sibling offer of the same variant, then the connection's
@@ -201,6 +204,7 @@ public interface ICatalogService
     Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<int>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
     Task<ServiceResult<int>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<BulkProductVatResult>> BulkSetVatAsync(Guid tenantId, BulkProductVatCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> DuplicateProductAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
