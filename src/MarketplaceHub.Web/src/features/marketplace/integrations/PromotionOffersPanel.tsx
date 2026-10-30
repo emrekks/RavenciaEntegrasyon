@@ -6,7 +6,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
-import { amountRange, priceRange, rateText } from './CommissionTariffsPanel'
+import { amountRange, FilterActions, FilterField, FilterRange, priceRange, rateText } from './CommissionTariffsPanel'
 import { onCost, profitText, ProfitBadge, type UnitProfitCosts } from './unit-profit'
 import { UiIcon } from '../../../shared/components'
 import '../commission-tariffs.css'
@@ -212,38 +212,25 @@ function OfferFilters({ value, rows, columns, onApply }: { value: OfferFilter; r
   const brands = useMemo(() => [...new Set(rows.flatMap(row => row.brand ? [row.brand] : []))].sort((a, b) => a.localeCompare(b, 'tr')), [rows])
   const apply = (event?: FormEvent) => { event?.preventDefault(); onApply(draft) }
   return <form className="commission-filters" onSubmit={apply} aria-label="Ürün filtreleri">
-    <input type="search" placeholder="Ürün adı" value={draft.name} onChange={set('name')} aria-label="Ürün adı" />
-    <input type="search" placeholder="Barkod" value={draft.barcode} onChange={set('barcode')} aria-label="Barkod" />
-    <input type="search" placeholder="Model kodu" value={draft.model} onChange={set('model')} aria-label="Model kodu" />
-    <span className="commission-filter-range">
-      <input type="text" inputMode="numeric" placeholder="Min stok" value={draft.minStock} onChange={set('minStock')} aria-label="En az stok" />
-      <i aria-hidden="true">–</i>
-      <input type="text" inputMode="numeric" placeholder="Max stok" value={draft.maxStock} onChange={set('maxStock')} aria-label="En çok stok" />
-    </span>
-    <select value={draft.category} onChange={set('category')} aria-label="Kategori" disabled={!categories.length}>
-      <option value="">Kategori</option>{categories.map(item => <option key={item} value={item}>{item}</option>)}
-    </select>
-    <select value={draft.brand} onChange={set('brand')} aria-label="Marka" disabled={!brands.length}>
-      <option value="">Marka</option>{brands.map(item => <option key={item} value={item}>{item}</option>)}
-    </select>
-    <select className="commission-filter-band" value={draft.column} onChange={set('column')} aria-label="Kolon seçimi">
-      <option value="">Kolon Seçimi</option>{columns.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
-    </select>
-    <button type="button" className="commission-filter-clear" onClick={() => { setDraft(noOfferFilter); onApply(noOfferFilter) }}>Temizle</button>
-    <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
+    <FilterField label="Ürün Adı"><input type="search" value={draft.name} onChange={set('name')} /></FilterField>
+    <FilterField label="Barkod"><input type="search" value={draft.barcode} onChange={set('barcode')} /></FilterField>
+    <FilterField label="Model Kodu"><input type="search" value={draft.model} onChange={set('model')} /></FilterField>
+    <FilterRange label="Stok" inputMode="numeric" min={draft.minStock} max={draft.maxStock} onMin={set('minStock')} onMax={set('maxStock')} minLabel="En az stok" maxLabel="En çok stok" />
+    <FilterField label="Kategori"><select value={draft.category} onChange={set('category')} disabled={!categories.length}>
+      <option value="">Tümü</option>{categories.map(item => <option key={item} value={item}>{item}</option>)}
+    </select></FilterField>
+    <FilterField label="Marka"><select value={draft.brand} onChange={set('brand')} disabled={!brands.length}>
+      <option value="">Tümü</option>{brands.map(item => <option key={item} value={item}>{item}</option>)}
+    </select></FilterField>
+    <FilterField label="Kolon Seçimi" className="commission-filter-band"><select value={draft.column} onChange={set('column')}>
+      <option value="">Seçilmedi</option>{columns.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+    </select></FilterField>
     {draft.column && <div className="commission-filter-profit">
-      <span className="commission-filter-range">
-        <input type="text" inputMode="decimal" placeholder="Min kâr tutarı" value={draft.minProfit} onChange={set('minProfit')} aria-label="En az kâr tutarı (₺)" />
-        <i aria-hidden="true">–</i>
-        <input type="text" inputMode="decimal" placeholder="Max kâr tutarı" value={draft.maxProfit} onChange={set('maxProfit')} aria-label="En çok kâr tutarı (₺)" />
-      </span>
-      <span className="commission-filter-range">
-        <input type="text" inputMode="decimal" placeholder="Min kâr oranı" value={draft.minShare} onChange={set('minShare')} aria-label="En az kâr oranı (%)" />
-        <i aria-hidden="true">–</i>
-        <input type="text" inputMode="decimal" placeholder="Max kâr oranı" value={draft.maxShare} onChange={set('maxShare')} aria-label="En çok kâr oranı (%)" />
-      </span>
+      <FilterRange label="Kâr Tutarı (₺)" inputMode="decimal" min={draft.minProfit} max={draft.maxProfit} onMin={set('minProfit')} onMax={set('maxProfit')} minLabel="En az kâr tutarı (₺)" maxLabel="En çok kâr tutarı (₺)" />
+      <FilterRange label="Kâr Oranı (%)" inputMode="decimal" min={draft.minShare} max={draft.maxShare} onMin={set('minShare')} onMax={set('maxShare')} minLabel="En az kâr oranı (%)" maxLabel="En çok kâr oranı (%)" />
     </div>}
     {rows.length > 0 && !categories.length && !brands.length && <p className="commission-filter-note">Kategori ve marka bu dosyada okunmadı: dosya önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
+    <FilterActions onClear={() => { setDraft(noOfferFilter); onApply(noOfferFilter) }} />
   </form>
 }
 
@@ -351,7 +338,7 @@ function PlusTable({ rows }: { rows: PlusOffer[] }) {
     <ListingHead listing={listing} rows={rows} columns={plusColumns}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · Plus’ta ${gains.toLocaleString('tr-TR')} ürün daha çok, ${losses.toLocaleString('tr-TR')} ürün daha az bırakıyor`} />
     <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
-      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th>Ürün</th><th className="commission-stock">Stok</th><th>Güncel Fiyat</th><th>Plus Teklifi</th><th>Fark</th></tr></thead>
+      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th scope="col">Ürün</th><th scope="col" className="commission-stock">Stok</th><th scope="col">Güncel Fiyat</th><th scope="col">Plus Teklifi</th><th scope="col">Fark</th></tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={sizeLabel} cells={row => <>
         {stockCell([row.stock])}
         {priceCell([row.now?.price])}
@@ -389,7 +376,7 @@ function AdvantageTable({ rows }: { rows: AdvantageOffer[] }) {
     <ListingHead listing={listing} rows={rows} columns={advantageColumns}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · şu an ${(listing.shown.length - unstarred).toLocaleString('tr-TR')} ürün etiketli, ${unstarred.toLocaleString('tr-TR')} ürün etiketsiz`} />
     <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
-      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th>Ürün</th><th className="commission-stock">Stok</th><th>Güncel Fiyat</th>{[1, 2, 3].map(star => <th key={star}>{starNames[star]}</th>)}</tr></thead>
+      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th scope="col">Ürün</th><th scope="col" className="commission-stock">Stok</th><th scope="col">Güncel Fiyat</th>{[1, 2, 3].map(star => <th scope="col" key={star}>{starNames[star]}</th>)}</tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={sizeLabel} cells={row => <>
         {stockCell([row.stock])}
         {priceCell([row.now?.price], stars([row.currentStars]))}
@@ -431,7 +418,7 @@ function FlashTable({ rows }: { rows: FlashOffer[] }) {
     <ListingHead listing={listing} rows={rows} columns={slots.map(name => [name, `${name} Flaş`] as [string, string])}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} flaş teklifi · ${losses.toLocaleString('tr-TR')} teklif flaş fiyatında zarar ediyor`} />
     <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
-      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th>Ürün</th><th className="commission-stock">Stok</th><th>Güncel Fiyat</th>{slots.map(name => <th key={name}>{name} Flaş</th>)}</tr></thead>
+      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th scope="col">Ürün</th><th scope="col" className="commission-stock">Stok</th><th scope="col">Güncel Fiyat</th>{slots.map(name => <th scope="col" key={name}>{name} Flaş</th>)}</tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={flashLabel} cells={row => <>
         {stockCell([row.stock])}
         {priceCell([row.now?.price])}
