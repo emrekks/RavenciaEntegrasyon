@@ -35,26 +35,46 @@ public sealed class MarketplaceSalesInvoiceLabelTests
         Assert.Equal(expected, label);
     }
 
-    [Fact]
-    public void PazaramaOrderWithoutAnyInvoiceEvidenceStaysUnknown() =>
-        Assert.Equal("FATURA_BILINMIYOR", MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, "{}", ["Delivered"], "PAZARAMA"));
-
-    // A seller-panel upload is invisible to the n11 and PTT AVM APIs: no evidence there is "cannot be verified", never "waiting".
+    // A seller-panel upload is invisible to the n11, PTT AVM and Pazarama APIs, so the panel's own record decides:
+    // without a panel invoice the package waits for one (owner, 24 Oct and 31 Oct 2026).
     [Theory]
     [InlineData("N11")]
     [InlineData("PTTAVM")]
-    public void N11AndPttAvmOrdersWithoutAnyInvoiceEvidenceCannotBeVerified(string platformCode)
+    [InlineData("PAZARAMA")]
+    public void UnreportedPlatformOrdersWithoutAPanelInvoiceWaitForAnInvoice(string platformCode)
     {
         var label = MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, "{}", ["Delivered"], platformCode);
 
         Assert.Equal("FATURA_BEKLIYOR", label);
     }
 
+    // Platforms that report the state keep an absent observation unknown.
     [Theory]
-    [InlineData(MarketplaceInvoiceStatus.Invoiced, "FATURA_KONTROLDE")]
-    [InlineData(MarketplaceInvoiceStatus.Received, "FATURA_KONTROLDE")]
-    public void PttAvmOrderWithAnObservedInvoiceIsNotUnverified(MarketplaceInvoiceStatus status, string expected) =>
-        Assert.Equal(expected, MarketplaceSalesService.InvoiceLabelForPlatform(null, status, "{}", ["Delivered"], "PTTAVM"));
+    [InlineData("TRENDYOL")]
+    [InlineData("HEPSIBURADA")]
+    public void ReportingPlatformOrderWithoutInvoiceEvidenceStaysUnknown(string platformCode) =>
+        Assert.Equal("FATURA_BILINMIYOR", MarketplaceSalesService.InvoiceLabelForPlatform(null, MarketplaceInvoiceStatus.Unknown, "{}", ["Delivered"], platformCode));
+
+    [Theory]
+    [InlineData("PTTAVM", MarketplaceInvoiceStatus.Invoiced)]
+    [InlineData("PTTAVM", MarketplaceInvoiceStatus.Received)]
+    [InlineData("PAZARAMA", MarketplaceInvoiceStatus.Invoiced)]
+    public void UnreportedPlatformOrderWithAnObservedInvoiceIsIssued(string platformCode, MarketplaceInvoiceStatus status) =>
+        Assert.Equal("FATURA_KONTROLDE", MarketplaceSalesService.InvoiceLabelForPlatform(null, status, "{}", ["Delivered"], platformCode));
+
+    // A completed panel invoice reads as issued; one still on its way or refused keeps its own state.
+    [Theory]
+    [InlineData(InvoiceStatus.Completed, "FATURA_KONTROLDE")]
+    [InlineData(InvoiceStatus.MarketplacePending, "FATURA_ISLENIYOR")]
+    [InlineData(InvoiceStatus.Rejected, "FATURA_REDDEDILDI")]
+    public void PazaramaPanelInvoiceDecidesTheLabel(InvoiceStatus status, string expected) =>
+        Assert.Equal(expected, MarketplaceSalesService.InvoiceLabelForPlatform(status, "GIB2026000000001", MarketplaceInvoiceStatus.Unknown, "{}", ["Delivered"], "PAZARAMA"));
+
+    [Theory]
+    [InlineData("FATURA_BEKLIYOR", true)]
+    [InlineData("FATURA_KONTROLDE", false)]
+    public void WorkspaceCountsAnUnreportedWaitingPackageAsUninvoiced(string label, bool canCreate) =>
+        Assert.Equal(canCreate, InvoicingBillingService.IsWorkspaceInvoiceUninvoiced(label, canCreate, marketplaceInvoicePresent: label == "FATURA_KONTROLDE"));
 
     [Fact]
     public void N11OrderWithAnInvoiceLinkIsShownForReview()

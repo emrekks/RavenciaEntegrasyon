@@ -117,7 +117,7 @@ export type InvoiceStatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'da
 
 export function invoiceStatusLabel(value: string | null | undefined) {
   const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
-  // An n11 / PTT AVM state the marketplace cannot verify waits for an invoice like any not-invoiced one.
+  // An n11 / PTT AVM / Pazarama state the marketplace cannot verify waits for an invoice like any not-invoiced one.
   if (['FATURA_BEKLIYOR', 'FATURA_DOGRULANAMADI', 'PENDING', 'DRAFT'].includes(normalized)) return 'Fatura Bekliyor'
   if (['FATURA_KONTROLDE', 'FATURA_YUKLENDI', 'FATURA_KESILDI', 'COMPLETED'].includes(normalized)) return 'Faturası Mevcut'
   if (['FATURA_ISLENIYOR', 'FATURA_PLATFORMA_BEKLIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY', 'ACCEPTED'].includes(normalized)) return 'Fatura İletiliyor'

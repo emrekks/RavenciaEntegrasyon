@@ -346,7 +346,19 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                     currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.ManualInvoiceStatus == "PENDING")
                     || !currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.ManualInvoiceStatus == "UPLOADED")
                         && (currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
-                            || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED"))),
+                            || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED")
+                            // n11, PTT AVM and Pazarama do not report the state: no panel invoice and no observed one is waiting,
+                            // as the label reads it (an n11 order with an invoice link is shown for review instead).
+                            || db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId
+                                    && UnverifiableInvoicePlatforms.Contains(connection.PlatformCode)
+                                    && (connection.PlatformCode != "N11"
+                                        || !EF.Functions.Like(x.CustomerSnapshotJson, "%\"invoiceLink\":\"_%")
+                                            && !EF.Functions.Like(x.CustomerSnapshotJson, "%\"invoiceLink\": \"_%")))
+                                && currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id
+                                    && package.Status != ShipmentPackageStatus.Cancelled
+                                    && package.ManualInvoiceStatus == null && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Unknown)
+                                && !db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
+                                    && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))))),
                 "FATURA_ISLENIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.Draft || i.Status == InvoiceStatus.Validating || i.Status == InvoiceStatus.Ready || i.Status == InvoiceStatus.Submitting || i.Status == InvoiceStatus.Submitted
@@ -3114,12 +3126,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         }
         // n11 gives no invoice state, only the link of an invoice that was attached to the order (empty until
         // one is); Pazarama gives nothing at all. A link means an invoice exists at the marketplace but no local
-        // record matches it, so it is shown for review; without one the state stays unknown, never "waiting".
+        // record matches it, so it is shown for review.
         else if (label == "FATURA_BILINMIYOR" && string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(JsonText(customerJson, "invoiceLink")))
             return "FATURA_KONTROLDE";
-        // n11 and PTT AVM never show an invoice uploaded in their seller panel, so an unknown state there cannot be
-        // checked from the marketplace: it is shown as waiting for an invoice (owner, 24 Oct 2026: no separate
-        // "Fatura Doğrulanamadı"), with the not-invoiced ones, until the seller marks it uploaded.
+        // n11, PTT AVM and Pazarama never show an invoice uploaded in their seller panel, so an unknown state there
+        // cannot be checked from the marketplace: the panel's own record decides (owner, 24 Oct 2026 for n11 / PTT
+        // AVM, 31 Oct 2026 for Pazarama). No panel invoice is waiting for an invoice; an invoice the panel issued and
+        // delivered marks the package invoiced (RecordConfirmedDelivery) and reads as issued.
         else if (label == "FATURA_BILINMIYOR" && IsUnverifiableInvoicePlatform(platformCode))
             return UnverifiedInvoiceLabel;
         return label;
@@ -3127,8 +3140,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
     internal const string UnverifiedInvoiceLabel = "FATURA_BEKLIYOR";
 
+    internal static readonly string[] UnverifiableInvoicePlatforms = ["N11", "PTTAVM", "PAZARAMA"];
+
     internal static bool IsUnverifiableInvoicePlatform(string? platformCode) =>
-        platformCode?.Trim().ToUpperInvariant() is "N11" or "PTTAVM";
+        platformCode?.Trim().ToUpperInvariant() is "N11" or "PTTAVM" or "PAZARAMA";
 
     internal static ShipmentPackage? SelectDisplayPackage(IEnumerable<ShipmentPackage> packages, string? platformCode)
     {

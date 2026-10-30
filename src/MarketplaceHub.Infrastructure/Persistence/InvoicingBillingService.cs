@@ -657,8 +657,9 @@ public sealed partial class InvoicingBillingService(
     // An invoice that was issued sits with the invoiced ones while it is being sent to the marketplace; one that could
     // not be issued or could not be delivered (its reason shown) stays with those that have no invoice. So does a
     // "Faturası Mevcut" the marketplace has not confirmed: that label comes from the customer snapshot alone, a
-    // confirmed one carries the marketplace observation and is handled by the first condition. An n11 / PTT AVM order
-    // the marketplace cannot verify (a seller-panel upload is invisible to its API) also waits here until it is marked.
+    // confirmed one carries the marketplace observation and is handled by the first condition. An n11 / PTT AVM /
+    // Pazarama order the marketplace cannot verify (a seller-panel upload is invisible to its API) also waits here
+    // until the panel delivers an invoice for it or the seller marks it uploaded.
     internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice, bool marketplaceInvoicePresent = false) =>
         !marketplaceInvoicePresent && (canCreateInvoice
             || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI"

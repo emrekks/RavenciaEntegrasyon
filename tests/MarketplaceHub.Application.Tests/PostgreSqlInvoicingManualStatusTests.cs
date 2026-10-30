@@ -31,7 +31,60 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
             await AssertSameLabelAsync(platformCode, manualStatus, expected);
     }
 
-    private async Task AssertSameLabelAsync(string platformCode, string manualStatus, string expected)
+    // Owner, 31 Oct 2026: on a marketplace that does not report the invoice state (n11, PTT AVM, Pazarama) the panel's
+    // own record decides. No panel invoice waits for an invoice: it counts as uninvoiced on the invoice page, in its
+    // metric and the summary the orders page shows, and the orders filter lists it as waiting.
+    [PostgreSqlFact]
+    public async Task UnreportedPlatformWithoutAPanelInvoiceWaitsForAnInvoiceOnEveryScreen()
+    {
+        foreach (var platformCode in new[] { "PAZARAMA", "N11", "PTTAVM" })
+        {
+            await AssertSameLabelAsync(platformCode, null, "FATURA_BEKLIYOR");
+            await AssertWorkspaceCountsAsync(platformCode, seed => { }, uninvoiced: true);
+        }
+    }
+
+    // An invoice the panel issued and delivered marks the package invoiced: it reads as issued and leaves the waiting work.
+    [PostgreSqlFact]
+    public async Task PazaramaPackageWithAPanelDeliveredInvoiceIsInvoiced()
+    {
+        await AssertWorkspaceCountsAsync("PAZARAMA", seed => seed.Package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Invoiced, uninvoiced: false, withInvoice: true);
+    }
+
+    private async Task AssertWorkspaceCountsAsync(string platformCode, Action<Seed> arrange, bool uninvoiced, bool withInvoice = false)
+    {
+        var seed = NewSeed("unreported-counts", platformCode, null);
+        arrange(seed);
+        var invoice = withInvoice ? NewInvoice(seed, InvoiceStatus.Completed) : null;
+        await SeedAsync(seed, invoice is null ? null : db => db.Invoices.Add(invoice));
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var billing = NewBillingService(db);
+            var all = await billing.WorkspacePageAsync(seed.Tenant.Id, new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "ALL"), CancellationToken.None);
+            var waiting = await billing.WorkspacePageAsync(seed.Tenant.Id, new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "UNINVOICED"), CancellationToken.None);
+            var invoiced = await billing.WorkspacePageAsync(seed.Tenant.Id, new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "INVOICED"), CancellationToken.None);
+            var waitingFilter = await billing.WorkspacePageAsync(seed.Tenant.Id, new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "ALL", InvoiceStatus: "FATURA_BEKLIYOR"), CancellationToken.None);
+            var invoicedFilter = await billing.WorkspacePageAsync(seed.Tenant.Id, new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "ALL", InvoiceStatus: "FATURA_KONTROLDE"), CancellationToken.None);
+            var summary = await billing.WorkspaceSummaryAsync(seed.Tenant.Id, CancellationToken.None);
+
+            var item = Assert.Single(all.Items);
+            Assert.Equal(uninvoiced ? "FATURA_BEKLIYOR" : "FATURA_KONTROLDE", item.InvoiceStatus);
+            Assert.Equal(uninvoiced, item.CanCreateInvoice);
+            Assert.Equal((uninvoiced ? 1 : 0, uninvoiced ? 0 : 1), (all.UninvoicedCount, all.InvoicedCount));
+            Assert.Equal(uninvoiced ? 1 : 0, summary.UninvoicedCount);
+            Assert.Equal(uninvoiced ? 1 : 0, waiting.Items.Count);
+            Assert.Equal(uninvoiced ? 0 : 1, invoiced.Items.Count);
+            Assert.Equal(uninvoiced ? 1 : 0, waitingFilter.Items.Count);
+            Assert.Equal(uninvoiced ? 0 : 1, invoicedFilter.Items.Count);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private async Task AssertSameLabelAsync(string platformCode, string? manualStatus, string expected)
     {
         var seed = NewSeed("s2-label", platformCode, manualStatus);
         await SeedAsync(seed);
