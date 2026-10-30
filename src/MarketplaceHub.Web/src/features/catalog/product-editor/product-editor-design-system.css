@@ -1079,3 +1079,10 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
    refresh and stop buttons beside it; those keep their size. */
 .app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-platform-status { flex: 0 1 auto; min-width: 0; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; text-align: left; }
 .app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-tracking-action { flex: none; }
+/* A field a save refused: framed red, and shaken once the page has scrolled to it (field-error-reveal.ts). */
+.product-creation-workspace :is(input, select, textarea)[aria-invalid="true"],
+.product-creation-workspace label:has(> .product-field-error) :is(input, select, textarea) { border-color: var(--rv-color-danger); box-shadow: 0 0 0 1px var(--rv-color-danger); }
+@keyframes field-error-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+.field-error-shake { animation: field-error-shake 0.4s ease-in-out 2; }
+@media (prefers-reduced-motion: reduce) { .field-error-shake { animation: none; } }
+.variant-platform-pricing-modal > footer button { box-sizing: border-box; height: 34px; min-height: 0; padding-block: 0; }
