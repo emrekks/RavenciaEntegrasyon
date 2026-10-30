@@ -318,6 +318,8 @@
 
 @layer features {
   .option-chip-list { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
+  /* A long value group (Renk) stops at five chip rows and scrolls inside, so it stands as tall as Beden beside it. */
+  .attribute-builder-values .option-chip-list { max-height: 252px; overflow-y: auto; align-content: flex-start; padding: 2px; margin: -2px; }
 }
 
 @layer features {
