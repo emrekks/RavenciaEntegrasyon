@@ -4,17 +4,19 @@ import { useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { DialogSurface, UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
+import type { NotificationDetail } from '../../../shared/notifications'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import type { MarketplaceConnection, Product } from '../shared'
+import { addBulkPublicationResult, bulkPublishChunks, bulkPublishFailureDetails, bulkPublishResultMessage, bulkPublishVatNeed, type BulkPublicationResult } from './bulk-publish-run'
 import { bulkPublishModelTooltip, bulkPublishPlatformName, summarizeBulkPublishModels, summarizeBulkPublishStatus, type BulkPublishModelTooltip, type BulkPublishStatusSummary } from './bulk-publish-status'
 import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
 
-type BulkPublicationFailure = { productId: string; productTitle: string; connectionId: string; code: string; message: string }
-type BulkPublicationResult = { queued: number; skipped: number; failed: BulkPublicationFailure[] }
+export type BulkPublishNotice = { title: string; message: string; kind: 'success' | 'error' | 'info'; details?: NotificationDetail[] }
 
 // The server takes the cards in slices so a long selection never runs into one request's time limit.
 const CHUNK_SIZE = 50
+const emptyResult: BulkPublicationResult = { queued: 0, skipped: 0, failed: [] }
 
 // The card's frame and place, as on a product's own publish popup: not yet published first, then refused, in
 // progress, and live (all selected records on it) last.
@@ -29,14 +31,16 @@ export function bulkPublishCardState(summary: BulkPublishStatusSummary | null): 
 // Product list "Platformlara Yayınla" for several cards: the same popup as a single product's "Platformlarda Yayınla"
 // (the editor's publish step), one card per connection with an on/off switch. Cards already on a marketplace (matched,
 // live or still in progress) are skipped by the server; a missing marketplace price is filled from the general price, as
-// the editor does. `products` (the selected records the list holds) only feeds each card's "Yayın Durumu" summary.
+// the editor does, with the VAT of the record's offer elsewhere, or the popup's KDV Oranı for a record priced nowhere.
+// `products` (the selected records the list holds) feeds each card's "Yayın Durumu" summary, keeps a model family in
+// one slice and tells whether the KDV Oranı is needed. Refused records reach the notification center with their reason.
 export function BulkPublishDialog({ productIds, cardCount, connections, products, onClose, onDone }: {
   productIds: string[]
   cardCount: number
   connections: MarketplaceConnection[]
   products?: Product[]
   onClose: () => void
-  onDone: (message: string, kind: 'success' | 'error' | 'info') => void
+  onDone: (notice: BulkPublishNotice) => void
 }) {
   const client = useQueryClient()
   const [connectionIds, setConnectionIds] = useState<string[]>([])
@@ -44,6 +48,10 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<BulkPublicationResult | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [vatRate, setVatRate] = useState('10')
+  // The slices of the run and the first one not sent yet: a run cut short (network, server) goes on from there.
+  const planRef = useRef<{ chunks: string[][]; vatRate: number | null } | null>(null)
+  const [resumeAt, setResumeAt] = useState<number | null>(null)
   // A selected id the list no longer holds counts as unknown in the summary instead of being dropped from the total.
   const selectedRecords = useMemo(() => {
     if (!products) return null
@@ -52,33 +60,53 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   }, [productIds, products])
   const summaries = useMemo(() => new Map(connections.map(connection => [connection.id, selectedRecords ? summarizeBulkPublishStatus(selectedRecords, connection) : null])), [connections, selectedRecords])
   const modelTips = useMemo(() => new Map(connections.map(connection => [connection.id, selectedRecords?.length ? bulkPublishModelTooltip(summarizeBulkPublishModels(selectedRecords, connection)) : null])), [connections, selectedRecords])
-  const locked = running || Boolean(result)
+  // Records no marketplace has priced carry no VAT to copy: the popup asks for it, as the editor's KDV Oranı does.
+  const vatNeed = useMemo(() => bulkPublishVatNeed(selectedRecords), [selectedRecords])
+  const asksVat = vatNeed.unpriced + vatNeed.unknown > 0
+  const knownRecords = useMemo(() => (selectedRecords ?? []).filter((record): record is Product => record !== null), [selectedRecords])
+  const resumable = resumeAt !== null
+  const locked = running || Boolean(result) || resumable
   const close = () => { if (!running) onClose() }
 
   function toggle(connectionId: string) {
     setConnectionIds(ids => ids.includes(connectionId) ? ids.filter(id => id !== connectionId) : [...ids, connectionId])
   }
 
-  async function publish() {
-    setRunning(true); setError(null); setResult(null); setProgress(0)
-    const total: BulkPublicationResult = { queued: 0, skipped: 0, failed: [] }
+  async function publish(resume: boolean) {
+    const plan = resume && planRef.current ? planRef.current : { chunks: bulkPublishChunks(productIds, knownRecords, CHUNK_SIZE), vatRate: asksVat ? Number(vatRate) : null }
+    planRef.current = plan
+    const first = resume ? resumeAt ?? 0 : 0
+    let index = first
+    let total = resume ? result ?? emptyResult : emptyResult
+    // What this call sent, for its notification: a resumed run does not report the first part's refusals again.
+    let sent = emptyResult
+    setRunning(true); setError(null); setResumeAt(null)
+    if (!resume) { setResult(null); setProgress(0) }
     try {
-      for (let start = 0; start < productIds.length; start += CHUNK_SIZE) {
-        const slice = productIds.slice(start, start + CHUNK_SIZE)
-        const part = await hubApi<BulkPublicationResult>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: JSON.stringify({ productIds: slice, connectionIds }) })
-        total.queued += part.queued; total.skipped += part.skipped; total.failed.push(...part.failed)
-        setProgress(Math.min(productIds.length, start + slice.length))
+      for (; index < plan.chunks.length; index++) {
+        const part = await hubApi<BulkPublicationResult>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: JSON.stringify({ productIds: plan.chunks[index], connectionIds, ...(plan.vatRate === null ? {} : { vatRate: plan.vatRate }) }) })
+        total = addBulkPublicationResult(total, part); sent = addBulkPublicationResult(sent, part)
+        setResult(total)
+        setProgress(plan.chunks.slice(0, index + 1).reduce((count, chunk) => count + chunk.length, 0))
       }
-      setResult(total)
-      await client.invalidateQueries({ queryKey: ['products'] })
-      await client.invalidateQueries({ queryKey: ['publication-status'] })
-      onDone(`${total.queued} yayın işi kuyruğa alındı${total.skipped ? `, ${total.skipped} zaten yayında veya işlemde` : ''}${total.failed.length ? `, ${total.failed.length} gönderilemedi` : ''}.`, total.failed.length ? 'info' : 'success')
     } catch (reason) {
-      setResult(total.queued || total.skipped || total.failed.length ? total : null)
       setError(reason instanceof Error ? reason.message : 'Yayın işleri oluşturulamadı.')
+      // Nothing sent yet: the popup stays as it was and Yayınla starts again; otherwise the rest can be sent.
+      if (index === 0) { setResult(null); planRef.current = null }
+      else setResumeAt(index)
     } finally {
       setRunning(false)
     }
+    if (index === first) return
+    const interrupted = index < plan.chunks.length
+    await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['publication-status'] })])
+    const refused = sent.failed.length > 0
+    onDone({
+      title: interrupted ? 'Toplu Yayın Yarıda Kesildi' : !refused ? 'Toplu Yayın Kuyruğa Alındı' : sent.queued ? 'Toplu Yayın Kısmen Gönderildi' : 'Toplu Yayın Gönderilemedi',
+      message: bulkPublishResultMessage(sent, interrupted),
+      kind: interrupted || (refused && !sent.queued) ? 'error' : refused ? 'info' : 'success',
+      details: refused ? bulkPublishFailureDetails(sent.failed, connections, knownRecords) : undefined
+    })
   }
 
   const selectedCount = connectionIds.length
@@ -95,11 +123,17 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
             ? <div className="publish-platform-grid" role="group" aria-label="Yayın platformları">{connections.map(connection => <BulkPublishPlatformCard key={connection.id} connection={connection} summary={summaries.get(connection.id) ?? null} modelTip={modelTips.get(connection.id) ?? null} selected={connectionIds.includes(connection.id)} locked={locked} onToggle={() => toggle(connection.id)} />)}</div>
             : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p></div>}
           {error && <div className="publish-platform-warning" role="alert"><UiIcon name="alert" /><div><strong>Yayın İşleri Oluşturulamadı</strong><p>{error}</p></div></div>}
+          {asksVat && (!result || running || resumable) && <div className="bulk-publish-vat">
+            <label>KDV Oranı<select value={vatRate} disabled={locked} onChange={event => setVatRate(event.target.value)}><option value="1">%1</option><option value="10">%10</option><option value="20">%20</option></select></label>
+            <small>{vatNeed.unpriced ? `${vatNeed.unpriced.toLocaleString('tr-TR')} kayıt hiçbir pazaryerinde fiyatlanmamış; genel fiyatı bu KDV oranıyla (KDV dahil) gönderilir.` : 'Hiçbir pazaryerinde fiyatı olmayan kayıtlar bu KDV oranıyla (KDV dahil) gönderilir.'} Fiyatı olan kayıtlar kendi KDV oranını korur.</small>
+          </div>}
           <div className="publish-selection-footer">
-            <div><strong>{result ? `${result.queued} kuyruğa alındı · ${result.skipped} atlandı · ${result.failed.length} gönderilemedi` : selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{running ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt işlendi` : result ? (result.failed.length ? 'Gönderilemeyenlerin nedeni bildirimlerde.' : 'Sonuçlar ürün listesinde güncellenir.') : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
+            <div><strong>{result ? `${result.queued} kuyruğa alındı · ${result.skipped} atlandı · ${result.failed.length} gönderilemedi` : selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{running ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt işlendi` : resumable ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt gönderildi; kalanları yeniden gönderebilirsiniz.` : result ? (result.failed.length ? 'Gönderilemeyenler ve nedenleri bildirimlerde.' : 'Sonuçlar ürün listesinde güncellenir.') : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
             {!selectedCount && !result && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
             {!result && selectableIds.length > 0 && <button type="button" className="secondary publish-select-all" disabled={locked} onClick={toggleAll}>{allSelectableSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>}
-            {result ? <button type="button" onClick={onClose}>Kapat</button> : <button type="button" disabled={running || !selectedCount} onClick={() => void publish()}>{running ? 'Kuyruğa Alınıyor…' : 'Yayınla'}</button>}
+            {resumable
+              ? <button type="button" disabled={running} onClick={() => void publish(true)}>{running ? 'Kuyruğa Alınıyor…' : 'Kalanları Gönder'}</button>
+              : result && !running ? <button type="button" onClick={onClose}>Kapat</button> : <button type="button" disabled={running || !selectedCount} onClick={() => void publish(false)}>{running ? 'Kuyruğa Alınıyor…' : 'Yayınla'}</button>}
           </div>
         </div></div></section></div></div>
       </DialogSurface>

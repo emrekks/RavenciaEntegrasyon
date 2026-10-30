@@ -33,3 +33,9 @@
 .bulk-publish-model-tip > ul > li.is-missing > span { color: var(--rv-color-warning); }
 .bulk-publish-model-tip > ul > li.is-unknown > span { color: var(--rv-color-muted); }
 .bulk-publish-model-tip > small { color: var(--rv-color-muted); font-size: 12px; }
+
+/* Bulk publish popup: "KDV Oranı" for records no marketplace has priced yet, above the footer. */
+.bulk-publish-vat { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rv-space-2) var(--rv-space-4); margin-bottom: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
+.bulk-publish-vat > label { display: inline-flex; align-items: center; gap: var(--rv-space-2); color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 600; }
+.bulk-publish-vat select { box-sizing: border-box; width: auto; height: 36px; min-height: 0; padding: 0 28px 0 10px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); font: inherit; }
+.bulk-publish-vat > small { flex: 1 1 240px; min-width: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.4; }
