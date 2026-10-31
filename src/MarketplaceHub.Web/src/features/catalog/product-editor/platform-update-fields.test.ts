@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availablePlatformUpdateFields, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, partialPlatformUpdateField, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, writePlatformUpdatePreferences } from './platform-update-fields'
+import { availablePlatformUpdateFields, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, partialPlatformUpdateField, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, platformUpdateStoresKey, writePlatformUpdatePreferences, writePlatformUpdateStores } from './platform-update-fields'
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial))
@@ -204,5 +204,21 @@ describe('platform update fields', () => {
     expect(readPlatformUpdatePreferences(throwing)).toEqual(defaultPlatformUpdatePreferences)
     expect(() => writePlatformUpdatePreferences(defaultPlatformUpdatePreferences, throwing)).not.toThrow()
     expect(readPlatformUpdatePreferences(undefined)).toEqual(defaultPlatformUpdatePreferences)
+  })
+
+  it('remembers the stores as they were left, dropping one gone and not picking one added since', () => {
+    const storage = memoryStorage()
+    // No record yet: the stores picked for the product, as far as they can be updated.
+    expect(readPlatformUpdateStores(['ty', 'hb'], ['hb', 'n11'], storage)).toEqual(['hb'])
+    expect(readPlatformUpdateStores(['ty', 'hb'], [], storage)).toEqual([])
+    writePlatformUpdateStores(['hb', 'gone'], storage)
+    expect(readPlatformUpdateStores(['ty', 'hb', 'pz'], ['ty'], storage)).toEqual(['hb'])
+    // None picked stays none picked.
+    writePlatformUpdateStores([], storage)
+    expect(readPlatformUpdateStores(['ty', 'hb'], ['ty'], storage)).toEqual([])
+    expect(readPlatformUpdateStores(['ty'], ['ty'], memoryStorage({ [platformUpdateStoresKey]: '{bozuk' }))).toEqual(['ty'])
+    const throwing = { getItem: () => { throw new Error('blocked') }, setItem: () => { throw new Error('blocked') } }
+    expect(readPlatformUpdateStores(['ty'], ['ty'], throwing)).toEqual(['ty'])
+    expect(() => writePlatformUpdateStores(['ty'], throwing)).not.toThrow()
   })
 })

@@ -251,6 +251,31 @@ export function writePlatformUpdatePreferences(preferences: PlatformUpdatePrefer
   }
 }
 
+// The stores picked last, kept the same way: the next open starts with them, not with every store. A store no longer
+// updateable is dropped, and one added since is not picked; with no record yet, `first` is used.
+export const platformUpdateStoresKey = 'ravencia.platformUpdate.stores.v1'
+
+export function readPlatformUpdateStores(updateableIds: string[], first: string[], storage: Pick<Storage, 'getItem'> | undefined = safeLocalStorage()): string[] {
+  const fallback = first.filter(id => updateableIds.includes(id))
+  try {
+    const raw = storage?.getItem(platformUpdateStoresKey)
+    if (!raw) return fallback
+    const value = JSON.parse(raw) as { selected?: unknown }
+    if (!Array.isArray(value.selected)) return fallback
+    return updateableIds.filter(id => (value.selected as unknown[]).includes(id))
+  } catch {
+    return fallback
+  }
+}
+
+export function writePlatformUpdateStores(selected: string[], storage: Pick<Storage, 'setItem'> | undefined = safeLocalStorage()) {
+  try {
+    storage?.setItem(platformUpdateStoresKey, JSON.stringify({ selected }))
+  } catch {
+    // A private window or blocked storage: the pick still holds for this page.
+  }
+}
+
 function safeLocalStorage(): Storage | undefined {
   try { return typeof window === 'undefined' ? undefined : window.localStorage } catch { return undefined }
 }
