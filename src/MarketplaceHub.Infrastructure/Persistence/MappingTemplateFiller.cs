@@ -166,6 +166,70 @@ internal static class MappingTemplateFiller
         return filled;
     }
 
+    // A value the user just shared with the other categories: every other category that already maps the panel
+    // attribute to this marketplace attribute gets it now, not only at its next reference sync, so a publish there
+    // does not ask for it again. Same rules as a fill: the value must be in that category's list, the category's own
+    // mapping of the panel value wins, and a removal there (a dismissal) is respected.
+    public static async Task<int> FillValueInOtherCategoriesAsync(AppDbContext db, Guid tenantId, Guid connectionId, string sourceScope, Guid localValueId, string externalValueId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        if (MappingTemplateStore.AttributeOfValueScope(sourceScope) is not { } externalAttributeId) return 0;
+        var localAttributeId = await db.AttributeValues.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == localValueId && x.IsActive)
+            .Select(x => (Guid?)x.AttributeId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (localAttributeId is null) return 0;
+        var scopes = (await db.AttributeMappings.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localAttributeId && x.ExternalId == externalAttributeId && x.Status == "VERIFIED")
+                .Select(x => x.ScopeExternalId)
+                .ToListAsync(cancellationToken))
+            .Select(category => $"{category}/{externalAttributeId}")
+            .Where(scope => scope != sourceScope)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (scopes.Length == 0) return 0;
+        var snapshots = (await db.ReferenceSnapshots.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "ATTRIBUTE_VALUES" && x.IsCurrent && scopes.Contains(x.ScopeExternalId))
+                .Select(x => new { x.Id, x.ScopeExternalId, x.FetchedAt })
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x.ScopeExternalId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(x => x.FetchedAt).First().Id, StringComparer.Ordinal);
+        if (snapshots.Count == 0) return 0;
+        var snapshotIds = snapshots.Values.ToArray();
+        var offering = (await db.ReferenceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && snapshotIds.Contains(x.SnapshotId) && x.ResourceType == "ATTRIBUTE_VALUES" && x.ExternalId == externalValueId && x.IsActive)
+            .Select(x => x.SnapshotId)
+            .ToListAsync(cancellationToken)).ToHashSet();
+        var candidates = snapshots.Keys.ToArray();
+        var mapped = (await db.AttributeValueMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValueId && candidates.Contains(x.ScopeExternalId))
+            .Select(x => x.ScopeExternalId)
+            .ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
+        mapped.UnionWith(db.AttributeValueMappings.Local.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == localValueId).Select(x => x.ScopeExternalId));
+        var dismissed = await DismissedAsync(db, tenantId, connectionId, ValueKind, candidates, cancellationToken);
+
+        var filled = 0;
+        foreach (var (scope, snapshotId) in snapshots.OrderBy(x => x.Key, StringComparer.Ordinal))
+        {
+            if (!offering.Contains(snapshotId) || mapped.Contains(scope) || dismissed.Contains((scope, localValueId))) continue;
+            db.AttributeValueMappings.Add(new AttributeValueMapping
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                ConnectionId = connectionId,
+                SnapshotId = snapshotId,
+                LocalId = localValueId,
+                ScopeExternalId = scope,
+                ExternalId = externalValueId,
+                Status = "VERIFIED",
+                VerifiedAt = now,
+                Source = MappingSources.Template,
+                Version = 1
+            });
+            filled++;
+        }
+        return filled;
+    }
+
     public static async Task DismissAsync(AppDbContext db, Guid tenantId, Guid connectionId, string kind, string scope, Guid localId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (await db.MappingTemplateDismissals.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Kind == kind && x.ScopeExternalId == scope && x.LocalId == localId, cancellationToken)) return;

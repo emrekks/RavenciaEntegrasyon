@@ -7092,6 +7092,56 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task SharedValueMapping_ReachesTheOtherMappedCategoriesAtOnce()
+    {
+        var tenant = NewTenant("mapping-template-share");
+        var connection = NewQuestionConnection(tenant);
+        var sizeId = Guid.CreateVersion7();
+        var xxlId = Guid.CreateVersion7();
+        var size = new AttributeDefinition { Id = sizeId, TenantId = tenant.Id, Code = $"SIZE-{Guid.NewGuid():N}", Name = "Beden", DataType = AttributeDataType.Text, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var xxl = new AttributeValue { Id = xxlId, TenantId = tenant.Id, AttributeId = sizeId, Value = "2XL", NormalizedValue = "2XL", SortOrder = 0, IsActive = true, Version = 1 };
+        // T-shirt (100), Bluz (200), Etek (300) and Ceket (400) map Panel Beden to Trendyol 338; Şort (500) does not.
+        var snapshots = new[] { "100", "200", "300", "400", "500" }.ToDictionary(category => category, category => NewReferenceSnapshot(tenant.Id, connection.Id, "ATTRIBUTE_VALUES", $"{category}/338", fixture.Now, $"sizes-{category}"));
+        var tshirtAttributes = NewReferenceSnapshot(tenant.Id, connection.Id, "CATEGORY_ATTRIBUTES", "100", fixture.Now, "tshirt-attributes");
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.AttributeDefinitions.Add(size);
+        db.AttributeValues.Add(xxl);
+        db.ReferenceSnapshots.AddRange(snapshots.Values.Append(tshirtAttributes));
+        db.ReferenceItems.Add(NewReferenceItem(tenant.Id, connection.Id, tshirtAttributes.Id, "CATEGORY_ATTRIBUTES", "338", "Beden"));
+        // Etek's list has no 2XL (5367); the others do.
+        foreach (var category in new[] { "100", "200", "400", "500" }) db.ReferenceItems.Add(NewReferenceItem(tenant.Id, connection.Id, snapshots[category].Id, "ATTRIBUTE_VALUES", "5367", "2XL"));
+        db.ReferenceItems.Add(NewReferenceItem(tenant.Id, connection.Id, snapshots["300"].Id, "ATTRIBUTE_VALUES", "9999", "XXL"));
+        foreach (var category in new[] { "100", "200", "300", "400" })
+            db.AttributeMappings.Add(new AttributeMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = tshirtAttributes.Id, LocalId = sizeId, ScopeExternalId = category, ExternalId = "338", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        // Ceket already maps 2XL its own way: the user's decision there stays.
+        db.AttributeValueMappings.Add(new AttributeValueMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = snapshots["400"].Id, LocalId = xxlId, ScopeExternalId = "400/338", ExternalId = "5368", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+        await db.SaveChangesAsync();
+        var service = new ReferenceDataService(db, fixture.TimeProvider);
+
+        // Not shared: only T-shirt gets it.
+        var unshared = await service.UpsertMappingAsync(tenant.Id, "attribute-values", xxlId, null, new UpsertCatalogMappingCommand(connection.Id, snapshots["100"].Id, "5367", "VERIFIED", UpdateTemplate: false), CancellationToken.None);
+        Assert.True(unshared.Succeeded, unshared.Error?.Message);
+        Assert.False(await db.AttributeValueMappings.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.ScopeExternalId == "200/338"));
+
+        // Shared ("Eşlemeleri Kaydet" in the publish window): Bluz gets it now, as a template fill.
+        var shared = await service.UpsertMappingAsync(tenant.Id, "attribute-values", xxlId, unshared.Value!.Version, new UpsertCatalogMappingCommand(connection.Id, snapshots["100"].Id, "5367", "VERIFIED"), CancellationToken.None);
+        Assert.True(shared.Succeeded, shared.Error?.Message);
+        var byScope = await db.AttributeValueMappings.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.ScopeExternalId);
+        Assert.Equal(("5367", MappingSources.Template), (byScope["200/338"].ExternalId, byScope["200/338"].Source));
+        Assert.Equal(snapshots["200"].Id, byScope["200/338"].SnapshotId);
+        Assert.False(byScope.ContainsKey("300/338"));
+        Assert.Equal(("5368", MappingSources.Manual), (byScope["400/338"].ExternalId, byScope["400/338"].Source));
+        Assert.False(byScope.ContainsKey("500/338"));
+        Assert.Equal(3, byScope.Count);
+
+        await transaction.RollbackAsync();
+    }
+
+    [PostgreSqlFact]
     public async Task UsedAttributeValues_ComeFromAttributeAssignmentsAndSameNamedVariantOptions()
     {
         var tenant = NewTenant("used-attribute-values");
