@@ -146,8 +146,8 @@ describe('platform update fields', () => {
     expect(price.productFields).toEqual([])
   })
 
-  it('sends nothing to a read-only marketplace', () => {
-    const plan = platformUpdatePlan('PAZARAMA', defaultPlatformUpdateFields)
+  it('sends nothing to a marketplace without a product update', () => {
+    const plan = platformUpdatePlan('AMAZON', defaultPlatformUpdateFields)
     expect(plan.sends).toEqual([])
     expect([plan.price, plan.stock]).toEqual([false, false])
   })
