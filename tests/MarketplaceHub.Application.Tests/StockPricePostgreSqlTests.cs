@@ -704,6 +704,9 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal(["RYP00101"], await Barcodes(new(null, null, Name: "penye")));
             Assert.Equal(["MZ005S10"], await Barcodes(new(null, null, ModelCode: "mz005")));
             Assert.Equal(["RYP00101"], await Barcodes(new(null, null, Barcode: "ryp001")));
+            // The 7-day view's exact barcodes: only those rows, not ones that merely contain them.
+            Assert.Equal(["ETK001", "RYP00101"], await Barcodes(new(null, null, Barcodes: ["RYP00101", "ETK001", "YOK"])));
+            Assert.Empty(await Barcodes(new(null, null, Barcodes: ["RYP001"])));
             Assert.Equal(["ETK001", "RYP00101"], await Barcodes(new(null, null, MinStock: 1)));
             Assert.Equal(["MZ005S10", "RYP00101"], await Barcodes(new(null, null, MaxStock: 11)));
             // Fiyat Aralığı: RYP00101 in band 1 is 519,75 at %21,5 (111,75) over a 300 cost, 98,34 cargo, 13,19 fee, 4,73

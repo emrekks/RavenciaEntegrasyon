@@ -44,10 +44,25 @@ export function groupRangeText(periods: CommissionTariff[]) {
   const end = periods.reduce((last, period) => Date.parse(period.periodEnd) > Date.parse(last) ? period.periodEnd : last, periods[0].periodEnd)
   return `${shortDay(periods[0].periodStart, true)} – ${shortDay(lastMinute(end), true)}`
 }
+// A period's length in whole days (3 for 29 Ekim 08.00 – 1 Kasım 07.59).
+export const periodDays = (period: Pick<CommissionTariff, 'periodStart' | 'periodEnd'>) => Math.max(1, Math.round((Date.parse(period.periodEnd) - Date.parse(period.periodStart)) / 86_400_000))
+// A period's short name: the file's ("3 Gün"), else its length in days.
+export const periodName = (period: CommissionTariff) => period.periodLabel?.trim() || `${periodDays(period)} Gün`
 // A period's tab: its name (else its length in days) and its days, "3 Gün (29 Eki – 1 Kas 2026)".
 export function periodTabLabel(period: CommissionTariff) {
-  const days = Math.max(1, Math.round((Date.parse(period.periodEnd) - Date.parse(period.periodStart)) / 86_400_000))
-  return `${period.periodLabel?.trim() || `${days} Gün`} (${shortDay(period.periodStart, false)} – ${shortDay(lastMinute(period.periodEnd), true)})`
+  return `${periodName(period)} (${shortDay(period.periodStart, false)} – ${shortDay(lastMinute(period.periodEnd), true)})`
+}
+// The tab of a file's periods together: "7 Gün (29 Eki – 5 Kas 2026)".
+export function weekTabLabel(periods: CommissionTariff[]) {
+  const days = periods.reduce((sum, period) => sum + periodDays(period), 0)
+  return `${days} Gün (${shortDay(periods[0].periodStart, false)} – ${shortDay(lastMinute(periods[periods.length - 1].periodEnd), true)})`
+}
+// What a price leaves over the periods together, each period weighted by its days (3/7 and 4/7 of a week); unknown
+// when a period's is.
+export function weekAverage(parts: Array<{ days: number; value: number | null | undefined }>): number | null {
+  if (!parts.length || parts.some(part => part.value == null)) return null
+  const days = parts.reduce((sum, part) => sum + part.days, 0)
+  return kurus(parts.reduce((sum, part) => sum + part.value! * part.days, 0) / days)
 }
 export type CommissionTariffRow = {
   id: string; barcode: string; sellerSku: string | null; modelCode: string | null; productName: string | null; size: string | null
@@ -192,6 +207,21 @@ export function amountRange(values: number[]) {
   const low = Math.min(...values), high = Math.max(...values)
   return low === high ? `${signed(low)} ₺` : `${signed(low)} – ${signed(high)} ₺`
 }
+// The profit on cost of the variants whose profit is known, as a single price's badge gives it: "(%51,39 – %60,10)",
+// one share when they agree; null when none is known.
+export function shareRangeText(choices: CommissionChoice[]) {
+  const shares = choices.flatMap(choice => { const value = share(choice); return value === null ? [] : [value] })
+  if (!shares.length) return null
+  const text = (value: number) => `%${value < 0 ? '−' : ''}${Math.abs(value).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const low = Math.min(...shares), high = Math.max(...shares)
+  return low === high ? `(${text(low)})` : `(${text(low)} – ${text(high)})`
+}
+// A badge over several variants: their profit range ("123,50 – 143,50 ₺ Kâr") with their share range under it.
+function ProfitRange({ choices }: { choices: CommissionChoice[] }) {
+  const lefts = choices.flatMap(choice => choice.remaining === null ? [] : [choice.remaining])
+  const shares = shareRangeText(choices)
+  return <span className="unit-profit-range">{amountRange(lefts)} {Math.max(...lefts) < 0 ? 'Zarar' : 'Kâr'}{shares && <small>{shares}</small>}</span>
+}
 
 // A product's photo; a click opens it full size as the products page does (its preview, Escape or a click outside
 // closes it), without reaching the row. Without a photo, the name's first letter.
@@ -260,7 +290,11 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   // period in force now of the file in force now, else the first file's.
   const groups = useMemo(() => tariffGroups(tariffs.data ?? []), [tariffs.data])
   const activeGroup = groups.find(group => group.periods.some(period => period.id === selected)) ?? groups.find(group => group.periods.some(period => period.isCurrent)) ?? groups[0] ?? null
-  const active = activeGroup?.periods.find(period => period.id === selected) ?? (activeGroup ? defaultPeriod(activeGroup.periods) : null)
+  // The 7-day tab of a file with two periods (Trendyol's 3 Gün and 4 Gün): the first period's table with the second's
+  // commission and profit beside each band, and a pick made for both.
+  const [week, setWeek] = useState(false)
+  const weekPeriods = week && activeGroup?.periods.length === 2 ? activeGroup.periods : null
+  const active = weekPeriods ? weekPeriods[0] : activeGroup?.periods.find(period => period.id === selected) ?? (activeGroup ? defaultPeriod(activeGroup.periods) : null)
   const rows = useQuery({
     queryKey: ['commission-tariff-rows', connectionId, active?.id, filter, page],
     queryFn: () => hubApi<RowPage>(`/connections/${connectionId}/commission-tariffs/${active!.id}/rows?${new URLSearchParams({ page: String(page), limit: '50',
@@ -275,6 +309,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     },
     onSuccess: async result => {
       setSelected(defaultPeriod(result.tariffs)?.id ?? null)
+      setWeek(false)
       setPage(0)
       setMessage(result.alreadyUploaded
         ? { kind: 'info', text: 'Bu dosya bu dönem için daha önce yüklenmiş; mevcut tarife gösteriliyor.' }
@@ -327,7 +362,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
         const on = group.id === activeGroup?.id
         const many = group.periods.length > 1
         return <div key={group.id} role="listitem" className={`commission-period${on ? ' is-on' : ''}`}>
-          <button type="button" className="commission-period-main" aria-pressed={on} onClick={() => { setSelected(defaultPeriod(group.periods)?.id ?? null); setPage(0) }}>
+          <button type="button" className="commission-period-main" aria-pressed={on} onClick={() => { setSelected(defaultPeriod(group.periods)?.id ?? null); setWeek(false); setPage(0) }}>
             <span className="commission-period-title">{periodLabel(group.periods)}{group.periods.some(period => period.isCurrent) && <em className="commission-badge is-current">Geçerli</em>}</span>
             <small>{many ? `${group.periods.length.toLocaleString('tr-TR')} dönem (${group.periods.map(period => period.periodLabel?.trim() || period.periodText).join(', ')}) · ` : ''}{first.rowCount.toLocaleString('tr-TR')} ürün · {first.matchedRowCount.toLocaleString('tr-TR')} panelde eşleşti · {first.fileName} · {formatIstanbul(first.uploadedAt, { dateStyle: 'medium', timeStyle: 'short' })}</small>
           </button>
@@ -341,13 +376,16 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     {activeGroup && active && activeGroup.periods.length > 1 && <div className="commission-period-switch">
       <span className="commission-period-range">Geçerli Tarih Aralığı: <strong>{groupRangeText(activeGroup.periods)}</strong></span>
       <div className="commission-period-tabs" role="group" aria-label="Tarife dönemi">
-        {activeGroup.periods.map(period => <button key={period.id} type="button" aria-pressed={period.id === active.id} onClick={() => { setSelected(period.id); setPage(0) }}>
+        {activeGroup.periods.map(period => <button key={period.id} type="button" aria-pressed={!weekPeriods && period.id === active.id} onClick={() => { setSelected(period.id); setWeek(false); setPage(0) }}>
           {periodTabLabel(period)}{period.isCurrent && <em>Şu An</em>}
         </button>)}
+        {activeGroup.periods.length === 2 && <button type="button" aria-pressed={weekPeriods !== null} onClick={() => { setSelected(activeGroup.periods[0].id); setWeek(true); setPage(0) }}>
+          {weekTabLabel(activeGroup.periods)}
+        </button>}
       </div>
     </div>}
 
-    {active && <TariffPlan key={active.id} connectionId={connectionId} tariff={active} periods={activeGroup?.periods ?? [active]} rows={rows.data} loading={rows.isLoading} error={rows.isError ? rows.error : null} onRetry={() => void rows.refetch()}
+    {active && <TariffPlan key={`${active.id}${weekPeriods ? '-week' : ''}`} connectionId={connectionId} tariff={active} partner={weekPeriods?.[1]} periods={activeGroup?.periods ?? [active]} rows={rows.data} loading={rows.isLoading} error={rows.isError ? rows.error : null} onRetry={() => void rows.refetch()}
       filter={filter} onFilter={value => { setFilter(value); setPage(0) }} page={page} pageCount={pageCount} onPage={setPage} onMessage={setMessage} />}
     {confirmDialog}
   </section>
@@ -568,13 +606,20 @@ function TariffPlan(props: TariffPlanProps) {
     queryFn: () => hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.tariff.id}/selection`),
     gcTime: 0, refetchOnWindowFocus: false
   })
-  if (selection.isPending) return <Busy />
+  // The 7-day view keeps the second period's picks too.
+  const partnerSelection = useQuery({
+    queryKey: ['commission-tariff-selection', props.connectionId, props.partner?.id],
+    queryFn: () => hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.partner!.id}/selection`),
+    gcTime: 0, refetchOnWindowFocus: false, enabled: props.partner != null
+  })
+  if (selection.isPending || (props.partner && partnerSelection.isPending)) return <Busy />
   if (selection.isError) return <ErrorBox error={selection.error} onRetry={() => void selection.refetch()} />
-  return <TariffPlanBody {...props} saved={selection.data} />
+  if (props.partner && partnerSelection.isError) return <ErrorBox error={partnerSelection.error} onRetry={() => void partnerSelection.refetch()} />
+  return <TariffPlanBody {...props} saved={selection.data} partnerSaved={props.partner ? partnerSelection.data : undefined} />
 }
 
 type TariffPlanProps = {
-  connectionId: string; tariff: CommissionTariff; periods: CommissionTariff[]; rows: RowPage | undefined; loading: boolean; error: unknown; onRetry: () => void
+  connectionId: string; tariff: CommissionTariff; partner?: CommissionTariff; periods: CommissionTariff[]; rows: RowPage | undefined; loading: boolean; error: unknown; onRetry: () => void
   filter: TariffFilter; onFilter: (filter: TariffFilter) => void
   page: number; pageCount: number; onPage: (page: number) => void; onMessage: (message: PanelMessage | null) => void
 }
@@ -583,7 +628,7 @@ type TariffPlanProps = {
 // after the commission and the product cost. A pick is made row by row (a band, or a price of the seller's own) or for
 // every row at once; the picks are saved as they change and go out as Trendyol's own tariff file with the picked prices
 // filled in. Picks are kept across pages, searches and visits.
-function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, onRetry, filter, onFilter, page, pageCount, onPage, onMessage, saved }: TariffPlanProps & { saved: TariffSelection }) {
+function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading, error, onRetry, filter, onFilter, page, pageCount, onPage, onMessage, saved, partnerSaved }: TariffPlanProps & { saved: TariffSelection; partnerSaved?: TariffSelection }) {
   const [picks, setPicks] = useState<Map<string, TariffPick>>(() => selectionState(saved).picks)
   // The pick for every row, set in the Toplu Seçim popover.
   const [bulk, setBulk] = useState<TariffBulk>(() => selectionState(saved).bulk)
@@ -592,30 +637,80 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
     method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-selection') }, body
   }), [connectionId, tariff.id])
   const saving = useSavedSelection(save, useMemo(() => JSON.stringify(selectionBody(picks, bulk)), [picks, bulk]))
+  // The 7-day view: the second period's rows of the products on the page (by barcode; its rows have ids of their own)
+  // and its picks, which every pick made here changes as it changes the first period's.
+  const pageBarcodes = useMemo(() => [...new Set(rows?.items.map(row => row.barcode) ?? [])].sort(), [rows])
+  const partnerRows = useQuery({
+    queryKey: ['commission-tariff-rows', connectionId, partner?.id, 'barcodes', pageBarcodes],
+    queryFn: () => hubApi<RowPage>(`/connections/${connectionId}/commission-tariffs/${partner!.id}/rows?${new URLSearchParams({ page: '0', limit: '200', barcodes: pageBarcodes.join(',') })}`),
+    enabled: partner != null && pageBarcodes.length > 0
+  })
+  const partnerBy = useMemo(() => new Map((partnerRows.data?.items ?? []).map(row => [row.barcode, row])), [partnerRows.data])
+  const [partnerPicks, setPartnerPicks] = useState<Map<string, TariffPick>>(() => selectionState(partnerSaved).picks)
+  const [partnerBulk, setPartnerBulk] = useState<TariffBulk>(() => selectionState(partnerSaved).bulk)
+  const partnerId = partner?.id
+  const savePartner = useCallback((body: string) => hubApi<TariffSelection>(`/connections/${connectionId}/commission-tariffs/${partnerId}/selection`, {
+    method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-selection') }, body
+  }), [connectionId, partnerId])
+  const partnerSaving = useSavedSelection(savePartner, useMemo(() => JSON.stringify(selectionBody(partnerPicks, partnerBulk)), [partnerPicks, partnerBulk]))
+  const savingStatus = saving.status === 'error' || partnerSaving.status === 'error' ? 'error' : saving.status === 'saving' || partnerSaving.status === 'saving' ? 'saving' : 'saved'
+  const applyBulk = (next: TariffBulk) => { setBulk(next); if (partner) setPartnerBulk(next) }
   // A column's picks taken back: the pick for every row when it is that column, and the rows picked for that band.
   const clearColumn = (column: string) => {
     const tier = /^[1-4]$/.test(column) ? Number(column) : null
-    if (tier === null ? bulk.kind === column : bulk.kind === 'tier' && bulk.tier === tier) setBulk(noBulk)
-    if (tier !== null) setPicks(current => new Map([...current].filter(([, pick]) => pick.tier !== tier)))
-  }
-  const bulkOn = applied.kind !== ''
-  const setPick = (rowId: string, pick: TariffPick | null) => setPicks(current => {
-    const next = new Map(current)
-    if (pick) next.set(rowId, pick); else next.delete(rowId)
-    return next
-  })
-  // A click on the picked band takes it back (under a pick for every row, the row is then left out on purpose).
-  const toggle = (row: CommissionTariffRow, tier: number, picked: boolean) => setPick(row.id, picked ? (bulkOn ? { tier: null, price: null } : null) : { tier, price: null })
-  // A model's switch picks the band for all its variants that have it, or takes it back from all of them.
-  const pickModel = (owners: CommissionTariffRow[], tier: number, all: boolean) => setPicks(current => {
-    const next = new Map(current)
-    for (const row of owners) {
-      if (!all) next.set(row.id, { tier, price: null })
-      else if (bulkOn) next.set(row.id, { tier: null, price: null })
-      else next.delete(row.id)
+    const clear = (current: TariffBulk, set: (value: TariffBulk) => void, setRows: typeof setPicks) => {
+      if (tier === null ? current.kind === column : current.kind === 'tier' && current.tier === tier) set(noBulk)
+      if (tier !== null) setRows(rowPicks => new Map([...rowPicks].filter(([, pick]) => pick.tier !== tier)))
     }
-    return next
-  })
+    clear(bulk, setBulk, setPicks)
+    if (partner) clear(partnerBulk, setPartnerBulk, setPartnerPicks)
+  }
+  const clearAll = () => { applyBulk(noBulk); setPicks(new Map()); if (partner) setPartnerPicks(new Map()) }
+  const bulkOn = applied.kind !== ''
+  // A pick for rows (null takes theirs back), in the 7-day view for the same products in the second period too.
+  const setRowPicks = (targets: CommissionTariffRow[], pick: TariffPick | null) => {
+    const apply = (current: Map<string, TariffPick>, idOf: (row: CommissionTariffRow) => string | undefined) => {
+      const next = new Map(current)
+      for (const row of targets) {
+        const id = idOf(row)
+        if (id === undefined) continue
+        if (pick) next.set(id, pick); else next.delete(id)
+      }
+      return next
+    }
+    setPicks(current => apply(current, row => row.id))
+    if (partner) setPartnerPicks(current => apply(current, row => partnerBy.get(row.barcode)?.id))
+  }
+  // A click on the picked band takes it back (under a pick for every row, the row is then left out on purpose).
+  const toggle = (row: CommissionTariffRow, tier: number, picked: boolean) => setRowPicks([row], picked ? (bulkOn ? { tier: null, price: null } : null) : { tier, price: null })
+  // A model's switch picks the band for all its variants that have it, or takes it back from all of them.
+  const pickModel = (owners: CommissionTariffRow[], tier: number, all: boolean) => setRowPicks(owners, !all ? { tier, price: null } : bulkOn ? { tier: null, price: null } : null)
+  // The 7-day lines of a band: each period's commission and profit, and what it leaves over the week.
+  const weekLines = (owners: CommissionTariffRow[], tier: number, title: string) => {
+    if (!partner) return null
+    const days = periodDays(tariff), partnerDays = periodDays(partner)
+    const sides = [{ period: tariff, choices: owners.flatMap(row => row.choices?.filter(item => item.tier === tier) ?? []) },
+      { period: partner, choices: owners.flatMap(row => partnerBy.get(row.barcode)?.choices?.filter(item => item.tier === tier) ?? []) }]
+    const averages = owners.map(row => weekAverage([
+      { days, value: row.choices?.find(item => item.tier === tier)?.remaining },
+      { days: partnerDays, value: partnerBy.get(row.barcode)?.choices?.find(item => item.tier === tier)?.remaining }]))
+    const known = averages.filter((value): value is number => value !== null)
+    return <>
+      {sides.map(({ period, choices }) => {
+        const name = periodName(period)
+        if (!choices.length) return <span key={period.id} className="commission-week-line"><em>{name}</em><small>{partnerRows.isPending ? 'Yükleniyor…' : 'Bu dönemde yok'}</small></span>
+        const rates = [...new Set(choices.map(item => item.rate))]
+        const lefts = choices.flatMap(item => item.remaining === null ? [] : [item.remaining])
+        const least = choices.filter(item => item.remaining !== null).sort((a, b) => a.remaining! - b.remaining!)[0]
+        return <span key={period.id} className="commission-week-line">
+          <em>{name} · {rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`}</em>
+          <ProfitBadge price={least ?? choices[0]} label={lefts.length ? <ProfitRange choices={choices} /> : undefined}
+            title={title} tag={`${tier}. Fiyat Aralığı · ${name}`} missing="Maliyet girilmemiş" />
+        </span>
+      })}
+      <small className="commission-week-average">{weekTabLabel([tariff, partner]).split(' (')[0]} ortalaması: {known.length === owners.length && known.length ? `${amountRange(known)} ${Math.max(...known) < 0 ? 'Zarar' : 'Kâr'}` : 'hesaplanamadı'}</small>
+    </>
+  }
   // The models whose variants are shown: a model starts folded, its row alone, so a page of 50 models (each colour with
   // all its sizes and their band cards) does not draw thousands of cards at once.
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
@@ -623,11 +718,11 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   // A file with more than one period: the picks are the open period's, and the Excel carries every period's.
   const manyPeriods = periods.length > 1
-  const periodName = tariff.periodLabel?.trim() || tariff.periodText
+  const openName = tariff.periodLabel?.trim() || tariff.periodText
   const download = useMutation({
     // The picks are saved first; the server writes the saved picks, so the file holds what the page shows.
     mutationFn: async () => {
-      await saving.flush()
+      await Promise.all([saving.flush(), partnerSaving.flush()])
       return hubFile(`/connections/${connectionId}/commission-tariffs/${tariff.id}/export`, {
         method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-export') }, body: '{}'
       })
@@ -641,7 +736,7 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
       setTimeout(() => URL.revokeObjectURL(url), 0)
       const rebuilt = headers.get('X-Tariff-File') === 'rebuilt'
       const conflicts = Number(headers.get('X-Price-Conflicts') ?? 0)
-      onMessage({ kind: rebuilt || conflicts > 0 ? 'info' : 'success', text: exportMessage(Number(headers.get('X-Picked-Rows') ?? Number.NaN), rebuilt, conflicts, periodName) })
+      onMessage({ kind: rebuilt || conflicts > 0 ? 'info' : 'success', text: exportMessage(Number(headers.get('X-Picked-Rows') ?? Number.NaN), rebuilt, conflicts, openName) })
     },
     onError: reason => onMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Excel hazırlanamadı.' })
   })
@@ -651,15 +746,16 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
 
   return <div className="commission-rows">
     <div className="commission-rows-head">
-      <strong>{tariff.periodLabel?.trim() ? `${tariff.periodLabel.trim()} · ` : ''}{tariff.periodText} Bantları</strong>
+      <strong>{partner ? `${weekTabLabel([tariff, partner])} · ${periodName(tariff)} ve ${periodName(partner)} Bantları` : `${tariff.periodLabel?.trim() ? `${tariff.periodLabel.trim()} · ` : ''}${tariff.periodText} Bantları`}</strong>
     </div>
-    {manyPeriods && <p className="commission-period-note">Seçimler her dönem için ayrı kaydedilir. Excel İndir tüm dönemlerin seçimlerini Trendyol dosyasına birlikte yazar: iki dönemde aynı fiyatı seçtiğiniz ürüne “7 Günlük Fiyat”, tek dönemde seçtiğiniz ürüne o dönemin fiyatı yazılır. Bir ürüne iki dönemde farklı fiyat seçtiyseniz dosya ürün başına tek fiyat taşıdığı için Excel’i indirdiğiniz sekmenin ({periodName}) fiyatı yazılır.</p>}
+    {partner && <p className="commission-period-note">Bant sınırları iki dönemde aynı, komisyon oranları farklı. Her kartta iki dönemin komisyonu ve kârı ile gün sayısına göre ağırlıklı ({periodDays(tariff)}/{periodDays(tariff) + periodDays(partner)} ve {periodDays(partner)}/{periodDays(tariff) + periodDays(partner)}) ortalama kâr görünür. Burada yaptığınız seçim iki döneme birden kaydedilir; Excel İndir bu ürünlere “{periodDays(tariff) + periodDays(partner)} Günlük Fiyat” yazar. Toplu Seçim’in kâr koşulu her dönemde ayrı uygulanır; koşulu yalnız bir dönemde sağlayan ürüne o dönemin fiyatı yazılır.</p>}
+    {manyPeriods && !partner && <p className="commission-period-note">Seçimler her dönem için ayrı kaydedilir. Excel İndir tüm dönemlerin seçimlerini Trendyol dosyasına birlikte yazar: iki dönemde aynı fiyatı seçtiğiniz ürüne “7 Günlük Fiyat”, tek dönemde seçtiğiniz ürüne o dönemin fiyatı yazılır. Bir ürüne iki dönemde farklı fiyat seçtiyseniz dosya ürün başına tek fiyat taşıdığı için Excel’i indirdiğiniz sekmenin ({openName}) fiyatı yazılır.</p>}
     {/* Which products the list shows. */}
     <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} onApply={onFilter} />
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
-      <span className="commission-plan-count" role="status">{summary}{saving.status === 'saving' ? <small> · Kaydediliyor…</small> : saving.status === 'error' ? <small className="commission-warn"> · Seçimler kaydedilemedi</small> : null}</span>
-      <BulkPicker bulk={bulk} onApply={setBulk} onClearColumn={clearColumn} onClearAll={() => { setBulk(noBulk); setPicks(new Map()) }} />
+      <span className="commission-plan-count" role="status">{summary}{savingStatus === 'saving' ? <small> · Kaydediliyor…</small> : savingStatus === 'error' ? <small className="commission-warn"> · Seçimler kaydedilemedi</small> : null}</span>
+      <BulkPicker bulk={bulk} onApply={applyBulk} onClearColumn={clearColumn} onClearAll={clearAll} />
       <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0 && !manyPeriods) || download.isPending} onClick={() => download.mutate()}>
         <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}
       </button>
@@ -667,13 +763,18 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
     {loading && <Busy />}
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
     {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
-    {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className="commission-table is-plan">
+    {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className={`commission-table is-plan${partner ? ' is-week' : ''}`}>
       <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><th scope="col" className="commission-stock">Stok</th><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Fiyat Aralığı`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
       <tbody>{groupByModel(rows.items).map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
         const variantRow = (row: CommissionTariffRow, nested: boolean) => {
           const pick = picks.get(row.id)
           const chosen = pickedTier(row, pick, applied)
+          // In the 7-day view, a product picked differently in the second period (on its own tab) says so.
+          const other = partner ? partnerBy.get(row.barcode) : undefined
+          const otherChosen = other ? pickedTier(other, partnerPicks.get(other.id), partnerBulk) : chosen
+          const differs = partner && other && otherChosen !== chosen
+            ? <small className="commission-warn">{periodName(partner)} seçimi farklı: {otherChosen === null ? 'seçilmedi' : otherChosen === 'own' ? 'kendi fiyatı' : `${otherChosen}. fiyat aralığı`}</small> : null
           return <tr key={row.id} className={`${nested ? 'is-variant' : ''}${chosen !== null ? ' is-picked' : ''}`.trim() || undefined}>
             <td className="commission-expand" />
             <th scope="row">{nested
@@ -682,6 +783,7 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
                 <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
                 <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
                 {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
+                {differs}
               </span>
               : <span className="commission-product-cell">
                 {productImage(row)}
@@ -690,6 +792,7 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
                   <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
                   <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
                   {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
+                  {differs}
                 </span>
               </span>}</th>
             <td className="commission-stock">{stockText(row.stock)}</td>
@@ -706,13 +809,15 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
                 <div className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
                   {/* The card's headline is its band limit; the price the row would get stays in the badge's breakdown. */}
                   <strong title={bandLimitHint([band])}>{bandLimitText([band]) ?? money(choice.price)}{row.currentTier === tier && <small className="commission-now"> · şu an</small>}</strong>
-                  <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
-                  <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`} tag={`${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
+                  {partner ? weekLines([row], tier, `${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`) : <>
+                    <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
+                    <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`} tag={`${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
+                  </>}
                   <button type="button" className="commission-switch" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>
                 </div>
               </td>
             })}
-            <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setPick(row.id, price === null ? null : { tier: null, price })} /></td>
+            <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setRowPicks([row], price === null ? null : { tier: null, price })} /></td>
           </tr>
         }
         if (group.length === 1) return variantRow(group[0], false)
@@ -748,20 +853,18 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
               return <td key={tier}>
                 <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
                   <strong title={bandLimitHint(owners.map(row => row.bands.find(item => item.tier === tier)))}>{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier))) ?? priceRange(choices.map(item => item.price))}{owners.some(row => row.currentTier === tier) && <small className="commission-now"> · şu an</small>}</strong>
-                  <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
-                  <ProfitBadge price={least ?? choices[0]} label={ranged ? `${amountRange(lefts)} Kâr` : undefined}
-                    title={first.productName ?? first.barcode} tag={`${tier}. Fiyat Aralığı`}
-                    aside={ranged ? `En az kâr bırakan beden: ${leastRow?.size ?? leastRow?.barcode ?? '—'}` : undefined} missing="Maliyet girilmemiş" />
+                  {partner ? weekLines(owners, tier, first.productName ?? first.barcode) : <>
+                    <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
+                    <ProfitBadge price={least ?? choices[0]} label={ranged ? <ProfitRange choices={choices} /> : undefined}
+                      title={first.productName ?? first.barcode} tag={`${tier}. Fiyat Aralığı`}
+                      aside={ranged ? `En az kâr bırakan beden: ${leastRow?.size ?? leastRow?.barcode ?? '—'}${shareRangeText(choices) ? ` · bedenlerin kâr oranı ${shareRangeText(choices)!.slice(1, -1)}` : ''}` : undefined} missing="Maliyet girilmemiş" />
+                  </>}
                   {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın kârı hesaplanamadı</small>}
                   <button type="button" className="commission-switch" aria-pressed={all} onClick={() => pickModel(owners, tier, all)}><span />{all ? 'Tümü Seçili' : 'Tüm Varyantlarını Seç'}</button>
                 </div>
               </td>
             })}
-            <td><ModelOwnPrice rows={group} picks={picks} onPick={price => setPicks(current => {
-              const next = new Map(current)
-              for (const row of group) { if (price === null) next.delete(row.id); else next.set(row.id, { tier: null, price }) }
-              return next
-            })} /></td>
+            <td><ModelOwnPrice rows={group} picks={picks} onPick={price => setRowPicks(group, price === null ? null : { tier: null, price })} /></td>
           </tr>
           {open && group.map(row => variantRow(row, true))}
         </Fragment>

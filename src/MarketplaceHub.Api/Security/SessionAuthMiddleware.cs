@@ -38,7 +38,7 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
                 context.Items["UserSession"] = session;
                 // A background poll (menu counters in a hidden tab) is not activity: it must not keep an idle session alive.
                 var backgroundPoll = context.Request.Headers["X-Background-Poll"] == "1";
-                if (!backgroundPoll && (session.LastSeenAt is null || session.LastSeenAt < now.AddMinutes(-5))) { session.LastSeenAt = now; session.ExpiresAt = Min(now.AddMinutes(30), session.AbsoluteExpiresAt); await db.SaveChangesAsync(context.RequestAborted); }
+                if (!backgroundPoll && (session.LastSeenAt is null || session.LastSeenAt < now.AddMinutes(-5))) { session.LastSeenAt = now; session.ExpiresAt = SessionLifetime.IdleExpiry(session, now); await db.SaveChangesAsync(context.RequestAborted); }
             }
         }
         await next(context);
@@ -72,8 +72,6 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
         public MembershipRole? Role { get; init; }
         public TotpState? TotpState { get; init; }
     }
-
-    private static DateTimeOffset Min(DateTimeOffset left, DateTimeOffset right) => left < right ? left : right;
 
     public static string CookieName(HttpContext context) =>
         string.Equals(context.RequestServices.GetRequiredService<IConfiguration>()["MARKETPLACEHUB_ENVIRONMENT"], "PILOT_LOCAL", StringComparison.OrdinalIgnoreCase) && !context.Request.IsHttps

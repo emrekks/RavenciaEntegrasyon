@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Modal } from '../../../shared/components'
 import '../commission-tariffs.css'
@@ -39,7 +39,7 @@ export type ProfitPrice = { price: number; rate: number | null; commission: numb
 // A price's profit as a badge that opens its calculation (label: the range of a model's variants instead); the reason it
 // is not known otherwise. The calculation is headed by the product (title), the price it was worked at (tag, a chip)
 // and a note beside the chip (aside).
-export function ProfitBadge({ price, title, tag, aside, missing, label }: { price: ProfitPrice; title?: string; tag?: string; aside?: string; missing?: string; label?: string }) {
+export function ProfitBadge({ price, title, tag, aside, missing, label }: { price: ProfitPrice; title?: string; tag?: string; aside?: string; missing?: string; label?: ReactNode }) {
   const [open, setOpen] = useState(false)
   if (price.remaining === null || !price.costs) return <b className="unit-profit-badge is-unknown">{missing ?? 'Kâr hesaplanamadı'}</b>
   return <>
