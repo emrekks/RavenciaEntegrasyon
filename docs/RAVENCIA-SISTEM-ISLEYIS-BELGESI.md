@@ -500,7 +500,7 @@ Fatura bekleyen toplamı ilk 200 pakete göre değil, veritabanındaki bütün u
 1. Sipariş ve paket uygunluğu kontrol edilir.
 2. Mevcut fatura ve devam eden fatura işi aranır.
 3. Müşteri ve adres snapshot’ları hazırlanır.
-4. Belge türü belirlenir. Otomatik akış yalnızca E-Arşiv fatura keser:
+4. Belge türü belirlenir. Tür, mükellef sorgusuyla otomatik seçilir; fatura yalnız kullanıcı onayıyla kesilir:
    - Kurumsal alıcının e-Fatura mükellefiyeti fatura öncesi E-Faturam mükellef sorgusuyla (`GET api/invoice/taxpayers/{VKN}`) belirlenir: mükellefse e-Fatura (TEMELFATURA, alıcının etiketine), değilse e-Arşiv. Sorgu yapılamazsa fatura kesilmez (`EINVOICE_RECIPIENT_REVIEW_REQUIRED`). Ayrıntı: `docs/EFATURA-MUKELLEF-SORGUSU.md`.
    - Mikro ihracat veya TRY dışı para birimindeki siparişler yurt içi akıştan çıkarılır (`INVOICE_EXPORT_FLOW_REQUIRED`).
 5. Fatura satırları, miktar, indirim, KDV ve toplamlar hesaplanır. KDV oranı bilinmeyen satır varsa fatura kesilmez. Yuvarlama farkı yalnızca KDV’li bir satırın KDV’sine eklenir; %0 KDV’li satır hiçbir zaman KDV taşımaz.
