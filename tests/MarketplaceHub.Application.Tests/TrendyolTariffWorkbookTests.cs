@@ -21,7 +21,7 @@ public sealed class TrendyolTariffWorkbookTests
     public void Picked_rows_get_their_price_and_period_and_every_other_cell_stays()
     {
         var source = Workbook(("Bluz M", "RYP00101", Period3, null), ("Bluz XL", "RYP00103", Period3, "999"), ("Etek", "ETK001", Period3, null), ("Bluz M", "RYP00101", Period4, "777"));
-        var filled = TrendyolTariffWorkbook.Fill(source, Period3, 3, new Dictionary<string, decimal> { ["ryp00101"] = 400.1m, ["ETK001"] = 299.999m });
+        var filled = TrendyolTariffWorkbook.Fill(source, [Period3], [new("ryp00101", Period3, 3, 400.1m), new("ETK001", Period3, 3, 299.999m)]);
 
         Assert.NotNull(filled);
         Assert.Equal(2, filled.Value.Filled);
@@ -53,6 +53,42 @@ public sealed class TrendyolTariffWorkbookTests
         Assert.Equal(3, parsed.Tariffs.Single(x => x.PeriodText == Period3).Rows.Count);
     }
 
+    // Both periods of the file in one Excel: a row picked in one period carries that period, one picked at the same price
+    // in both "7 Günlük Fiyat", and one picked at different prices the exported (preferred) period's price alone.
+    [Fact]
+    public void Each_periods_picks_go_in_with_its_choice_and_a_price_both_periods_share_is_for_seven_days()
+    {
+        var source = Workbook(("Bluz M", "RYP00101", Period3, null), ("Bluz XL", "RYP00103", Period3, "999"), ("Etek", "ETK001", Period3, null), ("Ceket", "CKT001", Period3, "555"));
+        var filled = TrendyolTariffWorkbook.Fill(source, [Period3, Period4],
+        [
+            new("RYP00101", Period3, 3, 400.1m), new("RYP00101", Period4, 4, 400.10m, Preferred: true),
+            new("RYP00103", Period4, 4, 464.62m, Preferred: true),
+            new("ETK001", Period3, 3, 300m), new("ETK001", Period4, 4, 432.26m, Preferred: true)
+        ])!.Value;
+
+        Assert.Equal((3, 1), (filled.Filled, filled.Conflicts));
+        var table = ImportFileReader.ReadXlsxTable(new MemoryStream(filled.Content), 10_000_000);
+        var price = table.Headers.ToList().IndexOf("YENİ TSF (FİYAT GÜNCELLE)");
+        var choice = table.Headers.ToList().IndexOf("Tarife Seçimi");
+        (string, string) Picked(string barcode) { var cells = table.Rows.Single(x => x.Cells[1] == barcode).Cells; return (cells.ElementAtOrDefault(price) ?? "", cells.ElementAtOrDefault(choice) ?? ""); }
+        Assert.Equal(("400.10", "7 Günlük Fiyat"), Picked("RYP00101"));
+        Assert.Equal(("464.62", "4 Günlük Fiyat"), Picked("RYP00103"));
+        Assert.Equal(("432.26", "4 Günlük Fiyat"), Picked("ETK001"));
+        // A row of the file's periods picked in neither is emptied (no change on Trendyol).
+        Assert.Equal(("", ""), Picked("CKT001"));
+    }
+
+    [Fact]
+    public void A_row_resolves_to_one_price_and_the_days_it_is_for()
+    {
+        Assert.Null(TrendyolTariffWorkbook.Resolve([]));
+        Assert.Equal((410m, 3, false), TrendyolTariffWorkbook.Resolve([new("A", Period3, 3, 409.999m)]));
+        Assert.Equal((410m, 7, false), TrendyolTariffWorkbook.Resolve([new("A", Period3, 3, 410m), new("A", Period4, 4, 409.999m)]));
+        // Different prices: the preferred period wins, else the first.
+        Assert.Equal((420m, 4, true), TrendyolTariffWorkbook.Resolve([new("A", Period3, 3, 410m), new("A", Period4, 4, 420m, Preferred: true)]));
+        Assert.Equal((410m, 3, true), TrendyolTariffWorkbook.Resolve([new("A", Period3, 3, 410m), new("A", Period4, 4, 420m)]));
+    }
+
     [Fact]
     public void A_cell_the_row_lacks_is_made_in_its_place()
     {
@@ -61,7 +97,7 @@ public sealed class TrendyolTariffWorkbookTests
         var rewritten = Rewrite(source, "xl/worksheets/sheet1.xml", xml => xml.Replace("<c r=\"T2\" s=\"62\"/>", string.Empty, StringComparison.Ordinal).Replace("<c r=\"V2\" s=\"68\"/>", string.Empty, StringComparison.Ordinal));
         Assert.DoesNotContain("r=\"T2\"", Part(rewritten, "xl/worksheets/sheet1.xml"), StringComparison.Ordinal);
 
-        var filled = TrendyolTariffWorkbook.Fill(rewritten, Period3, 3, new Dictionary<string, decimal> { ["RYP00101"] = 450m })!.Value;
+        var filled = TrendyolTariffWorkbook.Fill(rewritten, [Period3], [new("RYP00101", Period3, 3, 450m)])!.Value;
         var sheet = Part(filled.Content, "xl/worksheets/sheet1.xml");
         Assert.True(sheet.IndexOf("r=\"S2\"", StringComparison.Ordinal) < sheet.IndexOf("r=\"T2\"", StringComparison.Ordinal));
         Assert.True(sheet.IndexOf("r=\"T2\"", StringComparison.Ordinal) < sheet.IndexOf("r=\"U2\"", StringComparison.Ordinal));

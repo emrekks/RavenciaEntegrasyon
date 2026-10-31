@@ -1012,6 +1012,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("PeriodEnd")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("PeriodLabel")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<DateTimeOffset>("PeriodStart")
                         .HasColumnType("timestamp with time zone");
 

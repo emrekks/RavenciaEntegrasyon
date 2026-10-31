@@ -36,6 +36,23 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-badge.is-current { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }
 .app-shell.stitch-shell main .commission-tariffs .commission-badge.is-unknown { color: var(--rv-color-muted); }
 
+/* A file with more than one period (Trendyol's "3 Gün" and "4 Gün"): its span, then one segmented control of its
+   periods (one soft track 36 px high, the open period raised), as the reports' segmented choices. */
+.app-shell.stitch-shell main .commission-tariffs .commission-period-switch { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; min-width: 0; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-range { color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-range strong { color: var(--rv-color-ink); font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-tabs { display: inline-flex; flex-wrap: wrap; gap: 2px; max-width: 100%; padding: 2px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 0; height: 30px; margin: 0; padding: 0 12px; color: var(--rv-color-muted); font: inherit; font-size: 13px; font-weight: 500; text-transform: none; white-space: nowrap; background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-tabs button:hover { color: var(--rv-color-ink); }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-tabs button[aria-pressed='true'] { color: var(--rv-color-ink); font-weight: 600; background: var(--rv-color-surface); box-shadow: 0 1px 2px rgb(0 0 0 / 14%); }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-tabs button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-tabs em { color: var(--rv-color-accent); font-size: 11px; font-style: normal; font-weight: 600; }
+.app-shell.stitch-shell main .commission-tariffs .commission-period-note { margin: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; }
+@media (max-width: 560px) {
+  .app-shell.stitch-shell main .commission-tariffs .commission-period-tabs { display: flex; width: 100%; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-period-tabs button { flex: 1 1 100%; white-space: normal; }
+}
+
 /* One period's products: the title, the filter card, the plan bar, the table and its pages. */
 .app-shell.stitch-shell main .commission-tariffs .commission-rows { display: grid; gap: 12px; min-width: 0; }
 .app-shell.stitch-shell main .commission-tariffs .commission-rows-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
