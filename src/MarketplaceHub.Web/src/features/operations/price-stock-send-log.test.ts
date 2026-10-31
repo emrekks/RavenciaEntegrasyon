@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  emptySendLogFilters, hasSendLogFilters, istanbulDayToIso, listPriceChanged, priceChange, quantityChange, sendLogQueryString,
-  sendLogResultLabel, sendLogResultOptions, sendLogResultTone, sendLogResultTooltip, sendLogTriggerLabel, sendLogTriggerOptions
+  emptySendLogFilters, hasSendLogFilters, istanbulDayToIso, listPriceChanged, priceChange, quantityChange, sendLogFilterCount, sendLogQueryString,
+  sendLogResultGroups, sendLogResultLabel, sendLogResultOptions, sendLogResultTone, sendLogResultTooltip, sendLogTriggerGroups, sendLogTriggerLabel,
+  sendLogTriggerOptions
 } from './price-stock-send-log'
 
 describe('price/stock send log values', () => {
@@ -48,6 +49,15 @@ describe('price/stock send log results and triggers', () => {
     expect(sendLogTriggerOptions.map(sendLogTriggerLabel)).toEqual(['Sipariş', 'Manuel Stok', 'Fiyat Değişikliği', 'Pazaryeri Stok Aktarımı', 'Stok Değişikliği', 'Kontrol Taraması', 'Panelden Gönderim', 'Otomatik'])
   })
 
+  it('groups every result and every trigger exactly once', () => {
+    const results = sendLogResultGroups.flatMap(group => group.values)
+    const triggers = sendLogTriggerGroups.flatMap(group => group.values)
+    expect([...results].sort()).toEqual([...sendLogResultOptions].sort())
+    expect([...triggers].sort()).toEqual([...sendLogTriggerOptions].sort())
+    expect(sendLogResultGroups.map(group => group.label)).toEqual(['Başarılı', 'Sorunlu', 'Bekleyen', 'Diğer'])
+    expect(sendLogTriggerGroups.map(group => group.label)).toEqual(['Otomatik', 'Panelden', 'Aktarım'])
+  })
+
   it('puts the marketplace error after the meaning of the result', () => {
     expect(sendLogResultTooltip({ result: 'REJECTED', errorCode: 'TY-400', errorMessage: 'Fiyat aralık dışı' })).toBe('Pazaryeri satırı reddetti. — TY-400: Fiyat aralık dışı')
     expect(sendLogResultTooltip({ result: 'APPLIED', errorCode: null, errorMessage: null })).toBe('Pazaryeri değerleri aldı.')
@@ -68,13 +78,16 @@ describe('price/stock send log request', () => {
   })
 
   it('sends every filter and the cursor', () => {
-    const filters = { search: '  8680001  ', platforms: ['trendyol', 'HEPSIBURADA', 'TRENDYOL'], result: 'REJECTED', trigger: 'ORDER', from: '2026-10-19', to: '2026-10-20' }
-    const params = new URLSearchParams(sendLogQueryString(filters, 'cursor-1', 100).slice(1))
+    const filters = { search: '  8680001  ', platforms: ['trendyol', 'HEPSIBURADA', 'TRENDYOL'], results: ['REJECTED', 'FAILED'], triggers: ['ORDER'], from: '2026-10-19', to: '2026-10-20' }
+    const params = new URLSearchParams(sendLogQueryString(filters, 'cursor-1', 100, true).slice(1))
     expect(Object.fromEntries(params)).toEqual({
-      limit: '100', search: '8680001', platforms: 'TRENDYOL,HEPSIBURADA', results: 'REJECTED', triggers: 'ORDER',
-      from: '2026-10-18T21:00:00.000Z', to: '2026-10-20T20:59:59.999Z', after: 'cursor-1'
+      limit: '100', search: '8680001', platforms: 'TRENDYOL,HEPSIBURADA', results: 'REJECTED,FAILED', triggers: 'ORDER',
+      from: '2026-10-18T21:00:00.000Z', to: '2026-10-20T20:59:59.999Z', order: 'asc', after: 'cursor-1'
     })
     expect(hasSendLogFilters(filters)).toBe(true)
+    // The date range counts once, however many of its ends are set.
+    expect(sendLogFilterCount(filters)).toBe(5)
+    expect(sendLogFilterCount({ ...emptySendLogFilters, to: '2026-10-20' })).toBe(1)
   })
 
   it('keeps the page size and the search within the server limits', () => {
