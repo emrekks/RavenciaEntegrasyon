@@ -5,6 +5,7 @@ import { RrError, RrIcon, RrLoading, RrLogo, RrModal, RrThumb } from './returns-
 import { integrationNotificationTarget, isExternalWriteMessage, type NotificationTarget } from '../../shared/notifications'
 import { allocateStock, stockedUnits, type ApprovedReturn } from './return-stock-allocation'
 import { formatIstanbul } from '../../shared/format-date'
+import { formatPackageLabel } from '../../shared/package-label'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 
 export type ReturnApproveRow = {
@@ -132,7 +133,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   const orderFacts = [
     ['Müşteri', order.customer],
     ['Sipariş Tarihi', order.orderedAt ? formatIstanbul(order.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null],
-    ['Paket No', order.packageNumber],
+    ['Paket No', formatPackageLabel(order.packageNumber)],
     ['İade Kodu', order.claimCode],
     ['İade Sebebi', order.reason]
   ].filter((fact): fact is [string, string] => Boolean(fact[1]))
