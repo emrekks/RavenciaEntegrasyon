@@ -47,6 +47,8 @@ export type VariantPlatformStatus = {
 export type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
   defaultListPrice?: number | null; defaultSalePrice?: number | null; warrantyMonths?: number | null
+  // Teslimat Süresi (gün): sent as each marketplace's delivery/dispatch time; null only on a card older than the field.
+  deliveryDays?: number | null
   // The card's KDV Oranı and KDV Dahil mi ("INCLUDED"/"EXCLUDED"); null = not set on the card. A new marketplace offer
   // (bulk publish) takes its VAT from here.
   vatRate?: number | null; vatInclusion?: string | null

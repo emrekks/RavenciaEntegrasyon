@@ -2,7 +2,7 @@
 // each marketplace takes them in the requests its API has, and a request always carries all of its fields. A card
 // therefore lists what really goes, including a field that was not picked but rides in the same request.
 
-export type PlatformUpdateField = 'TITLE' | 'DESCRIPTION' | 'IMAGES' | 'ATTRIBUTES' | 'WARRANTY' | 'DESI' | 'ORIGIN' | 'DELIVERY' | 'PRICE' | 'STOCK' | 'VAT_RATE'
+export type PlatformUpdateField = 'TITLE' | 'DESCRIPTION' | 'IMAGES' | 'ATTRIBUTES' | 'WARRANTY' | 'DESI' | 'DELIVERY' | 'PRICE' | 'STOCK' | 'VAT_RATE'
 export type PlatformUpdateGroupKey = 'product' | 'shipping' | 'sales'
 
 // linked: what a group shows that cannot be picked on its own; it goes whenever `with` goes.
@@ -21,15 +21,17 @@ export const platformUpdateGroups: PlatformUpdateGroup[] = [
       { key: 'ATTRIBUTES', label: 'Kategori Özellikleri' },
       { key: 'WARRANTY', label: 'Garanti Süresi' }
     ],
-    linked: [{ label: 'Renk / Beden', with: 'ATTRIBUTES', note: 'Varyant özellikleri kategori özellikleriyle aynı listede gider.' }]
+    linked: [
+      { label: 'Renk / Beden', with: 'ATTRIBUTES', note: 'Renk ve beden kategori özellikleriyle aynı listede gider.' },
+      { label: 'Menşei', with: 'ATTRIBUTES', note: 'Menşei bir kategori özelliğidir; Trendyol’da Desi ve KDV Oranı isteği de ilandaki menşeiyi taşır.' }
+    ]
   },
   {
     key: 'shipping',
     label: 'Kargo ve Teslimat',
-    description: 'Kargo ücretini belirleyen desi, menşei ve teslimat süresi.',
+    description: 'Kargo ücretini belirleyen desi ve ürün kartındaki teslimat süresi.',
     fields: [
       { key: 'DESI', label: 'Desi' },
-      { key: 'ORIGIN', label: 'Menşei' },
       { key: 'DELIVERY', label: 'Teslimat Süresi' }
     ]
   },
@@ -42,7 +44,7 @@ export const platformUpdateGroups: PlatformUpdateGroup[] = [
       { key: 'STOCK', label: 'Stok' },
       { key: 'VAT_RATE', label: 'KDV Oranı' }
     ],
-    hint: 'Trendyol liste ve satış fiyatını birlikte alır; Hepsiburada yalnız satış fiyatını alır. Para birimi gönderilmez, fiyat TL gider. Otomatik fiyat-stok akışı açık olan mağazada panelde kaydedilen fiyat ve stok o akışla ayrıca da gider.'
+    hint: 'Trendyol liste ve satış fiyatını birlikte alır; Hepsiburada yalnız satış fiyatını alır. Para birimi gönderilmez, fiyat TL gider.'
   }
 ]
 
@@ -54,28 +56,31 @@ const fieldLabel = new Map(platformUpdateGroups.flatMap(group => group.fields.ma
 // shown as information, not as a pick.
 export const platformUpdateFixedInformation: { label: string; note: string }[] = [
   { label: 'Barkod', note: 'Ürünü pazaryerinde bulmak için her istekte gider; bu pencereden değiştirilmez.' },
-  { label: 'Stok Kodu', note: 'Trendyol’da Desi, KDV Oranı ve Menşei isteğiyle birlikte gider; Hepsiburada’da ürünü bulmak için (merchantSku) gider.' },
+  { label: 'Stok Kodu', note: 'Trendyol’da Desi ve KDV Oranı isteğiyle birlikte gider; Hepsiburada’da ürünü bulmak için (merchantSku) gider.' },
   { label: 'Marka, Kategori, Model Kodu', note: 'Yayındaki üründe güncellenmez. Trendyol bunları yalnız henüz onaylamadığı üründe tüm kartla alır; Hepsiburada güncellemesi hiç taşımaz.' },
   { label: 'Gönderilmeyenler', note: 'Kargo firması, ağırlık, para birimi ve video bu güncellemeyle hiçbir pazaryerine gitmez.' }
 ]
 
-// One request of a marketplace: its fields always go together. sends: what the request carries, in the words the card
-// uses (it names list and sale price apart, and what rides along that is not a pick of the dialog).
-type PlatformUpdateRequest = { fields: PlatformUpdateField[]; sends: string[] }
+// One request of a marketplace: its fields always go together. sends: the dialog's fields as the card names them (list
+// and sale price apart); extra: what the request also carries that is not a pick of the dialog.
+type PlatformUpdateRequest = { fields: PlatformUpdateField[]; sends: string[]; extra?: string[] }
 type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string }
 
 // From the adapters (TrendyolWriteComposers, HepsiburadaProductUpdateComposer, PriceInventoryComposer):
-// - Trendyol, approved product: content-bulk-update (title, description, images, attributes with the variant's colour
-//   and size), variant-bulk-update per barcode (stock code, desi, origin, VAT rate), delivery-info-bulk-update
-//   (delivery duration); price-and-inventory takes the price (list and sale together) and the stock apart. Trendyol
-//   takes no warranty.
-// - Hepsiburada: one product update per hbSku with name, description, barcode, attributes (colour and size among them),
-//   VAT, warranty, desi and images; inventory-uploads takes the sale price and the stock apart. No origin, no delivery.
+// - Trendyol, approved product: content-bulk-update (title, description, images, attributes with colour, size and
+//   Menşei), variant-bulk-update per barcode (desi, VAT rate; the stock code and the listing's origin ride along),
+//   delivery-info-bulk-update (the product card's Teslimat Süresi); price-and-inventory takes the price (list and sale
+//   together) and the stock apart. Trendyol takes no warranty.
+// - Hepsiburada: one product update per hbSku with name, description, barcode, attributes, VAT, warranty, desi and
+//   images; inventory-uploads takes the sale price and the stock apart. No delivery time. (The update has a video slot,
+//   but the publication never fills it, so no video goes.)
+// - n11, Pazarama, PTT AVM and Shopify have no product update in the panel yet: no field of the dialog goes there.
+// The API keeps the same table (ProductUpdateFields.SupportedBy).
 const profiles: Record<string, PlatformUpdateProfile> = {
   TRENDYOL: {
     requests: [
-      { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES'], sends: ['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Renk / Beden'] },
-      { fields: ['DESI', 'VAT_RATE', 'ORIGIN'], sends: ['Desi', 'KDV Oranı', 'Menşei', 'Stok Kodu'] },
+      { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES'], sends: ['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri'], extra: ['Renk / Beden', 'Menşei'] },
+      { fields: ['DESI', 'VAT_RATE'], sends: ['Desi', 'KDV Oranı'], extra: ['Menşei', 'Stok Kodu'] },
       { fields: ['DELIVERY'], sends: ['Teslimat Süresi'] },
       { fields: ['PRICE'], sends: ['Liste Fiyatı', 'Satış Fiyatı'] },
       { fields: ['STOCK'], sends: ['Stok'] }
@@ -84,11 +89,11 @@ const profiles: Record<string, PlatformUpdateProfile> = {
   },
   HEPSIBURADA: {
     requests: [
-      { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'VAT_RATE'], sends: ['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Renk / Beden', 'Garanti Süresi', 'Desi', 'KDV Oranı', 'Barkod'] },
+      { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'VAT_RATE'], sends: ['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Garanti Süresi', 'Desi', 'KDV Oranı'], extra: ['Renk / Beden', 'Menşei', 'Barkod'] },
       { fields: ['PRICE'], sends: ['Satış Fiyatı'] },
       { fields: ['STOCK'], sends: ['Stok'] }
     ],
-    note: 'Hepsiburada ürün bilgilerini tek pakette alır; menşei ve teslimat süresi gönderilmez.'
+    note: 'Hepsiburada ürün bilgilerini tek pakette alır; teslimat süresi gönderilmez.'
   }
 }
 
@@ -103,13 +108,35 @@ export function availablePlatformUpdateFields(platformCodes: string[]): Platform
   return platformUpdateFieldKeys.filter(field => available.has(field))
 }
 
+export function platformTakesUpdateField(platformCode: string, field: PlatformUpdateField) {
+  return profileOf(platformCode)?.requests.some(request => request.fields.includes(field)) ?? false
+}
+
+// The platform codes of a field that only some of the stores take (shown beside it: "Yalnız Trendyol"); empty when every
+// store takes it or none does.
+export function partialPlatformUpdateField(field: PlatformUpdateField, platformCodes: string[]): string[] {
+  const takers = platformCodes.filter(code => platformTakesUpdateField(code, field))
+  if (!takers.length || takers.length === platformCodes.length) return []
+  return [...new Set(takers.map(code => code.trim().toUpperCase()))]
+}
+
+// The pick after the stores changed: a field no longer shown is dropped, a field shown only now comes in ticked, the
+// rest stays as the user left it.
+export function platformUpdateFieldsForStores(fields: PlatformUpdateField[], before: PlatformUpdateField[], after: PlatformUpdateField[]): PlatformUpdateField[] {
+  const picked = new Set(fields.filter(field => after.includes(field)))
+  for (const field of after) if (!before.includes(field)) picked.add(field)
+  return platformUpdateFieldKeys.filter(field => picked.has(field))
+}
+
 export type PlatformUpdatePlan = {
-  // Every picked or riding field that goes, in the dialog's order (a picked field's whole request).
+  // Every picked or riding field of the dialog that goes, in the dialog's order (a picked field's whole request).
   fields: PlatformUpdateField[]
   // Fields that go only because they share a request with a picked one.
   bundled: PlatformUpdateField[]
-  // Everything that goes, as the card lists it (request by request).
+  // The dialog's fields that go, as the card names them (request by request).
   sends: string[]
+  // What the requests also carry that is not a pick of the dialog.
+  extras: string[]
   // Sent to the API: the picked product fields this marketplace takes, and the price/stock parts.
   productFields: PlatformUpdateField[]
   price: boolean
@@ -121,10 +148,12 @@ export function platformUpdatePlan(platformCode: string, picked: Iterable<Platfo
   const requests = (profileOf(platformCode)?.requests ?? []).filter(request => request.fields.some(field => selection.has(field)))
   const going = new Set(requests.flatMap(request => request.fields))
   const fields = platformUpdateFieldKeys.filter(field => going.has(field))
+  const sends = [...new Set(requests.flatMap(request => request.sends))]
   return {
     fields,
     bundled: fields.filter(field => !selection.has(field)),
-    sends: [...new Set(requests.flatMap(request => request.sends))],
+    sends,
+    extras: [...new Set(requests.flatMap(request => request.extra ?? []))].filter(label => !sends.includes(label)),
     productFields: fields.filter(field => !salesPartKeys.has(field) && selection.has(field)),
     price: going.has('PRICE'),
     stock: going.has('STOCK')
@@ -133,7 +162,7 @@ export function platformUpdatePlan(platformCode: string, picked: Iterable<Platfo
 
 export function platformUpdateSummary(plan: PlatformUpdatePlan) {
   if (!plan.sends.length) return 'Seçili alanlardan hiçbiri bu platforma gönderilmiyor'
-  return plan.sends.join(', ')
+  return [...plan.sends, ...plan.extras].join(', ')
 }
 
 // The old switch: on was every field, off was price and stock alone (also the quick update's pick).
@@ -147,7 +176,7 @@ export const defaultPlatformUpdatePreferences: PlatformUpdatePreferences = { fie
 // Remembered in this browser ("nasıl bırakılırsa öyle kalsın"): the panel has no per-user preference store yet.
 export const platformUpdatePreferencesKey = 'ravencia.platformUpdate.preferences.v1'
 // What the dialog offered before the stored record named what it knew (the first version): a field or group added
-// since is not in the record, and starts picked (open) instead of reading as switched off.
+// since is not in the record, and starts picked (open) instead of reading as switched off. ORIGIN has left the dialog.
 const firstFieldKeys = ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'VAT_RATE', 'ORIGIN', 'DELIVERY', 'PRICE', 'STOCK']
 const firstGroupKeys = ['product', 'sales']
 
@@ -160,8 +189,8 @@ export function readPlatformUpdatePreferences(storage: Pick<Storage, 'getItem'> 
     const known = (list: unknown, first: string[]) => Array.isArray(list) ? list as unknown[] : first
     const knownFields = known(value.knownFields, firstFieldKeys)
     const knownGroups = known(value.knownGroups, firstGroupKeys)
-    // Unknown entries (a later version's fields) are dropped; a field the record did not know yet starts picked; the
-    // rest keep the dialog's order.
+    // Unknown entries (a later version's fields, a retired one) are dropped; a field the record did not know yet starts
+    // picked; the rest keep the dialog's order.
     const fields = platformUpdateFieldKeys.filter(field => (value.fields as unknown[]).includes(field) || !knownFields.includes(field))
     const openGroups = platformUpdateGroupKeys.filter(key => (value.openGroups as unknown[]).includes(key) || !knownGroups.includes(key))
     return { fields, openGroups }

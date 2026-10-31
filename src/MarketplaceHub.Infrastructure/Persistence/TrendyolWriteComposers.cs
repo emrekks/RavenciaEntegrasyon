@@ -44,7 +44,7 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
         {
-            // Hepsiburada takes no origin and no delivery information: a pick of those alone has nothing to send there.
+            // Hepsiburada takes no delivery time: a pick of that alone has nothing to send there.
             if (!sections.Hepsiburada) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Hepsiburada'ya gönderilemiyor.", 422);
             return await new HepsiburadaProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         }

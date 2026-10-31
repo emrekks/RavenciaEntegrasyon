@@ -26,11 +26,12 @@ public sealed class PlatformUpdateFieldSelectionTests
     [InlineData(new[] { "TITLE" }, true, false, false, true)]
     [InlineData(new[] { "images", " attributes " }, true, false, false, true)]
     [InlineData(new[] { "DESI" }, false, true, false, true)]
-    [InlineData(new[] { "ORIGIN" }, false, true, false, false)]
     [InlineData(new[] { "DELIVERY" }, false, false, true, false)]
+    // A page opened before Menşei left the dialog still sends ORIGIN beside the others: it is dropped, not refused.
+    [InlineData(new[] { "DESI", "ORIGIN" }, false, true, false, true)]
     [InlineData(new[] { "DESCRIPTION", "VAT_RATE", "DELIVERY" }, true, true, true, true)]
     [InlineData(new[] { "WARRANTY" }, false, false, false, true)]
-    [InlineData(new[] { "warranty", "ORIGIN" }, false, true, false, true)]
+    [InlineData(new[] { "warranty", "ORIGIN" }, false, false, false, true)]
     public void Fields_MapToTheRequestsThatCarryThem(string[] fields, bool content, bool variants, bool delivery, bool hepsiburada)
     {
         var sections = ProductUpdateFields.Sections(fields);
@@ -46,10 +47,10 @@ public sealed class PlatformUpdateFieldSelectionTests
         Assert.True(warranty.Hepsiburada);
         Assert.False(warranty.Trendyol);
         Assert.True(warranty.Any);
-        // Origin and delivery alone: nothing for Hepsiburada, still a Trendyol request.
-        var origin = ProductUpdateFields.Sections(["ORIGIN", "DELIVERY"]).Value!;
-        Assert.False(origin.Hepsiburada);
-        Assert.True(origin.Trendyol);
+        // Delivery alone: nothing for Hepsiburada, still a Trendyol request.
+        var delivery = ProductUpdateFields.Sections(["DELIVERY"]).Value!;
+        Assert.False(delivery.Hepsiburada);
+        Assert.True(delivery.Trendyol);
     }
 
     [Fact]
@@ -57,6 +58,55 @@ public sealed class PlatformUpdateFieldSelectionTests
     {
         Assert.Equal("PRODUCT_UPDATE_FIELDS_REQUIRED", ProductUpdateFields.Sections([]).Error?.Code);
         Assert.Equal("PRODUCT_UPDATE_FIELD_UNKNOWN", ProductUpdateFields.Sections(["TITLE", "PRICE"]).Error?.Code);
+        Assert.Equal("PRODUCT_UPDATE_FIELDS_REQUIRED", ProductUpdateFields.Sections(["ORIGIN"]).Error?.Code);
+    }
+
+    // The table the dialog's field list follows (platform-update-fields.ts keeps the same one).
+    [Theory]
+    [InlineData("TRENDYOL", "TITLE,DESCRIPTION,IMAGES,ATTRIBUTES,DESI,VAT_RATE,DELIVERY")]
+    [InlineData("trendyol ", "TITLE,DESCRIPTION,IMAGES,ATTRIBUTES,DESI,VAT_RATE,DELIVERY")]
+    [InlineData("HEPSIBURADA", "TITLE,DESCRIPTION,IMAGES,ATTRIBUTES,WARRANTY,DESI,VAT_RATE")]
+    [InlineData("N11", "")]
+    [InlineData("PAZARAMA", "")]
+    [InlineData("PTTAVM", "")]
+    [InlineData("SHOPIFY", "")]
+    [InlineData(null, "")]
+    public void EachMarketplace_UpdatesOnlyTheFieldsItsAdapterTakes(string? platformCode, string expected)
+    {
+        var supported = ProductUpdateFields.SupportedBy(platformCode);
+        Assert.Equal(expected.Split(',', StringSplitOptions.RemoveEmptyEntries).Order(StringComparer.Ordinal), supported.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain("ORIGIN", supported);
+    }
+
+    [Theory]
+    [InlineData(null, 1, 1)]
+    [InlineData(null, 3, 3)]
+    [InlineData(5, 1, 5)]
+    [InlineData(0, 2, 2)]
+    [InlineData(null, null, null)]
+    public void DeliveryDays_AreTheListingOverrideElseTheProductCard(int? listingDays, int? productDays, int? expected) =>
+        Assert.Equal(expected, ProductPublicationComposer.DeliveryDays(listingDays, productDays));
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(30, true)]
+    [InlineData(31, false)]
+    public void ProductDeliveryDays_AreOneToThirty(int days, bool valid)
+    {
+        Assert.Equal(valid, ProductDeliveryDays.IsValid(days));
+        Assert.Equal(1, ProductDeliveryDays.Default);
+        Assert.Equal(1, new MarketplaceHub.Domain.Product { Title = "", Description = "" }.DeliveryDays);
+    }
+
+    [Fact]
+    public void ApprovedTrendyol_DeliveryOnly_SendsTheCardDaysPerBarcode()
+    {
+        var publication = Split("123", new(false, false, true));
+        var delivery = Assert.Single(Items(publication.ApprovedDeliveryPayloadJson));
+        Assert.Equal("B1", delivery!["barcode"]!.GetValue<string>());
+        Assert.Equal(2, delivery["deliveryOptions"]!["deliveryDuration"]!.GetValue<int>());
+        Assert.Empty(Items(publication.ApprovedVariantPayloadJson));
     }
 
     [Fact]
@@ -88,6 +138,8 @@ public sealed class PlatformUpdateFieldSelectionTests
         var variants = Items(publication.ApprovedVariantPayloadJson);
         Assert.Equal(["B1", "B2"], variants.Select(item => item!["barcode"]!.GetValue<string>()));
         Assert.All(variants, item => Assert.Equal(2, item!["dimensionalWeight"]!.GetValue<int>()));
+        // Menşei left the dialog, but the variant request still carries the listing's origin whole.
+        Assert.All(variants, item => Assert.Equal("TR", item!["origin"]!.GetValue<string>()));
         Assert.Empty(Items(publication.ApprovedDeliveryPayloadJson));
     }
 

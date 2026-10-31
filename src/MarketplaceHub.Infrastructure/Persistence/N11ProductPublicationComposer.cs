@@ -17,8 +17,9 @@ internal sealed record N11SkuDraft(string Title, string Description, long Catego
 // keyed by its stock code (the variant SKU, which price/stock writes use too); SKUs that
 // share productMainId (the model code) appear as one product. The brand is attribute 1
 // sent as free text because n11 has no brand list. Other attributes are sent by n11 value
-// id, or as free text where the attribute accepts it. The shipment template and preparing
-// day come from the connection settings: n11 requires both and products have no source.
+// id, or as free text where the attribute accepts it. The shipment template comes from the
+// connection settings; the preparing day is the product card's Teslimat Süresi, else the
+// connection's preparing day.
 internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfiguration configuration)
 {
     internal const string BrandAttributeId = "1";
@@ -35,9 +36,11 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
 
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "N11", cancellationToken);
         if (connection is null) return NotFound();
-        var (shipmentTemplate, preparingDay) = PublishSettings(connection.SettingsJson);
+        var (shipmentTemplate, connectionPreparingDay) = PublishSettings(connection.SettingsJson);
+        // The product card's Teslimat Süresi; the connection's preparing day only for a card without one.
+        var preparingDay = PreparingDay(product.DeliveryDays, connectionPreparingDay);
         if (shipmentTemplate is null) return Fail("N11_SHIPMENT_TEMPLATE_REQUIRED", "N11'de ürün açmak için kargo şablonu seçilmemiş. Sol menüden Entegrasyonlar sayfasını açın, N11 bağlantısının kartındaki Yönet düğmesine basın, açılan pencerede Araçlar sekmesine geçin. N11 Ürün Açma Ayarları bölümündeki Kargo Şablonu listesinden (şablonlar N11 satıcı panelinizden okunur) birini seçip Ayarları Kaydet'e basın, sonra ürünü N11'e yeniden yayınlayın.");
-        if (preparingDay is < 1 or > MaxPreparingDay) return Fail("N11_PREPARING_DAY_INVALID", $"N11 bağlantısındaki hazırlık süresi 1-{MaxPreparingDay} gün arasında olmalıdır.");
+        if (preparingDay is < 1 or > MaxPreparingDay) return Fail("N11_PREPARING_DAY_INVALID", $"Ürün kartındaki teslimat süresi (yoksa N11 bağlantısındaki hazırlık süresi) 1-{MaxPreparingDay} gün arasında olmalıdır.");
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi N11 bağlantısına ait listing profile oluşturulmalıdır.");
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
@@ -278,6 +281,8 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
 
     // Shipment template and preparing day from the n11 connection settings; the
     // preparing day falls back to the default when it was never saved.
+    internal static int PreparingDay(int? productDeliveryDays, int connectionPreparingDay) => productDeliveryDays is > 0 ? productDeliveryDays.Value : connectionPreparingDay;
+
     internal static (string? ShipmentTemplate, int PreparingDay) PublishSettings(string settingsJson)
     {
         try

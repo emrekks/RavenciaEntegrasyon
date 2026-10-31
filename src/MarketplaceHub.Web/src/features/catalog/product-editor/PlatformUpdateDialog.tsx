@@ -4,7 +4,7 @@ import { DialogSurface, UiIcon } from '../../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { bulkPublishPlatformName } from '../products/bulk-publish-status'
 import type { MarketplaceConnection } from '../shared'
-import { availablePlatformUpdateFields, platformUpdateFieldLabel, platformUpdateFixedInformation, platformUpdateGroups, platformUpdateNote, platformUpdatePlan, platformUpdateSummary, type PlatformUpdateField, type PlatformUpdateGroup, type PlatformUpdateGroupKey } from './platform-update-fields'
+import { availablePlatformUpdateFields, partialPlatformUpdateField, platformUpdateFieldLabel, platformUpdateFieldsForStores, platformUpdateFixedInformation, platformUpdateGroups, platformUpdateNote, platformUpdatePlan, platformUpdateSummary, type PlatformUpdateField, type PlatformUpdateGroup, type PlatformUpdateGroupKey } from './platform-update-fields'
 
 export type PlatformUpdateTarget = { connection: MarketplaceConnection; capabilities: { writable: boolean; content: boolean } }
 
@@ -12,8 +12,10 @@ export function isPlatformUpdateWritable(target: PlatformUpdateTarget) {
   return target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE'
 }
 
-// The editor's "Platformlarda Güncelle": the same cards and bottom bar as "Platformlarda Yayınla", with the fields to send
-// in collapsible groups (Ürün Bilgileri, Kargo ve Teslimat, Satış Bilgileri). Only fields a selected store can take are
+type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: PlatformUpdateField; label: string; only: string[] }[] }
+
+// The editor's "Platformlarda Güncelle": the same cards as "Platformlarda Yayınla", with the fields to send in
+// collapsible groups (Ürün Bilgileri, Kargo ve Teslimat, Satış Bilgileri). Only fields a selected store can take are
 // shown; each card lists what really goes there, including what its marketplace takes only together with a picked field.
 // The bar is the window's own footer, so the cards scroll above it instead of under it.
 export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, onClose, onConfirm }: {
@@ -26,20 +28,35 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
   onOpenGroupsChange: (groups: PlatformUpdateGroupKey[]) => void
   submitting: boolean
   onClose: () => void
-  onConfirm: () => void
+  // The picked fields that are shown (a field no selected store takes never goes).
+  onConfirm: (fields: PlatformUpdateField[]) => void
 }) {
   const writable = targets.filter(isPlatformUpdateWritable)
   const selected = writable.filter(target => selectedIds.includes(target.connection.id))
   // With no store picked yet, the fields of every store that can be updated are shown.
-  const available = availablePlatformUpdateFields((selected.length ? selected : writable).map(target => target.connection.platformCode))
-  const plans = selected.map(target => platformUpdatePlan(target.connection.platformCode, fields))
+  const availableFor = (stores: PlatformUpdateTarget[]) => availablePlatformUpdateFields((stores.length ? stores : writable).map(target => target.connection.platformCode))
+  const available = availableFor(selected)
+  const visibleFields = fields.filter(field => available.includes(field))
+  const plans = selected.map(target => platformUpdatePlan(target.connection.platformCode, visibleFields))
   const sendsAnything = plans.some(plan => plan.sends.length > 0)
+  const selectedCodes = selected.map(target => target.connection.platformCode)
   const close = () => { if (!submitting) onClose() }
   const setField = (field: PlatformUpdateField, on: boolean) => onFieldsChange(on ? [...new Set([...fields, field])] : fields.filter(item => item !== field))
   const setGroup = (groupFields: PlatformUpdateField[], on: boolean) => onFieldsChange(on ? [...new Set([...fields, ...groupFields])] : fields.filter(item => !groupFields.includes(item)))
   const toggleOpen = (key: PlatformUpdateGroupKey) => onOpenGroupsChange(openGroups.includes(key) ? openGroups.filter(item => item !== key) : [...openGroups, key])
-  const groups = platformUpdateGroups
-    .map(group => ({ ...group, fields: group.fields.filter(field => available.includes(field.key)), linked: group.linked?.filter(item => available.includes(item.with)) }))
+  // A store in or out changes the fields shown: one no longer shown is dropped, one shown only now comes in ticked.
+  const toggleStore = (connectionId: string) => {
+    const nextIds = selectedIds.includes(connectionId) ? selectedIds.filter(id => id !== connectionId) : [...selectedIds, connectionId]
+    const next = platformUpdateFieldsForStores(fields, available, availableFor(writable.filter(target => nextIds.includes(target.connection.id))))
+    if (next.length !== fields.length || next.some(field => !fields.includes(field))) onFieldsChange(next)
+    onToggle(connectionId)
+  }
+  const groups: ShownGroup[] = platformUpdateGroups
+    .map(group => ({
+      ...group,
+      fields: group.fields.filter(field => available.includes(field.key)).map(field => ({ ...field, only: partialPlatformUpdateField(field.key, selectedCodes).map(bulkPublishPlatformName) })),
+      linked: group.linked?.filter(item => available.includes(item.with))
+    }))
     .filter(group => group.fields.length > 0)
 
   return createPortal(
@@ -55,7 +72,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
             <dl>{platformUpdateFixedInformation.map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.note}</dd></div>)}</dl>
           </details>}
           {targets.length
-            ? <div className="publish-platform-grid" role="group" aria-label="Güncellenecek platformlar">{targets.map(target => <PlatformUpdateCard key={target.connection.id} target={target} selected={selectedIds.includes(target.connection.id)} fields={fields} locked={submitting} onToggle={() => onToggle(target.connection.id)} />)}</div>
+            ? <div className="publish-platform-grid" role="group" aria-label="Güncellenecek platformlar">{targets.map(target => <PlatformUpdateCard key={target.connection.id} target={target} selected={selectedIds.includes(target.connection.id)} fields={visibleFields} locked={submitting} onToggle={() => toggleStore(target.connection.id)} />)}</div>
             : <div className="publish-connections-empty"><strong>Güncellenebilir Bağlantı Yok</strong><p>Ürün güncellemek için Platformlar sayfasından yazma yetkisi olan aktif bir bağlantı ekleyin.</p></div>}
         </div></div></section></div></div>
         <footer className="publish-selection-footer platform-update-footer">
@@ -64,7 +81,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
           {selected.length > 0 && !sendsAnything && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir bilgi seçin</span>}
           <div className="platform-update-actions">
             <button type="button" className="secondary" onClick={close} disabled={submitting}>Vazgeç</button>
-            <button type="button" onClick={onConfirm} disabled={submitting || !selected.length || !sendsAnything}>{submitting ? 'Güncelleniyor…' : 'Güncelle'}</button>
+            <button type="button" onClick={() => onConfirm(visibleFields)} disabled={submitting || !selected.length || !sendsAnything}>{submitting ? 'Güncelleniyor…' : 'Güncelle'}</button>
           </div>
         </footer>
       </DialogSurface>
@@ -73,7 +90,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
 }
 
 function PlatformUpdateFieldGroup({ group, picked, open, locked, onToggleOpen, onGroupChange, onFieldChange }: {
-  group: PlatformUpdateGroup
+  group: ShownGroup
   picked: PlatformUpdateField[]
   open: boolean
   locked: boolean
@@ -98,7 +115,7 @@ function PlatformUpdateFieldGroup({ group, picked, open, locked, onToggleOpen, o
     {open && <div className="platform-update-group-body" id={bodyId}>
       <p>{description}</p>
       <div className="platform-update-field-list">
-        {fields.map(field => <label key={field.key} className="platform-update-field"><input type="checkbox" checked={picked.includes(field.key)} disabled={locked} onChange={event => onFieldChange(field.key, event.target.checked)} /><span>{field.label}</span></label>)}
+        {fields.map(field => <label key={field.key} className="platform-update-field"><input type="checkbox" checked={picked.includes(field.key)} disabled={locked} onChange={event => onFieldChange(field.key, event.target.checked)} /><span>{field.label}</span>{field.only.length > 0 && <small className="platform-update-field-only" title={`Yalnız şu platformlara gider: ${field.only.join(', ')}`}>Yalnız {field.only.join(', ')}</small>}</label>)}
         {/* Not a pick of its own: it goes whenever the field it rides with goes, so its box follows that field. */}
         {linked.map(item => <label key={item.label} className="platform-update-field is-linked" title={item.note}><input type="checkbox" checked={picked.includes(item.with)} disabled aria-describedby={`${bodyId}-linked`} /><span>{item.label}<small>{platformUpdateFieldLabel(item.with)} ile</small></span></label>)}
       </div>
@@ -123,7 +140,9 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
   const on = selected && writable
   const subtitle = !capabilities.writable ? 'Salt okunur, güncellenemez' : !writable ? 'Bağlantı aktif değil' : on ? 'Güncelleme için seçildi' : 'Güncelleme için seçilmedi'
   const plan = platformUpdatePlan(connection.platformCode, fields)
-  const summary = !writable ? '—' : platformUpdateSummary(plan)
+  const sends = !writable ? '—' : platformUpdateSummary(plan)
+  // What goes, as small chips: the dialog's fields first, then (dashed) what the requests also carry.
+  const chips = writable && plan.sends.length ? [...plan.sends.map(label => ({ label, extra: false })), ...plan.extras.map(label => ({ label, extra: true }))] : []
   const note = writable && plan.productFields.length ? platformUpdateNote(connection.platformCode) : undefined
   return <article className={`publish-platform-card${on ? ' selected' : ''}${writable ? '' : ' is-readonly'}`}>
     <button type="button" className="publish-platform-card-head" onClick={onToggle} aria-pressed={on} disabled={locked || !writable}>
@@ -134,10 +153,7 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
     <dl className="publish-platform-facts">
       <div><dt>Mağaza</dt><dd title={connection.externalStoreId ? `Mağaza no: ${connection.externalStoreId}` : undefined}>{connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{platformName}</dd></div>
-      <div className="platform-update-sends"><dt>Gönderilecek</dt>
-        <dd aria-label={summary}>{writable && plan.sends.length
-          ? <ul className="platform-update-send-list">{plan.sends.map(item => <li key={item}>{item}</li>)}</ul>
-          : summary}</dd>
+      <div className="platform-update-sends"><dt>Gönderilecek</dt><dd title={sends}>{chips.length ? <ul className="platform-update-chips">{chips.map(chip => <li key={`${chip.extra}-${chip.label}`} className={chip.extra ? 'is-extra' : undefined} title={chip.extra ? 'Seçim değil, aynı istekte birlikte gider' : undefined}>{chip.label}</li>)}</ul> : writable ? sends : '—'}</dd>
         {writable && plan.bundled.length > 0 && <small>Seçilmedi ama aynı istekte birlikte gider: {plan.bundled.map(platformUpdateFieldLabel).join(', ')}.</small>}
         {note && <small>{note}</small>}
       </div>

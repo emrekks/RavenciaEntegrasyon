@@ -4679,6 +4679,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");
 
+                    b.Property<int?>("DeliveryDays")
+                        .HasColumnType("integer");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasColumnType("text");

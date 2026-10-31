@@ -463,11 +463,12 @@ public sealed record ProductPublicationJobPayload(Guid JobId, Guid ProductId, Gu
 public sealed record ProductApprovalReconciliationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string PayloadHash, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt, string? ExternalOperationId = null);
 public sealed record ProductUpdatePublication(Guid ProductId, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson);
 // The product information "Platformlarda Güncelle" sends, as the requests a marketplace takes it in. Trendyol updates an
-// approved product in three separate calls: content (title, description, images, attributes), variant (desi, VAT rate,
-// origin) and delivery; each goes only when one of its fields was picked, and always whole. A product Trendyol has not
-// approved yet, and every Hepsiburada product, takes one full update carrying all of it.
-// Hepsiburada: whether a field its single update carries was picked (it takes no origin and no delivery; it alone takes
-// the warranty).
+// approved product in three separate calls: content (title, description, images, attributes), variant (desi, VAT rate;
+// the listing's origin rides along) and delivery (the product card's Teslimat Süresi); each goes only when one of its
+// fields was picked, and always whole. A product Trendyol has not approved yet, and every Hepsiburada product, takes one
+// full update carrying all of it.
+// Hepsiburada: whether a field its single update carries was picked (it takes no delivery time; it alone takes the
+// warranty).
 public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true)
 {
     public static readonly ProductUpdateSections All = new(true, true, true);
@@ -485,20 +486,36 @@ public static class ProductUpdateFields
     public const string Attributes = "ATTRIBUTES";
     public const string Desi = "DESI";
     public const string VatRate = "VAT_RATE";
-    public const string Origin = "ORIGIN";
     public const string Delivery = "DELIVERY";
     public const string Warranty = "WARRANTY";
+    // Menşei is no field of its own: it is a category attribute (it goes with ATTRIBUTES) and Trendyol's variant request
+    // carries the listing's origin whole whenever DESI or VAT_RATE goes. A page opened before that still sends "ORIGIN";
+    // it is dropped instead of refusing the whole update.
+    private const string RetiredOrigin = "ORIGIN";
 
     private static readonly string[] ContentFields = [Title, Description, Images, Attributes];
-    private static readonly string[] VariantFields = [Desi, VatRate, Origin];
+    private static readonly string[] VariantFields = [Desi, VatRate];
     private static readonly string[] HepsiburadaFields = [Title, Description, Images, Attributes, Warranty, Desi, VatRate];
     public static readonly IReadOnlySet<string> Known = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery, Warranty], StringComparer.Ordinal);
+
+    // The fields each marketplace's product update can take (the same table the editor's "Platformlarda Güncelle" shows;
+    // platform-update-fields.ts). Trendyol: content, variant and delivery requests (no warranty). Hepsiburada: one
+    // product update with the warranty and no delivery time. Every other marketplace has no product update in the panel yet.
+    public static IReadOnlySet<string> SupportedBy(string? platformCode) => platformCode?.Trim().ToUpperInvariant() switch
+    {
+        "TRENDYOL" => TrendyolSupported,
+        "HEPSIBURADA" => HepsiburadaSupported,
+        _ => NoneSupported
+    };
+    private static readonly IReadOnlySet<string> TrendyolSupported = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery], StringComparer.Ordinal);
+    private static readonly IReadOnlySet<string> HepsiburadaSupported = new HashSet<string>(HepsiburadaFields, StringComparer.Ordinal);
+    private static readonly IReadOnlySet<string> NoneSupported = new HashSet<string>(StringComparer.Ordinal);
 
     // No list (an older client) is every section, as before; an unknown code is refused rather than ignored.
     public static ServiceResult<ProductUpdateSections> Sections(IReadOnlyCollection<string>? fields)
     {
         if (fields is null) return ServiceResult<ProductUpdateSections>.Ok(ProductUpdateSections.All);
-        var codes = fields.Select(field => field?.Trim().ToUpperInvariant() ?? "").ToHashSet(StringComparer.Ordinal);
+        var codes = fields.Select(field => field?.Trim().ToUpperInvariant() ?? "").Where(code => code != RetiredOrigin).ToHashSet(StringComparer.Ordinal);
         var unknown = codes.Where(code => !Known.Contains(code)).ToList();
         if (unknown.Count > 0) return ServiceResult<ProductUpdateSections>.Fail("PRODUCT_UPDATE_FIELD_UNKNOWN", $"Tanınmayan ürün bilgisi alanı: {string.Join(", ", unknown.Take(5))}.", 422);
         var sections = new ProductUpdateSections(ContentFields.Any(codes.Contains), VariantFields.Any(codes.Contains), codes.Contains(Delivery), HepsiburadaFields.Any(codes.Contains));
