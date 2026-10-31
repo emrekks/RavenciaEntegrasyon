@@ -8,6 +8,9 @@ internal static class TrendyolEFaturamProblemDetails
     private const int MaximumBodyBytes = 16 * 1024;
     private const int MaximumReferenceLength = 240;
     internal const string ApplicationMismatchReference = "problem:/etransformation/gateway/application-mismatch";
+    // The taxpayer lookup's documented "not an e-Invoice taxpayer" answer (404). Any other 404 stays an error.
+    internal const string TaxPayerNotFoundReference = "problem:/etransformation/gateway/tax-payer-not-found";
+    private const string TaxPayerNotFoundPath = "/etransformation/gateway/tax-payer-not-found";
 
     public static async Task<string?> TryReadReferenceAsync(HttpContent content, CancellationToken cancellationToken)
     {
@@ -101,6 +104,9 @@ internal static class TrendyolEFaturamProblemDetails
             if (string.Equals(absolute.Host, "api.trendyol.com", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(absolute.AbsolutePath, "/etransformation/gateway/application-mismatch", StringComparison.OrdinalIgnoreCase))
                 return ApplicationMismatchReference;
+            if (string.Equals(absolute.Host, "api.trendyol.com", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(absolute.AbsolutePath, TaxPayerNotFoundPath, StringComparison.OrdinalIgnoreCase))
+                return TaxPayerNotFoundReference;
             path = absolute.AbsolutePath + (string.IsNullOrEmpty(absolute.Query) ? absolute.Fragment : string.Empty);
         }
         var queryIndex = path.IndexOf('?');
@@ -109,6 +115,8 @@ internal static class TrendyolEFaturamProblemDetails
         if (path.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '/' or '-' or '_' or '.' or '#'))) return null;
         if (string.Equals(path, "/etransformation/gateway/application-mismatch", StringComparison.OrdinalIgnoreCase))
             return ApplicationMismatchReference;
+        if (string.Equals(path, TaxPayerNotFoundPath, StringComparison.OrdinalIgnoreCase))
+            return TaxPayerNotFoundReference;
         return path.StartsWith("/problem/", StringComparison.OrdinalIgnoreCase) ? $"problem:{path}" : null;
     }
 

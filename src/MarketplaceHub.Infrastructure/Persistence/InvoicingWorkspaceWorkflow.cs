@@ -300,7 +300,14 @@ public sealed partial class InvoicingBillingService
         var lines = calculated!.Lines.Select(line => new InvoiceWorkspacePreviewLine(line.Description, line.Sku, line.Quantity, "ADET", line.VatRate,
             line.UnitPrice, line.DiscountAmount, line.VatAmount, line.PayableAmount)).ToArray();
 
-        var invoiceType = InvoiceAmounts.InvoiceDocumentType(marketplace.PlatformCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
+        // A new invoice, or an unsent one that may be drafted again, takes the type the taxpayer lookup gives (cached
+        // here; the issuing request asks again). A type that changed redrafts an unsent invoice (UnsentDraftDriftAsync).
+        var recipient = existing is null || CanRetryPreProviderFailure(existing.Status, existing.LastErrorCode, existing.ExternalReference)
+            ? await EInvoiceRecipientResolver.ResolveAsync(invoiceProvider,
+                new AdapterContext(tenantId, provider.Id, "invoice-preview", $"invoice-preview:{order.Id:N}", timeProvider.GetUtcNow().AddMinutes(1)),
+                marketplace.PlatformCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, fresh: false, cancellationToken)
+            : EInvoiceRecipientDecision.WithoutLookup(existing.InvoiceType);
+        var invoiceType = recipient.InvoiceType;
         var taxIdentity = ReadTaxIdentity(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
         var corporate = TrendyolEFaturamCanonicalPayload.IsCorporateRecipient(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, taxIdentity);
         var customerType = corporate ? "Kurumsal" : "Bireysel";
@@ -352,7 +359,7 @@ public sealed partial class InvoicingBillingService
             : existing is null && !MarketplaceInvoiceCreationPolicy.IsEnabled(marketplace.PlatformCode, marketplace.SettingsJson)
                 ? MarketplaceInvoiceCreationPolicy.DisabledMessage
                 : InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(provider.Environment, marketplace.Environment);
-        if (existing is null && InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, marketplace.PlatformCode, order.InvoiceAddressSnapshotJson) is { } issueRefusal)
+        if (existing is null && InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, recipient) is { } issueRefusal)
         {
             canCreate = false;
             blockedReason = issueRefusal.Message;
@@ -414,7 +421,8 @@ public sealed partial class InvoicingBillingService
             Existing = orderInvoices.Select(item => new { item.Id, item.PackageId, item.Status, item.Version, item.InvoiceNumber, item.ExternalReference, item.LastErrorCode, item.OrderFiscalGuarded }),
             ManualDocument = manualDocument,
             includeInternetSalesInfo,
-            Totals = new { taxExclusive, Discount = calculated.DiscountTotal, taxTotal, Payable = packageTotal, invoiceType }
+            Totals = new { taxExclusive, Discount = calculated.DiscountTotal, taxTotal, Payable = packageTotal, invoiceType },
+            Taxpayer = new { recipient.TaxpayerState, recipient.TargetAlias }
         });
         var digest = Hash(digestSource);
         var canConfirm = canCreate && (nextAction is "DELIVERY_ONLY" or "SUBMIT_RETRY" or "CREATE_AND_SUBMIT");
@@ -432,7 +440,15 @@ public sealed partial class InvoicingBillingService
             canConfirm,
             blockedReason, digest, existing?.Id, existing?.Status.ToString().ToUpperInvariant(), nextAction, includeInternetSalesInfo,
             activePackages.Select(item => item.ExternalPackageId).Where(value => !string.IsNullOrWhiteSpace(value)).ToArray(),
-            deliveryCarrierName, deliverySentAt, deliveryCarrierName is null ? null : package.ExternalPackageId);
+            deliveryCarrierName, deliverySentAt, deliveryCarrierName is null ? null : package.ExternalPackageId,
+            recipient.TaxpayerState switch
+            {
+                EInvoiceTaxpayerState.Registered => "REGISTERED",
+                EInvoiceTaxpayerState.NotRegistered => "NOT_REGISTERED",
+                EInvoiceTaxpayerState.Unknown => "UNKNOWN",
+                _ => null
+            },
+            recipient.TaxpayerTitle, recipient.TargetAlias);
         return ServiceResult<InvoiceWorkspacePreviewItem>.Ok(view);
     }
 

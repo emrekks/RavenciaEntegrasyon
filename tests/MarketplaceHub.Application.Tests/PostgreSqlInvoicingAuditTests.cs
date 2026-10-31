@@ -33,7 +33,8 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
             var export = await service.CreateDraftAsync(seed.Tenant.Id,
                 new CreateInvoiceCommand(exportOrder.Id, exportPackage.Id, seed.Provider.Id, null, true), "audit-export", CancellationToken.None);
 
-            Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientCode, eInvoice.Error?.Code);
+            // No taxpayer lookup is available to this service: the e-Invoice recipient is stopped, never guessed.
+            Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReviewCode, eInvoice.Error?.Code);
             Assert.Equal(422, eInvoice.Error?.Status);
             Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, export.Error?.Code);
             Assert.Equal(422, export.Error?.Status);
