@@ -40,15 +40,6 @@
   transform: translateX(-2px);
 }
 
-/* The publish bar follows the page while the platform cards are on screen and settles into its own place
-   once the end of the list is reached. It floats 16px above the window's bottom edge, like the settings save bar. */
-.product-publish-step .publish-selection-footer {
-  position: sticky;
-  bottom: 16px;
-  z-index: var(--rv-z-sticky);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 10%);
-}
-
 /* Variant table toolbar: both actions stay on one line. */
 .app-shell.stitch-shell main .variant-table-toolbar { flex-wrap: wrap; }
 .app-shell.stitch-shell main .variant-table-toolbar-actions { flex-wrap: nowrap; margin-left: auto; }
