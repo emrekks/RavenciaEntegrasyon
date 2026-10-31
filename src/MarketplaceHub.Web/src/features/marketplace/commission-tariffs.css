@@ -62,7 +62,7 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-table :is(th, td) { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rv-color-border); }
 /* The header as every list's: muted 12 px, medium weight, on the raised surface. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table thead th { position: sticky; top: 0; z-index: 1; height: 44px; padding-block: 0; color: var(--rv-color-muted); vertical-align: middle; background: var(--rv-color-surface-raised); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; white-space: nowrap; }
-.app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr > :is(th, td) { transition: background-color 120ms ease, border-color 120ms ease; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr > :is(th, td) { transition: background-color 120ms ease; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr:last-child :is(th, td) { border-bottom: 0; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table tbody th { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; background: transparent; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table small { display: block; margin-top: 2px; color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
@@ -112,6 +112,12 @@
 /* The product with its picture. */
 .app-shell.stitch-shell main .commission-tariffs .commission-product-cell { display: flex; align-items: flex-start; gap: 12px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-product-cell > span { display: grid; gap: 2px; min-width: 0; }
+/* The photo is a button that opens it full size, the frame and the size of the photo it holds. */
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom { display: block; flex: none; width: auto; min-width: 0; height: auto; min-height: 0; margin: 0; padding: 0; background: none; border: 0; border-radius: 7px; box-shadow: none; cursor: zoom-in; }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom > .commission-product-image { display: block; transition: border-color 140ms ease, filter 140ms ease; }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom:hover > .commission-product-image { border-color: var(--rv-color-border-strong); filter: brightness(1.04); }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom:active { scale: none; }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-product-image { display: grid; flex: none; place-items: center; width: 64px; aspect-ratio: 2 / 3; height: auto; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 14px; font-style: normal; font-weight: 600; }
 /* A band's switch: off grey, on in the primary colour, the knob sliding across. */
 .app-shell.stitch-shell main .commission-tariffs .commission-switch { display: flex; align-items: center; justify-content: center; gap: 8px; justify-self: stretch; width: 100%; min-height: 0; height: auto; margin-top: 6px; padding: 7px 0 0; text-transform: none; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; color: var(--rv-color-muted); font-size: 12px; font-style: normal; font-weight: 600; white-space: nowrap; border-top: 1px solid var(--rv-color-border); }
@@ -123,13 +129,9 @@
 @media (prefers-reduced-motion: reduce) { .app-shell.stitch-shell main .commission-tariffs .commission-switch > span, .app-shell.stitch-shell main .commission-tariffs .commission-switch > span::after { transition: none; } }
 /* A model's row over its variants: a lighter band, a fold button, and the variants under it on a tree line. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan tbody tr.is-model { background: color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent); }
-/* The row under the pointer takes the orders table's hover on every cell, so cells with their own background
-   (the fold column, a model's or a picked row) are covered too and the band runs the whole row. */
-.app-shell.stitch-shell main .commission-tariffs .commission-table.commission-table tbody tr:hover > :is(th, td) { background: var(--rv-hover, color-mix(in srgb, var(--rv-color-ink) 6%, transparent)); }
-/* The hover tint lifts the cells to the dividers' own colour (in dark they matched and the lines vanished), so the
-   row's dividers take the same tint: its own lines and the line above it, which the row or header over it owns. */
-.app-shell.stitch-shell main .commission-tariffs .commission-table.commission-table tbody tr:hover > :is(th, td) { border-color: color-mix(in srgb, var(--rv-color-ink) 6%, var(--rv-color-border)); }
-.app-shell.stitch-shell main .commission-tariffs .commission-table.commission-table tbody tr:has(+ tr:hover) > :is(th, td), .app-shell.stitch-shell main .commission-tariffs .commission-table.commission-table thead:has(+ tbody > tr:first-child:hover) th { border-bottom-color: color-mix(in srgb, var(--rv-color-ink) 6%, var(--rv-color-border)); }
+/* The row under the pointer takes the orders table's hover, the same fill on every cell, so a plain row lights to an
+   order's tone and a model's band or a picked row lights by the same step; the fill stays under the dividers' colour. */
+.app-shell.stitch-shell main .commission-tariffs .commission-table.commission-table tbody tr:hover > :is(th, td) { background: var(--rv-hover, color-mix(in srgb, var(--rv-color-surface-soft) 55%, transparent)); }
 /* The column left of the picture: a model's button that opens its sizes. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table :is(th, td).commission-expand { width: 52px; min-width: 52px; padding: 0; text-align: center; vertical-align: middle; }
 /* The expand cell takes the row's own colour (and its hover), not a tint of its own. */

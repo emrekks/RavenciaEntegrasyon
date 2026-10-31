@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
-import { compareOptionValues } from '../../catalog/shared'
+import { compareOptionValues, ImageLightboxModal } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import { kurus, onCost, profitText, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
@@ -182,9 +182,21 @@ export function amountRange(values: number[]) {
   return low === high ? `${signed(low)} ₺` : `${signed(low)} – ${signed(high)} ₺`
 }
 
-const productImage = (row: CommissionTariffRow) => row.imageUrl
-  ? <img src={thumbnailUrl(row.imageUrl)} alt="" loading="lazy" className="commission-product-image" />
-  : <i className="commission-product-image" aria-hidden="true">{(row.productName ?? row.barcode).slice(0, 1)}</i>
+// A product's photo; a click opens it full size as the products page does (its preview, Escape or a click outside
+// closes it), without reaching the row. Without a photo, the name's first letter.
+export function ProductImage({ url, title, initial }: { url: string | null | undefined; title: string; initial: string }) {
+  const [open, setOpen] = useState(false)
+  if (!url) return <i className="commission-product-image" aria-hidden="true">{initial}</i>
+  return <>
+    <button type="button" className="commission-product-zoom" aria-label={`${title} görselini büyüt`} onClick={event => { event.preventDefault(); event.stopPropagation(); setOpen(true) }}>
+      <img src={thumbnailUrl(url)} alt="" loading="lazy" className="commission-product-image" />
+    </button>
+    {open && <ImageLightboxModal image={{ url, title }} onClose={() => setOpen(false)} />}
+  </>
+}
+
+const productImage = (row: CommissionTariffRow) =>
+  <ProductImage url={row.imageUrl} title={`${row.productName ?? row.barcode}${row.color ? ` · ${row.color}` : ''}`} initial={(row.productName ?? row.barcode).slice(0, 1)} />
 
 // A price's profit with its share of the cost: "100,85 ₺ Kâr (%63,03)".
 export function remainingText(choice: CommissionChoice) {
