@@ -16,6 +16,9 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 - Run the tests again after merging `origin/main`: another session's commits can break a test that passed before.
 
 ## Shipping (`/ship`)
+- Ship a finished change yourself; do not wait for the user to type `/ship`. When the skill cannot be invoked, run
+  its script from your worktree in the background: `bash "$(git rev-parse --show-toplevel)/.claude/skills/ship/ship.sh" <topic>`
+  and read its result lines as `.claude/skills/ship/SKILL.md` describes.
 - Commit messages in English, no attribution lines.
 - Push to `codex/<topic>`, wait for Validate, then push the same sha to `main` only when
   `git merge-base --is-ancestor origin/main <sha>`. Never force-push; when `main` moved, merge `origin/main` first.
