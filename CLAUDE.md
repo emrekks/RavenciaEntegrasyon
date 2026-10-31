@@ -28,10 +28,15 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 ## Live server
 - Read-only, always: SQL inside `BEGIN READ ONLY … ROLLBACK` (`/prod-sql`), `docker inspect` and `docker logs`.
   Never restart, edit or write anything on the server.
+- Container state, the running sha and logs: `/prod-logs` (`status`, `logs <service> --since --grep`, `errors`)
+  instead of hand-written ssh commands.
 - A fix is not fixed until it is checked on live. Numbers shown to the user (reports, costs) are compared with
   read-only SQL first; a wrong number on screen is worse than a missing one.
 
 ## Domain notes
+- Marketplace API facts (limits, date windows, page sizes, time zones, endpoints, statuses, quirks) are in
+  `/marketplace-docs`, one file per marketplace. Read it before searching the web or changing an adapter, a sync
+  window or a quota, and add what you learn there with its source.
 - Npgsql `timestamptz` accepts offset 0 only: `.ToUniversalTime()` before saving or querying.
 - Hepsiburada writes Istanbul local times; its query times are Istanbul local too (`HepsiburadaJsonMapper.QueryTime`).
 - Never infer a marketplace state from a missing field (no invoice link is not "not invoiced"); unknown stays unknown.
