@@ -328,8 +328,8 @@ public sealed record ReportOrderProfitPage(IReadOnlyList<ReportOrderProfitView> 
 // the variants with an active offer on one of their stores count. All money is VAT included, as the panel stores it.
 public sealed record ReportStockQuery(DateOnly? From, DateOnly? To, IReadOnlyList<string>? PlatformCodes, bool IncludeTest);
 
-// Capital: on-hand units × cost of the variants with a cost (MissingCost* the others); Value: on-hand units × the price
-// source store's active offer price (MissingPriceUnits have none there); Profit and Margin over the units with both.
+// Capital: on-hand units × cost of the variants with a cost (MissingCost* the others); Value: on-hand units × the panel
+// price, as the product editor shows it (MissingPriceUnits have none); Profit and Margin over the units with both.
 // LowStockProducts: stocked products a colour of which has half its sizes or more out of stock, as the product list
 // counts them. SoldUnits: the period's units kept (sold less returned); CoverDays: the stock over the period's daily
 // sales. Dead*: the stocked variants older than DeadDays with no unit kept in the last DeadDays days.
@@ -339,23 +339,21 @@ public sealed record ReportStockSummaryView(decimal Units, decimal AvailableUnit
     int DeadVariants, decimal DeadUnits, decimal DeadCapital);
 
 // One bucket of the stocked variants (a category, colour, size, price band or cover band). Value and PricedUnits at the
-// price source's prices; Capital over the variants with a cost.
+// panel prices; Capital over the variants with a cost.
 public sealed record ReportStockGroupView(string Key, string Label, bool Known, int Products, int Variants, decimal Units, decimal Capital, decimal? Value,
     decimal PricedUnits, decimal SoldUnits, decimal? CoverDays);
 
 // One store: its offers among the counted variants, the on-hand units of the variants it has an active offer for
-// (ListedUnits) and of the stocked ones it has none for (UnlistedUnits), what it may sell (available less its safety
-// stock) and the listed units at its own prices.
+// (ListedUnits) and of the stocked ones it has none for (UnlistedUnits), and the listed units at its own prices.
 public sealed record ReportStockPlatformView(Guid ConnectionId, string PlatformCode, string StoreName, bool IsTest, int Offers, int ActiveOffers, decimal ListedUnits,
-    decimal SellableUnits, decimal UnlistedUnits, decimal? Value, decimal PricedUnits, decimal? AveragePrice, bool IsPriceSource);
+    decimal UnlistedUnits, decimal? Value, decimal PricedUnits, decimal? AveragePrice);
 
 // A product (VariantId null) or a variant (Options "Siyah / L") with its stock, capital and value, the period's and the
 // last DeadDays days' units kept and its cover days at the period's pace.
 public sealed record ReportStockItemView(string Key, Guid ProductId, Guid? VariantId, string Title, string? Options, string? ModelCode, string Category, string? ImageUrl,
     decimal Units, decimal? Capital, decimal? Value, decimal SoldUnits, decimal RecentSoldUnits, decimal? CoverDays);
 
-// PriceSource: the store whose active offer prices value the stock (the one pricing the most units of those counted).
-public sealed record ReportInventoryView(DateTimeOffset GeneratedAt, DateOnly From, DateOnly To, int PeriodDays, int DeadDays, ReportChannelView? PriceSource,
+public sealed record ReportInventoryView(DateTimeOffset GeneratedAt, DateOnly From, DateOnly To, int PeriodDays, int DeadDays,
     ReportStockSummaryView Summary, IReadOnlyList<ReportStockPlatformView> Platforms, IReadOnlyList<ReportStockGroupView> Categories,
     IReadOnlyList<ReportStockGroupView> Colors, IReadOnlyList<ReportStockGroupView> Sizes, IReadOnlyList<ReportStockGroupView> PriceBands,
     IReadOnlyList<ReportStockGroupView> Cover, IReadOnlyList<ReportStockItemView> TopCapital, IReadOnlyList<ReportStockItemView> Dead,

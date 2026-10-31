@@ -700,6 +700,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                                      variant.OptionSignature,
                                      variant.Status,
                                      variant.CostPrice,
+                                     PanelPrice = variant.DefaultSalePrice ?? product.DefaultSalePrice,
                                      product.VatRate,
                                      variant.CreatedAt,
                                      OnHand = db.InventoryItems.Where(item => item.TenantId == tenantId && item.VariantId == variant.Id && item.LocationCode == "MAIN").Sum(item => (decimal?)item.OnHand) ?? 0m,
@@ -712,11 +713,20 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                                 select new { assignment.VariantId, option.NormalizedKey, value.Label }).ToListAsync(cancellationToken);
         var colors = optionRows.Where(x => x.NormalizedKey == "RENK").GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Label);
         var sizes = optionRows.Where(x => x.NormalizedKey == "BEDEN").GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Label);
+        // The panel price as the product editor shows it (CatalogPricePolicy): the variant's own, else its card's, else —
+        // for a card imported from a marketplace that never had one — the variant's first offer, active ones first.
+        var firstOfferPrice = (await db.ChannelOffers.AsNoTracking()
+                .Where(x => x.TenantId == tenantId)
+                .OrderByDescending(x => x.Status == "ACTIVE").ThenBy(x => x.Id)
+                .Select(x => new { x.VariantId, x.SalePrice })
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => (decimal?)x.First().SalePrice);
         var variants = variantRows.Select(x => new ReportStockVariantRow(x.Id, x.ProductId, x.Title, x.ModelCode, x.Category, colors.GetValueOrDefault(x.Id), sizes.GetValueOrDefault(x.Id),
-            x.OptionSignature, x.Status == ProductStatus.Active, x.CostPrice, x.VatRate, x.OnHand, x.Available, x.CreatedAt)).ToList();
+            x.OptionSignature, x.Status == ProductStatus.Active, x.CostPrice, x.VatRate, x.OnHand, x.Available, x.CreatedAt,
+            x.PanelPrice ?? firstOfferPrice.GetValueOrDefault(x.Id))).ToList();
         var offers = await db.ChannelOffers.AsNoTracking()
             .Where(x => x.TenantId == tenantId && allowedIds.Contains(x.ConnectionId))
-            .Select(x => new ReportStockOfferRow(x.VariantId, x.ConnectionId, x.SalePrice, x.Currency, x.Status, x.SafetyStock))
+            .Select(x => new ReportStockOfferRow(x.VariantId, x.ConnectionId, x.SalePrice, x.Currency, x.Status))
             .ToListAsync(cancellationToken);
 
         var periodSold = await KeptUnitsAsync(tenantId, allowed, new ReportPeriod(period.From, period.To, period.CurrentStart, period.CurrentEnd), timezone, cancellationToken);

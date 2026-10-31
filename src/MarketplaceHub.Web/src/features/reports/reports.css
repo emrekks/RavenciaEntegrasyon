@@ -8,7 +8,7 @@
 .app-shell.stitch-shell main .reports-page .reports-field { display: grid; gap: 6px; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-field > span { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .reports-page select { height: 36px; min-height: 36px; padding: 0 30px 0 10px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; }
-.app-shell.stitch-shell main .reports-page .reports-refreshing { display: inline-flex; align-items: center; gap: 6px; height: 36px; margin-left: auto; color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-filters { position: relative; }
 
 .app-shell.stitch-shell main .reports-page .reports-delta { font-style: normal; font-weight: 600; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .reports-page .reports-delta.is-good { color: var(--rv-color-accent); }
@@ -466,7 +466,16 @@
 .app-shell.stitch-shell main .reports-page .reports-filters .platform-multi-select-label { color: var(--rv-color-muted); font-size: 13px; font-weight: 400; line-height: 20px; }
 .app-shell.stitch-shell main .reports-page .reports-filters :is(.platform-multi-select-trigger, .date-range-picker-trigger, select) { box-sizing: border-box; height: 40px; min-height: 40px; }
 .app-shell.stitch-shell main .reports-page .reports-filters select { min-width: 140px; }
-.app-shell.stitch-shell main .reports-page .reports-filters .reports-refreshing { justify-self: end; align-self: center; }
+/* The refresh mark: over the top right of the filters, level with the Dönem label, out of the grid so it moves nothing;
+   it fades in and its loader turns while a filter change loads. */
+.app-shell.stitch-shell main .reports-page .reports-filters .reports-refreshing { position: absolute; top: 16px; right: 18px; display: inline-flex; align-items: center; gap: 6px; height: 20px; color: var(--rv-color-muted); font-size: 12px; line-height: 20px; opacity: 0; transition: opacity .2s ease; pointer-events: none; }
+.app-shell.stitch-shell main .reports-page .reports-filters .reports-refreshing.is-active { opacity: 1; }
+.app-shell.stitch-shell main .reports-page .reports-filters .reports-refreshing.is-active > svg { animation: reports-refresh-spin .9s linear infinite; }
+@keyframes reports-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell main .reports-page .reports-filters .reports-refreshing { transition: none; }
+  .app-shell.stitch-shell main .reports-page .reports-filters .reports-refreshing.is-active > svg { animation: none; }
+}
 @media (max-width: 700px) {
   .app-shell.stitch-shell main .reports-page .reports-filters { grid-template-columns: minmax(0, 1fr); }
 }

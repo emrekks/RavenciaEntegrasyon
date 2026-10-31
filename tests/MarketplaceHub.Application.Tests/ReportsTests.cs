@@ -235,9 +235,8 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             Assert.Equal(250m, summary.NetRevenue);
             Assert.Equal(1, summary.ReturnClaims);
             Assert.Equal(1, summary.OrdersWithoutCity);
-
-            // Stok raporu over the same data: six units at a cost of 40, the two Istanbul units kept that day, no offer to
-            // price them at.
+            // Stok raporu over the same data: six units at a cost of 40, the two Istanbul units kept that day; each unit is
+            // priced at its panel price or counted as missing one.
             await using (var db = fixture.CreateContext())
             {
                 var stock = await new ReportsService(db, new FixedClock(Now)).StockAsync(tenant.Id, new ReportStockQuery(Day, Day, null, false), CancellationToken.None);
@@ -245,7 +244,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
                 var stockSummary = stock.Value!.Summary;
                 Assert.Equal((6m, 240m, 2m, 3m), (stockSummary.Units, stockSummary.Capital, stockSummary.SoldUnits, stockSummary.CoverDays!.Value));
                 Assert.Equal("Koltuk Kılıfı", Assert.Single(stock.Value.Categories).Label);
-                Assert.Null(stock.Value.PriceSource);
+                Assert.Equal(stockSummary.Units, stockSummary.PricedUnits + stockSummary.MissingPriceUnits);
             }
 
             // Every breakdown adds up to the totals; the unknown bucket comes last.
