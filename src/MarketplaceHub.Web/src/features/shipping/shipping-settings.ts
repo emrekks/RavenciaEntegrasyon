@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
 import { hasStoredShippingLabelSettings, loadShippingLabelSettings, normalizeShippingLabelSettings, type ShippingLabelSettings } from './shipping-label'
@@ -16,7 +16,11 @@ export type ShippingLabelSettingsEnvelope = {
  */
 export function useShippingLabelSettings() {
   const client = useQueryClient()
-  const [settings, setSettings] = useState<ShippingLabelSettings>(() => loadShippingLabelSettings())
+  // Starts from the account's settings when they are already read, so a page does not show this browser's copy first.
+  const [settings, setSettings] = useState<ShippingLabelSettings>(() => {
+    const cached = client.getQueryData<ShippingLabelSettingsEnvelope>(shippingLabelSettingsQueryKey)?.settings
+    return cached != null ? normalizeShippingLabelSettings(cached) : loadShippingLabelSettings()
+  })
   const migrationAttempted = useRef(false)
   const query = useQuery({
     queryKey: shippingLabelSettingsQueryKey,
@@ -26,7 +30,8 @@ export function useShippingLabelSettings() {
     refetchOnWindowFocus: true
   })
 
-  useEffect(() => {
+  // Before paint: the server's settings replace the first value without showing it.
+  useLayoutEffect(() => {
     if (!query.isSuccess) return
     if (query.data.settings !== null) {
       setSettings(normalizeShippingLabelSettings(query.data.settings))

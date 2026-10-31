@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { defaultAppearanceSettings, defaultLightPalette, matchingColorThemeId, normalizeAppearanceSettings } from './appearance-settings'
+import { defaultAppearanceSettings, defaultLightPalette, matchingColorThemeId, normalizeAppearanceSettings, readRememberedAppearance, rememberAppearance } from './appearance-settings'
+import { setStorageScope } from '../../shared/storage-scope'
 
 describe('light palette migration', () => {
   it('moves an account that saved an earlier default to the current one', () => {
@@ -38,5 +39,29 @@ describe('readable low-priority text', () => {
     expect(normalized.colors.light.subtle).toBe('#59657d')
     const picked = normalizeAppearanceSettings({ ...saved, colors: { ...saved.colors, dark: { ...saved.colors.dark, subtle: '#9999aa' } } })
     expect(picked.colors.dark.subtle).toBe('#9999aa')
+  })
+})
+
+describe('remembered appearance', () => {
+  function memoryStorage() {
+    const values = new Map<string, string>()
+    return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value) }, keys: () => [...values.keys()] }
+  }
+
+  it('reads back the settings this browser last read, for the same tenant and user only', () => {
+    const storage = memoryStorage()
+    setStorageScope('tenant-a', 'user-1')
+    rememberAppearance({ settings: { ...defaultAppearanceSettings, fontSize: 'lg' }, version: 4 }, storage)
+    expect(readRememberedAppearance(storage)).toEqual({ settings: { ...defaultAppearanceSettings, fontSize: 'lg' }, version: 4 })
+    setStorageScope('tenant-a', 'user-2')
+    expect(readRememberedAppearance(storage)).toBeUndefined()
+    setStorageScope(null, null)
+  })
+
+  it('ignores a damaged copy', () => {
+    setStorageScope('tenant-a', 'user-1')
+    expect(readRememberedAppearance({ getItem: () => '{not json' })).toBeUndefined()
+    expect(readRememberedAppearance({ getItem: () => 'null' })).toBeUndefined()
+    setStorageScope(null, null)
   })
 })
