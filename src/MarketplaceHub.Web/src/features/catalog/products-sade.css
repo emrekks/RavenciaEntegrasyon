@@ -21,6 +21,9 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell small { display: block; color: var(--rr-muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell small span { color: var(--rr-subtle); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell small b { display: inline; font-weight: 500; color: var(--rr-ink); }
+/* The model code's copy button: always shown but quiet, and pulled into the text line so the row keeps its height. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell small .rr-code-copy { display: inline-grid; width: 20px; height: 20px; margin: -3px 0 -3px 2px; vertical-align: middle; color: var(--rr-subtle); border-radius: 5px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-prodcell small .rr-code-copy:focus-visible { outline: 2px solid color-mix(in srgb, var(--rr-primary) 70%, transparent); outline-offset: 0; color: var(--rr-ink); }
 /* A long model code with no spaces ("TYBCamKırıgı115170414299") wraps inside the cell instead of running into the
    next column; another rule had turned the line's clipping off. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small { white-space: normal; overflow-wrap: anywhere; }
