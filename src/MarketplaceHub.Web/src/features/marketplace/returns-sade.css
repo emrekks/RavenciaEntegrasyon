@@ -1071,6 +1071,9 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb[data-q="5"] { background: #c8364f; }
 /* a picture fills its frame: the dark placeholder behind it no longer shows at the rounded corners */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb:has(> img) { background: none; }
+/* no photo is known (or none loads): a dashed frame with a picture glyph instead of an empty grey box */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb:has(> .rr-thumb-none) { background: var(--rr-raised); border-style: dashed; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb > .rr-thumb-none { display: grid; width: 100%; height: 100%; place-items: center; color: var(--rr-muted); }
 /* orders: the time left before shipping sits at the bottom of the order info, larger, and red under a day */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell small.rr-due { margin-top: 4px; color: var(--rr-ink); font-size: 13.5px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell small.rr-due b { color: var(--rr-muted); font-weight: 500; }

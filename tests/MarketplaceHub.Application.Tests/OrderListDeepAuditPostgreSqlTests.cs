@@ -185,6 +185,71 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Trendyol order #11768706205: the line's barcode and stock code (MZ052BOD-16) were changed on Trendyol only, so no
+    // panel variant carries them; its listing id (productCode 1696621714) is linked to the variant still coded
+    // MZ051BYC-16. The list and the detail find that variant by the listing and show its photo and model code.
+    [PostgreSqlFact]
+    public async Task ALineWhoseCodesChangedOnTheMarketplaceIsFoundByItsListingId()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Code = $"ol-img-{Guid.NewGuid():N}"[..20], DisplayName = "ol-img", Status = RecordStatus.Active, Timezone = "Europe/Istanbul", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "ol-img", ExternalStoreId = $"s-{Guid.NewGuid():N}"[..12], Status = "ACTIVE", ApiVersion = "V1" };
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Triko Bluz", Description = "", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now };
+        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = "MZ051BYC-16", SkuNormalized = "MZ051BYC-16", Barcode = "MZ051BYC-16", BarcodeNormalized = "MZ051BYC-16", ModelCode = "MZ052BOD", OptionSignature = "Renk: Kahverengi | Beden: L", CreatedAt = now, UpdatedAt = now };
+        var asset = new FileAsset { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Classification = "PRODUCT_MEDIA_URL", RelativePath = "https://cdn.example.com/mz052bod-kahverengi.jpg", MimeType = "image/jpeg", Sha256 = Guid.NewGuid().ToString("N"), Status = "ACTIVE", CreatedAt = now };
+        var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ExternalOrderId = "ol-img-1", OrderNumber = "ol-img-1", Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now, LastRemoteModifiedAt = now, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = "NEW", CreatedAt = now, UpdatedAt = now, Version = 1 };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(connection);
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.FileAssets.Add(asset);
+            seed.ProductMedia.Add(new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, FileAssetId = asset.Id, MediaRole = "GALLERY", SortOrder = 0, Status = "ACTIVE" });
+            seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ExternalId = "1696621714", ExternalBarcode = "MZ051BYC-16", ExternalSku = "MZ051BYC-16" });
+            seed.Orders.Add(order);
+            seed.OrderLines.Add(new OrderLine
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                OrderId = order.Id,
+                ExternalLineId = "6139565733",
+                Sku = "MZ052BOD-16",
+                Barcode = "MZ052BOD-16",
+                TitleSnapshot = "Kışlık Saç Örgü Triko Düğmeli Yumuşak Bluz MZ052BOD, L",
+                OrderedQuantity = 1,
+                UnitPrice = 559.68m,
+                VatRate = 10m,
+                RawStatus = "ReadyToShip",
+                SourceSnapshotJson = """{"sku":"MZ052BOD-16","barcode":"MZ052BOD-16","productCode":1696621714,"contentId":1696621714,"productColor":"Kahverengi","productSize":"L"}"""
+            });
+            await seed.SaveChangesAsync();
+        }
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            var listed = Assert.Single(Assert.Single((await service.OrdersAsync(tenant.Id, 50, 1, null, new OrderListQuery(), CancellationToken.None)).Items).Lines!);
+            Assert.Equal("https://cdn.example.com/mz052bod-kahverengi.jpg", listed.ImageUrl);
+            Assert.Equal("MZ052BOD", listed.ModelCode);
+            Assert.Equal(variant.Id, listed.VariantId);
+            var detail = await service.OrderAsync(tenant.Id, order.Id, CancellationToken.None);
+            var detailLine = Assert.Single(detail.Value!.Lines);
+            Assert.Equal("https://cdn.example.com/mz052bod-kahverengi.jpg", detailLine.ImageUrl);
+            Assert.Equal("MZ052BOD", detailLine.ModelCode);
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.MarketplaceVariantLinks.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.ProductMedia.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.FileAssets.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.ProductVariants.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanup.Products.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     private MarketplaceSalesService NewService(AppDbContext db) =>
         new(db, new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider), new ConfigurationBuilder().Build(), null!, null!, null!, null!, fixture.TimeProvider);
 
