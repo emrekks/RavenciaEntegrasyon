@@ -236,6 +236,18 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             Assert.Equal(1, summary.ReturnClaims);
             Assert.Equal(1, summary.OrdersWithoutCity);
 
+            // Stok raporu over the same data: six units at a cost of 40, the two Istanbul units kept that day, no offer to
+            // price them at.
+            await using (var db = fixture.CreateContext())
+            {
+                var stock = await new ReportsService(db, new FixedClock(Now)).StockAsync(tenant.Id, new ReportStockQuery(Day, Day, null, false), CancellationToken.None);
+                Assert.True(stock.Succeeded, stock.Error?.Message);
+                var stockSummary = stock.Value!.Summary;
+                Assert.Equal((6m, 240m, 2m, 3m), (stockSummary.Units, stockSummary.Capital, stockSummary.SoldUnits, stockSummary.CoverDays!.Value));
+                Assert.Equal("Koltuk Kılıfı", Assert.Single(stock.Value.Categories).Label);
+                Assert.Null(stock.Value.PriceSource);
+            }
+
             // Every breakdown adds up to the totals; the unknown bucket comes last.
             Assert.Equal(summary.SoldQuantity, report.Cities.Sum(x => x.SoldQuantity));
             Assert.Equal(summary.Orders, report.Cities.Sum(x => x.Orders));

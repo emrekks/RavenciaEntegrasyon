@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ReportGroup, ReportSales, ReportSummary } from './report-format'
+import type { ReportGroup, ReportInventory, ReportSales, ReportSummary } from './report-format'
 
 const group = (key: string, label: string, values: Partial<ReportGroup> = {}): ReportGroup => ({
   key, label, known: label !== 'Bilinmiyor', isTest: false, orders: 1, soldQuantity: 1, returnedQuantity: 0, returnClaims: 0, returnRate: 0, ordersWithAmount: 1,
@@ -85,6 +85,7 @@ vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string) => {
     requests.push(path)
     if (path.startsWith('/reports/sales?')) return fixture.current
+    if (path.startsWith('/reports/stock?')) return inventory
     throw new Error(`Test API fixture does not handle ${path}`)
   })
 }))
@@ -469,4 +470,58 @@ describe('ReportsPage', () => {
     expect(body(page)).toContain('En Çok Satanların Stoğu')
   })
 
+  it('opens the stock tab with its capital, value, breakdowns and dead stock, asking for the picked platforms', async () => {
+    const page = await open('?view=stock')
+    // The stock report is asked for once the tabs are shown.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(selectedTab(page)).toContain('Stok')
+    expect(requests.some(path => /^\/reports\/stock\?from=\d{4}-\d{2}-\d{2}&to=\d{4}-\d{2}-\d{2}$/.test(path))).toBe(true)
+    const figures = texts(page, '.reports-kpis > div')
+    expect(figures[0]).toContain('Stoktaki Sermaye₺1.200')
+    expect(figures[0]).toContain('KDV hariç ₺1.091')
+    expect(figures[1]).toContain('Envanter Satış Değeri₺5.000')
+    expect(figures[1]).toContain('Trendyol fiyatıyla')
+    expect(figures[2]).toContain('Marj %62,5')
+    expect(figures[4]).toContain('60 gün')
+    expect(figures[5]).toContain('1 varyant · 2 adet')
+    expect(figures[9]).toContain('Maliyeti Eksik1')
+    expect(body(page)).toContain('Stok anlık değerdir')
+    expect(body(page)).toContain('Kategori Bazlı Stok')
+    expect(body(page)).toContain('Fiyat Kaynağı')
+    expect(body(page)).toContain('Ölü Stok')
+    // The unpriced band stays last and muted.
+    const bands = [...page.querySelectorAll('.reports-panel')].find(panel => panel.textContent?.includes('Fiyat Bantları'))!
+    const rows = [...bands.querySelectorAll('tbody tr')]
+    expect(rows.at(-1)?.textContent).toContain('Fiyatı Yok')
+    expect(rows.at(-1)?.classList.contains('is-unknown')).toBe(true)
+  })
+
+  it('shows the empty state when no stocked product is on sale', async () => {
+    const saved = inventory.summary
+    inventory.summary = { ...saved, units: 0 }
+    try {
+      const page = await open('?view=stock')
+      await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+      expect(body(page)).toContain('Ana depoda stoğu olan ürün yok.')
+    } finally { inventory.summary = saved }
+  })
 })
+
+const stockGroup = (key: string, label: string, units: number, capital: number, value: number | null, known = true) =>
+  ({ key, label, known, products: 1, variants: 1, units, capital, value, pricedUnits: value === null ? 0 : units, soldUnits: 3, coverDays: 60 })
+const inventory: ReportInventory = {
+  generatedAt: '2026-10-31T09:00:00Z', from: '2026-10-02', to: '2026-10-31', periodDays: 30, deadDays: 90,
+  priceSource: { id: 's1', platformCode: 'TRENDYOL', displayName: 'Trendyol', isTest: false },
+  summary: { units: 6, availableUnits: 6, products: 1, stockedProducts: 1, variants: 3, stockedVariants: 2, emptyVariants: 1, lowStockProducts: 0, capital: 1200, capitalExVat: 1090.91,
+    missingCostVariants: 1, missingCostUnits: 2, value: 5000, pricedUnits: 6, missingPriceUnits: 0, profit: 2000, margin: 0.625, profitOnCost: 1.6667, soldUnits: 3, dailySales: 0.1,
+    coverDays: 60, deadVariants: 1, deadUnits: 2, deadCapital: 0 },
+  platforms: [{ connectionId: 's1', platformCode: 'TRENDYOL', storeName: 'Trendyol', isTest: false, offers: 2, activeOffers: 2, listedUnits: 6, sellableUnits: 6, unlistedUnits: 0, value: 5000, pricedUnits: 6, averagePrice: 833.33, isPriceSource: true }],
+  categories: [stockGroup('Bluz', 'Bluz', 6, 1200, 5000)],
+  colors: [stockGroup('Siyah', 'Siyah', 4, 1200, 3200), stockGroup('Beyaz', 'Beyaz', 2, 0, 1800)],
+  sizes: [stockGroup('M', 'M', 6, 1200, 5000)],
+  priceBands: [stockGroup('band-2', '750 – 1.000 TL', 6, 1200, 5000), stockGroup('none', 'Fiyatı Yok', 1, 100, null, false)],
+  cover: [stockGroup('31-90', '31 – 90 gün', 6, 1200, 5000)],
+  topCapital: [{ key: 'p1', productId: 'p1', variantId: null, title: 'Bluz Siyah', options: null, modelCode: 'M1', category: 'Bluz', imageUrl: null, units: 6, capital: 1200, value: 5000, soldUnits: 3, recentSoldUnits: 3, coverDays: 60 }],
+  dead: [{ key: 'v2', productId: 'p1', variantId: 'v2', title: 'Bluz Beyaz', options: 'Beyaz / M', modelCode: 'M1', category: 'Bluz', imageUrl: null, units: 2, capital: null, value: 1800, soldUnits: 0, recentSoldUnits: 0, coverDays: null }],
+  channels: []
+}

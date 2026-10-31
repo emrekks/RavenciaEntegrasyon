@@ -9,7 +9,7 @@ import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
 import {
   bySalesChannel, change, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
-  type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportProduct, type ReportReason, type ReportSales, type ReportStockRow
+  stockQuery, type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportInventory, type ReportProduct, type ReportReason, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform, type ReportStockRow
 } from './report-format'
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
@@ -21,8 +21,8 @@ import './reports.css'
 // The report as tabs: an overview, then one tab per area with its own breakdown (Ürünler and Operasyon have sub-tabs),
 // A card's "Tümünü Gör" moves to its area's tab (?view=…&sub=…); an older ?detail=… link
 // lands on the same tab.
-type ViewKey = 'overview' | 'geo' | 'products' | 'profit' | 'orders' | 'ops' | 'customers'
-const viewKeys: ViewKey[] = ['overview', 'geo', 'products', 'profit', 'orders', 'ops', 'customers']
+type ViewKey = 'overview' | 'geo' | 'products' | 'stock' | 'profit' | 'orders' | 'ops' | 'customers'
+const viewKeys: ViewKey[] = ['overview', 'geo', 'products', 'stock', 'profit', 'orders', 'ops', 'customers']
 type ProductSub = 'products' | 'brands'
 type OpsSub = 'returns' | 'cancellations' | 'cargo' | 'invoices' | 'stock'
 type DetailKey = 'platforms' | 'cities' | 'products' | 'brands' | 'returns' | 'cancellations' | 'cargo' | 'time' | 'customers' | 'stock' | 'cost' | 'invoices'
@@ -155,6 +155,7 @@ export function ReportsPage() {
             : view === 'products' ? <ProductsView data={data} sub={sub === 'brands' ? 'brands' : 'products'} onSub={next => go('products', next)} />
             : view === 'profit' ? <ProfitView data={data} />
             : view === 'orders' ? <OrderProfitability from={range.from} to={range.to} platforms={platforms} />
+            : view === 'stock' ? <StockReport from={range.from} to={range.to} platforms={platforms} />
             : view === 'ops' ? <OperationsView data={data} sub={isOpsSub(sub) ? sub : 'returns'} onSub={next => go('ops', next)} />
             : <CustomersView data={data} />}
         </div>
@@ -175,6 +176,7 @@ function reportTabs(data: ReportSales): ReportTab[] {
     { value: 'overview', label: 'Genel Bakış', icon: 'dashboard' },
     { value: 'geo', label: 'Coğrafya', icon: 'globe' },
     { value: 'products', label: 'Ürünler', icon: 'products' },
+    { value: 'stock', label: 'Stok', icon: 'stock' },
     { value: 'profit', label: 'Kârlılık', icon: 'trend', count: formatPercent(margin), warn: margin !== null && margin < 0 },
     { value: 'orders', label: 'Sipariş Kârlılığı', icon: 'orders' },
     { value: 'ops', label: 'Operasyon', icon: 'truck', count: `İptal ${formatPercent(now.cancelRate)}`, warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
@@ -1584,4 +1586,166 @@ Toplam tutarları ${formatTl(bucket.amount)}.`, tone: bucket.key === 'NOT_INVOIC
       { key: 'unknown', header: unknownLabel, value: row => row.unknown, render: row => formatCount(row.unknown), numeric: true }
     ]} empty="Bu dönemde paket yok." /></div>
   </div>
+}
+
+// Stok: the stock on hand now (the main warehouse) with the capital it binds at cost and its value at the price source
+// store's offer prices, broken down by category, colour, size, price band and store; then how long it lasts at the
+// period's pace and the stock that has not sold for deadDays. Stock is a point-in-time value: the period changes only the
+// sales (cover days); the platforms pick the variants on sale there. Money is VAT included, as the panel stores it.
+function StockReport({ from, to, platforms }: { from: string; to: string; platforms: string[] | null }) {
+  const query = stockQuery({ from, to, platforms })
+  const result = useQuery({ queryKey: ['reports-stock', query], queryFn: () => hubApi<ReportInventory>(`/reports/stock?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const data = result.data
+  if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
+  if (!data) return <StockSkeleton />
+  const summary = data.summary
+  const source = stockSourceName(data.priceSource)
+  if (summary.units <= 0) return <div className="reports-summary">
+    <StockScope data={data} source={source} />
+    <p className="reports-empty">{platforms?.length ? 'Seçilen platformlarda satışta olan stoklu ürün yok.' : 'Ana depoda stoğu olan ürün yok.'}</p>
+  </div>
+  const money: Kpi[] = [
+    { key: 'capital', label: 'Stoktaki Sermaye', value: summary.capital, format: formatTl,
+      note: summary.capitalExVat === null ? 'KDV dahil' : `KDV hariç ${formatTl(summary.capitalExVat)}`,
+      tip: `Stoktaki ürünlere bağlı para, maliyet fiyatıyla (KDV dahil).\nEldeki adet × varyant maliyeti. ${summary.missingCostVariants > 0
+        ? `Maliyeti girilmemiş ${formatCount(summary.missingCostVariants)} varyantın ${formatNumber(summary.missingCostUnits)} adedi dahil değil.`
+        : 'Stoktaki tüm varyantların maliyeti girili.'}` },
+    { key: 'value', label: 'Envanter Satış Değeri', value: summary.value, format: formatTl, empty: 'Fiyat yok',
+      note: source ? `${source} fiyatıyla` : 'Aktif teklif fiyatı yok',
+      tip: `Stoğun satış fiyatıyla tutarı (KDV dahil).\nEldeki adet × ${source ?? 'pazaryeri'} aktif teklif fiyatı; en çok stoğu fiyatlayan mağaza seçilir. ${summary.missingPriceUnits > 0
+        ? `O mağazada fiyatı olmayan ${formatNumber(summary.missingPriceUnits)} adet dahil değil.`
+        : 'Stoktaki tüm adetlerin fiyatı var.'}` },
+    { key: 'profit', label: 'Potansiyel Brüt Kâr', value: summary.profit, format: formatTl, tone: summary.profit !== null && summary.profit < 0 ? 'bad' : 'good',
+      note: summary.margin === null ? 'Hesaplanamadı' : `Marj ${formatPercent(summary.margin)} · maliyete göre ${formatPercent(summary.profitOnCost)}`,
+      tip: 'Stoğun tamamı bu fiyattan satılırsa maliyetin üstünde kalan (komisyon, kargo ve vergi düşülmeden).\nSatış değeri − sermaye; yalnız hem maliyeti hem fiyatı olan adetler üzerinden.' },
+    { key: 'units', label: 'Toplam Stok Adedi', value: summary.units,
+      note: `${formatCount(summary.stockedProducts)} ürün · ${formatCount(summary.stockedVariants)} varyant`,
+      tip: `Ana depodaki eldeki adet, şu an.\nSatılabilir (rezerv düşülmüş) ${formatNumber(summary.availableUnits)} adet.` },
+    { key: 'cover', label: 'Stok Gün', value: summary.coverDays, format: value => `${formatNumber(Math.round(value))} gün`,
+      note: summary.dailySales === null ? 'Dönemde satış yok' : `Günde ${formatNumber(summary.dailySales)} adet satış`,
+      tip: `Stoğun dönemin satış hızıyla kaç gün yeteceği.\nToplam stok ÷ dönemde günlük net satış (satılan − iade). Dönemde ${formatNumber(summary.soldUnits)} adet, ${formatCount(data.periodDays)} gün.` },
+    { key: 'dead', label: 'Ölü Stok', value: summary.deadCapital, format: formatTl, tone: summary.deadVariants > 0 ? 'warn' : undefined,
+      note: `${formatCount(summary.deadVariants)} varyant · ${formatNumber(summary.deadUnits)} adet`,
+      tip: `Son ${data.deadDays} günde hiç satmayan stoğun sermayesi.\n${data.deadDays} günden eski, stoğu olup bu sürede net satışı olmayan varyantlar; dönemden bağımsız.` }
+  ]
+  const counts: Kpi[] = [
+    { key: 'stocked', label: 'Stoklu Varyant', value: summary.stockedVariants, note: `${formatCount(summary.variants)} aktif varyanttan`, tip: 'Ana depoda en az bir adedi olan aktif varyantlar.' },
+    { key: 'empty', label: 'Stoksuz Varyant', value: summary.emptyVariants, note: 'Eldeki adet 0', tip: 'Ana depoda hiç adedi olmayan aktif varyantlar.' },
+    { key: 'low', label: 'Beden Kırığı', value: summary.lowStockProducts, tone: summary.lowStockProducts > 0 ? 'warn' : undefined, note: 'Stoklu ürün',
+      tip: 'Bir renginin bedenlerinin yarısı veya fazlası tükenmiş stoklu ürünler.\nÜrün listesindeki Düşük Stok ile aynı kural.' },
+    { key: 'cost', label: 'Maliyeti Eksik', value: summary.missingCostVariants, tone: summary.missingCostVariants > 0 ? 'warn' : undefined, note: `${formatNumber(summary.missingCostUnits)} adet`,
+      tip: 'Stoğu olup maliyeti girilmemiş varyantlar.\nSermaye ve kâr bunlar olmadan hesaplanır; maliyeti ürün kartından girin.' },
+    { key: 'price', label: 'Fiyatı Eksik', value: summary.missingPriceUnits, tone: summary.missingPriceUnits > 0 ? 'warn' : undefined, note: source ? `${source} teklifi yok` : 'Aktif teklif yok',
+      tip: 'Fiyat kaynağı mağazada aktif teklifi olmayan stok adedi.\nSatış değeri ve kâr bu adetler olmadan hesaplanır.' }
+  ]
+  const bars = (groups: ReportStockGroup[], value: (group: ReportStockGroup) => number, limit = 10) =>
+    groups.slice(0, limit).map(group => ({ key: group.key, label: group.label, value: value(group), muted: !group.known }))
+  const priceName = source ?? 'Fiyat kaynağı'
+  const adet = (value: number) => `${formatNumber(value)} adet`
+  return <div className="reports-summary">
+    <StockScope data={data} source={source} />
+    <KpiStrip label="Stoğun parası" items={money} />
+    <KpiStrip label="Stoğun durumu" items={counts} />
+    <div className="reports-grid">
+      <RevealPanel title="Kategoriye Göre Sermaye" description="Kategorideki stoğun maliyet fiyatıyla tutarı (KDV dahil).">{() =>
+        <Bars label="Kategoriye göre sermaye" items={bars(data.categories, group => group.capital)} format={formatTlShort} />}</RevealPanel>
+      <RevealPanel title="Fiyat Bandına Göre Adet" description={`${priceName} satış fiyatına göre stok adedi; alt sınır dahil.`}>{() =>
+        <Bars label="Fiyat bandına göre adet" items={bars(data.priceBands, group => group.units)} format={adet} />}</RevealPanel>
+      <div className="is-wide"><DataTable title="Kategori Bazlı Stok" csvName="rapor-stok-kategori" rows={data.categories} rowKey={row => row.key} unknown={row => !row.known} initialSort="capital"
+        description="Stoklu varyantlar kategorisine göre; satış, dönemin net satışıdır." columns={stockGroupColumns('Kategori', true)} /></div>
+      <RevealPanel title="Renge Göre Adet" description="Stoklu varyantların renk seçeneğine göre adedi.">{() =>
+        <Bars label="Renge göre adet" items={bars(data.colors, group => group.units, 12)} format={adet} />}</RevealPanel>
+      <RevealPanel title="Bedene Göre Adet" description="Stoklu varyantların beden seçeneğine göre adedi.">{() =>
+        <Bars label="Bedene göre adet" items={bars(data.sizes, group => group.units, 12)} format={adet} />}</RevealPanel>
+      <div className="is-wide"><DataTable title="Platformlara Göre Stok" csvName="rapor-stok-platform" rows={data.platforms} rowKey={row => row.connectionId} initialSort="listed"
+        description="Listelenen: mağazada aktif teklifi olan varyantların eldeki adedi. Satışa açık: kullanılabilir adet − güvenlik stoğu. Değer: mağazanın kendi fiyatıyla."
+        empty="Seçilen mağazalarda teklif yok." columns={stockPlatformColumns} /></div>
+      <RevealPanel title="Stok Gün Dağılımı" description={`Stoğun dönemin satış hızıyla kaç gün yeteceğine göre sermayesi; dönemde (${formatCount(data.periodDays)} gün) satmayanlar en sonda.`}>{() =>
+        <Bars label="Stok gününe göre sermaye" items={bars(data.cover, group => group.capital)} format={formatTlShort} />}</RevealPanel>
+      <RevealPanel title="Fiyat Bandına Göre Değer" description={`${priceName} fiyatıyla stoğun satış değeri.`}>{() =>
+        <Bars label="Fiyat bandına göre değer" items={bars(data.priceBands.filter(group => group.known), group => group.value ?? 0)} format={formatTlShort} />}</RevealPanel>
+      <div className="is-wide"><DataTable title="Fiyat Bantları" csvName="rapor-stok-fiyat-bandi" rows={data.priceBands} rowKey={row => row.key} unknown={row => !row.known}
+        description={`${priceName} aktif teklif fiyatına göre; alt sınır dahil, üst sınır hariç.`} columns={stockGroupColumns('Fiyat Bandı', false)} /></div>
+      <div className="is-wide"><DataTable title="En Çok Sermaye Bağlayan Ürünler" csvName="rapor-stok-sermaye" rows={data.topCapital} rowKey={row => row.key} initialSort="capital"
+        description="Stoklu varyantları toplanmış ilk 20 ürün; stok gün, dönemin satış hızıyla." columns={stockItemColumns(data.deadDays)} /></div>
+      <div className="is-wide"><DataTable title="Ölü Stok" csvName="rapor-stok-olu" rows={data.dead} rowKey={row => row.key} initialSort="capital"
+        description={`Son ${data.deadDays} günde hiç net satışı olmayan, ${data.deadDays} günden eski stoklu varyantlar (sermayeye göre ilk 50).`}
+        empty={`Son ${data.deadDays} günde satmayan stoklu varyant yok.`} columns={stockItemColumns(data.deadDays)} /></div>
+    </div>
+  </div>
+}
+
+// The price source as the user knows it: the platform, and the store's name when it says more.
+function stockSourceName(store: ReportInventory['priceSource']) {
+  if (!store) return null
+  const platform = platformName(store.platformCode)
+  return store.displayName && store.displayName.toLocaleLowerCase('tr-TR') !== platform.toLocaleLowerCase('tr-TR') ? `${platform} (${store.displayName})` : platform
+}
+
+// What the figures cover: stock now, the period only for the sales, the price source.
+function StockScope({ data, source }: { data: ReportInventory; source: string | null }) {
+  return <p className="reports-stock-scope"><UiIcon name="info" size={15} />
+    <span>Stok anlık değerdir (ana depo, şu an); Dönem yalnız satış ve stok gün hesabını değiştirir. Tutarlar KDV dahil{source ? `, satış değeri ${source} fiyatıyla` : ''}.</span>
+    <time dateTime={data.generatedAt}>{new Date(data.generatedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</time>
+  </p>
+}
+
+// The tab's shape while it loads, so nothing moves when the figures come in.
+function StockSkeleton() {
+  return <div className="reports-summary reports-stock-skeleton" role="status" aria-label="Stok raporu hazırlanıyor">
+    <span className="reports-skeleton is-line" />
+    {[6, 5].map(cells => <div key={cells} className={`reports-kpis is-${cells}`}>{Array.from({ length: cells }, (_, index) => <div key={index}>
+      <span className="reports-skeleton is-label" /><span className="reports-skeleton is-figure" /><span className="reports-skeleton is-label" />
+    </div>)}</div>)}
+    <div className="reports-grid">{[0, 1].map(index => <div key={index} className="reports-panel"><span className="reports-skeleton is-label" /><span className="reports-skeleton is-block" /></div>)}</div>
+  </div>
+}
+
+const coverText = (days: number | null) => days === null ? '—' : `${formatNumber(Math.round(days))} gün`
+
+function stockGroupColumns(header: string, withProducts: boolean): Column<ReportStockGroup>[] {
+  const products: Column<ReportStockGroup>[] = withProducts ? [{ key: 'products', header: 'Ürün', numeric: true, value: row => row.products, render: row => formatCount(row.products) }] : []
+  return [
+    { key: 'label', header, value: row => row.label },
+    ...products,
+    { key: 'variants', header: 'Varyant', numeric: true, value: row => row.variants, render: row => formatCount(row.variants) },
+    { key: 'units', header: 'Adet', numeric: true, value: row => row.units, render: row => formatNumber(row.units) },
+    { key: 'capital', header: 'Sermaye', numeric: true, value: row => row.capital, render: row => formatTl(row.capital) },
+    { key: 'value', header: 'Satış Değeri', numeric: true, value: row => row.value, render: row => formatTl(row.value) },
+    { key: 'margin', header: 'Marj', numeric: true, value: stockMargin, render: row => formatPercent(stockMargin(row)) },
+    { key: 'sold', header: 'Dönem Satışı', numeric: true, value: row => row.soldUnits, render: row => formatNumber(row.soldUnits) },
+    { key: 'cover', header: 'Stok Gün', numeric: true, value: row => row.coverDays, render: row => coverText(row.coverDays) }
+  ]
+}
+
+// A bucket's margin over its value, only where every stocked unit of it is priced (the capital of unpriced units would
+// lower it).
+const stockMargin = (row: ReportStockGroup) => row.value !== null && row.value > 0 && row.pricedUnits === row.units ? (row.value - row.capital) / row.value : null
+
+const stockPlatformColumns: Column<ReportStockPlatform>[] = [
+  { key: 'store', header: 'Mağaza', value: row => row.storeName, render: row => <span className="reports-cell-label"><PlatformSquareMark code={row.platformCode} name={platformName(row.platformCode)} />{row.storeName}
+    {row.isPriceSource && <em className="reports-tag">Fiyat Kaynağı</em>}{row.isTest && <em className="reports-tag">Test</em>}</span> },
+  { key: 'offers', header: 'Teklif', numeric: true, value: row => row.offers, render: row => formatCount(row.offers) },
+  { key: 'active', header: 'Aktif Teklif', numeric: true, value: row => row.activeOffers, render: row => formatCount(row.activeOffers) },
+  { key: 'listed', header: 'Listelenen Adet', numeric: true, value: row => row.listedUnits, render: row => formatNumber(row.listedUnits) },
+  { key: 'sellable', header: 'Satışa Açık', numeric: true, value: row => row.sellableUnits, render: row => formatNumber(row.sellableUnits) },
+  { key: 'unlisted', header: 'Listelenmeyen Adet', numeric: true, value: row => row.unlistedUnits, render: row => formatNumber(row.unlistedUnits) },
+  { key: 'value', header: 'Satış Değeri', numeric: true, value: row => row.value, render: row => formatTl(row.value) },
+  { key: 'average', header: 'Ort. Fiyat', numeric: true, value: row => row.averagePrice, render: row => formatTl(row.averagePrice) }
+]
+
+function stockItemColumns(deadDays: number): Column<ReportStockItem>[] {
+  return [
+    { key: 'title', header: 'Ürün', value: row => row.title, csv: row => [row.title, row.modelCode, row.options].filter(Boolean).join(' · '), render: row => <span className="reports-product">
+      {row.imageUrl ? <img src={thumbnailUrl(row.imageUrl)} alt="" loading="lazy" className="reports-product-image" /> : <i className="reports-product-image" aria-hidden="true">{row.title.slice(0, 1)}</i>}
+      <span className="reports-stock-item"><strong>{row.title}</strong>{(row.options || row.modelCode) && <small>{[row.modelCode, row.options].filter(Boolean).join(' · ')}</small>}</span>
+    </span> },
+    { key: 'category', header: 'Kategori', value: row => row.category },
+    { key: 'units', header: 'Adet', numeric: true, value: row => row.units, render: row => formatNumber(row.units) },
+    { key: 'capital', header: 'Sermaye', numeric: true, value: row => row.capital, render: row => formatTl(row.capital) },
+    { key: 'value', header: 'Satış Değeri', numeric: true, value: row => row.value, render: row => formatTl(row.value) },
+    { key: 'sold', header: 'Dönem Satışı', numeric: true, value: row => row.soldUnits, render: row => formatNumber(row.soldUnits) },
+    { key: 'recent', header: `Son ${deadDays} Gün`, numeric: true, value: row => row.recentSoldUnits, render: row => formatNumber(row.recentSoldUnits) },
+    { key: 'cover', header: 'Stok Gün', numeric: true, value: row => row.coverDays, render: row => coverText(row.coverDays) }
+  ]
 }

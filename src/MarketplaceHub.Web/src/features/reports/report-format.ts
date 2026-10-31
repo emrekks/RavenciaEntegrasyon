@@ -188,3 +188,31 @@ export function sortRows<T>(rows: T[], value: (row: T) => number | string | null
     return direction === 'asc' ? order : -order
   })
 }
+
+export type ReportChannel = { id: string; platformCode: string; displayName: string; isTest: boolean }
+
+// Stok raporu (ReportsContracts.cs, ReportInventoryView): the stock now (MAIN) with its cost (capital) and its value at the
+// price source store's offer prices; the period only sets the sales the cover days are read from. Every amount is
+// worked out over what is known; missingCost* and missingPriceUnits count the rest. Money is VAT included.
+export type ReportStockSummary = {
+  units: number; availableUnits: number; products: number; stockedProducts: number; variants: number; stockedVariants: number; emptyVariants: number
+  lowStockProducts: number; capital: number; capitalExVat: number | null; missingCostVariants: number; missingCostUnits: number; value: number | null
+  pricedUnits: number; missingPriceUnits: number; profit: number | null; margin: number | null; profitOnCost: number | null; soldUnits: number
+  dailySales: number | null; coverDays: number | null; deadVariants: number; deadUnits: number; deadCapital: number
+}
+export type ReportStockGroup = { key: string; label: string; known: boolean; products: number; variants: number; units: number; capital: number; value: number | null; pricedUnits: number; soldUnits: number; coverDays: number | null }
+export type ReportStockPlatform = { connectionId: string; platformCode: string; storeName: string; isTest: boolean; offers: number; activeOffers: number; listedUnits: number
+  sellableUnits: number; unlistedUnits: number; value: number | null; pricedUnits: number; averagePrice: number | null; isPriceSource: boolean }
+export type ReportStockItem = { key: string; productId: string; variantId: string | null; title: string; options: string | null; modelCode: string | null; category: string
+  imageUrl: string | null; units: number; capital: number | null; value: number | null; soldUnits: number; recentSoldUnits: number; coverDays: number | null }
+export type ReportInventory = {
+  generatedAt: string; from: string; to: string; periodDays: number; deadDays: number; priceSource: ReportChannel | null; summary: ReportStockSummary
+  platforms: ReportStockPlatform[]; categories: ReportStockGroup[]; colors: ReportStockGroup[]; sizes: ReportStockGroup[]; priceBands: ReportStockGroup[]
+  cover: ReportStockGroup[]; topCapital: ReportStockItem[]; dead: ReportStockItem[]; channels: ReportChannel[]
+}
+
+export function stockQuery(filters: { from: string; to: string; platforms: string[] | null }) {
+  const query = new URLSearchParams({ from: filters.from, to: filters.to })
+  if (filters.platforms?.length) query.set('platformCodes', filters.platforms.join(','))
+  return query.toString()
+}

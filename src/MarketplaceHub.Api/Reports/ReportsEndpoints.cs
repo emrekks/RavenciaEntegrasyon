@@ -37,6 +37,15 @@ public static class ReportsEndpoints
                 sort, dir != "asc", page ?? 0, limit ?? 50), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
+        // Stok raporu: the stock now with its cost and value; the period only sets the sales the cover days are read from.
+        api.MapGet("/reports/stock", async (HttpContext http, IReportsService service, string? from, string? to, string? platformCodes, bool? includeTest) =>
+        {
+            if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            if (!MarketplaceHub.Api.Dashboard.DashboardEndpoints.TryDay(from, out var start) || !MarketplaceHub.Api.Dashboard.DashboardEndpoints.TryDay(to, out var end))
+                return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REPORT_RANGE_INVALID", "Tarihler yyyy-AA-gg biçiminde olmalıdır.", 400);
+            var result = await service.StockAsync(tenant.TenantId, new ReportStockQuery(start, end, Split(platformCodes), includeTest ?? false), http.RequestAborted);
+            return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
+        });
         return endpoints;
     }
 

@@ -651,6 +651,113 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         return new(brands, categories);
     }
 
+    // Stok raporu: the catalogue's variants with their MAIN stock and offers, and the units kept per variant in the period
+    // and in the last ReportStock.DeadDays days, worked out as the sales report works them out (same orders, same returns).
+    public async Task<ServiceResult<ReportInventoryView>> StockAsync(Guid tenantId, ReportStockQuery query, CancellationToken cancellationToken)
+    {
+        var timezoneId = await db.Tenants.AsNoTracking().Where(x => x.Id == tenantId).Select(x => x.Timezone).SingleOrDefaultAsync(cancellationToken);
+        var timezone = DashboardReadService.ResolveTimezone(timezoneId);
+        var now = timeProvider.GetUtcNow();
+        var resolved = DashboardPerformancePeriod.Resolve(query.From, query.To, now, timezone);
+        if (!resolved.Succeeded) return ServiceResult<ReportInventoryView>.Fail(resolved.Error!.Code, resolved.Error.Message, resolved.Error.Status);
+        var period = resolved.Value!;
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, timezone).Date);
+        var recent = DashboardPerformancePeriod.Resolve(today.AddDays(1 - ReportStock.DeadDays), today, now, timezone).Value!;
+
+        var excluded = DashboardRevenuePolicy.ExcludedConnectionStatuses;
+        var channels = (await db.PlatformConnections.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && !excluded.Contains(x.Status))
+                .OrderBy(x => x.PlatformCode).ThenBy(x => x.DisplayName)
+                .Select(x => new { x.Id, x.PlatformCode, x.DisplayName, x.Environment })
+                .ToListAsync(cancellationToken))
+            .Select(x => new ReportChannelView(x.Id, x.PlatformCode.Trim().ToUpperInvariant(), x.DisplayName, ReportBuckets.IsTestEnvironment(x.Environment)))
+            .ToList();
+        var platformFilter = query.PlatformCodes?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToUpperInvariant()).ToHashSet(StringComparer.Ordinal);
+        var filtered = platformFilter is { Count: > 0 };
+        var allowed = channels
+            .Where(x => query.IncludeTest || !x.IsTest)
+            .Where(x => !filtered || platformFilter!.Contains(x.PlatformCode))
+            .ToDictionary(x => x.Id);
+        var allowedIds = allowed.Keys.ToArray();
+
+        // The products the product list shows (VisibleProducts there): not only linked to removed stores.
+        var products = db.Products.AsNoTracking().Where(product => product.TenantId == tenantId
+            && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id)
+                || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id
+                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))));
+        var variantRows = await (from variant in db.ProductVariants.AsNoTracking()
+                                 join product in products on new { variant.TenantId, Id = variant.ProductId } equals new { product.TenantId, product.Id }
+                                 join category in db.Categories.AsNoTracking() on new { product.TenantId, Id = product.CategoryId } equals new { category.TenantId, Id = (Guid?)category.Id } into categories
+                                 from category in categories.DefaultIfEmpty()
+                                 where variant.TenantId == tenantId
+                                 select new
+                                 {
+                                     variant.Id,
+                                     variant.ProductId,
+                                     product.Title,
+                                     variant.ModelCode,
+                                     Category = category == null ? null : category.Name,
+                                     variant.OptionSignature,
+                                     variant.Status,
+                                     variant.CostPrice,
+                                     product.VatRate,
+                                     variant.CreatedAt,
+                                     OnHand = db.InventoryItems.Where(item => item.TenantId == tenantId && item.VariantId == variant.Id && item.LocationCode == "MAIN").Sum(item => (decimal?)item.OnHand) ?? 0m,
+                                     Available = db.InventoryItems.Where(item => item.TenantId == tenantId && item.VariantId == variant.Id && item.LocationCode == "MAIN").Sum(item => (decimal?)item.Available) ?? 0m
+                                 }).ToListAsync(cancellationToken);
+        var optionRows = await (from assignment in db.VariantOptionValues.AsNoTracking()
+                                join option in db.ProductOptions.AsNoTracking() on new { assignment.TenantId, assignment.OptionId } equals new { option.TenantId, OptionId = option.Id }
+                                join value in db.ProductOptionValues.AsNoTracking() on new { assignment.TenantId, assignment.OptionValueId } equals new { value.TenantId, OptionValueId = value.Id }
+                                where assignment.TenantId == tenantId && (option.NormalizedKey == "RENK" || option.NormalizedKey == "BEDEN")
+                                select new { assignment.VariantId, option.NormalizedKey, value.Label }).ToListAsync(cancellationToken);
+        var colors = optionRows.Where(x => x.NormalizedKey == "RENK").GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Label);
+        var sizes = optionRows.Where(x => x.NormalizedKey == "BEDEN").GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().Label);
+        var variants = variantRows.Select(x => new ReportStockVariantRow(x.Id, x.ProductId, x.Title, x.ModelCode, x.Category, colors.GetValueOrDefault(x.Id), sizes.GetValueOrDefault(x.Id),
+            x.OptionSignature, x.Status == ProductStatus.Active, x.CostPrice, x.VatRate, x.OnHand, x.Available, x.CreatedAt)).ToList();
+        var offers = await db.ChannelOffers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && allowedIds.Contains(x.ConnectionId))
+            .Select(x => new ReportStockOfferRow(x.VariantId, x.ConnectionId, x.SalePrice, x.Currency, x.Status, x.SafetyStock))
+            .ToListAsync(cancellationToken);
+
+        var periodSold = await KeptUnitsAsync(tenantId, allowed, new ReportPeriod(period.From, period.To, period.CurrentStart, period.CurrentEnd), timezone, cancellationToken);
+        var recentSold = await KeptUnitsAsync(tenantId, allowed, new ReportPeriod(recent.From, recent.To, recent.CurrentStart, recent.CurrentEnd), timezone, cancellationToken);
+        var report = ReportStock.Build(variants, offers, allowed, filtered, periodSold, recentSold, period.From, period.To, today);
+
+        var imageProducts = report.TopCapital.Concat(report.Dead).Select(x => x.ProductId).Distinct().ToArray();
+        var media = await (from item in db.ProductMedia.AsNoTracking()
+                           join asset in db.FileAssets.AsNoTracking() on new { item.TenantId, item.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
+                           where item.TenantId == tenantId && imageProducts.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE"
+                               && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
+                           orderby item.SortOrder, item.Id
+                           select new { item.ProductId, item.VariantId, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        ReportStockItemView Pictured(ReportStockItemView item)
+        {
+            var picked = (item.VariantId is { } variantId ? media.FirstOrDefault(x => x.VariantId == variantId) : null)
+                ?? media.FirstOrDefault(x => x.ProductId == item.ProductId && x.VariantId == null) ?? media.FirstOrDefault(x => x.ProductId == item.ProductId);
+            return picked is null ? item : item with { ImageUrl = CatalogMediaDisplay.Url(picked.Id, picked.Classification, picked.Url) };
+        }
+        return ServiceResult<ReportInventoryView>.Ok(report with
+        {
+            GeneratedAt = now,
+            TopCapital = report.TopCapital.Select(Pictured).ToList(),
+            Dead = report.Dead.Select(Pictured).ToList(),
+            Channels = channels
+        });
+    }
+
+    // The units kept (sold less returned) per variant in a period, from the sales report's own products.
+    private async Task<Dictionary<Guid, decimal>> KeptUnitsAsync(Guid tenantId, IReadOnlyDictionary<Guid, ReportChannelView> allowed, ReportPeriod period, TimeZoneInfo timezone,
+        CancellationToken cancellationToken)
+    {
+        var allowedIds = allowed.Keys.ToArray();
+        var input = new ReportInput(period, ReportBuckets.Day, timezone, allowed, await OrderRowsAsync(tenantId, allowedIds, period, cancellationToken),
+            new Dictionary<Guid, ReportOrderExtra>(), await LineRowsAsync(tenantId, allowedIds, period, cancellationToken), new Dictionary<Guid, ReportLineExtra>(), [], [],
+            new ReportCatalogNames(new Dictionary<Guid, string>(), new Dictionary<Guid, string>()), false);
+        return ReportBuilder.Products(ReportBuilder.Facts(input).Orders, input.Names)
+            .Where(x => x.VariantId != null)
+            .ToDictionary(x => x.VariantId!.Value, x => x.SoldQuantity - x.ReturnedQuantity);
+    }
+
     // Set through an object initializer, not a constructor, so the queries composed on it can still be translated.
     internal sealed class PeriodOrder
     {

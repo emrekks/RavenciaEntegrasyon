@@ -749,3 +749,20 @@
 .reports-order-modal .reports-order-costs b { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
 .reports-order-modal .reports-order-costs b em { padding: 1px 7px; color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-radius: 999px; font-size: 11px; font-style: normal; font-weight: 600; }
 @media (max-width: 760px) { .reports-order-modal .reports-order-columns { grid-template-columns: minmax(0, 1fr); } }
+
+/* Stok: the line that says what the figures cover, the variant under a product's name, and the loading shape (the
+   strips and panels the tab opens with, so nothing moves when the figures come in). */
+.app-shell.stitch-shell main .reports-page .reports-stock-scope { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-stock-scope > span { flex: 1 1 auto; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-stock-scope time { flex: none; color: var(--rv-color-subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-stock-item { display: grid; gap: 2px; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-stock-item small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-skeleton { display: block; background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)); background-size: 220% 100%; border-radius: 7px; animation: rv-splash-shimmer 1.8s linear infinite; }
+.app-shell.stitch-shell main .reports-page .reports-skeleton.is-line { width: 60%; height: 14px; }
+.app-shell.stitch-shell main .reports-page .reports-skeleton.is-label { width: 55%; height: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-skeleton.is-figure { width: 75%; height: 26px; }
+.app-shell.stitch-shell main .reports-page .reports-skeleton.is-block { height: 240px; margin-top: 16px; border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-stock-skeleton .reports-panel { min-height: 300px; }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell main .reports-page .reports-skeleton { animation: none; }
+}
