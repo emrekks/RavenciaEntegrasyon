@@ -6338,7 +6338,9 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .invoice-workspace-preview-facts > .is-name { order: 1; }
 .invoice-workspace-preview-facts > .is-tax { order: 2; }
 .invoice-workspace-preview-facts > .is-type { order: 3; }
+.invoice-workspace-preview-facts > .is-taxpayer { order: 4; }
 .invoice-workspace-preview-facts > .is-date { order: 4; }
+.invoice-workspace-preview-alias { display: block; margin-top: 2px; color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
 .invoice-workspace-preview-facts > .is-address { order: 5; grid-column: span 2; }
 .invoice-workspace-preview-facts > .is-package { order: 6; }
 .invoice-workspace-preview-facts > .is-carrier { order: 7; }

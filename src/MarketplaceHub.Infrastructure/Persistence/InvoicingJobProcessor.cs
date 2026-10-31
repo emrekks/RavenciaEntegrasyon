@@ -238,6 +238,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 }
                 await db.SaveChangesAsync(cancellationToken);
             }
+            // The taxpayer lookup is asked afresh right before the request: an invoice whose type no longer matches the
+            // buyer's e-Invoice registration, or a buyer whose registration cannot be read now, is not sent.
+            var recipient = await EInvoiceRecipientResolver.ResolveAsync(provider,
+                Context(tenantId, connectionId, correlationId, $"invoice-taxpayer:{invoice.Id:N}"),
+                orderConnection.PlatformCode, customerSnapshotJson, invoiceAddressSnapshotJson, fresh: true, cancellationToken);
+            if (InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, customerSnapshotJson, recipient) is { } recipientRefusal)
+                await BlockFiscalSubmission(invoice, recipientRefusal.Code, recipientRefusal.Message, cancellationToken);
             // Stamped after the marketplace reads, right before the request: the provider prints this as the invoice date and time.
             StampIssueTime(invoice, timeProvider.GetUtcNow());
             var canonical = JsonSerializer.Serialize(new
@@ -248,6 +255,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 invoice.PayableTotal,
                 invoice.Note,
                 invoice.IncludeInternetSalesInfo,
+                recipient.TargetAlias,
                 IssuedAt = invoice.IssuedAt ?? invoice.UpdatedAt,
                 MarketplacePlatformCode = orderConnection.PlatformCode,
                 MarketplaceDisplayName = orderConnection.DisplayName,

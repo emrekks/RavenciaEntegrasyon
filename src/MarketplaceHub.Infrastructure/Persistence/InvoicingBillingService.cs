@@ -1175,8 +1175,11 @@ public sealed partial class InvoicingBillingService(
             .ToListAsync(cancellationToken);
         if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(item.Status)))
             return ServiceResult<InvoiceDetailView>.Fail(DashboardMetricPolicy.SaleInvoiceStatusBlockedCode, SaleInvoiceStatusBlockedMessage, 422);
-        var invoiceType = InvoiceAmounts.InvoiceDocumentType(orderPlatform, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
-        if (InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, orderPlatform, order.InvoiceAddressSnapshotJson) is { } refusal)
+        var recipient = await EInvoiceRecipientResolver.ResolveAsync(invoiceProvider,
+            new AdapterContext(tenantId, provider.Id, "invoice-draft", $"invoice-draft:{order.Id:N}", timeProvider.GetUtcNow().AddMinutes(1)),
+            orderPlatform, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, fresh: false, cancellationToken);
+        var invoiceType = recipient.InvoiceType;
+        if (InvoiceIssuePolicy.Refusal(invoiceType, order.Currency, order.CustomerSnapshotJson, recipient) is { } refusal)
             return Refuse<InvoiceDetailView>(refusal);
         if (command.OriginalInvoiceId is null && invoiceType == "EARSIVFATURA")
         {
@@ -1734,7 +1737,10 @@ public sealed partial class InvoicingBillingService(
         string.IsNullOrWhiteSpace(externalReference)
         && (CanRetryLocalPayloadFailure(status, lastErrorCode, externalReference)
             || IsStoppedBeforeProvider(status, lastErrorCode, externalReference)
-            || (status == InvoiceStatus.ManualReview && lastErrorCode is "MARKETPLACE_INVOICE_PRECHECK_FAILED" or "PLATFORM_INVOICE_STATUS_NOT_CLEAR" or OperatorConfirmedNoRemoteInvoiceCode));
+            || (status == InvoiceStatus.ManualReview && lastErrorCode is "MARKETPLACE_INVOICE_PRECHECK_FAILED" or "PLATFORM_INVOICE_STATUS_NOT_CLEAR" or OperatorConfirmedNoRemoteInvoiceCode
+                // The taxpayer lookup right before the request stopped it: nothing reached the provider.
+                or InvoiceIssuePolicy.EInvoiceRecipientReviewCode or InvoiceIssuePolicy.EInvoiceTaxpayerChangedCode
+                or InvoiceIssuePolicy.EInvoiceTargetAliasUnresolvedCode or InvoiceIssuePolicy.EInvoiceTaxpayerConflictCode));
 
     // Submit leaves an invoice in Submitting with an error code only when the provider definitely did not
     // create it: a refusal before or at the fiscal request (authorization, capability, sign-in, quota, gate).
@@ -1988,11 +1994,13 @@ public sealed partial class InvoicingBillingService(
     {
         var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
             .Select(x => new { x.CustomerSnapshotJson, x.InvoiceAddressSnapshotJson, x.ConnectionId }).SingleOrDefaultAsync(cancellationToken);
-        string? platformCode = null;
-        if (order is not null)
-            platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == order.ConnectionId)
-                .Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
-        return InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, order?.CustomerSnapshotJson, platformCode, order?.InvoiceAddressSnapshotJson);
+        if (order is null) return InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, null);
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == order.ConnectionId)
+            .Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var recipient = await EInvoiceRecipientResolver.ResolveAsync(invoiceProvider,
+            new AdapterContext(tenantId, invoice.ProviderConnectionId, "invoice-submit-gate", $"invoice-submit-gate:{invoice.Id:N}", timeProvider.GetUtcNow().AddMinutes(1)),
+            platformCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, fresh: false, cancellationToken);
+        return InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, order.CustomerSnapshotJson, recipient);
     }
 
     private static ServiceResult<T> Refuse<T>(InvoiceIssueRefusal refusal) => ServiceResult<T>.Fail(refusal.Code, refusal.Message, 422);

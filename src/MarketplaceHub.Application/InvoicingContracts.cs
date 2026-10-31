@@ -262,6 +262,11 @@ public interface IInvoiceProviderPort
     Task<AdapterResult<InvoiceRemoteStatus>> QueryStatusAsync(AdapterContext context, ExternalInvoiceReference reference, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteInvoiceDocument>> GetDocumentAsync(AdapterContext context, ExternalInvoiceReference reference, string documentKind, CancellationToken cancellationToken);
     Task<AdapterResult<InvoiceCancellationResult>> CancelAsync(AdapterContext context, InvoiceCancellation command, CancellationToken cancellationToken);
+
+    // The GİB registered-user (e-Invoice taxpayer) entry of a VKN/TCKN. fresh skips a cached answer; a provider
+    // without a documented lookup answers Unknown, which stops a corporate buyer's invoice.
+    Task<EInvoiceTaxpayerLookup> LookupTaxpayerAsync(AdapterContext context, string taxId, bool fresh, CancellationToken cancellationToken) =>
+        Task.FromResult(EInvoiceTaxpayerLookup.Unknown("EINVOICE_TAXPAYER_LOOKUP_UNSUPPORTED"));
 }
 
 public interface IInvoiceMarketplacePort
@@ -386,7 +391,11 @@ public sealed record InvoiceWorkspacePreviewItem(
     IReadOnlyList<string>? TargetPackageNumbers = null,
     string? DeliveryCarrierName = null,
     DateTimeOffset? DeliverySentAt = null,
-    string? DeliveryPackageNumber = null);
+    string? DeliveryPackageNumber = null,
+    // The E-Faturam taxpayer lookup that chose InvoiceType: REGISTERED, NOT_REGISTERED, UNKNOWN; null when not looked up.
+    string? TaxpayerStatus = null,
+    string? TaxpayerTitle = null,
+    string? TargetAlias = null);
 public sealed record InvoiceWorkspaceConfirmResult(IReadOnlyList<InvoiceWorkspaceConfirmItemResult> Items);
 public sealed record InvoiceWorkspaceConfirmItemResult(Guid PackageId, Guid? InvoiceId, Guid? JobId, string Status, string Action, string Message);
 public sealed record InvoiceListView(Guid Id, string OrderNumber, string InvoiceType, string Status, string Currency, decimal PayableTotal, string? InvoiceNumber, DateTimeOffset? DueAt, DateTimeOffset CreatedAt, long Version);
