@@ -156,7 +156,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     {
         var existing = await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.VariantId == command.VariantId, cancellationToken);
         if (existing is not null)
-            return await UpdateOfferAsync(tenantId, userId, existing.Id, existing.Version, new(command.ListPrice, command.SalePrice, command.Currency, command.VatRate, command.VatInclusion, command.RoundingMode, command.SafetyStock, command.Status, command.Reason), cancellationToken);
+            return await UpdateOfferAsync(tenantId, userId, existing.Id, existing.Version, new(command.ListPrice, command.SalePrice, command.Currency, command.VatRate, command.VatInclusion, command.RoundingMode, command.SafetyStock, command.Status, command.Reason, command.FollowsPanelPrice), cancellationToken);
 
         var connectionExists = await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == command.ConnectionId, cancellationToken);
         var variantExists = await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == command.VariantId, cancellationToken);
@@ -184,6 +184,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
             RoundingMode = command.RoundingMode.Trim().ToUpperInvariant(),
             SafetyStock = decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven),
             Status = command.Status.Trim(),
+            FollowsPanelPrice = command.FollowsPanelPrice,
             PriceVersion = 1,
             Version = 1
         };
@@ -216,7 +217,18 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         var safetyStock = decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven);
         var status = command.Status.Trim();
         var change = ChannelOfferChangePolicy.Classify(offer, listPrice, salePrice, currency, vatRate, vatInclusion, roundingMode, safetyStock, status);
-        if (!change.Any) return ServiceResult<ChannelOfferView>.Ok(Map(offer));
+        // The "Özel Fiyat" choice is no part of what is sent: storing it alone (the same prices with a new choice) keeps
+        // the offer's version, so a price edit loaded before it is not refused, and queues nothing.
+        if (!change.Any)
+        {
+            if (command.FollowsPanelPrice is { } choice && offer.FollowsPanelPrice != choice)
+            {
+                offer.FollowsPanelPrice = choice;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            return ServiceResult<ChannelOfferView>.Ok(Map(offer));
+        }
+        if (command.FollowsPanelPrice is { } followsPanelPrice) offer.FollowsPanelPrice = followsPanelPrice;
         offer.ListPrice = listPrice;
         offer.SalePrice = salePrice;
         offer.Currency = currency;
@@ -254,6 +266,22 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<ChannelOfferView>.Ok(Map(offer));
     }
+
+    public async Task<ServiceResult<ChannelOfferPanelFollowView>> SetOfferPanelFollowAsync(Guid tenantId, SetChannelOfferPanelFollowCommand command, CancellationToken cancellationToken)
+    {
+        var variantIds = (command.VariantIds ?? []).Distinct().ToArray();
+        if (variantIds.Length == 0) return Invalid<ChannelOfferPanelFollowView>("variantIds", "En az bir varyant seçilmelidir.");
+        if (variantIds.Length > MaxPanelFollowVariants) return Invalid<ChannelOfferPanelFollowView>("variantIds", $"Tek seferde en fazla {MaxPanelFollowVariants} varyant seçilebilir.");
+        if (!await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == command.ConnectionId, cancellationToken))
+            return Invalid<ChannelOfferPanelFollowView>("connectionId", "Bağlantı bulunamadı.");
+        // Only the choice is stored: prices, versions and the send marks stay as they are, so nothing is queued.
+        var offers = await db.ChannelOffers.Where(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && variantIds.Contains(x.VariantId) && x.FollowsPanelPrice != command.FollowsPanelPrice).ToListAsync(cancellationToken);
+        foreach (var offer in offers) offer.FollowsPanelPrice = command.FollowsPanelPrice;
+        if (offers.Count > 0) await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<ChannelOfferPanelFollowView>.Ok(new(offers.Count));
+    }
+
+    private const int MaxPanelFollowVariants = 2000;
 
     public Task<ServiceResult<Guid>> ValidateExternalSyncAsync(Guid tenantId, string operation, CancellationToken cancellationToken) =>
         Task.FromResult(ServiceResult<Guid>.Fail("USE_COMBINED_PRICE_INVENTORY", $"{operation} Trendyol'da ayrık gönderilmez; birleşik price-and-inventory işi kullanılmalıdır.", 422));
@@ -444,7 +472,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
     private PageResult<T> Page<T>(List<T> rows, int limit, Func<T, Guid> id) { var hasMore = rows.Count > limit; var items = rows.Take(limit).ToList(); return new(items, hasMore ? cursors.Encode(id(items[^1])) : null, hasMore); }
     private static InventoryItemView Map(InventoryItem value, string sku) => new(value.Id, value.VariantId, sku, value.LocationCode, value.OnHand, value.Reserved, value.Available, value.ProjectionVersion, value.ReconciledAt, value.Version, value.ObservedRemoteQuantity, value.ObservedRemoteAt);
-    private static ChannelOfferView Map(ChannelOffer value) => new(value.Id, value.ConnectionId, value.VariantId, value.ListPrice, value.SalePrice, value.Currency, value.VatRate, value.VatInclusion, value.RoundingMode, value.SafetyStock, value.Status, value.PriceVersion, value.Version);
+    private static ChannelOfferView Map(ChannelOffer value) => new(value.Id, value.ConnectionId, value.VariantId, value.ListPrice, value.SalePrice, value.Currency, value.VatRate, value.VatInclusion, value.RoundingMode, value.SafetyStock, value.Status, value.PriceVersion, value.Version, value.FollowsPanelPrice);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Conflict<T>(string code, string message) => ServiceResult<T>.Fail(code, message, 409);

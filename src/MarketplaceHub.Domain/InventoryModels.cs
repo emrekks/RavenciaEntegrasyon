@@ -127,6 +127,10 @@ public sealed class ChannelOffer
     public decimal? LastSentSalePrice { get; set; }
     public decimal? LastSentListPrice { get; set; }
     public DateTimeOffset? LastSentAt { get; set; }
+    // The product editor's and quick edit's "Özel Fiyat" choice for this offer: true sells at the panel (main) price, so a
+    // panel price saved in the panel is written here too; false keeps the offer's own price. Null was never chosen: the
+    // screens then read it from the prices (an offer at the panel price follows it, any other price is its own).
+    public bool? FollowsPanelPrice { get; set; }
     public long Version { get; set; } = 1;
 }
 

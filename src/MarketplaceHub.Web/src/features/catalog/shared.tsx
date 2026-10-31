@@ -43,6 +43,9 @@ export type VariantPlatformStatus = {
   connectionId?: string | null; offerId?: string | null; listPrice?: number | null; salePrice?: number | null
   currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null
   safetyStock?: number | null; offerVersion?: number | null; offerStatus?: string | null
+  // The offer's stored "Özel Fiyat" choice (true follows the panel price); null was never chosen. Read it through
+  // offerFollowsPanel (quick-price-edit.ts), never on its own.
+  followsPanelPrice?: boolean | null
 }
 export type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
