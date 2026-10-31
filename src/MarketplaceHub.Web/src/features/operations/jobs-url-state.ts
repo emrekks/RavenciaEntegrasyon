@@ -81,3 +81,20 @@ export function withJobsLogsTab(current: URLSearchParams, open: boolean): URLSea
   else params.delete(logsTabParam)
   return params
 }
+
+// The three main tabs of İşlem Takibi: the job list (no ?sekme), Loglar (?sekme=loglar) and API Sağlık
+// (?sekme=api-saglik, the price/stock sending health per connection). An unknown value opens the job list.
+export type JobsMainTab = 'jobs' | 'logs' | 'health'
+const mainTabSlugs: Record<Exclude<JobsMainTab, 'jobs'>, string> = { logs: logsTabSlug, health: 'api-saglik' }
+
+export function jobsMainTab(params: URLSearchParams): JobsMainTab {
+  const slug = params.get(logsTabParam)
+  return slug === mainTabSlugs.logs ? 'logs' : slug === mainTabSlugs.health ? 'health' : 'jobs'
+}
+
+export function withJobsMainTab(current: URLSearchParams, tab: JobsMainTab): URLSearchParams {
+  const params = new URLSearchParams(current)
+  if (tab === 'jobs') params.delete(logsTabParam)
+  else params.set(logsTabParam, mainTabSlugs[tab])
+  return params
+}
