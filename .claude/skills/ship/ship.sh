@@ -17,18 +17,28 @@ echo "sha=$full branch=$branch"
 git diff --quiet && git diff --cached --quiet || { echo "uncommitted changes: commit first"; exit 1; }
 
 # Pushes $full to the codex branch and waits for its Validate run. Returns the run's exit status.
+# Many ships poll GitHub at once and share one API rate limit, so it asks the REST API directly, once every 30 s
+# (`gh run list` / `gh run watch` also fetch the workflow list on every call), and a poll that fails on an API error
+# is retried instead of being taken for a failed Validate.
 validate() {
   git push -q origin "$full:refs/heads/$branch" || { echo "push to $branch failed"; return 1; }
-  local id="" status
-  for _ in $(seq 1 30); do
-    id=$(gh run list --branch "$branch" --workflow Validate --limit 10 --json databaseId,headSha -q ".[] | select(.headSha==\"$full\") | .databaseId" | head -1)
+  local id="" status conclusion=""
+  for _ in $(seq 1 20); do
+    id=$(gh api "repos/{owner}/{repo}/actions/runs?branch=$branch&head_sha=$full&per_page=10" \
+      -q '.workflow_runs[] | select(.name=="Validate") | .id' 2>/dev/null | head -1)
     [ -n "$id" ] && break
-    sleep 10
+    sleep 30
   done
   [ -z "$id" ] && { echo "validate run not found"; return 1; }
-  gh run watch "$id" --exit-status >/dev/null 2>&1
-  status=$?
-  echo "validate=$status"
+  # Up to 90 minutes.
+  for _ in $(seq 1 180); do
+    conclusion=$(gh api "repos/{owner}/{repo}/actions/runs/$id" -q 'select(.status=="completed") | .conclusion' 2>/dev/null)
+    [ -n "$conclusion" ] && break
+    sleep 30
+  done
+  [ "$conclusion" = "success" ] && status=0 || status=1
+  echo "validate=$status${conclusion:+ ($conclusion)}"
+  [ -z "$conclusion" ] && { echo "validate result unknown: no answer from GitHub"; return 1; }
   [ "$status" = "0" ] && return 0
   gh run view "$id" --log-failed 2>/dev/null | grep -E "FAIL |AssertionError|\[FAIL\]| error |Error Message" | head -20
   return 1
