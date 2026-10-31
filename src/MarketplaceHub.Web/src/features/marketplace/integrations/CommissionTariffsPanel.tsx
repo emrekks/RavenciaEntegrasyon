@@ -684,7 +684,7 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
                   {/* The card's headline is its band limit; the price the row would get stays in the badge's breakdown. */}
                   <strong>{bandLimitText([band]) ?? money(choice.price)}{row.currentTier === tier && <small className="commission-now"> · şu an</small>}</strong>
                   <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
-                  <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''} · ${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
+                  <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`} tag={`${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
                   <button type="button" className="commission-switch" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>
                 </div>
               </td>
@@ -727,7 +727,8 @@ function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, o
                   <strong>{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier))) ?? priceRange(choices.map(item => item.price))}{owners.some(row => row.currentTier === tier) && <small className="commission-now"> · şu an</small>}</strong>
                   <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
                   <ProfitBadge price={least ?? choices[0]} label={ranged ? `${amountRange(lefts)} Kâr` : undefined}
-                    title={`${first.productName ?? first.barcode} · ${tier}. Fiyat Aralığı${ranged ? ` · en az kâr bırakan beden: ${leastRow?.size ?? leastRow?.barcode ?? '—'}` : ''}`} missing="Maliyet girilmemiş" />
+                    title={first.productName ?? first.barcode} tag={`${tier}. Fiyat Aralığı`}
+                    aside={ranged ? `En az kâr bırakan beden: ${leastRow?.size ?? leastRow?.barcode ?? '—'}` : undefined} missing="Maliyet girilmemiş" />
                   {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın kârı hesaplanamadı</small>}
                   <button type="button" className="commission-switch" aria-pressed={all} onClick={() => pickModel(owners, tier, all)}><span />{all ? 'Tümü Seçili' : 'Tüm Varyantlarını Seç'}</button>
                 </div>
@@ -775,6 +776,6 @@ function OwnPrice({ row, pick, picked, onPick }: { row: CommissionTariffRow; pic
   return <div className={`commission-own${picked ? ' is-picked' : ''}`}>
     <input type="text" inputMode="decimal" placeholder="Fiyat girin" value={text} aria-label={`${row.productName ?? row.barcode} için kendi fiyatın`}
       onChange={event => { setText(event.target.value); onPick(parse(event.target.value)) }} />
-    {text.trim() !== '' && (choice ? <small>{choice.tier}. fiyat aralığı · {rateText(choice.rate)}<ProfitBadge price={choice} title={`${row.productName ?? row.barcode} · kendi fiyatın`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} /></small> : <small className="commission-warn">Hiçbir fiyat aralığına düşmüyor</small>)}
+    {text.trim() !== '' && (choice ? <small>{choice.tier}. fiyat aralığı · {rateText(choice.rate)}<ProfitBadge price={choice} title={row.productName ?? row.barcode} tag="Kendi Fiyatın" missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} /></small> : <small className="commission-warn">Hiçbir fiyat aralığına düşmüyor</small>)}
   </div>
 }
