@@ -500,15 +500,18 @@ public static class ProductUpdateFields
 
     // The fields each marketplace's product update can take (the same table the editor's "Platformlarda Güncelle" shows;
     // platform-update-fields.ts). Trendyol: content, variant and delivery requests (no warranty). Hepsiburada: one
-    // product update with the warranty and no delivery time. Every other marketplace has no product update in the panel yet.
+    // product update with the warranty and no delivery time. Shopify: the whole card in one productSet (price and stock ride
+    // along, so the picked fields do not narrow it). Every other marketplace has no product update in the panel yet.
     public static IReadOnlySet<string> SupportedBy(string? platformCode) => platformCode?.Trim().ToUpperInvariant() switch
     {
         "TRENDYOL" => TrendyolSupported,
         "HEPSIBURADA" => HepsiburadaSupported,
+        "SHOPIFY" => ShopifySupported,
         _ => NoneSupported
     };
     private static readonly IReadOnlySet<string> TrendyolSupported = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery], StringComparer.Ordinal);
     private static readonly IReadOnlySet<string> HepsiburadaSupported = new HashSet<string>(HepsiburadaFields, StringComparer.Ordinal);
+    private static readonly IReadOnlySet<string> ShopifySupported = new HashSet<string>([Title, Description, Images], StringComparer.Ordinal);
     private static readonly IReadOnlySet<string> NoneSupported = new HashSet<string>(StringComparer.Ordinal);
 
     // No list (an older client) is every section, as before; an unknown code is refused rather than ignored.

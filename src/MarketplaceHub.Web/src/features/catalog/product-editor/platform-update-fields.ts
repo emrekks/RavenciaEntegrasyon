@@ -64,7 +64,9 @@ export const platformUpdateFixedInformation: { label: string; note: string }[] =
 // One request of a marketplace: its fields always go together. sends: the dialog's fields as the card names them (list
 // and sale price apart); extra: what the request also carries that is not a pick of the dialog.
 type PlatformUpdateRequest = { fields: PlatformUpdateField[]; sends: string[]; extra?: string[] }
-type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string }
+// wholeCard: the marketplace takes the product in one request (price and stock included), so whatever is picked goes as the
+// product request and nothing goes to the separate price and stock send.
+type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string; wholeCard?: boolean }
 
 // From the adapters (TrendyolWriteComposers, HepsiburadaProductUpdateComposer, PriceInventoryComposer):
 // - Trendyol, approved product: content-bulk-update (title, description, images, attributes with colour, size and
@@ -74,7 +76,9 @@ type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string 
 // - Hepsiburada: one product update per hbSku with name, description, barcode, attributes, VAT, warranty, desi and
 //   images; inventory-uploads takes the sale price and the stock apart. No delivery time. (The update has a video slot,
 //   but the publication never fills it, so no video goes.)
-// - n11, Pazarama, PTT AVM and Shopify have no product update in the panel yet: no field of the dialog goes there.
+// - Shopify: the publication productSet again, under the handle the panel gave the product: title, description, images,
+//   the colour/size options, the product type, price and stock of the whole model family in one request.
+// - n11, Pazarama and PTT AVM have no product update in the panel yet: no field of the dialog goes there.
 // The API keeps the same table (ProductUpdateFields.SupportedBy).
 const profiles: Record<string, PlatformUpdateProfile> = {
   TRENDYOL: {
@@ -94,6 +98,13 @@ const profiles: Record<string, PlatformUpdateProfile> = {
       { fields: ['STOCK'], sends: ['Stok'] }
     ],
     note: 'Hepsiburada ürün bilgilerini tek pakette alır; teslimat süresi gönderilmez.'
+  },
+  SHOPIFY: {
+    requests: [
+      { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'PRICE', 'STOCK'], sends: ['Ürün Adı', 'Açıklama', 'Görseller', 'Liste Fiyatı', 'Satış Fiyatı', 'Stok'], extra: ['Renk / Beden', 'Ürün Tipi'] }
+    ],
+    note: 'Shopify ürünü tek istekte alır: hangi alan seçilirse seçilsin model ailesinin tüm kartı (ürün adı, açıklama, görseller, renk ve beden, fiyat ve stok) birlikte gider.',
+    wholeCard: true
   }
 }
 
@@ -144,8 +155,9 @@ export type PlatformUpdatePlan = {
 }
 
 export function platformUpdatePlan(platformCode: string, picked: Iterable<PlatformUpdateField>): PlatformUpdatePlan {
+  const profile = profileOf(platformCode)
   const selection = new Set(picked)
-  const requests = (profileOf(platformCode)?.requests ?? []).filter(request => request.fields.some(field => selection.has(field)))
+  const requests = (profile?.requests ?? []).filter(request => request.fields.some(field => selection.has(field)))
   const going = new Set(requests.flatMap(request => request.fields))
   const fields = platformUpdateFieldKeys.filter(field => going.has(field))
   const sends = [...new Set(requests.flatMap(request => request.sends))]
@@ -154,9 +166,9 @@ export function platformUpdatePlan(platformCode: string, picked: Iterable<Platfo
     bundled: fields.filter(field => !selection.has(field)),
     sends,
     extras: [...new Set(requests.flatMap(request => request.extra ?? []))].filter(label => !sends.includes(label)),
-    productFields: fields.filter(field => !salesPartKeys.has(field) && selection.has(field)),
-    price: going.has('PRICE'),
-    stock: going.has('STOCK')
+    productFields: profile?.wholeCard ? fields : fields.filter(field => !salesPartKeys.has(field) && selection.has(field)),
+    price: !profile?.wholeCard && going.has('PRICE'),
+    stock: !profile?.wholeCard && going.has('STOCK')
   }
 }
 

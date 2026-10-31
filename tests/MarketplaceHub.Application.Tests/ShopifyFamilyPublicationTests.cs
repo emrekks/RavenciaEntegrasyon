@@ -276,6 +276,19 @@ public sealed class ShopifyFamilyPublicationTests
         new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), phase, hash, """{"handle":"ravencia-model-a"}""", operation, submittedAt);
 
     [Fact]
+    public void AnUpdateIsThePublicationMarkedUpdateOnly()
+    {
+        const string payload = """{"handle":"ravencia-model-a","title":"Gömlek <b>","variants":[{"sku":"A-1"}],"metafields":[{"key":"payload_hash","value":"H"}]}""";
+        var marked = ShopifyHttpClient.MarkUpdateOnly(payload);
+
+        var input = JsonNode.Parse(marked)!.AsObject();
+        Assert.True(input.Remove(ShopifyHttpClient.UpdateOnlyKey));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(payload), input));
+        // The marker changes neither the handle nor the variant list the processor compares before sending.
+        Assert.True(ShopifyProductPublicationComposer.SameVariantSkus(payload, marked));
+    }
+
+    [Fact]
     public void AnUncertainCreateKeepsTheMarketplacesOwnCodeAndMessage()
     {
         var summary = MarketplaceJobProcessor.AmbiguousCreateSummary(new(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", "Online Store kanalına yayınlayamadı: erişim yok", 502, null, null));
