@@ -133,8 +133,10 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
   const subtitle = !capabilities.writable ? 'Salt okunur, güncellenemez' : !writable ? 'Bağlantı aktif değil' : on ? 'Güncelleme için seçildi' : 'Güncelleme için seçilmedi'
   const plan = platformUpdatePlan(connection.platformCode, fields)
   const sends = !writable ? '—' : platformUpdateSummary(plan)
-  // What goes, as small chips: the dialog's fields first, then (dashed) what the requests also carry.
-  const chips = writable && plan.sends.length ? [...plan.sends.map(label => ({ label, extra: false })), ...plan.extras.map(label => ({ label, extra: true }))] : []
+  // What goes, as small chips: the dialog's fields first, then (dashed) what the requests also carry, last (struck
+  // through) the picked fields this marketplace does not take.
+  type Chip = { label: string; kind?: 'extra' | 'skipped' }
+  const chips: Chip[] = writable && plan.sends.length ? [...plan.sends.map(label => ({ label })), ...plan.extras.map(label => ({ label, kind: 'extra' as const })), ...plan.skipped.map(field => ({ label: platformUpdateFieldLabel(field), kind: 'skipped' as const }))] : []
   return <article className={`publish-platform-card${on ? ' selected' : ''}${writable ? '' : ' is-readonly'}`}>
     <button type="button" className="publish-platform-card-head" onClick={onToggle} aria-pressed={on} disabled={locked || !writable}>
       <span className={`publish-platform-mark ${connection.platformCode.trim().toLocaleLowerCase('tr-TR')}`}>{logo ? <img className={`publish-platform-logo ${platformLogoClass(connection.platformCode)}`} src={logo} alt="" aria-hidden="true" /> : <b aria-hidden="true">{storeName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R'}</b>}</span>
@@ -144,7 +146,7 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
     <dl className="publish-platform-facts">
       <div><dt>Mağaza</dt><dd title={connection.externalStoreId ? `Mağaza no: ${connection.externalStoreId}` : undefined}>{connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{platformName}</dd></div>
-      <div className="platform-update-sends"><dt>Gönderilecek</dt><dd title={sends}>{chips.length ? <ul className="platform-update-chips">{chips.map(chip => <li key={`${chip.extra}-${chip.label}`} className={chip.extra ? 'is-extra' : undefined} title={chip.extra ? 'Seçim değil, aynı istekte birlikte gider' : undefined}>{chip.label}</li>)}</ul> : writable ? sends : '—'}</dd>
+      <div className="platform-update-sends"><dt>Gönderilecek</dt><dd title={sends}>{chips.length ? <ul className="platform-update-chips">{chips.map(chip => <li key={`${chip.kind}-${chip.label}`} className={chip.kind ? `is-${chip.kind}` : undefined} title={chip.kind === 'extra' ? 'Seçim değil, aynı istekte birlikte gider' : undefined}>{chip.kind === 'skipped' ? <s>{chip.label}</s> : chip.label}</li>)}</ul> : writable ? sends : '—'}</dd>
         {writable && plan.bundled.length > 0 && <small>Seçilmedi ama aynı istekte birlikte gider: {plan.bundled.map(platformUpdateFieldLabel).join(', ')}.</small>}
       </div>
     </dl>

@@ -138,6 +138,8 @@ describe('platform update fields', () => {
     expect([title.price, title.stock]).toEqual([false, false])
     // Category attributes never go to PTT AVM.
     expect(platformUpdatePlan('PTTAVM', ['ATTRIBUTES']).productFields).toEqual([])
+    expect(platformUpdatePlan('PTTAVM', ['TITLE', 'ATTRIBUTES']).skipped).toEqual(['ATTRIBUTES'])
+    expect(title.skipped).toEqual([])
     expect(platformUpdatePlan('PTTAVM', defaultPlatformUpdateFields).productFields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'WARRANTY', 'DESI', 'DELIVERY', 'VAT_RATE'])
     // One request takes price and stock: a pick of one sends both.
     const price = platformUpdatePlan('PTTAVM', ['PRICE'])

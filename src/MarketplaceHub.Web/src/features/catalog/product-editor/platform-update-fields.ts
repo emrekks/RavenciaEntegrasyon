@@ -177,6 +177,8 @@ export type PlatformUpdatePlan = {
   sends: string[]
   // What the requests also carry that is not a pick of the dialog.
   extras: string[]
+  // Picked fields this marketplace does not take: they stay out of its requests.
+  skipped: PlatformUpdateField[]
   // Sent to the API: the picked product fields this marketplace takes, and the price/stock parts.
   productFields: PlatformUpdateField[]
   price: boolean
@@ -195,6 +197,7 @@ export function platformUpdatePlan(platformCode: string, picked: Iterable<Platfo
     bundled: fields.filter(field => !selection.has(field)),
     sends,
     extras: [...new Set(requests.flatMap(request => request.extra ?? []))].filter(label => !sends.includes(label)),
+    skipped: platformUpdateFieldKeys.filter(field => selection.has(field) && !going.has(field)),
     productFields: profile?.wholeCard ? fields : fields.filter(field => !salesPartKeys.has(field) && selection.has(field)),
     price: !profile?.wholeCard && going.has('PRICE'),
     stock: !profile?.wholeCard && going.has('STOCK')

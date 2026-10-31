@@ -1084,6 +1084,8 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .platform-update-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; }
 .app-shell.stitch-shell main .platform-update-chips > li { display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 12px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
 .app-shell.stitch-shell main .platform-update-chips > li.is-extra { color: var(--rv-color-muted); background: transparent; border-style: dashed; }
+.app-shell.stitch-shell main .platform-update-chips > li.is-skipped { color: var(--rv-color-subtle, var(--rv-color-muted)); background: transparent; font-weight: 500; }
+.app-shell.stitch-shell main .platform-update-chips > li.is-skipped s { text-decoration-thickness: 1px; }
 .app-shell.stitch-shell main .platform-update-modal .publish-platform-facts > .platform-update-sends small { display: block; margin-top: 4px; color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; }
 .app-shell.stitch-shell main .platform-update-actions { display: flex; gap: 8px; }
 .app-shell.stitch-shell main .platform-update-actions > button { height: 36px; min-height: 0; padding-block: 0; }
