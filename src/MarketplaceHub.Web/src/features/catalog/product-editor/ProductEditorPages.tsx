@@ -3313,7 +3313,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     {platformUpdateDialogOpen && <PlatformUpdateDialog
       targets={productUpdateTargets}
       selectedIds={platformUpdateConnectionIds}
-      onToggle={connectionId => setPlatformUpdateConnectionIds(ids => ids.includes(connectionId) ? ids.filter(id => id !== connectionId) : [...ids, connectionId])}
+      onSelectedIdsChange={setPlatformUpdateConnectionIds}
       fields={platformUpdatePreferences.fields}
       onFieldsChange={fields => changePlatformUpdatePreferences({ ...platformUpdatePreferences, fields })}
       openGroups={platformUpdatePreferences.openGroups}

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { DialogSurface, UiIcon } from '../../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
@@ -18,10 +18,10 @@ type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: Platfor
 // collapsible groups (Ürün Bilgileri, Kargo ve Teslimat, Satış Bilgileri). Only fields a selected store can take are
 // shown; each card lists what really goes there, including what its marketplace takes only together with a picked field.
 // The bar is the window's own footer, so the cards scroll above it instead of under it.
-export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, onClose, onConfirm }: {
+export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, onClose, onConfirm }: {
   targets: PlatformUpdateTarget[]
   selectedIds: string[]
-  onToggle: (connectionId: string) => void
+  onSelectedIdsChange: (connectionIds: string[]) => void
   fields: PlatformUpdateField[]
   onFieldsChange: (fields: PlatformUpdateField[]) => void
   openGroups: PlatformUpdateGroupKey[]
@@ -44,12 +44,16 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
   const setGroup = (groupFields: PlatformUpdateField[], on: boolean) => onFieldsChange(on ? [...new Set([...fields, ...groupFields])] : fields.filter(item => !groupFields.includes(item)))
   const toggleOpen = (key: PlatformUpdateGroupKey) => onOpenGroupsChange(openGroups.includes(key) ? openGroups.filter(item => item !== key) : [...openGroups, key])
   // A store in or out changes the fields shown: one no longer shown is dropped, one shown only now comes in ticked.
-  const toggleStore = (connectionId: string) => {
-    const nextIds = selectedIds.includes(connectionId) ? selectedIds.filter(id => id !== connectionId) : [...selectedIds, connectionId]
+  const selectStores = (nextIds: string[]) => {
     const next = platformUpdateFieldsForStores(fields, available, availableFor(writable.filter(target => nextIds.includes(target.connection.id))))
     if (next.length !== fields.length || next.some(field => !fields.includes(field))) onFieldsChange(next)
-    onToggle(connectionId)
+    onSelectedIdsChange(nextIds)
   }
+  const toggleStore = (connectionId: string) => selectStores(selectedIds.includes(connectionId) ? selectedIds.filter(id => id !== connectionId) : [...selectedIds, connectionId])
+  // The bulk picks: a store that cannot be updated is never picked, and a linked field follows the field it rides with.
+  const writableIds = writable.map(target => target.connection.id)
+  const allStoresPicked = writable.length > 0 && selected.length === writable.length
+  const allFieldsPicked = available.every(field => fields.includes(field))
   const groups: ShownGroup[] = platformUpdateGroups
     .map(group => ({
       ...group,
@@ -63,12 +67,26 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
       <DialogSurface as="section" onClose={close} className="workspace-modal product-publish-popup-modal platform-update-modal" aria-labelledby="platform-update-title" onMouseDown={event => event.stopPropagation()}>
         <header><div><p className="eyebrow">Ürün Güncelleme</p><h2 id="platform-update-title">Platformlarda Güncelle</h2></div><button type="button" className="modal-close" onClick={close} disabled={submitting} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
         <div className="product-publish-popup-body"><div className="product-add-page product-publish-popup"><section className="product-publish-step" aria-label="Ürünü platformlarda güncelle"><div className="product-publish-layout"><div className="product-publish-main">
-          {groups.length > 0 && <div className="platform-update-field-groups" role="group" aria-label="Gönderilecek bilgiler">
-            {groups.map(group => <PlatformUpdateFieldGroup key={group.key} group={group} picked={fields} open={openGroups.includes(group.key)} locked={submitting} onToggleOpen={() => toggleOpen(group.key)} onGroupChange={on => setGroup(group.fields.map(field => field.key), on)} onFieldChange={setField} />)}
-          </div>}
-          {targets.length
-            ? <div className="publish-platform-grid" role="group" aria-label="Güncellenecek platformlar">{targets.map(target => <PlatformUpdateCard key={target.connection.id} target={target} selected={selectedIds.includes(target.connection.id)} fields={visibleFields} locked={submitting} onToggle={() => toggleStore(target.connection.id)} />)}</div>
-            : <div className="publish-connections-empty"><strong>Güncellenebilir Bağlantı Yok</strong><p>Ürün güncellemek için Platformlar sayfasından yazma yetkisi olan aktif bir bağlantı ekleyin.</p></div>}
+          {groups.length > 0 && <section className="platform-update-section" aria-labelledby="platform-update-fields-title">
+            <PlatformUpdateSectionHead id="platform-update-fields-title" title="Gönderilecek Bilgiler" hint={`${visibleFields.length}/${available.length} bilgi seçili · Seçtikleriniz her mağazanın aldığı kadarıyla gönderilir.`}>
+              <button type="button" disabled={submitting || allFieldsPicked} onClick={() => setGroup(available, true)}>Tümünü Seç</button>
+              <button type="button" disabled={submitting || !visibleFields.length} onClick={() => setGroup(available, false)}>Temizle</button>
+            </PlatformUpdateSectionHead>
+            <div className="platform-update-field-groups" role="group" aria-label="Gönderilecek bilgiler">
+              {groups.map(group => <PlatformUpdateFieldGroup key={group.key} group={group} picked={fields} open={openGroups.includes(group.key)} locked={submitting} onToggleOpen={() => toggleOpen(group.key)} onGroupChange={on => setGroup(group.fields.map(field => field.key), on)} onFieldChange={setField} />)}
+            </div>
+          </section>}
+          <section className="platform-update-section" aria-labelledby="platform-update-stores-title">
+            <PlatformUpdateSectionHead id="platform-update-stores-title" title="Platformlar" hint={`${selected.length}/${writable.length} mağaza seçili${writable.length < targets.length ? ` · ${targets.length - writable.length} mağaza güncellenemez` : ''}`}>
+              {writable.length > 0 && <>
+                <button type="button" disabled={submitting || allStoresPicked} onClick={() => selectStores(writableIds)}>Tümünü Seç</button>
+                <button type="button" disabled={submitting || !selected.length} onClick={() => selectStores([])}>Hiçbirini Seçme</button>
+              </>}
+            </PlatformUpdateSectionHead>
+            {targets.length
+              ? <div className="publish-platform-grid" role="group" aria-label="Güncellenecek platformlar">{targets.map(target => <PlatformUpdateCard key={target.connection.id} target={target} selected={selectedIds.includes(target.connection.id)} fields={visibleFields} locked={submitting} onToggle={() => toggleStore(target.connection.id)} />)}</div>
+              : <div className="publish-connections-empty"><strong>Güncellenebilir Bağlantı Yok</strong><p>Ürün güncellemek için Platformlar sayfasından yazma yetkisi olan aktif bir bağlantı ekleyin.</p></div>}
+          </section>
         </div></div></section></div></div>
         <footer className="publish-selection-footer platform-update-footer">
           <div><strong>{selected.length ? `${selected.length} platform seçildi` : 'Güncellenecek platform seçilmedi'}</strong><small>{!selected.length ? 'Güncellenecek mağazaları kartların üstünden seçin.' : sendsAnything ? 'Her mağazaya kartında yazan bilgiler gönderilecek.' : 'Seçili mağazalara gidecek bir bilgi seçilmedi.'}</small></div>
@@ -82,6 +100,14 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
       </DialogSurface>
     </div>,
     document.querySelector('main') ?? document.body)
+}
+
+// A section's title and hint, with its bulk picks on the right; the line above it parts it from the section before.
+function PlatformUpdateSectionHead({ id, title, hint, children }: { id: string; title: string; hint: string; children?: ReactNode }) {
+  return <header className="platform-update-section-head">
+    <div><h3 id={id}>{title}</h3><small>{hint}</small></div>
+    <div className="platform-update-bulk">{children}</div>
+  </header>
 }
 
 function PlatformUpdateFieldGroup({ group, picked, open, locked, onToggleOpen, onGroupChange, onFieldChange }: {

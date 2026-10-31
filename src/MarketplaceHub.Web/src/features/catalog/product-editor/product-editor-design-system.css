@@ -1062,7 +1062,19 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .platform-update-modal .publish-platform-facts dd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .platform-update-modal .publish-platform-facts > .platform-update-sends { grid-column: 1 / -1; }
 /* The fields to send: collapsible groups laid out in as many columns as fit (one on a phone). */
-.app-shell.stitch-shell main .platform-update-field-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); align-items: start; gap: 12px; margin: 0 0 var(--rv-space-4); }
+.app-shell.stitch-shell main .platform-update-field-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); align-items: start; gap: 12px; margin: 0; }
+/* Gönderilecek Bilgiler and Platformlar: each under its own title, parted by a line, with its bulk picks on the right as
+   quiet outline buttons (the bulk publish "Tümünü Seç"). The buttons stay put and only grey out, so nothing shifts. */
+.app-shell.stitch-shell main .platform-update-section { display: grid; gap: 12px; min-width: 0; }
+.app-shell.stitch-shell main .platform-update-section + .platform-update-section { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .platform-update-section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.app-shell.stitch-shell main .platform-update-section-head > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.app-shell.stitch-shell main .platform-update-section-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.app-shell.stitch-shell main .platform-update-section-head small { color: var(--rv-color-muted); font-size: 12.5px; }
+.app-shell.stitch-shell main .platform-update-bulk { display: flex; gap: 8px; }
+.app-shell.stitch-shell main .platform-update-bulk > button { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 14px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.app-shell.stitch-shell main .platform-update-bulk > button:hover:not(:disabled) { background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .platform-update-bulk > button:disabled { opacity: .5; cursor: default; }
 .app-shell.stitch-shell main .platform-update-field-group { min-width: 0; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .app-shell.stitch-shell main .platform-update-field-group > header { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 14px; }
 .app-shell.stitch-shell main .platform-update-group-check { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; min-height: 36px; cursor: pointer; }
