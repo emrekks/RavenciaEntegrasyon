@@ -22,18 +22,20 @@ git diff --quiet && git diff --cached --quiet || { echo "uncommitted changes: co
 # is retried instead of being taken for a failed Validate.
 validate() {
   git push -q origin "$full:refs/heads/$branch" || { echo "push to $branch failed"; return 1; }
-  local id="" status conclusion=""
+  local id="" status conclusion="" out
+  # On an API error gh prints the error body to stdout, so only a well-formed answer counts.
   for _ in $(seq 1 20); do
-    id=$(gh api "repos/{owner}/{repo}/actions/runs?branch=$branch&head_sha=$full&per_page=10" \
-      -q '.workflow_runs[] | select(.name=="Validate") | .id' 2>/dev/null | head -1)
-    [ -n "$id" ] && break
+    out=$(gh api "repos/{owner}/{repo}/actions/runs?branch=$branch&head_sha=$full&per_page=10" \
+      -q '.workflow_runs[] | select(.name=="Validate") | .id' 2>/dev/null) && id=$(echo "$out" | head -1)
+    [[ "$id" =~ ^[0-9]+$ ]] && break
+    id=""
     sleep 30
   done
   [ -z "$id" ] && { echo "validate run not found"; return 1; }
   # Up to 90 minutes.
   for _ in $(seq 1 180); do
-    conclusion=$(gh api "repos/{owner}/{repo}/actions/runs/$id" -q 'select(.status=="completed") | .conclusion' 2>/dev/null)
-    [ -n "$conclusion" ] && break
+    out=$(gh api "repos/{owner}/{repo}/actions/runs/$id" -q 'select(.status=="completed") | .conclusion' 2>/dev/null) \
+      && [[ "$out" =~ ^[a-z_]+$ ]] && { conclusion=$out; break; }
     sleep 30
   done
   [ "$conclusion" = "success" ] && status=0 || status=1
