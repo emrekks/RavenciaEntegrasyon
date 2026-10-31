@@ -296,6 +296,10 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(Array.from(main.querySelectorAll('[role="tab"]')).map(tab => tab.textContent)).toEqual(['İş Takibi', 'Loglar'])
     const categories = container.querySelector('[role="tablist"][aria-label="İşlem kategorileri"]')!
     expect(categories.textContent).not.toContain('Loglar')
+    // The second level is a segment with every category in it: no Diğer menu, no icons.
+    expect(categories.className).toBe('jobs-category-segment')
+    expect(Array.from(categories.querySelectorAll('.jobs-category-segment-label')).map(label => label.textContent)).toEqual(['Tüm İşlemler', 'Sipariş/Kargo', 'Fiyat/Stok', 'Ürün/Yayın', 'Faturalar', 'İadeler'])
+    expect(categories.querySelector('[aria-haspopup], svg')).toBeNull()
     expect(main.compareDocumentPosition(categories) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     await act(async () => { Array.from(main.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => tab.textContent === 'Loglar')!.click() })
