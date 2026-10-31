@@ -16,12 +16,25 @@ public static class InvoiceIssuePolicy
     public const string AdjustmentFlowUnavailableCode = "INVOICE_ADJUSTMENT_FLOW_UNAVAILABLE";
     public const string ExportFlowRequiredCode = "INVOICE_EXPORT_FLOW_REQUIRED";
     public const string RecipientTaxIdInvalidCode = "EFATURAM_RECIPIENT_TAX_ID_INVALID";
+    public const string EInvoiceTargetAliasUnresolvedCode = "EINVOICE_TARGET_ALIAS_UNRESOLVED";
+    public const string EInvoiceTaxpayerConflictCode = "EINVOICE_TAXPAYER_CONFLICT";
+    public const string EInvoiceTaxpayerChangedCode = "EINVOICE_TAXPAYER_STATUS_CHANGED";
 
+    // Invoices stopped before the taxpayer lookup existed keep this code; no new invoice gets it.
     public static readonly InvoiceIssueRefusal EInvoiceRecipient = new(EInvoiceRecipientCode,
-        "Alıcı e-Fatura mükellefi. Bu siparişe e-Arşiv fatura kesilemez; e-Fatura durum sorgusu henüz doğrulanmadığı için otomatik e-Fatura da kapalı. Faturayı E-Faturam portalında e-Fatura olarak düzenleyip panele manuel belge olarak ekleyin.");
+        "Alıcı e-Fatura mükellefi. Bu siparişe e-Arşiv fatura kesilemez; o tarihte otomatik e-Fatura kapalıydı. Önizlemeyi yeniden açın; mükellef sorgusu faturayı e-Fatura olarak hazırlar.");
 
     public static readonly InvoiceIssueRefusal EInvoiceRecipientReview = new(EInvoiceRecipientReviewCode,
-        "Alıcı bir şirket (vergi numarası veya firma unvanı var) ve e-Fatura mükellefi olabilir. Pazaryeri alıcının e-Fatura durumunu bildirmediği için otomatik e-Arşiv fatura kesilmedi. Alıcının e-Fatura mükellefiyetini kontrol edin; faturayı E-Faturam portalında doğru türde (mükellefse e-Fatura, değilse e-Arşiv) düzenleyip panele manuel belge olarak ekleyin.");
+        "Alıcı bir şirket ve E-Faturam e-Fatura mükellef sorgusu yanıt vermedi veya yanıtı doğrulanamadı. Türü bilinmeyen fatura kesilmedi. Birkaç dakika sonra önizlemeyi yeniden açın; sorun sürerse faturayı E-Faturam portalında doğru türde (mükellefse e-Fatura, değilse e-Arşiv) düzenleyip panele manuel belge olarak ekleyin.");
+
+    public static readonly InvoiceIssueRefusal EInvoiceTargetAliasUnresolved = new(EInvoiceTargetAliasUnresolvedCode,
+        "Alıcı e-Fatura mükellefi ancak birden fazla e-Fatura posta kutusu etiketi var ve varsayılan (defaultpk) etiket tek olarak seçilemedi. Fatura kesilmedi; faturayı E-Faturam portalında alıcının istediği etikete e-Fatura olarak düzenleyip panele manuel belge olarak ekleyin.");
+
+    public static readonly InvoiceIssueRefusal EInvoiceTaxpayerConflict = new(EInvoiceTaxpayerConflictCode,
+        "Pazaryeri alıcıyı e-Fatura mükellefi olarak bildirdi, ancak E-Faturam mükellef sorgusu alıcıyı e-Fatura kayıtlı kullanıcı listesinde bulamadı. Kaynaklar çeliştiği için fatura kesilmedi; alıcının durumunu kontrol edip faturayı E-Faturam portalında doğru türde düzenleyin.");
+
+    public static readonly InvoiceIssueRefusal EInvoiceTaxpayerChanged = new(EInvoiceTaxpayerChangedCode,
+        "Faturanın türü, güncel e-Fatura mükellef sorgusunun sonucuyla eşleşmiyor (alıcının mükellefiyeti değişmiş olabilir). Fatura gönderilmedi; önizlemeyi yeniden açıp güncel türle onaylayın.");
 
     public static readonly InvoiceIssueRefusal AdjustmentFlowUnavailable = new(AdjustmentFlowUnavailableCode,
         "İade/düzeltme faturası akışı henüz hazır değil. Orijinal faturaya bağlı yeni mali belge oluşturulmadı; iade faturasını E-Faturam portalında düzenleyin.");
@@ -33,21 +46,18 @@ public static class InvoiceIssuePolicy
     public static InvoiceIssueRefusal? Refusal(string invoiceType, string? currency, string? customerSnapshotJson)
     {
         if (RequiresExportFlow(currency, customerSnapshotJson)) return ExportFlowRequired;
-        // E-Invoice status cannot be read back (the provider's outgoing E-Invoice status path is not
-        // verified), so an E-Invoice recipient is stopped instead of being sent an e-Archive document.
-        if (string.Equals(invoiceType, "TEMELFATURA", StringComparison.Ordinal)) return EInvoiceRecipient;
         return null;
     }
 
     /// <summary>
-    /// <see cref="Refusal(string, string, string)"/> plus the platform-aware recipient check: only Trendyol states
-    /// whether a corporate buyer is an e-Invoice taxpayer, so another platform's corporate buyer is stopped for
-    /// review instead of being sent an e-Archive document that may have to be cancelled and issued again.
+    /// <see cref="Refusal(string, string, string)"/> plus the taxpayer lookup (<see cref="EInvoiceRecipientPolicy"/>):
+    /// its own refusal, or an invoice whose saved type is not the type the lookup asks for now.
     /// </summary>
-    public static InvoiceIssueRefusal? Refusal(string invoiceType, string? currency, string? customerSnapshotJson, string? platformCode, string? invoiceAddressSnapshotJson)
+    public static InvoiceIssueRefusal? Refusal(string invoiceType, string? currency, string? customerSnapshotJson, EInvoiceRecipientDecision recipient)
     {
         if (Refusal(invoiceType, currency, customerSnapshotJson) is { } refusal) return refusal;
-        return InvoiceAmounts.RequiresEInvoiceRecipientReview(platformCode, customerSnapshotJson, invoiceAddressSnapshotJson) ? EInvoiceRecipientReview : null;
+        if (recipient.Refusal is { } recipientRefusal) return recipientRefusal;
+        return string.Equals(invoiceType, recipient.InvoiceType, StringComparison.Ordinal) ? null : EInvoiceTaxpayerChanged;
     }
 
     public const string LineVatRateUnknownCode = "ORDER_LINE_VAT_RATE_UNKNOWN";
@@ -147,6 +157,9 @@ public static class InvoiceIssuePolicy
     {
         EInvoiceRecipientCode => EInvoiceRecipient.Message,
         EInvoiceRecipientReviewCode => EInvoiceRecipientReview.Message,
+        EInvoiceTargetAliasUnresolvedCode => EInvoiceTargetAliasUnresolved.Message,
+        EInvoiceTaxpayerConflictCode => EInvoiceTaxpayerConflict.Message,
+        EInvoiceTaxpayerChangedCode => EInvoiceTaxpayerChanged.Message,
         ExportFlowRequiredCode => ExportFlowRequired.Message,
         AdjustmentFlowUnavailableCode => AdjustmentFlowUnavailable.Message,
         LineVatRateUnknownCode => LineVatRateUnknown.Message,

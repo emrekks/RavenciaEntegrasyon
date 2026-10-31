@@ -8,7 +8,10 @@ describe('invoice failure reasons', () => {
     expect(invoiceFailureReason('INVOICE_ADJUSTMENT_FLOW_UNAVAILABLE')).toContain('İade/düzeltme')
     expect(invoiceFailureReason('EFATURAM_RECIPIENT_TAX_ID_INVALID')).toContain('kontrol hanesi')
     expect(invoiceFailureGuidance('EINVOICE_RECIPIENT_REQUIRES_EFATURA')).toContain('manuel fatura')
-    expect(invoiceFailureReason('EINVOICE_RECIPIENT_REVIEW_REQUIRED')).toContain('e-Fatura mükellefi olabilir')
+    expect(invoiceFailureReason('EINVOICE_RECIPIENT_REVIEW_REQUIRED')).toContain('mükellef sorgusu yapılamadı')
+    expect(invoiceFailureReason('EINVOICE_TARGET_ALIAS_UNRESOLVED')).toContain('etiket')
+    expect(invoiceFailureReason('EINVOICE_TAXPAYER_CONFLICT')).toContain('kesilmedi')
+    expect(invoiceFailureReason('EINVOICE_TAXPAYER_STATUS_CHANGED')).toContain('gönderilmedi')
     expect(invoiceFailureGuidance('EINVOICE_RECIPIENT_REVIEW_REQUIRED')).toContain('manuel fatura')
   })
 
