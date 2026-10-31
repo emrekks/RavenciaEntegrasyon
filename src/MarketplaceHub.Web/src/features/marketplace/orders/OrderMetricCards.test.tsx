@@ -7,17 +7,17 @@ afterEach(cleanup)
 const metric = (value: number | undefined, loading = false) => ({ value, loading })
 
 describe('order summary cards', () => {
-  it('shows the orders taken into processing next to the new ones, five cards in one row', () => {
+  it('shows the orders taken into processing next to the new ones, five cards in one row, a title and a count each', () => {
     const { host } = render(<OrderMetricCards newOrders={metric(12)} processing={metric(1234)} late={metric(2)} shipped={metric(40)} uninvoiced={metric(5)} />)
 
     const row = host.querySelector('.rr-metrics.rr-metrics-5')!
-    const cards = Array.from(row.querySelectorAll('article')).map(card => [card.querySelector('small')?.textContent, card.querySelector('strong')?.textContent, card.querySelector('span')?.textContent])
+    const cards = Array.from(row.querySelectorAll('article')).map(card => [card.querySelector('small')?.textContent, card.querySelector('strong')?.textContent, card.querySelector(':scope > span')])
     expect(cards).toEqual([
-      ['Yeni Sipariş', '12', 'işleme alınmayı bekliyor'],
-      ['İşleme Alınan', (1234).toLocaleString('tr-TR'), 'kargoya verilmeyi bekliyor'],
-      ['Geciken', '2', 'kargoya verme süresi doldu'],
-      ['Kargoda', '40', 'alıcıya doğru yolda'],
-      ['Fatura Bekleyen', '5', 'kesilmesi gereken fatura']
+      ['Yeni Sipariş', '12', null],
+      ['İşleme Alınan', (1234).toLocaleString('tr-TR'), null],
+      ['Geciken', '2', null],
+      ['Kargoda', '40', null],
+      ['Fatura Bekleyen', '5', null]
     ])
   })
 
