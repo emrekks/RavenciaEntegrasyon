@@ -7948,6 +7948,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         {
             await using (var cleanupDb = fixture.CreateContext())
             {
+                await cleanupDb.ChannelPriceHistory.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
                 await cleanupDb.StockLedgerEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
                 await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
                 await cleanupDb.ReferenceSnapshots.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
