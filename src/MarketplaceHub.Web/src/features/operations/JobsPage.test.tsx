@@ -39,6 +39,12 @@ vi.mock('../../shared/api', () => {
     ]
     if (path.startsWith('/jobs/metrics')) return []
     if (path.startsWith('/price-stock-send-log?')) return apiState.sendLog
+    if (path === '/price-stock-monitor') return { generatedAt: hoursAgo(0), connections: [{
+      connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', status: 'ACTIVE', masterSwitchOn: true, priceWriteEnabled: true, stockWriteEnabled: true,
+      automaticWritesOpen: true, lastSuccessfulPushAt: hoursAgo(1), queuedJobs: 2, waitingForOrderRead: 0, failedPushes7d: 0, manualReviewPushes: 0, invalidOffers: 0,
+      notFoundLinks: 0, rejectedLinks: 0, latestFailure: null, invalidOfferSamples: [], orderSource: 'WEBHOOK', lastNotificationAt: hoursAgo(1), orderReadIntervalSeconds: 900
+    }] }
+    if (path === '/price-stock-monitor/emergency-stop') return { connectionsStopped: 1, policiesDisabled: 2, jobsCancelled: 3 }
     if (path === '/jobs/job-sent') return { job: job('job-sent', 'PRICE_INVENTORY_SYNC', 'SUCCEEDED', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] }
     if (path.startsWith('/jobs/page?')) {
       const params = new URLSearchParams(path.slice(path.indexOf('?') + 1))
@@ -264,6 +270,23 @@ describe('JobsPage platform filter', () => {
   })
 })
 
+describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
+  it('shows the sending health per connection, its explanation behind the help mark, and keeps the job list unread', async () => {
+    await renderPage('/jobs?kategori=siparis')
+    const jobReads = pageRequests().length
+    const tab = Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-label="İşlem Takibi görünümü"] [role="tab"]')).find(item => item.textContent === 'API Sağlık')!
+    await act(async () => { tab.click() })
+    for (let tick = 0; tick < 200 && !container.querySelector('.psm-row:not(.is-head)'); tick++) await settle()
+
+    expect(currentSearch).toBe('?kategori=siparis&sekme=api-saglik')
+    expect(container.querySelector('#psm-title')!.textContent).toContain('Fiyat ve Stok Gönderimi')
+    expect(container.querySelector('.psm-head p')).toBeNull()
+    expect(container.querySelector('.psm-row:not(.is-head)')!.textContent).toContain('Ravencia Trendyol')
+    expect(container.querySelector('.jobs-category-segment, [aria-label="İşlem kategorileri"]')).toBeNull()
+    expect(pageRequests().length).toBe(jobReads)
+  })
+})
+
 describe('JobsPage Loglar tab (price/stock send log)', () => {
   function logRequests() {
     return apiState.calls.filter(path => path.startsWith('/price-stock-send-log?')).map(path => new URLSearchParams(path.slice(path.indexOf('?') + 1)))
@@ -293,7 +316,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
   it('is a main tab beside İş Takibi, above the category tabs, and İş Takibi brings the category back', async () => {
     await renderPage('/jobs?kategori=siparis')
     const main = container.querySelector('[role="tablist"][aria-label="İşlem Takibi görünümü"]')!
-    expect(Array.from(main.querySelectorAll('[role="tab"]')).map(tab => tab.textContent)).toEqual(['İş Takibi', 'Loglar'])
+    expect(Array.from(main.querySelectorAll('[role="tab"]')).map(tab => tab.textContent)).toEqual(['İş Takibi', 'Loglar', 'API Sağlık'])
     const categories = container.querySelector('[role="tablist"][aria-label="İşlem kategorileri"]')!
     expect(categories.textContent).not.toContain('Loglar')
     // The second level is a segment with every category in it: no Diğer menu, no icons.

@@ -1,8 +1,7 @@
-/* G: automatic price/stock pipeline monitor on the integrations page. */
-.psm-panel { display: grid; gap: 12px; margin-top: 20px; padding: 16px; border: 1px solid var(--rv-color-border); border-radius: 14px; background: var(--rv-color-surface); }
-.psm-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.psm-head h2 { margin: 0; font-size: 16px; color: var(--rv-color-ink); }
-.psm-head p { margin: 4px 0 0; font-size: 13px; color: var(--rv-color-muted); max-width: 720px; }
+/* İşlem Takibi › API Sağlık: the automatic price/stock pipeline per connection, a card like the page's other blocks. */
+.psm-panel { display: grid; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--rv-color-border); border-radius: 12px; background: var(--rv-color-surface); }
+.psm-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.psm-head h2 { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: 16px; color: var(--rv-color-ink); }
 .psm-panel button.psm-stop { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; border: 1px solid var(--rv-color-danger); background: var(--rv-color-danger); color: #fff; font-weight: 600; white-space: nowrap; }
 .psm-panel button.psm-stop:disabled { opacity: .55; }
 .psm-table { display: grid; gap: 8px; }

@@ -21,7 +21,6 @@ import { syncPolicyHealthPresentation } from '../sync-policy-health'
 import { SyncPolicyStalledAlert } from '../sync-policy-stalled-alert'
 import { connectionDataResetGroups, connectionDataResetOptions, connectionFullResetSupported, type ConnectionDataResetScope } from '../connection-data-reset'
 import { ConnectionFullResetPanel } from './ConnectionFullResetPanel'
-import { PriceStockMonitorPanel } from './PriceStockMonitorPanel'
 import { shopifyStoreDisplayName } from '../shopify-store-name'
 import { shouldLoadConnectionCapabilities } from '../connection-capability-query'
 import { viewTabLabel } from '../../../shared/view-tabs'
@@ -265,7 +264,6 @@ export function IntegrationsPage() {
       <div className="integration-filter-summary">{filterLabel}<span>{visibleConnections.length} bağlantı</span></div>
       <div className="integration-grid">{visibleConnections.map(item => <ReferenceConnectionCard item={item} onFeedback={setFeedback} onSaved={() => { void client.invalidateQueries({ queryKey: ['connections'] }); void client.invalidateQueries({ queryKey: ['orders'] }); void client.invalidateQueries({ queryKey: ['dashboard-bootstrap'] }); void client.invalidateQueries({ queryKey: ['dashboard'] }) }} key={item.id} />)}</div>
       {!visibleConnections.length && <Empty>Bu filtreye uyan bağlantı bulunmuyor.</Empty>}
-      <PriceStockMonitorPanel onFeedback={setFeedback} />
       {createOpen && <div className="integration-modal-backdrop" role="presentation" onMouseDown={() => setCreateOpen(false)}><DialogSurface as="form" onClose={() => setCreateOpen(false)} className="integration-modal im-sade" aria-label="Yeni bağlantı" onSubmit={submitCreate} onMouseDown={event => event.stopPropagation()}>
         <div className="integration-modal-header"><div><h2>Yeni Bağlantı</h2><p>Platformu seçin, mağaza ve API bilgilerini girin.</p></div><button type="button" className="modal-close" onClick={() => setCreateOpen(false)} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></div>
         <div className="im-platforms" role="radiogroup" aria-label="Platform">{([['TRENDYOL', 'Trendyol'], ['SHOPIFY', 'Shopify'], ['HEPSIBURADA', 'Hepsiburada'], ['N11', 'N11'], ['PAZARAMA', 'Pazarama'], ['PTTAVM', 'PTT AVM'], ['TRENDYOL_EFATURAM', 'E-Faturam']] as const).map(([code, name]) => <button type="button" role="radio" aria-checked={createPlatform === code} key={code} className={createPlatform === code ? 'is-on' : ''} onClick={() => setCreatePlatform(code)}><img className={platformLogoClass(code)} src={platformLogoSource(code) ?? '/platforms/trendyol.webp'} alt="" aria-hidden="true" /><span>{name}</span></button>)}</div><div className="im-fields">

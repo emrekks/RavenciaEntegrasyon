@@ -16,12 +16,12 @@ import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visi
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
 import { jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
-import { jobPageSizes, jobsLogsTabOpen, readJobsViewState, withJobsLogsTab, writeJobsViewState, type JobStatusChip, type JobsViewState } from './jobs-url-state'
+import { jobPageSizes, jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState, type JobsMainTab, type JobStatusChip, type JobsViewState } from './jobs-url-state'
+import type { IntegrationFeedback } from '../marketplace/shared'
 
-// The send log (Loglar tab) loads with its own chunk the first time the tab opens.
+// The send log (Loglar) and the sending health (API Sağlık) load with their own chunks the first time their tab opens.
 const PriceStockSendLog = lazy(() => import('./PriceStockSendLog'))
-const logsTabValue = 'LOGS'
-const jobsTabValue = 'JOBS'
+const PriceStockMonitorPanel = lazy(() => import('../marketplace/integrations/PriceStockMonitorPanel').then(module => ({ default: module.PriceStockMonitorPanel })))
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Faturam' : marketplacePlatformLabel(code)
@@ -407,10 +407,13 @@ export function JobsPage({ me }: { me: Me }) {
   const statusChips = view.chips
   const platform = jobPlatformFromSearch(searchParams.get('platform'))
   const updateView = (patch: Partial<JobsViewState>) => setSearchParams(current => writeJobsViewState(current, patch), { replace: true })
-  // Two main tabs sit above the page body: İş Takibi (the job list with its category tabs) and Loglar (the price/stock
-  // send log). Going back to İş Takibi reopens the category the address still holds.
-  const logsOpen = jobsLogsTabOpen(searchParams)
-  const setMainTab = (next: string) => setSearchParams(current => withJobsLogsTab(current, next === logsTabValue), { replace: true })
+  // Three main tabs sit above the page body: İş Takibi (the job list with its category tabs), Loglar (the price/stock
+  // send log) and API Sağlık (the price/stock sending health per connection, with the emergency stop). Going back to İş
+  // Takibi reopens the category the address still holds; the job list is not read while another tab is open.
+  const mainTab = jobsMainTab(searchParams)
+  const listHidden = mainTab !== 'jobs'
+  const setMainTab = (next: string) => setSearchParams(current => withJobsMainTab(current, next as JobsMainTab), { replace: true })
+  const showPanelFeedback = (next: IntegrationFeedback) => setFeedback({ message: next.message, tone: next.kind === 'error' ? 'danger' : next.kind, context: { ...next.context, title: next.title ?? next.context?.title } })
   const setCategory = (next: string) => updateView({ category: next as JobCategory })
   const setStatus = (next: '' | JobStatus) => updateView({ status: next })
   const setSearch = (next: string) => updateView({ search: next })
@@ -456,7 +459,7 @@ export function JobsPage({ me }: { me: Me }) {
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
     // The job list is not read while the Loglar tab shows the send log.
-    enabled: !logsOpen,
+    enabled: !listHidden,
     refetchInterval: query => jobListPollInterval(query.state.data?.pages.length ?? 0)
   })
   // With older pages loaded the list itself stops polling; its first page is polled on its own and put in front.
@@ -464,7 +467,7 @@ export function JobsPage({ me }: { me: Me }) {
   const listHead = useQuery({
     queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, platform],
     queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform })}`),
-    enabled: loadedServerPages > 1 && !logsOpen,
+    enabled: loadedServerPages > 1 && !listHidden,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
   useEffect(() => {
@@ -540,8 +543,8 @@ export function JobsPage({ me }: { me: Me }) {
   const moreOnServer = Boolean(list.hasNextPage)
   // A ?sayfa=N link: read server pages until page N has rows (or the server has no more).
   useEffect(() => {
-    if (!logsOpen && shouldLoadTowardsPage(pageNumber, totalPages, moreOnServer, loadedServerPages, list.isFetching)) void list.fetchNextPage()
-  }, [logsOpen, pageNumber, totalPages, moreOnServer, loadedServerPages, list])
+    if (!listHidden && shouldLoadTowardsPage(pageNumber, totalPages, moreOnServer, loadedServerPages, list.isFetching)) void list.fetchNextPage()
+  }, [listHidden, pageNumber, totalPages, moreOnServer, loadedServerPages, list])
   // Reads the next server page; from the last screen page the view moves on to the newly loaded rows.
   const loadMoreJobs = async () => {
     if (!moreOnServer || list.isFetchingNextPage) return
@@ -580,7 +583,7 @@ export function JobsPage({ me }: { me: Me }) {
         <h1>İşlem Takibi</h1>
         <p className="rv-page-lead">Arka plan işlemlerinin durumunu, hatalarını ve kuyruk performansını izleyin.</p>
       </div>
-      {!logsOpen && <div className="jobs-reference-heading-actions">
+      {!listHidden && <div className="jobs-reference-heading-actions">
         <div className="jobs-reference-range-wrap">
           <button type="button" className="jobs-reference-range" aria-expanded={timeRangeOpen} onClick={() => setTimeRangeOpen(value => !value)}><JobsIcon name="calendar" />{timeRangeLabel(timeRange)}<JobsIcon name="chevron-down" /></button>
           {timeRangeOpen && <div className="jobs-reference-range-menu" role="menu" aria-label="Zaman aralığı">
@@ -597,11 +600,12 @@ export function JobsPage({ me }: { me: Me }) {
         </div>
       </div>}
     </div>
-    <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={logsOpen ? logsTabValue : jobsTabValue} onChange={setMainTab} items={[{ value: jobsTabValue, label: viewTabLabel('processing', 'İş Takibi') }, { value: logsTabValue, label: viewTabLabel('log', 'Loglar') }]} />
-    {!logsOpen && <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => `${jobTitle(jobType)} · ${jobPresentation(jobType).action}`} platform={platform} />}
+    <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İş Takibi') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
+    {!listHidden && <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => `${jobTitle(jobType)} · ${jobPresentation(jobType).action}`} platform={platform} />}
     <div className="jobs-reference-canvas">
-      {!logsOpen && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
-      {logsOpen ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense> : <>
+      {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
+      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
+        : mainTab === 'health' ? <Suspense fallback={<Busy text="Gönderim durumu yükleniyor…" />}><PriceStockMonitorPanel onFeedback={showPanelFeedback} /></Suspense> : <>
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
           <span {...statusChipProps('success')}><JobStateGlyph tone="success" />Başarılı <strong>{successCount.count ?? 0}</strong></span>
@@ -637,6 +641,6 @@ export function JobsPage({ me }: { me: Me }) {
       </>}
     </div>
      {selectedId && <JobDetailDrawer selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}
-     {feedback && <NoticeToast key={`${feedback.tone}:${feedback.message}`} kind={feedback.tone === 'danger' ? 'error' : feedback.tone} message={feedback.message} onClose={() => setFeedback(null)} durationMs={5500} />}
+     {feedback && <NoticeToast key={`${feedback.tone}:${feedback.message}`} kind={feedback.tone === 'danger' ? 'error' : feedback.tone} title={feedback.context?.title} message={feedback.message} onClose={() => setFeedback(null)} durationMs={5500} />}
   </section>
 }

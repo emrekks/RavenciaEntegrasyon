@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll } from '../../../shared/api'
-import { Busy, ErrorBox, useConfirmDialog } from '../../../shared/components'
+import { Busy, ErrorBox, FieldHelp, useConfirmDialog } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { appendNotification, failureNotice, notificationPlatformName } from '../../../shared/notifications'
 import { scopedStorageKey } from '../../../shared/storage-scope'
@@ -40,14 +40,14 @@ function notifyNewProblems(rows: PriceStockConnectionMonitor[]) {
       code: row.latestFailure?.errorCode ?? null,
       jobId: row.latestFailure?.jobId ?? null,
       record: true,
-      target: { href: '/integrations', label: 'Gönderim Durumuna Git' }
+      target: { href: '/jobs?sekme=api-saglik', label: 'API Sağlık’a Git' }
     })
   }
   if (changed) writeNotified(notified)
 }
 
-// G: per connection, whether automatic price/stock writes are on, the last successful push, the queue, failed and
-// partial pushes, offers held back as invalid, and the listing health counts; plus the emergency stop.
+// İşlem Takibi › API Sağlık: per connection, whether automatic price/stock writes are on, the last successful push, the
+// queue, failed and partial pushes, offers held back as invalid, and the listing health counts; plus the emergency stop.
 export function PriceStockMonitorPanel({ onFeedback }: { onFeedback: (feedback: IntegrationFeedback) => void }) {
   const client = useQueryClient()
   const monitor = useQuery({ queryKey: ['price-stock-monitor'], queryFn: () => hubPoll<PriceStockMonitor>('/price-stock-monitor'), refetchInterval: 60_000, refetchIntervalInBackground: false })
@@ -68,7 +68,7 @@ export function PriceStockMonitorPanel({ onFeedback }: { onFeedback: (feedback: 
     if (accepted) stop.mutate()
   }
   return <section className="psm-panel" aria-labelledby="psm-title">{confirmDialog}
-    <div className="psm-head"><div><h2 id="psm-title">Fiyat ve Stok Gönderimi</h2><p>Panel ana stoktur. Otomatik gönderim yalnız ana anahtar ile fiyat ve stok yazma akışları açıkken çalışır; değişiklik, bağlantının sipariş okuması tamamlandıktan (webhook sağlıklıysa bildirimler alındıktan) sonra gönderilir.</p></div>
+    <div className="psm-head"><h2 id="psm-title">Fiyat ve Stok Gönderimi<FieldHelp label="Fiyat ve Stok Gönderimi">Panel ana stoktur. Otomatik gönderim yalnız ana anahtar ile fiyat ve stok yazma akışları açıkken çalışır; değişiklik, bağlantının sipariş okuması tamamlandıktan (webhook sağlıklıysa bildirimler alındıktan) sonra gönderilir.</FieldHelp></h2>
       <button type="button" className="psm-stop" disabled={stop.isPending || !anyOpen} title={anyOpen ? undefined : 'Açık otomatik yazma yok.'} onClick={() => void confirmStop()}>{stop.isPending ? 'Durduruluyor…' : 'Tüm Otomatik Yazmaları Durdur'}</button>
     </div>
     {monitor.isLoading ? <Busy text="Gönderim durumu yükleniyor…" /> : monitor.isError ? <ErrorBox error={monitor.error} onRetry={() => void monitor.refetch()} /> : !rows?.length ? <p className="psm-empty">İzlenecek pazaryeri bağlantısı yok.</p> : <div className="psm-table" role="table" aria-label="Bağlantı bazında fiyat ve stok gönderimi">
