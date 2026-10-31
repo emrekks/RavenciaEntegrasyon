@@ -63,6 +63,74 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(799.90m, (await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == equal.Value.Id)).SalePrice);
     }
 
+    // "Özel Fiyat" is stored per offer: a create or update that carries it stores it, one without it (null) keeps the
+    // stored choice, a choice alone (same prices) is stored without a new version or price, and the product view the
+    // editor and the quick edit read carries it per channel. Null stays null until someone chooses.
+    [PostgreSqlFact]
+    public async Task ChannelOffer_StoresThePanelPriceChoiceAndTheProductViewCarriesIt()
+    {
+        var tenant = NewTenant("offer-follows-panel");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var hepsiburada = NewConnection(tenant, "HEPSIBURADA");
+        var (product, variant) = NewVariant(tenant, "FOLLOW-1", "8690000000811");
+        var (_, second) = NewVariant(tenant, "FOLLOW-2", "8690000000812", product.Id);
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.AddRange(trendyol, hepsiburada);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(variant, second);
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var service = new InventoryService(db, new CursorCodec(new EphemeralDataProtectionProvider(), TimeProvider.System), fixture.TimeProvider, new ConfigurationBuilder().Build());
+        var userId = Guid.CreateVersion7();
+        var custom = await service.UpsertOfferAsync(tenant.Id, userId, new(trendyol.Id, variant.Id, 999m, 899m, "TRY", 20m, "INCLUDED", "HALF_EVEN", 0m, "ACTIVE", "Özel fiyat", FollowsPanelPrice: false), CancellationToken.None);
+        Assert.True(custom.Succeeded, custom.Error?.Message);
+        Assert.False(custom.Value!.FollowsPanelPrice);
+        var unchosen = await service.UpsertOfferAsync(tenant.Id, userId, new(hepsiburada.Id, variant.Id, 500m, 500m, "TRY", 20m, "INCLUDED", "HALF_EVEN", 0m, "ACTIVE", "İlk fiyat"), CancellationToken.None);
+        Assert.Null(unchosen.Value!.FollowsPanelPrice);
+
+        // A price edit without the choice keeps the stored one.
+        var edited = await service.UpdateOfferAsync(tenant.Id, userId, custom.Value.Id, custom.Value.Version, new(1099m, 999m, "TRY", 20m, "INCLUDED", "HALF_EVEN", 0m, "ACTIVE", "Fiyat"), CancellationToken.None);
+        Assert.True(edited.Succeeded, edited.Error?.Message);
+        Assert.False(edited.Value!.FollowsPanelPrice);
+        Assert.Equal(999m, edited.Value.SalePrice);
+
+        // The choice alone: stored, with the offer's version and price version as they were.
+        var followed = await service.UpdateOfferAsync(tenant.Id, userId, edited.Value.Id, edited.Value.Version, new(1099m, 999m, "TRY", 20m, "INCLUDED", "HALF_EVEN", 0m, "ACTIVE", "Ana fiyatla satılır", FollowsPanelPrice: true), CancellationToken.None);
+        Assert.True(followed.Succeeded, followed.Error?.Message);
+        Assert.True(followed.Value!.FollowsPanelPrice);
+        Assert.Equal(edited.Value.Version, followed.Value.Version);
+        Assert.Equal(edited.Value.PriceVersion, followed.Value.PriceVersion);
+        var stored = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == custom.Value.Id);
+        Assert.True(stored.FollowsPanelPrice);
+        Assert.Equal(999m, stored.SalePrice);
+
+        // The choice for a connection's offers without a price: the variant without an offer there gets none.
+        var set = await service.SetOfferPanelFollowAsync(tenant.Id, new(hepsiburada.Id, [variant.Id, second.Id], false), CancellationToken.None);
+        Assert.True(set.Succeeded, set.Error?.Message);
+        Assert.Equal(1, set.Value!.UpdatedCount);
+        var hepsiburadaOffer = await db.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == unchosen.Value.Id);
+        Assert.False(hepsiburadaOffer.FollowsPanelPrice);
+        Assert.Equal(unchosen.Value.Version, hepsiburadaOffer.Version);
+        Assert.Equal(500m, hepsiburadaOffer.SalePrice);
+        Assert.False(await db.ChannelOffers.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.VariantId == second.Id));
+        Assert.Equal(0, (await service.SetOfferPanelFollowAsync(tenant.Id, new(hepsiburada.Id, [variant.Id], false), CancellationToken.None)).Value!.UpdatedCount);
+        Assert.False((await service.SetOfferPanelFollowAsync(tenant.Id, new(hepsiburada.Id, [], false), CancellationToken.None)).Succeeded);
+        // Another tenant's connection is refused.
+        Assert.False((await service.SetOfferPanelFollowAsync(Guid.CreateVersion7(), new(hepsiburada.Id, [variant.Id], true), CancellationToken.None)).Succeeded);
+
+        await using var readDb = fixture.CreateContext();
+        var catalog = new CatalogService(readDb, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new Microsoft.Extensions.Caching.Memory.MemoryCache(new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()));
+        var view = (await catalog.GetProductAsync(tenant.Id, product.Id, CancellationToken.None)).Value!;
+        var statuses = view.Variants.Single(x => x.Id == variant.Id).PlatformStatuses!;
+        Assert.True(statuses.Single(x => x.ConnectionId == trendyol.Id).FollowsPanelPrice);
+        Assert.False(statuses.Single(x => x.ConnectionId == hepsiburada.Id).FollowsPanelPrice);
+        Assert.Null(view.Variants.Single(x => x.Id == second.Id).PlatformStatuses!.Single(x => x.ConnectionId == trendyol.Id).FollowsPanelPrice);
+    }
+
     // K1: a manual adjustment reaches every connection with an ACTIVE offer for the variant.
     [PostgreSqlFact]
     public async Task ManualStockAdjustment_QueuesADispatchForEveryConnectionSellingTheVariant()
