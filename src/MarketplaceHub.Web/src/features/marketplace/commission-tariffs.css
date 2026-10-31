@@ -112,6 +112,12 @@
 /* The product with its picture. */
 .app-shell.stitch-shell main .commission-tariffs .commission-product-cell { display: flex; align-items: flex-start; gap: 12px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-product-cell > span { display: grid; gap: 2px; min-width: 0; }
+/* The photo is a button that opens it full size, the frame and the size of the photo it holds. */
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom { display: block; flex: none; width: auto; min-width: 0; height: auto; min-height: 0; margin: 0; padding: 0; background: none; border: 0; border-radius: 7px; box-shadow: none; cursor: zoom-in; }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom > .commission-product-image { display: block; transition: border-color 140ms ease, filter 140ms ease; }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom:hover > .commission-product-image { border-color: var(--rv-color-border-strong); filter: brightness(1.04); }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom:active { scale: none; }
+.app-shell.stitch-shell main .commission-tariffs .commission-product-zoom:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-product-image { display: grid; flex: none; place-items: center; width: 64px; aspect-ratio: 2 / 3; height: auto; object-fit: cover; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 14px; font-style: normal; font-weight: 600; }
 /* A band's switch: off grey, on in the primary colour, the knob sliding across. */
 .app-shell.stitch-shell main .commission-tariffs .commission-switch { display: flex; align-items: center; justify-content: center; gap: 8px; justify-self: stretch; width: 100%; min-height: 0; height: auto; margin-top: 6px; padding: 7px 0 0; text-transform: none; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; color: var(--rv-color-muted); font-size: 12px; font-style: normal; font-weight: 600; white-space: nowrap; border-top: 1px solid var(--rv-color-border); }

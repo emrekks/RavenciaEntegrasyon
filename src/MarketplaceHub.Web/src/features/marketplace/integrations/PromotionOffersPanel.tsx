@@ -5,8 +5,7 @@ import { Busy, ErrorBox, useConfirmDialog } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
-import { thumbnailUrl } from '../../../shared/product-thumbnail'
-import { amountRange, FilterActions, FilterField, FilterRange, priceRange, rateText } from './CommissionTariffsPanel'
+import { amountRange, FilterActions, FilterField, FilterRange, priceRange, ProductImage, rateText } from './CommissionTariffsPanel'
 import { onCost, profitText, ProfitBadge, type UnitProfitCosts } from './unit-profit'
 import { UiIcon } from '../../../shared/components'
 import '../commission-tariffs.css'
@@ -81,7 +80,7 @@ function PriceCard({ price, label, highlight }: { price: PromotionPrice; label?:
 
 function ProductCell({ row, detail, code }: { row: Product; detail: ReactNode; code: ReactNode }) {
   return <div className="commission-product-cell">
-    {row.imageUrl ? <img src={thumbnailUrl(row.imageUrl)} alt="" loading="lazy" className="commission-product-image" /> : <i className="commission-product-image" aria-hidden="true">{(row.productName ?? '?').slice(0, 1)}</i>}
+    <ProductImage url={row.imageUrl} title={row.productName ?? '—'} initial={(row.productName ?? '?').slice(0, 1)} />
     <span>
       <span className="promotion-product-name">{row.productName ?? '—'}</span>
       <small>{detail}</small>
