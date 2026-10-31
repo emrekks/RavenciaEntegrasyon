@@ -18,6 +18,10 @@ describe('product editor state', () => {
     expect(editorDataStamp([{ ...base[0], onHand: 5, inventoryVersion: 6 }])).not.toBe(stamp)
     expect(editorDataStamp([{ ...base[0], platformStatuses: [{ connectionId: 'c1', offerId: 'o1', offerVersion: 3 }, base[0].platformStatuses[1]] }])).not.toBe(stamp)
     expect(editorDataStamp([{ ...base[0], platformStatuses: [base[0].platformStatuses[0], { connectionId: 'c2', offerId: 'o2', offerVersion: 1 }] }])).not.toBe(stamp)
+    // The "Özel Fiyat" choice is stored without a new offer version.
+    const followed = editorDataStamp([{ ...base[0], platformStatuses: [{ ...base[0].platformStatuses[0], followsPanelPrice: true }, base[0].platformStatuses[1]] }])
+    expect(followed).not.toBe(stamp)
+    expect(editorDataStamp([{ ...base[0], platformStatuses: [{ ...base[0].platformStatuses[0], followsPanelPrice: false }, base[0].platformStatuses[1]] }])).not.toBe(followed)
   })
 
   it('sends stock only for edited rows, against the stock loaded into the form', () => {

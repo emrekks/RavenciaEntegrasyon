@@ -863,6 +863,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("char(3)");
 
+                    b.Property<bool?>("FollowsPanelPrice")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("LastPriceHash")
                         .HasColumnType("text");
 

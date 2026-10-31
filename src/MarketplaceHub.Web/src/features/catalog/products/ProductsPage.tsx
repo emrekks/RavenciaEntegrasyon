@@ -20,7 +20,7 @@ import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFi
 import { productImportConnection, singleProductLookupLabel } from '../product-import-platforms'
 import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { productPlatformFilterGroups } from '../product-platform-filter'
-import { channelOffer, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
+import { channelOffer, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
 import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
@@ -156,13 +156,29 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const channelColumns = priceColumns.filter(column => column.id !== PANEL_PRICE_CHOICE)
   const showStockColumn = mode !== 'price'; const showPriceColumns = mode !== 'stock'
   // "Özel Fiyat" per marketplace, as in the product editor: unticked, the marketplace sells at the panel price and a
-  // panel price saved here is written to its offers too. The first state is read from the offers once the products
-  // are in (see initialCustomChannels); a marketplace not read yet counts as ticked, so nothing is overwritten.
+  // panel price saved here is written to its offers too. The first state is each offer's stored choice, else what its
+  // prices say (see initialCustomChannels); a marketplace not read yet counts as ticked, so nothing is overwritten.
   const [derivedCustom, setDerivedCustom] = useState<Record<string, boolean> | null>(() => variants.length ? initialCustomChannels(variants, priceColumns) : null)
   if (derivedCustom == null && variants.length) setDerivedCustom(initialCustomChannels(variants, priceColumns))
   const [customOverrides, setCustomOverrides] = useState<Record<string, boolean>>({})
   const customChannels: Record<string, boolean> = Object.fromEntries(channelColumns.map(column => [column.id, customOverrides[column.id] ?? derivedCustom?.[column.id] ?? true]))
-  const setCustomChannel = (connectionId: string, custom: boolean) => setCustomOverrides(current => ({ ...current, [connectionId]: custom }))
+  // A switch is saved at once, as a price cell is: the choice goes to every offer of this window's variants on that
+  // marketplace (no price changes, nothing goes to the marketplace). A refused save puts the switch back.
+  async function setCustomChannel(connectionId: string, custom: boolean) {
+    const previous = customChannels[connectionId]
+    setCustomOverrides(current => ({ ...current, [connectionId]: custom }))
+    const variantIds = panelFollowChoiceVariantIds(variants.map(item => item.variant), connectionId, !custom)
+    if (!variantIds.length) return
+    try {
+      await hubApi('/channel-offers/panel-price-follow', { method: 'PUT', body: JSON.stringify({ connectionId, variantIds, followsPanelPrice: !custom }) })
+      await onChanged().catch(() => undefined)
+    } catch (error) {
+      setCustomOverrides(current => ({ ...current, [connectionId]: previous }))
+      const label = channelColumns.find(column => column.id === connectionId)?.label ?? 'Pazaryeri'
+      const message = `${label} Özel Fiyat seçimi kaydedilemedi: ${error instanceof Error ? error.message : 'beklenmeyen hata.'}`
+      setNotice(`Başarısız: ${message}`); onResult?.('Özel Fiyat Kaydedilemedi', message, 'error')
+    }
+  }
   const followerColumns = panelFollowerColumns(priceColumns, customChannels)
   // A marketplace that takes no list price shows only Satış Fiyatı; its offer's list price follows the sale price.
   const showListPrice = priceConnectionId === PANEL_PRICE_CHOICE || channelTakesListPrice(connections.find(connection => connection.id === priceConnectionId)?.platformCode)
@@ -242,7 +258,8 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
               if (target.kind === 'blocked') throw new Error(target.reason)
               const prices = quickEditOfferPrices(target.kind === 'update' ? target.offer : {}, list, sale)
               if (!prices.ok) throw new Error(prices.message)
-              const body = quickPriceBody(target, variant, prices, 'Toplu ürün fiyat düzenleme')
+              // The marketplace's "Özel Fiyat" switch is stored with the price: ticked keeps its own, unticked follows the panel.
+              const body = quickPriceBody(target, variant, prices, 'Toplu ürün fiyat düzenleme', !customChannels[priceConnectionId])
               if (target.kind === 'update') await hubApi(`/channel-offers/${target.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.offerVersion}"` }, body: JSON.stringify(body) })
               else await sendWithVersionedIdempotencyKey(offerCreateKey(variant.id), key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
               if (prices.saleDefaulted) saleDefaulted.push({ sku: variant.sku, currency: variant.currency || 'TRY' })
@@ -290,7 +307,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           const groupSelection = variantGroupSelectionState(items.map(item => item.variant.id), selectedSet)
           const groupLabel = colorLabels[color] || formatCatalogOptionLabel(color)
           return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && <div className="rr-qtable-wrap">
-            {showPriceColumns && channelColumns.length > 0 && <div className="rr-qt-customs" role="group" aria-label="Pazaryerlerine özel fiyat">{channelColumns.map(column => <QuickEditCustomToggle key={column.id} column={column} custom={customChannels[column.id]} onChange={value => setCustomChannel(column.id, value)} />)}</div>}
+            {showPriceColumns && channelColumns.length > 0 && <div className="rr-qt-customs" role="group" aria-label="Pazaryerlerine özel fiyat">{channelColumns.map(column => <QuickEditCustomToggle key={column.id} column={column} custom={customChannels[column.id]} onChange={value => void setCustomChannel(column.id, value)} />)}</div>}
             <table className={`rr-qtable${showPriceColumns ? ' rr-qt-prices' : ''}${showStockColumn ? ' rr-qt-has-stock' : ''}`}>
               <caption className="sr-only">{groupLabel} varyantları</caption>
               <colgroup><col className="rr-qt-w-sel" /><col className="rr-qt-w-var" />{showStockColumn && <col className="rr-qt-w-stock" />}{showPriceColumns && priceColumns.flatMap(column => column.takesListPrice ? [<col key={`${column.id}-l`} className="rr-qt-w-price" />, <col key={`${column.id}-s`} className="rr-qt-w-price" />] : [<col key={column.id} className="rr-qt-w-price" />])}</colgroup>
@@ -300,7 +317,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
                   <th scope="col" rowSpan={showPriceColumns ? 2 : 1} className="rr-qt-var rr-qt-stick">Varyant</th>
                   {showStockColumn && <th scope="col" rowSpan={showPriceColumns ? 2 : 1} className="rr-qt-stock rr-qt-stick rr-qt-num">Stok</th>}
                   {showPriceColumns && <th scope="colgroup" colSpan={2} className="rr-qt-panel rr-qt-stick rr-qt-gs">Panel Fiyatı</th>}
-                  {showPriceColumns && channelColumns.map(column => <th key={column.id} scope="colgroup" colSpan={column.takesListPrice ? 2 : 1} className={`rr-qt-ch rr-qt-gs${customChannels[column.id] ? ' rr-on' : ''}`}><span className="rr-qt-chhead"><span className="rr-qt-chname" title={column.label}>{column.label}</span><QuickEditCustomToggle column={column} custom={customChannels[column.id]} onChange={value => setCustomChannel(column.id, value)} compact /></span></th>)}
+                  {showPriceColumns && channelColumns.map(column => <th key={column.id} scope="colgroup" colSpan={column.takesListPrice ? 2 : 1} className={`rr-qt-ch rr-qt-gs${customChannels[column.id] ? ' rr-on' : ''}`}><span className="rr-qt-chhead"><span className="rr-qt-chname" title={column.label}>{column.label}</span><QuickEditCustomToggle column={column} custom={customChannels[column.id]} onChange={value => void setCustomChannel(column.id, value)} compact /></span></th>)}
                 </tr>
                 {showPriceColumns && <tr className="rr-qt-sub">
                   <th scope="col" className="rr-qt-panel rr-qt-stick rr-qt-gs rr-qt-num">Liste</th><th scope="col" className="rr-qt-panel rr-qt-stick rr-qt-ps rr-qt-num">Satış</th>
@@ -378,7 +395,7 @@ async function writePanelFollowers(variant: Variant, followers: ReadonlyArray<Qu
   for (const write of panelFollowerWrites(variant, followers, prices)) {
     if (write.kind === 'blocked') { failures.push({ message: `${write.column.label} fiyatı: ${write.reason}`, stale: false }); continue }
     try {
-      const body = quickPriceBody({ kind: 'update', offerId: write.offerId, offerVersion: write.offerVersion, offer: write.offer }, variant, { listPrice: write.listPrice, salePrice: write.salePrice }, reason)
+      const body = quickPriceBody({ kind: 'update', offerId: write.offerId, offerVersion: write.offerVersion, offer: write.offer }, variant, { listPrice: write.listPrice, salePrice: write.salePrice }, reason, true)
       await hubApi(`/channel-offers/${write.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${write.offerVersion}"` }, body: JSON.stringify(body) })
     } catch (error) {
       failures.push({ message: `${write.column.label} fiyatı: ${error instanceof Error ? error.message : 'kaydedilmedi'}`, stale: isStaleStockError(error) })
@@ -427,7 +444,8 @@ function QuickEditPriceCell({ column, followers, variant, product, connectionCou
         const failures = await writePanelFollowers(variant, followers, prices, 'Hızlı varyant fiyat düzenleme')
         if (failures.length) { await onChanged().catch(() => undefined); failPrice(`panel fiyatı kaydedildi; ${failures.map(failure => failure.message).join(' · ')}`); return }
       } else {
-        const body = quickPriceBody(priceTarget, variant, prices, 'Hızlı varyant fiyat düzenleme')
+        // A marketplace cell is editable only while its "Özel Fiyat" is ticked: the price is stored as its own.
+        const body = quickPriceBody(priceTarget, variant, prices, 'Hızlı varyant fiyat düzenleme', false)
         if (priceTarget.kind === 'update') await hubApi(`/channel-offers/${priceTarget.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.offerVersion}"` }, body: JSON.stringify(body) })
         else await sendWithVersionedIdempotencyKey(offerCreateKey, key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
       }
