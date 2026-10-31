@@ -59,7 +59,8 @@ export function useBrandReferenceLookup(connectionId: string, snapshot: BrandRef
     placeholderData: keepPreviousData
   })
   const byId = useMemo(() => new Map((query.data ?? []).map(item => [item.externalId, item])), [query.data])
-  return { byId, isLoading: query.isLoading && sorted.length > 0, isError: query.isError }
+  // The previous ids' names stand in while new ones load; a name missing from them is still loading, not unknown.
+  return { byId, isLoading: sorted.length > 0 && !query.isError && (query.isLoading || query.isPlaceholderData), isError: query.isError }
 }
 
 export function useDebouncedValue<T>(value: T, delayMs: number) {
