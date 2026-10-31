@@ -1733,6 +1733,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var states = variantIds.Length == 0 ? new Dictionary<Guid, MarketplaceListingState>() : await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
         if (listings.Count == 0 || states.Count != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_UPDATE_STATE_INCOMPLETE", JobExecutionResult.ManualReview("PRODUCT_UPDATE_STATE_INCOMPLETE", "Ürün güncelleme listing state kayıtları eksik."), cancellationToken);
         if (states.Values.Any(x => !string.Equals(x.PayloadHash, payload.PayloadHash, StringComparison.Ordinal))) return JobExecutionResult.Blocked("PRODUCT_UPDATE_SUPERSEDED", "Daha yeni ürün payload'ı bulundu; eski güncelleme işi uzak çağrı yapmadan durduruldu.");
+        if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase)) return await UpdatePttAvmProduct(tenantId, connectionId, payload, job, profile, listings, states, correlationId, cancellationToken);
 
         var phase = payload.Phase.Trim().ToUpperInvariant();
         if (phase.StartsWith("SUBMIT_", StringComparison.Ordinal))

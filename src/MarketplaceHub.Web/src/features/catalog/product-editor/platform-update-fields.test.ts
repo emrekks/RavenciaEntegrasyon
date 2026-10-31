@@ -23,7 +23,7 @@ describe('platform update fields', () => {
     expect(availablePlatformUpdateFields(['SHOPIFY'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'PRICE', 'STOCK'])
     expect(availablePlatformUpdateFields(['PAZARAMA'])).toEqual(['PRICE', 'STOCK', 'VAT_RATE'])
     expect(availablePlatformUpdateFields(['N11'])).toEqual(['DESCRIPTION', 'ATTRIBUTES', 'DELIVERY', 'PRICE', 'STOCK', 'VAT_RATE'])
-    for (const code of ['PTTAVM']) expect(availablePlatformUpdateFields([code])).toEqual([])
+    expect(availablePlatformUpdateFields(['PTTAVM'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'WARRANTY', 'DESI', 'DELIVERY', 'PRICE', 'STOCK', 'VAT_RATE'])
     expect(availablePlatformUpdateFields([])).toEqual([])
   })
 
@@ -128,6 +128,22 @@ describe('platform update fields', () => {
       expect([plan.price, plan.stock]).toEqual([false, false])
     }
     expect(platformUpdatePlan('SHOPIFY', ['DESI']).productFields).toEqual([])
+  })
+
+  it('sends PTT AVM only the picked product fields with its variant list, and price with stock', () => {
+    const title = platformUpdatePlan('PTTAVM', ['TITLE'])
+    expect(title.productFields).toEqual(['TITLE'])
+    expect(title.bundled).toEqual([])
+    expect(title.extras).toEqual(['Varyant Listesi'])
+    expect([title.price, title.stock]).toEqual([false, false])
+    // Category attributes never go to PTT AVM.
+    expect(platformUpdatePlan('PTTAVM', ['ATTRIBUTES']).productFields).toEqual([])
+    expect(platformUpdatePlan('PTTAVM', defaultPlatformUpdateFields).productFields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'WARRANTY', 'DESI', 'DELIVERY', 'VAT_RATE'])
+    // One request takes price and stock: a pick of one sends both.
+    const price = platformUpdatePlan('PTTAVM', ['PRICE'])
+    expect([price.price, price.stock]).toEqual([true, true])
+    expect(price.bundled).toEqual(['STOCK'])
+    expect(price.productFields).toEqual([])
   })
 
   it('sends nothing to a read-only marketplace', () => {

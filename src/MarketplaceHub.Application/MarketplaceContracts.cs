@@ -511,6 +511,7 @@ public static class ProductUpdateFields
         "SHOPIFY" => ShopifySupported,
         "PAZARAMA" => PazaramaSupported,
         "N11" => N11Supported,
+        "PTTAVM" => PttAvmProductUpdateFields.Supported,
         _ => NoneSupported
     };
     private static readonly IReadOnlySet<string> TrendyolSupported = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery], StringComparer.Ordinal);

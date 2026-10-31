@@ -86,7 +86,7 @@ type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string;
 //   mandatory one), the VAT rate and the preparing day with the connection's shipment template. Name, images, brand,
 //   category, colour/size, barcode and desi cannot change through the n11 API. The price-stock task takes the list and
 //   sale price and the stock together.
-// - PTT AVM has no product update in the panel yet: no field of the dialog goes there.
+// - PTT AVM: one UpdateProductsV3 request with the picked fields and every variant PTT AVM holds (PttAvmProductUpdate).
 // The API keeps the same table (ProductUpdateFields.SupportedBy).
 const profiles: Record<string, PlatformUpdateProfile> = {
   TRENDYOL: {
@@ -131,6 +131,22 @@ const profiles: Record<string, PlatformUpdateProfile> = {
       { fields: ['PRICE', 'STOCK'], sends: ['Liste Fiyatı', 'Satış Fiyatı', 'Stok'] }
     ],
     note: 'N11 ürün adını, görselleri, markayı, kategoriyi, renk/bedeni, barkodu ve desiyi API ile güncellemez; bunlar N11 satıcı panelinden talep edilir. Kategori özellikleri marka ve renk/beden dahil tüm listeyle gider, N11 bunları değiştirmez. Fiyat ve stok birlikte gider.'
+  },
+  // PTT AVM (PttAvmProductUpdate.cs): one UpdateProductsV3 request with only the picked fields (PTT AVM keeps a field left
+  // out), but always every variant PTT AVM holds, or the upsert deletes the missing ones. No category attributes (the API
+  // has none but colour and size). Price and stock go together in UpdateProductsStockPrice, for the whole model family.
+  PTTAVM: {
+    requests: [
+      { fields: ['TITLE'], sends: ['Ürün Adı'], extra: ['Varyant Listesi'] },
+      { fields: ['DESCRIPTION'], sends: ['Açıklama'], extra: ['Varyant Listesi'] },
+      { fields: ['IMAGES'], sends: ['Görseller'], extra: ['Varyant Listesi'] },
+      { fields: ['WARRANTY'], sends: ['Garanti Süresi'], extra: ['Varyant Listesi'] },
+      { fields: ['DESI'], sends: ['Desi'], extra: ['Varyant Listesi'] },
+      { fields: ['DELIVERY'], sends: ['Teslimat Süresi'], extra: ['Varyant Listesi'] },
+      { fields: ['VAT_RATE'], sends: ['KDV Oranı'], extra: ['Varyant Listesi'] },
+      { fields: ['PRICE', 'STOCK'], sends: ['Satış Fiyatı', 'Stok'] }
+    ],
+    note: 'PTT AVM yalnız seçilen alanları alır; ürün varyantlıysa PTT AVM’deki tüm varyantlar olduğu gibi (barkod, renk, beden, stok) isteğe eklenir, yoksa silinirdi. Kategori özellikleri gönderilmez; fiyat ve stok birlikte gider.'
   }
 }
 
