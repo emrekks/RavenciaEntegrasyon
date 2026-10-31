@@ -170,28 +170,7 @@ public sealed partial class InvoicingBillingService(
             .Select(issue => new { issue.DedupeKey, issue.Code, issue.Summary })
             .ToDictionaryAsync(issue => issue.DedupeKey, cancellationToken);
 
-        var variantIds = lines.Where(x => x.VariantId != null).Select(x => x.VariantId!.Value).Distinct().ToArray();
-        var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var lineBarcodes = lines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var variantRows = await db.ProductVariants.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && (variantIds.Contains(x.Id) || lineSkus.Contains(x.Sku) || (x.Barcode != null && lineBarcodes.Contains(x.Barcode))))
-            .Select(x => new { x.Id, x.ProductId, x.Sku, x.Barcode })
-            .ToListAsync(cancellationToken);
-        var variantProductIds = variantRows.ToDictionary(x => x.Id, x => x.ProductId);
-        var variantBySku = variantRows.Where(x => !string.IsNullOrWhiteSpace(x.Sku)).GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First().Id, StringComparer.OrdinalIgnoreCase);
-        var variantByBarcode = variantRows.Where(x => !string.IsNullOrWhiteSpace(x.Barcode)).GroupBy(x => x.Barcode!, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First().Id, StringComparer.OrdinalIgnoreCase);
-        Guid? ResolveVariantId(OrderLine line) => line.VariantId ?? (line.Barcode is not null && variantByBarcode.TryGetValue(line.Barcode, out var barcodeVariantId) ? barcodeVariantId : variantBySku.GetValueOrDefault(line.Sku));
-        var resolvedVariantIds = lines.Select(ResolveVariantId).Where(x => x.HasValue).Select(x => x!.Value).Distinct().ToArray();
-        foreach (var row in variantRows) variantProductIds.TryAdd(row.Id, row.ProductId);
-        variantIds = resolvedVariantIds;
-        var productIds = variantProductIds.Values.Distinct().ToArray();
-        var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
-                               join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
-                               where media.TenantId == tenantId && ((media.VariantId != null && variantIds.Contains(media.VariantId.Value)) || (media.VariantId == null && productIds.Contains(media.ProductId))) && media.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
-                               orderby media.SortOrder
-                               select new { media.VariantId, media.ProductId, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
-        var mediaByVariant = mediaRows.Where(x => x.VariantId.HasValue).GroupBy(x => x.VariantId!.Value).ToDictionary(x => x.Key, x => MediaUrl(x.First().Id, x.First().Classification, x.First().RelativePath));
-        var mediaByProduct = mediaRows.Where(x => x.VariantId == null).GroupBy(x => x.ProductId).ToDictionary(x => x.Key, x => MediaUrl(x.First().Id, x.First().Classification, x.First().RelativePath));
+        var catalog = await OrderLineCatalog.LoadAsync(db, tenantId, lines, line => orders.TryGetValue(line.OrderId, out var lineOrder) ? lineOrder.ConnectionId : null, cancellationToken);
         var linesByOrder = lines.GroupBy(x => x.OrderId).ToDictionary(x => x.Key, x => x.ToList());
         var now = timeProvider.GetUtcNow();
 
@@ -215,9 +194,9 @@ public sealed partial class InvoicingBillingService(
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueAt = deliveredAt?.AddDays(7);
             var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
-            var image = orderLines.Select(line => ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
+            var image = orderLines.Select(line => WorkspaceLineImage(catalog, line)).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-            var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity), line.UnitPrice, line.VatRate, ResolveVariantId(line) is { } variantId ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId)) : null)).ToList();
+            var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity), line.UnitPrice, line.VatRate, WorkspaceLineImage(catalog, line))).ToList();
             var deliveryState = currentDeliveryState;
             var deliveryAttempt = invoice is null
                 ? null
@@ -714,41 +693,7 @@ public sealed partial class InvoicingBillingService(
             .ToDictionary(group => group.Key, group => (IReadOnlyList<MarketplaceInvoiceReferenceHistoryView>)group
                 .Select(reference => new MarketplaceInvoiceReferenceHistoryView(reference.InvoiceNumber, reference.InvoiceUrl, reference.ChangeReason, reference.ChangedAt))
                 .ToArray());
-        var variantIds = lines.Where(line => line.VariantId != null).Select(line => line.VariantId!.Value).Distinct().ToArray();
-        var lineSkus = lines.Select(line => line.Sku).Where(sku => !string.IsNullOrWhiteSpace(sku)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var lineBarcodes = lines.Select(line => line.Barcode).Where(barcode => !string.IsNullOrWhiteSpace(barcode)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var variantRows = await db.ProductVariants.AsNoTracking()
-            .Where(variant => variant.TenantId == tenantId
-                && (variantIds.Contains(variant.Id) || lineSkus.Contains(variant.Sku) || (variant.Barcode != null && lineBarcodes.Contains(variant.Barcode))))
-            .Select(variant => new { variant.Id, variant.ProductId, variant.Sku, variant.Barcode })
-            .ToListAsync(cancellationToken);
-        var variantProductIds = variantRows.ToDictionary(variant => variant.Id, variant => variant.ProductId);
-        var variantBySku = variantRows.Where(variant => !string.IsNullOrWhiteSpace(variant.Sku))
-            .GroupBy(variant => variant.Sku, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First().Id, StringComparer.OrdinalIgnoreCase);
-        var variantByBarcode = variantRows.Where(variant => !string.IsNullOrWhiteSpace(variant.Barcode))
-            .GroupBy(variant => variant.Barcode!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.First().Id, StringComparer.OrdinalIgnoreCase);
-        Guid? ResolveVariantId(OrderLine line) => line.VariantId
-            ?? (line.Barcode is not null && variantByBarcode.TryGetValue(line.Barcode, out var barcodeVariantId)
-                ? barcodeVariantId
-                : variantBySku.GetValueOrDefault(line.Sku));
-        var resolvedVariantIds = lines.Select(ResolveVariantId).Where(id => id.HasValue).Select(id => id!.Value).Distinct().ToArray();
-        foreach (var variant in variantRows) variantProductIds.TryAdd(variant.Id, variant.ProductId);
-        var productIds = variantProductIds.Values.Distinct().ToArray();
-        var mediaRows = await (from media in db.ProductMedia.AsNoTracking()
-                               join asset in db.FileAssets.AsNoTracking() on new { media.TenantId, media.FileAssetId } equals new { asset.TenantId, FileAssetId = asset.Id }
-                               where media.TenantId == tenantId
-                                   && ((media.VariantId != null && resolvedVariantIds.Contains(media.VariantId.Value)) || (media.VariantId == null && productIds.Contains(media.ProductId)))
-                                   && media.Status == "ACTIVE" && asset.Status == "ACTIVE"
-                                   && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
-                               orderby media.SortOrder
-                               select new { media.VariantId, media.ProductId, asset.Id, asset.Classification, asset.RelativePath })
-            .ToListAsync(cancellationToken);
-        var mediaByVariant = mediaRows.Where(media => media.VariantId.HasValue).GroupBy(media => media.VariantId!.Value)
-            .ToDictionary(group => group.Key, group => MediaUrl(group.First().Id, group.First().Classification, group.First().RelativePath));
-        var mediaByProduct = mediaRows.Where(media => media.VariantId == null).GroupBy(media => media.ProductId)
-            .ToDictionary(group => group.Key, group => MediaUrl(group.First().Id, group.First().Classification, group.First().RelativePath));
+        var catalog = await OrderLineCatalog.LoadAsync(db, tenantId, lines, line => orderSnapshots.TryGetValue(line.OrderId, out var lineOrder) ? lineOrder.ConnectionId : null, cancellationToken);
         var linesByOrder = lines.GroupBy(line => line.OrderId).ToDictionary(group => group.Key, group => group.ToList());
 
         var invoiceIds = candidates.Where(candidate => candidate.Invoice is not null).Select(candidate => candidate.Invoice!.Id).Distinct().ToArray();
@@ -823,9 +768,7 @@ public sealed partial class InvoicingBillingService(
                 OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity),
                 line.UnitPrice,
                 line.VatRate,
-                ResolveVariantId(line) is { } variantId
-                    ? mediaByVariant.GetValueOrDefault(variantId) ?? mediaByProduct.GetValueOrDefault(variantProductIds.GetValueOrDefault(variantId))
-                    : null)).ToList();
+                WorkspaceLineImage(catalog, line))).ToList();
             var primaryImage = workspaceLines.Select(line => line.ImageUrl).FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
             var deliveryState = candidate.Invoice is null ? null : deliveryStates
                 .Where(state => state.InvoiceId == candidate.Invoice.Id && state.PackageId == candidate.Package.Id).OrderByDescending(state => state.UpdatedAt).FirstOrDefault();
@@ -1042,9 +985,10 @@ public sealed partial class InvoicingBillingService(
         public string? InvoiceNumber => ResolveInvoiceNumber(Invoice?.InvoiceNumber, Package.MarketplaceInvoiceNumber);
     }
 
-    private static string MediaUrl(Guid assetId, string classification, string relativePath) => classification == "PRODUCT_MEDIA_URL"
-        ? relativePath
-        : $"/api/v1/files/product-media/{assetId:D}/content";
+    // The order line's photo, found as on the order screens (OrderLineCatalog): the panel's own photo first, it does not
+    // expire; else the address the marketplace sent with the line.
+    private static string? WorkspaceLineImage(OrderLineCatalog catalog, OrderLine line) =>
+        catalog.CatalogImageUrl(catalog.Variant(line)) ?? MarketplaceSalesService.SourceLineImageUrl(line.SourceSnapshotJson);
 
     internal static string? ResolveInvoiceNumber(string? invoiceNumber, string? marketplaceInvoiceNumber) =>
         !string.IsNullOrWhiteSpace(marketplaceInvoiceNumber) ? marketplaceInvoiceNumber : !string.IsNullOrWhiteSpace(invoiceNumber) ? invoiceNumber : null;

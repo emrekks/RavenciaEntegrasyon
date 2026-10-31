@@ -237,6 +237,12 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             var detailLine = Assert.Single(detail.Value!.Lines);
             Assert.Equal("https://cdn.example.com/mz052bod-kahverengi.jpg", detailLine.ImageUrl);
             Assert.Equal("MZ052BOD", detailLine.ModelCode);
+            // The invoice workspace and its detail modal read the same catalog match.
+            var lines = await db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenant.Id).ToListAsync();
+            var catalog = await OrderLineCatalog.LoadAsync(db, tenant.Id, lines, _ => connection.Id, CancellationToken.None);
+            var line = Assert.Single(lines);
+            Assert.Equal(variant.Id, catalog.Variant(line)?.Id);
+            Assert.Equal("https://cdn.example.com/mz052bod-kahverengi.jpg", catalog.CatalogImageUrl(catalog.Variant(line)));
         }
         finally
         {
