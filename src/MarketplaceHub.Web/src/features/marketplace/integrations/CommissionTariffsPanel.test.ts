@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandLimitHint, bandLimitText, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, shareRangeText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitHint, bandLimitText, bestTiers, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, shareRangeText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -249,5 +249,15 @@ describe('shareRangeText', () => {
     expect(shareRangeText([choice(51.39), choice(51.39)])).toBe('(%51,39)')
     expect(shareRangeText([choice(-12.5), choice(40, 200)])).toBe('(%−12,50 – %20,00)')
     expect(shareRangeText([choice(null)])).toBeNull()
+  })
+})
+
+describe('bestTiers', () => {
+  it('stars the band leaving the most, every one on a tie, never an unknown one', () => {
+    // RYP004: 563,84+ leaves 173,49, 510–563 176,77, 457–510 144,34.
+    expect([...bestTiers([[1, 173.49], [2, 176.77], [3, 144.34], [4, null]])]).toEqual([2])
+    expect([...bestTiers([[1, 120], [2, 120], [3, 90]])]).toEqual([1, 2])
+    expect([...bestTiers([[1, -5], [2, -2], [3, null]])]).toEqual([2])
+    expect(bestTiers([[1, null], [2, null]]).size).toBe(0)
   })
 })
