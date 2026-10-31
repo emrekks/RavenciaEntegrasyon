@@ -447,11 +447,12 @@ function Figure({ value, format, shown }: { value: number; format: (value: numbe
 // previous value under it, and how it is worked out, shown under the pointer.
 type Kpi = {
   key: string; label: string; value: number | null; format?: (value: number) => string; text?: string; empty?: string
-  delta?: Change | null; invert?: boolean; note: string; tip: string; tone?: 'good' | 'bad' | 'warn'
+  delta?: Change | null; invert?: boolean; note?: string; tip: string; tone?: 'good' | 'bad' | 'warn'
 }
 
-// A strip of figures divided by hairlines; the figures count up once when the strip first comes into view. In a strip
-// that compares, a figure without a previous value keeps the change's line empty, so every note starts on one line.
+// A strip of figures divided by hairlines (a figure without a note shows its label and value only); the figures count
+// up once when the strip first comes into view. In a strip that compares, a figure without a previous value keeps the
+// change's line empty, so every note starts on one line.
 // The explanation of the figure under the pointer (or the focus) opens as a card under the strip, level with its cell
 // and kept inside the strip's width; each cell keeps its explanation as text for screen readers too.
 function KpiStrip({ label, items }: { label: string; items: Kpi[] }) {
@@ -480,7 +481,7 @@ function KpiStrip({ label, items }: { label: string; items: Kpi[] }) {
           onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}</button>
         <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && <Delta delta={item.delta} invert={item.invert} />}</span>}
-        <span className="reports-kpi-note">{wholeLiras(item.note)}</span>
+        {item.note !== undefined && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
         <span id={id} className="reports-sr">{item.tip.replace('\n', ' ')}</span>
       </div>
     })}</div>
@@ -1621,7 +1622,8 @@ function useMonthlyProfitRate(platforms: string[] | null): MonthlyProfitRate {
     return { label: month.label, rate: money?.profit != null && money.cost ? money.profit / money.cost : null }
   })
   const known = rates.flatMap(month => month.rate === null ? [] : [month.rate])
-  return { loading: results.some(result => result.isPending), average: known.length ? known.reduce((sum, rate) => sum + rate, 0) / known.length : null, months: rates }
+  // The average kept to a millionth, so three equal months average to the same rate on screen (no float tail).
+  return { loading: results.some(result => result.isPending), average: known.length ? Math.round(known.reduce((sum, rate) => sum + rate, 0) / known.length * 1e6) / 1e6 : null, months: rates }
 }
 
 // Tahmini Kâr: the capital in stock at the average real profit on cost of the last whole months.
@@ -1632,9 +1634,9 @@ function stockProfitKpi(capital: number, rate: MonthlyProfitRate): Kpi {
   return {
     key: 'profit', label: value !== null && value < 0 ? 'Tahmini Zarar' : 'Tahmini Kâr', value, format: formatTl, tone: value === null ? undefined : value < 0 ? 'bad' : 'good',
     empty: rate.loading ? 'Hesaplanıyor' : 'Hesaplanamadı',
-    note: rate.average === null ? (rate.loading ? 'Aylık kâr oranları alınıyor' : 'Geçmiş aylarda kâr bilinmiyor')
-      : `Son ${counted.length} ay ort. maliyete göre ${formatPercent(rate.average)}`,
-    tip: `Stok, son aylardaki gerçek kâr oranıyla satılırsa kalacak tahmini kâr.\nStoktaki sermaye × ${span || 'son aylar'} ortalama maliyete göre net kâr oranı (Kârlılık'taki gibi iade, komisyon, kargo, hizmet bedeli ve KDV düşülmüş). ${rate.months
+    tip: `Stok, son aylardaki gerçek kâr oranıyla satılırsa kalacak tahmini kâr.\n${rate.average === null
+      ? (rate.loading ? 'Aylık kâr oranları alınıyor.' : 'Geçmiş aylarda kâr bilinmiyor.')
+      : `Son ${counted.length} ay ort. maliyete göre ${formatPercent(rate.average)}.`} Stoktaki sermaye × ${span || 'son aylar'} ortalama maliyete göre net kâr oranı (maliyet KDV dahil, girdiğiniz gibi; Kârlılık'taki gibi iade, komisyon, kargo, hizmet bedeli ve KDV düşülmüş). ${rate.months
       .map(month => `${month.label} ${month.rate === null ? 'bilinmiyor' : formatPercent(month.rate)}`).join(' · ')}.`
   }
 }
@@ -1654,36 +1656,32 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
   if (summary.units <= 0) return <div className="reports-summary">
     <p className="reports-empty">{platforms?.length ? 'Seçilen platformlarda satışta olan stoklu ürün yok.' : 'Ana depoda stoğu olan ürün yok.'}</p>
   </div>
+  // The cards show their label and value only; what the notes said is in each card's explanation.
   const money: Kpi[] = [
     { key: 'capital', label: 'Stoktaki Sermaye', value: summary.capital, format: formatTl,
-      note: summary.capitalExVat === null ? 'KDV dahil' : `KDV hariç ${formatTl(summary.capitalExVat)}`,
-      tip: `Stoktaki ürünlere bağlı para, maliyet fiyatıyla (KDV dahil).\nEldeki adet × varyant maliyeti. ${summary.missingCostVariants > 0
+      tip: `Stoktaki ürünlere bağlı para, maliyetle (KDV dahil, girdiğiniz gibi).\nEldeki adet × varyant maliyeti${summary.capitalExVat === null ? '' : `; KDV hariç ${formatTlWhole(summary.capitalExVat)}`}. ${summary.missingCostVariants > 0
         ? `Maliyeti girilmemiş ${formatCount(summary.missingCostVariants)} varyantın ${formatNumber(summary.missingCostUnits)} adedi dahil değil.`
         : 'Stoktaki tüm varyantların maliyeti girili.'}` },
     { key: 'value', label: 'Envanter Satış Değeri', value: summary.value, format: formatTl, empty: 'Fiyat yok',
-      note: 'Panel fiyatıyla',
       tip: `Stoğun panel satış fiyatıyla tutarı (KDV dahil).\nEldeki adet × ürün kartındaki varyant satış fiyatı. ${summary.missingPriceUnits > 0
         ? `Panel fiyatı olmayan ${formatNumber(summary.missingPriceUnits)} adet dahil değil.`
         : 'Stoktaki tüm adetlerin panel fiyatı var.'}` },
     stockProfitKpi(summary.capital, rate),
     { key: 'units', label: 'Toplam Stok Adedi', value: summary.units,
-      note: `${formatCount(summary.stockedProducts)} üründe`,
-      tip: `Ana depodaki eldeki adet, şu an.\nSatılabilir (rezerv düşülmüş) ${formatNumber(summary.availableUnits)} adet.` },
+      tip: `Ana depodaki eldeki adet, şu an.\n${formatCount(summary.stockedProducts)} üründe; satılabilir (rezerv düşülmüş) ${formatNumber(summary.availableUnits)} adet.` },
     { key: 'cover', label: 'Stok Gün', value: summary.coverDays, format: value => `${formatNumber(Math.round(value))} gün`,
-      note: summary.dailySales === null ? 'Dönemde satış yok' : `Günde ${formatNumber(summary.dailySales)} adet satış`,
-      tip: `Stoğun dönemin satış hızıyla kaç gün yeteceği.\nToplam stok ÷ dönemde günlük net satış (satılan − iade). Dönemde ${formatNumber(summary.soldUnits)} adet, ${formatCount(data.periodDays)} gün.` },
+      tip: `Stoğun dönemin satış hızıyla kaç gün yeteceği.\nToplam stok ÷ dönemde günlük net satış (satılan − iade). ${summary.dailySales === null ? 'Dönemde satış yok' : `Günde ${formatNumber(summary.dailySales)} adet`}; dönemde ${formatNumber(summary.soldUnits)} adet, ${formatCount(data.periodDays)} gün.` },
     { key: 'dead', label: 'Ölü Stok', value: summary.deadCapital, format: formatTl, tone: summary.deadVariants > 0 ? 'warn' : undefined,
-      note: `${formatCount(summary.deadVariants)} varyant · ${formatNumber(summary.deadUnits)} adet`,
-      tip: `Son ${data.deadDays} günde hiç satmayan stoğun sermayesi.\n${data.deadDays} günden eski, stoğu olup bu sürede net satışı olmayan varyantlar; dönemden bağımsız.` }
+      tip: `Son ${data.deadDays} günde hiç satmayan stoğun sermayesi.\n${formatCount(summary.deadVariants)} varyant, ${formatNumber(summary.deadUnits)} adet: ${data.deadDays} günden eski, stoğu olup bu sürede net satışı olmayan varyantlar; dönemden bağımsız.` }
   ]
   const counts: Kpi[] = [
-    { key: 'stocked', label: 'Stoklu Varyant', value: summary.stockedVariants, note: `${formatCount(summary.variants)} aktif varyanttan`, tip: 'Ana depoda en az bir adedi olan aktif varyantlar.' },
-    { key: 'empty', label: 'Stoksuz Varyant', value: summary.emptyVariants, note: 'Eldeki adet 0', tip: 'Ana depoda hiç adedi olmayan aktif varyantlar.' },
-    { key: 'low', label: 'Beden Kırığı', value: summary.lowStockProducts, tone: summary.lowStockProducts > 0 ? 'warn' : undefined, note: 'Stoklu ürün',
+    { key: 'stocked', label: 'Stoklu Varyant', value: summary.stockedVariants, tip: `Ana depoda en az bir adedi olan aktif varyantlar.\n${formatCount(summary.variants)} aktif varyanttan.` },
+    { key: 'empty', label: 'Stoksuz Varyant', value: summary.emptyVariants, tip: 'Ana depoda hiç adedi olmayan aktif varyantlar.\nEldeki adet 0.' },
+    { key: 'low', label: 'Beden Kırığı', value: summary.lowStockProducts, tone: summary.lowStockProducts > 0 ? 'warn' : undefined,
       tip: 'Bir renginin bedenlerinin yarısı veya fazlası tükenmiş stoklu ürünler.\nÜrün listesindeki Düşük Stok ile aynı kural.' },
-    { key: 'cost', label: 'Maliyeti Eksik', value: summary.missingCostVariants, tone: summary.missingCostVariants > 0 ? 'warn' : undefined, note: `${formatNumber(summary.missingCostUnits)} adet`,
-      tip: 'Stoğu olup maliyeti girilmemiş varyantlar.\nSermaye ve kâr bunlar olmadan hesaplanır; maliyeti ürün kartından girin.' },
-    { key: 'price', label: 'Fiyatı Eksik', value: summary.missingPriceUnits, tone: summary.missingPriceUnits > 0 ? 'warn' : undefined, note: 'Panel fiyatı yok',
+    { key: 'cost', label: 'Maliyeti Eksik', value: summary.missingCostVariants, tone: summary.missingCostVariants > 0 ? 'warn' : undefined,
+      tip: `Stoğu olup maliyeti girilmemiş varyantlar.\n${formatNumber(summary.missingCostUnits)} adet; sermaye ve kâr bunlar olmadan hesaplanır, maliyeti ürün kartından girin.` },
+    { key: 'price', label: 'Fiyatı Eksik', value: summary.missingPriceUnits, tone: summary.missingPriceUnits > 0 ? 'warn' : undefined,
       tip: 'Ürün kartında satış fiyatı olmayan stok adedi.\nSatış değeri bu adetler olmadan hesaplanır; fiyatı ürün kartından girin.' }
   ]
   const bars = (groups: ReportStockGroup[], value: (group: ReportStockGroup) => number, limit = 10) =>
@@ -1719,7 +1717,7 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
 function StockSkeleton() {
   return <div className="reports-summary reports-stock-skeleton" role="status" aria-label="Stok raporu hazırlanıyor">
     {[6, 5].map(cells => <div key={cells} className={`reports-kpis is-${cells}`}>{Array.from({ length: cells }, (_, index) => <div key={index}>
-      <span className="reports-skeleton is-label" /><span className="reports-skeleton is-figure" /><span className="reports-skeleton is-label" />
+      <span className="reports-skeleton is-label" /><span className="reports-skeleton is-figure" />
     </div>)}</div>)}
     <div className="reports-grid">{[0, 1].map(index => <div key={index} className="reports-panel"><span className="reports-skeleton is-label" /><span className="reports-skeleton is-block" /></div>)}</div>
   </div>
