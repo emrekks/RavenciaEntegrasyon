@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPrices, panelPriceTarget, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
+import { channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPrices, panelPriceTarget, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
 
 describe('panel price choice', () => {
   const product = { defaultListPrice: 300, defaultSalePrice: 250 }
@@ -40,6 +40,16 @@ describe('panel price choice', () => {
     expect(hasAtMostTwoDecimals(19.99)).toBe(true)
     expect(hasAtMostTwoDecimals(0.1 + 0.2)).toBe(true)
     expect(hasAtMostTwoDecimals(1.234)).toBe(false)
+  })
+})
+
+describe('sale-price-only marketplaces', () => {
+  it('hides the list price for Hepsiburada and PTT AVM only', () => {
+    expect(channelTakesListPrice('HEPSIBURADA')).toBe(false)
+    expect(channelTakesListPrice('pttavm')).toBe(false)
+    expect(channelTakesListPrice('TRENDYOL')).toBe(true)
+    expect(channelTakesListPrice('N11')).toBe(true)
+    expect(channelTakesListPrice(undefined)).toBe(true)
   })
 })
 

@@ -953,6 +953,8 @@
 .product-stale-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--rv-color-danger); border-radius: 12px; background: var(--rv-color-danger-soft); }
 
 /* Stock code and barcode of a variant product are written on the variant rows: the field is grey and not clickable. */
+/* The price card's closed fields (Liste / Satış Fiyatı on a card with variants) look like Stok Kodu and Barkod. */
+.app-shell.stitch-shell main .product-top-sidebar .product-step-grid :is(input, select):disabled,
 .app-shell.stitch-shell main .product-identifiers-grid input:disabled { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border); cursor: not-allowed; opacity: 1; }
 .app-shell.stitch-shell main .product-identifiers-grid label[title] { cursor: help; }
 
