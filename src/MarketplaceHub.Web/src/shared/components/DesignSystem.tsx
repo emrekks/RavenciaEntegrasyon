@@ -1,6 +1,7 @@
 import { createElement, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ComponentPropsWithoutRef, type InputHTMLAttributes, type ReactNode, type RefObject } from 'react'
 import { useRememberedTabCounts } from '../tab-counts'
 import { UiIcon } from './UiIcon'
+import { FieldHelp } from './FieldHelp'
 import { lockPageScroll } from '../hooks/useScrollLock'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
@@ -95,8 +96,10 @@ function IconButton({ label, size = 'md', variant = 'ghost', type = 'button', ch
   return <button {...props} type={type} aria-label={label} title={props.title ?? label} className={['rv-icon-button', `rv-icon-button-${size}`, `rv-icon-button-${variant}`, className].filter(Boolean).join(' ')}>{children}</button>
 }
 
+// A hint sits behind the label's help mark; only an error is written under the field.
 export function TextField({ label, hint, error, required, className, ...props }: InputHTMLAttributes<HTMLInputElement> & FieldProps) {
-  return <label className={['rv-field', className].filter(Boolean).join(' ')}><span>{label}{required && <b aria-hidden="true"> *</b>}</span><input {...props} aria-invalid={Boolean(error)} />{error ? <small className="rv-field-error">{error}</small> : hint ? <small className="rv-field-hint">{hint}</small> : null}</label>
+  const hintId = useId()
+  return <label className={['rv-field', className].filter(Boolean).join(' ')}><span className="field-label">{label}{required && <b aria-hidden="true"> *</b>}{hint ? <FieldHelp id={hintId} label={typeof label === 'string' ? label : 'Alan'}>{hint}</FieldHelp> : null}</span><input {...props} aria-invalid={Boolean(error)} aria-describedby={[props['aria-describedby'], hint ? hintId : undefined].filter(Boolean).join(' ') || undefined} />{error ? <small className="rv-field-error">{error}</small> : null}</label>
 }
 
 export function Tabs({ items: givenItems, value, onChange, ariaLabel = 'Sekmeler', className }: { items: Array<{ value: string; label: ReactNode; count?: ReactNode }>; value: string; onChange: (value: string) => void; ariaLabel?: string; className?: string }) {

@@ -11,7 +11,13 @@ export function FieldHelp({ id, label, children }: { id?: string; label: string;
   const tipId = id ?? `field-help-${generated}`
   const buttonRef = useRef<HTMLButtonElement>(null)
   const tipRef = useRef<HTMLSpanElement>(null)
-  const [open, setOpen] = useState(false)
+  // Open while hovered or focused; a click or tap pins it open (so a link in it can be followed) until a second click,
+  // Esc or a press elsewhere.
+  const [hovered, setHovered] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const [pinned, setPinned] = useState(false)
+  const open = hovered || focused || pinned
+  const setOpen = (value: boolean) => { if (!value) { setHovered(false); setFocused(false); setPinned(false) } }
   const [place, setPlace] = useState<{ left: number; top: number; above: boolean } | null>(null)
 
   useLayoutEffect(() => {
@@ -42,11 +48,11 @@ export function FieldHelp({ id, label, children }: { id?: string; label: string;
 
   return <>
     <button ref={buttonRef} type="button" className={`field-help${open ? ' is-open' : ''}`} aria-label={`${label}: açıklama`} aria-describedby={tipId} aria-expanded={open}
-      onPointerEnter={event => { if (event.pointerType === 'mouse') setOpen(true) }}
-      onPointerLeave={event => { if (event.pointerType === 'mouse') setOpen(false) }}
-      onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setOpen(true) }}
-      onBlur={() => setOpen(false)}
-      onClick={event => { event.preventDefault(); event.stopPropagation(); const mouse = (event.nativeEvent as PointerEvent).pointerType === 'mouse'; setOpen(value => mouse || !value) }}>
+      onPointerEnter={event => { if (event.pointerType === 'mouse') setHovered(true) }}
+      onPointerLeave={event => { if (event.pointerType === 'mouse') setHovered(false) }}
+      onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setFocused(true) }}
+      onBlur={() => setFocused(false)}
+      onClick={event => { event.preventDefault(); event.stopPropagation(); setPinned(value => !value) }}>
       <UiIcon name="help" size={15} />
     </button>
     {createPortal(<span ref={tipRef} id={tipId} role="tooltip" className={`field-help-tip${place?.above ? ' is-above' : ''}`} hidden={!open || !place} style={place ? { left: place.left, top: place.top } : undefined}>{children}</span>, document.body)}
