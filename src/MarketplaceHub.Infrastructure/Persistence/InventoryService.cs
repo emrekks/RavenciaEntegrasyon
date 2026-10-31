@@ -8,7 +8,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeProvider timeProvider, IConfiguration configuration) : IInventoryService
+public sealed partial class InventoryService(AppDbContext db, CursorCodec cursors, TimeProvider timeProvider, IConfiguration configuration) : IInventoryService
 {
     private const string SalePriceRequired = "Satış fiyatı sıfırdan büyük olmalıdır.";
 
@@ -370,6 +370,7 @@ public sealed class InventoryService(AppDbContext db, CursorCodec cursors, TimeP
     public async Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, bool price = true, bool stock = true)
     {
         if (!price && !stock) return ServiceResult<Guid>.Fail("PRICE_INVENTORY_FIELDS_REQUIRED", "Fiyat veya stoktan en az biri seçilmelidir.", 422);
+        if (await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM", cancellationToken)) return await EnqueuePttAvmProductPriceInventoryAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, price, stock, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA") && x.Status == "ACTIVE", cancellationToken);
         if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Ürüne özel fiyat-stok gönderimi için ACTIVE Trendyol veya Hepsiburada bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);

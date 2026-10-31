@@ -11,7 +11,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 
-public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider, IMemoryCache countCache) : ICatalogService
+public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors, IConfiguration configuration, TimeProvider timeProvider, IMemoryCache countCache) : ICatalogService
 {
     public async Task<PageResult<CategoryView>> ListCategoriesAsync(Guid tenantId, int limit, string? after, CancellationToken cancellationToken)
     {
@@ -1928,6 +1928,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         // not narrow it (price and stock ride along), and the send never creates a product.
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (platformCode == "SHOPIFY") return await EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: true, cancellationToken);
+        if (platformCode == "PTTAVM") return await EnqueuePttAvmProductUpdateAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, fields, cancellationToken);
         var sections = ProductUpdateFields.Sections(fields);
         if (!sections.Succeeded) return ServiceResult<Guid>.Fail(sections.Error!.Code, sections.Error.Message, sections.Error.Status);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);

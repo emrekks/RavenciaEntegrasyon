@@ -68,7 +68,7 @@ public sealed class PlatformUpdateFieldSelectionTests
     [InlineData("HEPSIBURADA", "TITLE,DESCRIPTION,IMAGES,ATTRIBUTES,WARRANTY,DESI,VAT_RATE")]
     [InlineData("N11", "")]
     [InlineData("PAZARAMA", "")]
-    [InlineData("PTTAVM", "")]
+    [InlineData("PTTAVM", "TITLE,DESCRIPTION,IMAGES,WARRANTY,DESI,VAT_RATE,DELIVERY")]
     [InlineData("SHOPIFY", "TITLE,DESCRIPTION,IMAGES")]
     [InlineData(null, "")]
     public void EachMarketplace_UpdatesOnlyTheFieldsItsAdapterTakes(string? platformCode, string expected)

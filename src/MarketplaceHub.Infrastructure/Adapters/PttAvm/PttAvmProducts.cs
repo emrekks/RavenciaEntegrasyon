@@ -8,12 +8,12 @@ namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 // SearchAktifPasif=0) and names the total in RowCount; it has no modification filter, so a scan walks every page.
 // A single product is found by its barcode (SearchBarkod). The page cursor is "{page}:{firstBarcode}": the first
 // barcode of page zero guards against a server that ignores SearchPage and keeps answering the first page.
-// Product send (create or update; a model family with its variants as a dry run) is in PttAvmProductWrites.cs; the other write calls stay closed.
+// Product send is in PttAvmProductWrites.cs, the "Platformlarda Güncelle" update in PttAvmProductUpdate.cs; the other write calls stay closed.
 public sealed partial class PttAvmHttpClient : IProductPort
 {
     // An answer that never runs dry still ends: PTT AVM's documented page cap.
     internal const int MaxProductPages = 1000;
-    private const string ProductWritesLater = "PTT AVM ürün güncellemesi ürün gönderimiyle (yeniden yayınla) yapılır; bu işlem PTT AVM için ayrıca desteklenmiyor.";
+    private const string ProductWritesLater = "PTT AVM ürün güncellemesi tek istekle (Platformlarda Güncelle) yapılır; bu işlem PTT AVM için ayrıca desteklenmiyor.";
 
     public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
     {
@@ -86,9 +86,8 @@ public sealed partial class PttAvmHttpClient : IProductPort
         new("SearchAktifPasif", "0"), new("SearchMevcut", "0"), new("SearchTedarikciKategoriId", "0"), new("SearchYeniKategoriId", ""), new("SearchPage", page.ToString(CultureInfo.InvariantCulture))
     ];
 
-    public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
-        Task.FromResult(NotSupported<RemoteOperationRef>("PTTAVM_PRODUCT_WRITE_LATER", ProductWritesLater));
-
+    // "Platformlarda Güncelle" is UpdateUnapprovedAsync (PttAvmProductUpdate.cs): one request, so the approved-product
+    // phases of Trendyol never run for PTT AVM.
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
         Task.FromResult(NotSupported<RemoteOperationRef>("PTTAVM_PRODUCT_WRITE_LATER", ProductWritesLater));
 

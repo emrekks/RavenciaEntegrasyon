@@ -105,6 +105,22 @@ const profiles: Record<string, PlatformUpdateProfile> = {
     ],
     note: 'Shopify ürünü tek istekte alır: hangi alan seçilirse seçilsin model ailesinin tüm kartı (ürün adı, açıklama, görseller, renk ve beden, fiyat ve stok) birlikte gider.',
     wholeCard: true
+  },
+  // PTT AVM (PttAvmProductUpdate.cs): one UpdateProductsV3 request with only the picked fields (PTT AVM keeps a field left
+  // out), but always every variant PTT AVM holds, or the upsert deletes the missing ones. No category attributes (the API
+  // has none but colour and size). Price and stock go together in UpdateProductsStockPrice, for the whole model family.
+  PTTAVM: {
+    requests: [
+      { fields: ['TITLE'], sends: ['Ürün Adı'], extra: ['Varyant Listesi'] },
+      { fields: ['DESCRIPTION'], sends: ['Açıklama'], extra: ['Varyant Listesi'] },
+      { fields: ['IMAGES'], sends: ['Görseller'], extra: ['Varyant Listesi'] },
+      { fields: ['WARRANTY'], sends: ['Garanti Süresi'], extra: ['Varyant Listesi'] },
+      { fields: ['DESI'], sends: ['Desi'], extra: ['Varyant Listesi'] },
+      { fields: ['DELIVERY'], sends: ['Teslimat Süresi'], extra: ['Varyant Listesi'] },
+      { fields: ['VAT_RATE'], sends: ['KDV Oranı'], extra: ['Varyant Listesi'] },
+      { fields: ['PRICE', 'STOCK'], sends: ['Satış Fiyatı', 'Stok'] }
+    ],
+    note: 'PTT AVM yalnız seçilen alanları alır; ürün varyantlıysa PTT AVM’deki tüm varyantlar olduğu gibi (barkod, renk, beden, stok) isteğe eklenir, yoksa silinirdi. Kategori özellikleri gönderilmez; fiyat ve stok birlikte gider.'
   }
 }
 

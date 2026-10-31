@@ -79,9 +79,13 @@ public sealed partial class PttAvmHttpClient : IProductFamilyStatusPort
         return await SendProductAsync(account, request, cancellationToken);
     }
 
-    private async Task<AdapterResult<RemoteOperationRef>> SendProductAsync(PttAvmRequestContext account, PttAvmProductPayloadRules.ProductDraft draft, CancellationToken cancellationToken)
+    private Task<AdapterResult<RemoteOperationRef>> SendProductAsync(PttAvmRequestContext account, PttAvmProductPayloadRules.ProductDraft draft, CancellationToken cancellationToken) =>
+        SendUpsertAsync(account, PttAvmProductPayloadRules.ItemsXml(draft), cancellationToken);
+
+    // One UpdateProductsV3 request (a ProductV3Request element as items) and its tracking id.
+    private async Task<AdapterResult<RemoteOperationRef>> SendUpsertAsync(PttAvmRequestContext account, string itemsXml, CancellationToken cancellationToken)
     {
-        var result = await SendSoapAsync(account, ProductUpsert, [new("items", PttAvmProductPayloadRules.ItemsXml(draft), Raw: true)], cancellationToken);
+        var result = await SendSoapAsync(account, ProductUpsert, [new("items", itemsXml, Raw: true)], cancellationToken);
         if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
         var trackingId = ContractValue(result.Value!, "TrackingId");
         if (!string.Equals(ContractValue(result.Value!, "Success"), "true", StringComparison.OrdinalIgnoreCase) || trackingId is null)
@@ -527,7 +531,7 @@ public static class PttAvmProductPayloadRules
         $"Kuru çalıştırma: {draft.Variants?.Count ?? 0} varyantlı PTT AVM isteği hazırlandı, gönderilmedi. İstek çalışan (worker) günlüğünde '{draft.Barcode}' barkoduyla kayıtlı.";
 
     // Colour and size folded for comparison: case, Turkish letters and the spacing around a dash do not matter.
-    private static string VariantLabel(string color, string size) => $"{Fold(color)}/{Fold(size)}";
+    internal static string VariantLabel(string color, string size) => $"{Fold(color)}/{Fold(size)}";
 
     private static string Fold(string value) =>
         Regex.Replace(Regex.Replace(PttAvmOrderMapper.Fold(value.Replace('İ', 'I')), @"\s*-\s*", "-"), @"\s+", " ");
