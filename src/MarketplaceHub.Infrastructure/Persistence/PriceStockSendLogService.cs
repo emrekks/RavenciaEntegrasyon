@@ -40,10 +40,15 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
             if (!JobListCursor.TryDecode(request.After, out var afterCreatedAt, out var afterId))
                 return ServiceResult<PageResult<PriceStockSendLogView>>.Fail("SEND_LOG_CURSOR_INVALID", "Listenin devamı okunamadı. Listeyi yenileyip tekrar deneyin.", 400);
             // The first condition bounds the index scan; the second keeps the same order as the page.
-            query = query.Where(x => x.CreatedAt <= afterCreatedAt && (x.CreatedAt < afterCreatedAt || x.Id.CompareTo(afterId) < 0));
+            query = request.OldestFirst
+                ? query.Where(x => x.CreatedAt >= afterCreatedAt && (x.CreatedAt > afterCreatedAt || x.Id.CompareTo(afterId) > 0))
+                : query.Where(x => x.CreatedAt <= afterCreatedAt && (x.CreatedAt < afterCreatedAt || x.Id.CompareTo(afterId) < 0));
         }
         var limit = request.EffectiveLimit;
-        var rows = await query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var ordered = request.OldestFirst
+            ? query.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
+            : query.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id);
+        var rows = await ordered.Take(limit + 1).ToListAsync(cancellationToken);
         var hasMore = rows.Count > limit;
         if (hasMore) rows = rows.Take(limit).ToList();
         var nextCursor = hasMore ? JobListCursor.Encode(rows[^1].CreatedAt, rows[^1].Id) : null;
