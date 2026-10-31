@@ -1,10 +1,10 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
-import { Button, Pagination, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
+import { Button, Pagination, Tabs, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification, notificationError, notificationLinks, platformCodeFromName, type NotificationContext } from '../../shared/notifications'
@@ -21,13 +21,14 @@ import { jobPageSizes, jobsLogsTabOpen, readJobsViewState, withJobsLogsTab, writ
 // The send log (Loglar tab) loads with its own chunk the first time the tab opens.
 const PriceStockSendLog = lazy(() => import('./PriceStockSendLog'))
 const logsTabValue = 'LOGS'
+const jobsTabValue = 'JOBS'
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Faturam' : marketplacePlatformLabel(code)
 import { JobQueueMetrics } from './JobQueueMetrics'
 import './jobs-responsive.css'
 import './jobs-sade.css'
-import { ViewTabsWithMore, viewTabLabel } from '../../shared/view-tabs'
+import { viewTabLabel } from '../../shared/view-tabs'
 import { useRememberedTabCounts } from '../../shared/tab-counts'
 import { formatDateTime, formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
@@ -370,6 +371,29 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
   </DialogSurface></div>
 }
 
+// The categories are the second level under İş Takibi: one segmented strip of equal text buttons (the dashboard's period
+// picker), every category in view with a quiet count; on a narrow screen the strip scrolls sideways.
+function JobCategorySegment({ items: givenItems, value, onChange }: { items: Array<{ value: string; label: string; count?: number }>; value: string; onChange: (value: string) => void }) {
+  const items = useRememberedTabCounts('İşlem kategorileri', givenItems)
+  const strip = useRef<HTMLDivElement>(null)
+  // A category opened from a link may sit past the edge of a phone's strip: scroll the strip (only it) to show it.
+  useEffect(() => {
+    const element = strip.current
+    const active = element?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!element || !active || element.scrollWidth <= element.clientWidth) return
+    const box = element.getBoundingClientRect()
+    const tab = active.getBoundingClientRect()
+    if (tab.left < box.left || tab.right > box.right) element.scrollLeft += tab.left - box.left - (box.width - tab.width) / 2
+  }, [value])
+  return <div ref={strip} className="jobs-category-segment" role="tablist" aria-label="İşlem kategorileri">{items.map((item, index) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : undefined} onClick={() => onChange(item.value)} onKeyDown={event => {
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : event.key === 'ArrowRight' ? (index + 1) % items.length : event.key === 'ArrowLeft' ? (index - 1 + items.length) % items.length : -1
+    if (next < 0) return
+    event.preventDefault()
+    onChange(items[next].value)
+    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus()
+  }}><span className="jobs-category-segment-label" data-text={item.label}>{item.label}</span>{item.count !== undefined && <span className="jobs-category-segment-count">{item.count}</span>}</button>)}</div>
+}
+
 export function JobsPage({ me }: { me: Me }) {
   const client = useQueryClient()
   const [filterOpen, setFilterOpen] = useState(false)
@@ -383,11 +407,11 @@ export function JobsPage({ me }: { me: Me }) {
   const statusChips = view.chips
   const platform = jobPlatformFromSearch(searchParams.get('platform'))
   const updateView = (patch: Partial<JobsViewState>) => setSearchParams(current => writeJobsViewState(current, patch), { replace: true })
-  // Loglar (the price/stock send log) is a tab of its own; picking a category closes it.
+  // Two main tabs sit above the page body: İş Takibi (the job list with its category tabs) and Loglar (the price/stock
+  // send log). Going back to İş Takibi reopens the category the address still holds.
   const logsOpen = jobsLogsTabOpen(searchParams)
-  const setTab = (next: string) => setSearchParams(current => next === logsTabValue
-    ? withJobsLogsTab(current, true)
-    : withJobsLogsTab(writeJobsViewState(current, { category: next as JobCategory }), false), { replace: true })
+  const setMainTab = (next: string) => setSearchParams(current => withJobsLogsTab(current, next === logsTabValue), { replace: true })
+  const setCategory = (next: string) => updateView({ category: next as JobCategory })
   const setStatus = (next: '' | JobStatus) => updateView({ status: next })
   const setSearch = (next: string) => updateView({ search: next })
   const setTimeRange = (next: JobTimeRange) => updateView({ timeRange: next })
@@ -573,9 +597,10 @@ export function JobsPage({ me }: { me: Me }) {
         </div>
       </div>}
     </div>
+    <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={logsOpen ? logsTabValue : jobsTabValue} onChange={setMainTab} items={[{ value: jobsTabValue, label: viewTabLabel('processing', 'İş Takibi') }, { value: logsTabValue, label: viewTabLabel('log', 'Loglar') }]} />
     {!logsOpen && <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => `${jobTitle(jobType)} · ${jobPresentation(jobType).action}`} platform={platform} />}
     <div className="jobs-reference-canvas">
-      <ViewTabsWithMore more={[]} className="jobs-reference-tabs" ariaLabel="İşlem kategorileri" value={logsOpen ? logsTabValue : category} onChange={setTab} items={[...jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: viewTabLabel(({ ALL: 'all', ORDERS: 'order', PRICE_INVENTORY: 'price', CATALOG: 'product', INVOICES: 'invoice', RETURNS: 'return', SYSTEM: 'review' } as const)[tab.key], tab.label), count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 })), { value: logsTabValue, label: viewTabLabel('log', 'Loglar') }]} />
+      {!logsOpen && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
       {logsOpen ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense> : <>
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
