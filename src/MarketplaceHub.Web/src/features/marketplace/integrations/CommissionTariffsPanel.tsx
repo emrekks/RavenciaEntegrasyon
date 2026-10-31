@@ -808,7 +808,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
               return <td key={tier}>
                 <div className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
                   {/* The card's headline is its band limit; the price the row would get stays in the badge's breakdown. */}
-                  <strong title={bandLimitHint([band])}>{bandLimitText([band]) ?? money(choice.price)}{row.currentTier === tier && <small className="commission-now"> · şu an</small>}</strong>
+                  <strong title={bandLimitHint([band])}>{bandLimitText([band]) ?? money(choice.price)}</strong>
                   {partner ? weekLines([row], tier, `${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`) : <>
                     <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
                     <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`} tag={`${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
@@ -852,7 +852,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
               const ranged = lefts.length > 0 && Math.min(...lefts) !== Math.max(...lefts)
               return <td key={tier}>
                 <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
-                  <strong title={bandLimitHint(owners.map(row => row.bands.find(item => item.tier === tier)))}>{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier))) ?? priceRange(choices.map(item => item.price))}{owners.some(row => row.currentTier === tier) && <small className="commission-now"> · şu an</small>}</strong>
+                  <strong title={bandLimitHint(owners.map(row => row.bands.find(item => item.tier === tier)))}>{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier))) ?? priceRange(choices.map(item => item.price))}</strong>
                   {partner ? weekLines(owners, tier, first.productName ?? first.barcode) : <>
                     <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
                     <ProfitBadge price={least ?? choices[0]} label={ranged ? <ProfitRange choices={choices} /> : undefined}
