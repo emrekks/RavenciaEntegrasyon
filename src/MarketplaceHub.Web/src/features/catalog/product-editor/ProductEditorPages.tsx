@@ -38,7 +38,7 @@ import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
-import { panelPrices } from '../quick-price-edit'
+import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
 import { editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, TURKISH_VAT_RATES, type EditorFieldErrors } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
@@ -1228,6 +1228,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [seedSnapshot, setSeedSnapshot] = useState<string | null>(null)
   const [staleProductVersion, setStaleProductVersion] = useState<number | null>(null)
   const allowReseedUntil = useRef(0)
+  // "Pazaryerlerine Özel Fiyat" as the product opened (the marketplaces with their own price) and each card's price when
+  // it was filled or switched on: a card whose price was not changed leaves every variant's own offer price as it is.
+  const initialCustomChannelIds = useRef<ReadonlySet<string>>(new Set())
+  const channelPricingBase = useRef<Record<string, ChannelPricingDraft>>({})
   const [fieldErrors, setFieldErrors] = useState<EditorFieldErrors>({})
   // A save refused with a field message scrolls to that field, frames it red and shakes it.
   const lastFieldReveal = useRef(0)
@@ -1352,6 +1356,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     initialEditModelCode.current = initialModelCode.trim()
     initialEditDesi.current = Number(primary?.desi ?? 1)
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), warrantyMonths: String(product.warrantyMonths ?? 0), deliveryDays: String(product.deliveryDays ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
+    // An existing product opens with each marketplace's stored choice (else what its offer prices say): a marketplace
+    // with its own price has its switch on and shows that price; a card with variants is on as soon as one variant's
+    // offer there keeps its own price, and shows the first such variant's price.
+    if (editProductId) {
+      const customPrices = editorCustomChannelPrices(sortedVariants, product)
+      setChannelPricing(customPrices)
+      channelPricingBase.current = customPrices
+      initialCustomChannelIds.current = new Set(Object.keys(customPrices))
+    }
     if (!editProductId && duplicateProductId) setChannelPricing(Object.fromEntries((primary?.platformStatuses ?? []).flatMap(platform => platform.connectionId ? [[platform.connectionId, { listPrice: String(platform.listPrice ?? initialListPrice), salePrice: String(platform.salePrice ?? initialSalePrice) }] as const] : [])))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setFamilyMediaOrder(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
@@ -1860,10 +1873,18 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     return channelPricing[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }
   }
   function toggleCustomChannelPrice(connectionId: string) {
+    const opened = { listPrice: form.listPrice, salePrice: form.salePrice }
+    if (!(connectionId in channelPricing)) channelPricingBase.current = { ...channelPricingBase.current, [connectionId]: opened }
     setChannelPricing(current => {
       if (connectionId in current) { const { [connectionId]: _removed, ...rest } = current; return rest }
-      return { ...current, [connectionId]: { listPrice: form.listPrice, salePrice: form.salePrice } }
+      return { ...current, [connectionId]: opened }
     })
+  }
+  // True when the person changed the card's own price since it was filled or switched on.
+  function channelPriceEdited(connectionId: string) {
+    const base = channelPricingBase.current[connectionId]
+    const draft = channelPricing[connectionId]
+    return !base || !draft || Number(base.listPrice) !== Number(draft.listPrice) || Number(base.salePrice) !== Number(draft.salePrice)
   }
   function updateChannelPrice(connectionId: string, field: keyof ChannelPricingDraft, value: string) {
     setChannelPricing(current => ({ ...current, [connectionId]: { ...(current[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }), [field]: value } }))
@@ -2037,7 +2058,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           roundingMode: target.platform.roundingMode ?? 'HALF_EVEN',
           safetyStock: target.platform.safetyStock ?? Number(form.safetyStock || 0),
           status: 'ACTIVE',
-          reason: `${platformDisplayName(target.platform)} toplu varyant fiyatı`
+          reason: `${platformDisplayName(target.platform)} toplu varyant fiyatı`,
+          // A price typed apart from the variant's panel price is this marketplace's own ("Özel Fiyat"), so a panel save
+          // never overwrites it; one equal to the panel price keeps the stored choice.
+          followsPanelPrice: typedOfferPriceChoice({ listPrice, salePrice }, { listPrice: target.row.listPrice, salePrice: target.row.salePrice }, channelTakesListPrice(target.platform.platformCode))
         }
         const saved = target.platform.offerId && target.platform.offerVersion != null
           ? await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>(`/channel-offers/${target.platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.platform.offerVersion}"` }, body: JSON.stringify(body) })
@@ -2564,6 +2588,17 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // a stock changed meanwhile (order, return, another tab) is refused for that row instead of being overwritten.
       const stockResult = await applyVariantStockSets(editorStockUpdates(rows, product.variants), update => setVariantOnHand(update, productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu'))
       if (stockResult.failed.length) warnings.push(`Stok kaydedilemedi: ${stockResult.failed.map(item => `${item.sku}: ${item.message}`).join(' · ')}`)
+      // A marketplace switched to or from "Özel Fiyat" stores the choice on the card's offers there, even when no price
+      // is written to it (no price changes, nothing goes to the marketplace).
+      if (editProductId) {
+        const choiceChanged = (connections.data?.items ?? []).map(connection => connection.id).filter(connectionId => (connectionId in channelPricing) !== initialCustomChannelIds.current.has(connectionId))
+        for (const connectionId of choiceChanged) {
+          const followsPanelPrice = !(connectionId in channelPricing)
+          const variantIds = panelFollowChoiceVariantIds(rows.map(row => ({ id: row.key, platformStatuses: row.platformStatuses })), connectionId, followsPanelPrice)
+          if (variantIds.length) await hubApi('/channel-offers/panel-price-follow', { method: 'PUT', body: JSON.stringify({ connectionId, variantIds, followsPanelPrice }) })
+        }
+        initialCustomChannelIds.current = new Set(Object.keys(channelPricing))
+      }
       for (const variant of product.variants) {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
         if (!row) continue
@@ -2571,7 +2606,17 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           const pricing = channelPriceDraft(connectionId)
           const platform = row.platformStatuses?.find(item => item.connectionId === connectionId)
           const variantPricing = variantChannelPricing[`${row.key}:${connectionId}`]
-          const offerCommand = { connectionId, variantId: variant.id, listPrice: platformUpdate ? row.listPrice : Number(variantPricing?.listPrice ?? pricing.listPrice), salePrice: platformUpdate ? row.salePrice : Number(variantPricing?.salePrice ?? pricing.salePrice), currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: Number(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: Number(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: platformUpdate ? 'Ürün platform güncellemesi' : 'İlk ürün fiyatı' }
+          // A marketplace that follows the panel takes the panel price ("Pazaryerlerinde Güncelle": the variant's own);
+          // one with "Özel Fiyat" never does: it takes the price typed in its card, or keeps each variant's own price.
+          const offerPrices = editorChannelOfferPrices({
+            custom: connectionId in channelPricing,
+            panel: platformUpdate ? { listPrice: row.listPrice, salePrice: row.salePrice } : { listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice) },
+            card: { listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice) },
+            cardEdited: channelPriceEdited(connectionId),
+            variantPrice: !platformUpdate && variantPricing ? { listPrice: Number(variantPricing.listPrice), salePrice: Number(variantPricing.salePrice) } : null,
+            offer: platform
+          })
+          const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: Number(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: Number(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: platformUpdate ? 'Ürün platform güncellemesi' : 'İlk ürün fiyatı' }
           if (platformUpdate && platform?.offerId) {
             if (platform.offerVersion == null) throw new Error(`${row.sku}: platform fiyat sürümü eksik; fiyat güncellenmedi.`)
             await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })

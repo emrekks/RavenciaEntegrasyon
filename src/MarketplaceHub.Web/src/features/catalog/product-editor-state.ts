@@ -10,10 +10,11 @@ export function editorSeedKey(mode: 'edit' | 'copy', productId: string, version:
   return `${mode}:${productId}:${version}${stamp ? `:${stamp}` : ''}`
 }
 
-type StampVariant = { id: string; version?: number | null; inventoryVersion?: number | null; onHand?: number | null; platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null }> | null }
-// A short text that changes whenever a variant's own version, its stock or one of its channel offers changes.
+type StampVariant = { id: string; version?: number | null; inventoryVersion?: number | null; onHand?: number | null; platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null; followsPanelPrice?: boolean | null }> | null }
+// A short text that changes whenever a variant's own version, its stock or one of its channel offers changes. An
+// offer's "Özel Fiyat" choice is stored without a new offer version, so it is stamped on its own.
 export function editorDataStamp(variants: ReadonlyArray<StampVariant>) {
-  const text = variants.map(variant => [variant.id, variant.version ?? '', variant.inventoryVersion ?? '', variant.onHand ?? '', ...(variant.platformStatuses ?? []).map(status => `${status.offerId ?? ''}@${status.offerVersion ?? ''}`)].join('.')).sort().join('|')
+  const text = variants.map(variant => [variant.id, variant.version ?? '', variant.inventoryVersion ?? '', variant.onHand ?? '', ...(variant.platformStatuses ?? []).map(status => `${status.offerId ?? ''}@${status.offerVersion ?? ''}${status.followsPanelPrice == null ? '' : status.followsPanelPrice ? '+' : '-'}`)].join('.')).sort().join('|')
   let hash = 5381
   for (let index = 0; index < text.length; index++) hash = (hash * 33 + text.charCodeAt(index)) >>> 0
   return hash.toString(36)

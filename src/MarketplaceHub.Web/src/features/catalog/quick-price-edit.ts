@@ -6,6 +6,7 @@ export type QuickPriceOffer = {
   offerId: string; offerVersion: number | null
   listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null
   vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null
+  followsPanelPrice?: boolean | null
 }
 
 export type QuickPriceTarget =
@@ -14,7 +15,7 @@ export type QuickPriceTarget =
   | { kind: 'blocked'; reason: string }
 
 type QuickPriceVariant = {
-  platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null; listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null }>
+  platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null; listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null; followsPanelPrice?: boolean | null; platformCode?: string | null }>
 }
 
 // Marketplaces that take a sale price only (Hepsiburada's inventory upload and PTT AVM's price send carry no list
@@ -25,13 +26,15 @@ export function channelTakesListPrice(platformCode: string | null | undefined) {
 }
 
 // The offer body a quick edit sends: the channel offer's own settings kept (its status too, so a passive offer is not
-// switched on), the variant's for a channel that gets its first offer.
-export function quickPriceBody(target: Extract<QuickPriceTarget, { kind: 'update' | 'create' }>, variant: { id: string; currency: string | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null }, prices: { listPrice: number; salePrice: number }, reason: string) {
+// switched on), the variant's for a channel that gets its first offer. followsPanelPrice is the channel's "Özel Fiyat"
+// choice stored with the offer (unticked → true, ticked → false); left out, the stored choice is kept.
+export function quickPriceBody(target: Extract<QuickPriceTarget, { kind: 'update' | 'create' }>, variant: { id: string; currency: string | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null }, prices: { listPrice: number; salePrice: number }, reason: string, followsPanelPrice?: boolean) {
   const source = target.kind === 'update' ? target.offer : null
   return {
     connectionId: target.kind === 'create' ? target.connectionId : '', variantId: variant.id, listPrice: prices.listPrice, salePrice: prices.salePrice,
     currency: source?.currency || variant.currency || 'TRY', vatRate: source?.vatRate ?? variant.vatRate ?? 10, vatInclusion: source?.vatInclusion || variant.vatInclusion || 'INCLUDED',
     roundingMode: source?.roundingMode || variant.roundingMode || 'HALF_EVEN', safetyStock: source?.safetyStock ?? variant.safetyStock ?? 0, status: source?.offerStatus || 'ACTIVE', reason,
+    ...(followsPanelPrice == null ? {} : { followsPanelPrice }),
   }
 }
 
@@ -102,24 +105,81 @@ export function quickPriceColumns(connections: ReadonlyArray<{ id: string; displ
   ]
 }
 
-// "Özel Fiyat" per marketplace column, as the product editor's "Pazaryerlerine Özel Fiyat": an unticked marketplace
-// sells at the panel (main) price, so a panel price saved here is written to its offers too; a ticked one keeps its own
-// prices, edited in its own cells. The editor keeps this choice in its form only (it opens an existing product with
-// every marketplace unticked and, on "Pazaryerlerinde Güncelle", writes the panel price to the offers). Nothing stores
-// it, so this window derives it from the data instead: a marketplace whose offers all carry the panel price follows
-// it; one with any offer at another price (or whose panel price is unknown) starts ticked, so a panel change never
-// overwrites a marketplace price the person set apart. A marketplace with no offer yet follows the panel.
+// "Özel Fiyat" per marketplace, in the quick edit's columns and the product editor's "Pazaryerlerine Özel Fiyat": an
+// unticked marketplace sells at the panel (main) price, so a panel price saved in the panel is written to its offers
+// too; a ticked one keeps its own prices. The choice is stored per offer (followsPanelPrice). An offer whose choice was
+// never stored (null) reads it from its prices: at the panel price it follows the panel; at any other price (or with
+// the panel price unknown) it keeps its own, so a panel change never overwrites a price the person set apart. A variant
+// with no offer on a marketplace follows the panel. offerFollowsPanel is that rule; every screen reads it from here.
 type FollowItem = { variant: QuickPriceVariant & VariantOfferPriceSource; product: PanelPriceSource }
 export function offerMatchesPanel(offer: Pick<QuickPriceOffer, 'listPrice' | 'salePrice'>, panel: { listPrice: number | null; salePrice: number | null }, takesListPrice: boolean) {
   if (panel.salePrice == null || offer.salePrice == null || !samePrice(offer.salePrice, panel.salePrice)) return false
   if (!takesListPrice) return true
   return panel.listPrice != null && offer.listPrice != null && samePrice(offer.listPrice, panel.listPrice)
 }
+export function offerFollowsPanel(offer: (Pick<QuickPriceOffer, 'listPrice' | 'salePrice' | 'followsPanelPrice'>) | null | undefined, panel: { listPrice: number | null; salePrice: number | null }, takesListPrice: boolean): boolean {
+  if (offer == null) return true
+  if (offer.followsPanelPrice != null) return offer.followsPanelPrice
+  return offerMatchesPanel(offer, panel, takesListPrice)
+}
+// One marketplace's choice over several variants (a card's variants, a quick edit's products): its own price as soon as
+// one variant's offer there keeps its own, so no variant's own price is overwritten by a panel save.
+export function channelKeepsOwnPrice(items: ReadonlyArray<FollowItem>, connectionId: string, takesListPrice: boolean): boolean {
+  return items.some(item => !offerFollowsPanel(channelOffer(item.variant, connectionId), panelPrices(item.variant, item.product), takesListPrice))
+}
 export function initialCustomChannels(items: ReadonlyArray<FollowItem>, columns: ReadonlyArray<QuickPriceColumn>): Record<string, boolean> {
-  return Object.fromEntries(columns.filter(column => column.id !== PANEL_PRICE_CHOICE).map(column => [column.id, items.some(item => {
-    const offer = channelOffer(item.variant, column.id)
-    return offer != null && !offerMatchesPanel(offer, panelPrices(item.variant, item.product), column.takesListPrice)
-  })]))
+  return Object.fromEntries(columns.filter(column => column.id !== PANEL_PRICE_CHOICE).map(column => [column.id, channelKeepsOwnPrice(items, column.id, column.takesListPrice)]))
+}
+
+// The product editor's "Pazaryerlerine Özel Fiyat" cards as an existing product opens: every marketplace whose choice
+// (channelKeepsOwnPrice over the card's variants) is its own price, with the prices of the first variant (in the order
+// given) whose offer there keeps its own. Marketplaces that follow the panel are left out (their switch is off).
+export function editorCustomChannelPrices(variants: ReadonlyArray<QuickPriceVariant & VariantOfferPriceSource>, product: PanelPriceSource): Record<string, { listPrice: string; salePrice: string }> {
+  const connections = new Map<string, string | null>()
+  for (const variant of variants) for (const status of variant.platformStatuses ?? []) if (status.connectionId && !connections.has(status.connectionId)) connections.set(status.connectionId, status.platformCode ?? null)
+  return Object.fromEntries([...connections].flatMap(([connectionId, platformCode]) => {
+    const takesListPrice = channelTakesListPrice(platformCode)
+    const own = variants.map(variant => channelOffer(variant, connectionId)).find((offer, index) => offer != null && !offerFollowsPanel(offer, panelPrices(variants[index], product), takesListPrice))
+    if (!own) return []
+    const salePrice = own.salePrice ?? own.listPrice ?? 0
+    return [[connectionId, { listPrice: String(own.listPrice ?? salePrice), salePrice: String(salePrice) }]]
+  }))
+}
+
+// The variants whose offer on a marketplace is to store a new "Özel Fiyat" choice (a variant without an offer there has
+// nothing to store; an offer already holding the choice is left out).
+export function panelFollowChoiceVariantIds(variants: ReadonlyArray<QuickPriceVariant & { id: string }>, connectionId: string, followsPanelPrice: boolean): string[] {
+  return variants.flatMap(variant => {
+    const offer = channelOffer(variant, connectionId)
+    return offer && offer.followsPanelPrice !== followsPanelPrice ? [variant.id] : []
+  })
+}
+
+// What the product editor writes to one variant's offer on one marketplace when it saves channel prices (a first
+// publish, "Kaydet ve Yayınla", "Pazaryerlerinde Güncelle"). A marketplace that follows the panel takes the panel price.
+// One with its own price takes the price typed in its card only when the person changed that price (or the variant has
+// no offer there yet); otherwise each variant keeps its own offer price, so a card that shows one variant's price never
+// overwrites the others'. A per-variant price typed in the variant price table wins over both.
+export type EditorChannelOfferInput = {
+  custom: boolean
+  panel: { listPrice: number; salePrice: number }
+  card: { listPrice: number; salePrice: number }
+  cardEdited: boolean
+  variantPrice?: { listPrice: number; salePrice: number } | null
+  offer?: { listPrice?: number | null; salePrice?: number | null } | null
+}
+export function editorChannelOfferPrices(input: EditorChannelOfferInput): { listPrice: number; salePrice: number; followsPanelPrice: boolean } {
+  const followsPanelPrice = !input.custom
+  if (input.variantPrice) return { ...input.variantPrice, followsPanelPrice }
+  if (!input.custom) return { ...input.panel, followsPanelPrice }
+  const own = input.offer?.salePrice != null && input.offer.salePrice > 0 ? { listPrice: input.offer.listPrice ?? input.offer.salePrice, salePrice: input.offer.salePrice } : null
+  return { ...(input.cardEdited || !own ? input.card : own), followsPanelPrice }
+}
+
+// The choice a price typed for one variant's marketplace offer stores: a price apart from the variant's panel price is
+// its own (false); one equal to it keeps the stored choice (undefined: not sent).
+export function typedOfferPriceChoice(prices: { listPrice: number; salePrice: number }, panel: { listPrice: number | null; salePrice: number | null }, takesListPrice: boolean): false | undefined {
+  return offerMatchesPanel(prices, panel, takesListPrice) ? undefined : false
 }
 
 // The marketplaces that follow the panel price: every marketplace column not ticked "Özel Fiyat".

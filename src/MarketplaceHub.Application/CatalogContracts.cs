@@ -76,7 +76,10 @@ public sealed record ProductVariantPlatformStatusView(
     // there. Never set from a missing link or a SUSPECT/UNVERIFIED one.
     bool IsMissing = false,
     // The status of the variant's offer on this connection (ACTIVE / PASSIVE …), so an edit keeps it.
-    string? OfferStatus = null);
+    string? OfferStatus = null,
+    // The offer's stored "Özel Fiyat" choice: true follows the panel price, false keeps its own, null was never chosen
+    // (the screens then read it from the prices).
+    bool? FollowsPanelPrice = null);
 public sealed record ProductPlatformStatusView(
     string Platform,
     string Status,
@@ -267,9 +270,15 @@ public sealed record LedgerEntryView(Guid Id, string MovementType, decimal Quant
 public sealed record StockAdjustmentCommand(decimal QuantityDelta, string Reason, string SourceEventId);
 // Sets MAIN on-hand stock to an absolute value only while it still equals ExpectedOnHand (the value the user saw).
 public sealed record StockSetCommand(decimal OnHand, decimal ExpectedOnHand, string Reason, string SourceEventId);
-public sealed record ChannelOfferView(Guid Id, Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, long PriceVersion, long Version);
-public sealed record UpsertChannelOfferCommand(Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, string Reason);
-public sealed record UpdateChannelOfferCommand(decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, string Reason);
+public sealed record ChannelOfferView(Guid Id, Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, long PriceVersion, long Version, bool? FollowsPanelPrice = null);
+// FollowsPanelPrice: the "Özel Fiyat" choice stored with the offer (true follows the panel price, false keeps its own);
+// null in a request leaves the stored choice as it is.
+public sealed record UpsertChannelOfferCommand(Guid ConnectionId, Guid VariantId, decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, string Reason, bool? FollowsPanelPrice = null);
+public sealed record UpdateChannelOfferCommand(decimal ListPrice, decimal SalePrice, string Currency, decimal VatRate, string VatInclusion, string RoundingMode, decimal SafetyStock, string Status, string Reason, bool? FollowsPanelPrice = null);
+// Stores the "Özel Fiyat" choice on the variants' existing offers of one connection without a price change (a variant
+// without an offer there gets none). No price changes, so nothing is sent to a marketplace.
+public sealed record SetChannelOfferPanelFollowCommand(Guid ConnectionId, IReadOnlyList<Guid> VariantIds, bool FollowsPanelPrice);
+public sealed record ChannelOfferPanelFollowView(int UpdatedCount);
 
 public interface IInventoryService
 {
@@ -280,6 +289,7 @@ public interface IInventoryService
     Task<ServiceResult<ChannelOfferView>> UpsertOfferAsync(Guid tenantId, Guid userId, UpsertChannelOfferCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ChannelOfferView>> GetOfferAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ChannelOfferView>> UpdateOfferAsync(Guid tenantId, Guid userId, Guid id, long expectedVersion, UpdateChannelOfferCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<ChannelOfferPanelFollowView>> SetOfferPanelFollowAsync(Guid tenantId, SetChannelOfferPanelFollowCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> ValidateExternalSyncAsync(Guid tenantId, string operation, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueuePriceInventorySyncAsync(Guid tenantId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, string? stockCode = null);
     Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, bool price = true, bool stock = true);

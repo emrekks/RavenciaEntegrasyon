@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
+import { channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
 
 describe('panel price choice', () => {
   const product = { defaultListPrice: 300, defaultSalePrice: 250 }
@@ -167,6 +167,78 @@ describe('Özel Fiyat: marketplaces that follow the panel price', () => {
     expect(initialCustomChannels([{ product, variant: { platformStatuses: [] } }], columns)).toEqual({ 'c-ty': false, 'c-hb': false, 'c-n11': false })
     // One differing variant is enough to keep that marketplace's own prices.
     expect(initialCustomChannels([...items, { product, variant: { defaultSalePrice: 200, platformStatuses: [status('c-ty', 300, 250)] } }], columns)['c-ty']).toBe(true)
+  })
+
+  it('reads the stored choice first, else the prices; no offer follows the panel', () => {
+    const panel = { listPrice: 300, salePrice: 250 }
+    expect(offerFollowsPanel(null, panel, true)).toBe(true)
+    expect(offerFollowsPanel({ listPrice: 300, salePrice: 250 }, panel, true)).toBe(true)
+    expect(offerFollowsPanel({ listPrice: 400, salePrice: 350 }, panel, true)).toBe(false)
+    // A stored choice wins over the prices, both ways.
+    expect(offerFollowsPanel({ listPrice: 300, salePrice: 250, followsPanelPrice: false }, panel, true)).toBe(false)
+    expect(offerFollowsPanel({ listPrice: 400, salePrice: 350, followsPanelPrice: true }, panel, true)).toBe(true)
+    expect(offerFollowsPanel({ listPrice: 400, salePrice: 350, followsPanelPrice: null }, panel, true)).toBe(false)
+  })
+
+  it('ticks a marketplace from the stored choice, else from the prices', () => {
+    const stored = (connectionId: string, listPrice: number, salePrice: number, followsPanelPrice: boolean | null) => ({ ...status(connectionId, listPrice, salePrice), followsPanelPrice })
+    const items = [{ product, variant: { platformStatuses: [stored('c-ty', 300, 250, false), stored('c-hb', 999, 999, true), stored('c-n11', 400, 350, null)] } }]
+    expect(initialCustomChannels(items, columns)).toEqual({ 'c-ty': true, 'c-hb': false, 'c-n11': true })
+    // A card's variants: its own price as soon as one variant's offer keeps its own.
+    const twoVariants = [items[0], { product, variant: { platformStatuses: [stored('c-hb', 250, 250, false)] } }]
+    expect(channelKeepsOwnPrice(twoVariants, 'c-hb', false)).toBe(true)
+    expect(channelKeepsOwnPrice([{ product, variant: { platformStatuses: [] } }], 'c-hb', false)).toBe(false)
+  })
+
+  it("opens the editor's cards from the stored choice: own-price marketplaces with their first own offer's prices", () => {
+    const variants = [
+      { platformStatuses: [{ ...status('c-ty', 300, 250), platformCode: 'TRENDYOL' }, { ...status('c-hb', 999, 999), platformCode: 'HEPSIBURADA', followsPanelPrice: true }, { connectionId: 'c-n11', platformCode: 'N11', offerId: null }] },
+      { platformStatuses: [{ ...status('c-ty', 420, 380), platformCode: 'TRENDYOL' }, { ...status('c-hb', 260, 260), platformCode: 'HEPSIBURADA', followsPanelPrice: false }] },
+    ]
+    // Trendyol: the first variant follows (panel price), the second keeps its own, so the card is on with its price.
+    expect(editorCustomChannelPrices(variants, product)).toEqual({ 'c-ty': { listPrice: '420', salePrice: '380' }, 'c-hb': { listPrice: '260', salePrice: '260' } })
+    expect(editorCustomChannelPrices([variants[0]], product)).toEqual({})
+    expect(editorCustomChannelPrices([], product)).toEqual({})
+  })
+
+  it('stores a new choice only on the offers that hold another one', () => {
+    const variants = [
+      { id: 'v-1', platformStatuses: [{ ...status('c-ty', 300, 250), followsPanelPrice: true }] },
+      { id: 'v-2', platformStatuses: [{ ...status('c-ty', 300, 250), followsPanelPrice: null }] },
+      { id: 'v-3', platformStatuses: [] },
+    ]
+    expect(panelFollowChoiceVariantIds(variants, 'c-ty', true)).toEqual(['v-2'])
+    expect(panelFollowChoiceVariantIds(variants, 'c-ty', false)).toEqual(['v-1', 'v-2'])
+  })
+
+  it('sends the choice with a quick edit write only when given', () => {
+    const variant = { id: 'v-1', currency: 'TRY', vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: 'HALF_EVEN', safetyStock: 0 }
+    const target = { kind: 'create' as const, connectionId: 'c-ty' }
+    expect(quickPriceBody(target, variant, { listPrice: 300, salePrice: 250 }, 'r', false)).toMatchObject({ followsPanelPrice: false })
+    expect(quickPriceBody(target, variant, { listPrice: 300, salePrice: 250 }, 'r', true)).toMatchObject({ followsPanelPrice: true })
+    expect(quickPriceBody(target, variant, { listPrice: 300, salePrice: 250 }, 'r')).not.toHaveProperty('followsPanelPrice')
+  })
+
+  it("never writes the panel price to an editor channel with its own price", () => {
+    const panel = { listPrice: 300, salePrice: 250 }
+    const card = { listPrice: 500, salePrice: 450 }
+    const offer = { listPrice: 420, salePrice: 380 }
+    // Following: the panel price, stored as following.
+    expect(editorChannelOfferPrices({ custom: false, panel, card, cardEdited: false, offer })).toEqual({ ...panel, followsPanelPrice: true })
+    // Own price, card untouched: each variant keeps its own offer price.
+    expect(editorChannelOfferPrices({ custom: true, panel, card, cardEdited: false, offer })).toEqual({ ...offer, followsPanelPrice: false })
+    // Own price typed in the card: that price.
+    expect(editorChannelOfferPrices({ custom: true, panel, card, cardEdited: true, offer })).toEqual({ ...card, followsPanelPrice: false })
+    // No offer yet (or none with a sale price): the card's price.
+    expect(editorChannelOfferPrices({ custom: true, panel, card, cardEdited: false, offer: null })).toEqual({ ...card, followsPanelPrice: false })
+    expect(editorChannelOfferPrices({ custom: true, panel, card, cardEdited: false, offer: { listPrice: 0, salePrice: 0 } })).toEqual({ ...card, followsPanelPrice: false })
+    // A per-variant price typed in the variant table wins.
+    expect(editorChannelOfferPrices({ custom: true, panel, card, cardEdited: true, offer, variantPrice: { listPrice: 610, salePrice: 600 } })).toEqual({ listPrice: 610, salePrice: 600, followsPanelPrice: false })
+  })
+
+  it('marks a typed variant offer price apart from the panel price as its own', () => {
+    expect(typedOfferPriceChoice({ listPrice: 400, salePrice: 350 }, { listPrice: 300, salePrice: 250 }, true)).toBe(false)
+    expect(typedOfferPriceChoice({ listPrice: 300, salePrice: 250 }, { listPrice: 300, salePrice: 250 }, true)).toBeUndefined()
   })
 
   it('lists the unticked marketplaces, never the panel column', () => {
