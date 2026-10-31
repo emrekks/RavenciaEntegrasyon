@@ -192,7 +192,9 @@ describe('IntegrationsPage filters (W16)', () => {
     expect(container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!.inputMode).toBe('numeric')
     expect(container.querySelector('input[name="pttAvmApiKey"]')).toBeNull()
     expect(container.querySelector('select[name="environment"]')).toBeNull()
-    expect(container.querySelector('.integration-modal')!.textContent).toContain('PTT AVM satıcı paneli › Hesap Yönetimi › Entegrasyon Bilgileri')
+    // The store id's explanation sits behind the help mark, named by the field.
+    const storeHelpId = container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!.getAttribute('aria-describedby')!
+    expect(document.getElementById(storeHelpId)!.textContent).toContain('PTT AVM satıcı paneli › Hesap Yönetimi › Entegrasyon Bilgileri')
 
     act(() => setValue(container.querySelector<HTMLInputElement>('input[name="displayName"]')!, 'PTT AVM Canlı'))
     act(() => setValue(container.querySelector<HTMLInputElement>('input[name="externalStoreId"]')!, '123456'))
