@@ -76,7 +76,9 @@ describe('signing in', () => {
     password.value = 'gizli-parola'
     submit(host.querySelector<HTMLFormElement>('form.rv-auth-form')!)
     await waitFor(() => shell(host))
-    expect(server.calls.some(call => call.url === '/api/v1/auth/login' && call.method === 'POST')).toBe(true)
+    const login = server.calls.find(call => call.url === '/api/v1/auth/login' && call.method === 'POST')
+    // "Beni Hatırla" is on by default: the session is kept for 30 days instead of ending after 30 idle minutes.
+    expect(JSON.parse(login!.body!)).toMatchObject({ rememberMe: true })
   })
 
   it('asks for the second step and opens the workspace once the code is accepted', async () => {

@@ -354,13 +354,22 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
   </main>
 }
 
+// A sign-in sent with fetch is not a form post, so Chrome may not offer to save the password; the Credential
+// Management API asks it outright. The form is read before it leaves the page; other browsers skip this.
+function offerToSavePassword(form: HTMLFormElement) {
+  const PasswordCredential = (window as { PasswordCredential?: new (form: HTMLFormElement) => Credential }).PasswordCredential
+  if (!PasswordCredential || !navigator.credentials) return
+  try { void navigator.credentials.store(new PasswordCredential(form)).catch(() => undefined) } catch { /* nothing to save */ }
+}
+
 function Login({ notice }: { notice?: string }) {
   const navigate = useNavigate()
   const location = useLocation()
   const client = useQueryClient()
   const rememberedEmail = localStorage.getItem('ravencia.rememberedEmail') ?? ''
   const [email, setEmail] = useState(rememberedEmail)
-  const [rememberMe, setRememberMe] = useState(Boolean(rememberedEmail))
+  // "Beni Hatırla" is on unless it was switched off on this device: without it a session ends after 30 idle minutes.
+  const [rememberMe, setRememberMe] = useState(localStorage.getItem('ravencia.rememberMe') !== '0')
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -371,12 +380,14 @@ function Login({ notice }: { notice?: string }) {
     event.preventDefault()
     setError('')
     setLoading(true)
-    const data = new FormData(event.currentTarget)
+    const form = event.currentTarget
+    const data = new FormData(form)
     try {
-      await api<{ state: string }>('/login', { method: 'POST', body: JSON.stringify({ email: email.trim(), password: data.get('password'), tenantId: tenantId || null }) })
+      await api<{ state: string }>('/login', { method: 'POST', body: JSON.stringify({ email: email.trim(), password: data.get('password'), tenantId: tenantId || null, rememberMe }) })
+      offerToSavePassword(form)
       const currentUser = await api<Me>('/me')
-      if (rememberMe) localStorage.setItem('ravencia.rememberedEmail', email.trim())
-      else localStorage.removeItem('ravencia.rememberedEmail')
+      if (rememberMe) { localStorage.setItem('ravencia.rememberedEmail', email.trim()); localStorage.removeItem('ravencia.rememberMe') }
+      else { localStorage.removeItem('ravencia.rememberedEmail'); localStorage.setItem('ravencia.rememberMe', '0') }
       // Nothing read under the previous session (perhaps another account or workspace) is shown to this one.
       forgetPreviousSession(client)
       confirmQuerySnapshotScope(client, currentUser.tenantId, currentUser.id)
@@ -399,7 +410,7 @@ function Login({ notice }: { notice?: string }) {
             <div className="rv-auth-field"><label htmlFor="login-email">E-posta Adresi</label><div className="rv-auth-control"><UiIcon name="mail" size={18} /><input id="login-email" name="email" type="email" value={email} onChange={event => setEmail(event.target.value)} required autoComplete="username" placeholder="ornek@ravencia.com" ref={focusOnMount} /></div></div>
             <div className="rv-auth-field"><div className="rv-auth-label-row"><label htmlFor="login-password">Parola</label><button type="button" onClick={() => setError('Parola sıfırlama için sistem yöneticinizle iletişime geçin.')}>Parolamı Unuttum</button></div><div className="rv-auth-control"><UiIcon name="lock" size={18} /><input id="login-password" name="password" type={showPw ? 'text' : 'password'} required autoComplete="current-password" placeholder="Parolanızı girin" /><button type="button" className="rv-auth-password-toggle" aria-label={showPw ? 'Parolayı gizle' : 'Parolayı göster'} onClick={() => setShowPw(value => !value)}><UiIcon name={showPw ? 'eye' : 'eyeOff'} size={18} /></button></div></div>
             {tenantOptions.length > 0 && <div className="rv-auth-field"><label htmlFor="login-tenant">Çalışma Alanı</label><select id="login-tenant" value={tenantId} onChange={event => setTenantId(event.target.value)} required><option value="">Çalışma Alanı Seçin</option>{tenantOptions.map(option => <option key={option.id} value={option.id}>{option.displayName}</option>)}</select></div>}
-            <label className="rv-auth-remember"><input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} /><span>E-posta adresimi bu cihazda hatırla</span></label>
+            <label className="rv-auth-remember"><input type="checkbox" checked={rememberMe} onChange={event => setRememberMe(event.target.checked)} /><span>Beni Hatırla (30 gün)</span></label>
             {error && <div className="rv-auth-error" role="alert"><i /><span>{error}</span></div>}
             <button className="rv-auth-submit" type="submit" disabled={loading}>{loading ? <><i /> Oturum Doğrulanıyor…</> : <><span>Güvenli Giriş Yap</span><UiIcon name="arrowRight" /></>}</button>
           </form>
