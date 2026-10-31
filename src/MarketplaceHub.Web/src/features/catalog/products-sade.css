@@ -407,6 +407,9 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead th { color: var(--rr-muted); font-size: 12px; font-weight: 500; text-align: left; white-space: nowrap; background: var(--rr-raised); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead .rr-qt-sub th { padding-block: 3px 5px; color: var(--rr-subtle); font-size: 11px; font-weight: 500; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-num { text-align: right; }
+/* The stock column is centred: its title, its field and the number in it (prices stay right-aligned). */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-stock.rr-qt-num { text-align: center; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable td.rr-qt-stock .rr-in { display: block; margin-inline: auto; text-align: center; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-sel { padding-inline: 12px 4px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody th.rr-qt-var { font-weight: 400; text-align: left; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname { display: grid; min-width: 0; }
