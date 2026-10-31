@@ -18,7 +18,9 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 ## Shipping (`/ship`)
 - Ship a finished change yourself; do not wait for the user to type `/ship`. When the skill cannot be invoked, run
   its script from your worktree in the background: `bash "$(git rev-parse --show-toplevel)/.claude/skills/ship/ship.sh" <topic>`
-  and read its result lines as `.claude/skills/ship/SKILL.md` describes.
+  and read its result lines as `.claude/skills/ship/SKILL.md` describes. Run it once: it queues under a lock and
+  merges a moved `main` itself. Never call the main checkout's copy (that checkout may sit on an old branch) or a
+  hand-written retry loop: a push to `main` outside the lock is what makes every other ship fail with "main moved".
 - Commit messages in English, no attribution lines.
 - Push to `codex/<topic>`, wait for Validate, then push the same sha to `main` only when
   `git merge-base --is-ancestor origin/main <sha>`. Never force-push; when `main` moved, merge `origin/main` first.
@@ -39,7 +41,8 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 ## Domain notes
 - Marketplace API facts (limits, date windows, page sizes, time zones, endpoints, statuses, quirks) are in
   `/marketplace-docs`, one file per marketplace. Read it before searching the web or changing an adapter, a sync
-  window or a quota, and add what you learn there with its source.
+  window or a quota, and add what you learn there with its source. For anything it lacks, grep the offline official
+  docs it points to (`C:/Users/emrek/OneDrive/Belgeler/Ravencia-API-Docs/`) before the web. Trendyol: v2 services.
 - Npgsql `timestamptz` accepts offset 0 only: `.ToUniversalTime()` before saving or querying.
 - Hepsiburada writes Istanbul local times; its query times are Istanbul local too (`HepsiburadaJsonMapper.QueryTime`).
 - Never infer a marketplace state from a missing field (no invoice link is not "not invoiced"); unknown stays unknown.

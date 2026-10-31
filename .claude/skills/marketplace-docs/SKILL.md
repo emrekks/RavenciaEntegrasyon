@@ -29,6 +29,27 @@ Shared across all of them:
   Trendyol and n11 epoch-ms dates are documented as GMT+3 but are deliberately sent and read as plain UTC epochs.
 - Sync windows and lookbacks live in `SynchronizationPolicies.cs`; quotas and URLs in each adapter's `*Options.cs`.
 
+## Official docs, offline (search these first)
+
+Full copies of the official developer docs, downloaded 2026-11-01, are kept outside the repository (this repository
+is public; never commit them) in `C:/Users/emrek/OneDrive/Belgeler/Ravencia-API-Docs/`:
+
+| Marketplace | File |
+|---|---|
+| Trendyol | `trendyol-api-son.md` |
+| Hepsiburada | `hepsiburada-api-son.md` |
+| Pazarama | `pazarama-api-son.md` |
+| PttAVM | `pttavm-api-son.md` |
+| Shopify | `shopify-admin-graphql-referans-son.md` (GraphQL Admin 2026-10), `shopify-rehberler-son.md` (guides) |
+
+They are 0.1-1.8 MB each: grep for the endpoint, field or heading and read around the hit; never read one whole.
+Look here before WebSearch/WebFetch; go to the web only when the answer is not in them or may have changed, and say
+which you used. N11 has no offline copy.
+
+**Trendyol: we use the v2 product services.** Its doc keeps v1 and v2 pages side by side (`## Ürün Yaratma v2`,
+`## Ürün Filtreleme - Onaylı Ürün v2`, `## Kategori Özellik Listesi v2`, `## Paket Listeleme V2`…); read the v2
+page, and treat a v1 page as history unless the code still calls that v1 endpoint.
+
 ## How to use and keep these files
 
 - Numbers here were last checked on 2026-10-31. The code is the authority for what we do; the file says what the
