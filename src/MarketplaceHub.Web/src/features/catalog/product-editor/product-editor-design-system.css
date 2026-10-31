@@ -1077,6 +1077,8 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .platform-update-field-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 2px 12px; }
 .app-shell.stitch-shell main .platform-update-field { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 36px; font-size: 13.5px; cursor: pointer; }
 .app-shell.stitch-shell main .platform-update-field > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The store cards of one row stand as tall as the tallest, so their frames line up. */
+.app-shell.stitch-shell main .platform-update-modal .publish-platform-grid { align-items: stretch; }
 /* What goes to a store: compact chips, not a sentence. */
 .app-shell.stitch-shell main .platform-update-modal .publish-platform-facts > .platform-update-sends dd { overflow: visible; font-size: 12px; font-weight: 600; white-space: normal; }
 .app-shell.stitch-shell main .platform-update-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 0; padding: 0; list-style: none; }
