@@ -93,7 +93,7 @@ function PlatformUpdateFieldGroup({ group, picked, open, locked, onToggleOpen, o
   onGroupChange: (on: boolean) => void
   onFieldChange: (field: PlatformUpdateField, on: boolean) => void
 }) {
-  const { key, label, description, fields, linked = [], hint } = group
+  const { key, label, fields, linked = [] } = group
   const count = fields.filter(field => picked.includes(field.key)).length
   const all = count === fields.length
   const groupInput = useRef<HTMLInputElement>(null)
@@ -108,14 +108,11 @@ function PlatformUpdateFieldGroup({ group, picked, open, locked, onToggleOpen, o
       <button type="button" className="platform-update-group-toggle" onClick={onToggleOpen} aria-expanded={open} aria-controls={bodyId} aria-label={`${label} alanlarını ${open ? 'gizle' : 'göster'}`}><UiIcon name="chevronDown" /></button>
     </header>
     {open && <div className="platform-update-group-body" id={bodyId}>
-      <p>{description}</p>
       <div className="platform-update-field-list">
         {fields.map(field => <label key={field.key} className="platform-update-field"><input type="checkbox" checked={picked.includes(field.key)} disabled={locked} onChange={event => onFieldChange(field.key, event.target.checked)} /><span>{field.label}</span></label>)}
         {/* Not a pick of its own: it goes whenever the field it rides with goes, so its box follows that field. */}
-        {linked.map(item => <label key={item.label} className="platform-update-field is-linked" title={item.note}><input type="checkbox" checked={picked.includes(item.with)} disabled aria-describedby={`${bodyId}-linked`} /><span>{item.label}<small>{platformUpdateFieldLabel(item.with)} ile</small></span></label>)}
+        {linked.map(item => <label key={item.label} className="platform-update-field is-linked"><input type="checkbox" checked={picked.includes(item.with)} disabled /><span>{item.label}<small>{platformUpdateFieldLabel(item.with)} ile</small></span></label>)}
       </div>
-      {linked.length > 0 && <small className="platform-update-group-hint" id={`${bodyId}-linked`}>{linked.map(item => item.note).join(' ')}</small>}
-      {hint && <small className="platform-update-group-hint">{hint}</small>}
     </div>}
   </section>
 }
