@@ -96,6 +96,10 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on { background: var(--rr-primary-soft); color: var(--rr-violet); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-grow { flex: 1; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt small { color: var(--rr-subtle); font-size: 12px; }
+/* A platform's row count in a platform popover: right-aligned figures; a platform with none is faded but stays selectable. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-opt-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-opt-count.is-loading { width: 22px; height: 10px; border-radius: 7px; background: var(--rr-line); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:has(.rr-opt-count.is-zero) > :not(input) { opacity: .5; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-danger { color: var(--rr-bad); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-radio { position: relative; flex: none; width: 16px; height: 16px; border: 1.5px solid var(--rr-line-strong); border-radius: 50%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on .rr-radio { border-color: var(--rr-violet); }
