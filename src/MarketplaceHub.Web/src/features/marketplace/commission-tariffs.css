@@ -96,6 +96,12 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-choice:hover { border-color: var(--rv-color-border-strong); }
 /* In the price bands every card is as wide as the widest needs: "Tüm Varyantlarını Seç" on one line with room to spare. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice { min-width: 196px; }
+/* The 7-day view: a line for each period (its name and rate, its profit badge) and the profit over the week under them. */
+.app-shell.stitch-shell main .commission-tariffs .commission-table.is-week .commission-choice { min-width: 240px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-week-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; justify-self: stretch; margin-top: 4px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-week-line > em { color: var(--rv-color-muted); font-size: 12px; font-style: normal; white-space: nowrap; }
+.app-shell.stitch-shell main .commission-tariffs .commission-week-line .unit-profit-badge { margin: 0; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table .commission-week-average { margin-top: 6px; color: var(--rv-color-ink); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice.is-picked { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice strong { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }

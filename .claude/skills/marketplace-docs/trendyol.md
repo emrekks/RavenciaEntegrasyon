@@ -85,6 +85,15 @@ purpose (`TurkeyTime.cs`).
 - Webhooks: max 15 per seller; URL may not contain "Trendyol", "Dolap", "Localhost"; retried every 5 min then set
   PASSIVE; payload has `orderCountryCode`, no storefront. The stream stays the source of truth.
 - Product update polling: every 2 min for 10 min, then 5, 15, 30 min; stops after 4 h.
+- Commission tariff workbook ("KomisyonTarifeleriÜrünleri", seller panel → Ürün Komisyon Tarifeleri; no API): one
+  row per barcode, band limits `1.Fiyat Alt Limit`, `2.Fiyat Üst/Alt Limit`, `3.Fiyat Üst/Alt Limit`,
+  `4.Fiyat Üst Limit`, both ends included and a band's lower limit one kuruş over the next band's upper one (all 641 rows
+  of the 29 Oct 2026 file). The week is two periods with the same limits and their own rates: "Tarih aralığı (3 Gün)"
+  (Thu 08.00 – Sun 07.59) and "Tarih aralığı (4 Gün)" (Sun 08.00 – Thu 07.59), each with its 1.–4.KOMİSYON columns
+  (export of 31 Oct 2026; `CommissionTariffFileParser`). Uploaded back, Trendyol reads `YENİ TSF (FİYAT GÜNCELLE)` and
+  `Tarife Seçimi` ("3 Günlük Fiyat", "4 Günlük Fiyat", "7 Günlük Fiyat", "Trendyol Satış Fiyatı"): one price per row,
+  so a product priced alike in both periods is "7 Günlük Fiyat" (`TrendyolTariffWorkbook`). A file uploaded before
+  31 Oct 2026 03:02 kept only its first period and not the file itself; uploading the same file again adds the second.
 
 ## Job types
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),

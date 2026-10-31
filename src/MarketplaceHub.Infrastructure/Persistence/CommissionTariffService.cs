@@ -152,6 +152,11 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
                 || x.ModelCode != null && EF.Functions.ILike(x.ModelCode, pattern, LikeEscape)
                 || x.ProductName != null && EF.Functions.ILike(x.ProductName, pattern, LikeEscape));
         }
+        if (filter.Barcodes is { Count: > 0 } barcodes)
+        {
+            var exact = barcodes.ToArray();
+            query = query.Where(x => exact.Contains(x.Barcode));
+        }
         // The band the price is in now, by the tariff's own limits (as CommissionTariffBands.Bands and BandFor read them).
         query = filter.Tier switch
         {

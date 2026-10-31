@@ -78,10 +78,12 @@ public sealed record CommissionTariffExportRequest(string? Bulk, int? Tier, IRea
 // own name, barcode (or seller SKU), model code, stock range, category and brand. Sort orders the models by their name
 // ("name"), their lowest current price ("price") or the most a band leaves after commission and cost ("tier1"-"tier4");
 // without it the models run by name as before. ProfitTier with a least or most profit (lira) or profit on cost (per
-// cent) keeps the variants whose price in that band leaves that much (Fiyat Aralığı).
+// cent) keeps the variants whose price in that band leaves that much (Fiyat Aralığı). Barcodes keeps exactly those
+// rows: the 7-day view reads the other period's rows of the products on its page.
 public sealed record CommissionTariffRowFilter(int? Tier, bool? HasCost, string? Name = null, string? Barcode = null, string? ModelCode = null,
     decimal? MinStock = null, decimal? MaxStock = null, string? Category = null, string? Brand = null, string? Sort = null, bool Descending = false,
-    int? ProfitTier = null, decimal? MinProfit = null, decimal? MaxProfit = null, decimal? MinShare = null, decimal? MaxShare = null)
+    int? ProfitTier = null, decimal? MinProfit = null, decimal? MaxProfit = null, decimal? MinShare = null, decimal? MaxShare = null,
+    IReadOnlyList<string>? Barcodes = null)
 {
     public bool FiltersProfit => ProfitTier is not null && (MinProfit ?? MaxProfit ?? MinShare ?? MaxShare) is not null;
 }

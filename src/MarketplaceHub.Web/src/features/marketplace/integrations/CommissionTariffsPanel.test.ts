@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandLimitHint, bandLimitText, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodTabLabel, tariffGroups, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitHint, bandLimitText, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -221,6 +221,18 @@ describe('commission tariff periods', () => {
     expect(periodTabLabel(four)).toBe('4 Gün (1 Kas – 5 Kas 2026)')
     // Without the file's name for it, a period is named by its days.
     expect(periodTabLabel(older)).toBe('7 Gün (22 Eki – 29 Eki 2026)')
+  })
+
+  it('names the two periods together as the 7-day tab and weighs what a price leaves by each period\'s days', () => {
+    expect([periodDays(three), periodDays(four)]).toEqual([3, 4])
+    expect(weekTabLabel([three, four])).toBe('7 Gün (29 Eki – 5 Kas 2026)')
+    // 3 days leaving 100 ₺ and 4 days leaving 135 ₺: (3 × 100 + 4 × 135) / 7 = 120 ₺ a sale.
+    expect(weekAverage([{ days: 3, value: 100 }, { days: 4, value: 135 }])).toBe(120)
+    expect(weekAverage([{ days: 3, value: 173.49 }, { days: 4, value: 176.77 }])).toBe(175.36)
+    expect(weekAverage([{ days: 3, value: -10 }, { days: 4, value: 4 }])).toBe(-2)
+    // A period whose profit is not known leaves the week's unknown.
+    expect(weekAverage([{ days: 3, value: 100 }, { days: 4, value: null }])).toBeNull()
+    expect(weekAverage([])).toBeNull()
   })
 
   it('tells how many products took the open period\'s price where the periods\' prices differ', () => {
