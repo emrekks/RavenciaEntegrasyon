@@ -6083,6 +6083,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal("Test", customerSearchPage.Items[0].CustomerName);
             Assert.Equal(1, hepsiburadaPage.TotalCount);
             Assert.Equal("HEPSIBURADA", Assert.Single(hepsiburadaPage.Items).PlatformCode);
+            // Platform counts ignore the platform filter but keep the tab and every other filter.
+            Assert.Equal(1, hepsiburadaPage.PlatformCounts!["HEPSIBURADA"]);
+            Assert.Equal(20, hepsiburadaPage.PlatformCounts!["TRENDYOL"]);
+            Assert.Equal(1, searchedPage.PlatformCounts!["TRENDYOL"]);
+            Assert.Equal(0, searchedPage.PlatformCounts!["HEPSIBURADA"]);
         }
         finally
         {

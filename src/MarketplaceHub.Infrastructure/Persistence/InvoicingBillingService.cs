@@ -356,6 +356,9 @@ public sealed partial class InvoicingBillingService(
         var sortKey = request.Sort?.Trim().ToUpperInvariant();
         var sortedPool = sortKey is null or "" or "DELIVERY_DESC" ? null : new List<WorkspaceCandidate>();
         WorkspaceScanCursor? cursor = null;
+        var platformFreeRequest = request with { PlatformCodes = null };
+        var platformCounts = workspaceConnections.Values.Select(connection => connection.PlatformCode).Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(code => code, _ => 0, StringComparer.OrdinalIgnoreCase);
 
         while (true)
         {
@@ -382,7 +385,9 @@ public sealed partial class InvoicingBillingService(
                     cargoProviders.Add(candidate.Package.CargoProviderExternalId.Trim());
                 invoiceStatuses.Add(WorkspaceInvoiceDisplayStatus(candidate));
 
-                if (!MatchesWorkspacePageRequest(candidate, normalizedTab, request, searchKey, from, to, isHidden)) continue;
+                if (!MatchesWorkspacePageRequest(candidate, normalizedTab, platformFreeRequest, searchKey, from, to, isHidden)) continue;
+                platformCounts[candidate.Connection.PlatformCode] = platformCounts.GetValueOrDefault(candidate.Connection.PlatformCode) + 1;
+                if (!MatchesWorkspacePlatformFilter(request.PlatformCodes, candidate.Connection.PlatformCode)) continue;
                 var resultIndex = filteredCount++;
                 if (sortedPool is not null) { sortedPool.Add(candidate); continue; }
                 if (resultIndex >= offset && pageCandidates.Count < pageSize) pageCandidates.Add(candidate);
@@ -408,7 +413,8 @@ public sealed partial class InvoicingBillingService(
         }
         var items = await MaterializeWorkspacePageAsync(tenantId, pageCandidates, cancellationToken);
         return new(items, filteredCount, pageNumber, pageSize, totalPages, selectedUninvoiced, selectedInvoiced, selectedDueSoon, hiddenPackageIds.Count, selectedTotal, hasPendingMarketplaceInvoices,
-            shipmentStatuses.Order(StringComparer.Ordinal).ToArray(), cargoProviders.Order(StringComparer.OrdinalIgnoreCase).ToArray(), invoiceStatuses.Order(StringComparer.Ordinal).ToArray());
+            shipmentStatuses.Order(StringComparer.Ordinal).ToArray(), cargoProviders.Order(StringComparer.OrdinalIgnoreCase).ToArray(), invoiceStatuses.Order(StringComparer.Ordinal).ToArray(),
+            platformCounts);
     }
 
     // Ties always fall back to the shipment date and package id so pages stay stable between requests.
