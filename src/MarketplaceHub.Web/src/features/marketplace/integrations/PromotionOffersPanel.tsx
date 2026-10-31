@@ -50,9 +50,9 @@ export function leavesText(price: PromotionPrice) {
 }
 
 // The profit badge of a price, opening its calculation; the reason it is not known otherwise.
-function PriceProfit({ price, title }: { price: PromotionPrice; title?: string }) {
+function PriceProfit({ price, title, tag }: { price: PromotionPrice; title?: string; tag?: string }) {
   if (price.rate === null) return <b className="unit-profit-badge is-unknown">Komisyon bilinmiyor</b>
-  return <ProfitBadge price={price} title={title} missing="Maliyet girilmemiş" label={price.remainingHigh != null ? leavesText(price) : undefined} />
+  return <ProfitBadge price={price} title={title} tag={tag} missing="Maliyet girilmemiş" label={price.remainingHigh != null ? leavesText(price) : undefined} />
 }
 
 // Rows by model, colour and size (S, M, L, XL …), as the commission tariff lists them.
@@ -75,7 +75,7 @@ function PriceCard({ price, label, highlight }: { price: PromotionPrice; label?:
     <strong>{money(price.price)}</strong>
     {label && <small>{label}</small>}
     <span>{price.rate === null ? 'Komisyon oranı bilinmiyor' : `${rateText(price.rate)} komisyon · ${money(price.commission ?? 0)}`}</span>
-    <PriceProfit price={price} title={typeof label === 'string' ? `${money(price.price)} · ${label}` : money(price.price)} />
+    <PriceProfit price={price} title={money(price.price)} tag={typeof label === 'string' ? label : undefined} />
   </div>
 }
 
@@ -268,7 +268,7 @@ function RangeCard({ prices, label }: { prices: PromotionPrice[]; label?: ReactN
       const least = prices.filter(price => price.remaining !== null && price.rate !== null).sort((a, b) => a.remaining! - b.remaining!)[0]
       if (rates.length === 0) return <b className="unit-profit-badge is-unknown">Komisyon bilinmiyor</b>
       return <ProfitBadge price={least ?? prices[0]} missing="Maliyet girilmemiş" label={lefts.length && Math.min(...lefts) !== Math.max(...lefts) ? `${amountRange(lefts)} Kâr` : undefined}
-        title={lefts.length && Math.min(...lefts) !== Math.max(...lefts) ? 'En az kâr bırakan beden' : undefined} />
+        aside={lefts.length && Math.min(...lefts) !== Math.max(...lefts) ? 'En az kâr bırakan beden' : undefined} />
     })()}
   </div>
 }
