@@ -35,6 +35,36 @@ public static partial class TrendyolEFaturamJsonMapper
         }
     }
 
+    /// <summary>
+    /// The 200 answer of the taxpayer lookup: rows of aliases (INVOICE or DESPATCH_ADVICE). Only undeleted INVOICE
+    /// receiver (PK) aliases count. A row of another VKN/TCKN, or no usable INVOICE alias, says nothing certain and
+    /// is Unknown: the documented "not a taxpayer" answer is a 404, never an empty list.
+    /// </summary>
+    public static EInvoiceTaxpayerLookup TaxPayers(string json, string taxId)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind != JsonValueKind.Array) throw new JsonException("taxpayer list missing");
+        string? title = null;
+        var aliases = new List<EInvoiceTaxpayerAlias>();
+        foreach (var row in document.RootElement.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object) throw new JsonException("taxpayer row invalid");
+            if (!string.Equals(Text(row, "taxId"), taxId, StringComparison.Ordinal))
+                return EInvoiceTaxpayerLookup.Unknown("EINVOICE_TAXPAYER_IDENTITY_MISMATCH");
+            if (Text(row, "deletedAt") is not null) continue;
+            title ??= Text(row, "title");
+            if (!string.Equals(Text(row, "aliasType"), "INVOICE", StringComparison.OrdinalIgnoreCase)) continue;
+            var postBoxType = Text(row, "postBoxType");
+            if (Text(row, "alias") is not { Length: > 0 } alias
+                || string.Equals(postBoxType, "GB", StringComparison.OrdinalIgnoreCase)
+                || alias.StartsWith("urn:mail:defaultgb", StringComparison.OrdinalIgnoreCase)) continue;
+            aliases.Add(new(alias, postBoxType));
+        }
+        return aliases.Count == 0
+            ? EInvoiceTaxpayerLookup.Unknown("EINVOICE_TAXPAYER_NO_INVOICE_ALIAS")
+            : new(EInvoiceTaxpayerState.Registered, title, aliases);
+    }
+
     [System.Text.RegularExpressions.GeneratedRegex("\"invoiceUuid\"\\s*:\\s*\"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\"")]
     private static partial System.Text.RegularExpressions.Regex RawInvoiceUuid();
 

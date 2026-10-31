@@ -3,27 +3,16 @@ using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
 
-// Only Trendyol states whether a corporate buyer is an e-Invoice taxpayer. A corporate buyer of another
-// marketplace must not get an automatic e-Archive document that may have to be cancelled and issued again.
+// A corporate buyer may be an e-Invoice taxpayer, so the E-Faturam taxpayer lookup decides its document type:
+// registered gets an e-Invoice to its alias, not registered an e-Archive, and an unknown answer gets no invoice.
 public sealed class InvoiceRecipientReviewTests
 {
     private const string HepsiburadaCorporateInvoice = "{\"companyName\":\"Örnek A.Ş.\",\"taxOffice\":\"Kadıköy\",\"taxNumber\":\"1234567890\",\"city\":\"İstanbul\"}";
     private const string HepsiburadaIndividualInvoice = "{\"identityNo\":\"10987654321\",\"address\":{\"city\":\"İstanbul\",\"town\":\"Üsküdar\"}}";
     private const string HepsiburadaCustomer = "{\"name\":\"Ayşe Yılmaz\",\"marketplaceInvoiceStatus\":\"NOT_INVOICED\"}";
 
-    [Fact]
-    public void Hepsiburada_corporate_buyer_is_stopped_for_review_instead_of_getting_an_e_archive()
-    {
-        Assert.Equal("EARSIVFATURA", InvoiceAmounts.InvoiceDocumentType("HEPSIBURADA", HepsiburadaCustomer, HepsiburadaCorporateInvoice));
-        Assert.True(InvoiceAmounts.RequiresEInvoiceRecipientReview("HEPSIBURADA", HepsiburadaCustomer, HepsiburadaCorporateInvoice));
-
-        var refusal = InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", HepsiburadaCustomer, "HEPSIBURADA", HepsiburadaCorporateInvoice);
-
-        Assert.NotNull(refusal);
-        Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReviewCode, refusal.Code);
-        Assert.Equal("EINVOICE_RECIPIENT_REVIEW_REQUIRED", refusal.Code);
-        Assert.Contains("e-Fatura mükellefi olabilir", refusal.Message);
-    }
+    private static EInvoiceTaxpayerLookup Registered(params string[] aliases) =>
+        new(EInvoiceTaxpayerState.Registered, "ÖRNEK A.Ş.", aliases.Select(alias => new EInvoiceTaxpayerAlias(alias, "PK")).ToArray());
 
     [Theory]
     // A valid VKN alone identifies a company.
@@ -36,13 +25,11 @@ public sealed class InvoiceRecipientReviewTests
     // n11 and Pazarama billing addresses mark a corporate buyer with invoiceType 2.
     [InlineData("{\"fullName\":\"Örnek A.Ş.\",\"invoiceType\":2}")]
     [InlineData("{\"fullName\":\"Örnek A.Ş.\",\"invoiceType\":\"2\"}")]
-    public void Corporate_buyer_of_another_marketplace_needs_review(string invoiceAddress)
+    [InlineData(HepsiburadaCorporateInvoice)]
+    public void Corporate_buyer_is_looked_up(string invoiceAddress)
     {
-        foreach (var platform in new[] { "HEPSIBURADA", "N11", "PAZARAMA", "SHOPIFY" })
-        {
-            Assert.Equal("EARSIVFATURA", InvoiceAmounts.InvoiceDocumentType(platform, "{}", invoiceAddress));
-            Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReviewCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", "{}", platform, invoiceAddress)?.Code);
-        }
+        Assert.True(InvoiceAmounts.IsCorporateBuyer("{}", invoiceAddress));
+        Assert.True(EInvoiceRecipientPolicy.RequiresLookup("EARSIVFATURA", corporateRecipient: true));
     }
 
     [Theory]
@@ -57,54 +44,85 @@ public sealed class InvoiceRecipientReviewTests
     [InlineData("{}", "{\"companyName\":\"Ayşe Yılmaz\",\"identityNumber\":\"11111111111\"}")]
     [InlineData("{}", "{}")]
     [InlineData("not json", "not json")]
-    public void Individual_buyer_of_another_marketplace_keeps_the_e_archive(string customer, string invoiceAddress)
+    public void Individual_buyer_keeps_the_e_archive_without_a_lookup(string customer, string invoiceAddress)
     {
         Assert.Equal("EARSIVFATURA", InvoiceAmounts.InvoiceDocumentType("HEPSIBURADA", customer, invoiceAddress));
-        Assert.False(InvoiceAmounts.RequiresEInvoiceRecipientReview("HEPSIBURADA", customer, invoiceAddress));
-        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", customer, "HEPSIBURADA", invoiceAddress));
+        Assert.False(InvoiceAmounts.IsCorporateBuyer(customer, invoiceAddress));
+
+        var decision = EInvoiceRecipientPolicy.Decide("EARSIVFATURA", corporateRecipient: false, lookup: null);
+
+        Assert.Equal("EARSIVFATURA", decision.InvoiceType);
+        Assert.Null(decision.TaxpayerState);
+        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", customer, decision));
     }
 
     [Fact]
-    public void An_explicit_e_invoice_flag_of_another_marketplace_decides_the_document()
+    public void Registered_buyer_gets_an_e_invoice_to_its_alias()
     {
-        // Pazarama copies billingAddress.isEInvoiceObliged into the customer snapshot as isEInvoice.
-        const string obligedCustomer = "{\"companyName\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"invoiceType\":\"2\",\"isEInvoice\":true}";
-        const string notObligedCustomer = "{\"companyName\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"invoiceType\":\"2\",\"isEInvoice\":false}";
-        const string billing = "{\"nameSurname\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"invoiceType\":2}";
+        var decision = EInvoiceRecipientPolicy.Decide("EARSIVFATURA", corporateRecipient: true, Registered("urn:mail:defaultpk@ornek.com.tr"));
 
-        Assert.Equal("TEMELFATURA", InvoiceAmounts.InvoiceDocumentType("PAZARAMA", obligedCustomer, billing));
-        Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientCode, InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", obligedCustomer, "PAZARAMA", billing)?.Code);
-        Assert.Equal("TEMELFATURA", InvoiceAmounts.InvoiceDocumentType("PAZARAMA", "{}", "{\"isEInvoiceObliged\":true}"));
-        // A draft saved as e-Archive before the flag was read is not sent either.
-        Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReviewCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", obligedCustomer, "PAZARAMA", billing)?.Code);
-
-        Assert.Equal("EARSIVFATURA", InvoiceAmounts.InvoiceDocumentType("PAZARAMA", notObligedCustomer, billing));
-        Assert.False(InvoiceAmounts.RequiresEInvoiceRecipientReview("PAZARAMA", notObligedCustomer, billing));
-        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", notObligedCustomer, "PAZARAMA", billing));
-        // A true flag on either snapshot wins over a false one.
-        Assert.Equal("TEMELFATURA", InvoiceAmounts.InvoiceDocumentType("PAZARAMA", notObligedCustomer, "{\"isEInvoiceObliged\":true}"));
+        Assert.Equal("TEMELFATURA", decision.InvoiceType);
+        Assert.Equal("urn:mail:defaultpk@ornek.com.tr", decision.TargetAlias);
+        Assert.Equal("ÖRNEK A.Ş.", decision.TaxpayerTitle);
+        Assert.Null(InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", HepsiburadaCustomer, decision));
+        // An e-Archive draft saved before the lookup is not sent: its type no longer matches.
+        Assert.Equal(InvoiceIssuePolicy.EInvoiceTaxpayerChangedCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", HepsiburadaCustomer, decision)?.Code);
     }
 
     [Theory]
-    [InlineData("{\"commercial\":true}", "{\"company\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"eInvoiceAvailable\":true}")]
-    [InlineData("{\"commercial\":true}", "{\"invoiceAddress\":{\"eInvoiceAvailable\":true}}")]
-    [InlineData("{\"commercial\":true}", "{\"company\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"eInvoiceAvailable\":false}")]
-    [InlineData("{\"commercial\":true}", "{\"company\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\"}")]
-    [InlineData("{\"commercial\":false}", "{\"eInvoiceAvailable\":true}")]
-    [InlineData("[]", "[]")]
-    public void Trendyol_keeps_its_own_decision_and_is_never_held_for_review(string customer, string invoiceAddress)
+    [InlineData(new[] { "urn:mail:satispk@ornek.com.tr" }, "urn:mail:satispk@ornek.com.tr")]
+    [InlineData(new[] { "urn:mail:satispk@ornek.com.tr", "urn:mail:defaultpk@ornek.com.tr" }, "urn:mail:defaultpk@ornek.com.tr")]
+    [InlineData(new[] { "urn:mail:defaultpk@ornek.com.tr", "URN:MAIL:DEFAULTPK@ORNEK.COM.TR" }, "urn:mail:defaultpk@ornek.com.tr")]
+    [InlineData(new[] { "urn:mail:satispk@ornek.com.tr", "urn:mail:muhasebepk@ornek.com.tr" }, null)]
+    [InlineData(new[] { "urn:mail:defaultpk@a.com.tr", "urn:mail:defaultpk@b.com.tr" }, null)]
+    public void Alias_is_the_single_one_or_the_single_default(string[] aliases, string? expected)
     {
-        var trendyol = InvoiceAmounts.TrendyolInvoiceType(customer, invoiceAddress);
+        var decision = EInvoiceRecipientPolicy.Decide("EARSIVFATURA", corporateRecipient: true, Registered(aliases));
 
-        Assert.Equal(trendyol, InvoiceAmounts.InvoiceDocumentType("TRENDYOL", customer, invoiceAddress));
-        Assert.Equal(trendyol, InvoiceAmounts.InvoiceDocumentType("trendyol", customer, invoiceAddress));
-        Assert.False(InvoiceAmounts.RequiresEInvoiceRecipientReview("TRENDYOL", customer, invoiceAddress));
-        Assert.Equal(InvoiceIssuePolicy.Refusal(trendyol, "TRY", customer)?.Code,
-            InvoiceIssuePolicy.Refusal(trendyol, "TRY", customer, "TRENDYOL", invoiceAddress)?.Code);
+        Assert.Equal(expected, decision.TargetAlias);
+        Assert.Equal(expected is null ? InvoiceIssuePolicy.EInvoiceTargetAliasUnresolvedCode : null, decision.Refusal?.Code);
     }
 
     [Fact]
-    public void Trendyol_commercial_buyer_with_e_invoice_is_still_refused_as_an_e_invoice_recipient()
+    public void Not_registered_buyer_gets_an_e_archive()
+    {
+        var decision = EInvoiceRecipientPolicy.Decide("EARSIVFATURA", corporateRecipient: true, EInvoiceTaxpayerLookup.NotRegistered());
+
+        Assert.Equal("EARSIVFATURA", decision.InvoiceType);
+        Assert.Equal(EInvoiceTaxpayerState.NotRegistered, decision.TaxpayerState);
+        Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", HepsiburadaCustomer, decision));
+    }
+
+    [Fact]
+    public void Marketplace_flag_and_lookup_disagreeing_stops_the_invoice()
+    {
+        // Pazarama copies billingAddress.isEInvoiceObliged into the customer snapshot as isEInvoice.
+        const string obligedCustomer = "{\"companyName\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"invoiceType\":\"2\",\"isEInvoice\":true}";
+        const string billing = "{\"nameSurname\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"invoiceType\":2}";
+        var marketplaceType = InvoiceAmounts.InvoiceDocumentType("PAZARAMA", obligedCustomer, billing);
+
+        var decision = EInvoiceRecipientPolicy.Decide(marketplaceType, corporateRecipient: true, EInvoiceTaxpayerLookup.NotRegistered());
+
+        Assert.Equal("TEMELFATURA", marketplaceType);
+        Assert.Equal(InvoiceIssuePolicy.EInvoiceTaxpayerConflictCode, InvoiceIssuePolicy.Refusal(decision.InvoiceType, "TRY", obligedCustomer, decision)?.Code);
+    }
+
+    [Theory]
+    [InlineData("EARSIVFATURA")]
+    [InlineData("TEMELFATURA")]
+    public void Unknown_lookup_never_issues_a_guessed_type(string marketplaceType)
+    {
+        foreach (var lookup in new EInvoiceTaxpayerLookup?[] { null, EInvoiceTaxpayerLookup.Unknown("EFATURAM_TIMEOUT") })
+        {
+            var decision = EInvoiceRecipientPolicy.Decide(marketplaceType, corporateRecipient: true, lookup);
+
+            Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReviewCode, decision.Refusal?.Code);
+            Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReviewCode, InvoiceIssuePolicy.Refusal(marketplaceType, "TRY", "{}", decision)?.Code);
+        }
+    }
+
+    [Fact]
+    public void Trendyol_commercial_buyer_flagged_for_e_invoice_is_looked_up_too()
     {
         const string customer = "{\"commercial\":true}";
         const string address = "{\"company\":\"Örnek A.Ş.\",\"taxNumber\":\"1234567890\",\"eInvoiceAvailable\":true}";
@@ -112,21 +130,26 @@ public sealed class InvoiceRecipientReviewTests
         var type = InvoiceAmounts.InvoiceDocumentType("TRENDYOL", customer, address);
 
         Assert.Equal("TEMELFATURA", type);
-        Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientCode, InvoiceIssuePolicy.Refusal(type, "TRY", customer, "TRENDYOL", address)?.Code);
+        Assert.True(EInvoiceRecipientPolicy.RequiresLookup(type, corporateRecipient: false));
+        Assert.Equal("TEMELFATURA", EInvoiceRecipientPolicy.Decide(type, false, Registered("urn:mail:defaultpk@ornek.com.tr")).InvoiceType);
     }
 
     [Fact]
-    public void Export_refusal_comes_before_the_recipient_review()
+    public void Export_refusal_comes_before_the_recipient_decision()
     {
-        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode,
-            InvoiceIssuePolicy.Refusal("EARSIVFATURA", "EUR", HepsiburadaCustomer, "HEPSIBURADA", HepsiburadaCorporateInvoice)?.Code);
+        var decision = EInvoiceRecipientPolicy.Decide("EARSIVFATURA", corporateRecipient: true, EInvoiceTaxpayerLookup.Unknown("EFATURAM_TIMEOUT"));
+
+        Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "EUR", HepsiburadaCustomer, decision)?.Code);
     }
 
     [Fact]
-    public void Review_code_has_turkish_operator_text()
+    public void Recipient_codes_have_turkish_operator_text()
     {
-        Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientReview.Message,
-            InvoiceIssuePolicy.DescribeValidationCode(InvoiceIssuePolicy.EInvoiceRecipientReviewCode));
+        foreach (var refusal in new[] { InvoiceIssuePolicy.EInvoiceRecipientReview, InvoiceIssuePolicy.EInvoiceTargetAliasUnresolved, InvoiceIssuePolicy.EInvoiceTaxpayerConflict, InvoiceIssuePolicy.EInvoiceTaxpayerChanged })
+        {
+            Assert.Equal(refusal.Message, InvoiceIssuePolicy.DescribeValidationCode(refusal.Code));
+            Assert.Contains("kesilmedi", refusal.Message.Replace("gönderilmedi", "kesilmedi", StringComparison.Ordinal));
+        }
         Assert.Contains("manuel belge", InvoiceIssuePolicy.EInvoiceRecipientReview.Message);
     }
 }
