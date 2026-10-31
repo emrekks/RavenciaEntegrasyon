@@ -102,9 +102,68 @@ export function quickPriceColumns(connections: ReadonlyArray<{ id: string; displ
   ]
 }
 
-// The grid columns of a matrix row (and its header): select box, variant, stock, then one cell per price column.
-export function quickEditGridTemplate(columns: ReadonlyArray<QuickPriceColumn>, showStock: boolean, showPrice: boolean) {
-  return ['16px', 'minmax(150px, 1fr)', ...(showStock ? ['76px'] : []), ...(showPrice ? columns.map(column => column.takesListPrice ? '164px' : '86px') : [])].join(' ')
+// "Özel Fiyat" per marketplace column, as the product editor's "Pazaryerlerine Özel Fiyat": an unticked marketplace
+// sells at the panel (main) price, so a panel price saved here is written to its offers too; a ticked one keeps its own
+// prices, edited in its own cells. The editor keeps this choice in its form only (it opens an existing product with
+// every marketplace unticked and, on "Pazaryerlerinde Güncelle", writes the panel price to the offers). Nothing stores
+// it, so this window derives it from the data instead: a marketplace whose offers all carry the panel price follows
+// it; one with any offer at another price (or whose panel price is unknown) starts ticked, so a panel change never
+// overwrites a marketplace price the person set apart. A marketplace with no offer yet follows the panel.
+type FollowItem = { variant: QuickPriceVariant & VariantOfferPriceSource; product: PanelPriceSource }
+export function offerMatchesPanel(offer: Pick<QuickPriceOffer, 'listPrice' | 'salePrice'>, panel: { listPrice: number | null; salePrice: number | null }, takesListPrice: boolean) {
+  if (panel.salePrice == null || offer.salePrice == null || !samePrice(offer.salePrice, panel.salePrice)) return false
+  if (!takesListPrice) return true
+  return panel.listPrice != null && offer.listPrice != null && samePrice(offer.listPrice, panel.listPrice)
+}
+export function initialCustomChannels(items: ReadonlyArray<FollowItem>, columns: ReadonlyArray<QuickPriceColumn>): Record<string, boolean> {
+  return Object.fromEntries(columns.filter(column => column.id !== PANEL_PRICE_CHOICE).map(column => [column.id, items.some(item => {
+    const offer = channelOffer(item.variant, column.id)
+    return offer != null && !offerMatchesPanel(offer, panelPrices(item.variant, item.product), column.takesListPrice)
+  })]))
+}
+
+// The marketplaces that follow the panel price: every marketplace column not ticked "Özel Fiyat".
+export function panelFollowerColumns(columns: ReadonlyArray<QuickPriceColumn>, custom: Readonly<Record<string, boolean>>) {
+  return columns.filter(column => column.id !== PANEL_PRICE_CHOICE && !custom[column.id])
+}
+
+// What a panel price saved for one variant writes to the marketplaces that follow it: the variant's existing offer
+// on each, at the version loaded, with the same list and sale price (a sale-price-only marketplace takes list = sale).
+// An offer already at that price is left alone, and a marketplace where the variant has no offer gets none: creating
+// one is publishing, which stays with "Platformlarda Yayınla" and the product editor.
+export type PanelFollowerWrite =
+  | { kind: 'update'; column: QuickPriceColumn; offerId: string; offerVersion: number; offer: QuickPriceOffer; listPrice: number; salePrice: number }
+  | { kind: 'blocked'; column: QuickPriceColumn; reason: string }
+export function panelFollowerWrites(variant: QuickPriceVariant, followers: ReadonlyArray<QuickPriceColumn>, prices: { listPrice: number; salePrice: number }): PanelFollowerWrite[] {
+  if (!followers.length) return []
+  if (!variant.platformStatuses) return followers.map(column => ({ kind: 'blocked' as const, column, reason: 'Platform fiyatları okunamadı; listeyi yenileyip tekrar deneyin.' }))
+  return followers.flatMap<PanelFollowerWrite>(column => {
+    const offer = channelOffer(variant, column.id)
+    if (!offer) return []
+    const listPrice = column.takesListPrice ? prices.listPrice : prices.salePrice
+    if (offerMatchesPanel(offer, { listPrice, salePrice: prices.salePrice }, column.takesListPrice)) return []
+    if (offer.offerVersion == null) return [{ kind: 'blocked', column, reason: 'Fiyat sürümü okunamadı; listeyi yenileyip tekrar deneyin.' }]
+    return [{ kind: 'update', column, offerId: offer.offerId, offerVersion: offer.offerVersion, offer, listPrice, salePrice: prices.salePrice }]
+  })
+}
+
+function samePrice(left: number, right: number) {
+  return Math.abs(left - right) < 0.005
+}
+
+// A price as the table shows it outside editing: Turkish digits, two decimals ("1.249,90"); empty for none.
+export function formatPriceField(value: string): string {
+  if (value.trim() === '') return ''
+  const number = Number(value)
+  return Number.isFinite(number) ? number.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value
+}
+
+// A price typed into the table, as the number fields take it: a decimal comma becomes a point and thousands dots go
+// ("1.249,90" -> "1249.90"); a value with a point only is kept as typed.
+export function normalizePriceInput(raw: string): string {
+  const text = raw.replace(/[\s₺]/g, '')
+  if (!text.includes(',')) return text
+  return text.replace(/\./g, '').replace(',', '.')
 }
 
 // Every query that shows a variant's panel price, channel prices or stock: the products list with its summary, counts
@@ -120,7 +179,8 @@ export function quickInlinePrices(choice: string, variant: QuickPriceVariant & V
 }
 
 // What the choice changes, said under the select so it is never a guess.
-export function quickPriceChoiceHelp(choice: string, channelName?: string | null): string {
+export function quickPriceChoiceHelp(choice: string, channelName?: string | null, followerNames: ReadonlyArray<string> = []): string {
+  if (choice === PANEL_PRICE_CHOICE && followerNames.length) return `Ürün kartındaki ana fiyat (Liste/Satış Fiyatı) değişir. Özel Fiyat işaretli olmayan pazaryerleri (${followerNames.join(', ')}) ana fiyatla satılır: seçili varyantların oradaki fiyatı da aynı değere güncellenir. Özel Fiyat işaretli pazaryerlerinin fiyatı değişmez.`
   if (choice === PANEL_PRICE_CHOICE) return "Ürün kartındaki ana fiyat (Liste/Satış Fiyatı) değişir; pazaryerlerindeki fiyatlar değişmez ve pazaryerine hiçbir şey gönderilmez. Ana fiyat, ürün bir kanalda ilk kez yayınlanırken (Platformlarda Yayınla) ve ürün düzenleyicide 'Ana fiyatla satılır' kanallar kaydedilirken kullanılır."
   if (choice) return `Yalnız ${channelName || 'seçilen kanalın'} fiyatı değişir; panel ana fiyatı ve diğer kanalların fiyatı değişmez. Bu kanalda fiyatı olmayan varyantın ilk fiyatı oluşturulur.`
   return 'Fiyatın nereye yazılacağını seçin: Panel Ana Fiyatı ya da tek bir pazaryeri kanalı.'

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, quickEditGridTemplate, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
+import { channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
 
 describe('panel price choice', () => {
   const product = { defaultListPrice: 300, defaultSalePrice: 250 }
@@ -32,9 +32,6 @@ describe('panel price choice', () => {
     expect(columns.map(column => [column.id, column.label, column.takesListPrice])).toEqual([
       [PANEL_PRICE_CHOICE, 'Panel Fiyatı', true], ['c-ty', 'Trendyol', true], ['c-hb', 'Hepsiburada', false], ['c-ptt', 'PTTAVM', false],
     ])
-    expect(quickEditGridTemplate(columns, false, true)).toBe('16px minmax(150px, 1fr) 164px 164px 86px 86px')
-    expect(quickEditGridTemplate(columns, true, false)).toBe('16px minmax(150px, 1fr) 76px')
-    expect(quickEditGridTemplate(columns, true, true)).toBe('16px minmax(150px, 1fr) 76px 164px 164px 86px 86px')
   })
 
   it('refreshes the products list and the product editor after a save', () => {
@@ -50,6 +47,8 @@ describe('panel price choice', () => {
 
   it('says what each choice changes', () => {
     expect(quickPriceChoiceHelp(PANEL_PRICE_CHOICE)).toContain('pazaryerlerindeki fiyatlar değişmez')
+    // With marketplaces following the panel price, the help names them and says their price changes too.
+    expect(quickPriceChoiceHelp(PANEL_PRICE_CHOICE, null, ['Trendyol', 'N11'])).toContain('Özel Fiyat işaretli olmayan pazaryerleri (Trendyol, N11) ana fiyatla satılır')
     expect(quickPriceChoiceHelp('conn-1', 'Trendyol')).toBe('Yalnız Trendyol fiyatı değişir; panel ana fiyatı ve diğer kanalların fiyatı değişmez. Bu kanalda fiyatı olmayan varyantın ilk fiyatı oluşturulur.')
     expect(quickPriceChoiceLabel(PANEL_PRICE_CHOICE)).toBe('Panel Fiyatı')
     expect(quickPriceChoiceLabel('conn-1', 'Hepsiburada')).toBe('Hepsiburada')
@@ -137,5 +136,65 @@ describe('bulk edit offer prices', () => {
     expect(quickEditOfferPrices({ listPrice: null, salePrice: null }, 0, null).ok).toBe(false)
     expect(quickEditOfferPrices({ listPrice: 100, salePrice: 90 }, null, 0).ok).toBe(false)
     expect(quickEditOfferPrices({ listPrice: 100, salePrice: 90 }, 80, null)).toEqual({ ok: false, message: 'liste fiyatı satış fiyatından küçük olamaz.' })
+  })
+})
+
+describe('Özel Fiyat: marketplaces that follow the panel price', () => {
+  const columns = quickPriceColumns([
+    { id: 'c-ty', displayName: 'Trendyol', platformCode: 'TRENDYOL' },
+    { id: 'c-hb', displayName: 'Hepsiburada', platformCode: 'HEPSIBURADA' },
+    { id: 'c-n11', displayName: 'N11', platformCode: 'N11' },
+  ])
+  const ty = columns[1]; const hb = columns[2]; const n11 = columns[3]
+  const product = { defaultListPrice: 300, defaultSalePrice: 250 }
+  const status = (connectionId: string, listPrice: number | null, salePrice: number | null, offerVersion: number | null = 3) => ({ connectionId, offerId: `o-${connectionId}`, offerVersion, listPrice, salePrice })
+
+  it('compares an offer with the panel price; a sale-only marketplace by its sale price', () => {
+    expect(offerMatchesPanel({ listPrice: 300, salePrice: 250 }, { listPrice: 300, salePrice: 250 }, true)).toBe(true)
+    expect(offerMatchesPanel({ listPrice: 310, salePrice: 250 }, { listPrice: 300, salePrice: 250 }, true)).toBe(false)
+    expect(offerMatchesPanel({ listPrice: 250, salePrice: 250 }, { listPrice: 300, salePrice: 250 }, false)).toBe(true)
+    // An unknown panel price is never taken as equal.
+    expect(offerMatchesPanel({ listPrice: 300, salePrice: 250 }, { listPrice: null, salePrice: null }, true)).toBe(false)
+  })
+
+  it('starts ticked only for a marketplace with an offer at another price', () => {
+    const items = [
+      { product, variant: { platformStatuses: [status('c-ty', 300, 250), status('c-hb', 250, 250), status('c-n11', 400, 350)] } },
+      { product, variant: { platformStatuses: [status('c-ty', 300, 250)] } },
+    ]
+    expect(initialCustomChannels(items, columns)).toEqual({ 'c-ty': false, 'c-hb': false, 'c-n11': true })
+    // No offer anywhere: every marketplace follows the panel, as the editor shows a new choice.
+    expect(initialCustomChannels([{ product, variant: { platformStatuses: [] } }], columns)).toEqual({ 'c-ty': false, 'c-hb': false, 'c-n11': false })
+    // One differing variant is enough to keep that marketplace's own prices.
+    expect(initialCustomChannels([...items, { product, variant: { defaultSalePrice: 200, platformStatuses: [status('c-ty', 300, 250)] } }], columns)['c-ty']).toBe(true)
+  })
+
+  it('lists the unticked marketplaces, never the panel column', () => {
+    expect(panelFollowerColumns(columns, { 'c-n11': true }).map(column => column.id)).toEqual(['c-ty', 'c-hb'])
+    expect(panelFollowerColumns(columns, { 'c-ty': true, 'c-hb': true, 'c-n11': true })).toEqual([])
+  })
+
+  it('writes a panel save to each following offer, list = sale on a sale-only marketplace, nothing new created', () => {
+    const variant = { platformStatuses: [status('c-ty', 300, 250, 4), status('c-hb', 250, 250, 9)] }
+    expect(panelFollowerWrites(variant, [ty, hb, n11], { listPrice: 320, salePrice: 280 })).toEqual([
+      expect.objectContaining({ kind: 'update', column: ty, offerId: 'o-c-ty', offerVersion: 4, listPrice: 320, salePrice: 280 }),
+      expect.objectContaining({ kind: 'update', column: hb, offerId: 'o-c-hb', offerVersion: 9, listPrice: 280, salePrice: 280 }),
+    ])
+    // An offer already at the price is left alone; no follower means no marketplace write at all.
+    expect(panelFollowerWrites(variant, [ty, hb], { listPrice: 300, salePrice: 250 })).toEqual([])
+    expect(panelFollowerWrites(variant, [], { listPrice: 1, salePrice: 1 })).toEqual([])
+  })
+
+  it('blocks a follower write it cannot place safely', () => {
+    expect(panelFollowerWrites({ platformStatuses: [status('c-ty', 300, 250, null)] }, [ty], { listPrice: 320, salePrice: 280 })).toEqual([{ kind: 'blocked', column: ty, reason: 'Fiyat sürümü okunamadı; listeyi yenileyip tekrar deneyin.' }])
+    expect(panelFollowerWrites({}, [ty], { listPrice: 320, salePrice: 280 })).toMatchObject([{ kind: 'blocked', column: ty }])
+  })
+
+  it('formats prices outside editing and reads a Turkish decimal comma', () => {
+    expect(formatPriceField('1249.9')).toBe('1.249,90')
+    expect(formatPriceField('')).toBe('')
+    expect(normalizePriceInput('1.249,90')).toBe('1249.90')
+    expect(normalizePriceInput('249,5 ₺')).toBe('249.5')
+    expect(normalizePriceInput('249.5')).toBe('249.5')
   })
 })
