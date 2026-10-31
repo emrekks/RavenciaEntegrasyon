@@ -22,7 +22,7 @@ export function scopedStorageKey(base: string) {
 }
 
 // Every key that holds one person's view; the unscoped keys of earlier versions start with the same names.
-const personalKeyPrefixes = ['ravencia.notification-history', 'rv-tab-counts:', 'rv-question-sync-count']
+const personalKeyPrefixes = ['ravencia.notification-history', 'rv-tab-counts:', 'rv-question-sync-count', 'rv-appearance-settings']
 
 /** Removes every person's notification history and remembered counts from this browser (at sign-out). */
 export function clearPersonalStorage(storage: Pick<Storage, 'length' | 'key' | 'removeItem'> | null = typeof localStorage === 'undefined' ? null : localStorage) {

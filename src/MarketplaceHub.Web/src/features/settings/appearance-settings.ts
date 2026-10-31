@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
+import { scopedStorageKey } from '../../shared/storage-scope'
 
 export type AppearanceFontFamily = 'inter' | 'system' | 'segoe' | 'arial'
 export type AppearanceFontSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
@@ -221,11 +222,30 @@ export function normalizeAppearanceSettings(value: unknown): AppearanceSettings 
 
 export const appearanceSettingsQueryKey = ['appearance-settings'] as const
 
+// The last settings this browser read are shown from the first paint of a new tab, so the panel does not open in the
+// default font and colours and switch a moment later. The server's answer still decides.
+const rememberedAppearanceKey = 'rv-appearance-settings'
+export function readRememberedAppearance(storage: Pick<Storage, 'getItem'> | null = typeof localStorage === 'undefined' ? null : localStorage): AppearanceSettingsEnvelope | undefined {
+  try {
+    const raw = storage?.getItem(scopedStorageKey(rememberedAppearanceKey))
+    if (!raw) return undefined
+    const parsed = JSON.parse(raw) as Partial<AppearanceSettingsEnvelope> | null
+    return parsed && typeof parsed === 'object' && 'settings' in parsed ? { settings: normalizeAppearanceSettings(parsed.settings), version: Number(parsed.version) || 0 } : undefined
+  } catch {
+    return undefined
+  }
+}
+export function rememberAppearance(envelope: AppearanceSettingsEnvelope, storage: Pick<Storage, 'setItem'> | null = typeof localStorage === 'undefined' ? null : localStorage) {
+  try { storage?.setItem(scopedStorageKey(rememberedAppearanceKey), JSON.stringify(envelope)) } catch { /* a blocked store only loses the head start */ }
+  return envelope
+}
+
 export function useAppearanceSettings() {
   const client = useQueryClient()
   const query = useQuery({
     queryKey: appearanceSettingsQueryKey,
-    queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance'),
+    queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance').then(envelope => rememberAppearance(envelope)),
+    placeholderData: () => readRememberedAppearance(),
     staleTime: 60_000,
     refetchOnWindowFocus: true
   })
@@ -248,7 +268,7 @@ export function useAppearanceSettings() {
       if (error instanceof ApiRequestError && error.status === 412) void client.invalidateQueries({ queryKey: appearanceSettingsQueryKey })
       throw error
     }
-    client.setQueryData(appearanceSettingsQueryKey, saved)
+    client.setQueryData(appearanceSettingsQueryKey, rememberAppearance(saved))
     setDraft(normalizeAppearanceSettings(saved.settings))
   }
 

@@ -1,0 +1,15 @@
+/* An edit or a copy opens with its fields masked (same boxes, no values) until the product is in, so no default, no
+   placeholder and no editable single-product field shows before the varyantlı state. The layout does not move. */
+.app-shell.stitch-shell main .product-add-page.is-hydrating :is(.product-add-workspace :is(input:not([type="checkbox"], [type="radio"], [type="file"]), select, textarea, [contenteditable]), .product-add-workspace .rich-text-editor-meta > span, .product-submit-sticky p, .page-heading h1, .product-page-heading-meta) {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)) 0 0 / 220% 100%;
+  border-style: solid;
+  border-radius: 7px;
+  animation: rv-splash-shimmer 1.8s linear infinite;
+}
+.app-shell.stitch-shell main .product-add-page.is-hydrating .product-add-workspace :is(input, textarea)::placeholder, .app-shell.stitch-shell main .product-add-page.is-hydrating .product-add-workspace [contenteditable]::before { color: transparent; }
+.app-shell.stitch-shell main .product-add-page.is-hydrating .product-add-workspace :is(input[type="checkbox"], input[type="radio"]) { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell main .product-add-page.is-hydrating * { animation: none; }
+}

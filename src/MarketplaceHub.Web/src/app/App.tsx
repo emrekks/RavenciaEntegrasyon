@@ -154,7 +154,7 @@ function Shell({ me }: { me: Me }) {
     }
     applyTheme()
   })
-  useEffect(() => applyAppearance(), [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey, visualTheme])
+  useLayoutEffect(() => applyAppearance(), [appearanceSettings.settings.fontFamily, appearanceSettings.settings.fontSize, appearanceSettings.settings.themeMode, appearanceColorsKey, visualTheme])
   const pageNames: Record<string, string> = { '/dashboard': 'Genel Bakış', '/products': 'Ürünler', '/products/new': 'Yeni Ürün', '/catalog/categories': 'Kategoriler', '/catalog/brands': 'Markalar', '/catalog/attributes': 'Özellikler', '/imports': 'İçe Aktarımlar', '/shipments': 'Gönderiler', '/orders': 'Siparişler', '/returns': 'İadeler', '/invoices': 'Faturalar', '/reports': 'Raporlar', '/promotions': 'Promosyon', '/questions': 'Ürün Soruları', '/jobs': 'İşlem Takibi', '/integrations': 'Platformlar', '/mappings/categories': 'Eşleştirme Ayarları', '/mappings/attributes': 'Özellik Eşlemeleri', '/settings': 'Sistem Ayarları', '/settings/appearance': 'Görünüm Ayarları' }
   const pageName = pageNames[location.pathname] ?? (location.pathname.startsWith('/products/') ? 'Ürün Detayları' : location.pathname.startsWith('/returns/') ? 'İade Detayları' : location.pathname.startsWith('/imports/') ? 'İçe Aktarma Ayrıntıları' : location.pathname.startsWith('/integrations/') ? 'Platform Ayrıntıları' : location.pathname.startsWith('/shipments/') ? 'Gönderi Ayrıntıları' : 'Ravencia')
   const displayName = me.displayName || me.email
