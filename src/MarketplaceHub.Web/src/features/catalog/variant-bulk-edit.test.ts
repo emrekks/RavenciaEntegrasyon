@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyVariantBulkEditValue, updateVariantGroupSelection, variantBulkEditIssue, variantGroupSelectionState, type VariantBulkEditRow } from './variant-bulk-edit'
+import { applyVariantBulkEditValue, toggleVariantGroupRow, updateVariantGroupSelection, variantGroupRowMates, variantBulkEditIssue, variantGroupSelectionState, type VariantBulkEditRow } from './variant-bulk-edit'
 
 const rows: VariantBulkEditRow[] = [
   { key: 'small', stock: 1, salePrice: 80, costPrice: 20, listPrice: 100 },
@@ -37,5 +37,29 @@ describe('quick edit color group selection', () => {
     expect(variantGroupSelectionState(['small', 'large'], new Set())).toEqual({ checked: false, indeterminate: false })
     expect(variantGroupSelectionState(['small', 'large'], new Set(['small']))).toEqual({ checked: false, indeterminate: true })
     expect(variantGroupSelectionState(['small', 'large'], new Set(['small', 'large']))).toEqual({ checked: true, indeterminate: false })
+  })
+})
+
+describe('variant group rows', () => {
+  const colors = ['haki', 'kahve', 'kiremit', 'lacivert', 'siyah']
+
+  it('finds the groups in the same two-column row', () => {
+    expect(variantGroupRowMates(colors, 'kiremit', 2)).toEqual(['kiremit', 'lacivert'])
+    expect(variantGroupRowMates(colors, 'lacivert', 2)).toEqual(['kiremit', 'lacivert'])
+    expect(variantGroupRowMates(colors, 'siyah', 2)).toEqual(['siyah'])
+    expect(variantGroupRowMates(colors, 'kahve', 1)).toEqual(['kahve'])
+    expect(variantGroupRowMates(colors, 'yok', 2)).toEqual([])
+  })
+
+  it('opens and closes a row together and leaves other rows alone', () => {
+    expect(toggleVariantGroupRow(['siyah'], colors, 'lacivert', 2)).toEqual(['siyah', 'kiremit', 'lacivert'])
+    expect(toggleVariantGroupRow(['kiremit', 'lacivert', 'siyah'], colors, 'kiremit', 2)).toEqual(['siyah'])
+    expect(toggleVariantGroupRow(['haki'], colors, 'kahve', 1)).toEqual(['haki', 'kahve'])
+    expect(toggleVariantGroupRow(['haki', 'kahve'], colors, 'haki', 1)).toEqual(['kahve'])
+  })
+
+  it('closes the whole row when one of its groups was left open from a one-column view', () => {
+    expect(toggleVariantGroupRow(['haki'], colors, 'haki', 2)).toEqual([])
+    expect(toggleVariantGroupRow(['haki'], colors, 'kahve', 2)).toEqual(['haki', 'kahve'])
   })
 })

@@ -1,5 +1,5 @@
 // Ürünler (/products).
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { variantOptionParts } from '../variant-option-label'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -12,7 +12,7 @@ import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { productStatusLabel } from '../../../shared/status-labels'
 import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../marketplace/returns-ui'
 import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
-import { updateVariantGroupSelection, variantGroupSelectionState } from '../variant-bulk-edit'
+import { toggleVariantGroupRow, updateVariantGroupSelection, variantGroupRowMates, variantGroupSelectionState } from '../variant-bulk-edit'
 import { productPlatformDisplayLabel, productPlatformDisplayState } from '../product-platform-status'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockErrorMessage, stockTarget, type VariantStockSet } from '../variant-stock-set'
@@ -146,6 +146,11 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const [selectedColors, setSelectedColors] = useState<string[]>([])
   const [selectedSizes, setSelectedSizes] = useState<string[]>([])
   const [openColorGroups, setOpenColorGroups] = useState<string[]>([])
+  // The groups in one grid row open and close together (two columns in a stock window, one on a phone or for prices).
+  const phoneWidth = useMediaQuery('(max-width: 760px)')
+  const groupColumns = mode === 'stock' && !phoneWidth ? 2 : 1
+  const [hintedGroupRow, setHintedGroupRow] = useState<number | null>(null)
+  const groupPanelId = useId()
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
   // Where a price change goes: the panel's own price (preset: it sends nothing to a marketplace) or one channel the
@@ -293,7 +298,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     // The refreshed list is the user's new baseline once they have been told the stock changed.
     if (anyStale) resetStockBaseline.current = true
   }
-  const toggleColorGroup = (color: string) => setOpenColorGroups(current => current.includes(color) ? current.filter(item => item !== color) : [...current, color])
+  const toggleColorGroup = (color: string) => setOpenColorGroups(current => toggleVariantGroupRow(current, colorOptions, color, groupColumns))
   return <RrModal crumb={mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="xl" modalClass={`rr-qe-modal${mode === 'stock' ? ' rr-qe-stock' : ''}`} locked={saving} onClose={onClose} foot={<><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} varyant</b> seçildi</> : 'Varyant seçimi bekleniyor'}</span><button type="button" className="rr-btn" onClick={onClose} disabled={saving}>Vazgeç</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !selectionDraft.length}>{saving ? 'Uygulanıyor…' : 'Seçilenlere Uygula'}</button></>}>
     <form id="product-quick-edit-form" style={{ display: 'contents' }} onSubmit={apply}>
       <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><div className="rr-step-tools">
@@ -301,13 +306,19 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
         <RrAnchor trigger={(open, toggleOpen) => <button type="button" className={`rr-trigger rr-sm${open ? ' rr-on' : ''}`} onClick={toggleOpen}><span>Beden: {selectedSizes.length ? `${selectedSizes.length} Seçili` : 'Tümü'}</span><RrIcon name="chev" /></button>}>{() => <div className="rr-pop rr-right" role="dialog" style={{ minWidth: 220 }}>{sizeOptions.map(size => <label key={size} className="rr-opt"><input type="checkbox" className="rr-cb" checked={selectedSizes.includes(size)} onChange={() => toggleSize(size)} /><span className="rr-grow">{size}</span><small>{variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && sizeOf(item) === size).length} varyant</small></label>)}</div>}</RrAnchor>
       </div></header>
         {/* A stock window's groups sit in two columns (their rows are short); a price window keeps one column. */}
-        <div className={`rr-vgroups${mode === 'stock' ? ' rr-two' : ''}`}>{colorOptions.map(color => {
+        {groupColumns > 1 && <span id={`${groupPanelId}-pair`} className="sr-only">Aynı satırdaki renk grubuyla birlikte açılır ve kapanır.</span>}
+        <div className={`rr-vgroups${mode === 'stock' ? ' rr-two' : ''}`}>{colorOptions.map((color, index) => {
           const items = groups[color]
           const isOpen = openColorGroups.includes(color)
           const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
           const groupSelection = variantGroupSelectionState(items.map(item => item.variant.id), selectedSet)
           const groupLabel = colorLabels[color] || formatCatalogOptionLabel(color)
-          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && <div className="rr-qtable-wrap">
+          // A row of two is marked as one: both cards light up on hover, and open with a shared accent.
+          const row = Math.floor(index / groupColumns)
+          const rowMates = variantGroupRowMates(colorOptions, color, groupColumns)
+          const paired = rowMates.length > 1
+          const rowPanels = rowMates.filter(mate => openColorGroups.includes(mate)).map(mate => `${groupPanelId}-${colorOptions.indexOf(mate)}`).join(' ')
+          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}${paired ? ' rr-paired' : ''}${paired && hintedGroupRow === row ? ' rr-row-hint' : ''}`} key={color} onPointerEnter={paired ? () => setHintedGroupRow(row) : undefined} onPointerLeave={paired ? () => setHintedGroupRow(current => current === row ? null : current) : undefined}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} aria-controls={rowPanels || undefined} aria-describedby={paired ? `${groupPanelId}-pair` : undefined} onClick={() => toggleColorGroup(color)}><span className="rr-vg-name"><b title={groupLabel}>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small></span>{paired && <span className="rr-vg-link" aria-hidden="true" />}<RrIcon name="chev" /></button></div>{isOpen && <div className="rr-qtable-wrap" id={`${groupPanelId}-${index}`} role="region" aria-label={`${groupLabel} varyantları`}>
             {showPriceColumns && channelColumns.length > 0 && <div className="rr-qt-customs" role="group" aria-label="Pazaryerlerine özel fiyat">{channelColumns.map(column => <QuickEditCustomToggle key={column.id} column={column} custom={customChannels[column.id]} onChange={value => void setCustomChannel(column.id, value)} />)}</div>}
             <table className={`rr-qtable${showPriceColumns ? ' rr-qt-prices' : ''}${showStockColumn ? ' rr-qt-has-stock' : ''}`}>
               <caption className="sr-only">{groupLabel} varyantları</caption>
