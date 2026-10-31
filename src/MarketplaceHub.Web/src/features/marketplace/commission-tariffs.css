@@ -94,6 +94,9 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-choice-none { color: var(--rv-color-subtle); text-align: center; }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice { position: relative; display: grid; justify-items: start; gap: 2px; width: 100%; min-width: 150px; min-height: 0; height: auto; margin: 0; padding: 10px 12px 8px; color: var(--rv-color-ink); font: inherit; text-align: left; text-transform: none; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; cursor: default; transition: border-color 140ms ease, background-color 140ms ease; }
 .app-shell.stitch-shell main .commission-tariffs .commission-choice:hover { border-color: var(--rv-color-border-strong); }
+/* The band leaving the most: a small filled star in the card's top right corner, out of the card's flow. */
+.app-shell.stitch-shell main .commission-tariffs .commission-choice > .commission-best { position: absolute; top: 6px; right: 8px; color: var(--rv-color-warning); font-size: 13px; font-style: normal; line-height: 1; pointer-events: auto; cursor: help; }
+.app-shell.stitch-shell main .commission-tariffs .commission-choice:has(> .commission-best) > strong { padding-right: 14px; }
 /* In the price bands every card is as wide as the widest needs: "Tüm Varyantlarını Seç" on one line with room to spare. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice { min-width: 196px; }
 /* The 7-day view: a line for each period (its name and rate, its profit badge) and the profit over the week under them. */

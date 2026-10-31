@@ -207,6 +207,13 @@ export function amountRange(values: number[]) {
   const low = Math.min(...values), high = Math.max(...values)
   return low === high ? `${signed(low)} ₺` : `${signed(low)} – ${signed(high)} ₺`
 }
+// The bands leaving the most (every one of them on a tie), by their profit; a band whose profit is unknown never is.
+export function bestTiers(profits: Array<[number, number | null]>) {
+  const known = profits.filter((entry): entry is [number, number] => entry[1] !== null)
+  if (!known.length) return new Set<number>()
+  const most = Math.max(...known.map(([, value]) => value))
+  return new Set(known.filter(([, value]) => value === most).map(([tier]) => tier))
+}
 // The profit on cost of the variants whose profit is known, as a single price's badge gives it: "(%51,39 – %60,10)",
 // one share when they agree; null when none is known.
 export function shareRangeText(choices: CommissionChoice[]) {
@@ -685,6 +692,15 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   const toggle = (row: CommissionTariffRow, tier: number, picked: boolean) => setRowPicks([row], picked ? (bulkOn ? { tier: null, price: null } : null) : { tier, price: null })
   // A model's switch picks the band for all its variants that have it, or takes it back from all of them.
   const pickModel = (owners: CommissionTariffRow[], tier: number, all: boolean) => setRowPicks(owners, !all ? { tier, price: null } : bulkOn ? { tier: null, price: null } : null)
+  // What a band leaves for these rows, the most of them (in the 7-day view each row's profit over the week); unknown
+  // profits are left out, and null when none is known.
+  const tierProfit = (owners: CommissionTariffRow[], tier: number) => {
+    const values = owners.map(row => {
+      const own = row.choices?.find(item => item.tier === tier)?.remaining
+      return partner ? weekAverage([{ days: periodDays(tariff), value: own }, { days: periodDays(partner), value: partnerBy.get(row.barcode)?.choices?.find(item => item.tier === tier)?.remaining }]) : own ?? null
+    }).filter((value): value is number => value !== null)
+    return values.length ? Math.max(...values) : null
+  }
   // The 7-day lines of a band: each period's commission and profit, and what it leaves over the week.
   const weekLines = (owners: CommissionTariffRow[], tier: number, title: string) => {
     if (!partner) return null
@@ -775,6 +791,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
           const otherChosen = other ? pickedTier(other, partnerPicks.get(other.id), partnerBulk) : chosen
           const differs = partner && other && otherChosen !== chosen
             ? <small className="commission-warn">{periodName(partner)} seçimi farklı: {otherChosen === null ? 'seçilmedi' : otherChosen === 'own' ? 'kendi fiyatı' : `${otherChosen}. fiyat aralığı`}</small> : null
+          const best = bestTiers(tiers.map(tier => [tier, tierProfit([row], tier)]))
           return <tr key={row.id} className={`${nested ? 'is-variant' : ''}${chosen !== null ? ' is-picked' : ''}`.trim() || undefined}>
             <td className="commission-expand" />
             <th scope="row">{nested
@@ -807,6 +824,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
               const picked = chosen === tier
               return <td key={tier}>
                 <div className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
+                  {best.has(tier) && <i className="commission-best" role="img" title="En kârlı aralık" aria-label="En kârlı aralık">★</i>}
                   {/* The card's headline is its band limit; the price the row would get stays in the badge's breakdown. */}
                   <strong title={bandLimitHint([band])}>{bandLimitText([band]) ?? money(choice.price)}</strong>
                   {partner ? weekLines([row], tier, `${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`) : <>
@@ -824,6 +842,8 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
         const first = group.find(row => row.imageUrl) ?? group[0]
         const open = opened.has(key)
         const prices = group.flatMap(row => row.basisPrice === null ? [] : [row.basisPrice])
+        // Over a model, a band's profit is the most its variants leave in it (the top of the badge's range).
+        const best = bestTiers(tiers.map(tier => [tier, tierProfit(group.filter(row => row.choices?.some(item => item.tier === tier)), tier)]))
         // The model's row: its picture, name and code, how many variants it has, and each band over all of them.
         return <Fragment key={key}>
           <tr className="is-model">
@@ -852,6 +872,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
               const ranged = lefts.length > 0 && Math.min(...lefts) !== Math.max(...lefts)
               return <td key={tier}>
                 <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
+                  {best.has(tier) && <i className="commission-best" role="img" title="En kârlı aralık (bedenlerin en yüksek kârına göre)" aria-label="En kârlı aralık">★</i>}
                   <strong title={bandLimitHint(owners.map(row => row.bands.find(item => item.tier === tier)))}>{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier))) ?? priceRange(choices.map(item => item.price))}</strong>
                   {partner ? weekLines(owners, tier, first.productName ?? first.barcode) : <>
                     <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
