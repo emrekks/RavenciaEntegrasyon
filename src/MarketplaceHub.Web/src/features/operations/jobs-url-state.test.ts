@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobsLogsTabOpen, readJobsViewState, withJobsLogsTab, writeJobsViewState } from './jobs-url-state'
+import { jobsLogsTabOpen, jobsMainTab, readJobsViewState, withJobsLogsTab, withJobsMainTab, writeJobsViewState } from './jobs-url-state'
 
 describe('İşlem Takibi address state (W16)', () => {
   it('reads the defaults from an empty address', () => {
@@ -36,5 +36,14 @@ describe('İşlem Takibi address state (W16)', () => {
     expect(closed.toString()).toBe('kategori=fatura&platform=n11')
     expect(jobsLogsTabOpen(closed)).toBe(false)
     expect(jobsLogsTabOpen(new URLSearchParams('sekme=x'))).toBe(false)
+  })
+
+  it('reads and writes the three main tabs, an unknown one opening the job list', () => {
+    const current = new URLSearchParams('kategori=fatura')
+    expect(withJobsMainTab(current, 'health').toString()).toBe('kategori=fatura&sekme=api-saglik')
+    expect(jobsMainTab(withJobsMainTab(current, 'health'))).toBe('health')
+    expect(jobsMainTab(withJobsMainTab(current, 'logs'))).toBe('logs')
+    expect(withJobsMainTab(new URLSearchParams('kategori=fatura&sekme=api-saglik'), 'jobs').toString()).toBe('kategori=fatura')
+    expect(jobsMainTab(new URLSearchParams('sekme=x'))).toBe('jobs')
   })
 })

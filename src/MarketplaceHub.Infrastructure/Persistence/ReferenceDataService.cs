@@ -248,7 +248,10 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         {
             valueMapping.Source = MappingSources.Manual;
             if (command.UpdateTemplate)
+            {
                 await MappingTemplateStore.RecordValueAsync(db, tenantId, command.ConnectionId, scope, localId, externalId, mapping.VerifiedAt.Value, cancellationToken);
+                await MappingTemplateFiller.FillValueInOtherCategoriesAsync(db, tenantId, command.ConnectionId, scope, localId, externalId, mapping.VerifiedAt.Value, cancellationToken);
+            }
             await MappingTemplateFiller.ClearDismissalAsync(db, tenantId, command.ConnectionId, MappingTemplateFiller.ValueKind, scope, localId, cancellationToken);
         }
         if (mappingType == "attributes")
