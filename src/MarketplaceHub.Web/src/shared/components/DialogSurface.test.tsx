@@ -74,6 +74,16 @@ describe('panel confirmation and address windows', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull()
   })
 
+  it('opens on the page body, over a window that is already open, not inside the page section', () => {
+    // A page section is its own stacking layer (its motion) and the import window is portalled to the body: a
+    // confirmation drawn inside the section stayed behind that window and the start button seemed to do nothing.
+    render(<section className="rr-products" style={{ transform: 'translateY(0)' }}><ConfirmProbe onResult={() => {}} /></section>)
+    click(byText(document.body, 'button', 'Sor'))
+    const overlay = document.querySelector('.rv-confirm-dialog')!.parentElement!
+    expect(overlay.parentElement).toBe(document.body)
+    expect(overlay.closest('section.rr-products')).toBeNull()
+  })
+
   it('refuses an address that is not https and returns a good one', async () => {
     const onResult = vi.fn()
     render(<PromptProbe onResult={onResult} />)
