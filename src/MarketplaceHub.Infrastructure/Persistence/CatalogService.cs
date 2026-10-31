@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
@@ -1755,7 +1756,12 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     // The marketplaces where one product carries a model family's every colour card (one request sends them all).
     private static bool SendsModelFamily(string platformCode) => platformCode is "PTTAVM" or "SHOPIFY";
 
-    public async Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    public Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
+        EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: false, cancellationToken);
+
+    // shopifyUpdateOnly: "Platformlarda Güncelle" on Shopify, the same productSet marked so it only writes a product that is
+    // already there (ShopifyHttpClient.UpdateOnlyKey).
+    private async Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, bool shopifyUpdateOnly, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
@@ -1787,6 +1793,7 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
             : await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!draftResult.Succeeded) return ServiceResult<Guid>.Fail(draftResult.Error!.Code, draftResult.Error.Message, draftResult.Error.Status, draftResult.Error.FieldErrors);
         var draft = draftResult.Value!;
+        if (shopifyUpdateOnly) draft = draft with { PayloadJson = ShopifyHttpClient.MarkUpdateOnly(draft.PayloadJson) };
         var dedup = $"product-create:{connectionId:N}:{productId:N}:{draft.PayloadHash}";
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductCreate && x.JobDedupKey == dedup, cancellationToken);
         // A PTT AVM family send that finished may still not have done what it should (PTT AVM ignored the variants of an
@@ -1878,6 +1885,11 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
     // fields: the product information "Platformlarda Güncelle" picked (ProductUpdateFields); null sends all of it.
     public async Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null)
     {
+        // Shopify takes the product whole (ShopifyProductPublicationComposer): an update is the publication's productSet again
+        // under the handle the panel gave the product, which Shopify applies to that product in place. The picked fields do
+        // not narrow it (price and stock ride along), and the send never creates a product.
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (platformCode == "SHOPIFY") return await EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: true, cancellationToken);
         var sections = ProductUpdateFields.Sections(fields);
         if (!sections.Succeeded) return ServiceResult<Guid>.Fail(sections.Error!.Code, sections.Error.Message, sections.Error.Status);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);

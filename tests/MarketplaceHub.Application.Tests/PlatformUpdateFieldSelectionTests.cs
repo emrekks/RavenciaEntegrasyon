@@ -69,7 +69,7 @@ public sealed class PlatformUpdateFieldSelectionTests
     [InlineData("N11", "")]
     [InlineData("PAZARAMA", "")]
     [InlineData("PTTAVM", "")]
-    [InlineData("SHOPIFY", "")]
+    [InlineData("SHOPIFY", "TITLE,DESCRIPTION,IMAGES")]
     [InlineData(null, "")]
     public void EachMarketplace_UpdatesOnlyTheFieldsItsAdapterTakes(string? platformCode, string expected)
     {

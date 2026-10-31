@@ -120,7 +120,7 @@ const productUpdateCapabilities = (platformCode: string) => {
   const code = platformCode.trim().toUpperCase()
   if (code === 'TRENDYOL') return { writable: true, content: true, categoryAttributes: true, detail: 'Ürün bilgileri, fiyat ve stok güncellenebilir.' }
   if (code === 'HEPSIBURADA') return { writable: true, content: true, categoryAttributes: true, detail: 'Ürün bilgileri, fiyat ve stok Hepsiburada yazma kurallarıyla güncellenebilir.' }
-  if (code === 'SHOPIFY') return { writable: false, content: false, categoryAttributes: false, detail: 'Shopify dış yazmaları şu anda desteklenmiyor; bağlantı salt okunur.' }
+  if (code === 'SHOPIFY') return { writable: true, content: true, categoryAttributes: false, detail: 'Ürün kartı tek istekte güncellenir: ürün adı, açıklama, görseller, renk ve beden, fiyat ve stok birlikte gider.' }
   return { writable: false, content: false, categoryAttributes: false, detail: 'Bu platform için ürün güncelleme desteği bulunmuyor.' }
 }
 function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current: HTMLDivElement | null }; children: ReactNode }) {

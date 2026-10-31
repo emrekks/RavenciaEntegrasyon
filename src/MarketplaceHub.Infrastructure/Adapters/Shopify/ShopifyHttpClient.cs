@@ -226,6 +226,7 @@ public sealed partial class ShopifyHttpClient(
         {
             return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_PAYLOAD_INVALID", "Shopify ürün yayını geçerli JSON içermiyor.", HttpStatusCode.BadRequest);
         }
+        var updateOnly = input.Remove(UpdateOnlyKey);
 
         var handle = input["handle"]?.GetValue<string>()?.Trim();
         var variants = input["variants"] as JsonArray;
@@ -249,6 +250,8 @@ public sealed partial class ShopifyHttpClient(
         try
         {
             var existingProduct = existingProductResult.Value!.RootElement.GetProperty("productByIdentifier");
+            if (updateOnly && existingProduct.ValueKind != JsonValueKind.Object)
+                return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, UpdateTargetMissingCode, $"Shopify'da panelin bu ürüne verdiği adresle ({handle}) bir ürün yok; güncelleme yeni ürün açmaz. Ürün Shopify'dan silindiyse veya hiç gönderilmediyse Yayınla ile gönderin.", HttpStatusCode.UnprocessableEntity);
             if (existingProduct.ValueKind == JsonValueKind.Object)
             {
                 var ownerId = existingProduct.TryGetProperty("owner", out var owner) && owner.ValueKind == JsonValueKind.Object
@@ -398,6 +401,18 @@ public sealed partial class ShopifyHttpClient(
                 (int)HttpStatusCode.BadGateway, null, null);
         }
     }
+    // "Platformlarda Güncelle" sends the publication's productSet with this key set: it writes the product the panel already
+    // holds under its handle and never creates one. The key is taken out before the request goes to Shopify.
+    internal const string UpdateOnlyKey = "ravenciaUpdateOnly";
+    internal const string UpdateTargetMissingCode = "SHOPIFY_PRODUCT_NOT_FOUND";
+
+    internal static string MarkUpdateOnly(string payloadJson)
+    {
+        var input = JsonNode.Parse(payloadJson)!.AsObject();
+        input[UpdateOnlyKey] = true;
+        return input.ToJsonString();
+    }
+
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
