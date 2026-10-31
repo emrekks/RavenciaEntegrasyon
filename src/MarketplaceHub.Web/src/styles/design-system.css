@@ -7144,3 +7144,5 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
 .app-shell.stitch-shell main .variant-media-bulk-field .category-attribute-dropdown-options > button.is-placeholder:not(.active) { color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .variant-media-bulk-field .variant-media-value-check { display: grid; width: 20px; height: 20px; flex: 0 0 20px; place-items: center; color: #fff; background: #0b0b0d; border: 1.5px solid var(--rv-color-surface-raised); border-radius: 50%; box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-ink) 22%, transparent); }
 .app-shell.stitch-shell main .variant-media-bulk-field .variant-media-value-check .ui-icon { width: 12px; height: 12px; stroke-width: 2.6; }
+/* Its footer actions are 34 px high, below the 44 px the global button rule gives. */
+.app-shell.stitch-shell main .variant-media-picker-modal > footer > button { min-height: 0; height: 34px; padding-block: 0; }
