@@ -1,6 +1,6 @@
 import { lazy, Suspense, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
 import type { Product } from '../catalog/shared'
 import { DateRangePicker } from '../../shared/DateRangePicker'
@@ -13,6 +13,10 @@ import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
+import { webhookCell } from './integration-health'
+import type { Connection } from '../marketplace/shared'
+import { connectionAuthSummary } from '../marketplace/integrations/connection-auth-alert'
+import { instantNotificationsQueryKey, type InstantNotificationStatus } from '../marketplace/instant-notification-status'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
@@ -215,7 +219,18 @@ export function DashboardPage() {
   ]
   // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
   const rows = (matrix.data ?? []).filter(row => PLATFORMS.some(([code]) => code === row.platformCode.toUpperCase()))
-  const attention = rows.filter(row => row.issue || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn')).length
+  // The webhook and the credentials as the integration page shows them, read under its own query keys. The webhook
+  // status of a Trendyol or Shopify store asks the marketplace, so it is read again only every five minutes.
+  const connections = useQuery({ queryKey: ['connections'], queryFn: () => loadAllPages<Connection>('/connections'), staleTime: 120_000 })
+  const webhooks = useQueries({ queries: rows.map(row => ({ queryKey: instantNotificationsQueryKey(row.connectionId), queryFn: () => hubApi<InstantNotificationStatus>(`/connections/${row.connectionId}/instant-notifications`, poll), staleTime: 300_000, refetchInterval: 300_000, refetchIntervalInBackground: false })) })
+  const health = rows.map((row, index) => {
+    const connection = connections.data?.items.find(item => item.id === row.connectionId)
+    const auth = connection ? connectionAuthSummary(connection) : null
+    const webhook = webhookCell(webhooks[index]?.data, Boolean(webhooks[index]?.isError), age)
+    const attention = Boolean(row.issue || auth || webhook.tone === 'bad' || webhook.tone === 'warn' || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn'))
+    return { row, auth, webhook, attention }
+  })
+  const attention = health.filter(item => item.attention).length
   const errors = [bootstrap.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
   const loadingValue = (busy: boolean, value: number | undefined) => busy ? '—' : count(value ?? 0)
   // The bar places the latest finished day (or hour) between the weakest and strongest ones. The day still running
@@ -294,11 +309,12 @@ export function DashboardPage() {
       </div>
     </section>
     <section className="rr-panel"><div className="rr-panel-h"><div><h2>Entegrasyon Durumu</h2><p>Pazaryerleriyle bağlantının son 7 günü</p></div>{matrix.isLoading ? <span className="rr-hpill">Kontrol ediliyor…</span> : <span className={`rr-hpill${attention ? ' rr-attn' : ''}`}><InvoiceGlyph kind={attention ? 'waiting' : 'done'} />{attention ? `${attention} konu dikkatinizi bekliyor` : 'Her şey yolunda'}</span>}</div>
-      <div className="rr-mxwrap"><table className="rr-mxt"><thead><tr><th>Pazar Yeri</th>{DATA_KEYS.map(([, label]) => <th key={label}>{label}</th>)}<th /></tr></thead><tbody>
-        {!rows.length && <tr><td colSpan={DATA_KEYS.length + 2}><span className="rr-lead">{matrix.isLoading ? 'Bağlantılar yükleniyor…' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
-        {rows.map(row => <tr key={row.connectionId} className={row.issue ? 'rr-attn' : undefined}><td><span className="rr-mx-nm"><RrLogo code={row.platformCode} /><span><b>{row.displayName}</b><small title={row.issue ?? undefined}>{row.issue ?? storeLabel(row)}</small></span></span></td>
+      <div className="rr-mxwrap"><table className="rr-mxt"><thead><tr><th>Pazar Yeri</th>{DATA_KEYS.map(([, label]) => <th key={label}>{label}</th>)}<th>Webhook</th><th /></tr></thead><tbody>
+        {!rows.length && <tr><td colSpan={DATA_KEYS.length + 3}><span className="rr-lead">{matrix.isLoading ? 'Bağlantılar yükleniyor…' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
+        {health.map(({ row, auth, webhook, attention: rowAttention }) => <tr key={row.connectionId} className={rowAttention ? 'rr-attn' : undefined}><td><span className="rr-mx-nm"><RrLogo code={row.platformCode} /><span><b>{row.displayName}</b><small className={auth || row.issue ? 'rr-attn' : undefined} title={auth?.action ?? row.issue ?? undefined}>{auth?.title ?? row.issue ?? storeLabel(row)}</small></span></span></td>
           {DATA_KEYS.map(([key, label]) => { const cell = row.cells[key] ?? { state: 'off', lastSuccessAt: null, lastProblemAt: null }; return <td key={key} data-l={label}><span className={`rr-mx rr-${cell.state}`} title={`${label} · ${CELL_STATE[cell.state]}`}><i />{matrixCellText(cell)}</span></td> })}
-          <td className="rr-mx-act">{row.issue && <Link className="rr-btn rr-link" to="/jobs?durum=hata">İncele</Link>}</td></tr>)}
+          <td data-l="Webhook"><span className={`rr-mx rr-${webhook.tone}`} title={webhook.title}><i />{webhook.text}</span></td>
+          <td className="rr-mx-act">{auth || (!row.issue && (webhook.tone === 'bad' || webhook.tone === 'warn')) ? <Link className="rr-btn rr-link" to={`/integrations/${row.connectionId}`}>İncele</Link> : row.issue && <Link className="rr-btn rr-link" to="/jobs?durum=hata">İncele</Link>}</td></tr>)}
       </tbody></table></div>
       <div className="rr-mx-foot"><span>Son 24 saatte <b className="rr-num">{loadingValue(bootstrap.isLoading, metrics?.recentJobCount)}</b> istek · <b className="rr-num">{loadingValue(bootstrap.isLoading, metrics?.deadJobCount)}</b> tamamlanamayan iş · <b className="rr-num">{loadingValue(bootstrap.isLoading, metrics?.manualReviewJobCount)}</b> karar bekleyen iş</span><span className="rr-legend"><span><i className="rr-mx-l rr-ok" />Güncel</span><span><i className="rr-mx-l rr-warn" />Gecikiyor</span><span><i className="rr-mx-l rr-bad" />Hata Var</span><span><i className="rr-mx-l rr-off" />İşlem Yok</span></span></div>
     </section>
