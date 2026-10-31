@@ -133,24 +133,13 @@ public static class InvoiceAmounts
     /// The e-document scenario for an order of any marketplace. Trendyol states both the corporate buyer
     /// (commercial) and its e-Invoice registration (eInvoiceAvailable). Another platform selects e-Invoice
     /// only when its snapshot carries an explicit e-Invoice flag (Pazarama isEInvoiceObliged, kept as isEInvoice);
-    /// its corporate buyers without that flag are stopped by <see cref="RequiresEInvoiceRecipientReview"/>.
+    /// Either way this is only the marketplace's word: the E-Faturam taxpayer lookup decides (EInvoiceRecipientPolicy).
     /// </summary>
     public static string InvoiceDocumentType(string? platformCode, string customerSnapshotJson, string invoiceAddressSnapshotJson)
     {
         if (IsTrendyol(platformCode)) return TrendyolInvoiceType(customerSnapshotJson, invoiceAddressSnapshotJson);
         return EInvoiceRegistration(customerSnapshotJson, invoiceAddressSnapshotJson) == true ? "TEMELFATURA" : "EARSIVFATURA";
     }
-
-    /// <summary>
-    /// True when a non-Trendyol order's buyer is a company (a valid 10-digit VKN, a company name next to a
-    /// tax/identity number, or a corporate invoiceType) and the platform did not state that it is not an
-    /// e-Invoice taxpayer. An automatic e-Archive could then be the wrong document, so the order needs review.
-    /// A buyer flagged as an e-Invoice taxpayer is caught here too, for drafts saved as e-Archive earlier.
-    /// </summary>
-    public static bool RequiresEInvoiceRecipientReview(string? platformCode, string? customerSnapshotJson, string? invoiceAddressSnapshotJson) =>
-        !IsTrendyol(platformCode)
-        && EInvoiceRegistration(customerSnapshotJson, invoiceAddressSnapshotJson) != false
-        && IsCorporateBuyer(customerSnapshotJson, invoiceAddressSnapshotJson);
 
     private static readonly string[] EInvoiceFlagFields = ["eInvoiceAvailable", "isEInvoice", "isEInvoiceObliged"];
     private static readonly string[] TaxNumberFields = ["taxNumber", "taxId", "vkn", "customerTaxNumber", "invoiceTaxNumber", "taxIdentityNumber", "taxIdentifier"];
@@ -182,7 +171,11 @@ public static class InvoiceAmounts
         return registration;
     }
 
-    private static bool IsCorporateBuyer(string? customerSnapshotJson, string? invoiceAddressSnapshotJson)
+    /// <summary>
+    /// True when the buyer is a company: a valid 10-digit VKN, a company name next to a tax/identity number, or a
+    /// corporate invoiceType. Such a buyer may be an e-Invoice taxpayer, so its document type is looked up.
+    /// </summary>
+    public static bool IsCorporateBuyer(string? customerSnapshotJson, string? invoiceAddressSnapshotJson)
     {
         foreach (var json in new[] { invoiceAddressSnapshotJson, customerSnapshotJson })
         {

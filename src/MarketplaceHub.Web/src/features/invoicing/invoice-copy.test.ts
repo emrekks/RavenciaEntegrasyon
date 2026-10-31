@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { handSetInvoiceStatusPlatforms, invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceReopenNote, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { handSetInvoiceStatusPlatforms, invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceReopenNote, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, taxpayerStatusLabel, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
 import { invoiceGlyphKind } from './invoice-state-glyph'
 
 import { invoiceStatusLabel, invoiceStatusTone } from '../../shared/status-labels'
 
 describe('invoice copy', () => {
+  it('names the taxpayer lookup result and shows nothing when no lookup ran', () => {
+    expect(taxpayerStatusLabel('REGISTERED')).toBe('e-Fatura Mükellefi')
+    expect(taxpayerStatusLabel('NOT_REGISTERED')).toBe('e-Fatura Mükellefi Değil')
+    expect(taxpayerStatusLabel('UNKNOWN')).toBe('Sorgulanamadı')
+    expect(taxpayerStatusLabel(null)).toBeNull()
+  })
+
   it('names the delivery action after the marketplace, not Trendyol', () => {
     expect(invoiceDetailActionLabel('DELIVER')).toBe('Pazaryerine Fatura Linkini İlet')
     expect(invoiceDetailActionLabel('CANCEL')).toBe('E-Arşiv İptal İsteği Gönder')

@@ -36,10 +36,11 @@ public sealed class InvoiceIssueGateTests
     public void Chooses_the_algorithm_by_length(string? value, bool expected) => Assert.Equal(expected, TurkishTaxIdentity.IsValid(value));
 
     [Fact]
-    public void Refuses_e_invoice_recipients_and_export_orders_but_not_domestic_e_archive()
+    public void Refuses_export_orders_but_not_domestic_e_archive_or_e_invoice()
     {
         Assert.Null(InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", "{\"commercial\":false}"));
-        Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientCode, InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", "{}")?.Code);
+        // The e-Invoice decision belongs to the taxpayer lookup (InvoiceRecipientReviewTests).
+        Assert.Null(InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", "{}"));
         Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "EUR", "{}")?.Code);
         Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", "{\"micro\":true}")?.Code);
         Assert.Equal(InvoiceIssuePolicy.ExportFlowRequiredCode, InvoiceIssuePolicy.Refusal("EARSIVFATURA", "TRY", "{\"3pByTrendyol\":true}")?.Code);

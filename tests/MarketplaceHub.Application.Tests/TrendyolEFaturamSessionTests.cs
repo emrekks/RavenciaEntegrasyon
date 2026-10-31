@@ -173,6 +173,83 @@ public sealed class TrendyolEFaturamSessionTests
         Assert.Equal(2, handler.SignInCount);
     }
 
+    [Fact]
+    public async Task Taxpayer_lookup_reads_the_invoice_aliases_of_the_asked_identity()
+    {
+        const string body = """
+            [
+              {"taxId":"7330638410","alias":"urn:mail:defaultpk@ornek.com.tr","title":"ÖRNEK A.Ş.","gibUserType":"OZEL","postBoxType":"PK","aliasType":"INVOICE"},
+              {"taxId":"7330638410","alias":"urn:mail:irsaliyepk@ornek.com.tr","title":"ÖRNEK A.Ş.","gibUserType":"OZEL","postBoxType":"PK","aliasType":"DESPATCH_ADVICE"},
+              {"taxId":"7330638410","alias":"urn:mail:defaultgb@ornek.com.tr","title":"ÖRNEK A.Ş.","gibUserType":"OZEL","postBoxType":"GB","aliasType":"INVOICE"},
+              {"taxId":"7330638410","alias":"urn:mail:eskipk@ornek.com.tr","title":"ÖRNEK A.Ş.","gibUserType":"OZEL","postBoxType":"PK","aliasType":"INVOICE","deletedAt":"2025-01-01T00:00:00Z"}
+            ]
+            """;
+        var (client, _) = Client(TaxpayerHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) }));
+
+        var lookup = await client.LookupTaxpayer(Context(), "7330638410", CancellationToken.None);
+
+        Assert.Equal(EInvoiceTaxpayerState.Registered, lookup.State);
+        Assert.Equal("ÖRNEK A.Ş.", lookup.Title);
+        Assert.Equal("urn:mail:defaultpk@ornek.com.tr", Assert.Single(lookup.InvoiceAliases).Alias);
+    }
+
+    [Fact]
+    public async Task Only_the_documented_tax_payer_not_found_problem_means_not_registered()
+    {
+        static HttpResponseMessage Problem(string type) => new(HttpStatusCode.NotFound)
+        {
+            Content = new StringContent($$"""{"type":"{{type}}","title":"Tax payer not found","status":404,"taxId":"7330638410"}""", Encoding.UTF8, "application/problem+json")
+        };
+        var (notFound, _) = Client(TaxpayerHandler(_ => Problem("https://api.trendyol.com/etransformation/gateway/tax-payer-not-found")));
+        var (otherProblem, _) = Client(TaxpayerHandler(_ => Problem("https://api.trendyol.com/etransformation/gateway/corporate-not-found")));
+        var (bare404, _) = Client(TaxpayerHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
+        var (serverError, _) = Client(TaxpayerHandler(_ => new HttpResponseMessage(HttpStatusCode.BadGateway)));
+
+        Assert.Equal(EInvoiceTaxpayerState.NotRegistered, (await notFound.LookupTaxpayer(Context(), "7330638410", CancellationToken.None)).State);
+        Assert.Equal(EInvoiceTaxpayerState.Unknown, (await otherProblem.LookupTaxpayer(Context(), "7330638410", CancellationToken.None)).State);
+        Assert.Equal(EInvoiceTaxpayerState.Unknown, (await bare404.LookupTaxpayer(Context(), "7330638410", CancellationToken.None)).State);
+        Assert.Equal(EInvoiceTaxpayerState.Unknown, (await serverError.LookupTaxpayer(Context(), "7330638410", CancellationToken.None)).State);
+    }
+
+    [Theory]
+    // A 200 with no rows, rows of another identity, or only despatch aliases says nothing certain.
+    [InlineData("[]")]
+    [InlineData("""[{"taxId":"1234567890","alias":"urn:mail:defaultpk@baska.com","title":"B","postBoxType":"PK","aliasType":"INVOICE"}]""")]
+    [InlineData("""[{"taxId":"7330638410","alias":"urn:mail:irsaliyepk@ornek.com","title":"A","postBoxType":"PK","aliasType":"DESPATCH_ADVICE"}]""")]
+    [InlineData("{}")]
+    [InlineData("not json")]
+    public async Task An_uncertain_taxpayer_answer_is_unknown(string body)
+    {
+        var (client, _) = Client(TaxpayerHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) }));
+
+        Assert.Equal(EInvoiceTaxpayerState.Unknown, (await client.LookupTaxpayer(Context(), "7330638410", CancellationToken.None)).State);
+    }
+
+    [Fact]
+    public void Taxpayer_cache_keeps_certain_answers_for_a_day_only()
+    {
+        var clock = new MutableClock { Now = Start };
+        var cache = new TrendyolEFaturamTaxpayerCache(clock);
+        var connection = Guid.NewGuid();
+
+        cache.Set(connection, "7330638410", EInvoiceTaxpayerLookup.NotRegistered());
+        cache.Set(connection, "1234567890", EInvoiceTaxpayerLookup.Unknown("EFATURAM_TIMEOUT"));
+
+        Assert.True(cache.TryGet(connection, "7330638410", out _));
+        Assert.False(cache.TryGet(connection, "1234567890", out _));
+        Assert.False(cache.TryGet(Guid.NewGuid(), "7330638410", out _));
+        clock.Now = Start + TrendyolEFaturamTaxpayerCache.Lifetime;
+        Assert.False(cache.TryGet(connection, "7330638410", out _));
+    }
+
+    private static SessionHandler TaxpayerHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) => new(request =>
+    {
+        if (request.RequestUri!.AbsolutePath.EndsWith("/signin", StringComparison.Ordinal)) return SignInResponse(Start.AddMinutes(30));
+        Assert.Equal("/api/invoice/taxpayers/7330638410", request.RequestUri.AbsolutePath);
+        Assert.Equal("?showDeleted=false", request.RequestUri.Query);
+        return respond(request);
+    });
+
     private static (TrendyolEFaturamHttpClient Client, MutableClock Clock) Client(HttpMessageHandler handler)
     {
         var clock = new MutableClock { Now = Start };
@@ -184,7 +261,8 @@ public sealed class TrendyolEFaturamSessionTests
             null!,
             clock,
             NullLogger<TrendyolEFaturamHttpClient>.Instance,
-            new TrendyolEFaturamTokenCache(clock));
+            new TrendyolEFaturamTokenCache(clock),
+            new TrendyolEFaturamTaxpayerCache(clock));
         return (client, clock);
     }
 
