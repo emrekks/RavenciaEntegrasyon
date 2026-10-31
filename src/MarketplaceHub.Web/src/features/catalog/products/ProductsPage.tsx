@@ -20,7 +20,7 @@ import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFi
 import { productImportConnection, singleProductLookupLabel } from '../product-import-platforms'
 import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { productPlatformFilterGroups } from '../product-platform-filter'
-import { quickEditOfferPrices, quickPriceTarget } from '../quick-price-edit'
+import { channelOffer, quickEditOfferPrices, quickPriceBody, quickPriceTarget } from '../quick-price-edit'
 import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
@@ -147,10 +147,10 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const [openColorGroups, setOpenColorGroups] = useState<string[]>([])
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
-  // The channel a variant without an offer gets its first price on: chosen by the person (preset only when there is
-  // just one), never picked by the screen.
+  // The channel whose price is changed (its offer updated, or created when the variant has none there): chosen by the
+  // person (preset only when there is just one), never picked by the screen.
   const [priceConnectionId, setPriceConnectionId] = useState(() => connections.length === 1 ? connections[0].id : '')
-  const needsPriceConnection = mode !== 'stock' && variants.some(item => !item.variant.offerId)
+  const needsPriceConnection = mode !== 'stock'
   // A first offer keeps its create key for this window's life, so a resend after a lost answer cannot make two.
   const offerCreateKeys = useRef(new Map<string, string>())
   const offerCreateKey = (variantId: string) => {
@@ -211,9 +211,9 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           try {
             const target = quickPriceTarget(variant, priceConnectionId, connections.length)
             if (target.kind === 'blocked') throw new Error(target.reason)
-            const prices = quickEditOfferPrices(variant, list, sale)
+            const prices = quickEditOfferPrices(target.kind === 'update' ? target.offer : {}, list, sale)
             if (!prices.ok) throw new Error(prices.message)
-            const body = { connectionId: target.kind === 'create' ? target.connectionId : '', variantId: variant.id, listPrice: prices.listPrice, salePrice: prices.salePrice, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Toplu ürün fiyat düzenleme' }
+            const body = quickPriceBody(target, variant, prices, 'Toplu ürün fiyat düzenleme')
             if (target.kind === 'update') await hubApi(`/channel-offers/${target.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.offerVersion}"` }, body: JSON.stringify(body) })
             else await sendWithVersionedIdempotencyKey(offerCreateKey(variant.id), key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
             if (prices.saleDefaulted) saleDefaulted.push({ sku: variant.sku, currency: variant.currency || 'TRY' })
@@ -263,7 +263,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{mode === 'stock' ? 'Stok Değerini Düzenle' : mode === 'price' ? 'Fiyat Değerini Düzenle' : 'Fiyat ve Stok Değerini Düzenle'}</div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small></header>
         {activeSelection.length ? <div className="rr-chips">{variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id} className="rr-chip">{variantAxisParts(item.variant.optionSignature).map(part => part.value).join(' · ') || item.variant.sku}</span>)}</div> : <p className="rr-lead">Değeri şimdi girebilirsiniz; uygulamak için en az bir varyantı işaretleyin.</p>}
-        {needsPriceConnection && connections.length > 0 && <label className="rr-fld"><small>Fiyat Kanalı</small><select className="rr-in" aria-label="Fiyat kanalı" value={priceConnectionId} onChange={event => setPriceConnectionId(event.target.value)}><option value="">Kanal Seçin</option>{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName}</option>)}</select><small className="rr-lead">Henüz fiyatı olmayan varyantların ilk fiyatı bu kanala kaydedilir.</small></label>}
+        {needsPriceConnection && connections.length > 0 && <label className="rr-fld"><small>Fiyat Kanalı</small><select className="rr-in" aria-label="Fiyat kanalı" value={priceConnectionId} onChange={event => setPriceConnectionId(event.target.value)}><option value="">Kanal Seçin</option>{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName}</option>)}</select><small className="rr-lead">Fiyat bu kanalın kaydına yazılır; bu kanalda fiyatı olmayan varyantın ilk fiyatı oluşturulur. Diğer kanalların fiyatı değişmez.</small></label>}
         <div className="rr-dgrid">{mode !== 'stock' && <><label className="rr-fld"><small>Liste Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label><label className="rr-fld"><small>Satış Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></>}{mode !== 'price' && <><label className="rr-fld"><small>Stok İşlemi</small><select className="rr-in" value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu Sayıya Eşitle</option><option value="ADD">Bu Kadar Ekle (+)</option><option value="SUBTRACT">Bu Kadar Çıkar (−)</option></select></label><label className="rr-fld"><small>Miktar</small><input className="rr-in rr-num" type="number" min="0" step="1" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></>}</div>
       </section>
       {notice && <div className={`rr-callout${notice.startsWith('Başarısız:') ? ' rr-danger' : ''}`} role={notice.startsWith('Başarısız:') ? 'alert' : 'status'}><RrIcon name={notice.startsWith('Başarısız:') ? 'alert' : 'info'} /><span>{notice}</span></div>}
@@ -271,7 +271,11 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   </RrModal>
 }
 function QuickEditVariantControls({ variant, priceConnectionId, connectionCount, onChanged, onSelect, onStockSaved, showPrice = true }: { variant: Variant; priceConnectionId: string; connectionCount: number; onChanged: () => Promise<unknown>; onSelect: () => void; onStockSaved?: (variantId: string, onHand: number) => void; showPrice?: boolean }) {
-  const [price, setPrice] = useState(variant.salePrice ?? variant.listPrice ?? '')
+  // The price shown and changed is the one on the chosen channel.
+  const shown = priceConnectionId ? channelOffer(variant, priceConnectionId) : null
+  const shownPrice = shown ? shown.salePrice ?? shown.listPrice ?? null : null
+  const [price, setPrice] = useState<number | string>(shownPrice ?? '')
+  useEffect(() => { setPrice(shownPrice ?? '') }, [shownPrice])
   // The field shows the loaded stock until the user types; fresh data replaces it only while it is untouched, and a
   // save sends the typed value as an absolute stock against the value shown when editing started.
   const [stock, setStock] = useState(String(variant.onHand))
@@ -285,11 +289,11 @@ function QuickEditVariantControls({ variant, priceConnectionId, connectionCount,
   const [offerCreateKey] = useState(() => newIdempotencyKey('channel-offer-create'))
   const priceTarget = quickPriceTarget(variant, priceConnectionId, connectionCount)
   async function savePrice() {
-    const salePrice = Number(price); if (savingPrice || price === '' || salePrice === (variant.salePrice ?? variant.listPrice ?? 0)) return
+    const salePrice = Number(price); if (savingPrice || price === '' || salePrice === shownPrice) return
     if (!Number.isFinite(salePrice) || salePrice <= 0) { setPriceError('Fiyat sıfırdan büyük olmalıdır.'); return }
     if (priceTarget.kind === 'blocked') { setPriceError(priceTarget.reason); return }
-    const listPrice = Math.max(variant.listPrice ?? salePrice, salePrice)
-    const body = { connectionId: priceTarget.kind === 'create' ? priceTarget.connectionId : '', variantId: variant.id, listPrice, salePrice, currency: variant.currency || 'TRY', vatRate: variant.vatRate ?? 10, vatInclusion: variant.vatInclusion || 'INCLUDED', roundingMode: variant.roundingMode || 'HALF_EVEN', safetyStock: variant.safetyStock ?? 0, status: variant.offerStatus || 'ACTIVE', reason: 'Hızlı varyant fiyat düzenleme' }
+    const listPrice = Math.max((priceTarget.kind === 'update' ? priceTarget.offer.listPrice : null) ?? salePrice, salePrice)
+    const body = quickPriceBody(priceTarget, variant, { listPrice, salePrice }, 'Hızlı varyant fiyat düzenleme')
     setSavingPrice(true); setPriceError('')
     try {
       if (priceTarget.kind === 'update') await hubApi(`/channel-offers/${priceTarget.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.offerVersion}"` }, body: JSON.stringify(body) })
@@ -368,7 +372,10 @@ export function LowStockDetailsModal({ products, loading, error, onClose, onImag
   const groups = useMemo(() => productRowsAsCards(products), [products])
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [sort, setSort] = useState<'MODEL_ASC' | 'MODEL_DESC' | 'MISSING_DESC' | 'MISSING_ASC'>('MODEL_ASC')
+  // The list comes newest first (like the products page), so a model's rank is its newest card's place in it.
+  const [sort, setSort] = useState<'NEWEST' | 'MODEL_ASC' | 'MODEL_DESC' | 'MISSING_DESC' | 'MISSING_ASC'>('NEWEST')
+  const productRank = useMemo(() => new Map(products.map((product, index) => [product.id, index])), [products])
+  const newestRank = (group: { products: Product[] }) => Math.min(...group.products.map(product => productRank.get(product.id) ?? Number.MAX_SAFE_INTEGER))
   const categoryOptions = useMemo(() => [...new Set(products.map(productCategoryLabel))].sort((left, right) => left.localeCompare(right, 'tr', { sensitivity: 'base' })), [products])
   const filteredGroups = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('tr-TR')
@@ -389,12 +396,14 @@ export function LowStockDetailsModal({ products, loading, error, onClose, onImag
         : group.variants.filter(item => categoryProducts.includes(item.product))
       return [{ ...group, products: visibleProducts, variants: visibleVariants }]
     }).filter(group => group.products.length > 0).sort((left, right) => {
+      if (sort === 'NEWEST') return newestRank(left) - newestRank(right)
       if (sort === 'MODEL_DESC') return lowStockModelCode(right).localeCompare(lowStockModelCode(left), 'tr', { numeric: true, sensitivity: 'base' })
       if (sort === 'MISSING_DESC') return lowStockMissingVariantCount(right) - lowStockMissingVariantCount(left) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
       if (sort === 'MISSING_ASC') return lowStockMissingVariantCount(left) - lowStockMissingVariantCount(right) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
       return lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
     })
-  }, [categoryFilter, groups, search, sort])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- newestRank only reads productRank
+  }, [categoryFilter, groups, search, sort, productRank])
   const lowVariantCount = filteredGroups.reduce((sum, group) => sum + lowStockMissingVariantCount(group), 0)
   const catalogRecordCount = filteredGroups.reduce((sum, group) => sum + group.products.length, 0)
   // Model cards start closed and sit two to a row; opening one opens its row neighbour too, so the row stays level.
@@ -406,14 +415,17 @@ export function LowStockDetailsModal({ products, loading, error, onClose, onImag
     const ids = filteredGroups.slice(start, start + (twoColumns ? 2 : 1)).map(group => group.id)
     setOpenFamilies(current => { const next = new Set(current); const opening = !current.has(filteredGroups[index].id); ids.forEach(id => opening ? next.add(id) : next.delete(id)); return next })
   }
+  // Pointing at (or focusing) a card lights up its whole row, so it is clear that both cards open together.
+  const [hotRow, setHotRow] = useState<number | null>(null)
+  const rowOf = (index: number) => twoColumns ? Math.floor(index / 2) : index
 
   return <RrModal crumb="Stok Takibi" title="Düşük Stoklu Ürünler" desc="Model koduna göre gruplanmış ürünlerin eksik varyantları." size="lg" onClose={onClose} foot={<><span className="rr-note">Düşük stok: bir renkteki varyantların en az yarısı tükenmiş.</span><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>}>
     {loading ? <RrLoading text="Düşük stoklu ürünler yükleniyor…" /> : error ? <RrError error={error} /> : !groups.length ? <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Düşük Stoklu Ürün Yok</b><span className="rr-lead">Tüm ürünlerin stoğu yeterli.</span></div> : <>
-      <div className="rr-low-tools"><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Model kodu, ürün veya renk ara" aria-label="Düşük stoklu ürünlerde ara" /></span><select className="rr-in" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} aria-label="Kategori"><option value="">Tüm Kategoriler</option>{categoryOptions.map(category => <option key={category} value={category}>{category}</option>)}</select><select className="rr-in" value={sort} onChange={event => setSort(event.target.value as typeof sort)} aria-label="Sıralama"><option value="MODEL_ASC">Model Kodu (A-Z)</option><option value="MODEL_DESC">Model Kodu (Z-A)</option><option value="MISSING_DESC">Eksik Varyant (Çoktan Aza)</option><option value="MISSING_ASC">Eksik Varyant (Azdan Çoğa)</option></select></div>
+      <div className="rr-low-tools"><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Model kodu, ürün veya renk ara" aria-label="Düşük stoklu ürünlerde ara" /></span><select className="rr-in" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} aria-label="Kategori"><option value="">Tüm Kategoriler</option>{categoryOptions.map(category => <option key={category} value={category}>{category}</option>)}</select><select className="rr-in" value={sort} onChange={event => setSort(event.target.value as typeof sort)} aria-label="Sıralama"><option value="NEWEST">Eklenme Sırası (Yeniden Eskiye)</option><option value="MODEL_ASC">Model Kodu (A-Z)</option><option value="MODEL_DESC">Model Kodu (Z-A)</option><option value="MISSING_DESC">Eksik Varyant (Çoktan Aza)</option><option value="MISSING_ASC">Eksik Varyant (Azdan Çoğa)</option></select></div>
       <p className="rr-lead">{filteredGroups.length} model · {catalogRecordCount} katalog kaydı · {lowVariantCount} eksik varyant</p>
       {!filteredGroups.length && <p className="rr-lead">Arama veya filtreye uyan düşük stoklu ürün bulunamadı.</p>}
-      <div className="rr-lowgrid">{filteredGroups.map((group, index) => { const image = lowStockProductImage(group.primary); const open = openFamilies.has(group.id); const missing = lowStockMissingVariantCount(group); return <article className={`rr-lowf${open ? ' rr-open' : ''}`} key={group.id}>
-        <div className="rr-lowf-h"><RrThumb src={image} alt={group.primary.title} onOpen={image ? () => onImageClick(image, group.primary.title) : undefined} /><button type="button" className="rr-lowf-t" aria-expanded={open} onClick={() => toggleFamilyRow(index)}><span><small>Model Kodu</small><b className="rr-num">{lowStockModelCode(group)}</b><em title={group.primary.title}>{group.primary.title}</em></span><span className="rr-lowf-c"><b className="rr-num">{missing}</b><small>eksik · {group.products.length} renk</small></span><RrIcon name="chev" /></button></div>
+      <div className="rr-lowgrid">{filteredGroups.map((group, index) => { const image = lowStockProductImage(group.primary); const open = openFamilies.has(group.id); const missing = lowStockMissingVariantCount(group); const pairSide = twoColumns ? (index % 2 === 0 ? ' rr-pair-left' : ' rr-pair-right') : ''; return <article className={`rr-lowf${open ? ' rr-open' : ''}${hotRow === rowOf(index) ? ' rr-row-hot' : ''}${pairSide}`} key={group.id} onMouseEnter={() => setHotRow(rowOf(index))} onMouseLeave={() => setHotRow(null)}>
+        <div className="rr-lowf-h"><RrThumb src={image} alt={group.primary.title} onOpen={image ? () => onImageClick(image, group.primary.title) : undefined} /><button type="button" className="rr-lowf-t" aria-expanded={open} title={twoColumns ? (open ? 'Bu satırdaki iki modeli kapat' : 'Bu satırdaki iki modeli aç') : undefined} onFocus={() => setHotRow(rowOf(index))} onBlur={() => setHotRow(null)} onClick={() => toggleFamilyRow(index)}><span><small>Model Kodu</small><b className="rr-num">{lowStockModelCode(group)}</b><em title={group.primary.title}>{group.primary.title}</em></span><span className="rr-lowf-c"><b className="rr-num">{missing}</b><small>eksik · {group.products.length} renk</small></span><RrIcon name="chev" /></button></div>
         {open && <section>{[...group.products].sort((left, right) => lowStockProductColor(left).localeCompare(lowStockProductColor(right), 'tr', { sensitivity: 'base' })).map(product => { const lowVariants = product.variants.filter(variant => variant.onHand <= 0).sort((left, right) => lowStockSizeLabel(left).localeCompare(lowStockSizeLabel(right), 'tr', { numeric: true, sensitivity: 'base' })); const colorOpen = openColors.has(product.id); return <div className={`rr-lowc${colorOpen ? ' rr-open' : ''}`} key={product.id}><button type="button" className="rr-lowc-h" aria-expanded={colorOpen} onClick={() => setOpenColors(current => { const next = new Set(current); if (next.has(product.id)) next.delete(product.id); else next.add(product.id); return next })}><b>{lowStockProductColor(product)}</b><span className="rr-lowc-n">{lowVariants.length} eksik varyant</span><RrIcon name="chev" /></button>{colorOpen && (lowVariants.length ? <div className="rr-lowvs">{lowVariants.map(variant => <div className="rr-lowv" key={variant.id}><span><b>{lowStockSizeLabel(variant)}</b><small>Stok Kodu: {variant.sku}{variant.barcode ? ` · Barkod: ${variant.barcode}` : ''}</small></span><span className={variant.onHand === 0 ? 'rr-zero' : 'rr-low'}>{variant.onHand === 0 ? 'Stoksuz' : <>Kalan <b className="rr-num">{variant.onHand}</b></>}</span></div>)}</div> : <p className="rr-lead">Bu renkte kritik stok varyantı bulunamadı.</p>)}</div> })}</section>}
       </article> })}</div>
     </>}

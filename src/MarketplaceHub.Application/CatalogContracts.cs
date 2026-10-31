@@ -74,7 +74,9 @@ public sealed record ProductVariantPlatformStatusView(
     bool IsMatched = false,
     // The marketplace no longer knows the variant (its link is NOT_FOUND or REJECTED): it is neither matched nor live
     // there. Never set from a missing link or a SUSPECT/UNVERIFIED one.
-    bool IsMissing = false);
+    bool IsMissing = false,
+    // The status of the variant's offer on this connection (ACTIVE / PASSIVE …), so an edit keeps it.
+    string? OfferStatus = null);
 public sealed record ProductPlatformStatusView(
     string Platform,
     string Status,

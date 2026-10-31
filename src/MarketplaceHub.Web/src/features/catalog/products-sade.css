@@ -220,6 +220,14 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf { display: grid; min-width: 0; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf.rr-open { border-color: var(--rr-line-strong); }
+/* A row's two cards open together: pointing at one lights up both, and an open pair shares one accent, with a short
+   bridge between the cards showing they belong together. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf { position: relative; transition: border-color .15s, background-color .15s; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf.rr-row-hot { border-color: var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 4%, var(--rr-surface)); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf.rr-open { border-color: color-mix(in srgb, var(--rv-color-primary) 55%, var(--rr-line)); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf.rr-open .rr-lowf-h { background: color-mix(in srgb, var(--rv-color-primary) 7%, transparent); border-radius: 11px 11px 0 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf.rr-pair-left:is(.rr-row-hot, .rr-open)::after { content: ""; position: absolute; top: 40px; right: -11px; width: 10px; height: 2px; background: var(--rv-color-primary); }
+@media (prefers-reduced-motion: reduce) { :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf { transition: none; } }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-h { display: flex; align-items: center; gap: 12px; padding: 10px 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-h .rr-thumb { width: 40px; height: 60px; flex: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-t { display: flex; flex: 1; align-items: center; gap: 12px; min-width: 0; min-height: 0; padding: 0; color: var(--rr-ink); text-align: left; background: none; border: 0; font: inherit; font-weight: 400 !important; cursor: pointer; justify-content: flex-start; }
@@ -358,8 +366,13 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Variant stock table: a little less room on the right, where the last size's cell padding added to the popup's. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { padding-right: 6px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vtab :is(th, td):last-child { padding-right: 2px; }
-/* Variant groups sit in as many columns as fit; an opened group takes the whole row so its variants keep room. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); align-items: start; gap: 8px; }
+/* Variant groups sit in two columns (one on a phone); an opened group stays in its column, its variant lines a little
+   tighter so the price and stock fields still fit. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) > :not(.rr-vgroup) { grid-column: 1 / -1; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) > .rr-vgroup { margin-top: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) > .rr-vgroup.rr-open { grid-column: 1 / -1; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) .rr-vline { grid-template-columns: 16px minmax(0, 1fr) 84px 96px; gap: 8px; padding: 8px 10px; }
+@media (max-width: 760px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) { grid-template-columns: minmax(0, 1fr); }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) .rr-vline { grid-template-columns: 16px minmax(0, 1fr) 80px; }
+}

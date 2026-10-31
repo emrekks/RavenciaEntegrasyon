@@ -2478,7 +2478,8 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
                             channelOffer?.SafetyStock,
                             channelOffer?.Version,
                             linkedConnectionIds.Contains(connectionId) || liveListingConnectionIds.Contains(connectionId),
-                            isMissing);
+                            isMissing,
+                            channelOffer?.Status);
                     })
                     .ToList();
                 return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses, variant.DefaultListPrice, variant.DefaultSalePrice, variantAttributesByVariant.GetValueOrDefault(variant.Id), variant.ProductId);
