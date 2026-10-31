@@ -22,7 +22,7 @@ import './reports.css'
 // A card's "Tümünü Gör" moves to its area's tab (?view=…&sub=…); an older ?detail=… link
 // lands on the same tab.
 type ViewKey = 'overview' | 'geo' | 'products' | 'stock' | 'profit' | 'orders' | 'ops' | 'customers'
-const viewKeys: ViewKey[] = ['overview', 'geo', 'products', 'stock', 'profit', 'orders', 'ops', 'customers']
+const viewKeys: ViewKey[] = ['overview', 'profit', 'orders', 'products', 'stock', 'ops', 'customers', 'geo']
 type ProductSub = 'products' | 'brands'
 type OpsSub = 'returns' | 'cancellations' | 'cargo' | 'invoices' | 'stock'
 type DetailKey = 'platforms' | 'cities' | 'products' | 'brands' | 'returns' | 'cancellations' | 'cargo' | 'time' | 'customers' | 'stock' | 'cost' | 'invoices'
@@ -174,13 +174,13 @@ function reportTabs(data: ReportSales): ReportTab[] {
   const margin = moneyBreakdown(data, profitSteps(data))?.margin ?? null
   return [
     { value: 'overview', label: 'Genel Bakış', icon: 'dashboard' },
-    { value: 'geo', label: 'Coğrafya', icon: 'globe' },
-    { value: 'products', label: 'Ürünler', icon: 'products' },
-    { value: 'stock', label: 'Stok', icon: 'stock' },
     { value: 'profit', label: 'Kârlılık', icon: 'trend', count: formatPercent(margin), warn: margin !== null && margin < 0 },
     { value: 'orders', label: 'Sipariş Kârlılığı', icon: 'orders' },
+    { value: 'products', label: 'Ürünler', icon: 'products' },
+    { value: 'stock', label: 'Stok', icon: 'stock' },
     { value: 'ops', label: 'Operasyon', icon: 'truck', count: `İptal ${formatPercent(now.cancelRate)}`, warn: (now.cancelRate ?? 0) > data.cancellations.warningRate },
-    { value: 'customers', label: 'Müşteriler', icon: 'users' }
+    { value: 'customers', label: 'Müşteriler', icon: 'users' },
+    { value: 'geo', label: 'Coğrafya', icon: 'globe' }
   ]
 }
 
@@ -1665,7 +1665,7 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
         : 'Stoktaki tüm adetlerin fiyatı var.'}` },
     stockProfitKpi(summary.capital, rate),
     { key: 'units', label: 'Toplam Stok Adedi', value: summary.units,
-      note: `${formatCount(summary.stockedProducts)} ürün · ${formatCount(summary.stockedVariants)} varyant`,
+      note: `${formatCount(summary.stockedProducts)} üründe`,
       tip: `Ana depodaki eldeki adet, şu an.\nSatılabilir (rezerv düşülmüş) ${formatNumber(summary.availableUnits)} adet.` },
     { key: 'cover', label: 'Stok Gün', value: summary.coverDays, format: value => `${formatNumber(Math.round(value))} gün`,
       note: summary.dailySales === null ? 'Dönemde satış yok' : `Günde ${formatNumber(summary.dailySales)} adet satış`,
@@ -1693,23 +1693,17 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
     <KpiStrip label="Stoğun parası" items={money} />
     <KpiStrip label="Stoğun durumu" items={counts} />
     <div className="reports-grid">
-      <RevealPanel title="Kategoriye Göre Sermaye" description="Kategorideki stoğun maliyet fiyatıyla tutarı (KDV dahil).">{() =>
-        <Bars label="Kategoriye göre sermaye" items={bars(data.categories, group => group.capital)} format={formatTlShort} />}</RevealPanel>
-      <RevealPanel title="Fiyat Bandına Göre Adet" description={`${priceName} satış fiyatına göre stok adedi; alt sınır dahil.`}>{() =>
-        <Bars label="Fiyat bandına göre adet" items={bars(data.priceBands, group => group.units)} format={adet} />}</RevealPanel>
       <div className="is-wide"><DataTable title="Kategori Bazlı Stok" csvName="rapor-stok-kategori" rows={data.categories} rowKey={row => row.key} unknown={row => !row.known} initialSort="capital"
         description="Stoklu varyantlar kategorisine göre; satış, dönemin net satışıdır." columns={stockGroupColumns('Kategori', true)} /></div>
       <RevealPanel title="Renge Göre Adet" description="Stoklu varyantların renk seçeneğine göre adedi.">{() =>
         <Bars label="Renge göre adet" items={bars(data.colors, group => group.units, 12)} format={adet} />}</RevealPanel>
       <RevealPanel title="Bedene Göre Adet" description="Stoklu varyantların beden seçeneğine göre adedi.">{() =>
         <Bars label="Bedene göre adet" items={bars(data.sizes, group => group.units, 12)} format={adet} />}</RevealPanel>
+      <div className="is-wide"><RevealPanel title="Stok Gün Dağılımı" description={`Stoğun dönemin satış hızıyla kaç gün yeteceğine göre sermayesi; dönemde (${formatCount(data.periodDays)} gün) satmayanlar en sonda.`}>{() =>
+        <Bars label="Stok gününe göre sermaye" items={bars(data.cover, group => group.capital)} format={formatTlShort} />}</RevealPanel></div>
       <div className="is-wide"><DataTable title="Platformlara Göre Stok" csvName="rapor-stok-platform" rows={data.platforms} rowKey={row => row.connectionId} initialSort="listed"
-        description="Listelenen: mağazada aktif teklifi olan varyantların eldeki adedi. Satışa açık: kullanılabilir adet − güvenlik stoğu. Değer: mağazanın kendi fiyatıyla."
+        description="Listelenen: mağazada aktif teklifi olan varyantların eldeki adedi. Değer: mağazanın kendi fiyatıyla."
         empty="Seçilen mağazalarda teklif yok." columns={stockPlatformColumns} /></div>
-      <RevealPanel title="Stok Gün Dağılımı" description={`Stoğun dönemin satış hızıyla kaç gün yeteceğine göre sermayesi; dönemde (${formatCount(data.periodDays)} gün) satmayanlar en sonda.`}>{() =>
-        <Bars label="Stok gününe göre sermaye" items={bars(data.cover, group => group.capital)} format={formatTlShort} />}</RevealPanel>
-      <RevealPanel title="Fiyat Bandına Göre Değer" description={`${priceName} fiyatıyla stoğun satış değeri.`}>{() =>
-        <Bars label="Fiyat bandına göre değer" items={bars(data.priceBands.filter(group => group.known), group => group.value ?? 0)} format={formatTlShort} />}</RevealPanel>
       <div className="is-wide"><DataTable title="Fiyat Bantları" csvName="rapor-stok-fiyat-bandi" rows={data.priceBands} rowKey={row => row.key} unknown={row => !row.known}
         description={`${priceName} aktif teklif fiyatına göre; alt sınır dahil, üst sınır hariç.`} columns={stockGroupColumns('Fiyat Bandı', false)} /></div>
       <div className="is-wide"><DataTable title="En Çok Sermaye Bağlayan Ürünler" csvName="rapor-stok-sermaye" rows={data.topCapital} rowKey={row => row.key} initialSort="capital"
@@ -1774,7 +1768,6 @@ const stockPlatformColumns: Column<ReportStockPlatform>[] = [
   { key: 'offers', header: 'Teklif', numeric: true, value: row => row.offers, render: row => formatCount(row.offers) },
   { key: 'active', header: 'Aktif Teklif', numeric: true, value: row => row.activeOffers, render: row => formatCount(row.activeOffers) },
   { key: 'listed', header: 'Listelenen Adet', numeric: true, value: row => row.listedUnits, render: row => formatNumber(row.listedUnits) },
-  { key: 'sellable', header: 'Satışa Açık', numeric: true, value: row => row.sellableUnits, render: row => formatNumber(row.sellableUnits) },
   { key: 'unlisted', header: 'Listelenmeyen Adet', numeric: true, value: row => row.unlistedUnits, render: row => formatNumber(row.unlistedUnits) },
   { key: 'value', header: 'Satış Değeri', numeric: true, value: row => row.value, render: row => formatTl(row.value) },
   { key: 'average', header: 'Ort. Fiyat', numeric: true, value: row => row.averagePrice, render: row => formatTl(row.averagePrice) }
