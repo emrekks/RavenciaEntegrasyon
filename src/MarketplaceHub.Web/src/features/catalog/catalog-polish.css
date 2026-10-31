@@ -63,6 +63,13 @@
 .app-shell.stitch-shell main .marketplace-pricing-open.is-open .marketplace-pricing-open-title .ui-icon { transform: rotate(180deg); }
 .app-shell.stitch-shell main .marketplace-pricing-open > small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; line-height: 1.45; }
 .app-shell.stitch-shell main .marketplace-pricing-open-count { display: inline-flex; margin-top: 4px; padding: 2px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 6px; font-size: 12px; font-weight: 600; }
+/* Per marketplace: "Açık" (its own price) or "Kapalı" (the product's main price). */
+.app-shell.stitch-shell main .marketplace-pricing-open-states { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.app-shell.stitch-shell main .marketplace-pricing-state { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 11.5px; font-weight: 500; }
+.app-shell.stitch-shell main .marketplace-pricing-state > i { width: 6px; height: 6px; background: var(--rv-color-border-strong); border-radius: 50%; }
+.app-shell.stitch-shell main .marketplace-pricing-state > b { font-weight: 600; }
+.app-shell.stitch-shell main .marketplace-pricing-state.is-on { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 35%, transparent); }
+.app-shell.stitch-shell main .marketplace-pricing-state.is-on > i { background: var(--rv-color-primary); }
 .app-shell.stitch-shell main .marketplace-pricing-open.is-open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .app-shell.stitch-shell main .marketplace-pricing-inline { padding: 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-top: 0; border-radius: 0 0 var(--rv-radius-md) var(--rv-radius-md); }
 .app-shell.stitch-shell main .marketplace-pricing-inline .marketplace-pricing-bar-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
