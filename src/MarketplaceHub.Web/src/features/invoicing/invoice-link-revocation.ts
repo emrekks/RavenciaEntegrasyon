@@ -1,4 +1,5 @@
 import type { StatusTone } from '../../shared/components'
+import { formatPackageLabel } from '../../shared/package-label'
 
 // A marketplace link a cancelled invoice left on a package (MarketplaceLinkRevocationView). AUTOMATIC: the panel removes
 // it (Trendyol); VERIFY_ONLY: the operator removes it in the seller panel and the panel checks (Hepsiburada); MANUAL: only
@@ -53,7 +54,7 @@ export function linkRevocationNote(item: Pick<InvoiceLinkRevocation, 'status'>):
 }
 
 export function linkRevocationConfirmCopy(item: InvoiceLinkRevocation, invoiceNumber: string | null) {
-  const packageName = item.packageNumber ? `${item.packageNumber} numaralı paketteki` : 'paketteki'
+  const packageName = item.packageNumber ? `${formatPackageLabel(item.packageNumber)} numaralı paketteki` : 'paketteki'
   const invoice = invoiceNumber?.trim() ? `${invoiceNumber.trim()} numaralı faturanın` : 'faturanın'
   if (item.mode === 'AUTOMATIC') return {
     title: 'Fatura Linkini Kaldır',

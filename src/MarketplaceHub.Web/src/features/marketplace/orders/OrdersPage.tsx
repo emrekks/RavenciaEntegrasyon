@@ -27,6 +27,7 @@ import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from '../../i
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatDateTime, formatIstanbul, fromDateTimeLocal, istanbulDateKey, istanbulDayBoundary } from '../../../shared/format-date'
 import { formatMoney } from '../../../shared/format-money'
+import { formatPackageLabel } from '../../../shared/package-label'
 import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from './shipping-label-data'
 import { OrderMetricCards } from './OrderMetricCards'
@@ -390,7 +391,7 @@ function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline
   const personal = labelPersonalData(item, detail)
   const shipment = orderDisplayShipment(item)
   const trackingNumber = shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? ''
-  const packageNumber = shipment?.externalPackageId ?? '—'
+  const packageNumber = formatPackageLabel(shipment?.externalPackageId) ?? '—'
   const address = listAddressText(personal.shipmentAddress, item.platformCode)
   const addressLines = address.split(' · ').filter(Boolean)
   const senderLines = settings.senderAddress.split(/\r?\n| · /).map(value => value.trim()).filter(Boolean)
@@ -575,7 +576,7 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   // The order detail sheet covers the page on phones only; there the page behind it holds still.
   const phone = useMediaQuery('(max-width: 760px)')
   useScrollLock(detailOpen && phone)
-  const packageNoText = shipment?.externalPackageId ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Paket bilgisi doğrulanmadı' : isHepsiburadaOrder ? 'Henüz paketlenmedi' : 'Bekleniyor')
+  const packageNoText = formatPackageLabel(shipment?.externalPackageId) ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Paket bilgisi doğrulanmadı' : isHepsiburadaOrder ? 'Henüz paketlenmedi' : 'Bekleniyor')
   const deliveryNoText = shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Gönderi bilgisi doğrulanmadı' : isHepsiburadaOrder ? shipment ? 'Kargoya verildiğinde gelir' : 'Paket oluşturulunca gelir' : 'Takip no bekleniyor')
   const closeDetailThen = (run: () => void) => () => { setDetailOpen(false); setDetailActionsOpen(false); run() }
   const detailPrimaryAction = isCancelledOrder ? null : isCargoTrackingStage ? (shipment?.cargoTrackingNumber ? <Link className="rr-btn rr-primary" to={`/shipments/${shipment.id}`}>Kargo Takip</Link> : null) : isCargoLabelStage && shipment ? <>{enabledLabelFormats.map(format => <button type="button" key={format} className="rr-btn rr-primary" disabled={labelBlockedByInvoice} onClick={closeDetailThen(() => onPrintLabel(format))}><RrIcon name="print" />{format === 'a4' ? 'A4' : 'Sticker'} Etiketi Yazdır</button>)}</> : null
@@ -689,7 +690,7 @@ function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { item: Ord
     }
   }
 
-  const facts: Array<[string, string]> = [['Müşteri', customerDisplayName(item)], ['Sipariş Tarihi', returnDateText(item.orderedAt)], ['Paket No', orderDisplayShipment(item)?.externalPackageId ?? 'Henüz paketlenmedi']]
+  const facts: Array<[string, string]> = [['Müşteri', customerDisplayName(item)], ['Sipariş Tarihi', returnDateText(item.orderedAt)], ['Paket No', formatPackageLabel(orderDisplayShipment(item)?.externalPackageId) ?? 'Henüz paketlenmedi']]
   return <RrModal crumb="Hepsiburada Siparişi" title="Kargo Paketi Oluştur" desc={`${displayOrderNumber(item.orderNumber)} · ${customerDisplayName(item)}`} size="lg" locked={saving} onClose={onClose} foot={<><span className="rr-note">Seçili kalem: <b>{selectedCount}</b></span><button type="button" className="rr-btn" onClick={onClose} disabled={saving}>Vazgeç</button><button type="submit" form="hb-package-form" className="rr-btn rr-primary" disabled={saving || !selectedCount || !lines.length}><RrIcon name="box" />{saving ? 'Paket Oluşturuluyor…' : 'Hepsiburada’da Paketi Oluştur'}</button></>}>
     <form id="hb-package-form" style={{ display: 'contents' }} onSubmit={submit}>
       <section className="rr-osum" aria-label="Sipariş bilgileri"><span><RrLogo code={item.platformCode} />{displayOrderNumber(item.orderNumber)}</span><dl>{facts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl></section>
