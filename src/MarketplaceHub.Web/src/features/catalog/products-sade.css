@@ -399,7 +399,7 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-w-price { width: 108px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(th, td) { padding: 6px 8px; vertical-align: middle; background: var(--rr-surface); border-bottom: 1px solid var(--rr-line); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:last-child > * { border-bottom: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:hover > * { background-color: var(--rv-hover, color-mix(in srgb, var(--rr-raised) 60%, var(--rr-surface))); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:hover > * { background-color: var(--rv-hover-solid, color-mix(in srgb, var(--rr-raised) 60%, var(--rr-surface))); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead th { color: var(--rr-muted); font-size: 12px; font-weight: 500; text-align: left; white-space: nowrap; background: var(--rr-raised); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead .rr-qt-sub th { padding-block: 3px 5px; color: var(--rr-subtle); font-size: 11px; font-weight: 500; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-num { text-align: right; }
@@ -414,7 +414,10 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tr.rr-off .rr-qname b { color: var(--rr-muted); }
 /* Column groups: a line before the panel price and each marketplace; only the selection and variant columns stay put. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-gs { border-left: 1px solid var(--rr-line); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-stick { position: sticky; z-index: 1; }
+/* The selection and variant columns (and Stok beside them) stay put and opaque over the scrolling prices, with a line
+   and a soft shadow on their right edge; a hovered row takes a solid fill so nothing shows through. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-stick { position: sticky; z-index: 2; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-qtable.rr-qt-prices:not(.rr-qt-has-stock) .rr-qt-var, .rr-qtable.rr-qt-prices .rr-qt-stock) { box-shadow: inset -1px 0 0 var(--rr-line-strong), 6px 0 8px -6px color-mix(in srgb, var(--rr-ink) 22%, transparent); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-sel { left: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-var { left: 40px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices .rr-qt-stock { left: 230px; }
