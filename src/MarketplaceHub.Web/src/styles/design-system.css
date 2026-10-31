@@ -7069,9 +7069,10 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
     transition: opacity 220ms ease var(--rv-menu-delay, 60ms);
   }
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside .nav-count.nav-count { opacity: 1; transition: opacity 220ms ease calc(var(--rv-menu-delay, 60ms) + 80ms); }
-  /* The active highlight shrinks back with the edge once its label has faded (it used to snap to the icon square at
-     once, leaving the fading text outside it), and grows with the edge on opening. */
-  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before { transition: width 170ms cubic-bezier(.4, 0, .6, 1) 40ms, background 200ms ease, border-color 200ms ease; }
+  /* The active highlight moves with the edge: the same duration and curve as the menu's width, so it shrinks by the
+     same 164 px and keeps 12 px inside the edge in every frame. (It used to snap to the icon square, leaving the fading
+     text outside it; a delayed shrink then left it wider than the menu, cut flat by the edge as if under the page.) */
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before { transition: width 200ms cubic-bezier(.4, 0, .6, 1), background 200ms ease, border-color 200ms ease; }
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before { transition: width 280ms cubic-bezier(.2, .9, .25, 1), background 200ms ease, border-color 200ms ease; }
   /* One after another, from the top. */
   .app-shell.stitch-shell > aside nav a:nth-child(2) { --rv-menu-delay: 78ms; }
