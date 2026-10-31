@@ -139,7 +139,11 @@ export function ReportsPage() {
       <label className="reports-field"><span>Gruplama</span><select value={granularity} onChange={event => setGranularity(event.target.value)} aria-label="Zaman gruplaması">
         <option value="">Otomatik</option><option value="day">Gün</option><option value="week">Hafta</option><option value="month">Ay</option>
       </select></label>
-      {report.isFetching && data && <span className="reports-refreshing" role="status"><UiIcon name="loader" size={14} />Güncelleniyor</span>}
+      {/* Always in place (the card's top right, level with Dönem), so showing it moves nothing; it fades in while a
+          filter change loads. */}
+      <span className={`reports-refreshing${report.isFetching && data ? ' is-active' : ''}`} role="status">
+        <UiIcon name="loader" size={14} /><span>{report.isFetching && data ? 'Güncelleniyor' : ''}</span>
+      </span>
     </div>
     {report.isLoading && <Busy text="Rapor hazırlanıyor…" />}
     {report.isError && !data && <ErrorBox error={report.error} onRetry={() => void report.refetch()} />}
@@ -1635,8 +1639,8 @@ function stockProfitKpi(capital: number, rate: MonthlyProfitRate): Kpi {
   }
 }
 
-// Stok: the stock on hand now (the main warehouse) with the capital it binds at cost and its value at the price source
-// store's offer prices, broken down by category, colour, size, price band and store; then how long it lasts at the
+// Stok: the stock on hand now (the main warehouse) with the capital it binds at cost and its value at the panel price
+// (as the product editor shows it), broken down by category, colour, size, price band and store; then how long it lasts at the
 // period's pace and the stock that has not sold for deadDays. Stock is a point-in-time value: the period changes only the
 // sales (cover days); the platforms pick the variants on sale there. Money is VAT included, as the panel stores it.
 function StockReport({ from, to, platforms }: { from: string; to: string; platforms: string[] | null }) {
@@ -1647,9 +1651,8 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
   if (!data) return <StockSkeleton />
   const summary = data.summary
-  const source = stockSourceName(data.priceSource)
   if (summary.units <= 0) return <div className="reports-summary">
-    <StockScope data={data} source={source} />
+    <StockScope data={data} />
     <p className="reports-empty">{platforms?.length ? 'Seçilen platformlarda satışta olan stoklu ürün yok.' : 'Ana depoda stoğu olan ürün yok.'}</p>
   </div>
   const money: Kpi[] = [
@@ -1659,10 +1662,10 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
         ? `Maliyeti girilmemiş ${formatCount(summary.missingCostVariants)} varyantın ${formatNumber(summary.missingCostUnits)} adedi dahil değil.`
         : 'Stoktaki tüm varyantların maliyeti girili.'}` },
     { key: 'value', label: 'Envanter Satış Değeri', value: summary.value, format: formatTl, empty: 'Fiyat yok',
-      note: source ? `${source} fiyatıyla` : 'Aktif teklif fiyatı yok',
-      tip: `Stoğun satış fiyatıyla tutarı (KDV dahil).\nEldeki adet × ${source ?? 'pazaryeri'} aktif teklif fiyatı; en çok stoğu fiyatlayan mağaza seçilir. ${summary.missingPriceUnits > 0
-        ? `O mağazada fiyatı olmayan ${formatNumber(summary.missingPriceUnits)} adet dahil değil.`
-        : 'Stoktaki tüm adetlerin fiyatı var.'}` },
+      note: 'Panel fiyatıyla',
+      tip: `Stoğun panel satış fiyatıyla tutarı (KDV dahil).\nEldeki adet × ürün kartındaki varyant satış fiyatı. ${summary.missingPriceUnits > 0
+        ? `Panel fiyatı olmayan ${formatNumber(summary.missingPriceUnits)} adet dahil değil.`
+        : 'Stoktaki tüm adetlerin panel fiyatı var.'}` },
     stockProfitKpi(summary.capital, rate),
     { key: 'units', label: 'Toplam Stok Adedi', value: summary.units,
       note: `${formatCount(summary.stockedProducts)} üründe`,
@@ -1681,15 +1684,14 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
       tip: 'Bir renginin bedenlerinin yarısı veya fazlası tükenmiş stoklu ürünler.\nÜrün listesindeki Düşük Stok ile aynı kural.' },
     { key: 'cost', label: 'Maliyeti Eksik', value: summary.missingCostVariants, tone: summary.missingCostVariants > 0 ? 'warn' : undefined, note: `${formatNumber(summary.missingCostUnits)} adet`,
       tip: 'Stoğu olup maliyeti girilmemiş varyantlar.\nSermaye ve kâr bunlar olmadan hesaplanır; maliyeti ürün kartından girin.' },
-    { key: 'price', label: 'Fiyatı Eksik', value: summary.missingPriceUnits, tone: summary.missingPriceUnits > 0 ? 'warn' : undefined, note: source ? `${source} teklifi yok` : 'Aktif teklif yok',
-      tip: 'Fiyat kaynağı mağazada aktif teklifi olmayan stok adedi.\nSatış değeri ve kâr bu adetler olmadan hesaplanır.' }
+    { key: 'price', label: 'Fiyatı Eksik', value: summary.missingPriceUnits, tone: summary.missingPriceUnits > 0 ? 'warn' : undefined, note: 'Panel fiyatı yok',
+      tip: 'Ürün kartında satış fiyatı olmayan stok adedi.\nSatış değeri bu adetler olmadan hesaplanır; fiyatı ürün kartından girin.' }
   ]
   const bars = (groups: ReportStockGroup[], value: (group: ReportStockGroup) => number, limit = 10) =>
     groups.slice(0, limit).map(group => ({ key: group.key, label: group.label, value: value(group), muted: !group.known }))
-  const priceName = source ?? 'Fiyat kaynağı'
   const adet = (value: number) => `${formatNumber(value)} adet`
   return <div className="reports-summary">
-    <StockScope data={data} source={source} />
+    <StockScope data={data} />
     <KpiStrip label="Stoğun parası" items={money} />
     <KpiStrip label="Stoğun durumu" items={counts} />
     <div className="reports-grid">
@@ -1705,7 +1707,7 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
         description="Listelenen: mağazada aktif teklifi olan varyantların eldeki adedi. Değer: mağazanın kendi fiyatıyla."
         empty="Seçilen mağazalarda teklif yok." columns={stockPlatformColumns} /></div>
       <div className="is-wide"><DataTable title="Fiyat Bantları" csvName="rapor-stok-fiyat-bandi" rows={data.priceBands} rowKey={row => row.key} unknown={row => !row.known}
-        description={`${priceName} aktif teklif fiyatına göre; alt sınır dahil, üst sınır hariç.`} columns={stockGroupColumns('Fiyat Bandı', false)} /></div>
+        description="Panel satış fiyatına göre; alt sınır dahil, üst sınır hariç." columns={stockGroupColumns('Fiyat Bandı', false)} /></div>
       <div className="is-wide"><DataTable title="En Çok Sermaye Bağlayan Ürünler" csvName="rapor-stok-sermaye" rows={data.topCapital} rowKey={row => row.key} initialSort="capital"
         description="Stoklu varyantları toplanmış ilk 20 ürün; stok gün, dönemin satış hızıyla." columns={stockItemColumns(data.deadDays)} /></div>
       <div className="is-wide"><DataTable title="Ölü Stok" csvName="rapor-stok-olu" rows={data.dead} rowKey={row => row.key} initialSort="capital"
@@ -1715,17 +1717,10 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
   </div>
 }
 
-// The price source as the user knows it: the platform, and the store's name when it says more.
-function stockSourceName(store: ReportInventory['priceSource']) {
-  if (!store) return null
-  const platform = platformName(store.platformCode)
-  return store.displayName && store.displayName.toLocaleLowerCase('tr-TR') !== platform.toLocaleLowerCase('tr-TR') ? `${platform} (${store.displayName})` : platform
-}
-
-// What the figures cover: stock now, the period only for the sales, the price source.
-function StockScope({ data, source }: { data: ReportInventory; source: string | null }) {
+// What the figures cover: stock now, the period only for the sales, the panel price.
+function StockScope({ data }: { data: ReportInventory }) {
   return <p className="reports-stock-scope"><UiIcon name="info" size={15} />
-    <span>Stok anlık değerdir (ana depo, şu an); Dönem yalnız satış ve stok gün hesabını değiştirir. Tutarlar KDV dahil{source ? `, satış değeri ${source} fiyatıyla` : ''}.</span>
+    <span>Stok anlık değerdir (ana depo, şu an); Dönem yalnız satış ve stok gün hesabını değiştirir. Tutarlar KDV dahil, satış değeri panel fiyatıyla.</span>
     <time dateTime={data.generatedAt}>{new Date(data.generatedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</time>
   </p>
 }
@@ -1764,7 +1759,7 @@ const stockMargin = (row: ReportStockGroup) => row.value !== null && row.value >
 
 const stockPlatformColumns: Column<ReportStockPlatform>[] = [
   { key: 'store', header: 'Mağaza', value: row => row.storeName, render: row => <span className="reports-cell-label"><PlatformSquareMark code={row.platformCode} name={platformName(row.platformCode)} />{row.storeName}
-    {row.isPriceSource && <em className="reports-tag">Fiyat Kaynağı</em>}{row.isTest && <em className="reports-tag">Test</em>}</span> },
+    {row.isTest && <em className="reports-tag">Test</em>}</span> },
   { key: 'offers', header: 'Teklif', numeric: true, value: row => row.offers, render: row => formatCount(row.offers) },
   { key: 'active', header: 'Aktif Teklif', numeric: true, value: row => row.activeOffers, render: row => formatCount(row.activeOffers) },
   { key: 'listed', header: 'Listelenen Adet', numeric: true, value: row => row.listedUnits, render: row => formatNumber(row.listedUnits) },

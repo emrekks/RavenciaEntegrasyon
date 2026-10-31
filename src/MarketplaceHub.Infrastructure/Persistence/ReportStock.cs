@@ -4,12 +4,13 @@ using MarketplaceHub.Domain;
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // One variant of the catalogue with its MAIN stock: its product's category and VAT rate, its colour and size (the RENK
-// and BEDEN options), its current cost (VAT included, as the panel stores it; null or 0 = not entered).
+// and BEDEN options), its current cost and its panel sale price as the product editor shows it (both VAT included, as the
+// panel stores them; null or 0 = not entered).
 internal sealed record ReportStockVariantRow(Guid VariantId, Guid ProductId, string Title, string? ModelCode, string? Category, string? Color, string? Size,
-    string OptionSignature, bool Active, decimal? CostPrice, decimal? VatRate, decimal OnHand, decimal Available, DateTimeOffset CreatedAt);
+    string OptionSignature, bool Active, decimal? CostPrice, decimal? VatRate, decimal OnHand, decimal Available, DateTimeOffset CreatedAt, decimal? PanelPrice = null);
 
-// One offer of a variant on a store, with its sale price (VAT included) and the stock it holds back on that store.
-internal sealed record ReportStockOfferRow(Guid VariantId, Guid ConnectionId, decimal SalePrice, string Currency, string Status, decimal SafetyStock);
+// One offer of a variant on a store, with its sale price (VAT included).
+internal sealed record ReportStockOfferRow(Guid VariantId, Guid ConnectionId, decimal SalePrice, string Currency, string Status);
 
 // Stok raporu's figures from the catalogue's variants, their offers and the units kept per variant (ReportBuilder's
 // products, so the sold units match the sales report). Every amount is worked out over the variants it is known for and
@@ -45,17 +46,6 @@ internal static class ReportStock
         var stocked = counted.Where(x => x.OnHand > 0).ToList();
         var stockedUnits = stocked.Sum(x => x.OnHand);
 
-        // The price source: the store whose active offers price the most stocked units.
-        var source = offersByStore
-            .Select(pair => (Store: stores[pair.Key], Priced: pair.Value.Where(Priced).Select(offer => offer.VariantId).ToHashSet()))
-            .Select(pair => (pair.Store, Units: stocked.Where(row => pair.Priced.Contains(row.VariantId)).Sum(row => row.OnHand)))
-            .Where(x => x.Units > 0)
-            .OrderByDescending(x => x.Units).ThenBy(x => x.Store.PlatformCode, StringComparer.Ordinal).ThenBy(x => x.Store.DisplayName, StringComparer.Ordinal)
-            .Select(x => x.Store).FirstOrDefault();
-        var prices = source is null
-            ? new Dictionary<Guid, decimal>()
-            : offersByStore[source.Id].Where(Priced).GroupBy(x => x.VariantId).ToDictionary(x => x.Key, x => x.First().SalePrice);
-
         var periodDays = to.DayNumber - from.DayNumber + 1;
         var deadBefore = new DateTimeOffset(today.AddDays(-DeadDays).ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
         decimal? Cover(decimal units, decimal sold) => sold > 0 && periodDays > 0 ? Math.Round(units / (sold / periodDays), 1) : null;
@@ -64,12 +54,12 @@ internal static class ReportStock
             var units = Math.Max(0m, row.OnHand);
             var sold = periodSold.GetValueOrDefault(row.VariantId);
             var recent = recentSold.GetValueOrDefault(row.VariantId);
-            return new Item(row, units, row.CostPrice is > 0 ? row.CostPrice : null, prices.TryGetValue(row.VariantId, out var price) ? price : null,
+            return new Item(row, units, row.CostPrice is > 0 ? row.CostPrice : null, row.PanelPrice is > 0 ? row.PanelPrice : null,
                 sold, recent, units > 0 ? Cover(units, sold) : null, units > 0 && recent <= 0 && row.CreatedAt < deadBefore);
         }).ToList();
         var inStock = items.Where(x => x.Units > 0).ToList();
 
-        return new ReportInventoryView(default, from, to, periodDays, DeadDays, source, Summary(items, inStock, periodDays), Platforms(stores, offersByStore, stocked, stockedUnits, source),
+        return new ReportInventoryView(default, from, to, periodDays, DeadDays, Summary(items, inStock, periodDays), Platforms(stores, offersByStore, stocked, stockedUnits),
             Groups(inStock, x => x.Row.Category, Unknown, Cover),
             Groups(inStock, x => x.Row.Color, Unset, Cover),
             Groups(inStock, x => x.Row.Size, Unset, Cover),
@@ -118,7 +108,7 @@ internal static class ReportStock
     }
 
     private static List<ReportStockPlatformView> Platforms(IReadOnlyDictionary<Guid, ReportChannelView> stores, Dictionary<Guid, List<ReportStockOfferRow>> offersByStore,
-        IReadOnlyList<ReportStockVariantRow> stocked, decimal stockedUnits, ReportChannelView? source) =>
+        IReadOnlyList<ReportStockVariantRow> stocked, decimal stockedUnits) =>
         offersByStore.Select(pair =>
             {
                 var store = stores[pair.Key];
@@ -129,8 +119,8 @@ internal static class ReportStock
                 var pricedUnits = priced.Sum(x => x.OnHand);
                 var listedUnits = listed.Sum(x => x.OnHand);
                 return new ReportStockPlatformView(store.Id, store.PlatformCode, store.DisplayName, store.IsTest, pair.Value.Count, active.Count, listedUnits,
-                    listed.Sum(x => Math.Max(0m, Math.Max(0m, x.Available) - active[x.VariantId].SafetyStock)), stockedUnits - listedUnits,
-                    priced.Count == 0 ? null : Round(value), pricedUnits, pricedUnits > 0 ? Round(value / pricedUnits) : null, source?.Id == store.Id);
+                    stockedUnits - listedUnits,
+                    priced.Count == 0 ? null : Round(value), pricedUnits, pricedUnits > 0 ? Round(value / pricedUnits) : null);
             })
             .OrderByDescending(x => x.ListedUnits).ThenBy(x => x.PlatformCode, StringComparer.Ordinal).ThenBy(x => x.StoreName, StringComparer.Ordinal)
             .ToList();
