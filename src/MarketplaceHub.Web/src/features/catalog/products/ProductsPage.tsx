@@ -372,7 +372,10 @@ export function LowStockDetailsModal({ products, loading, error, onClose, onImag
   const groups = useMemo(() => productRowsAsCards(products), [products])
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [sort, setSort] = useState<'MODEL_ASC' | 'MODEL_DESC' | 'MISSING_DESC' | 'MISSING_ASC'>('MODEL_ASC')
+  // The list comes newest first (like the products page), so a model's rank is its newest card's place in it.
+  const [sort, setSort] = useState<'NEWEST' | 'MODEL_ASC' | 'MODEL_DESC' | 'MISSING_DESC' | 'MISSING_ASC'>('NEWEST')
+  const productRank = useMemo(() => new Map(products.map((product, index) => [product.id, index])), [products])
+  const newestRank = (group: { products: Product[] }) => Math.min(...group.products.map(product => productRank.get(product.id) ?? Number.MAX_SAFE_INTEGER))
   const categoryOptions = useMemo(() => [...new Set(products.map(productCategoryLabel))].sort((left, right) => left.localeCompare(right, 'tr', { sensitivity: 'base' })), [products])
   const filteredGroups = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('tr-TR')
@@ -393,12 +396,14 @@ export function LowStockDetailsModal({ products, loading, error, onClose, onImag
         : group.variants.filter(item => categoryProducts.includes(item.product))
       return [{ ...group, products: visibleProducts, variants: visibleVariants }]
     }).filter(group => group.products.length > 0).sort((left, right) => {
+      if (sort === 'NEWEST') return newestRank(left) - newestRank(right)
       if (sort === 'MODEL_DESC') return lowStockModelCode(right).localeCompare(lowStockModelCode(left), 'tr', { numeric: true, sensitivity: 'base' })
       if (sort === 'MISSING_DESC') return lowStockMissingVariantCount(right) - lowStockMissingVariantCount(left) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
       if (sort === 'MISSING_ASC') return lowStockMissingVariantCount(left) - lowStockMissingVariantCount(right) || lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
       return lowStockModelCode(left).localeCompare(lowStockModelCode(right), 'tr', { numeric: true, sensitivity: 'base' })
     })
-  }, [categoryFilter, groups, search, sort])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- newestRank only reads productRank
+  }, [categoryFilter, groups, search, sort, productRank])
   const lowVariantCount = filteredGroups.reduce((sum, group) => sum + lowStockMissingVariantCount(group), 0)
   const catalogRecordCount = filteredGroups.reduce((sum, group) => sum + group.products.length, 0)
   // Model cards start closed and sit two to a row; opening one opens its row neighbour too, so the row stays level.
@@ -416,7 +421,7 @@ export function LowStockDetailsModal({ products, loading, error, onClose, onImag
 
   return <RrModal crumb="Stok Takibi" title="Düşük Stoklu Ürünler" desc="Model koduna göre gruplanmış ürünlerin eksik varyantları." size="lg" onClose={onClose} foot={<><span className="rr-note">Düşük stok: bir renkteki varyantların en az yarısı tükenmiş.</span><button type="button" className="rr-btn" onClick={onClose}>Kapat</button></>}>
     {loading ? <RrLoading text="Düşük stoklu ürünler yükleniyor…" /> : error ? <RrError error={error} /> : !groups.length ? <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Düşük Stoklu Ürün Yok</b><span className="rr-lead">Tüm ürünlerin stoğu yeterli.</span></div> : <>
-      <div className="rr-low-tools"><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Model kodu, ürün veya renk ara" aria-label="Düşük stoklu ürünlerde ara" /></span><select className="rr-in" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} aria-label="Kategori"><option value="">Tüm Kategoriler</option>{categoryOptions.map(category => <option key={category} value={category}>{category}</option>)}</select><select className="rr-in" value={sort} onChange={event => setSort(event.target.value as typeof sort)} aria-label="Sıralama"><option value="MODEL_ASC">Model Kodu (A-Z)</option><option value="MODEL_DESC">Model Kodu (Z-A)</option><option value="MISSING_DESC">Eksik Varyant (Çoktan Aza)</option><option value="MISSING_ASC">Eksik Varyant (Azdan Çoğa)</option></select></div>
+      <div className="rr-low-tools"><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} value={search} onChange={event => setSearch(event.target.value)} placeholder="Model kodu, ürün veya renk ara" aria-label="Düşük stoklu ürünlerde ara" /></span><select className="rr-in" value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} aria-label="Kategori"><option value="">Tüm Kategoriler</option>{categoryOptions.map(category => <option key={category} value={category}>{category}</option>)}</select><select className="rr-in" value={sort} onChange={event => setSort(event.target.value as typeof sort)} aria-label="Sıralama"><option value="NEWEST">Eklenme Sırası (Yeniden Eskiye)</option><option value="MODEL_ASC">Model Kodu (A-Z)</option><option value="MODEL_DESC">Model Kodu (Z-A)</option><option value="MISSING_DESC">Eksik Varyant (Çoktan Aza)</option><option value="MISSING_ASC">Eksik Varyant (Azdan Çoğa)</option></select></div>
       <p className="rr-lead">{filteredGroups.length} model · {catalogRecordCount} katalog kaydı · {lowVariantCount} eksik varyant</p>
       {!filteredGroups.length && <p className="rr-lead">Arama veya filtreye uyan düşük stoklu ürün bulunamadı.</p>}
       <div className="rr-lowgrid">{filteredGroups.map((group, index) => { const image = lowStockProductImage(group.primary); const open = openFamilies.has(group.id); const missing = lowStockMissingVariantCount(group); const pairSide = twoColumns ? (index % 2 === 0 ? ' rr-pair-left' : ' rr-pair-right') : ''; return <article className={`rr-lowf${open ? ' rr-open' : ''}${hotRow === rowOf(index) ? ' rr-row-hot' : ''}${pairSide}`} key={group.id} onMouseEnter={() => setHotRow(rowOf(index))} onMouseLeave={() => setHotRow(null)}>
