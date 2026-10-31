@@ -7046,26 +7046,31 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 :is(.rr-seg, .ss-seg, .ss-seg2, .ss-seg3, .qi-seg, .reports-segmented) button { justify-content: center; text-align: center; }
 
 /* Opening and closing a collapsed menu on hover: the inside keeps its open layout and only the edge moves. Icons stay
-   put and labels never squeeze (no growing width, no ellipsis): the edge uncovers them, each fading and sliding a few
-   pixels in after the one above, and the active item's highlight grows with the edge from the icon's square. Closing
-   slides the edge back over them. 280 ms in, 200 ms out; without motion when the device asks for less. */
+   put and labels never squeeze or move (no growing width, no ellipsis, no slide): the edge uncovers them, each fading in
+   where it stands after the one above, and the active item's highlight grows with the edge from the icon's square.
+   Closing fades every label out at once (60 ms), before the highlight and the edge draw back, so no text slides or
+   shows beside the icon's square. 280 ms in, 200 ms out; without motion when the device asks for less. */
 @media (min-width: 701px) {
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside { max-width: var(--rv-sidebar-width); overflow-x: hidden; transition: width 200ms cubic-bezier(.4, 0, .6, 1), box-shadow 200ms ease; }
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside { transition: width 280ms cubic-bezier(.2, .9, .25, 1), box-shadow 280ms ease; }
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link, .sidebar-brand-home, .sidebar-profile) { overflow: hidden; }
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
-    display: block; flex: none; width: auto; max-width: 190px; overflow: visible; visibility: visible; opacity: 0; transform: translateX(-8px);
-    transition: opacity 120ms ease, transform 120ms ease; transition-delay: 0s;
+    display: block; flex: none; width: auto; max-width: 190px; overflow: visible; visibility: visible; opacity: 0; transform: none;
+    transition: opacity 60ms linear; transition-delay: 0s;
   }
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside .nav-count.nav-count {
     display: inline-flex; width: auto; min-width: 0; max-width: none; padding-inline: 7px; overflow: visible; visibility: visible; opacity: 0; transform: none;
-    transition: opacity 120ms ease; transition-delay: 0s;
+    transition: opacity 60ms linear; transition-delay: 0s;
   }
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
     opacity: 1; transform: none;
-    transition: opacity 220ms ease var(--rv-menu-delay, 60ms), transform 260ms cubic-bezier(.2, .9, .25, 1) var(--rv-menu-delay, 60ms);
+    transition: opacity 220ms ease var(--rv-menu-delay, 60ms);
   }
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside .nav-count.nav-count { opacity: 1; transition: opacity 220ms ease calc(var(--rv-menu-delay, 60ms) + 80ms); }
+  /* The active highlight shrinks back with the edge once its label has faded (it used to snap to the icon square at
+     once, leaving the fading text outside it), and grows with the edge on opening. */
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before { transition: width 170ms cubic-bezier(.4, 0, .6, 1) 40ms, background 200ms ease, border-color 200ms ease; }
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before { transition: width 280ms cubic-bezier(.2, .9, .25, 1), background 200ms ease, border-color 200ms ease; }
   /* One after another, from the top. */
   .app-shell.stitch-shell > aside nav a:nth-child(2) { --rv-menu-delay: 78ms; }
   .app-shell.stitch-shell > aside nav a:nth-child(3) { --rv-menu-delay: 96ms; }
@@ -7079,7 +7084,8 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 }
 @media (min-width: 701px) and (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside,
-  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label, .nav-count) { transition: none !important; }
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label, .nav-count),
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before { transition: none !important; }
 }
 
 /* The menu's brand row ends exactly where the top bar does, so their two rules meet in one line at every width and
