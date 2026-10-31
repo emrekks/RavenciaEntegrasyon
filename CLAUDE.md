@@ -41,7 +41,8 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 ## Domain notes
 - Marketplace API facts (limits, date windows, page sizes, time zones, endpoints, statuses, quirks) are in
   `/marketplace-docs`, one file per marketplace. Read it before searching the web or changing an adapter, a sync
-  window or a quota, and add what you learn there with its source.
+  window or a quota, and add what you learn there with its source. For anything it lacks, grep the offline official
+  docs it points to (`C:/Users/emrek/OneDrive/Belgeler/Ravencia-API-Docs/`) before the web. Trendyol: v2 services.
 - Npgsql `timestamptz` accepts offset 0 only: `.ToUniversalTime()` before saving or querying.
 - Hepsiburada writes Istanbul local times; its query times are Istanbul local too (`HepsiburadaJsonMapper.QueryTime`).
 - Never infer a marketplace state from a missing field (no invoice link is not "not invoiced"); unknown stays unknown.
