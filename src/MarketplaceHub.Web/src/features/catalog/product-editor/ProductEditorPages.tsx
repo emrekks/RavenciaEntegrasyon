@@ -37,6 +37,7 @@ import { PublicationReadinessSourceError, publicationReadinessFailureDetail, rea
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
+import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemovedMedia, withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { panelPrices } from '../quick-price-edit'
 import { editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, TURKISH_VAT_RATES, type EditorFieldErrors } from '../product-editor-state'
@@ -1157,6 +1158,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const navigate = useNavigate()
   const routeState = location.state as { duplicateProductId?: unknown; wizardStep?: unknown } | null
   const duplicateProductId = typeof routeState?.duplicateProductId === 'string' ? routeState.duplicateProductId : undefined
+  // Images removed from a copy stay removed (reload, reseed from the source); the copy's own list, never the source's.
+  const copyRemovedMedia = useRef<string[]>(editProductId ? [] : copyRemovedMediaKeys(routeState))
   const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts()
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
@@ -1345,8 +1348,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const primary = product.variants[0]
     const initialModelCode = primary?.modelCode ?? product.modelCode ?? ''
     const sortedVariants = sortVariantsAlphabetically(product.variants)
-    const savedMediaUrls = orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder)
-    const savedFamilyMediaUrls = product.familyMediaItems?.map(item => item.url) ?? product.familyMediaUrls ?? []
+    const removedMediaKeys = mode === 'copy' ? copyRemovedMedia.current : []
+    const savedMediaUrls = withoutCopyRemovedMedia(orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder), removedMediaKeys)
+    const savedFamilyMediaUrls = withoutCopyRemovedMedia(product.familyMediaItems?.map(item => item.url) ?? product.familyMediaUrls ?? [], removedMediaKeys)
     const initialListPrice = product.defaultListPrice ?? primary?.listPrice ?? primary?.salePrice ?? 0
     const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
     initialEditModelCode.current = initialModelCode.trim()
@@ -1354,12 +1358,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), warrantyMonths: String(product.warrantyMonths ?? 0), deliveryDays: String(product.deliveryDays ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     if (!editProductId && duplicateProductId) setChannelPricing(copiedChannelPricing(primary?.platformStatuses ?? [], initialListPrice, initialSalePrice))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
-    setFamilyMediaOrder(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
+    setFamilyMediaOrder(withoutCopyRemovedMedia(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
       ? product.familyOrderedMediaUrls
-      : [...savedMediaUrls, ...savedFamilyMediaUrls]))
+      : [...savedMediaUrls, ...savedFamilyMediaUrls]), removedMediaKeys))
     setFamilyMediaOrderDirty(false)
     setMediaFiles([])
-    const seededMediaRefs = seedVariantMediaRefs(product.variants)
+    const seededMediaRefs = seedVariantMediaRefs(product.variants).map(references => withoutCopyRemovedMediaRefs(references, removedMediaKeys))
     const mediaRefsByVariantId = new Map(product.variants.map((variant, index) => [variant.id, seededMediaRefs[index] ?? []]))
     initialEditVariantMediaRefs.current = Object.fromEntries(mediaRefsByVariantId)
     setVariantRows(sortedVariants.map(variant => {
@@ -1703,14 +1707,23 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setMediaFiles(files => files.filter(file => file.id !== id))
     setVariantRows(rows => rows.map(row => row.mediaRefs.includes(`file|${id}`) ? { ...row, mediaRefs: row.mediaRefs.filter(reference => reference !== `file|${id}`) } : row))
   }
+  // A copy has nothing saved to delete: the removal is written into the page's history entry at once, so it holds after
+  // a reload, and the form stays clean when it had no other edits (nothing waits for Kaydet).
+  function rememberCopyRemovedMedia(urls: string[]) {
+    if (editProductId || !duplicateProductId || !urls.length) return
+    copyRemovedMedia.current = withCopyRemovedMedia(copyRemovedMedia.current, urls)
+    try { window.history.replaceState(historyStateWithCopyRemovedMedia(window.history.state, copyRemovedMedia.current), '') } catch { /* the in-memory list still holds */ }
+    if (!editorDirty) setSnapshotRequest(value => value + 1)
+  }
   function clearAllMedia() {
+    rememberCopyRemovedMedia(mediaUrls)
     setMediaFiles([])
     updateField('mediaUrls', '')
     setFamilyMediaOrder([])
     setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: [] })))
     setDraggedMedia(null)
     setDragOverMedia(null)
-    showFeedback('Görseller Temizlendi', 'Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
+    showFeedback('Görseller Temizlendi', duplicateProductId && !editProductId ? 'Görseller kopyadan kaldırıldı. Kaynak ürünün görselleri değişmez.' : 'Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
   }
   async function removeProductMedia(url: string, confirmed = false) {
     const targetKey = mediaImageKey(url)
@@ -1722,6 +1735,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     if (!isPersisted || !editProductId || !productToEdit.data) {
       updateField('mediaUrls', nextDraftMediaUrls.join('\n'))
       setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
+      if (duplicateProductId && !editProductId) {
+        rememberCopyRemovedMedia([url])
+        showFeedback('Görsel Kaldırıldı', 'Görsel kopyadan kaldırıldı. Kaynak ürünün görselleri değişmez.', 'success')
+        return
+      }
       showFeedback('Görsel Kaldırıldı', 'Görsel taslaktan kaldırıldı. Kalıcı olması için Kaydet’e basın.', 'info')
       return
     }
