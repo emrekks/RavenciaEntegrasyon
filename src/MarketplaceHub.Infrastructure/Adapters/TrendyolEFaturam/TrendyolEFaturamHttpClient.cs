@@ -20,7 +20,8 @@ public sealed class TrendyolEFaturamHttpClient(
     SafeRemoteDocumentDownloader documents,
     TimeProvider timeProvider,
     ILogger<TrendyolEFaturamHttpClient> logger,
-    TrendyolEFaturamTokenCache tokens) : IInvoiceProviderPort
+    TrendyolEFaturamTokenCache tokens,
+    TrendyolEFaturamTaxpayerCache taxpayers) : IInvoiceProviderPort
 {
     private const string ConnectionProbeInvoiceUuid = "00000000-0000-0000-0000-000000000000";
     private readonly TrendyolEFaturamOptions _options = options.Value;
@@ -106,8 +107,8 @@ public sealed class TrendyolEFaturamHttpClient(
         if (!access.IsSuccess) return AdapterResult<InvoiceRemoteStatus>.Failure(access.Error!, access.RateLimit);
         var uuid = reference.EttnUuid ?? reference.ExternalReference;
         // Both statuses are documented UUID reads: E-Archive "get-e-archive-status" and outgoing E-Invoice
-        // "get-outgoing-e-invoice-status" (developers.trendyolefaturam.com/OpenApi). Issuing an E-Invoice stays closed
-        // (InvoiceIssuePolicy.EInvoiceRecipientCode); reading one only reports its state.
+        // "get-outgoing-e-invoice-status" (developers.trendyolefaturam.com/OpenApi). An E-Invoice is issued only to a
+        // buyer the taxpayer lookup found registered (EInvoiceRecipientPolicy); reading one only reports its state.
         var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Get, TrendyolEFaturamEndpoints.Status(reference.InvoiceType, uuid), null, cancellationToken);
         if (!response.IsSuccess) return AdapterResult<InvoiceRemoteStatus>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<InvoiceRemoteStatus>.Success(TrendyolEFaturamJsonMapper.InvoiceStatus(response.Value!.Body, reference.ExternalReference), response.RateLimit); }
@@ -152,6 +153,43 @@ public sealed class TrendyolEFaturamHttpClient(
         var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Post, TrendyolEFaturamEndpoints.CancelEArchive, JsonContent.Create(new { invoiceUuid = uuid, companyId = access.Value.CompanyId }), cancellationToken);
         if (!response.IsSuccess) return AdapterResult<InvoiceCancellationResult>.Failure(response.Error!, response.RateLimit);
         return AdapterResult<InvoiceCancellationResult>.Success(new(command.ExternalReference, "CANCELLATION_SUBMITTED", "PENDING", false), response.RateLimit);
+    }
+
+    public async Task<EInvoiceTaxpayerLookup> LookupTaxpayerAsync(AdapterContext context, string taxId, bool fresh, CancellationToken cancellationToken)
+    {
+        if (!(taxId.Length is 10 or 11 && taxId.All(char.IsAsciiDigit))) return EInvoiceTaxpayerLookup.Unknown(InvoiceIssuePolicy.RecipientTaxIdInvalidCode);
+        if (!fresh && taxpayers.TryGet(context.ConnectionId, taxId, out var cached)) return cached;
+        var configured = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (configured is null) return EInvoiceTaxpayerLookup.Unknown(TrendyolEFaturamErrorMapper.Configuration().Code);
+        var lookup = await LookupTaxpayer(configured, taxId, cancellationToken);
+        taxpayers.Set(context.ConnectionId, taxId, lookup);
+        return lookup;
+    }
+
+    internal async Task<EInvoiceTaxpayerLookup> LookupTaxpayer(TrendyolEFaturamRequestContext configured, string taxId, CancellationToken cancellationToken)
+    {
+        var access = await AcquireAccess(configured, cancellationToken);
+        if (!access.IsSuccess) return EInvoiceTaxpayerLookup.Unknown(access.Error!.Code);
+        var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Get, TrendyolEFaturamEndpoints.TaxPayers(taxId), null, cancellationToken);
+        EInvoiceTaxpayerLookup lookup;
+        if (!response.IsSuccess)
+            // Only the documented tax-payer-not-found problem means "not a taxpayer"; a bare 404 (a moved path) does not.
+            lookup = response.Error is { HttpStatus: 404, RemoteRequestId: TrendyolEFaturamProblemDetails.TaxPayerNotFoundReference }
+                ? EInvoiceTaxpayerLookup.NotRegistered()
+                : EInvoiceTaxpayerLookup.Unknown(response.Error!.Code);
+        else
+        {
+            try { lookup = TrendyolEFaturamJsonMapper.TaxPayers(response.Value!.Body, taxId); }
+            catch (JsonException) { lookup = EInvoiceTaxpayerLookup.Unknown(TrendyolEFaturamErrorMapper.Contract().Code); }
+        }
+        logger.LogInformation(
+            "E-Faturam taxpayer lookup. State={State} InvoiceAliases={InvoiceAliases} PostBoxTypes={PostBoxTypes} ErrorCode={ErrorCode} RemoteRequestId={RemoteRequestId}",
+            lookup.State,
+            lookup.InvoiceAliases.Count,
+            string.Join(",", lookup.InvoiceAliases.Select(alias => alias.PostBoxType ?? "-").Distinct()),
+            lookup.ErrorCode,
+            response.IsSuccess ? response.Value!.RemoteRequestId : response.Error!.RemoteRequestId);
+        return lookup;
     }
 
     internal Task<AdapterResult<TrendyolEFaturamAccessContext>> AcquireAccess(TrendyolEFaturamRequestContext context, CancellationToken cancellationToken, bool reuseCachedToken = true)

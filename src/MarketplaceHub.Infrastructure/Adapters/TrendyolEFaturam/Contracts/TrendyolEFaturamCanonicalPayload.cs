@@ -154,6 +154,8 @@ public static class TrendyolEFaturamCanonicalPayload
                 delivery = new(carrier.TaxId, carrier.Name, null, EfaturamTurkeyTime.Day(sentAt));
             }
 
+            // An e-Invoice goes to the alias the taxpayer lookup chose right before this request; without one it is not sent.
+            var targetAlias = invoiceType == "TEMELFATURA" ? NullText(root, "TargetAlias") ?? throw new JsonException("EFATURAM_TARGET_ALIAS_REQUIRED") : null;
             var source = new EfaturamInvoicePayloadSource(
                 RequiredText(root, "Id"), invoiceType, RequiredText(root, "Currency"), RequiredText(root, "Note"), RequiredText(order, "OrderNumber"),
                 EfaturamTurkeyTime.Day(orderedAt), DateTimeOffset.Parse(RequiredText(root, "IssuedAt"), CultureInfo.InvariantCulture),
@@ -161,7 +163,7 @@ public static class TrendyolEFaturamCanonicalPayload
                     WithoutMarketplaceIds(Text(address, "fullAddress", "address1", "addressText", "address")), NullText(address, "postalCode"), NullText(address, "phone"),
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), recipientName,
                     recipientSurname, NullText(address, "taxOffice") ?? NullText(addressRoot, "taxOffice") ?? NullText(customer.RootElement, "taxOffice")),
-                lines, payment, delivery);
+                lines, payment, delivery, targetAlias);
             return TrendyolEFaturamInvoicePayload.Create(account, source);
         }
         finally
