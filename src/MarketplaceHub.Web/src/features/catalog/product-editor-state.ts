@@ -19,6 +19,13 @@ export function editorDataStamp(variants: ReadonlyArray<StampVariant>) {
   return hash.toString(36)
 }
 
+// An edit or a copy waits for its product and for the lists that name its values (category, brand) before the form
+// shows anything: until then the form holds the empty defaults, and the single-product SKU, barcode and price fields
+// would show as editable before the variant rows turn them into the varyantlı state. A new product has nothing to wait for.
+export function editorAwaitingSeed({ seeding, productPending, listsPending }: { seeding: boolean; productPending: boolean; listsPending: boolean }) {
+  return seeding && (productPending || listsPending)
+}
+
 // A stable text form of what the user can edit; compared with the one taken right after the form was filled.
 // Server-side state shown in the rows (platform prices) is left out: it is saved on its own and does not make the
 // form "unsaved".

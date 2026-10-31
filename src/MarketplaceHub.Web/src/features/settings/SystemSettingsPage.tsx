@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useEffectEvent, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../shared/api'
@@ -254,6 +254,14 @@ export function SystemSettingsPage() {
   const savedLabelSettings = shippingSettings.isSuccess ? normalizeShippingLabelSettings(normalizeShippingLabelSettings(shippingSettings.data.settings)) : null
   const shippingDirty = savedLabelSettings ? JSON.stringify(normalizeShippingLabelSettings(labelSettings)) !== JSON.stringify(savedLabelSettings) : shippingSettings.isError
   const [labelFormat, setLabelFormat] = useState<'a4' | 'sticker'>(() => labelSettings.defaultFormat)
+  // The designer opens on the account's default format, which may arrive after this page mounted.
+  const labelFormatSynced = useRef(shippingSettings.isSuccess)
+  const serverDefaultFormat = shippingSettings.data?.settings != null ? normalizeShippingLabelSettings(shippingSettings.data.settings).defaultFormat : undefined
+  useLayoutEffect(() => {
+    if (labelFormatSynced.current || !shippingSettings.isSuccess) return
+    labelFormatSynced.current = true
+    if (serverDefaultFormat) setLabelFormat(serverDefaultFormat)
+  }, [serverDefaultFormat, shippingSettings.isSuccess])
   const [labelSaving, setLabelSaving] = useState(false)
   const [appearanceStatus, setAppearanceStatus] = useState({ dirty: false, themeCount: 0 })
   const [resetScopes, setResetScopes] = useState<string[]>([])
@@ -433,7 +441,7 @@ export function SystemSettingsPage() {
           </div>}</div>
         </>}
         {section === 'database' && <SettingsDataReset groups={resetScopeGroups} counts={resetCounts.data ? Object.fromEntries(resetCounts.data.items.map(entry => [entry.scope, entry.count])) : undefined} countsFailed={resetCounts.isError} picked={resetScopes} onToggle={toggleResetScopes} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
-        <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
+        <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
       </div>
     </div>
@@ -458,7 +466,15 @@ export function SystemSettingsPage() {
   </section>
 }
 
+// The form starts from the saved settings: until they are in (the remembered copy is only a head start for the
+// colours) it would show the defaults, and its theme picker would keep the default theme it opened with.
 function AppearanceSettingsSection({ section, onStatus }: { section: AppearanceSection | null; onStatus: (status: { dirty: boolean; themeCount: number }) => void }) {
+  const appearance = useAppearanceSettings()
+  if (appearance.isPending || appearance.isPlaceholderData) return section ? <div className="ss-body"><LoadingState>Görünüm ayarları yükleniyor…</LoadingState></div> : null
+  return <AppearanceSettingsForm section={section} onStatus={onStatus} />
+}
+
+function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSection | null; onStatus: (status: { dirty: boolean; themeCount: number }) => void }) {
   const appearance = useAppearanceSettings()
   const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
   const succeed = (message: string) => setNotice({ kind: 'success', message })
@@ -696,7 +712,7 @@ function loadShippingLabelTemplates(): ShippingLabelTemplate[] {
 const shippingBlockLabels: Record<ShippingLabelBlockKind, string> = { trackingBarcode: 'Takip Barkodu', address: 'Teslimat Adresi', orderInfo: 'Paket / Sipariş Bilgileri', packageBarcode: 'Paket Barkodu', sender: 'Gönderici ve Kargo Bilgileri', custom: 'Özel İçerik Bloğu' }
 const shippingAlignOptions = [['left', 'Sol'], ['center', 'Orta'], ['right', 'Sağ']] as const
 
-function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, loadFailed, format, setFormat, onChange, onSave }: { section: ShippingSection | null; settings: ShippingLabelSettings; saved: ShippingLabelSettings | null; dirty: boolean; saving: boolean; loadFailed: boolean; format: 'a4' | 'sticker'; setFormat: (format: 'a4' | 'sticker') => void; onChange: (value: ShippingLabelSettings) => void; onSave: () => void }) {
+function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, loadFailed, loading, format, setFormat, onChange, onSave }: { section: ShippingSection | null; settings: ShippingLabelSettings; saved: ShippingLabelSettings | null; dirty: boolean; saving: boolean; loadFailed: boolean; loading: boolean; format: 'a4' | 'sticker'; setFormat: (format: 'a4' | 'sticker') => void; onChange: (value: ShippingLabelSettings) => void; onSave: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(settings.layout[format][0]?.id ?? null)
   const [designerTab, setDesignerTab] = useState<ShippingDesignerTab>('general')
   const [customTitle, setCustomTitle] = useState('')
@@ -969,6 +985,8 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
   const alignSegment = (block: ShippingLabelBlock) => <div className="ss-seg3" role="group" aria-label="Hizalama">{shippingAlignOptions.map(([value, label]) => <button type="button" key={value} aria-pressed={block.align === value} className={block.align === value ? 'is-on' : undefined} onClick={() => updateBlock(block.id, { align: value })}>{label}</button>)}</div>
   const bar = <SettingsBar title="Etiket Düzenini Yayınla" dirty={dirty} copy={dirty ? 'Kaydedilmemiş değişiklikler var' : 'Gönderici bilgileri ve kâğıt yerleşimi tüm yazdırma akışlarında kullanılır.'}>{dirty && saved ? <button type="button" className="ss-btn" disabled={saving} onClick={() => onChange(saved)}>Vazgeç</button> : null}<button type="button" className="ss-btn is-primary" disabled={!dirty || saving} onClick={onSave}><SettingsIcon name="save" />{saving ? 'Kaydediliyor…' : 'Ayarları Kaydet'}</button></SettingsBar>
   const loadError = loadFailed ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Hesap kargo ayarları alınamadı; geçici yerel ayarlar gösteriliyor.</span></div> : null
+  // The browser's copy is shown only when the account's settings cannot be read, never before they arrive.
+  if (loading) return section ? <div className="ss-body"><LoadingState>Kargo ayarları yükleniyor…</LoadingState></div> : null
 
   return <>
     {templateNotice && <SettingsNotice {...templateNotice} />}
