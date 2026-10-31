@@ -17,6 +17,13 @@ type QuickPriceVariant = {
   platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null; listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null }>
 }
 
+// Marketplaces that take a sale price only (Hepsiburada's inventory upload and PTT AVM's price send carry no list
+// price): their quick edit hides Liste Fiyatı, and the offer's list price is kept equal to its sale price.
+const SALE_PRICE_ONLY_PLATFORMS = new Set(['HEPSIBURADA', 'PTTAVM'])
+export function channelTakesListPrice(platformCode: string | null | undefined) {
+  return !SALE_PRICE_ONLY_PLATFORMS.has((platformCode ?? '').trim().toUpperCase().replace(/\s/g, ''))
+}
+
 // The offer body a quick edit sends: the channel offer's own settings kept (its status too, so a passive offer is not
 // switched on), the variant's for a channel that gets its first offer.
 export function quickPriceBody(target: Extract<QuickPriceTarget, { kind: 'update' | 'create' }>, variant: { id: string; currency: string | null; vatRate: number | null; vatInclusion: string | null; roundingMode: string | null; safetyStock: number | null }, prices: { listPrice: number; salePrice: number }, reason: string) {
