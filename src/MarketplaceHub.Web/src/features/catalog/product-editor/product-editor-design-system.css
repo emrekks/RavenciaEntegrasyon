@@ -953,9 +953,10 @@
 .product-stale-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; padding: 12px 16px; border: 1px solid var(--rv-color-danger); border-radius: 12px; background: var(--rv-color-danger-soft); }
 
 /* Stock code and barcode of a variant product are written on the variant rows: the field is grey and not clickable. */
-/* The price card's closed fields (Liste / Satış Fiyatı on a card with variants) look like Stok Kodu and Barkod. */
+/* The price card's closed fields (Liste / Satış Fiyatı on a card with variants) look like Stok Kodu and Barkod: a dashed frame
+   on a faint hatch, so a locked field reads apart from an empty open one in the dark theme too. */
 .app-shell.stitch-shell main .product-top-sidebar .product-step-grid :is(input, select):disabled,
-.app-shell.stitch-shell main .product-identifiers-grid input:disabled { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-color: var(--rv-color-border); cursor: not-allowed; opacity: 1; }
+.app-shell.stitch-shell main .product-identifiers-grid input:disabled { color: var(--rv-color-subtle, var(--rv-color-muted)); background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--rv-color-border) 60%, transparent) 6px 7px), transparent; border-color: var(--rv-color-border); border-style: dashed; cursor: not-allowed; opacity: 1; }
 .app-shell.stitch-shell main .product-identifiers-grid label[title] { cursor: help; }
 
 /* Unlayered: the global button and select rules sit outside the layers and would win over the ones above. */
