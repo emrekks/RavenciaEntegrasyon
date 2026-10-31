@@ -422,6 +422,13 @@
 /* Hepsiburada, n11 and Shopify: the brand name is typed, in the card and inline in the saved table. */
 .app-shell.stitch-shell main section.mapping-page .brand-reference-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 14px 0 0; color: var(--rv-color-muted); background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; font-size: 13px; }
 .app-shell.stitch-shell main section.mapping-page .brand-reference-action strong { color: var(--rv-color-ink); font-weight: 600; }
+/* Fixed-size stand-ins while a platform's brand list or saved mappings load, so a tab switch moves nothing. */
+.app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton { display: inline-block; height: 10px; vertical-align: middle; border-radius: 999px; background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)); background-size: 220% 100%; animation: rv-splash-shimmer 1.8s linear infinite; }
+.app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton.is-count { width: 52px; }
+.app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton.is-time { width: 112px; }
+.app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton.is-name { width: 88px; }
+.app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton.is-cell { width: min(96px, 70%); }
+@media (prefers-reduced-motion: reduce) { .app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton { animation: none; } }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card > header { display: flex; align-items: center; justify-content: flex-start; text-align: left; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card > header h2 { margin: 0 auto 0 0; justify-content: flex-start; text-align: left; }
 .app-shell.stitch-shell main section.mapping-page .brand-mapping-saved-card > header > div.mapping-platform-tabs { display: flex; }
