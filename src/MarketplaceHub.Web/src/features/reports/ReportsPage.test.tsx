@@ -481,7 +481,9 @@ describe('ReportsPage', () => {
     expect(figures[0]).toContain('KDV hariç ₺1.091')
     expect(figures[1]).toContain('Envanter Satış Değeri₺5.000')
     expect(figures[1]).toContain('Trendyol fiyatıyla')
-    expect(figures[2]).toContain('Marj %62,5')
+    // The capital at the average real profit on cost of the last three whole months (each month answers the same here).
+    expect(figures[2]).toMatch(/^Tahmini Kâr₺1\.905₺1\.905Son 3 ay ort\. maliyete göre %158,\d/)
+    expect(requests.filter(path => /^\/reports\/sales\?from=\d{4}-\d{2}-01&to=/.test(path)).length).toBeGreaterThanOrEqual(3)
     expect(figures[4]).toContain('60 gün')
     expect(figures[5]).toContain('1 varyant · 2 adet')
     expect(figures[9]).toContain('Maliyeti Eksik1')

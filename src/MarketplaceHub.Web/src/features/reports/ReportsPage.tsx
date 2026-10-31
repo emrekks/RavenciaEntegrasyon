@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
 import { Busy, ErrorBox, Modal, UiIcon, type UiIconName } from '../../shared/components'
@@ -1588,6 +1588,53 @@ Toplam tutarları ${formatTl(bucket.amount)}.`, tone: bucket.key === 'NOT_INVOIC
   </div>
 }
 
+// The last profitMonths whole months before this one, oldest first, each with its Turkish name.
+const profitMonths = 3
+function lastWholeMonths(count: number, today = new Date()) {
+  const name = new Intl.DateTimeFormat('tr-TR', { month: 'long' })
+  return Array.from({ length: count }, (_, index) => {
+    const first = new Date(today.getFullYear(), today.getMonth() - count + index, 1)
+    const label = name.format(first)
+    return { from: dayKey(first), to: dayKey(new Date(first.getFullYear(), first.getMonth() + 1, 0)), label: label.charAt(0).toLocaleUpperCase('tr-TR') + label.slice(1) }
+  })
+}
+
+// The real profit on cost of each of the last whole months, as Kârlılık works it out (sales less returns, marketplace
+// deductions, VAT and the product cost), and their plain average over the months that have one. Loading until every
+// month is in.
+type MonthlyProfitRate = { loading: boolean; average: number | null; months: Array<{ label: string; rate: number | null }> }
+function useMonthlyProfitRate(platforms: string[] | null): MonthlyProfitRate {
+  const months = lastWholeMonths(profitMonths)
+  const results = useQueries({
+    queries: months.map(month => {
+      const query = reportQuery({ from: month.from, to: month.to, platforms, granularity: '', includeTest: false })
+      return { queryKey: ['reports-sales', query], queryFn: () => hubApi<ReportSales>(`/reports/sales?${query}`), staleTime: 60_000 }
+    })
+  })
+  const rates = months.map((month, index) => {
+    const data = results[index]?.data
+    const money = data ? moneyBreakdown(data, profitSteps(data)) : null
+    return { label: month.label, rate: money?.profit != null && money.cost ? money.profit / money.cost : null }
+  })
+  const known = rates.flatMap(month => month.rate === null ? [] : [month.rate])
+  return { loading: results.some(result => result.isPending), average: known.length ? known.reduce((sum, rate) => sum + rate, 0) / known.length : null, months: rates }
+}
+
+// Tahmini Kâr: the capital in stock at the average real profit on cost of the last whole months.
+function stockProfitKpi(capital: number, rate: MonthlyProfitRate): Kpi {
+  const counted = rate.months.filter(month => month.rate !== null)
+  const span = counted.length ? `${counted[0].label}${counted.length > 1 ? ` – ${counted.at(-1)!.label}` : ''}` : ''
+  const value = rate.average === null || capital <= 0 ? null : capital * rate.average
+  return {
+    key: 'profit', label: value !== null && value < 0 ? 'Tahmini Zarar' : 'Tahmini Kâr', value, format: formatTl, tone: value === null ? undefined : value < 0 ? 'bad' : 'good',
+    empty: rate.loading ? 'Hesaplanıyor' : 'Hesaplanamadı',
+    note: rate.average === null ? (rate.loading ? 'Aylık kâr oranları alınıyor' : 'Geçmiş aylarda kâr bilinmiyor')
+      : `Son ${counted.length} ay ort. maliyete göre ${formatPercent(rate.average)}`,
+    tip: `Stok, son aylardaki gerçek kâr oranıyla satılırsa kalacak tahmini kâr.\nStoktaki sermaye × ${span || 'son aylar'} ortalama maliyete göre net kâr oranı (Kârlılık'taki gibi iade, komisyon, kargo, hizmet bedeli ve KDV düşülmüş). ${rate.months
+      .map(month => `${month.label} ${month.rate === null ? 'bilinmiyor' : formatPercent(month.rate)}`).join(' · ')}.`
+  }
+}
+
 // Stok: the stock on hand now (the main warehouse) with the capital it binds at cost and its value at the price source
 // store's offer prices, broken down by category, colour, size, price band and store; then how long it lasts at the
 // period's pace and the stock that has not sold for deadDays. Stock is a point-in-time value: the period changes only the
@@ -1595,6 +1642,7 @@ Toplam tutarları ${formatTl(bucket.amount)}.`, tone: bucket.key === 'NOT_INVOIC
 function StockReport({ from, to, platforms }: { from: string; to: string; platforms: string[] | null }) {
   const query = stockQuery({ from, to, platforms })
   const result = useQuery({ queryKey: ['reports-stock', query], queryFn: () => hubApi<ReportInventory>(`/reports/stock?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const rate = useMonthlyProfitRate(platforms)
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
   if (!data) return <StockSkeleton />
@@ -1615,9 +1663,7 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
       tip: `Stoğun satış fiyatıyla tutarı (KDV dahil).\nEldeki adet × ${source ?? 'pazaryeri'} aktif teklif fiyatı; en çok stoğu fiyatlayan mağaza seçilir. ${summary.missingPriceUnits > 0
         ? `O mağazada fiyatı olmayan ${formatNumber(summary.missingPriceUnits)} adet dahil değil.`
         : 'Stoktaki tüm adetlerin fiyatı var.'}` },
-    { key: 'profit', label: 'Potansiyel Brüt Kâr', value: summary.profit, format: formatTl, tone: summary.profit !== null && summary.profit < 0 ? 'bad' : 'good',
-      note: summary.margin === null ? 'Hesaplanamadı' : `Marj ${formatPercent(summary.margin)} · maliyete göre ${formatPercent(summary.profitOnCost)}`,
-      tip: 'Stoğun tamamı bu fiyattan satılırsa maliyetin üstünde kalan (komisyon, kargo ve vergi düşülmeden).\nSatış değeri − sermaye; yalnız hem maliyeti hem fiyatı olan adetler üzerinden.' },
+    stockProfitKpi(summary.capital, rate),
     { key: 'units', label: 'Toplam Stok Adedi', value: summary.units,
       note: `${formatCount(summary.stockedProducts)} ürün · ${formatCount(summary.stockedVariants)} varyant`,
       tip: `Ana depodaki eldeki adet, şu an.\nSatılabilir (rezerv düşülmüş) ${formatNumber(summary.availableUnits)} adet.` },
