@@ -25,6 +25,7 @@ import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinV
 import { classifyPublicationAttributeIssues, fixableValueMappings, type PublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
+import { mapWithConcurrency, mediaSaveProgressMessage, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog } from './PlatformUpdateDialog'
@@ -32,11 +33,13 @@ import { isProductDeliveryDays, productDeliveryDays } from './product-delivery-d
 import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, writePlatformUpdatePreferences, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
 import { publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
+import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
 import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
+import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemovedMedia, withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
 import { editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, TURKISH_VAT_RATES, type EditorFieldErrors } from '../product-editor-state'
@@ -51,11 +54,14 @@ import { productPublicationTargets, productSaveFeedback,publicationCancelMessage
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
+import { channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, type ChannelPricingDraft } from './marketplace-channel-pricing'
 import { AcceptedJob, Attribute, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
 // The save's slot in the toast column: "Ürün Kaydediliyor" turns into its result in place instead of stacking.
 const productSaveToastKey = 'product-editor-save'
+// Channel prices are separate rows per variant and store; this many are written at once.
+const channelOfferWriteConcurrency = 6
 
 function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null, hasCustomMediaOrder = false) {
   if (hasCustomMediaOrder) return [...productMediaUrls]
@@ -111,7 +117,6 @@ function sortVariantsAlphabetically<T extends { optionSignature?: string | null;
       || compareLabelsAlphabetically(left.sku, right.sku)
   })
 }
-type ChannelPricingDraft = { listPrice: string; salePrice: string }
 type ProductUpdateRequest = { connectionIds: string[]; fields: PlatformUpdateField[] }
 type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
 type PublicationJobDetail = { job: { id: string; jobType?: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
@@ -262,7 +267,7 @@ function VariantMediaPickerModal({
         <div><p className="eyebrow">Varyant Görselleri</p><h2 id="variant-media-picker-title">{mode === 'bulk' ? 'Seçeneklere Görsel Ata' : 'Varyant Görsellerini Seç'}</h2><p>{mode === 'bulk' ? 'Bir seçenek değerine görselleri atayın. Diğer değerlere geçince seçimleriniz korunur; eşlemeler tek seferde kaydedilir.' : 'Ürün görsellerinden bu varyanta ait birden fazla görsel seçin. Sıra, ürün panelindeki görsel sırasına göre kaydedilir.'}</p></div>
         <button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button>
       </header>
-      {mode === 'bulk' && groups?.length ? <><div className="variant-media-bulk-fields"><label>Seçenek Grubu<select value={selectedGroupId} onChange={event => onGroupChange?.(event.target.value)}><option value="">Seçenek Grubu Seçin</option>{groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><label>Seçenek Değeri<select value={selectedValueId} onChange={event => onValueChange?.(event.target.value)} disabled={!selectedGroup}><option value="">Değer Seçin</option>{selectedGroup?.values.map(value => <option key={value.id} value={value.id}>{assignedValueIds?.has(value.id) ? `${value.value} ✓` : value.value}</option>)}</select></label></div>{selectedValue && <div className={`variant-media-bulk-match-summary ${matchedVariantCount ? '' : 'is-empty'}`} role="status"><strong>{selectedGroup?.name}: {selectedValue.value}</strong><span>{matchedVariantCount ? `${matchedVariantCount} varyant eşleşti` : 'Bu değerle eşleşen varyant bulunamadı'}</span></div>}</> : null}
+      {mode === 'bulk' && groups?.length ? <><div className="variant-media-bulk-fields"><VariantMediaBulkSelect label="Seçenek Grubu" placeholder="Seçenek Grubu Seçin" value={selectedGroupId ?? ''} options={groups.map(group => ({ id: group.id, label: group.name }))} onChange={value => onGroupChange?.(value)} /><VariantMediaBulkSelect label="Seçenek Değeri" placeholder="Değer Seçin" value={selectedValueId ?? ''} options={selectedGroup?.values.map(value => ({ id: value.id, label: value.value, assigned: assignedValueIds?.has(value.id) })) ?? []} disabled={!selectedGroup} onChange={value => onValueChange?.(value)} /></div>{selectedValue && <div className={`variant-media-bulk-match-summary ${matchedVariantCount ? '' : 'is-empty'}`} role="status"><strong>{selectedGroup?.name}: {selectedValue.value}</strong><span>{matchedVariantCount ? `${matchedVariantCount} varyant eşleşti` : 'Bu değerle eşleşen varyant bulunamadı'}</span></div>}</> : null}
       <div className="variant-media-picker-grid">
         {options.length ? options.map(option => <MediaOptionThumb key={option.value} option={option} selected={selectedRefs.includes(option.value)} onClick={() => {
            const next = selectedRefs.includes(option.value)
@@ -1157,6 +1162,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const navigate = useNavigate()
   const routeState = location.state as { duplicateProductId?: unknown; wizardStep?: unknown } | null
   const duplicateProductId = typeof routeState?.duplicateProductId === 'string' ? routeState.duplicateProductId : undefined
+  // Images removed from a copy stay removed (reload, reseed from the source); the copy's own list, never the source's.
+  const copyRemovedMedia = useRef<string[]>(editProductId ? [] : copyRemovedMediaKeys(routeState))
   const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts()
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
@@ -1349,8 +1356,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const primary = product.variants[0]
     const initialModelCode = primary?.modelCode ?? product.modelCode ?? ''
     const sortedVariants = sortVariantsAlphabetically(product.variants)
-    const savedMediaUrls = orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder)
-    const savedFamilyMediaUrls = product.familyMediaItems?.map(item => item.url) ?? product.familyMediaUrls ?? []
+    const removedMediaKeys = mode === 'copy' ? copyRemovedMedia.current : []
+    const savedMediaUrls = withoutCopyRemovedMedia(orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder), removedMediaKeys)
+    const savedFamilyMediaUrls = withoutCopyRemovedMedia(product.familyMediaItems?.map(item => item.url) ?? product.familyMediaUrls ?? [], removedMediaKeys)
     const initialListPrice = product.defaultListPrice ?? primary?.listPrice ?? primary?.salePrice ?? 0
     const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
     initialEditModelCode.current = initialModelCode.trim()
@@ -1365,14 +1373,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       channelPricingBase.current = customPrices
       initialCustomChannelIds.current = new Set(Object.keys(customPrices))
     }
-    if (!editProductId && duplicateProductId) setChannelPricing(Object.fromEntries((primary?.platformStatuses ?? []).flatMap(platform => platform.connectionId ? [[platform.connectionId, { listPrice: String(platform.listPrice ?? initialListPrice), salePrice: String(platform.salePrice ?? initialSalePrice) }] as const] : [])))
+    if (!editProductId && duplicateProductId) setChannelPricing(copiedChannelPricing(primary?.platformStatuses ?? [], initialListPrice, initialSalePrice))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
-    setFamilyMediaOrder(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
+    setFamilyMediaOrder(withoutCopyRemovedMedia(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
       ? product.familyOrderedMediaUrls
-      : [...savedMediaUrls, ...savedFamilyMediaUrls]))
+      : [...savedMediaUrls, ...savedFamilyMediaUrls]), removedMediaKeys))
     setFamilyMediaOrderDirty(false)
     setMediaFiles([])
-    const seededMediaRefs = seedVariantMediaRefs(product.variants)
+    const seededMediaRefs = seedVariantMediaRefs(product.variants).map(references => withoutCopyRemovedMediaRefs(references, removedMediaKeys))
     const mediaRefsByVariantId = new Map(product.variants.map((variant, index) => [variant.id, seededMediaRefs[index] ?? []]))
     initialEditVariantMediaRefs.current = Object.fromEntries(mediaRefsByVariantId)
     setVariantRows(sortedVariants.map(variant => {
@@ -1716,14 +1724,23 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setMediaFiles(files => files.filter(file => file.id !== id))
     setVariantRows(rows => rows.map(row => row.mediaRefs.includes(`file|${id}`) ? { ...row, mediaRefs: row.mediaRefs.filter(reference => reference !== `file|${id}`) } : row))
   }
+  // A copy has nothing saved to delete: the removal is written into the page's history entry at once, so it holds after
+  // a reload, and the form stays clean when it had no other edits (nothing waits for Kaydet).
+  function rememberCopyRemovedMedia(urls: string[]) {
+    if (editProductId || !duplicateProductId || !urls.length) return
+    copyRemovedMedia.current = withCopyRemovedMedia(copyRemovedMedia.current, urls)
+    try { window.history.replaceState(historyStateWithCopyRemovedMedia(window.history.state, copyRemovedMedia.current), '') } catch { /* the in-memory list still holds */ }
+    if (!editorDirty) setSnapshotRequest(value => value + 1)
+  }
   function clearAllMedia() {
+    rememberCopyRemovedMedia(mediaUrls)
     setMediaFiles([])
     updateField('mediaUrls', '')
     setFamilyMediaOrder([])
     setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: [] })))
     setDraggedMedia(null)
     setDragOverMedia(null)
-    showFeedback('Görseller Temizlendi', 'Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
+    showFeedback('Görseller Temizlendi', duplicateProductId && !editProductId ? 'Görseller kopyadan kaldırıldı. Kaynak ürünün görselleri değişmez.' : 'Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
   }
   async function removeProductMedia(url: string, confirmed = false) {
     const targetKey = mediaImageKey(url)
@@ -1735,6 +1752,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     if (!isPersisted || !editProductId || !productToEdit.data) {
       updateField('mediaUrls', nextDraftMediaUrls.join('\n'))
       setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
+      if (duplicateProductId && !editProductId) {
+        rememberCopyRemovedMedia([url])
+        showFeedback('Görsel Kaldırıldı', 'Görsel kopyadan kaldırıldı. Kaynak ürünün görselleri değişmez.', 'success')
+        return
+      }
       showFeedback('Görsel Kaldırıldı', 'Görsel taslaktan kaldırıldı. Kalıcı olması için Kaydet’e basın.', 'info')
       return
     }
@@ -1873,11 +1895,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     return channelPricing[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }
   }
   function toggleCustomChannelPrice(connectionId: string) {
-    const opened = { listPrice: form.listPrice, salePrice: form.salePrice }
-    if (!(connectionId in channelPricing)) channelPricingBase.current = { ...channelPricingBase.current, [connectionId]: opened }
+    if (!(connectionId in channelPricing)) channelPricingBase.current = { ...channelPricingBase.current, [connectionId]: emptyChannelPricingDraft }
     setChannelPricing(current => {
       if (connectionId in current) { const { [connectionId]: _removed, ...rest } = current; return rest }
-      return { ...current, [connectionId]: opened }
+      return { ...current, [connectionId]: emptyChannelPricingDraft }
     })
   }
   // True when the person changed the card's own price since it was filled or switched on.
@@ -1887,7 +1908,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     return !base || !draft || Number(base.listPrice) !== Number(draft.listPrice) || Number(base.salePrice) !== Number(draft.salePrice)
   }
   function updateChannelPrice(connectionId: string, field: keyof ChannelPricingDraft, value: string) {
-    setChannelPricing(current => ({ ...current, [connectionId]: { ...(current[connectionId] ?? { listPrice: form.listPrice, salePrice: form.salePrice }), [field]: value } }))
+    setChannelPricing(current => ({ ...current, [connectionId]: { ...(current[connectionId] ?? emptyChannelPricingDraft), [field]: value } }))
   }
   function platformDisplayName(platform: VariantPlatformStatus) {
     const code = platform.platformCode.trim().toLocaleUpperCase('tr-TR')
@@ -2557,19 +2578,34 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) && !(familyMediaOrderDirty && mediaRefsSameSet(mediaUrls, initialProductMediaUrls))
         : mediaUrls.length > 0
       if (productMediaChanged) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
-      for (const [fileIndex, pendingMedia] of mediaFiles.entries()) { const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data }) }
+      // Uploads and media writes on one product stay one at a time: each raises the product's version, which the
+      // server checks. Each new file is uploaded once, here; the variants below reference its stored copy.
+      const progressTitle = editProductId ? pendingTitle : 'Ürün Oluşturuldu'
+      const showProgress = (message: string) => showFeedback(progressTitle, message, 'info', { persistent: true, key: productSaveToastKey })
+      const storedUrlByFileId = new Map<string, string>()
+      for (const [fileIndex, pendingMedia] of mediaFiles.entries()) {
+        showProgress(mediaSaveProgressMessage('upload', fileIndex, mediaFiles.length))
+        const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title)
+        const uploaded = await hubApi<{ fileAssetId?: string }>('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data })
+        if (uploaded?.fileAssetId) storedUrlByFileId.set(pendingMedia.id, storedProductMediaUrl(uploaded.fileAssetId))
+      }
       const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
-      for (const variant of product.variants) {
+      const pendingFileIds = new Set(mediaFiles.map(item => item.id))
+      const variantMediaWrites = product.variants.flatMap(variant => {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
-        if (!row) continue
+        if (!row) return []
         const originalMediaRefs = initialEditVariantMediaRefs.current[variant.id]
-        if (editProductId && originalMediaRefs && mediaRefsEqual(row.mediaRefs, originalMediaRefs)) continue
-        await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: variant.id, items: row.mediaRefs.flatMap((mediaRef, sortOrder) => mediaRef.startsWith('url|') ? [{ url: mediaRef.slice(4), sortOrder }] : []), altText: `${form.title} · ${row.optionSignature}` }) })
-        for (const [mediaIndex, mediaRef] of row.mediaRefs.entries()) {
-          if (mediaRef.startsWith('file|')) {
-            const file = mediaFiles.find(item => item.id === mediaRef.slice(5))?.file
-            if (file) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('variantId', variant.id); data.set('mediaRole', mediaIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaIndex)); data.set('altText', `${form.title} · ${row.optionSignature}`); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data }) }
-          }
+        if (editProductId && originalMediaRefs && mediaRefsEqual(row.mediaRefs, originalMediaRefs)) return []
+        return [{ variant, row }]
+      })
+      for (const [writeIndex, { variant, row }] of variantMediaWrites.entries()) {
+        if (mediaFiles.length) showProgress(mediaSaveProgressMessage('variants', writeIndex, variantMediaWrites.length))
+        const altText = `${form.title} · ${row.optionSignature}`
+        const plan = variantMediaReconcilePlan(row.mediaRefs, storedUrlByFileId, pendingFileIds)
+        await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: variant.id, items: plan.items, altText }) })
+        for (const upload of plan.uploads) {
+          const file = mediaFiles.find(item => item.id === upload.fileId)?.file
+          if (file) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('variantId', variant.id); data.set('mediaRole', upload.sortOrder === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(upload.sortOrder)); data.set('altText', altText); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data }) }
         }
       }
       if (editProductId && familyMediaOrderDirty) {
@@ -2599,32 +2635,34 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         }
         initialCustomChannelIds.current = new Set(Object.keys(channelPricing))
       }
-      for (const variant of product.variants) {
+      // Every (variant, store) price is its own row, so they are written a few at a time instead of one by one.
+      const offerWrites = product.variants.flatMap(variant => {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
-        if (!row) continue
-        for (const connectionId of targetConnectionIds) {
-          const pricing = channelPriceDraft(connectionId)
-          const platform = row.platformStatuses?.find(item => item.connectionId === connectionId)
-          const variantPricing = variantChannelPricing[`${row.key}:${connectionId}`]
-          // A marketplace that follows the panel takes the panel price ("Pazaryerlerinde Güncelle": the variant's own);
-          // one with "Özel Fiyat" never does: it takes the price typed in its card, or keeps each variant's own price.
-          const offerPrices = editorChannelOfferPrices({
-            custom: connectionId in channelPricing,
-            panel: platformUpdate ? { listPrice: row.listPrice, salePrice: row.salePrice } : { listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice) },
-            card: { listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice) },
-            cardEdited: channelPriceEdited(connectionId),
-            variantPrice: !platformUpdate && variantPricing ? { listPrice: Number(variantPricing.listPrice), salePrice: Number(variantPricing.salePrice) } : null,
-            offer: platform
-          })
-          const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: Number(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: Number(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: platformUpdate ? 'Ürün platform güncellemesi' : 'İlk ürün fiyatı' }
-          if (platformUpdate && platform?.offerId) {
-            if (platform.offerVersion == null) throw new Error(`${row.sku}: platform fiyat sürümü eksik; fiyat güncellenmedi.`)
-            await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
-          } else {
-            await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(offerCommand) })
-          }
+        return row ? targetConnectionIds.map(connectionId => ({ variant, row, connectionId })) : []
+      })
+      let offersWritten = 0
+      await mapWithConcurrency(offerWrites, channelOfferWriteConcurrency, async ({ variant, row, connectionId }) => {
+        const pricing = channelPriceDraft(connectionId)
+        const platform = row.platformStatuses?.find(item => item.connectionId === connectionId)
+        const variantPricing = variantChannelPricing[`${row.key}:${connectionId}`]
+        const offerPrices = editorChannelOfferPrices({
+          custom: connectionId in channelPricing,
+          panel: platformUpdate ? { listPrice: row.listPrice, salePrice: row.salePrice } : { listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice) },
+          card: { listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice) },
+          cardEdited: channelPriceEdited(connectionId),
+          variantPrice: !platformUpdate && variantPricing ? { listPrice: Number(variantPricing.listPrice), salePrice: Number(variantPricing.salePrice) } : null,
+          offer: platform
+        })
+        const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: Number(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: Number(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: platformUpdate ? 'Ürün platform güncellemesi' : 'İlk ürün fiyatı' }
+        if (platformUpdate && platform?.offerId) {
+          if (platform.offerVersion == null) throw new Error(`${row.sku}: platform fiyat sürümü eksik; fiyat güncellenmedi.`)
+          await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
+        } else {
+          await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(offerCommand) })
         }
-      }
+        offersWritten++
+        if (offerWrites.length > channelOfferWriteConcurrency) showProgress(mediaSaveProgressMessage('prices', offersWritten, offerWrites.length))
+      })
       // An edit names the stock only when a changed stock was written; a new product names the stock it opened with.
       if (editProductId ? stockResult.saved.length > 0 : rows.some(row => row.stock > 0)) completed.push('stok')
       if (!editProductId && targetConnectionIds.length) completed.push('kanal fiyatları')
@@ -3014,7 +3052,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             {/* Only the marketplaces with their own price are named; the rest take the main price. */}
             {(() => { const custom = platformCards.filter(card => card.connection.id in channelPricing); return custom.length ? <span className="marketplace-pricing-open-states">{custom.map(card => <span key={card.connection.id} className="marketplace-pricing-state is-on"><i aria-hidden="true" />{card.name}</span>)}</span> : <small>Tüm pazaryerleri ana fiyatla satılır.</small> })()}
           </button>}
-          {marketplacePricingOpen && <div className="marketplace-pricing-inline" id="marketplace-pricing-panel"><div className="marketplace-pricing-bar-list">{platformCards.map(card => { const pricing = channelPriceDraft(card.connection.id); const selected = selectedChannelIds.includes(card.connection.id); const customPrice = card.connection.id in channelPricing; return <fieldset className={`marketplace-pricing-bar${selected ? ' selected' : ''}`} key={card.connection.id} aria-label={`${card.name} pazaryeri fiyatlandırması`}><div className="marketplace-pricing-bar-heading"><span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.webp'} alt="" aria-hidden="true" /></span><span><strong>{card.name}</strong><small>{customPrice ? 'Özel fiyat açık' : 'Ana fiyatla satılır'}</small></span><label className="marketplace-pricing-switch" title="Bu pazaryeri için özel fiyat"><input type="checkbox" role="switch" aria-label={`${card.name} için özel fiyat`} checked={customPrice} onChange={() => toggleCustomChannelPrice(card.connection.id)} /></label></div><div className="marketplace-pricing-fields"><label>Liste Fiyatı<input value={pricing.listPrice} disabled={!customPrice} onChange={event => updateChannelPrice(card.connection.id, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /></label><label>Satış Fiyatı<input value={pricing.salePrice} disabled={!customPrice} onChange={event => updateChannelPrice(card.connection.id, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /></label></div></fieldset>})}</div></div>}
+          {marketplacePricingOpen && <div className="marketplace-pricing-inline" id="marketplace-pricing-panel"><div className="marketplace-pricing-bar-list">{platformCards.map(card => { const pricing = channelPricingInputs(channelPricing[card.connection.id]); const selected = selectedChannelIds.includes(card.connection.id); const customPrice = card.connection.id in channelPricing; return <fieldset className={`marketplace-pricing-bar${selected ? ' selected' : ''}`} key={card.connection.id} aria-label={`${card.name} pazaryeri fiyatlandırması`}><div className="marketplace-pricing-bar-heading"><span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.webp'} alt="" aria-hidden="true" /></span><span><strong>{card.name}</strong><small>{customPrice ? 'Özel fiyat açık' : 'Ana fiyatla satılır'}</small></span><label className="marketplace-pricing-switch" title="Bu pazaryeri için özel fiyat"><input type="checkbox" role="switch" aria-label={`${card.name} için özel fiyat`} checked={customPrice} onChange={() => toggleCustomChannelPrice(card.connection.id)} /></label></div><div className="marketplace-pricing-fields"><label>Liste Fiyatı<input value={pricing.listPrice} disabled={!customPrice} onChange={event => updateChannelPrice(card.connection.id, 'listPrice', event.target.value)} type="number" min="0" step="0.01" /></label><label>Satış Fiyatı<input value={pricing.salePrice} disabled={!customPrice} onChange={event => updateChannelPrice(card.connection.id, 'salePrice', event.target.value)} type="number" min="0" step="0.01" /></label></div></fieldset>})}</div></div>}
         </section>
       </div>
     </div>
