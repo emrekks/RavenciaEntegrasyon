@@ -1930,11 +1930,15 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         if (platformCode == "SHOPIFY") return await EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: true, cancellationToken);
         var sections = ProductUpdateFields.Sections(fields);
         if (!sections.Succeeded) return ServiceResult<Guid>.Fail(sections.Error!.Code, sections.Error.Message, sections.Error.Status);
+        // Pazarama takes the VAT rate alone (no content update API): a pick without it has nothing to send there.
+        if (platformCode == "PAZARAMA" && fields is not null && !fields.Any(field => string.Equals(field?.Trim(), ProductUpdateFields.VatRate, StringComparison.OrdinalIgnoreCase)))
+            return ServiceResult<Guid>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Pazarama'ya API ile yalnız KDV oranı güncellenebilir.", 422);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "PAZARAMA") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
         if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Güncelleme yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
-        if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
+        // Pazarama writes need both write switches in any environment, as its product create does.
+        if ((IntegrationRuntimePolicy.IsProduction(connection) || connection.PlatformCode == "PAZARAMA") && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var build = await new ProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, sections.Value);
         if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
         var draft = build.Value!;

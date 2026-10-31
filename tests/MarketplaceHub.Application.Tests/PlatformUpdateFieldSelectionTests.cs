@@ -47,9 +47,10 @@ public sealed class PlatformUpdateFieldSelectionTests
         Assert.True(warranty.Hepsiburada);
         Assert.False(warranty.Trendyol);
         Assert.True(warranty.Any);
-        // Delivery alone: nothing for Hepsiburada, still a Trendyol request.
+        // Delivery alone: no Hepsiburada product package (its dispatch time goes apart), still a Trendyol request.
         var delivery = ProductUpdateFields.Sections(["DELIVERY"]).Value!;
         Assert.False(delivery.Hepsiburada);
+        Assert.True(delivery.Delivery);
         Assert.True(delivery.Trendyol);
     }
 
@@ -65,9 +66,9 @@ public sealed class PlatformUpdateFieldSelectionTests
     [Theory]
     [InlineData("TRENDYOL", "TITLE,DESCRIPTION,IMAGES,ATTRIBUTES,DESI,VAT_RATE,DELIVERY")]
     [InlineData("trendyol ", "TITLE,DESCRIPTION,IMAGES,ATTRIBUTES,DESI,VAT_RATE,DELIVERY")]
-    [InlineData("HEPSIBURADA", "TITLE,DESCRIPTION,IMAGES,ATTRIBUTES,WARRANTY,DESI,VAT_RATE")]
+    [InlineData("HEPSIBURADA", "TITLE,DESCRIPTION,IMAGES,ATTRIBUTES,WARRANTY,DESI,VAT_RATE,DELIVERY")]
     [InlineData("N11", "")]
-    [InlineData("PAZARAMA", "")]
+    [InlineData("PAZARAMA", "VAT_RATE")]
     [InlineData("PTTAVM", "")]
     [InlineData("SHOPIFY", "TITLE,DESCRIPTION,IMAGES")]
     [InlineData(null, "")]

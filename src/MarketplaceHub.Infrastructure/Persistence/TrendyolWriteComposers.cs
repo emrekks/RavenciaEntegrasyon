@@ -36,7 +36,8 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
     };
 
     // sections: the requests of an approved Trendyol product that go (content, variant, delivery); null is all of them.
-    // A product Trendyol has not approved yet, and a Hepsiburada product, take one full update whatever was picked.
+    // A product Trendyol has not approved yet takes one full update whatever was picked; a Hepsiburada product takes its
+    // whole product package when one of its fields was picked, and the dispatch time apart when DELIVERY was.
     public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, ProductUpdateSections? sections = null)
     {
         sections ??= ProductUpdateSections.All;
@@ -44,10 +45,13 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase))
         {
-            // Hepsiburada takes no delivery time: a pick of that alone has nothing to send there.
-            if (!sections.Hepsiburada) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Hepsiburada'ya gönderilemiyor.", 422);
-            return await new HepsiburadaProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+            // The product package and the dispatch time (a shipping-info upload) go apart; each only when picked.
+            if (!sections.Hepsiburada && !sections.Delivery) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Hepsiburada'ya gönderilemiyor.", 422);
+            return await new HepsiburadaProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, sections);
         }
+        // Pazarama takes the VAT rate alone (CatalogService lets only that pick through).
+        if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
+            return await new PazaramaProductUpdateComposer(db).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         // Trendyol takes no warranty: a pick of that alone has nothing to send there (it must not send the whole card of
         // a product Trendyol has not approved yet).
         if (!sections.Trendyol) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Trendyol'a gönderilemiyor.", 422);

@@ -18,27 +18,33 @@ describe('platform update fields', () => {
 
   it('follows the stores: each shows what it takes, the rest none', () => {
     expect(availablePlatformUpdateFields(['TRENDYOL'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'DELIVERY', 'PRICE', 'STOCK', 'VAT_RATE'])
-    expect(availablePlatformUpdateFields(['HEPSIBURADA'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'PRICE', 'STOCK', 'VAT_RATE'])
+    expect(availablePlatformUpdateFields(['HEPSIBURADA'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'DELIVERY', 'PRICE', 'STOCK', 'VAT_RATE'])
     expect(availablePlatformUpdateFields(['HEPSIBURADA', 'TRENDYOL'])).toContain('DELIVERY')
     expect(availablePlatformUpdateFields(['SHOPIFY'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'PRICE', 'STOCK'])
-    for (const code of ['N11', 'PAZARAMA', 'PTTAVM']) expect(availablePlatformUpdateFields([code])).toEqual([])
+    expect(availablePlatformUpdateFields(['PAZARAMA'])).toEqual(['PRICE', 'STOCK', 'VAT_RATE'])
+    for (const code of ['N11', 'PTTAVM']) expect(availablePlatformUpdateFields([code])).toEqual([])
     expect(availablePlatformUpdateFields([])).toEqual([])
   })
 
   it('names the stores of a field only some of them take', () => {
-    expect(partialPlatformUpdateField('DELIVERY', ['TRENDYOL', 'HEPSIBURADA'])).toEqual(['TRENDYOL'])
+    expect(partialPlatformUpdateField('DELIVERY', ['TRENDYOL', 'SHOPIFY'])).toEqual(['TRENDYOL'])
     expect(partialPlatformUpdateField('WARRANTY', ['TRENDYOL', 'HEPSIBURADA'])).toEqual(['HEPSIBURADA'])
-    expect(partialPlatformUpdateField('DELIVERY', ['trendyol', 'TRENDYOL ', 'HEPSIBURADA'])).toEqual(['TRENDYOL'])
+    expect(partialPlatformUpdateField('DELIVERY', ['trendyol', 'TRENDYOL ', 'SHOPIFY'])).toEqual(['TRENDYOL'])
     expect(partialPlatformUpdateField('TITLE', ['TRENDYOL', 'HEPSIBURADA'])).toEqual([])
+    // Hepsiburada now takes the delivery time too.
+    expect(partialPlatformUpdateField('DELIVERY', ['TRENDYOL', 'HEPSIBURADA'])).toEqual([])
     expect(partialPlatformUpdateField('DELIVERY', ['TRENDYOL'])).toEqual([])
-    expect(partialPlatformUpdateField('DELIVERY', ['HEPSIBURADA'])).toEqual([])
+    expect(partialPlatformUpdateField('TITLE', ['TRENDYOL', 'PAZARAMA'])).toEqual(['TRENDYOL'])
+    expect(partialPlatformUpdateField('VAT_RATE', ['SHOPIFY', 'PAZARAMA'])).toEqual(['PAZARAMA'])
   })
 
   it('drops a field no longer shown and ticks one shown only now', () => {
     const hepsiburada = availablePlatformUpdateFields(['HEPSIBURADA'])
-    const both = availablePlatformUpdateFields(['HEPSIBURADA', 'TRENDYOL'])
-    expect(platformUpdateFieldsForStores(['TITLE', 'PRICE'], hepsiburada, both)).toEqual(['TITLE', 'DELIVERY', 'PRICE'])
-    expect(platformUpdateFieldsForStores(['TITLE', 'DELIVERY', 'PRICE'], both, hepsiburada)).toEqual(['TITLE', 'PRICE'])
+    const both = availablePlatformUpdateFields(['HEPSIBURADA', 'SHOPIFY'])
+    const shopify = availablePlatformUpdateFields(['SHOPIFY'])
+    expect(platformUpdateFieldsForStores(['TITLE', 'PRICE'], shopify, both)).toEqual(['TITLE', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'DELIVERY', 'PRICE', 'VAT_RATE'])
+    expect(platformUpdateFieldsForStores(['TITLE', 'DELIVERY', 'PRICE'], both, shopify)).toEqual(['TITLE', 'PRICE'])
+    expect(platformUpdateFieldsForStores(['TITLE', 'DELIVERY'], both, hepsiburada)).toEqual(['TITLE', 'DELIVERY'])
     // A field the user unticked stays unticked while it stays shown.
     expect(platformUpdateFieldsForStores(['TITLE'], both, availablePlatformUpdateFields(['TRENDYOL']))).toEqual(['TITLE'])
     expect(platformUpdateFieldsForStores(['TITLE'], both, [])).toEqual([])
@@ -49,7 +55,7 @@ describe('platform update fields', () => {
     const all = platformUpdatePlan('TRENDYOL', defaultPlatformUpdateFields)
     expect(all.productFields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'DELIVERY', 'VAT_RATE'])
     expect([all.price, all.stock]).toEqual([true, true])
-    expect(platformUpdatePlan('HEPSIBURADA', defaultPlatformUpdateFields).productFields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'VAT_RATE'])
+    expect(platformUpdatePlan('HEPSIBURADA', defaultPlatformUpdateFields).productFields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'DELIVERY', 'VAT_RATE'])
     const quick = platformUpdatePlan('TRENDYOL', priceStockPlatformUpdateFields)
     expect(quick.productFields).toEqual([])
     expect([quick.price, quick.stock]).toEqual([true, true])
@@ -76,7 +82,7 @@ describe('platform update fields', () => {
     expect(warranty.productFields).toEqual([])
   })
 
-  it('sends the whole Hepsiburada product package for any product field, and nothing for delivery alone', () => {
+  it('sends the whole Hepsiburada product package for any product field, and the delivery time alone apart', () => {
     const desi = platformUpdatePlan('HEPSIBURADA', ['DESI'])
     expect(desi.fields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'VAT_RATE'])
     expect(desi.sends).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Garanti Süresi', 'Desi', 'KDV Oranı'])
@@ -84,9 +90,32 @@ describe('platform update fields', () => {
     expect(desi.productFields).toEqual(['DESI'])
     expect(platformUpdatePlan('HEPSIBURADA', ['PRICE']).sends).toEqual(['Satış Fiyatı'])
     const delivery = platformUpdatePlan('HEPSIBURADA', ['DELIVERY'])
-    expect(delivery.sends).toEqual([])
-    expect(delivery.productFields).toEqual([])
-    expect(platformUpdateSummary(delivery)).toBe('Seçili alanlardan hiçbiri bu platforma gönderilmiyor')
+    expect(delivery.fields).toEqual(['DELIVERY'])
+    expect(delivery.sends).toEqual(['Teslimat Süresi'])
+    expect(delivery.extras).toEqual([])
+    expect(delivery.productFields).toEqual(['DELIVERY'])
+    expect([delivery.price, delivery.stock]).toEqual([false, false])
+    expect(platformUpdateSummary(delivery)).toBe('Teslimat Süresi')
+    expect(platformUpdatePlan('HEPSIBURADA', ['DESI', 'DELIVERY']).productFields).toEqual(['DESI', 'DELIVERY'])
+  })
+
+  it('sends Pazarama the VAT rate alone as its product update, and price and stock together', () => {
+    const vat = platformUpdatePlan('PAZARAMA', ['VAT_RATE'])
+    expect(vat.sends).toEqual(['KDV Oranı'])
+    expect(vat.productFields).toEqual(['VAT_RATE'])
+    expect([vat.price, vat.stock]).toEqual([false, false])
+    // Content picks have no Pazarama API: nothing of them goes.
+    const content = platformUpdatePlan('PAZARAMA', ['TITLE', 'DESCRIPTION', 'IMAGES', 'DESI', 'DELIVERY'])
+    expect(content.sends).toEqual([])
+    expect(content.productFields).toEqual([])
+    const price = platformUpdatePlan('PAZARAMA', ['PRICE'])
+    expect(price.sends).toEqual(['Liste Fiyatı', 'Satış Fiyatı', 'Stok'])
+    expect(price.bundled).toEqual(['STOCK'])
+    expect(price.productFields).toEqual([])
+    expect([price.price, price.stock]).toEqual([true, true])
+    const all = platformUpdatePlan('PAZARAMA', defaultPlatformUpdateFields)
+    expect(all.productFields).toEqual(['VAT_RATE'])
+    expect([all.price, all.stock]).toEqual([true, true])
   })
 
   it('sends the whole Shopify card as the product update for any pick, price and stock included', () => {

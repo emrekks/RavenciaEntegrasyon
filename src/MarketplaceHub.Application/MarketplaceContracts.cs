@@ -467,8 +467,8 @@ public sealed record ProductUpdatePublication(Guid ProductId, string Mode, strin
 // the listing's origin rides along) and delivery (the product card's Teslimat Süresi); each goes only when one of its
 // fields was picked, and always whole. A product Trendyol has not approved yet, and every Hepsiburada product, takes one
 // full update carrying all of it.
-// Hepsiburada: whether a field its single update carries was picked (it takes no delivery time; it alone takes the
-// warranty).
+// Hepsiburada: whether a field its single update carries was picked (it alone takes the warranty); its delivery time
+// goes apart, as Delivery, in a listing shipping-info upload.
 public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true)
 {
     public static readonly ProductUpdateSections All = new(true, true, true);
@@ -500,17 +500,21 @@ public static class ProductUpdateFields
 
     // The fields each marketplace's product update can take (the same table the editor's "Platformlarda Güncelle" shows;
     // platform-update-fields.ts). Trendyol: content, variant and delivery requests (no warranty). Hepsiburada: one
-    // product update with the warranty and no delivery time. Shopify: the whole card in one productSet (price and stock ride
-    // along, so the picked fields do not narrow it). Every other marketplace has no product update in the panel yet.
+    // product update with the warranty, and the dispatch time (DispatchTime) in a listing shipping-info upload of its own.
+    // Shopify: the whole card in one productSet (price and stock ride along, so the picked fields do not narrow it).
+    // Pazarama: the VAT rate alone (product/vatRate/bulk); it has no content update API. Every other marketplace has no
+    // product update in the panel yet.
     public static IReadOnlySet<string> SupportedBy(string? platformCode) => platformCode?.Trim().ToUpperInvariant() switch
     {
         "TRENDYOL" => TrendyolSupported,
         "HEPSIBURADA" => HepsiburadaSupported,
         "SHOPIFY" => ShopifySupported,
+        "PAZARAMA" => PazaramaSupported,
         _ => NoneSupported
     };
     private static readonly IReadOnlySet<string> TrendyolSupported = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery], StringComparer.Ordinal);
-    private static readonly IReadOnlySet<string> HepsiburadaSupported = new HashSet<string>(HepsiburadaFields, StringComparer.Ordinal);
+    private static readonly IReadOnlySet<string> HepsiburadaSupported = new HashSet<string>([.. HepsiburadaFields, Delivery], StringComparer.Ordinal);
+    private static readonly IReadOnlySet<string> PazaramaSupported = new HashSet<string>([VatRate], StringComparer.Ordinal);
     private static readonly IReadOnlySet<string> ShopifySupported = new HashSet<string>([Title, Description, Images], StringComparer.Ordinal);
     private static readonly IReadOnlySet<string> NoneSupported = new HashSet<string>(StringComparer.Ordinal);
 
@@ -526,7 +530,9 @@ public static class ProductUpdateFields
     }
 }
 
-public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
+// ProductOperationId: the id of the product update request once it was answered (Hepsiburada's ticket-api trackingId),
+// kept while later phases (the dispatch time upload) run, so the approval check reads the product update's result.
+public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt, string? ProductOperationId = null);
 // Pazarama sale open/close by barcode; it travels in a PRODUCT_ARCHIVE job and is told apart by SaleStatusBarcodes.
 public sealed record PazaramaSaleStatusJobPayload(Guid JobId, IReadOnlyList<string> SaleStatusBarcodes, bool Close, DateTimeOffset StartedAt);
 public sealed record ProductArchiveJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, bool Archived, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);

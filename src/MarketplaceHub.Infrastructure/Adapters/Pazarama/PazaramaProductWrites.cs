@@ -9,7 +9,8 @@ namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 
 // Product writes (phase 9): create (POST product/create, results by batch id), sale open/close
 // (POST product/external-status) and the publication state lookup. Pazarama has no service to edit a
-// listing's content, so the update and archive-as-delete operations stay unsupported.
+// listing's content, so the content update and archive-as-delete operations stay unsupported; the VAT rate alone
+// can change (PazaramaVatRate.cs).
 //
 // Operation ids carry what the poll needs, so any process (API or worker) can answer it:
 // "b:{batchRequestId}:{count}:{barcodes}" for a create batch polled with getProductBatchResult (the barcodes
@@ -170,7 +171,7 @@ public sealed partial class PazaramaHttpClient
 
     public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
+    // UpdateApprovedVariantsAsync carries the VAT rate update (PazaramaVatRate.cs), the one field Pazarama lets change.
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
 }
 

@@ -74,11 +74,14 @@ type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string;
 //   delivery-info-bulk-update (the product card's Teslimat Süresi); price-and-inventory takes the price (list and sale
 //   together) and the stock apart. Trendyol takes no warranty.
 // - Hepsiburada: one product update per hbSku with name, description, barcode, attributes, VAT, warranty, desi and
-//   images; inventory-uploads takes the sale price and the stock apart. No delivery time. (The update has a video slot,
-//   but the publication never fills it, so no video goes.)
+//   images; the listing shipping-info upload takes the dispatch time (DispatchTime, the card's Teslimat Süresi) alone;
+//   inventory-uploads takes the sale price and the stock apart. (The update has a video slot, but the publication never
+//   fills it, so no video goes.)
 // - Shopify: the publication productSet again, under the handle the panel gave the product: title, description, images,
 //   the colour/size options, the product type, price and stock of the whole model family in one request.
-// - n11, Pazarama and PTT AVM have no product update in the panel yet: no field of the dialog goes there.
+// - Pazarama: product/vatRate/bulk takes the VAT rate per barcode; it has no content update API. Price and stock go by
+//   barcode in the price/stock send, which builds them together (each only when it differs from Pazarama's).
+// - n11 and PTT AVM have no product update in the panel yet: no field of the dialog goes there.
 // The API keeps the same table (ProductUpdateFields.SupportedBy).
 const profiles: Record<string, PlatformUpdateProfile> = {
   TRENDYOL: {
@@ -94,10 +97,18 @@ const profiles: Record<string, PlatformUpdateProfile> = {
   HEPSIBURADA: {
     requests: [
       { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'VAT_RATE'], sends: ['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Garanti Süresi', 'Desi', 'KDV Oranı'], extra: ['Renk / Beden', 'Menşei', 'Barkod'] },
+      { fields: ['DELIVERY'], sends: ['Teslimat Süresi'] },
       { fields: ['PRICE'], sends: ['Satış Fiyatı'] },
       { fields: ['STOCK'], sends: ['Stok'] }
     ],
-    note: 'Hepsiburada ürün bilgilerini tek pakette alır; teslimat süresi gönderilmez.'
+    note: 'Hepsiburada ürün bilgilerini tek pakette alır; teslimat süresi (kargoya veriliş süresi) ayrı istekle gider.'
+  },
+  PAZARAMA: {
+    requests: [
+      { fields: ['VAT_RATE'], sends: ['KDV Oranı'] },
+      { fields: ['PRICE', 'STOCK'], sends: ['Liste Fiyatı', 'Satış Fiyatı', 'Stok'] }
+    ],
+    note: 'Pazarama API ile ürün içeriği güncellenmez: ürün adı, açıklama ve görseller yalnız Pazarama’nın kendi panelinden değişir. Fiyat ve stok birlikte seçilir.'
   },
   SHOPIFY: {
     requests: [

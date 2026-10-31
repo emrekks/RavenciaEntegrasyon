@@ -9,8 +9,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfiguration configuration)
 {
-    public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    // sections: Hepsiburada is the product package (ticket-api), Delivery the dispatch time (listing shipping-info upload);
+    // null is both.
+    public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, ProductUpdateSections? sections = null)
     {
+        sections ??= ProductUpdateSections.All;
         var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
@@ -70,13 +73,36 @@ internal sealed class HepsiburadaProductUpdateComposer(AppDbContext db, IConfigu
             items.Add(updateItem);
         }
 
-        var payloadJson = JsonSerializer.Serialize(new { merchantId, items });
-        var productLinkExists = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(link => link.TenantId == tenantId && link.ConnectionId == connectionId && link.ProductId == productId, cancellationToken);
-        var mode = productLinkExists ? "APPROVED" : "UNAPPROVED";
         var noItems = "{\"items\":[]}";
         var empty = "{}";
-        var update = new ProductUpdatePublication(productId, mode, Hash(payloadJson), mode == "UNAPPROVED" ? payloadJson : empty, mode == "APPROVED" ? payloadJson : noItems, noItems, noItems);
+        // The product package goes only when one of its fields was picked; a pick of the dispatch time alone sends none.
+        var payloadJson = sections.Hepsiburada ? JsonSerializer.Serialize(new { merchantId, items }) : null;
+        string? dispatchJson = null;
+        if (sections.Delivery)
+        {
+            // Teslimat Süresi: the listing's own override, else the product card's days (as Trendyol's deliveryDuration).
+            var listingDays = await db.ChannelListingProfiles.AsNoTracking().Where(profile => profile.TenantId == tenantId && profile.Id == draft.ProfileId).Select(profile => profile.DeliveryTimeDays).SingleOrDefaultAsync(cancellationToken);
+            var productDays = await db.Products.AsNoTracking().Where(product => product.TenantId == tenantId && product.Id == productId).Select(product => product.DeliveryDays).SingleOrDefaultAsync(cancellationToken);
+            dispatchJson = DispatchTimePayload(merchantId, draft.Variants.Select(variant => (remoteLinks[variant.VariantId], variant.Sku)), ProductPublicationComposer.DeliveryDays(listingDays, productDays));
+        }
+        if (payloadJson is null && dispatchJson is null)
+            return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_NOTHING_TO_SEND", "Seçilen ürün bilgileri için Hepsiburada'ya gönderilecek değer yok (ürün kartında teslimat süresi yok).", 422);
+        var productLinkExists = await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(link => link.TenantId == tenantId && link.ConnectionId == connectionId && link.ProductId == productId, cancellationToken);
+        var mode = productLinkExists ? "APPROVED" : "UNAPPROVED";
+        var update = new ProductUpdatePublication(productId, mode, Hash(string.Join("\n", payloadJson ?? "", dispatchJson ?? "")),
+            mode == "UNAPPROVED" ? payloadJson ?? empty : empty, mode == "APPROVED" ? payloadJson ?? noItems : noItems, noItems, dispatchJson ?? noItems);
         return ServiceResult<ProductUpdateDraft>.Ok(new(draft.ProfileId, update, draft.Variants));
+    }
+
+    // The listing shipping-info upload (POST listings/merchantid/{merchantId}/shipping-info-uploads) per listing:
+    // hepsiburadaSku, merchantSku and dispatchTime (whole days to hand the order to the carrier). Every other field of that
+    // request (cargo companies, addresses, shipping profile) is left out, never sent empty. Null when the card holds no
+    // days: an unknown dispatch time is not sent.
+    internal static string? DispatchTimePayload(string merchantId, IEnumerable<(string HepsiburadaSku, string MerchantSku)> listings, int? days)
+    {
+        if (days is not > 0) return null;
+        var items = listings.Select(listing => new Dictionary<string, object> { ["hepsiburadaSku"] = listing.HepsiburadaSku, ["merchantSku"] = listing.MerchantSku, ["dispatchTime"] = days.Value }).ToList();
+        return items.Count == 0 ? null : JsonSerializer.Serialize(new { merchantId, items });
     }
 
     private static Dictionary<string, JsonElement> ReadAttributes(JsonElement item)

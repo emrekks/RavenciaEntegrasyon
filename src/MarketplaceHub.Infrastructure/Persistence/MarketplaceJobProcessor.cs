@@ -1801,12 +1801,34 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         var status = operationResult.Value!;
         if (string.Equals(status.Status, "IN_PROGRESS", StringComparison.OrdinalIgnoreCase)) return JobExecutionResult.Retry("PRODUCT_UPDATE_BATCH_PENDING", isHepsiburada ? "Hepsiburada ürün import güncelleme sonucu bekleniyor." : "Trendyol ürün güncelleme batch sonucu bekleniyor.", ProductUpdatePollDelay(payload.SubmittedAt.Value), payload.ExternalOperationId);
+        // Hepsiburada's dispatch time upload: an error state that names no SKU applied nothing.
+        var hepsiburadaDispatch = isHepsiburada && phase == "POLL_DELIVERY";
+        if (hepsiburadaDispatch && string.Equals(status.Status, "REJECTED", StringComparison.OrdinalIgnoreCase))
+            return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_REJECTED", "HEPSIBURADA_DISPATCH_TIME_REJECTED", JobExecutionResult.Blocked("HEPSIBURADA_DISPATCH_TIME_REJECTED", "Hepsiburada teslimat süresi güncellemesini reddetti.", payload.ExternalOperationId), cancellationToken);
         if (!string.Equals(status.Status, "COMPLETED", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_UPDATE_BATCH_STATUS_UNKNOWN", JobExecutionResult.ManualReview("PRODUCT_UPDATE_BATCH_STATUS_UNKNOWN", "Ürün güncelleme batch servisi tanınmayan durum döndürdü.", payload.ExternalOperationId), cancellationToken);
 
         var failed = status.Lines.Where(x => !x.Succeeded).ToList();
         if (phase == "POLL_CONTENT" && failed.Count > 0)
             return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_REJECTED", SafeCode(failed[0].ErrorCode) ?? "PRODUCT_UPDATE_CONTENT_REJECTED", JobExecutionResult.Blocked("PRODUCT_UPDATE_CONTENT_REJECTED", "Trendyol content güncellemesi reddedildi.", payload.ExternalOperationId), cancellationToken);
-        if (phase is "POLL_UNAPPROVED" or "POLL_VARIANTS" or "POLL_DELIVERY")
+        if (hepsiburadaDispatch)
+        {
+            // Done lists only the refused SKUs (by merchantSku, else hbSku); a SKU it leaves out was applied. A failed upload
+            // leaves the SKUs it does not name unconfirmed.
+            if (status.UnlistedLinesUnconfirmed)
+                return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "HEPSIBURADA_DISPATCH_TIME_UNCONFIRMED", JobExecutionResult.ManualReview("HEPSIBURADA_DISPATCH_TIME_UNCONFIRMED", "Hepsiburada teslimat süresi yüklemesi hata verdi; adı geçmeyen listing'lerin sonucu belirsiz.", payload.ExternalOperationId), cancellationToken);
+            var hepsiburadaSkus = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, x => x.ExternalId, cancellationToken);
+            foreach (var line in failed)
+            {
+                var listing = listings.FirstOrDefault(x => string.Equals(x.ExternalSku, line.ExternalKey, StringComparison.OrdinalIgnoreCase)
+                    || hepsiburadaSkus.TryGetValue(x.VariantId, out var hbSku) && string.Equals(hbSku, line.ExternalKey, StringComparison.OrdinalIgnoreCase));
+                if (listing is null)
+                    return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_UPDATE_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_UPDATE_BATCH_CONTRACT_INVALID", "Hepsiburada teslimat süresi sonucu gönderilmemiş bir SKU içeriyor.", payload.ExternalOperationId), cancellationToken);
+                var code = SafeCode(line.ErrorCode) ?? "HEPSIBURADA_DISPATCH_TIME_REJECTED";
+                listing.ActualStatus = "UPDATE_REJECTED"; listing.RejectionCode = code;
+                if (states.TryGetValue(listing.VariantId, out var state)) { state.ActualStatus = "UPDATE_REJECTED"; state.LastRejectionCode = code; state.Version++; }
+            }
+        }
+        else if (phase is "POLL_UNAPPROVED" or "POLL_VARIANTS" or "POLL_DELIVERY")
         {
             if (status.Lines.Count == 0) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_UPDATE_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_UPDATE_BATCH_CONTRACT_INVALID", "Ürün güncelleme batch sonucu satır içermiyor.", payload.ExternalOperationId), cancellationToken);
             var updateKeys = status.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.Last(), StringComparer.OrdinalIgnoreCase);
@@ -1841,6 +1863,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var isHepsiburada = string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
         var rejected = listings.Count(x => string.Equals(x.ActualStatus, "UPDATE_REJECTED", StringComparison.Ordinal));
+        // An update the marketplace applies in place, with no product review behind it (Hepsiburada's dispatch time alone,
+        // Pazarama's VAT rate), leaves each listing as it was and starts no approval check.
+        if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase)
+            || isHepsiburada && !HasItems(payload.UnapprovedPayloadJson) && !HasItems(payload.ApprovedContentPayloadJson))
+        {
+            profile.ActualStatus = ProductProfileStatusAfterInPlaceUpdate(listings.Select(x => x.ActualStatus).ToList());
+            profile.LastRejectionCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)); profile.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+            return rejected == 0 ? JobExecutionResult.Success() : rejected == listings.Count ? JobExecutionResult.Blocked("PRODUCT_UPDATE_REJECTED", "Ürün güncellemesindeki tüm varyantlar reddedildi.") : JobExecutionResult.Blocked("PRODUCT_UPDATE_PARTIAL_FAILURE", "Ürün güncellemesi bazı varyantlar için reddedildi.");
+        }
         foreach (var listing in listings.Where(x => !string.Equals(x.ActualStatus, "UPDATE_REJECTED", StringComparison.Ordinal)))
         {
             listing.ActualStatus = isHepsiburada ? "IMPORT_ACCEPTED" : "APPROVAL_PENDING"; listing.RejectionCode = null;
@@ -1848,7 +1880,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         profile.ActualStatus = rejected == 0 ? (isHepsiburada ? "IMPORT_ACCEPTED" : "APPROVAL_PENDING") : rejected == listings.Count ? "UPDATE_REJECTED" : "UPDATE_PARTIAL_FAILURE";
         profile.LastRejectionCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)); profile.Version++;
-        if (rejected < listings.Count) await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, payload.ExternalOperationId);
+        // Hepsiburada's approval check reads the product update's own trackingId, not the dispatch time upload that ran after it.
+        var approvalOperationId = payload.ProductOperationId
+            ?? (payload.ExternalOperationId?.StartsWith(Adapters.Hepsiburada.HepsiburadaHttpClient.ShippingInfoUploadPrefix, StringComparison.Ordinal) == true ? null : payload.ExternalOperationId);
+        if (rejected < listings.Count) await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, approvalOperationId);
         await db.SaveChangesAsync(cancellationToken);
         return rejected == 0 ? JobExecutionResult.Success() : rejected == listings.Count ? JobExecutionResult.Blocked("PRODUCT_UPDATE_REJECTED", "Trendyol ürün güncellemesindeki tüm varyantlar reddedildi.") : JobExecutionResult.Blocked("PRODUCT_UPDATE_PARTIAL_FAILURE", "Trendyol ürün güncellemesi bazı varyantlar için reddedildi.");
     }
@@ -2532,17 +2567,31 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
     private static bool HasItems(string payloadJson) { try { using var doc = JsonDocument.Parse(payloadJson); var root = doc.RootElement; return root.ValueKind == JsonValueKind.Array ? root.GetArrayLength() > 0 : root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > 0; } catch (JsonException) { return false; } }
     private static string UpdatePayload(ProductUpdateJobPayload payload, string phase) => phase switch { "SUBMIT_UNAPPROVED" or "POLL_UNAPPROVED" => payload.UnapprovedPayloadJson, "SUBMIT_CONTENT" or "POLL_CONTENT" => payload.ApprovedContentPayloadJson, "SUBMIT_VARIANTS" or "POLL_VARIANTS" => payload.ApprovedVariantPayloadJson, "SUBMIT_DELIVERY" or "POLL_DELIVERY" => payload.ApprovedDeliveryPayloadJson, _ => "{}" };
-    private static ProductUpdateJobPayload? AdvanceUpdate(ProductUpdateJobPayload payload, string phase)
+    // The card's status after an update applied in place: its listings' own status when they share one (Yayında stays
+    // Yayında), the rejection when the update was refused, else what the listings say together.
+    internal static string ProductProfileStatusAfterInPlaceUpdate(IReadOnlyList<string?> listingStatuses)
     {
+        var rejected = listingStatuses.Count(x => string.Equals(x, "UPDATE_REJECTED", StringComparison.Ordinal));
+        if (rejected > 0) return rejected == listingStatuses.Count ? "UPDATE_REJECTED" : "UPDATE_PARTIAL_FAILURE";
+        var distinct = listingStatuses.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.Ordinal).ToList();
+        if (distinct.Count == 1 && distinct[0] is { } shared && listingStatuses.All(x => !string.IsNullOrWhiteSpace(x))) return shared;
+        return listingStatuses.Any(x => string.Equals(x, "LIVE", StringComparison.Ordinal)) ? "PARTIAL_LIVE" : "MANUAL_REVIEW";
+    }
+
+    internal static ProductUpdateJobPayload? AdvanceUpdate(ProductUpdateJobPayload payload, string phase)
+    {
+        // A full update ends with the delivery phase as well: a Trendyol one carries no delivery items (skipped without a
+        // call), a Hepsiburada one may carry the dispatch time upload. The product request's id is kept for the approval check.
         var next = phase switch
         {
-            "SUBMIT_UNAPPROVED" or "POLL_UNAPPROVED" => null,
+            "SUBMIT_UNAPPROVED" or "POLL_UNAPPROVED" => "SUBMIT_DELIVERY",
             "SUBMIT_CONTENT" or "POLL_CONTENT" => "SUBMIT_VARIANTS",
             "SUBMIT_VARIANTS" or "POLL_VARIANTS" => "SUBMIT_DELIVERY",
             "SUBMIT_DELIVERY" or "POLL_DELIVERY" => null,
             _ => null
         };
-        return next is null ? null : payload with { Phase = next, ExternalOperationId = null, SubmittedAt = null };
+        var productOperationId = phase is "POLL_UNAPPROVED" or "POLL_CONTENT" ? payload.ExternalOperationId : payload.ProductOperationId;
+        return next is null ? null : payload with { Phase = next, ExternalOperationId = null, SubmittedAt = null, ProductOperationId = productOperationId };
     }
 
 

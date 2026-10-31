@@ -114,13 +114,14 @@ type ChannelPricingDraft = { listPrice: string; salePrice: string }
 type ProductUpdateRequest = { connectionIds: string[]; fields: PlatformUpdateField[] }
 type PublicationStatus = { productId: string; connectionId: string; profileId: string | null; desiredStatus: string | null; actualStatus: string | null; lastRejectionCode: string | null; lastJobId: string | null; lastJobStatus: string | null; lines: Array<{ variantId: string; sku: string; barcode: string | null; desiredStatus: string; actualStatus: string; rejectionCode: string | null }> }
 type PublicationJobDetail = { job: { id: string; jobType?: string; status: string; progressCurrent: number; progressTotal: number | null; progressPercent: number | null; progressLabel: string | null; lastErrorCode: string | null; lastErrorSummary: string | null } }
-const isProductUpdateConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'HEPSIBURADA', 'SHOPIFY'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
+const isProductUpdateConnection = (item: MarketplaceConnection) => ['TRENDYOL', 'HEPSIBURADA', 'SHOPIFY', 'PAZARAMA'].includes(item.platformCode.trim().toUpperCase()) && ['ACTIVE', 'VERIFIED'].includes(item.status.trim().toUpperCase())
 const isProductPublicationChannel = (item: MarketplaceConnection) => productPublicationMode(item) !== null
 const productUpdateCapabilities = (platformCode: string) => {
   const code = platformCode.trim().toUpperCase()
   if (code === 'TRENDYOL') return { writable: true, content: true, categoryAttributes: true, detail: 'Ürün bilgileri, fiyat ve stok güncellenebilir.' }
   if (code === 'HEPSIBURADA') return { writable: true, content: true, categoryAttributes: true, detail: 'Ürün bilgileri, fiyat ve stok Hepsiburada yazma kurallarıyla güncellenebilir.' }
   if (code === 'SHOPIFY') return { writable: true, content: true, categoryAttributes: false, detail: 'Ürün kartı tek istekte güncellenir: ürün adı, açıklama, görseller, renk ve beden, fiyat ve stok birlikte gider.' }
+  if (code === 'PAZARAMA') return { writable: true, content: false, categoryAttributes: false, detail: 'KDV oranı, fiyat ve stok güncellenebilir; ürün içeriği yalnız Pazarama panelinden değişir.' }
   return { writable: false, content: false, categoryAttributes: false, detail: 'Bu platform için ürün güncelleme desteği bulunmuyor.' }
 }
 function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current: HTMLDivElement | null }; children: ReactNode }) {

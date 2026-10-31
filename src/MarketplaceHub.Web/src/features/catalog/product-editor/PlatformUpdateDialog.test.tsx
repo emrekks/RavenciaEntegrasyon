@@ -28,7 +28,7 @@ function render(selectedIds: string[], fields: PlatformUpdateField[], openGroups
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
-  act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA'), target('sh', 'SHOPIFY', false)]} selectedIds={selectedIds} onToggle={onToggle} fields={fields} onFieldsChange={onFieldsChange} openGroups={openGroups} onOpenGroupsChange={onOpenGroupsChange} submitting={false} onClose={vi.fn()} onConfirm={onConfirm} />))
+  act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA'), target('sh', 'SHOPIFY', false), target('pz', 'PAZARAMA')]} selectedIds={selectedIds} onToggle={onToggle} fields={fields} onFieldsChange={onFieldsChange} openGroups={openGroups} onOpenGroupsChange={onOpenGroupsChange} submitting={false} onClose={vi.fn()} onConfirm={onConfirm} />))
   return { onFieldsChange, onOpenGroupsChange, onToggle, onConfirm }
 }
 
@@ -44,15 +44,23 @@ describe('PlatformUpdateDialog', () => {
     render(['hb'], ['TITLE', 'PRICE'])
     expect([...document.querySelectorAll('.platform-update-group-check strong')].map(node => node.textContent)).toEqual(['Ürün Bilgileri', 'Kargo ve Teslimat', 'Satış Bilgileri'])
     expect(fieldLabels()).toContain('Garanti Süresi')
-    expect(fieldLabels()).not.toContain('Teslimat Süresi')
+    expect(fieldLabels()).toContain('Teslimat Süresi')
     act(() => root?.unmount()); root = undefined
     render(['hb', 'ty'], ['TITLE', 'PRICE'])
     expect(fieldLabels()).toContain('Teslimat Süresi')
     expect(fieldLabels()).not.toContain('Menşei')
     const only = (label: string) => [...document.querySelectorAll('.platform-update-field')].find(node => node.textContent?.startsWith(label))?.querySelector('.platform-update-field-only')?.textContent
-    expect(only('Teslimat Süresi')).toBe('Yalnız Trendyol')
+    expect(only('Teslimat Süresi')).toBeUndefined()
     expect(only('Garanti Süresi')).toBe('Yalnız Hepsiburada')
-    expect([...document.querySelectorAll('.platform-update-field-only')]).toHaveLength(2)
+    expect([...document.querySelectorAll('.platform-update-field-only')]).toHaveLength(1)
+    act(() => root?.unmount()); root = undefined
+    // Pazarama takes the VAT rate, price and stock: the content and shipping fields are Trendyol's alone beside it.
+    render(['pz'], ['VAT_RATE'])
+    expect(fieldLabels()).toEqual(['Fiyat', 'Stok', 'KDV Oranı'])
+    act(() => root?.unmount()); root = undefined
+    render(['ty', 'pz'], ['TITLE', 'PRICE'])
+    expect(only('Teslimat Süresi')).toBe('Yalnız Trendyol')
+    expect(only('KDV Oranı')).toBeUndefined()
   })
 
   it('shows a linked field as a locked box that follows the field it rides with', () => {
@@ -80,19 +88,23 @@ describe('PlatformUpdateDialog', () => {
     const hepsiburada = render(['hb'], ['TITLE', 'DELIVERY', 'PRICE'], allGroups, vi.fn(), vi.fn(), vi.fn(), onConfirm)
     expect(groupCount(0)).toBe('1/5 seçili')
     act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!.click())
-    expect(hepsiburada.onConfirm).toHaveBeenLastCalledWith(['TITLE', 'PRICE'])
+    expect(hepsiburada.onConfirm).toHaveBeenLastCalledWith(['TITLE', 'DELIVERY', 'PRICE'])
+    act(() => root?.unmount()); root = undefined
+    const pazarama = render(['pz'], ['TITLE', 'DELIVERY', 'PRICE', 'VAT_RATE'])
+    act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!.click())
+    expect(pazarama.onConfirm).toHaveBeenLastCalledWith(['PRICE', 'VAT_RATE'])
   })
 
   it('ticks a field a newly selected store adds, and drops one no selected store takes any more', () => {
-    const { onFieldsChange, onToggle } = render(['hb'], ['TITLE', 'PRICE'])
+    const { onFieldsChange, onToggle } = render(['pz'], ['PRICE'])
     const trendyolCard = [...document.querySelectorAll<HTMLButtonElement>('.publish-platform-card-head')].find(button => button.textContent?.includes('TRENDYOL'))!
     act(() => trendyolCard.click())
     expect(onToggle).toHaveBeenLastCalledWith('ty')
-    expect(onFieldsChange).toHaveBeenLastCalledWith(['TITLE', 'DELIVERY', 'PRICE'])
+    expect(onFieldsChange).toHaveBeenLastCalledWith(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'DELIVERY', 'PRICE'])
     act(() => root?.unmount()); root = undefined
     const second = render(['hb', 'ty'], ['TITLE', 'WARRANTY', 'DELIVERY', 'PRICE'])
-    act(() => [...document.querySelectorAll<HTMLButtonElement>('.publish-platform-card-head')].find(button => button.textContent?.includes('TRENDYOL'))!.click())
-    expect(second.onFieldsChange).toHaveBeenLastCalledWith(['TITLE', 'WARRANTY', 'PRICE'])
+    act(() => [...document.querySelectorAll<HTMLButtonElement>('.publish-platform-card-head')].find(button => button.textContent?.includes('HEPSIBURADA'))!.click())
+    expect(second.onFieldsChange).toHaveBeenLastCalledWith(['TITLE', 'DELIVERY', 'PRICE'])
   })
 
   it('lists on each card exactly what goes, including what rides along', () => {
@@ -113,7 +125,7 @@ describe('PlatformUpdateDialog', () => {
   })
 
   it('blocks Güncelle when nothing picked goes to the selected stores', () => {
-    render(['hb'], ['DELIVERY'])
+    render(['pz'], ['DELIVERY'])
     const update = [...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!
     expect(update.disabled).toBe(true)
     expect(document.body.textContent).toContain('En az bir bilgi seçin')

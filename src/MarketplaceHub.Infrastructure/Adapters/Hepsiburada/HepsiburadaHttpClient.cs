@@ -421,7 +421,38 @@ public sealed partial class HepsiburadaHttpClient(
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
         Unsupported<RemoteOperationRef>("Hepsiburada ürün yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
     public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
-        Unsupported<RemoteOperationRef>("Hepsiburada ürün yazması SIT kanıtı ve ayrı yetenek kapısı açılana kadar kapalıdır.");
+        publication is null ? Unsupported<RemoteOperationRef>("Hepsiburada teslimat süresi içeriği zorunludur.") : SubmitShippingInfoAsync(context, publication.ApprovedDeliveryPayloadJson, cancellationToken);
+
+    // The dispatch time (DispatchTime) of each listing, by the listing shipping-info upload: a JSON array of
+    // {hepsiburadaSku, merchantSku, dispatchTime}; the answer is an upload id read back like an inventory upload.
+    private async Task<AdapterResult<RemoteOperationRef>> SubmitShippingInfoAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken)
+    {
+        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
+            return await Unsupported<RemoteOperationRef>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar teslimat süresi gönderilmedi.");
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return Failure<RemoteOperationRef>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
+        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
+            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(account.Connection)))
+            return await Unsupported<RemoteOperationRef>("Hepsiburada teslimat süresi yalnız dış yazma kapıları ve mağaza/ortam kapsamlı fiyat ve stok yazma kanıtı sağlandığında gönderilebilir.");
+        if (!ValidShippingInfoPayload(payloadJson, account.Connection.ExternalStoreId))
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "HEPSIBURADA_SHIPPING_INFO_PAYLOAD_INVALID", "Hepsiburada teslimat süresi yüklemesi merchantId, hbSku, merchantSku ve dispatchTime sözleşmesini sağlamıyor.", HttpStatusCode.BadRequest);
+        payloadJson = WithHepsiburadaSkus(payloadJson, await StageHepsiburadaSkusAsync(account, cancellationToken));
+        if (!ValidShippingInfoPayload(payloadJson, account.Connection.ExternalStoreId))
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "HEPSIBURADA_SHIPPING_INFO_PAYLOAD_INVALID", "Hepsiburada listing hbSku eşlemesi teslimat süresi yüklemesinde yinelenen hbSku üretti.", HttpStatusCode.BadRequest);
+
+        using var content = new StringContent(BuildShippingInfoUploadJson(payloadJson), Encoding.UTF8, "application/json");
+        var response = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Post, ShippingInfoUpload(account), content, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var uploadId = HepsiburadaJsonMapper.InventoryUploadId(response.Value!.RootElement);
+            return AdapterResult<RemoteOperationRef>.Success(new($"{ShippingInfoUploadPrefix}{uploadId}", "LISTING_SHIPPING_INFO_UPLOAD", timeProvider.GetUtcNow()), response.RateLimit);
+        }
+        catch (JsonException)
+        {
+            return Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_SHIPPING_INFO_UPLOAD_CONTRACT_INVALID", "Hepsiburada teslimat süresi yanıtında yükleme numarası bulunamadı.", HttpStatusCode.BadGateway);
+        }
+    }
     public async Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken)
     {
         if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
@@ -438,6 +469,19 @@ public sealed partial class HepsiburadaHttpClient(
             return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_TRACKING_ID_INVALID", "Hepsiburada trackingId geçersiz.", HttpStatusCode.BadRequest);
 
         var isProductUpdate = externalOperationId.StartsWith("PRODUCT_UPDATE:", StringComparison.Ordinal);
+        if (externalOperationId.StartsWith(ShippingInfoUploadPrefix, StringComparison.Ordinal))
+        {
+            var shippingUploadId = externalOperationId[ShippingInfoUploadPrefix.Length..];
+            if (string.IsNullOrWhiteSpace(shippingUploadId) || shippingUploadId.Length > 200)
+                return Failure<RemoteOperationStatus>(AdapterErrorClass.Validation, "HEPSIBURADA_SHIPPING_INFO_UPLOAD_ID_INVALID", "Hepsiburada teslimat süresi yükleme numarası geçersiz.", HttpStatusCode.BadRequest);
+            var shippingResponse = await SendAsync(account, account.ListingBaseAddress, HttpMethod.Get, ShippingInfoUploadStatus(account, shippingUploadId), cancellationToken);
+            if (!shippingResponse.IsSuccess) return AdapterResult<RemoteOperationStatus>.Failure(shippingResponse.Error!, shippingResponse.RateLimit);
+            try { return AdapterResult<RemoteOperationStatus>.Success(HepsiburadaJsonMapper.InventoryUploadStatus(shippingResponse.Value!.RootElement, shippingUploadId, ShippingInfoUploadPrefix), shippingResponse.RateLimit); }
+            catch (JsonException)
+            {
+                return Failure<RemoteOperationStatus>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_SHIPPING_INFO_STATUS_CONTRACT_INVALID", "Hepsiburada teslimat süresi güncelleme durumu beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway);
+            }
+        }
         var isInventoryUpload = externalOperationId.StartsWith("LISTING_INVENTORY:", StringComparison.Ordinal);
         var operationId = isProductUpdate ? externalOperationId["PRODUCT_UPDATE:".Length..]
             : isInventoryUpload ? externalOperationId["LISTING_INVENTORY:".Length..]
@@ -1166,6 +1210,10 @@ public sealed partial class HepsiburadaHttpClient(
     internal static string InventoryUpload(HepsiburadaRequestContext context) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/inventory-uploads";
     internal static string InventoryUploadStatus(HepsiburadaRequestContext context, string uploadId) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/inventory-uploads/id/{Uri.EscapeDataString(uploadId)}";
     internal static string InventoryUploadStatus(string merchantId, string uploadId) => $"listings/merchantid/{Uri.EscapeDataString(merchantId)}/inventory-uploads/id/{Uri.EscapeDataString(uploadId)}";
+    // Listing Teslimat Güncelleme (uploadShippingInfo) and its status read (getShippingInfoUpload).
+    internal const string ShippingInfoUploadPrefix = "LISTING_SHIPPING:";
+    internal static string ShippingInfoUpload(HepsiburadaRequestContext context) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/shipping-info-uploads";
+    internal static string ShippingInfoUploadStatus(HepsiburadaRequestContext context, string uploadId) => $"listings/merchantid/{Uri.EscapeDataString(context.Connection.ExternalStoreId)}/shipping-info-uploads/id/{Uri.EscapeDataString(uploadId)}";
     // The product import reads a listing's hbSku from "hbSku"/"sku", but the listing service sends it as
     // "hepsiburadaSku", so imported links hold the merchantSku where the hbSku belongs. A STAGE upload or
     // test order reads the merchant's listings first and maps each merchantSku to its real hbSku; a
@@ -1240,6 +1288,47 @@ public sealed partial class HepsiburadaHttpClient(
         }
         catch (JsonException) { return false; }
     }
+    // {"merchantId","items":[{hepsiburadaSku, merchantSku, dispatchTime}]}: both SKUs, a whole dispatch time of at least 0
+    // days and no other field (a field left out keeps Hepsiburada's value; none is sent empty).
+    internal static bool ValidShippingInfoPayload(string payloadJson, string merchantId)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("merchantId", out var merchant) || merchant.ValueKind != JsonValueKind.String
+                || !string.Equals(merchant.GetString(), merchantId, StringComparison.Ordinal)
+                || !root.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() < 1 || items.GetArrayLength() > MaxInventoryUploadItems) return false;
+            var merchantSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var hbSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in items.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object || item.EnumerateObject().Any(property => property.Name is not ("hepsiburadaSku" or "merchantSku" or "dispatchTime"))) return false;
+                var merchantSku = item.TryGetProperty("merchantSku", out var merchantSkuValue) && merchantSkuValue.ValueKind == JsonValueKind.String ? merchantSkuValue.GetString() : null;
+                var hbSku = item.TryGetProperty("hepsiburadaSku", out var hbSkuValue) && hbSkuValue.ValueKind == JsonValueKind.String ? hbSkuValue.GetString() : null;
+                if (string.IsNullOrWhiteSpace(merchantSku) || merchantSku != merchantSku.Trim() || merchantSku.Any(char.IsWhiteSpace)
+                    || string.IsNullOrWhiteSpace(hbSku) || hbSku != hbSku.Trim() || hbSku.Any(char.IsWhiteSpace)
+                    || !merchantSkus.Add(merchantSku) || !hbSkus.Add(hbSku)) return false;
+                if (!item.TryGetProperty("dispatchTime", out var dispatchValue) || dispatchValue.ValueKind != JsonValueKind.Number || !dispatchValue.TryGetInt32(out var dispatchTime) || dispatchTime < 0) return false;
+            }
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    // The request body: the items alone, as the JSON array the endpoint takes.
+    internal static string BuildShippingInfoUploadJson(string payloadJson)
+    {
+        using var document = JsonDocument.Parse(payloadJson);
+        var items = document.RootElement.GetProperty("items").EnumerateArray().Select(item => new Dictionary<string, object>
+        {
+            ["hepsiburadaSku"] = item.GetProperty("hepsiburadaSku").GetString()!,
+            ["merchantSku"] = item.GetProperty("merchantSku").GetString()!,
+            ["dispatchTime"] = item.GetProperty("dispatchTime").GetInt32()
+        }).ToList();
+        return JsonSerializer.Serialize(items);
+    }
+
     internal static string BuildInventoryUploadXml(string payloadJson)
     {
         using var document = JsonDocument.Parse(payloadJson);

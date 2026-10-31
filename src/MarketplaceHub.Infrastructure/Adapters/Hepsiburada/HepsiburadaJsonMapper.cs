@@ -384,7 +384,8 @@ internal static class HepsiburadaJsonMapper
         return !string.IsNullOrWhiteSpace(uploadId) ? uploadId : throw new JsonException("Hepsiburada listing yanıtında inventoryUploadId yok.");
     }
 
-    public static RemoteOperationStatus InventoryUploadStatus(JsonElement root, string uploadId)
+    // prefix: the operation id's kind; the shipping-info upload is read back the same way (LISTING_SHIPPING:).
+    public static RemoteOperationStatus InventoryUploadStatus(JsonElement root, string uploadId, string prefix = "LISTING_INVENTORY:")
     {
         var data = Unwrap(root);
         var rawStatus = First(Text(root, "status", "uploadStatus", "inventoryStatus"), Text(data, "status", "uploadStatus", "inventoryStatus"));
@@ -397,7 +398,7 @@ internal static class HepsiburadaJsonMapper
             "DONE" or "COMPLETED" or "COMPLETE" or "SUCCESS" or "SUCCEEDED" or "FAILED" or "PARTIAL_SUCCESS" or "COMPLETED_WITH_ERRORS" => "COMPLETED",
             _ => throw new JsonException("Hepsiburada listing yükleme durumu tanınmıyor.")
         };
-        if (status == "IN_PROGRESS") return new($"LISTING_INVENTORY:{uploadId}", status, []);
+        if (status == "IN_PROGRESS") return new($"{prefix}{uploadId}", status, []);
 
         var errorItems = Find(data, "errors", "validationErrors", "errorList");
         if (errorItems.ValueKind == JsonValueKind.Undefined) errorItems = Find(root, "errors", "validationErrors", "errorList");
@@ -432,8 +433,8 @@ internal static class HepsiburadaJsonMapper
         // Done lists the refused SKUs alone, so a SKU it leaves out was applied. A failed upload says nothing of the SKUs
         // it leaves out: without any it is refused whole, with some those it leaves out stay unconfirmed. An error state
         // that names no SKU is refused whole as well.
-        if (lines.Count == 0 && normalized is "FAILED" or "PARTIAL_SUCCESS" or "COMPLETED_WITH_ERRORS") return new($"LISTING_INVENTORY:{uploadId}", "REJECTED", []);
-        return new($"LISTING_INVENTORY:{uploadId}", status, lines, UnlistedLinesUnconfirmed: normalized == "FAILED");
+        if (lines.Count == 0 && normalized is "FAILED" or "PARTIAL_SUCCESS" or "COMPLETED_WITH_ERRORS") return new($"{prefix}{uploadId}", "REJECTED", []);
+        return new($"{prefix}{uploadId}", status, lines, UnlistedLinesUnconfirmed: normalized == "FAILED");
     }
 
     public static RemoteOperationStatus ProductImportStatus(JsonElement root, string trackingId)
