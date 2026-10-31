@@ -4,7 +4,7 @@ import { DialogSurface, UiIcon } from '../../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { bulkPublishPlatformName } from '../products/bulk-publish-status'
 import type { MarketplaceConnection } from '../shared'
-import { availablePlatformUpdateFields, partialPlatformUpdateField, platformUpdateFieldLabel, platformUpdateFieldsForStores, platformUpdateFixedInformation, platformUpdateGroups, platformUpdateNote, platformUpdatePlan, platformUpdateSummary, type PlatformUpdateField, type PlatformUpdateGroup, type PlatformUpdateGroupKey } from './platform-update-fields'
+import { availablePlatformUpdateFields, platformUpdateFieldLabel, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdateSummary, type PlatformUpdateField, type PlatformUpdateGroup, type PlatformUpdateGroupKey } from './platform-update-fields'
 
 export type PlatformUpdateTarget = { connection: MarketplaceConnection; capabilities: { writable: boolean; content: boolean } }
 
@@ -12,7 +12,7 @@ export function isPlatformUpdateWritable(target: PlatformUpdateTarget) {
   return target.capabilities.writable && target.connection.status.trim().toUpperCase() === 'ACTIVE'
 }
 
-type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: PlatformUpdateField; label: string; only: string[] }[] }
+type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: PlatformUpdateField; label: string }[] }
 
 // The editor's "Platformlarda Güncelle": the same cards as "Platformlarda Yayınla", with the fields to send in
 // collapsible groups (Ürün Bilgileri, Kargo ve Teslimat, Satış Bilgileri). Only fields a selected store can take are
@@ -39,7 +39,6 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
   const visibleFields = fields.filter(field => available.includes(field))
   const plans = selected.map(target => platformUpdatePlan(target.connection.platformCode, visibleFields))
   const sendsAnything = plans.some(plan => plan.sends.length > 0)
-  const selectedCodes = selected.map(target => target.connection.platformCode)
   const close = () => { if (!submitting) onClose() }
   const setField = (field: PlatformUpdateField, on: boolean) => onFieldsChange(on ? [...new Set([...fields, field])] : fields.filter(item => item !== field))
   const setGroup = (groupFields: PlatformUpdateField[], on: boolean) => onFieldsChange(on ? [...new Set([...fields, ...groupFields])] : fields.filter(item => !groupFields.includes(item)))
@@ -54,7 +53,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
   const groups: ShownGroup[] = platformUpdateGroups
     .map(group => ({
       ...group,
-      fields: group.fields.filter(field => available.includes(field.key)).map(field => ({ ...field, only: partialPlatformUpdateField(field.key, selectedCodes).map(bulkPublishPlatformName) })),
+      fields: group.fields.filter(field => available.includes(field.key)),
       linked: group.linked?.filter(item => available.includes(item.with))
     }))
     .filter(group => group.fields.length > 0)
@@ -67,10 +66,6 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
           {groups.length > 0 && <div className="platform-update-field-groups" role="group" aria-label="Gönderilecek bilgiler">
             {groups.map(group => <PlatformUpdateFieldGroup key={group.key} group={group} picked={fields} open={openGroups.includes(group.key)} locked={submitting} onToggleOpen={() => toggleOpen(group.key)} onGroupChange={on => setGroup(group.fields.map(field => field.key), on)} onFieldChange={setField} />)}
           </div>}
-          {groups.length > 0 && <details className="platform-update-fixed">
-            <summary>Değişmeyen ve Gönderilmeyen Bilgiler</summary>
-            <dl>{platformUpdateFixedInformation.map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.note}</dd></div>)}</dl>
-          </details>}
           {targets.length
             ? <div className="publish-platform-grid" role="group" aria-label="Güncellenecek platformlar">{targets.map(target => <PlatformUpdateCard key={target.connection.id} target={target} selected={selectedIds.includes(target.connection.id)} fields={visibleFields} locked={submitting} onToggle={() => toggleStore(target.connection.id)} />)}</div>
             : <div className="publish-connections-empty"><strong>Güncellenebilir Bağlantı Yok</strong><p>Ürün güncellemek için Platformlar sayfasından yazma yetkisi olan aktif bir bağlantı ekleyin.</p></div>}
@@ -115,7 +110,7 @@ function PlatformUpdateFieldGroup({ group, picked, open, locked, onToggleOpen, o
     {open && <div className="platform-update-group-body" id={bodyId}>
       <p>{description}</p>
       <div className="platform-update-field-list">
-        {fields.map(field => <label key={field.key} className="platform-update-field"><input type="checkbox" checked={picked.includes(field.key)} disabled={locked} onChange={event => onFieldChange(field.key, event.target.checked)} /><span>{field.label}</span>{field.only.length > 0 && <small className="platform-update-field-only" title={`Yalnız şu platformlara gider: ${field.only.join(', ')}`}>Yalnız {field.only.join(', ')}</small>}</label>)}
+        {fields.map(field => <label key={field.key} className="platform-update-field"><input type="checkbox" checked={picked.includes(field.key)} disabled={locked} onChange={event => onFieldChange(field.key, event.target.checked)} /><span>{field.label}</span></label>)}
         {/* Not a pick of its own: it goes whenever the field it rides with goes, so its box follows that field. */}
         {linked.map(item => <label key={item.label} className="platform-update-field is-linked" title={item.note}><input type="checkbox" checked={picked.includes(item.with)} disabled aria-describedby={`${bodyId}-linked`} /><span>{item.label}<small>{platformUpdateFieldLabel(item.with)} ile</small></span></label>)}
       </div>
@@ -143,7 +138,6 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
   const sends = !writable ? '—' : platformUpdateSummary(plan)
   // What goes, as small chips: the dialog's fields first, then (dashed) what the requests also carry.
   const chips = writable && plan.sends.length ? [...plan.sends.map(label => ({ label, extra: false })), ...plan.extras.map(label => ({ label, extra: true }))] : []
-  const note = writable && plan.productFields.length ? platformUpdateNote(connection.platformCode) : undefined
   return <article className={`publish-platform-card${on ? ' selected' : ''}${writable ? '' : ' is-readonly'}`}>
     <button type="button" className="publish-platform-card-head" onClick={onToggle} aria-pressed={on} disabled={locked || !writable}>
       <span className={`publish-platform-mark ${connection.platformCode.trim().toLocaleLowerCase('tr-TR')}`}>{logo ? <img className={`publish-platform-logo ${platformLogoClass(connection.platformCode)}`} src={logo} alt="" aria-hidden="true" /> : <b aria-hidden="true">{storeName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R'}</b>}</span>
@@ -155,7 +149,6 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
       <div><dt>Platform</dt><dd>{platformName}</dd></div>
       <div className="platform-update-sends"><dt>Gönderilecek</dt><dd title={sends}>{chips.length ? <ul className="platform-update-chips">{chips.map(chip => <li key={`${chip.extra}-${chip.label}`} className={chip.extra ? 'is-extra' : undefined} title={chip.extra ? 'Seçim değil, aynı istekte birlikte gider' : undefined}>{chip.label}</li>)}</ul> : writable ? sends : '—'}</dd>
         {writable && plan.bundled.length > 0 && <small>Seçilmedi ama aynı istekte birlikte gider: {plan.bundled.map(platformUpdateFieldLabel).join(', ')}.</small>}
-        {note && <small>{note}</small>}
       </div>
     </dl>
   </article>
