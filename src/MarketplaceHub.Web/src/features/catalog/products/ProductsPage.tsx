@@ -20,7 +20,7 @@ import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFi
 import { productImportConnection, singleProductLookupLabel } from '../product-import-platforms'
 import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { productPlatformFilterGroups } from '../product-platform-filter'
-import { channelOffer, quickEditOfferPrices, quickPriceBody, quickPriceTarget } from '../quick-price-edit'
+import { hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPrices, panelPriceTarget, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from '../quick-price-edit'
 import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
@@ -147,9 +147,11 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   const [openColorGroups, setOpenColorGroups] = useState<string[]>([])
   const [listPrice, setListPrice] = useState(''); const [salePrice, setSalePrice] = useState(''); const [stockAmount, setStockAmount] = useState('')
   const [stockAction, setStockAction] = useState<'SET' | 'ADD' | 'SUBTRACT'>('SET'); const [notice, setNotice] = useState(''); const [saving, setSaving] = useState(false)
-  // The channel whose price is changed (its offer updated, or created when the variant has none there): chosen by the
-  // person (preset only when there is just one), never picked by the screen.
-  const [priceConnectionId, setPriceConnectionId] = useState(() => connections.length === 1 ? connections[0].id : '')
+  // Where a price change goes: the panel's own price (preset: it sends nothing to a marketplace) or one channel the
+  // person picks (its offer updated, or created when the variant has none there). The screen never picks a channel.
+  const [priceConnectionId, setPriceConnectionId] = useState(PANEL_PRICE_CHOICE)
+  const priceChannelName = connections.find(connection => connection.id === priceConnectionId)?.displayName ?? null
+  const priceChoiceLabel = quickPriceChoiceLabel(priceConnectionId, priceChannelName)
   const needsPriceConnection = mode !== 'stock'
   // A first offer keeps its create key for this window's life, so a resend after a lost answer cannot make two.
   const offerCreateKeys = useRef(new Map<string, string>())
@@ -195,7 +197,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     const priceRequested = mode !== 'stock' && (listPrice !== '' || salePrice !== ''); const stockRequested = stockAmount !== ''
     if (!priceRequested && !stockRequested) { const message = 'Uygulanacak fiyat veya stok değerini girin.'; setNotice(message); onResult?.('Değer Girilmedi', message, 'error'); return }
     const list = listPrice === '' ? null : Number(listPrice); const sale = salePrice === '' ? null : Number(salePrice); const amount = stockAmount === '' ? null : Number(stockAmount)
-    if ((list != null && (!Number.isFinite(list) || list < 0)) || (sale != null && (!Number.isFinite(sale) || sale <= 0)) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) { const message = 'Değerleri kontrol edin; satış fiyatı sıfırdan büyük olmalı, negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.'; setNotice(message); onResult?.('Geçersiz Değer', message, 'error'); return }
+    if ((list != null && (!Number.isFinite(list) || list < 0 || !hasAtMostTwoDecimals(list))) || (sale != null && (!Number.isFinite(sale) || sale <= 0 || !hasAtMostTwoDecimals(sale))) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) { const message = 'Değerleri kontrol edin; satış fiyatı sıfırdan büyük olmalı, negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.'; setNotice(message); onResult?.('Geçersiz Değer', message, 'error'); return }
     setSaving(true); setNotice('Seçilen varyantlar güncelleniyor…')
     // Every selected variant is attempted; a failure is recorded and the rest still go out. Stock is sent as an
     // absolute value against the stock this dialog opened with, so a change made meanwhile is refused, not undone.
@@ -209,14 +211,23 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
         const variant = item.variant
         if (priceRequested) {
           try {
-            const target = quickPriceTarget(variant, priceConnectionId, connections.length)
-            if (target.kind === 'blocked') throw new Error(target.reason)
-            const prices = quickEditOfferPrices(target.kind === 'update' ? target.offer : {}, list, sale)
-            if (!prices.ok) throw new Error(prices.message)
-            const body = quickPriceBody(target, variant, prices, 'Toplu ürün fiyat düzenleme')
-            if (target.kind === 'update') await hubApi(`/channel-offers/${target.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.offerVersion}"` }, body: JSON.stringify(body) })
-            else await sendWithVersionedIdempotencyKey(offerCreateKey(variant.id), key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
-            if (prices.saleDefaulted) saleDefaulted.push({ sku: variant.sku, currency: variant.currency || 'TRY' })
+            if (priceConnectionId === PANEL_PRICE_CHOICE) {
+              const target = panelPriceTarget(variant)
+              if (target.kind === 'blocked') throw new Error(target.reason)
+              const prices = quickEditOfferPrices(panelPrices(variant, item.product), list, sale)
+              if (!prices.ok) throw new Error(prices.message)
+              await hubApi(`/variants/${target.variantId}/default-prices`, { method: 'PATCH', headers: { 'If-Match': `"v${target.version}"` }, body: JSON.stringify({ listPrice: prices.listPrice, salePrice: prices.salePrice, reason: 'Toplu ürün fiyat düzenleme' }) })
+              if (prices.saleDefaulted) saleDefaulted.push({ sku: variant.sku, currency: variant.currency || 'TRY' })
+            } else {
+              const target = quickPriceTarget(variant, priceConnectionId, connections.length)
+              if (target.kind === 'blocked') throw new Error(target.reason)
+              const prices = quickEditOfferPrices(target.kind === 'update' ? target.offer : {}, list, sale)
+              if (!prices.ok) throw new Error(prices.message)
+              const body = quickPriceBody(target, variant, prices, 'Toplu ürün fiyat düzenleme')
+              if (target.kind === 'update') await hubApi(`/channel-offers/${target.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.offerVersion}"` }, body: JSON.stringify(body) })
+              else await sendWithVersionedIdempotencyKey(offerCreateKey(variant.id), key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
+              if (prices.saleDefaulted) saleDefaulted.push({ sku: variant.sku, currency: variant.currency || 'TRY' })
+            }
           } catch (error) {
             if (isStaleStockError(error)) anyStale = true
             failures.push({ sku: variant.sku, message: `fiyat: ${error instanceof Error ? error.message : 'kaydedilemedi'}` })
@@ -258,24 +269,27 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
           const groupSelection = variantGroupSelectionState(items.map(item => item.variant.id), selectedSet)
           const groupLabel = colorLabels[color] || formatCatalogOptionLabel(color)
-          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && items.map(item => { const parts = variantAxisParts(item.variant.optionSignature); return <div className={`rr-vline${selectedSet.has(item.variant.id) ? '' : ' rr-off'}`} key={item.variant.id}><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>Stok Kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} priceConnectionId={priceConnectionId} connectionCount={connections.length} onChanged={onChanged} onStockSaved={(variantId, onHand) => stockBaseline.current.set(variantId, onHand)} showPrice={mode !== 'stock'} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div> })}</div>
+          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && items.map(item => { const parts = variantAxisParts(item.variant.optionSignature); return <div className={`rr-vline${mode === 'price' ? ' rr-vline-price' : mode === 'both' ? ' rr-vline-both' : ''}${selectedSet.has(item.variant.id) ? '' : ' rr-off'}`} key={item.variant.id}><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>Stok Kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} product={item.product} priceConnectionId={priceConnectionId} priceLabel={priceChoiceLabel} connectionCount={connections.length} onChanged={onChanged} onStockSaved={(variantId, onHand) => stockBaseline.current.set(variantId, onHand)} showPrice={mode !== 'stock'} showStock={mode !== 'price'} onError={message => setNotice(`Başarısız: ${item.variant.sku}: ${message}`)} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div> })}</div>
         })}
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{mode === 'stock' ? 'Stok Değerini Düzenle' : mode === 'price' ? 'Fiyat Değerini Düzenle' : 'Fiyat ve Stok Değerini Düzenle'}</div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small></header>
         {activeSelection.length ? <div className="rr-chips">{variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id} className="rr-chip">{variantAxisParts(item.variant.optionSignature).map(part => part.value).join(' · ') || item.variant.sku}</span>)}</div> : <p className="rr-lead">Değeri şimdi girebilirsiniz; uygulamak için en az bir varyantı işaretleyin.</p>}
-        {needsPriceConnection && connections.length > 0 && <label className="rr-fld"><small>Fiyat Kanalı</small><select className="rr-in" aria-label="Fiyat kanalı" value={priceConnectionId} onChange={event => setPriceConnectionId(event.target.value)}><option value="">Kanal Seçin</option>{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName}</option>)}</select><small className="rr-lead">Fiyat bu kanalın kaydına yazılır; bu kanalda fiyatı olmayan varyantın ilk fiyatı oluşturulur. Diğer kanalların fiyatı değişmez.</small></label>}
+        {needsPriceConnection && <label className="rr-fld"><small>Fiyat Kanalı</small><select className="rr-in" aria-label="Fiyat kanalı" aria-describedby="quick-price-choice-help" value={priceConnectionId} onChange={event => setPriceConnectionId(event.target.value)}><option value={PANEL_PRICE_CHOICE}>Panel Ana Fiyatı</option>{connections.length > 0 && <optgroup label="Pazaryeri Kanalı">{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName}</option>)}</optgroup>}</select><small className="rr-lead" id="quick-price-choice-help" aria-live="polite">{quickPriceChoiceHelp(priceConnectionId, priceChannelName)}</small></label>}
         <div className="rr-dgrid">{mode !== 'stock' && <><label className="rr-fld"><small>Liste Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label><label className="rr-fld"><small>Satış Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></>}{mode !== 'price' && <><label className="rr-fld"><small>Stok İşlemi</small><select className="rr-in" value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu Sayıya Eşitle</option><option value="ADD">Bu Kadar Ekle (+)</option><option value="SUBTRACT">Bu Kadar Çıkar (−)</option></select></label><label className="rr-fld"><small>Miktar</small><input className="rr-in rr-num" type="number" min="0" step="1" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></>}</div>
       </section>
       {notice && <div className={`rr-callout${notice.startsWith('Başarısız:') ? ' rr-danger' : ''}`} role={notice.startsWith('Başarısız:') ? 'alert' : 'status'}><RrIcon name={notice.startsWith('Başarısız:') ? 'alert' : 'info'} /><span>{notice}</span></div>}
     </form>
   </RrModal>
 }
-function QuickEditVariantControls({ variant, priceConnectionId, connectionCount, onChanged, onSelect, onStockSaved, showPrice = true }: { variant: Variant; priceConnectionId: string; connectionCount: number; onChanged: () => Promise<unknown>; onSelect: () => void; onStockSaved?: (variantId: string, onHand: number) => void; showPrice?: boolean }) {
-  // The price shown and changed is the one on the chosen channel.
-  const shown = priceConnectionId ? channelOffer(variant, priceConnectionId) : null
-  const shownPrice = shown ? shown.salePrice ?? shown.listPrice ?? null : null
-  const [price, setPrice] = useState<number | string>(shownPrice ?? '')
-  useEffect(() => { setPrice(shownPrice ?? '') }, [shownPrice])
+function QuickEditVariantControls({ variant, product, priceConnectionId, priceLabel, connectionCount, onChanged, onSelect, onStockSaved, onError, showPrice = true, showStock = true }: { variant: Variant; product: Product; priceConnectionId: string; priceLabel: string; connectionCount: number; onChanged: () => Promise<unknown>; onSelect: () => void; onStockSaved?: (variantId: string, onHand: number) => void; onError: (message: string) => void; showPrice?: boolean; showStock?: boolean }) {
+  // The list and sale price shown and changed are the panel's own or the chosen channel's. A problem is told in the
+  // dialog's notice and on the field (red border, title), never as text under it, so the line stays one row.
+  const shown = quickInlinePrices(priceConnectionId, variant, product)
+  const shownList = shown.listPrice == null ? '' : String(shown.listPrice)
+  const shownSale = shown.salePrice == null ? '' : String(shown.salePrice)
+  const [listPrice, setListPrice] = useState(shownList)
+  const [salePrice, setSalePrice] = useState(shownSale)
+  useEffect(() => { setListPrice(shownList); setSalePrice(shownSale) }, [shownList, shownSale])
   // The field shows the loaded stock until the user types; fresh data replaces it only while it is untouched, and a
   // save sends the typed value as an absolute stock against the value shown when editing started.
   const [stock, setStock] = useState(String(variant.onHand))
@@ -287,19 +301,25 @@ function QuickEditVariantControls({ variant, priceConnectionId, connectionCount,
   const [priceError, setPriceError] = useState('')
   // The first offer's create key lives as long as the field (see the bulk apply above).
   const [offerCreateKey] = useState(() => newIdempotencyKey('channel-offer-create'))
-  const priceTarget = quickPriceTarget(variant, priceConnectionId, connectionCount)
+  const isPanel = priceConnectionId === PANEL_PRICE_CHOICE
+  const priceTarget = isPanel ? panelPriceTarget(variant) : quickPriceTarget(variant, priceConnectionId, connectionCount)
+  const failPrice = (message: string) => { setPriceError(message); onError(`fiyat: ${message}`) }
+  // Saved when focus leaves the pair, so moving from Liste to Satış does not save half a change.
   async function savePrice() {
-    const salePrice = Number(price); if (savingPrice || price === '' || salePrice === shownPrice) return
-    if (!Number.isFinite(salePrice) || salePrice <= 0) { setPriceError('Fiyat sıfırdan büyük olmalıdır.'); return }
-    if (priceTarget.kind === 'blocked') { setPriceError(priceTarget.reason); return }
-    const listPrice = Math.max((priceTarget.kind === 'update' ? priceTarget.offer.listPrice : null) ?? salePrice, salePrice)
-    const body = quickPriceBody(priceTarget, variant, { listPrice, salePrice }, 'Hızlı varyant fiyat düzenleme')
+    if (savingPrice || (listPrice === shownList && salePrice === shownSale)) return
+    if (priceTarget.kind === 'blocked') { failPrice(priceTarget.reason); return }
+    const prices = inlinePrices(listPrice, salePrice)
+    if (!prices.ok) { failPrice(prices.message); return }
     setSavingPrice(true); setPriceError('')
     try {
-      if (priceTarget.kind === 'update') await hubApi(`/channel-offers/${priceTarget.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.offerVersion}"` }, body: JSON.stringify(body) })
-      else await sendWithVersionedIdempotencyKey(offerCreateKey, key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
+      if (priceTarget.kind === 'panel') await hubApi(`/variants/${priceTarget.variantId}/default-prices`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.version}"` }, body: JSON.stringify({ listPrice: prices.listPrice, salePrice: prices.salePrice, reason: 'Hızlı varyant fiyat düzenleme' }) })
+      else {
+        const body = quickPriceBody(priceTarget, variant, prices, 'Hızlı varyant fiyat düzenleme')
+        if (priceTarget.kind === 'update') await hubApi(`/channel-offers/${priceTarget.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.offerVersion}"` }, body: JSON.stringify(body) })
+        else await sendWithVersionedIdempotencyKey(offerCreateKey, key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
+      }
     } catch (error) {
-      setPriceError(`Fiyat kaydedilmedi: ${error instanceof Error ? error.message : 'beklenmeyen hata.'}`)
+      failPrice(`kaydedilmedi: ${error instanceof Error ? error.message : 'beklenmeyen hata.'}`)
       return
     } finally {
       setSavingPrice(false)
@@ -309,8 +329,8 @@ function QuickEditVariantControls({ variant, priceConnectionId, connectionCount,
   async function saveStock() {
     if (savingStock || !stockDirty) return
     const parsed = parseStockInput(stock)
-    if (parsed.kind === 'empty') { setStockError('Stok boş bırakılamaz; değişiklik kaydedilmedi.'); setStockDirty(false); return }
-    if (parsed.kind === 'invalid') { setStockError('Stok sıfır veya pozitif bir tam sayı olmalıdır.'); return }
+    if (parsed.kind === 'empty') { setStockError('Stok boş bırakılamaz; değişiklik kaydedilmedi.'); onError('stok: boş bırakılamaz; değişiklik kaydedilmedi.'); setStockDirty(false); return }
+    if (parsed.kind === 'invalid') { setStockError('Stok sıfır veya pozitif bir tam sayı olmalıdır.'); onError('stok: sıfır veya pozitif bir tam sayı olmalıdır.'); return }
     if (parsed.value === stockBase) { setStockError(''); setStockDirty(false); return }
     setSavingStock(true); setStockError('')
     try {
@@ -319,7 +339,7 @@ function QuickEditVariantControls({ variant, priceConnectionId, connectionCount,
       setStockBase(parsed.value)
       setStockDirty(false)
     } catch (error) {
-      setStockError(stockErrorMessage(error))
+      setStockError(stockErrorMessage(error)); onError(`stok: ${stockErrorMessage(error)}`)
       // A refused change keeps nothing local: the field shows the stock the server now holds.
       if (isStaleStockError(error)) setStockDirty(false)
     } finally {
@@ -327,7 +347,10 @@ function QuickEditVariantControls({ variant, priceConnectionId, connectionCount,
       await onChanged().catch(() => undefined)
     }
   }
-  return <><label className="rr-mini"><small>Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(variant.onHand); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} />{stockError && <small className="rr-field-error" role="alert">{stockError}</small>}</label>{showPrice && <label className="rr-mini"><small>Fiyat</small><input className="rr-in rr-num" aria-label={`${variant.sku} fiyat`} aria-invalid={priceError ? true : undefined} title={priceError || (priceTarget.kind === 'blocked' ? priceTarget.reason : undefined)} value={price} onFocus={onSelect} onChange={event => { onSelect(); setPriceError(''); setPrice(event.target.value === '' ? '' : Number(event.target.value)) }} onBlur={() => void savePrice()} type="number" min="0" step="0.01" disabled={savingPrice || priceTarget.kind === 'blocked'} />{priceError ? <small className="rr-field-error" role="alert">{priceError}</small> : priceTarget.kind === 'blocked' && <small className="rr-field-hint">{priceTarget.reason}</small>}</label>}</>
+  const priceBlocked = priceTarget.kind === 'blocked' ? priceTarget.reason : ''
+  const priceTitle = priceError || priceBlocked || undefined
+  const priceFieldProps = { className: 'rr-in rr-num', type: 'number', min: '0', step: '0.01', 'aria-invalid': priceError ? true : undefined, title: priceTitle, disabled: savingPrice || !!priceBlocked, onFocus: onSelect } as const
+  return <>{showStock && <label className="rr-mini"><small>Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(variant.onHand); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label>}{showPrice && <div className="rr-mini rr-qprice" role="group" aria-label={`${variant.sku} ${priceLabel}`} title={priceTitle} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void savePrice() }}><small className="rr-qprice-h">{priceLabel}</small><label><small>Liste</small><input {...priceFieldProps} aria-label={`${variant.sku} ${priceLabel} liste fiyatı`} value={listPrice} onChange={event => { onSelect(); setPriceError(''); setListPrice(event.target.value) }} /></label><label><small>Satış</small><input {...priceFieldProps} aria-label={`${variant.sku} ${priceLabel} satış fiyatı`} value={salePrice} onChange={event => { onSelect(); setPriceError(''); setSalePrice(event.target.value) }} /></label></div>}</>
 }
 function lowStockModelCode(group: ProductGroup) {
   return group.products.map(product => product.modelCode).find(value => value?.trim())

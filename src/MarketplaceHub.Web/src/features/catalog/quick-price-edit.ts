@@ -62,3 +62,56 @@ export function quickEditOfferPrices(current: { listPrice?: number | null; saleP
   if (nextList < nextSale) return { ok: false, message: 'liste fiyatı satış fiyatından küçük olamaz.' }
   return { ok: true, listPrice: nextList, salePrice: nextSale, saleDefaulted }
 }
+
+// "Panel Ana Fiyatı" in the Fiyat Kanalı select: the product card's own price (the editor's Liste/Satış Fiyatı), not a
+// marketplace offer. It is the preset choice because it sends nothing to a marketplace.
+export const PANEL_PRICE_CHOICE = 'PANEL'
+
+type PanelPriceSource = { defaultListPrice?: number | null; defaultSalePrice?: number | null }
+
+// The panel price of a variant as the rest of the panel reads it (bulk publish, editor): the variant's own, else the card's.
+export function panelPrices(variant: PanelPriceSource, product: PanelPriceSource): { listPrice: number | null; salePrice: number | null } {
+  return { listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? null, salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? null }
+}
+
+// The list and sale price the per-variant fields show for the choice: the panel's, the chosen channel's offer, or none.
+export function quickInlinePrices(choice: string, variant: QuickPriceVariant & PanelPriceSource, product: PanelPriceSource): { listPrice: number | null; salePrice: number | null } {
+  if (choice === PANEL_PRICE_CHOICE) return panelPrices(variant, product)
+  const offer = choice ? channelOffer(variant, choice) : null
+  return { listPrice: offer?.listPrice ?? null, salePrice: offer?.salePrice ?? null }
+}
+
+// What the choice changes, said under the select so it is never a guess.
+export function quickPriceChoiceHelp(choice: string, channelName?: string | null): string {
+  if (choice === PANEL_PRICE_CHOICE) return "Ürün kartındaki ana fiyat (Liste/Satış Fiyatı) değişir; pazaryerlerindeki fiyatlar değişmez ve pazaryerine hiçbir şey gönderilmez. Ana fiyat, ürün bir kanalda ilk kez yayınlanırken (Platformlarda Yayınla) ve ürün düzenleyicide 'Ana fiyatla satılır' kanallar kaydedilirken kullanılır."
+  if (choice) return `Yalnız ${channelName || 'seçilen kanalın'} fiyatı değişir; panel ana fiyatı ve diğer kanalların fiyatı değişmez. Bu kanalda fiyatı olmayan varyantın ilk fiyatı oluşturulur.`
+  return 'Fiyatın nereye yazılacağını seçin: Panel Ana Fiyatı ya da tek bir pazaryeri kanalı.'
+}
+
+// The group label of the per-variant price fields.
+export function quickPriceChoiceLabel(choice: string, channelName?: string | null): string {
+  if (choice === PANEL_PRICE_CHOICE) return 'Panel Fiyatı'
+  return choice ? channelName || 'Kanal Fiyatı' : 'Fiyat'
+}
+
+// Where a panel price change goes: the variant, at the version the list loaded.
+export type PanelPriceTarget = { kind: 'panel'; variantId: string; version: number } | { kind: 'blocked'; reason: string }
+export function panelPriceTarget(variant: { id: string; version?: number | null }): PanelPriceTarget {
+  if (variant.version == null) return { kind: 'blocked', reason: 'Varyant sürümü okunamadı; listeyi yenileyip tekrar deneyin.' }
+  return { kind: 'panel', variantId: variant.id, version: variant.version }
+}
+
+// The list and sale price typed into the two per-variant fields, checked as the server checks them. An empty list
+// price takes the sale price.
+export function inlinePrices(list: string, sale: string): { ok: true; listPrice: number; salePrice: number } | { ok: false; message: string } {
+  const salePrice = Number(sale)
+  if (sale.trim() === '' || !Number.isFinite(salePrice) || salePrice <= 0) return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
+  const listPrice = list.trim() === '' ? salePrice : Number(list)
+  if (!Number.isFinite(listPrice) || listPrice < salePrice) return { ok: false, message: 'Liste fiyatı satış fiyatından küçük olamaz.' }
+  if (!hasAtMostTwoDecimals(listPrice) || !hasAtMostTwoDecimals(salePrice)) return { ok: false, message: 'Fiyat en fazla iki ondalık basamak içerebilir.' }
+  return { ok: true, listPrice, salePrice }
+}
+
+export function hasAtMostTwoDecimals(value: number) {
+  return Math.abs(Math.round(value * 100) - value * 100) < 1e-6
+}

@@ -94,6 +94,9 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/products") : MissingContext(http));
         api.MapPatch("/products/{id:guid}", async (Guid id, UpdateProductCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateProductAsync(tenant.TenantId, id, version, command, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
+        // The panel's own price of a variant; If-Match carries the variant version. Nothing is sent to a marketplace.
+        api.MapPatch("/variants/{id:guid}/default-prices", async (Guid id, UpdateVariantDefaultPricesCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateVariantDefaultPricesAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
         api.MapDelete("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);

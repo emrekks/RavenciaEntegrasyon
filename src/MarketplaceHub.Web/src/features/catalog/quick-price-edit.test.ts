@@ -1,5 +1,47 @@
 import { describe, expect, it } from 'vitest'
-import { quickEditOfferPrices, quickPriceBody, quickPriceTarget } from './quick-price-edit'
+import { hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPrices, panelPriceTarget, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
+
+describe('panel price choice', () => {
+  const product = { defaultListPrice: 300, defaultSalePrice: 250 }
+  const variant = { id: 'v-1', version: 7, defaultListPrice: 200, defaultSalePrice: 180, platformStatuses: [{ connectionId: 'conn-1', offerId: 'offer-1', offerVersion: 2, listPrice: 500, salePrice: 450 }] }
+
+  it("reads the variant's own panel price, else the card's", () => {
+    expect(panelPrices(variant, product)).toEqual({ listPrice: 200, salePrice: 180 })
+    expect(panelPrices({ defaultListPrice: null, defaultSalePrice: null }, product)).toEqual({ listPrice: 300, salePrice: 250 })
+    expect(panelPrices({}, {})).toEqual({ listPrice: null, salePrice: null })
+  })
+
+  it('shows the panel price for Panel and the channel offer for a channel', () => {
+    expect(quickInlinePrices(PANEL_PRICE_CHOICE, variant, product)).toEqual({ listPrice: 200, salePrice: 180 })
+    expect(quickInlinePrices('conn-1', variant, product)).toEqual({ listPrice: 500, salePrice: 450 })
+    expect(quickInlinePrices('conn-2', variant, product)).toEqual({ listPrice: null, salePrice: null })
+    expect(quickInlinePrices('', variant, product)).toEqual({ listPrice: null, salePrice: null })
+  })
+
+  it('says what each choice changes', () => {
+    expect(quickPriceChoiceHelp(PANEL_PRICE_CHOICE)).toContain('pazaryerlerindeki fiyatlar değişmez')
+    expect(quickPriceChoiceHelp('conn-1', 'Trendyol')).toBe('Yalnız Trendyol fiyatı değişir; panel ana fiyatı ve diğer kanalların fiyatı değişmez. Bu kanalda fiyatı olmayan varyantın ilk fiyatı oluşturulur.')
+    expect(quickPriceChoiceLabel(PANEL_PRICE_CHOICE)).toBe('Panel Fiyatı')
+    expect(quickPriceChoiceLabel('conn-1', 'Hepsiburada')).toBe('Hepsiburada')
+  })
+
+  it('writes the panel price at the loaded variant version, and refuses without one', () => {
+    expect(panelPriceTarget(variant)).toEqual({ kind: 'panel', variantId: 'v-1', version: 7 })
+    expect(panelPriceTarget({ id: 'v-2', version: null })).toMatchObject({ kind: 'blocked' })
+  })
+
+  it('checks the typed list and sale price as the server does', () => {
+    expect(inlinePrices('200', '150')).toEqual({ ok: true, listPrice: 200, salePrice: 150 })
+    expect(inlinePrices('', '150')).toEqual({ ok: true, listPrice: 150, salePrice: 150 })
+    expect(inlinePrices('100', '150')).toEqual({ ok: false, message: 'Liste fiyatı satış fiyatından küçük olamaz.' })
+    expect(inlinePrices('100', '0').ok).toBe(false)
+    expect(inlinePrices('100', '').ok).toBe(false)
+    expect(inlinePrices('100.005', '90').ok).toBe(false)
+    expect(hasAtMostTwoDecimals(19.99)).toBe(true)
+    expect(hasAtMostTwoDecimals(0.1 + 0.2)).toBe(true)
+    expect(hasAtMostTwoDecimals(1.234)).toBe(false)
+  })
+})
 
 describe('quick price target', () => {
   const variant = { platformStatuses: [

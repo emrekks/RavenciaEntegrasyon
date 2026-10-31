@@ -376,3 +376,16 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) { grid-template-columns: minmax(0, 1fr); }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) .rr-vline { grid-template-columns: 16px minmax(0, 1fr) 80px; }
 }
+/* Quick edit price pair: a group label (Panel Fiyatı or the channel's name) over two small Liste / Satış fields. The
+   price-only window has no stock field on the line. Problems show in the dialog's notice and on the field, not below. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 4px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice > .rr-qprice-h { grid-column: 1 / -1; overflow: hidden; color: var(--rr-muted); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice > label { display: grid; gap: 1px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice > label small { font-size: 10px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice .rr-in { min-width: 0; padding: 0 6px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-vline, .rr-step:has(> .rr-vgroup) .rr-vline).rr-vline-price { grid-template-columns: 16px minmax(0, 1fr) 156px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-vline, .rr-step:has(> .rr-vgroup) .rr-vline).rr-vline-both { grid-template-columns: 16px minmax(0, 1fr) 64px 156px; }
+@media (max-width: 760px) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-vline, .rr-step:has(> .rr-vgroup) .rr-vline):is(.rr-vline-price, .rr-vline-both) { grid-template-columns: 16px minmax(0, 1fr) 156px; }
+}

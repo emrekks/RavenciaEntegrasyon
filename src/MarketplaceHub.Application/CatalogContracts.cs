@@ -189,6 +189,10 @@ public sealed record VariantMarketplaceCodeView(Guid ConnectionId, string Extern
 // Codes typed in the product editor: a code links the variant on that connection, an empty one removes its link.
 public sealed record UpdateMarketplaceCodesCommand(IReadOnlyList<MarketplaceCodeChange>? Codes);
 public sealed record MarketplaceCodeChange(Guid VariantId, Guid ConnectionId, string? Code);
+// The panel's own price of a variant (the product card's Liste/Satış Fiyatı). No marketplace offer changes with it and
+// nothing is sent to a marketplace.
+public sealed record UpdateVariantDefaultPricesCommand(decimal ListPrice, decimal SalePrice, string? Reason = null);
+public sealed record VariantDefaultPricesView(Guid Id, Guid ProductId, decimal? DefaultListPrice, decimal? DefaultSalePrice, long Version, long ProductVersion);
 
 public interface ICatalogService
 {
@@ -224,6 +228,7 @@ public interface ICatalogService
     Task<ServiceResult<ProductMarketplaceCodesView>> UpdateProductMarketplaceCodesAsync(Guid tenantId, Guid id, UpdateMarketplaceCodesCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
+    Task<ServiceResult<VariantDefaultPricesView>> UpdateVariantDefaultPricesAsync(Guid tenantId, Guid userId, Guid variantId, long expectedVersion, UpdateVariantDefaultPricesCommand command, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ListingProfileView>> GetListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<ListingProfileView>> UpsertListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, long? expectedVersion, UpsertListingProfileCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);

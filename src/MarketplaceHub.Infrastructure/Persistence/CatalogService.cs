@@ -1584,6 +1584,44 @@ public sealed class CatalogService(AppDbContext db, CursorCodec cursors, IConfig
         return await GetProductAsync(tenantId, id, cancellationToken);
     }
 
+    // The panel's own price of one variant (the editor's Liste/Satış Fiyatı). It is what a new marketplace offer starts
+    // from (bulk publish) and what the list shows where no marketplace price exists; no channel offer changes and nothing
+    // is queued for a marketplace. A card with a single variant keeps its card price equal, as the editor shows that one.
+    // The product version moves too, so an editor opened before this change cannot save the old price over it.
+    public async Task<ServiceResult<VariantDefaultPricesView>> UpdateVariantDefaultPricesAsync(Guid tenantId, Guid userId, Guid variantId, long expectedVersion, UpdateVariantDefaultPricesCommand command, string correlationId, CancellationToken cancellationToken)
+    {
+        if (command.SalePrice <= 0) return Invalid<VariantDefaultPricesView>("salePrice", "Satış fiyatı sıfırdan büyük olmalıdır.");
+        if (command.ListPrice < command.SalePrice) return Invalid<VariantDefaultPricesView>("listPrice", "Liste fiyatı satış fiyatından küçük olamaz.");
+        if (command.ListPrice > MaxDefaultPrice) return Invalid<VariantDefaultPricesView>("listPrice", "Fiyat çok büyük.");
+        if (decimal.Round(command.ListPrice, 2) != command.ListPrice || decimal.Round(command.SalePrice, 2) != command.SalePrice) return Invalid<VariantDefaultPricesView>("prices", "Fiyat en fazla iki ondalık basamak içerebilir.");
+        var variant = await db.ProductVariants.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == variantId, cancellationToken);
+        if (variant is null) return NotFound<VariantDefaultPricesView>();
+        if (variant.Version != expectedVersion) return Precondition<VariantDefaultPricesView>(variant.Version);
+        var product = await db.Products.SingleAsync(x => x.TenantId == tenantId && x.Id == variant.ProductId, cancellationToken);
+        var previous = (variant.DefaultListPrice, variant.DefaultSalePrice);
+        if (previous == (command.ListPrice, command.SalePrice)) return ServiceResult<VariantDefaultPricesView>.Ok(new(variant.Id, variant.ProductId, variant.DefaultListPrice, variant.DefaultSalePrice, variant.Version, product.Version));
+        var now = timeProvider.GetUtcNow();
+        variant.DefaultListPrice = command.ListPrice; variant.DefaultSalePrice = command.SalePrice; variant.UpdatedAt = now; variant.Version++;
+        var singleVariant = !await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.ProductId == product.Id && x.Id != variant.Id, cancellationToken);
+        if (singleVariant) { product.DefaultListPrice = command.ListPrice; product.DefaultSalePrice = command.SalePrice; }
+        product.UpdatedAt = now; product.Version++;
+        static string Money(decimal? value) => value is decimal amount ? amount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : "-";
+        var reason = string.IsNullOrWhiteSpace(command.Reason) ? "Panel ana fiyatı" : command.Reason.Trim();
+        if (reason.Length > 160) reason = reason[..160];
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "VARIANT_DEFAULT_PRICE_CHANGED", TargetType = "ProductVariant", TargetId = variant.Id.ToString("D"), Reason = Truncate($"{reason}: {variant.Sku} liste {Money(previous.DefaultListPrice)} → {Money(command.ListPrice)}, satış {Money(previous.DefaultSalePrice)} → {Money(command.SalePrice)}", 512), CorrelationId = correlationId, CreatedAt = now });
+        try { await db.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            var current = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == variantId).Select(x => x.Version).SingleOrDefaultAsync(cancellationToken);
+            return Precondition<VariantDefaultPricesView>(current);
+        }
+        return ServiceResult<VariantDefaultPricesView>.Ok(new(variant.Id, variant.ProductId, variant.DefaultListPrice, variant.DefaultSalePrice, variant.Version, product.Version));
+    }
+
+    private const decimal MaxDefaultPrice = 100_000_000m;
+    private static string Truncate(string value, int length) => value.Length <= length ? value : value[..length];
+
     public async Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
     {
         var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version); product.Status = ProductStatus.Archived; product.ArchivedAt = timeProvider.GetUtcNow(); product.UpdatedAt = product.ArchivedAt.Value; product.Version++; var variants = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken); foreach (var variant in variants) { variant.Status = ProductStatus.Archived; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }

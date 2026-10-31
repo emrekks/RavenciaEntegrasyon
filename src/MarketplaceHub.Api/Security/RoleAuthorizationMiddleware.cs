@@ -106,7 +106,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                     : OperationalRoles;
             case "shipments":
                 return last == "label-capability-probes" ? ElevatedRoles : OperationalRoles;
-            case "catalog" or "products" or "files" or "imports" or "inventory" or "channel-offers" or "mappings" or "returns":
+            case "catalog" or "products" or "variants" or "files" or "imports" or "inventory" or "channel-offers" or "mappings" or "returns":
                 return OperationalRoles;
             default:
                 return ElevatedRoles;

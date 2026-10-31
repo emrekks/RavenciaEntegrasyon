@@ -1598,6 +1598,64 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.All(offers.Where(x => x.ConnectionId != pttAvm.Id), offer => Assert.Equal(20m, offer.VatRate));
     }
 
+    // Quick edit "Panel Ana Fiyatı": the variant's own price changes (and the card price of a single-variant card), the
+    // product version moves so an open editor cannot save the old price back, an audit row is written, and nothing is
+    // queued for a marketplace. A stale version, a zero sale price, list < sale and three decimals are refused.
+    [PostgreSqlFact]
+    public async Task VariantDefaultPrices_ChangeOnlyThePanelPrice()
+    {
+        var tenant = NewTenant("variant-default-price");
+        var other = NewTenant("variant-default-price-other");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.AddRange(tenant, other);
+            await seed.SaveChangesAsync();
+        }
+        await using var db = fixture.CreateContext();
+        var service = NewCatalogService(db);
+        var userId = Guid.CreateVersion7();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var multi = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Ana Fiyat Bluz", "Açıklama", null, null, [new CreateVariantCommand($"AF-S-{suffix}", null, null, DefaultListPrice: 200m, DefaultSalePrice: 150m), new CreateVariantCommand($"AF-M-{suffix}", null, null, DefaultListPrice: 200m, DefaultSalePrice: 150m)], DefaultListPrice: 200m, DefaultSalePrice: 150m, VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(multi.Succeeded, multi.Error?.Message);
+        var single = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Ana Fiyat Tek", "Açıklama", null, null, [new CreateVariantCommand($"AF-T-{suffix}", null, null, DefaultListPrice: 90m, DefaultSalePrice: 80m)], DefaultListPrice: 90m, DefaultSalePrice: 80m, VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(single.Succeeded, single.Error?.Message);
+        var target = multi.Value!.Variants[0];
+        var sibling = multi.Value.Variants[1];
+        db.ChangeTracker.Clear();
+
+        Assert.Equal(422, (await service.UpdateVariantDefaultPricesAsync(tenant.Id, userId, target.Id, target.Version, new(100m, 0m), "c", CancellationToken.None)).Error!.Status);
+        Assert.Equal(422, (await service.UpdateVariantDefaultPricesAsync(tenant.Id, userId, target.Id, target.Version, new(100m, 120m), "c", CancellationToken.None)).Error!.Status);
+        Assert.Equal(422, (await service.UpdateVariantDefaultPricesAsync(tenant.Id, userId, target.Id, target.Version, new(100.005m, 90m), "c", CancellationToken.None)).Error!.Status);
+        Assert.Equal(404, (await service.UpdateVariantDefaultPricesAsync(other.Id, userId, target.Id, target.Version, new(100m, 90m), "c", CancellationToken.None)).Error!.Status);
+        Assert.Equal(412, (await service.UpdateVariantDefaultPricesAsync(tenant.Id, userId, target.Id, target.Version + 1, new(100m, 90m), "c", CancellationToken.None)).Error!.Status);
+
+        var changed = await service.UpdateVariantDefaultPricesAsync(tenant.Id, userId, target.Id, target.Version, new(250m, 199.9m, "Hızlı düzenleme"), "corr-1", CancellationToken.None);
+        Assert.True(changed.Succeeded, changed.Error?.Message);
+        Assert.Equal((250m, 199.9m, target.Version + 1), (changed.Value!.DefaultListPrice, changed.Value.DefaultSalePrice, changed.Value.Version));
+        db.ChangeTracker.Clear();
+        var storedProduct = await db.Products.AsNoTracking().SingleAsync(x => x.Id == multi.Value.Id);
+        Assert.Equal((200m, 150m), (storedProduct.DefaultListPrice, storedProduct.DefaultSalePrice));
+        Assert.True(storedProduct.Version > multi.Value.Version);
+        Assert.Equal(changed.Value.ProductVersion, storedProduct.Version);
+        var storedSibling = await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == sibling.Id);
+        Assert.Equal((200m, 150m, sibling.Version), (storedSibling.DefaultListPrice, storedSibling.DefaultSalePrice, storedSibling.Version));
+        var stale = await service.UpdateProductAsync(tenant.Id, multi.Value.Id, multi.Value.Version, new UpdateProductCommand("Ana Fiyat Bluz", "Açıklama", null, null), CancellationToken.None);
+        Assert.Equal(412, stale.Error!.Status);
+        var audit = await db.AuditLogs.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.TargetId == target.Id.ToString("D"));
+        Assert.Equal(("VARIANT_DEFAULT_PRICE_CHANGED", userId, "corr-1"), (audit.Action, audit.ActorUserId, audit.CorrelationId));
+        Assert.Contains("199.90", audit.Reason);
+
+        var singleVariant = single.Value!.Variants[0];
+        var singleChanged = await service.UpdateVariantDefaultPricesAsync(tenant.Id, userId, singleVariant.Id, singleVariant.Version, new(95m, 85m), "corr-2", CancellationToken.None);
+        Assert.True(singleChanged.Succeeded, singleChanged.Error?.Message);
+        db.ChangeTracker.Clear();
+        var singleProduct = await db.Products.AsNoTracking().SingleAsync(x => x.Id == single.Value.Id);
+        Assert.Equal((95m, 85m), (singleProduct.DefaultListPrice, singleProduct.DefaultSalePrice));
+
+        Assert.False(await db.ChannelOffers.AnyAsync(x => x.TenantId == tenant.Id));
+        Assert.False(await db.IntegrationJobs.AnyAsync(x => x.TenantId == tenant.Id));
+    }
+
     // The editor saves KDV Oranı and KDV Dahil mi on the product card; an update that leaves them out keeps them, and a
     // rate outside 0-100 is refused.
     [PostgreSqlFact]
