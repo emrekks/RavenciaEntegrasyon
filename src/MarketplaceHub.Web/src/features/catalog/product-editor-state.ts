@@ -4,8 +4,19 @@ import type { VariantStockSet } from './variant-stock-set'
 // The key of the product snapshot the editor form was filled from. Every place that tells the editor "this version is
 // already on screen" (the seed itself, an image deletion that bumps the version) must build it the same way, or the
 // next refetch reseeds the form and drops unsaved edits.
-export function editorSeedKey(mode: 'edit' | 'copy', productId: string, version: number) {
-  return `${mode}:${productId}:${version}`
+// The stamp is what the product version does not cover: a variant's stock, panel price or channel offers change on
+// their own versions (the products list's quick edit, orders, imports), and the form must refill for them too.
+export function editorSeedKey(mode: 'edit' | 'copy', productId: string, version: number, stamp = '') {
+  return `${mode}:${productId}:${version}${stamp ? `:${stamp}` : ''}`
+}
+
+type StampVariant = { id: string; version?: number | null; inventoryVersion?: number | null; onHand?: number | null; platformStatuses?: ReadonlyArray<{ connectionId?: string | null; offerId?: string | null; offerVersion?: number | null }> | null }
+// A short text that changes whenever a variant's own version, its stock or one of its channel offers changes.
+export function editorDataStamp(variants: ReadonlyArray<StampVariant>) {
+  const text = variants.map(variant => [variant.id, variant.version ?? '', variant.inventoryVersion ?? '', variant.onHand ?? '', ...(variant.platformStatuses ?? []).map(status => `${status.offerId ?? ''}@${status.offerVersion ?? ''}`)].join('.')).sort().join('|')
+  let hash = 5381
+  for (let index = 0; index < text.length; index++) hash = (hash * 33 + text.charCodeAt(index)) >>> 0
+  return hash.toString(36)
 }
 
 // A stable text form of what the user can edit; compared with the one taken right after the form was filled.

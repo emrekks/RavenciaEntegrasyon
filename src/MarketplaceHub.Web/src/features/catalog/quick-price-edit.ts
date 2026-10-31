@@ -75,14 +75,45 @@ export function quickEditOfferPrices(current: { listPrice?: number | null; saleP
 export const PANEL_PRICE_CHOICE = 'PANEL'
 
 type PanelPriceSource = { defaultListPrice?: number | null; defaultSalePrice?: number | null }
+// The variant's own price fields as the product list sends them: its first active channel offer's (oldest first).
+type VariantOfferPriceSource = PanelPriceSource & { listPrice?: number | null; salePrice?: number | null }
 
-// The panel price of a variant as the rest of the panel reads it (bulk publish, editor): the variant's own, else the card's.
-export function panelPrices(variant: PanelPriceSource, product: PanelPriceSource): { listPrice: number | null; salePrice: number | null } {
-  return { listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? null, salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? null }
+// The panel price of a variant exactly as the product editor's variant table shows it (Fiyat / Liste Fiyatı): the
+// variant's own, else the card's, else — for a card that never had a panel price, such as one imported from a
+// marketplace — the variant's first active channel offer. Both screens use this, so they never show different values.
+export function panelPrices(variant: VariantOfferPriceSource, product: PanelPriceSource): { listPrice: number | null; salePrice: number | null } {
+  const salePrice = variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? null
+  return { listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? null, salePrice }
 }
 
+// True when no panel price is saved for the variant or its card, so the value shown is the first channel offer's.
+export function panelPriceIsFallback(variant: VariantOfferPriceSource, product: PanelPriceSource) {
+  const saved = (variant.defaultSalePrice ?? product.defaultSalePrice) != null || (variant.defaultListPrice ?? product.defaultListPrice) != null
+  return !saved && (variant.salePrice != null || variant.listPrice != null)
+}
+
+// One price column of the quick edit matrix: the panel price first, then every marketplace connection in the order
+// the panel lists them. A sale-price-only marketplace (Hepsiburada, PTT AVM) has a single Satış field.
+export type QuickPriceColumn = { id: string; label: string; platformCode: string | null; takesListPrice: boolean }
+export function quickPriceColumns(connections: ReadonlyArray<{ id: string; displayName?: string | null; platformCode?: string | null }>): QuickPriceColumn[] {
+  return [
+    { id: PANEL_PRICE_CHOICE, label: 'Panel Fiyatı', platformCode: null, takesListPrice: true },
+    ...connections.map(connection => ({ id: connection.id, label: connection.displayName?.trim() || connection.platformCode || 'Kanal', platformCode: connection.platformCode ?? null, takesListPrice: channelTakesListPrice(connection.platformCode) })),
+  ]
+}
+
+// The grid columns of a matrix row (and its header): select box, variant, stock, then one cell per price column.
+export function quickEditGridTemplate(columns: ReadonlyArray<QuickPriceColumn>, showStock: boolean, showPrice: boolean) {
+  return ['16px', 'minmax(150px, 1fr)', ...(showStock ? ['76px'] : []), ...(showPrice ? columns.map(column => column.takesListPrice ? '164px' : '86px') : [])].join(' ')
+}
+
+// Every query that shows a variant's panel price, channel prices or stock: the products list with its summary, counts
+// and low-stock details (['products', …]) and the product editor (['product', id]). A quick edit save invalidates all
+// of them so an open editor shows the same values.
+export const QUICK_EDIT_SYNC_KEYS: ReadonlyArray<readonly string[]> = [['products'], ['product']]
+
 // The list and sale price the per-variant fields show for the choice: the panel's, the chosen channel's offer, or none.
-export function quickInlinePrices(choice: string, variant: QuickPriceVariant & PanelPriceSource, product: PanelPriceSource): { listPrice: number | null; salePrice: number | null } {
+export function quickInlinePrices(choice: string, variant: QuickPriceVariant & VariantOfferPriceSource, product: PanelPriceSource): { listPrice: number | null; salePrice: number | null } {
   if (choice === PANEL_PRICE_CHOICE) return panelPrices(variant, product)
   const offer = choice ? channelOffer(variant, choice) : null
   return { listPrice: offer?.listPrice ?? null, salePrice: offer?.salePrice ?? null }

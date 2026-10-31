@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPrices, panelPriceTarget, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
+import { channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, quickEditGridTemplate, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
 
 describe('panel price choice', () => {
   const product = { defaultListPrice: 300, defaultSalePrice: 250 }
@@ -9,6 +9,36 @@ describe('panel price choice', () => {
     expect(panelPrices(variant, product)).toEqual({ listPrice: 200, salePrice: 180 })
     expect(panelPrices({ defaultListPrice: null, defaultSalePrice: null }, product)).toEqual({ listPrice: 300, salePrice: 250 })
     expect(panelPrices({}, {})).toEqual({ listPrice: null, salePrice: null })
+  })
+
+  it('falls back to the first channel offer like the product editor when no panel price is saved', () => {
+    const imported = { defaultListPrice: null, defaultSalePrice: null, listPrice: 899.9, salePrice: 649.9 }
+    expect(panelPrices(imported, {})).toEqual({ listPrice: 899.9, salePrice: 649.9 })
+    expect(panelPriceIsFallback(imported, {})).toBe(true)
+    expect(panelPrices({ salePrice: 100 }, {})).toEqual({ listPrice: 100, salePrice: 100 })
+    // A saved panel price always wins over the offer, and is not a fallback.
+    expect(panelPrices({ ...imported, defaultSalePrice: 500 }, { defaultListPrice: 700 })).toEqual({ listPrice: 700, salePrice: 500 })
+    expect(panelPriceIsFallback({ ...imported, defaultSalePrice: 500 }, {})).toBe(false)
+    expect(panelPriceIsFallback(imported, { defaultSalePrice: 1 })).toBe(false)
+    expect(panelPriceIsFallback({}, {})).toBe(false)
+  })
+
+  it('builds the matrix columns: panel first, then each connection; sale-only platforms have one field', () => {
+    const columns = quickPriceColumns([
+      { id: 'c-ty', displayName: 'Trendyol', platformCode: 'TRENDYOL' },
+      { id: 'c-hb', displayName: 'Hepsiburada', platformCode: 'HEPSIBURADA' },
+      { id: 'c-ptt', displayName: ' ', platformCode: 'PTTAVM' },
+    ])
+    expect(columns.map(column => [column.id, column.label, column.takesListPrice])).toEqual([
+      [PANEL_PRICE_CHOICE, 'Panel Fiyatı', true], ['c-ty', 'Trendyol', true], ['c-hb', 'Hepsiburada', false], ['c-ptt', 'PTTAVM', false],
+    ])
+    expect(quickEditGridTemplate(columns, false, true)).toBe('16px minmax(150px, 1fr) 164px 164px 86px 86px')
+    expect(quickEditGridTemplate(columns, true, false)).toBe('16px minmax(150px, 1fr) 76px')
+    expect(quickEditGridTemplate(columns, true, true)).toBe('16px minmax(150px, 1fr) 76px 164px 164px 86px 86px')
+  })
+
+  it('refreshes the products list and the product editor after a save', () => {
+    expect(QUICK_EDIT_SYNC_KEYS).toEqual([['products'], ['product']])
   })
 
   it('shows the panel price for Panel and the channel offer for a channel', () => {

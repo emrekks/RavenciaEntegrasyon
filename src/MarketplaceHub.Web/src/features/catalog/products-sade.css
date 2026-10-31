@@ -100,15 +100,6 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-t:focus-visible { outline: 2px solid color-mix(in srgb, var(--rr-primary) 70%, transparent); outline-offset: -2px; border-radius: 6px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cb[data-mixed]:not(:checked)::after { content: ""; position: absolute; left: 3px; right: 3px; top: 6.5px; height: 1.6px; background: var(--rr-violet); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-cb[data-mixed] { border-color: var(--rr-violet-line); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vline { display: grid; grid-template-columns: 16px minmax(0, 1fr) 96px 120px; gap: 12px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--rr-line); font-size: 13px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vg-h + .rr-vline { border-top: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vline.rr-off { color: var(--rr-muted); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vline > span { display: grid; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vline b { font-weight: 500; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vline small { color: var(--rr-subtle); font-size: 12px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini { display: grid; gap: 2px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini small { color: var(--rr-subtle); font-size: 11px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini .rr-in { height: 32px; padding: 0 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-srcs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 12px; cursor: pointer; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src:hover { background: var(--rv-hover, var(--rr-hover)); }
@@ -167,8 +158,6 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-radios { grid-template-columns: 1fr; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-low-tools { grid-template-columns: 1fr 1fr; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-low-tools > :first-child { grid-column: 1 / -1; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vline { grid-template-columns: 16px minmax(0, 1fr) 80px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vline .rr-mini:last-child:not(:nth-child(3)) { grid-column: 3; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools { margin-left: 0; width: 100%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn strong { font-size: 22px; }
 }
@@ -341,10 +330,6 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 }
 /* the actions button sits in the middle of its column, over Düzenle */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl .rr-actcell { align-items: center; justify-items: center; }
-/* a stock or price value the server refused or the field could not read (quick edit, W2) */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini small.rr-field-error { color: var(--rr-bad); max-width: 140px; }
-/* why a price field is locked (no offer version, no channel chosen yet) */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-mini small.rr-field-hint { color: var(--rr-subtle); max-width: 140px; }
 
 /* Five summary cards (Stok Adeti joined): one row of five on desktop, three over two on tablet, two per row with the
    last one full width on phone, like the orders summary. */
@@ -366,28 +351,38 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Variant stock table: a little less room on the right, where the last size's cell padding added to the popup's. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { padding-right: 6px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vtab :is(th, td):last-child { padding-right: 2px; }
-/* Variant groups sit in two columns (one on a phone); an opened group stays in its column, its variant lines a little
-   tighter so the price and stock fields still fit. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 8px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) > :not(.rr-vgroup) { grid-column: 1 / -1; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) > .rr-vgroup { margin-top: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) .rr-vline { grid-template-columns: 16px minmax(0, 1fr) 84px 96px; gap: 8px; padding: 8px 10px; }
+/* Quick edit window: wide, its colour groups in one column. An open group is a matrix: variant, stock, the panel price
+   and each channel's price side by side, the column titles once at the top of the group, so the rows stay one line.
+   Many channels scroll sideways inside the group; a phone stacks each row's fields under the variant, each titled. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-modal.rr-qe-modal { width: min(1200px, 100%); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qmatrix { overflow-x: auto; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow { display: grid; gap: 8px; align-items: center; min-width: max-content; padding: 6px 12px; border-top: 1px solid var(--rr-line); font-size: 13px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow.rr-qhead { padding-block: 6px 4px; border-top: 0; color: var(--rr-muted); font-size: 12px; font-weight: 600; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow.rr-off { color: var(--rr-muted); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qhcell { display: grid; gap: 1px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qhcell b { overflow: hidden; color: var(--rr-ink); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qhcell small { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 4px; color: var(--rr-subtle); font-size: 11px; font-weight: 500; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qhcell i { font-style: normal; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname { display: grid; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname b { overflow: hidden; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname small { color: var(--rr-subtle); font-size: 12px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell { display: grid; gap: 4px; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell.rr-qprice { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell.rr-qprice.rr-qsale { grid-template-columns: minmax(0, 1fr); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell-h { display: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell .rr-in { height: 32px; min-width: 0; padding: 0 6px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
+/* The panel price is the card's own; a line sets it apart from the channel prices. Shown from a channel (no panel
+   price saved yet) it is muted until changed. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow > .rr-qpanel { padding-right: 8px; border-right: 1px solid var(--rr-line); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell.rr-qfallback .rr-in { color: var(--rr-muted); font-style: italic; }
 @media (max-width: 760px) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) { grid-template-columns: minmax(0, 1fr); }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) .rr-vline { grid-template-columns: 16px minmax(0, 1fr) 80px; }
-}
-/* Quick edit price pair: a group label (Panel Fiyatı or the channel's name) over two small Liste / Satış fields. The
-   price-only window has no stock field on the line. Problems show in the dialog's notice and on the field, not below. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 4px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice > .rr-qprice-h { grid-column: 1 / -1; overflow: hidden; color: var(--rr-muted); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice > label { display: grid; gap: 1px; min-width: 0; }
-/* A sale-price-only marketplace shows one field, which takes the whole width. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice:not(:has(> label + label)) { grid-template-columns: minmax(0, 1fr); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice > label small { font-size: 10px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice .rr-in { min-width: 0; padding: 0 6px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qprice .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-vline, .rr-step:has(> .rr-vgroup) .rr-vline).rr-vline-price { grid-template-columns: 16px minmax(0, 1fr) 156px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-vline, .rr-step:has(> .rr-vgroup) .rr-vline).rr-vline-both { grid-template-columns: 16px minmax(0, 1fr) 64px 156px; }
-@media (max-width: 760px) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) :is(.rr-vline, .rr-step:has(> .rr-vgroup) .rr-vline):is(.rr-vline-price, .rr-vline-both) { grid-template-columns: 16px minmax(0, 1fr) 156px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow.rr-qhead { display: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow { display: flex; flex-wrap: wrap; gap: 8px 10px; min-width: 0; padding: 10px 12px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname { flex: 1 1 calc(100% - 30px); }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell { flex: 1 1 150px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell:is(.rr-qstock, .rr-qsale) { flex: 1 1 96px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell-h { display: block; grid-column: 1 / -1; overflow: hidden; color: var(--rr-subtle); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow > .rr-qpanel { padding-right: 0; border-right: 0; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell .rr-in { height: 36px; }
 }
