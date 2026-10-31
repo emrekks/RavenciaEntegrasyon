@@ -40,7 +40,7 @@ const sendsOf = (store: string) => card(store)?.querySelector('.platform-update-
 const groupCount = (index: number) => document.querySelectorAll('.platform-update-group-check small')[index]?.textContent
 
 describe('PlatformUpdateDialog', () => {
-  it('shows only the fields the selected stores take, grouped, and says which store a partial field goes to', () => {
+  it('shows only the fields the selected stores take, grouped, without naming stores beside a field (the cards below say what goes where)', () => {
     render(['hb'], ['TITLE', 'PRICE'])
     expect([...document.querySelectorAll('.platform-update-group-check strong')].map(node => node.textContent)).toEqual(['Ürün Bilgileri', 'Kargo ve Teslimat', 'Satış Bilgileri'])
     expect(fieldLabels()).toContain('Garanti Süresi')
@@ -49,18 +49,13 @@ describe('PlatformUpdateDialog', () => {
     render(['hb', 'ty'], ['TITLE', 'PRICE'])
     expect(fieldLabels()).toContain('Teslimat Süresi')
     expect(fieldLabels()).not.toContain('Menşei')
-    const only = (label: string) => [...document.querySelectorAll('.platform-update-field')].find(node => node.textContent?.startsWith(label))?.querySelector('.platform-update-field-only')?.textContent
-    expect(only('Teslimat Süresi')).toBeUndefined()
-    expect(only('Garanti Süresi')).toBe('Yalnız Hepsiburada')
-    expect([...document.querySelectorAll('.platform-update-field-only')]).toHaveLength(1)
+    expect(document.querySelector('.platform-update-field:not(.is-linked) small')).toBeNull()
     act(() => root?.unmount()); root = undefined
     // Pazarama takes the VAT rate, price and stock: the content and shipping fields are Trendyol's alone beside it.
     render(['pz'], ['VAT_RATE'])
     expect(fieldLabels()).toEqual(['Fiyat', 'Stok', 'KDV Oranı'])
     act(() => root?.unmount()); root = undefined
     render(['ty', 'pz'], ['TITLE', 'PRICE'])
-    expect(only('Teslimat Süresi')).toBe('Yalnız Trendyol')
-    expect(only('KDV Oranı')).toBeUndefined()
   })
 
   it('shows a linked field as a locked box that follows the field it rides with', () => {
@@ -72,13 +67,6 @@ describe('PlatformUpdateDialog', () => {
     expect(box.checked).toBe(true)
     // A linked box is not a pick of the group.
     expect(groupCount(0)).toBe('1/4 seçili')
-  })
-
-  it('names the information that is never changed or never sent', () => {
-    render(['ty'], ['TITLE'])
-    const fixed = document.querySelector('.platform-update-fixed')!
-    expect(fixed.querySelector('summary')?.textContent).toBe('Değişmeyen ve Gönderilmeyen Bilgiler')
-    expect([...fixed.querySelectorAll('dt')].map(node => node.textContent)).toEqual(['Barkod', 'Stok Kodu', 'Marka, Kategori, Model Kodu', 'Gönderilmeyenler'])
   })
 
   it('counts and sends only the fields shown', () => {

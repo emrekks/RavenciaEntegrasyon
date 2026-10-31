@@ -52,15 +52,6 @@ export const platformUpdateFieldKeys: PlatformUpdateField[] = platformUpdateGrou
 const salesPartKeys = new Set<PlatformUpdateField>(['PRICE', 'STOCK'])
 const fieldLabel = new Map(platformUpdateGroups.flatMap(group => group.fields.map(field => [field.key, field.label] as const)))
 
-// Information that every request carries to find the product, or that an update of a listed product never changes;
-// shown as information, not as a pick.
-export const platformUpdateFixedInformation: { label: string; note: string }[] = [
-  { label: 'Barkod', note: 'Ürünü pazaryerinde bulmak için her istekte gider; bu pencereden değiştirilmez.' },
-  { label: 'Stok Kodu', note: 'Trendyol’da Desi ve KDV Oranı isteğiyle birlikte gider; Hepsiburada’da ürünü bulmak için (merchantSku) gider.' },
-  { label: 'Marka, Kategori, Model Kodu', note: 'Yayındaki üründe güncellenmez. Trendyol bunları yalnız henüz onaylamadığı üründe tüm kartla alır; Hepsiburada güncellemesi hiç taşımaz.' },
-  { label: 'Gönderilmeyenler', note: 'Kargo firması, ağırlık, para birimi ve video bu güncellemeyle hiçbir pazaryerine gitmez.' }
-]
-
 // One request of a marketplace: its fields always go together. sends: the dialog's fields as the card names them (list
 // and sale price apart); extra: what the request also carries that is not a pick of the dialog.
 type PlatformUpdateRequest = { fields: PlatformUpdateField[]; sends: string[]; extra?: string[] }
