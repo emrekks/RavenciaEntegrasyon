@@ -6052,7 +6052,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++));
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -7495,7 +7495,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, DateTimeOffset? createdAt = null)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, DateTimeOffset? createdAt = null, bool allowNewProduct = true)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -7606,6 +7606,33 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     return false;
                 }
             }
+        }
+        // A listing without a product link of its own can still be a panel product's: Trendyol lists each colour as
+        // its own content, while a product published from the panel keeps its colours in one product and links only
+        // its variants. Its variants find it; the listing then brings only its stock and prices (the panel's content
+        // stays), and no second, empty product is opened beside it.
+        if (product is null && !observeOnly)
+        {
+            var owners = await CatalogProductsOwningVariants(tenantId, connectionId, snapshot, cancellationToken);
+            if (owners.Count > 1)
+            {
+                await RecordIssue(tenantId, $"product-sync-variant-owner-conflict:{connectionId}:{Short(externalProductId, 200)}", "PRODUCT_VARIANT_CONFLICT", Short($"Pazar yeri ürününün varyantları panelde birden fazla ürüne ait; yeni ürün açılmadı, mevcut kayıtlar korundu · {snapshot.Title}", 1000), cancellationToken);
+                return false;
+            }
+            if (owners.Count == 1 && await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == owners[0], cancellationToken) is { } owner)
+            {
+                await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, owner, snapshot, inventoryPolicy, now, cancellationToken, updateExistingPricesAndStock: updateExistingPricesAndStock);
+                if (saveChanges)
+                    await db.SaveChangesAsync(cancellationToken);
+                telemetrySkippedCount++;
+                return updateExistingPricesAndStock;
+            }
+        }
+        // "Mevcut Ürünleri Güncelle" never opens a product, and no mode opens one without a variant it can keep.
+        if (product is null && (!allowNewProduct || !snapshot.Variants.Any(variant => !string.IsNullOrWhiteSpace(NormalizeCatalogKey(variant.Sku ?? variant.Barcode ?? variant.ExternalVariantId, 160)))))
+        {
+            telemetrySkippedCount++;
+            return false;
         }
         if (product is null)
         {
@@ -7828,6 +7855,26 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             : observeOnly
                 ? !isNewProduct
                 : !preserveLocal;
+    }
+
+    // The panel products a listing's variants already belong to: by this connection's variant link, then the stock
+    // code, then the barcode. At most two, which is enough to tell one owner from a conflict.
+    private async Task<List<Guid>> CatalogProductsOwningVariants(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)
+    {
+        var externalIds = snapshot.Variants.Select(variant => Short(variant.ExternalVariantId, 256)).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal).ToArray();
+        var owners = externalIds.Length == 0 ? [] : await (from variantLink in db.MarketplaceVariantLinks.AsNoTracking()
+                                                           join variant in db.ProductVariants.AsNoTracking()
+                                                               on new { variantLink.TenantId, variantLink.VariantId }
+                                                               equals new { variant.TenantId, VariantId = variant.Id }
+                                                           where variantLink.TenantId == tenantId && variantLink.ConnectionId == connectionId && externalIds.Contains(variantLink.ExternalId)
+                                                           select variant.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+        if (owners.Count > 0) return owners;
+        var skuKeys = snapshot.Variants.SelectMany(variant => CatalogLookupKeys(string.IsNullOrWhiteSpace(variant.Sku) ? variant.Barcode ?? variant.ExternalVariantId : variant.Sku)).Where(key => key.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
+        if (skuKeys.Length > 0)
+            owners = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && skuKeys.Contains(x.SkuNormalized)).Select(x => x.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+        if (owners.Count > 0) return owners;
+        var barcodeKeys = snapshot.Variants.SelectMany(variant => CatalogLookupKeys(variant.Barcode)).Where(key => key.Length > 0).Distinct(StringComparer.Ordinal).ToArray();
+        return barcodeKeys.Length == 0 ? [] : await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized)).Select(x => x.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
     }
 
     private async Task RepairHepsiburadaVariantLinks(Guid tenantId, Guid connectionId, Product product, RemoteCatalogProduct snapshot, CancellationToken cancellationToken)

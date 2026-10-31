@@ -7890,6 +7890,72 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();
     }
 
+    // A product published from the panel keeps its colours in one product and links only its variants on Trendyol;
+    // Trendyol lists each colour as its own content. Reading those contents back opened an empty product per colour
+    // (no variant: they belong to the panel product). No import mode opens one: "Mevcut Ürünleri Güncelle" never
+    // opens a product, and every mode finds the panel product through its variants and keeps its content.
+    [PostgreSqlTheory]
+    [InlineData("{\"existingOnly\":true,\"includeArchived\":true,\"updateExistingProducts\":false,\"updateExistingPricesAndStock\":true}")]
+    [InlineData("{\"full\":true,\"includeArchived\":true,\"updateExistingProducts\":true}")]
+    [InlineData("{\"newOnly\":true,\"includeArchived\":true}")]
+    public async Task TrendyolColourContent_OfAPanelProduct_OpensNoEmptyProduct(string payloadJson)
+    {
+        var tenant = NewTenant("trendyol-colour-content");
+        var connection = NewQuestionConnection(tenant);
+        var productId = Guid.CreateVersion7();
+        var variantId = Guid.CreateVersion7();
+        var remoteProduct = new RemoteCatalogProduct(
+            "1227181871", "MZ036YNC", "Kışlık Yonca Yaka Etek", "", null, null, null, null,
+            ["https://example.invalid/colour.jpg"],
+            [new RemoteCatalogVariant("ty-variant-1", "MZ036YNC-01", "MZ036YNC-01", "MZ036YNC", new Dictionary<string, string>(), Archived: false, SalePrice: 1099m, ListPrice: 1299m, VatRate: 10m, StockQuantity: 7m, Currency: "TRY", RawJson: "{}")],
+            "{}");
+        var productPort = new ReadOnlyCatalogProductTestPort(remoteProduct);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            // Current references: the import reads no brand or category list from the marketplace here.
+            seedDb.ReferenceSnapshots.AddRange(
+                new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "BRANDS", SourceVersion = "test", ContentHash = "test", FetchedAt = fixture.Now, IsCurrent = true },
+                new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "CATEGORIES", SourceVersion = "test", ContentHash = "test", FetchedAt = fixture.Now, IsCurrent = true });
+            seedDb.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Panel ürünü", Description = "Panel açıklaması", Status = ProductStatus.Active, CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 4 });
+            seedDb.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenant.Id, ProductId = productId, SortOrder = 0, Sku = "MZ036YNC-01", SkuNormalized = "MZ036YNC-01", Barcode = "MZ036YNC-01", BarcodeNormalized = "MZ036YNC-01", ModelCode = "MZ036YNC", OptionSignature = "-", CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 2 });
+            seedDb.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variantId, ExternalId = "ty-variant-1", Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, productPort, null!, null!, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, payloadJson, "trendyol-colour-content", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            var product = await verificationDb.Products.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+            Assert.Equal(productId, product.Id);
+            Assert.Equal("Panel ürünü", product.Title);
+            Assert.Equal(productId, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id)).ProductId);
+            Assert.False(await verificationDb.MarketplaceProductLinks.AnyAsync(row => row.TenantId == tenant.Id));
+            Assert.Equal(0, productPort.WriteAttempts);
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.StockLedgerEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ReferenceSnapshots.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteCatalogOptionRepairTestTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task DeleteCatalogOptionRepairTestTenantAsync(Guid tenantId)
     {
         await using var db = fixture.CreateContext();
