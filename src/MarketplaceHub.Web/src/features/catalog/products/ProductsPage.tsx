@@ -20,7 +20,7 @@ import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFi
 import { productImportConnection, singleProductLookupLabel } from '../product-import-platforms'
 import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { productPlatformFilterGroups } from '../product-platform-filter'
-import { channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPrices, panelPriceTarget, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from '../quick-price-edit'
+import { channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, quickEditGridTemplate, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
 import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
@@ -151,7 +151,10 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   // person picks (its offer updated, or created when the variant has none there). The screen never picks a channel.
   const [priceConnectionId, setPriceConnectionId] = useState(PANEL_PRICE_CHOICE)
   const priceChannelName = connections.find(connection => connection.id === priceConnectionId)?.displayName ?? null
-  const priceChoiceLabel = quickPriceChoiceLabel(priceConnectionId, priceChannelName)
+  // The per-variant matrix: stock, the panel price and every channel's price side by side, each saved on its own.
+  const priceColumns = quickPriceColumns(connections)
+  const showStockColumn = mode !== 'price'; const showPriceColumns = mode !== 'stock'
+  const matrixColumns = quickEditGridTemplate(priceColumns, showStockColumn, showPriceColumns)
   // A marketplace that takes no list price shows only Satış Fiyatı; its offer's list price follows the sale price.
   const showListPrice = priceConnectionId === PANEL_PRICE_CHOICE || channelTakesListPrice(connections.find(connection => connection.id === priceConnectionId)?.platformCode)
   const needsPriceConnection = mode !== 'stock'
@@ -259,7 +262,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     if (anyStale) resetStockBaseline.current = true
   }
   const toggleColorGroup = (color: string) => setOpenColorGroups(current => current.includes(color) ? current.filter(item => item !== color) : [...current, color])
-  return <RrModal crumb={mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="lg" locked={saving} onClose={onClose} foot={<><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} varyant</b> seçildi</> : 'Varyant seçimi bekleniyor'}</span><button type="button" className="rr-btn" onClick={onClose} disabled={saving}>Vazgeç</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !selectionDraft.length}>{saving ? 'Uygulanıyor…' : 'Seçilenlere Uygula'}</button></>}>
+  return <RrModal crumb={mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="xl" modalClass="rr-qe-modal" locked={saving} onClose={onClose} foot={<><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} varyant</b> seçildi</> : 'Varyant seçimi bekleniyor'}</span><button type="button" className="rr-btn" onClick={onClose} disabled={saving}>Vazgeç</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !selectionDraft.length}>{saving ? 'Uygulanıyor…' : 'Seçilenlere Uygula'}</button></>}>
     <form id="product-quick-edit-form" style={{ display: 'contents' }} onSubmit={apply}>
       <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><div className="rr-step-tools">
         <RrAnchor trigger={(open, toggleOpen) => <button type="button" className={`rr-trigger rr-sm${open ? ' rr-on' : ''}`} onClick={toggleOpen}><span>Renk: {selectedColors.length ? `${selectedColors.length} Seçili` : 'Tümü'}</span><RrIcon name="chev" /></button>}>{() => <div className="rr-pop rr-right" role="dialog" style={{ minWidth: 240 }}><label className="rr-opt"><input type="checkbox" className="rr-cb" checked={!selectedColors.length} onChange={() => { setSelectedColors([]); applyFilterSelection([], selectedSizes) }} /><span className="rr-grow">Tümü</span><small>{variants.filter(item => !selectedSizes.length || selectedSizes.includes(sizeOf(item))).length} varyant</small></label>{colorOptions.map(color => <label key={color} className="rr-opt"><input type="checkbox" className="rr-cb" checked={selectedColors.includes(color)} onChange={() => toggleColor(color)} /><span className="rr-grow">{colorLabels[color] || formatCatalogOptionLabel(color)}</span><small>{groups[color].length} varyant</small></label>)}</div>}</RrAnchor>
@@ -271,7 +274,7 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
           const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
           const groupSelection = variantGroupSelectionState(items.map(item => item.variant.id), selectedSet)
           const groupLabel = colorLabels[color] || formatCatalogOptionLabel(color)
-          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && items.map(item => { const parts = variantAxisParts(item.variant.optionSignature); return <div className={`rr-vline${mode === 'price' ? ' rr-vline-price' : mode === 'both' ? ' rr-vline-both' : ''}${selectedSet.has(item.variant.id) ? '' : ' rr-off'}`} key={item.variant.id}><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>Stok Kodu: {item.variant.sku}</small></span><QuickEditVariantControls variant={item.variant} product={item.product} priceConnectionId={priceConnectionId} priceLabel={priceChoiceLabel} showListPrice={showListPrice} connectionCount={connections.length} onChanged={onChanged} onStockSaved={(variantId, onHand) => stockBaseline.current.set(variantId, onHand)} showPrice={mode !== 'stock'} showStock={mode !== 'price'} onError={message => setNotice(`Başarısız: ${item.variant.sku}: ${message}`)} onSelect={() => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id])} /></div> })}</div>
+          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && <div className="rr-qmatrix"><div className="rr-qrow rr-qhead" style={{ gridTemplateColumns: matrixColumns }} aria-hidden="true"><span /><span>Varyant</span>{showStockColumn && <span>Stok</span>}{showPriceColumns && priceColumns.map(column => <span key={column.id} className={`rr-qhcell${column.id === PANEL_PRICE_CHOICE ? ' rr-qpanel' : ''}`}><b title={column.label}>{column.label}</b><small>{column.takesListPrice && <i>Liste</i>}<i>Satış</i></small></span>)}</div>{items.map(item => { const parts = variantAxisParts(item.variant.optionSignature); const select = () => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id]); const fail = (message: string) => setNotice(`Başarısız: ${item.variant.sku}: ${message}`); return <div className={`rr-qrow${selectedSet.has(item.variant.id) ? '' : ' rr-off'}`} style={{ gridTemplateColumns: matrixColumns }} key={item.variant.id}><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span className="rr-qname"><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>Stok Kodu: {item.variant.sku}</small></span>{showStockColumn && <QuickEditStockCell variant={item.variant} onChanged={onChanged} onStockSaved={(variantId, onHand) => stockBaseline.current.set(variantId, onHand)} onError={fail} onSelect={select} />}{showPriceColumns && priceColumns.map(column => <QuickEditPriceCell key={column.id} column={column} variant={item.variant} product={item.product} connectionCount={connections.length} onChanged={onChanged} onError={fail} onSelect={select} />)}</div> })}</div>}</div>
         })}
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{mode === 'stock' ? 'Stok Değerini Düzenle' : mode === 'price' ? 'Fiyat Değerini Düzenle' : 'Fiyat ve Stok Değerini Düzenle'}</div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small></header>
@@ -283,51 +286,16 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     </form>
   </RrModal>
 }
-function QuickEditVariantControls({ variant, product, priceConnectionId, priceLabel, connectionCount, onChanged, onSelect, onStockSaved, onError, showPrice = true, showStock = true, showListPrice = true }: { variant: Variant; product: Product; priceConnectionId: string; priceLabel: string; connectionCount: number; onChanged: () => Promise<unknown>; onSelect: () => void; onStockSaved?: (variantId: string, onHand: number) => void; onError: (message: string) => void; showPrice?: boolean; showStock?: boolean; showListPrice?: boolean }) {
-  // The list and sale price shown and changed are the panel's own or the chosen channel's. A problem is told in the
-  // dialog's notice and on the field (red border, title), never as text under it, so the line stays one row.
-  const shown = quickInlinePrices(priceConnectionId, variant, product)
-  const shownList = shown.listPrice == null ? '' : String(shown.listPrice)
-  const shownSale = shown.salePrice == null ? '' : String(shown.salePrice)
-  const [listPrice, setListPrice] = useState(shownList)
-  const [salePrice, setSalePrice] = useState(shownSale)
-  useEffect(() => { setListPrice(shownList); setSalePrice(shownSale) }, [shownList, shownSale])
-  // The field shows the loaded stock until the user types; fresh data replaces it only while it is untouched, and a
-  // save sends the typed value as an absolute stock against the value shown when editing started.
+// One variant's stock in the quick edit matrix. The field shows the loaded stock until the user types; fresh data
+// replaces it only while it is untouched, and a save sends the typed value as an absolute stock against the value
+// shown when editing started (a change made meanwhile is refused, not undone).
+function QuickEditStockCell({ variant, onChanged, onSelect, onStockSaved, onError }: { variant: Variant; onChanged: () => Promise<unknown>; onSelect: () => void; onStockSaved?: (variantId: string, onHand: number) => void; onError: (message: string) => void }) {
   const [stock, setStock] = useState(String(variant.onHand))
   const [stockDirty, setStockDirty] = useState(false)
   const [stockBase, setStockBase] = useState(variant.onHand)
   const [stockError, setStockError] = useState('')
   useEffect(() => { if (!stockDirty) { setStock(String(variant.onHand)); setStockBase(variant.onHand) } }, [stockDirty, variant.onHand])
-  const [savingPrice, setSavingPrice] = useState(false); const [savingStock, setSavingStock] = useState(false)
-  const [priceError, setPriceError] = useState('')
-  // The first offer's create key lives as long as the field (see the bulk apply above).
-  const [offerCreateKey] = useState(() => newIdempotencyKey('channel-offer-create'))
-  const isPanel = priceConnectionId === PANEL_PRICE_CHOICE
-  const priceTarget = isPanel ? panelPriceTarget(variant) : quickPriceTarget(variant, priceConnectionId, connectionCount)
-  const failPrice = (message: string) => { setPriceError(message); onError(`fiyat: ${message}`) }
-  // Saved when focus leaves the pair, so moving from Liste to Satış does not save half a change.
-  async function savePrice() {
-    if (savingPrice || ((!showListPrice || listPrice === shownList) && salePrice === shownSale)) return
-    if (priceTarget.kind === 'blocked') { failPrice(priceTarget.reason); return }
-    const prices = inlinePrices(showListPrice ? listPrice : salePrice, salePrice)
-    if (!prices.ok) { failPrice(prices.message); return }
-    setSavingPrice(true); setPriceError('')
-    try {
-      if (priceTarget.kind === 'panel') await hubApi(`/variants/${priceTarget.variantId}/default-prices`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.version}"` }, body: JSON.stringify({ listPrice: prices.listPrice, salePrice: prices.salePrice, reason: 'Hızlı varyant fiyat düzenleme' }) })
-      else {
-        const body = quickPriceBody(priceTarget, variant, prices, 'Hızlı varyant fiyat düzenleme')
-        if (priceTarget.kind === 'update') await hubApi(`/channel-offers/${priceTarget.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.offerVersion}"` }, body: JSON.stringify(body) })
-        else await sendWithVersionedIdempotencyKey(offerCreateKey, key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
-      }
-    } catch (error) {
-      failPrice(`kaydedilmedi: ${error instanceof Error ? error.message : 'beklenmeyen hata.'}`)
-      return
-    } finally {
-      setSavingPrice(false)
-    }
-    await onChanged().catch(() => undefined)
-  }
+  const [savingStock, setSavingStock] = useState(false)
   async function saveStock() {
     if (savingStock || !stockDirty) return
     const parsed = parseStockInput(stock)
@@ -349,10 +317,54 @@ function QuickEditVariantControls({ variant, product, priceConnectionId, priceLa
       await onChanged().catch(() => undefined)
     }
   }
+  return <label className="rr-qcell rr-qstock"><small className="rr-qcell-h">Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(variant.onHand); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label>
+}
+// One variant's price on one column of the quick edit matrix: the panel price (the product editor's variant Fiyat /
+// Liste Fiyatı; sends nothing to a marketplace) or one channel's offer (updated at the version loaded, or created when
+// the variant has none there). Saved when focus leaves the pair, so moving from Liste to Satış does not save half a
+// change. A problem is told in the dialog's notice and on the field (red border, title), never as text under it.
+function QuickEditPriceCell({ column, variant, product, connectionCount, onChanged, onSelect, onError }: { column: QuickPriceColumn; variant: Variant; product: Product; connectionCount: number; onChanged: () => Promise<unknown>; onSelect: () => void; onError: (message: string) => void }) {
+  const isPanel = column.id === PANEL_PRICE_CHOICE
+  const showListPrice = column.takesListPrice
+  const shown = quickInlinePrices(column.id, variant, product)
+  const shownList = shown.listPrice == null ? '' : String(shown.listPrice)
+  const shownSale = shown.salePrice == null ? '' : String(shown.salePrice)
+  const [listPrice, setListPrice] = useState(shownList)
+  const [salePrice, setSalePrice] = useState(shownSale)
+  useEffect(() => { setListPrice(shownList); setSalePrice(shownSale) }, [shownList, shownSale])
+  const [savingPrice, setSavingPrice] = useState(false)
+  const [priceError, setPriceError] = useState('')
+  // The first offer's create key lives as long as the field, so a resend after a lost answer cannot make two offers.
+  const [offerCreateKey] = useState(() => newIdempotencyKey('channel-offer-create'))
+  const priceTarget = isPanel ? panelPriceTarget(variant) : quickPriceTarget(variant, column.id, connectionCount)
+  const failPrice = (message: string) => { setPriceError(message); onError(`${column.label} fiyatı: ${message}`) }
+  async function savePrice() {
+    if (savingPrice || ((!showListPrice || listPrice === shownList) && salePrice === shownSale)) return
+    if (priceTarget.kind === 'blocked') { failPrice(priceTarget.reason); return }
+    const prices = inlinePrices(showListPrice ? listPrice : salePrice, salePrice)
+    if (!prices.ok) { failPrice(prices.message); return }
+    setSavingPrice(true); setPriceError('')
+    try {
+      if (priceTarget.kind === 'panel') await hubApi(`/variants/${priceTarget.variantId}/default-prices`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.version}"` }, body: JSON.stringify({ listPrice: prices.listPrice, salePrice: prices.salePrice, reason: 'Hızlı varyant fiyat düzenleme' }) })
+      else {
+        const body = quickPriceBody(priceTarget, variant, prices, 'Hızlı varyant fiyat düzenleme')
+        if (priceTarget.kind === 'update') await hubApi(`/channel-offers/${priceTarget.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.offerVersion}"` }, body: JSON.stringify(body) })
+        else await sendWithVersionedIdempotencyKey(offerCreateKey, key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
+      }
+    } catch (error) {
+      failPrice(`kaydedilmedi: ${error instanceof Error ? error.message : 'beklenmeyen hata.'}`)
+      return
+    } finally {
+      setSavingPrice(false)
+    }
+    await onChanged().catch(() => undefined)
+  }
   const priceBlocked = priceTarget.kind === 'blocked' ? priceTarget.reason : ''
-  const priceTitle = priceError || priceBlocked || undefined
-  const priceFieldProps = { className: 'rr-in rr-num', type: 'number', min: '0', step: '0.01', 'aria-invalid': priceError ? true : undefined, title: priceTitle, disabled: savingPrice || !!priceBlocked, onFocus: onSelect } as const
-  return <>{showStock && <label className="rr-mini"><small>Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(variant.onHand); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label>}{showPrice && <div className="rr-mini rr-qprice" role="group" aria-label={`${variant.sku} ${priceLabel}`} title={priceTitle} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void savePrice() }}><small className="rr-qprice-h">{priceLabel}</small>{showListPrice && <label><small>Liste</small><input {...priceFieldProps} aria-label={`${variant.sku} ${priceLabel} liste fiyatı`} value={listPrice} onChange={event => { onSelect(); setPriceError(''); setListPrice(event.target.value) }} /></label>}<label><small>Satış</small><input {...priceFieldProps} aria-label={`${variant.sku} ${priceLabel} satış fiyatı`} value={salePrice} onChange={event => { onSelect(); setPriceError(''); setSalePrice(event.target.value) }} /></label></div>}</>
+  // A card without a saved panel price shows its first channel price, as the product editor does; said on hover.
+  const fallback = isPanel && panelPriceIsFallback(variant, product)
+  const priceTitle = priceError || priceBlocked || (fallback ? 'Kayıtlı panel fiyatı yok; ürün düzenleyicideki gibi ilk aktif kanal fiyatı gösteriliyor. Değiştirirseniz panel fiyatı olarak kaydedilir.' : undefined)
+  const fieldProps = { className: 'rr-in rr-num', type: 'number', min: '0', step: '0.01', 'aria-invalid': priceError ? true : undefined, title: priceTitle, disabled: savingPrice || !!priceBlocked, onFocus: onSelect } as const
+  return <div className={`rr-qcell rr-qprice${showListPrice ? '' : ' rr-qsale'}${isPanel ? ' rr-qpanel' : ''}${fallback ? ' rr-qfallback' : ''}`} role="group" aria-label={`${variant.sku} ${column.label}`} title={priceTitle} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void savePrice() }}><small className="rr-qcell-h">{column.label}</small>{showListPrice && <input {...fieldProps} placeholder="Liste" aria-label={`${variant.sku} ${column.label} liste fiyatı`} value={listPrice} onChange={event => { onSelect(); setPriceError(''); setListPrice(event.target.value) }} />}<input {...fieldProps} placeholder="Satış" aria-label={`${variant.sku} ${column.label} satış fiyatı`} value={salePrice} onChange={event => { onSelect(); setPriceError(''); setSalePrice(event.target.value) }} /></div>
 }
 function lowStockModelCode(group: ProductGroup) {
   return group.products.map(product => product.modelCode).find(value => value?.trim())
@@ -659,6 +671,8 @@ export function ProductsPage() {
   const allVisibleSelected = pageProductGroups.length > 0 && pageProductGroups.every(group => group.products.every(product => selectedProductIds.includes(product.id)))
   const hasMoreProductsToSelect = totalCount > pageProductGroups.length
   const refresh = () => client.invalidateQueries({ queryKey: ['products'] })
+  // A quick edit changes what the product editor shows too (panel price, channel prices, stock): both refresh.
+  const refreshQuickEdit = () => Promise.all(QUICK_EDIT_SYNC_KEYS.map(queryKey => client.invalidateQueries({ queryKey })))
   // Each result lands below the toasts already shown and goes to the notification history.
   function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info', context?: NotificationContext) {
     appendNotification({ ...context, title, message, kind })
@@ -936,7 +950,7 @@ export function ProductsPage() {
       {(statusRequest.skippedCount ?? 0) > 0 && <p className="rr-lead">{(statusRequest.skippedCount ?? 0).toLocaleString('tr-TR')} kayıt zaten {statusRequest.status === 'ACTIVE' ? 'satışa açık' : 'satışa kapalı'}; bu kayıtlar gönderilmez.</p>}
       {statusRequest.status === 'ARCHIVED' && <div className="rr-callout rr-warn"><RrIcon name="alert" /><span>Pazar yerlerindeki ilanlar bu işlemle kapanmaz; kapatmak için ürün düzenleme ekranından yayını durdurun.</span></div>}
     </RrModal>}
-    {quickEdit && <ProductQuickEditModal products={quickEditProducts} connections={publicationConnections} mode={quickEdit.mode} onChanged={refresh} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
+    {quickEdit && <ProductQuickEditModal products={quickEditProducts} connections={publicationConnections} mode={quickEdit.mode} onChanged={refreshQuickEdit} onResult={showProductToast} onClose={() => setQuickEdit(null)} />}
     {deleteRequest && <ProductDeleteConfirmModal request={deleteRequest} deleting={deletingProducts} onClose={() => setDeleteRequest(null)} onConfirm={() => void confirmProductDelete()} />}
     {productImportOpen && <RrModal crumb="Katalog Aktarımı" title="Platformdan Ürün Aktarımı" desc="Bağlı pazar yerlerindeki ürünleri panel kataloğunuza aktarın. İşlem salt okunurdur; pazar yerlerine hiçbir veri gönderilmez." size="lg" locked={productImporting} onClose={() => setProductImportOpen(false)} foot={<><span className="rr-note">{productImportConnectionIds.length ? <><b>{productImportConnectionIds.length} bağlantı</b> seçili · {productImportMethod === 'SINGLE' ? 'Tek Ürün Aktarımı' : titleTr(productImportModeLabels[productImportMode] ?? '')}</> : 'Bağlantı seçilmedi'}</span><button type="button" className="rr-btn" onClick={() => setProductImportOpen(false)} disabled={productImporting}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => void importProductsFromPlatforms()} disabled={productImporting || !productImportConnectionIds.length}><RrIcon name="import" />{productImporting ? 'Kuyruğa Alınıyor…' : 'Aktarımı Başlat'}</button></>}>
       <div className="rr-h3">Pazar Yeri Bağlantıları</div>

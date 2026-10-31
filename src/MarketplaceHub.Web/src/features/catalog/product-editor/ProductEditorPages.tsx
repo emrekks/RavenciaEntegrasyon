@@ -38,7 +38,8 @@ import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
-import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, TURKISH_VAT_RATES, type EditorFieldErrors } from '../product-editor-state'
+import { panelPrices } from '../quick-price-edit'
+import { editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, TURKISH_VAT_RATES, type EditorFieldErrors } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
@@ -1283,7 +1284,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const message = `${accepted.length} görsel seçildi.`; setNotice(message); showFeedback('Görsel Seçildi', message, 'info')
     }
   }
-  const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId })
+  // Always fresh on open and on returning to the tab: the products list's quick edit (or another tab) may have changed
+  // its prices, channel prices or stock. Unsaved edits are kept; the stale banner offers the newer data instead.
+  const productToEdit = useQuery({ queryKey: ['product', editProductId], queryFn: () => hubApi<Product>(`/products/${editProductId}`), enabled: !!editProductId, staleTime: 0, refetchOnWindowFocus: true })
   const productToCopy = useQuery({ queryKey: ['product', duplicateProductId], queryFn: () => hubApi<Product>(`/products/${duplicateProductId}`), enabled: !editProductId && Boolean(duplicateProductId) })
   const seedProduct = editProductId ? productToEdit.data : productToCopy.data
   const categories = useQuery({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories') })
@@ -1323,7 +1326,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const product = seedProduct
     if (!product) return
     const mode = editProductId ? 'edit' : 'copy'
-    const productKey = editorSeedKey(mode, product.id, product.version)
+    const productKey = editorSeedKey(mode, product.id, product.version, editorDataStamp(product.variants))
     if (initializedEditProductKey.current === productKey) return
     // A newer version (another tab, an order, the importer) must not wipe edits that are not saved yet: the form is
     // kept and a banner offers to reload it. The editor's own saves allow the next reseed.
@@ -1356,7 +1359,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
       const persistedAttributes = variant.attributes ?? []
       const attributeValueIds = Object.fromEntries(persistedAttributes.flatMap(attribute => attribute.valueId ? [[attribute.attributeId, attribute.valueId] as const] : []))
-      return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: mode === 'copy' ? '' : variant.sku, barcode: mode === 'copy' ? '' : variant.barcode ?? '', stock: variant.onHand, ...(editProductId ? { loadedStock: variant.onHand } : {}), salePrice: variant.defaultSalePrice ?? product.defaultSalePrice ?? variant.salePrice ?? 0, listPrice: variant.defaultListPrice ?? product.defaultListPrice ?? variant.listPrice ?? variant.salePrice ?? 0, costPrice: variant.costPrice ?? null, ...(editProductId ? { loadedCostPrice: variant.costPrice ?? null } : {}), mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
+      return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: mode === 'copy' ? '' : variant.sku, barcode: mode === 'copy' ? '' : variant.barcode ?? '', stock: variant.onHand, ...(editProductId ? { loadedStock: variant.onHand } : {}), salePrice: panelPrices(variant, product).salePrice ?? 0, listPrice: panelPrices(variant, product).listPrice ?? 0, costPrice: variant.costPrice ?? null, ...(editProductId ? { loadedCostPrice: variant.costPrice ?? null } : {}), mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
     }))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
@@ -1366,7 +1369,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setSnapshotRequest(value => value + 1)
   })
   const [reseedRequest, setReseedRequest] = useState(0)
-  useLayoutEffect(() => seedForm(), [editProductId, seedProduct?.id, seedProduct?.version, reseedRequest])
+  const seedStamp = seedProduct ? editorDataStamp(seedProduct.variants) : ''
+  useLayoutEffect(() => seedForm(), [editProductId, seedProduct?.id, seedProduct?.version, seedStamp, reseedRequest])
   // The banner's "reload": drops the unsaved edits and fills the form from the latest saved product.
   function reloadEditedProduct() {
     allowReseedUntil.current = Date.now() + 10_000
@@ -1377,7 +1381,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   useEffect(() => {
     const product = seedProduct
     if ((!editProductId && !duplicateProductId) || !product || !webColorRequirement || requirements.isLoading) return
-    const productKey = editorSeedKey(editProductId ? 'edit' : 'copy', product.id, product.version)
+    const productKey = editorSeedKey(editProductId ? 'edit' : 'copy', product.id, product.version, editorDataStamp(product.variants))
     if (initializedEditProductKey.current !== productKey || initializedEditWebColorKey.current === productKey) return
     initializedEditWebColorKey.current = productKey
     const savedManualColor = product.trendyolWebColorValueId ?? ''
@@ -1388,7 +1392,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   useEffect(() => {
     const product = seedProduct
     if ((!editProductId && !duplicateProductId) || !product || !allRequirements.length || requirements.isLoading) return
-    const productKey = editorSeedKey(editProductId ? 'edit' : 'copy', product.id, product.version)
+    const productKey = editorSeedKey(editProductId ? 'edit' : 'copy', product.id, product.version, editorDataStamp(product.variants))
     if (initializedEditProductKey.current !== productKey || initializedEditOptionsKey.current === productKey) return
     initializedEditOptionsKey.current = productKey
     const inferred: Record<string, string[]> = {}
@@ -1738,7 +1742,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const cachedProduct = client.getQueryData<Product>(['product', product.id]) ?? product
       const cachedMediaUrls = (cachedProduct.mediaUrls ?? []).filter(item => mediaImageKey(item) !== targetKey)
       const productVersion = result.productVersions[product.id] ?? result.version
-      initializedEditProductKey.current = editorSeedKey('edit', product.id, productVersion)
+      initializedEditProductKey.current = editorSeedKey('edit', product.id, productVersion, editorDataStamp(cachedProduct.variants))
       client.setQueryData<Product>(['product', product.id], {
         ...cachedProduct,
         version: productVersion,

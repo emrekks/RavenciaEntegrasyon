@@ -1,11 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, VAT_RATE_REQUIRED_MESSAGE } from './product-editor-state'
+import { editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, VAT_RATE_REQUIRED_MESSAGE } from './product-editor-state'
 
 describe('product editor state', () => {
   it('builds one seed key for the seed and for a version bump made by the editor itself', () => {
     expect(editorSeedKey('edit', 'p1', 4)).toBe('edit:p1:4')
     expect(editorSeedKey('edit', 'p1', 4)).not.toBe(editorSeedKey('copy', 'p1', 4))
+    expect(editorSeedKey('edit', 'p1', 4, 'abc')).toBe('edit:p1:4:abc')
+    expect(editorSeedKey('edit', 'p1', 4, 'abc').startsWith('edit:p1:')).toBe(true)
+  })
+
+  it('stamps what the product version misses: a variant price, its stock and its channel offers', () => {
+    const base = [{ id: 'v1', version: 3, inventoryVersion: 5, onHand: 4, platformStatuses: [{ connectionId: 'c1', offerId: 'o1', offerVersion: 2 }, { connectionId: 'c2', offerId: null, offerVersion: null }] }]
+    const stamp = editorDataStamp(base)
+    expect(editorDataStamp(base)).toBe(stamp)
+    expect(editorDataStamp([{ ...base[0], version: 4 }])).not.toBe(stamp)
+    expect(editorDataStamp([{ ...base[0], onHand: 5, inventoryVersion: 6 }])).not.toBe(stamp)
+    expect(editorDataStamp([{ ...base[0], platformStatuses: [{ connectionId: 'c1', offerId: 'o1', offerVersion: 3 }, base[0].platformStatuses[1]] }])).not.toBe(stamp)
+    expect(editorDataStamp([{ ...base[0], platformStatuses: [base[0].platformStatuses[0], { connectionId: 'c2', offerId: 'o2', offerVersion: 1 }] }])).not.toBe(stamp)
   })
 
   it('sends stock only for edited rows, against the stock loaded into the form', () => {

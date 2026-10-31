@@ -19,6 +19,24 @@ export const scenarios = [
   { name: 'jobs', path: '/jobs' },
   // Windows and tools that only open on request.
   { name: 'label-designer', path: '/settings?tab=designer' },
+  // The products list's quick edit: one column of colour groups, an open group a matrix of the panel price and every
+  // channel's price (price window) or the stock (stock window).
+  {
+    name: 'products-quick-price', path: '/products', widths: [375, 1280],
+    act: async page => {
+      await page.locator('.rr-qbtn[title="Fiyatı hızlı düzenle"]').first().click()
+      await page.locator('.rr-modal.rr-qe-modal .rr-vg-t').first().click()
+      await page.locator('.rr-modal.rr-qe-modal .rr-qrow:not(.rr-qhead)').first().waitFor()
+    },
+  },
+  {
+    name: 'products-quick-stock', path: '/products', widths: [375, 1280],
+    act: async page => {
+      await page.locator('.rr-qbtn[title="Stoğu hızlı düzenle"]').first().click()
+      await page.locator('.rr-modal.rr-qe-modal .rr-vg-t').first().click()
+      await page.locator('.rr-modal.rr-qe-modal .rr-qrow:not(.rr-qhead)').first().waitFor()
+    },
+  },
   {
     name: 'product-image-zoom', path: '/products/p1', widths: [375, 1280],
     act: async page => {
