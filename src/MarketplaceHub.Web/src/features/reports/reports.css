@@ -49,7 +49,7 @@
 .app-shell.stitch-shell main .reports-page .reports-table :is(th, td) { text-align: center; }
 .app-shell.stitch-shell main .reports-page .reports-table tbody td:not(:first-child) { white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-table tr > :is(th, td):first-child:not(.reports-expand-col), .app-shell.stitch-shell main .reports-page .reports-table tr > .reports-expand-col + :is(th, td) { text-align: left; }
-.app-shell.stitch-shell main .reports-page .reports-table tbody tr:hover td { background: var(--rv-hover, var(--rv-color-surface-soft)); }
+.app-shell.stitch-shell main .reports-page .reports-table tbody tr:hover :is(th, td) { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .reports-page .reports-table tr.is-unknown td { color: var(--rv-color-subtle); font-style: italic; }
 .app-shell.stitch-shell main .reports-page .reports-table tr.reports-expanded > td { padding: 12px 0; background: var(--rv-color-surface-soft); }
 .app-shell.stitch-shell main .reports-page .reports-table tr.reports-expanded .reports-panel { margin: 0 12px; background: var(--rv-color-surface); }
