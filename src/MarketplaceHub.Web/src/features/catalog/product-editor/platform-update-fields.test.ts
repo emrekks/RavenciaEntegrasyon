@@ -20,7 +20,8 @@ describe('platform update fields', () => {
     expect(availablePlatformUpdateFields(['TRENDYOL'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'DELIVERY', 'PRICE', 'STOCK', 'VAT_RATE'])
     expect(availablePlatformUpdateFields(['HEPSIBURADA'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'PRICE', 'STOCK', 'VAT_RATE'])
     expect(availablePlatformUpdateFields(['HEPSIBURADA', 'TRENDYOL'])).toContain('DELIVERY')
-    for (const code of ['N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY']) expect(availablePlatformUpdateFields([code])).toEqual([])
+    expect(availablePlatformUpdateFields(['SHOPIFY'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'PRICE', 'STOCK'])
+    for (const code of ['N11', 'PAZARAMA', 'PTTAVM']) expect(availablePlatformUpdateFields([code])).toEqual([])
     expect(availablePlatformUpdateFields([])).toEqual([])
   })
 
@@ -88,8 +89,19 @@ describe('platform update fields', () => {
     expect(platformUpdateSummary(delivery)).toBe('Seçili alanlardan hiçbiri bu platforma gönderilmiyor')
   })
 
+  it('sends the whole Shopify card as the product update for any pick, price and stock included', () => {
+    for (const picked of [defaultPlatformUpdateFields, priceStockPlatformUpdateFields, ['TITLE'] as const]) {
+      const plan = platformUpdatePlan('SHOPIFY', picked)
+      expect(plan.productFields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'PRICE', 'STOCK'])
+      expect(plan.sends).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Liste Fiyatı', 'Satış Fiyatı', 'Stok'])
+      expect(plan.extras).toEqual(['Renk / Beden', 'Ürün Tipi'])
+      expect([plan.price, plan.stock]).toEqual([false, false])
+    }
+    expect(platformUpdatePlan('SHOPIFY', ['DESI']).productFields).toEqual([])
+  })
+
   it('sends nothing to a read-only marketplace', () => {
-    const plan = platformUpdatePlan('SHOPIFY', defaultPlatformUpdateFields)
+    const plan = platformUpdatePlan('N11', defaultPlatformUpdateFields)
     expect(plan.sends).toEqual([])
     expect([plan.price, plan.stock]).toEqual([false, false])
   })
