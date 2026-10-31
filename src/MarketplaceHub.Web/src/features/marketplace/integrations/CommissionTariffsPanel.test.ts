@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandLimitText, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodTabLabel, tariffGroups, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitHint, bandLimitText, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodTabLabel, tariffGroups, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -148,11 +148,23 @@ describe('commission tariff profit range', () => {
 })
 
 describe('bandLimitText', () => {
-  it('states the top band from its lower limit and the others up to their upper limit', () => {
-    expect(bandLimitText([{ tier: 1, min: 464.63, max: null, rate: 21.5 }])).toBe('464,63 ₺ ve üzeri')
-    expect(bandLimitText([{ tier: 2, min: 432.27, max: 464.62, rate: 15.8 }])).toBe('464,62 ₺ ve altı')
-    expect(bandLimitText([{ tier: 1, min: 463.13, max: null, rate: 21.5 }, { tier: 1, min: 464.63, max: null, rate: 21.5 }])).toBe('463,13 – 464,63 ₺ ve üzeri')
+  // Trendyol's 29 Ekim tariff: 563,84 ₺ ve üzeri, 510,42–563,83, 457,01–510,41, 457,00 ₺ ve altı (each limit included).
+  const bands = [{ tier: 1, min: 563.84, max: null, rate: 21.5 }, { tier: 2, min: 510.42, max: 563.83, rate: 20.8 }, { tier: 3, min: 457.01, max: 510.41, rate: 19.3 }, { tier: 4, min: null, max: 457, rate: 17.5 }]
+  it('states the top band from its lower limit, the bottom band up to its upper one and the bands between as ranges', () => {
+    expect(bands.map(band => bandLimitText([band]))).toEqual(['563,84 ₺ ve üzeri', '510,42 – 563,83 ₺', '457,01 – 510,41 ₺', '457,00 ₺ ve altı'])
     expect(bandLimitText([undefined])).toBeNull()
+  })
+  it('over a model\'s variants covers the prices of all of them', () => {
+    expect(bandLimitText([{ tier: 1, min: 463.13, max: null, rate: 21.5 }, { tier: 1, min: 464.63, max: null, rate: 21.5 }])).toBe('463,13 – 464,63 ₺ ve üzeri')
+    expect(bandLimitText([bands[1], { tier: 2, min: 500.02, max: 553.5, rate: 20.8 }])).toBe('500,02 – 563,83 ₺')
+    expect(bandLimitText([bands[3], { tier: 4, min: null, max: 450, rate: 17.5 }])).toBe('450,00 – 457,00 ₺ ve altı')
+  })
+  it('says in words that both limits are included', () => {
+    expect(bandLimitHint([bands[1]])).toBe('510,42 ₺ ile 563,83 ₺ arası (ikisi de dahil)')
+    expect(bandLimitHint([bands[0]])).toBe('563,84 ₺ ve üzeri (563,84 ₺ dahil)')
+    expect(bandLimitHint([bands[3]])).toBe('457,00 ₺ ve altı (457,00 ₺ dahil)')
+    expect(bandLimitHint([bands[1], bands[1]])).toBe('510,42 ₺ ile 563,83 ₺ arası (ikisi de dahil)')
+    expect(bandLimitHint([undefined])).toBeUndefined()
   })
 })
 
