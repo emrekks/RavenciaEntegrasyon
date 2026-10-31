@@ -1789,6 +1789,8 @@ button,
 .rv-splash-detail { color: var(--rv-color-muted); }
 .rv-splash-action { display: flex; justify-content: center; }
 .rv-confirm-dialog { width: min(460px, calc(100vw - 32px)); }
+/* A confirmation asked from inside another window stands over it (the windows are layer 1000, the toasts above). */
+.rv-overlay:has(> .rv-confirm-dialog) { z-index: calc(var(--rv-z-modal) + 10); }
 .rv-confirm-message { color: var(--rv-color-muted); line-height: 1.55; }
 .rv-prompt-form { display: grid; gap: var(--rv-space-2); }
 @keyframes rv-splash-progress { 0% { transform: translateX(-120%); } 50%, 70% { transform: translateX(170%); } 100% { transform: translateX(300%); } }
