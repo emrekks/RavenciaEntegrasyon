@@ -1652,7 +1652,6 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
   if (!data) return <StockSkeleton />
   const summary = data.summary
   if (summary.units <= 0) return <div className="reports-summary">
-    <StockScope data={data} />
     <p className="reports-empty">{platforms?.length ? 'Seçilen platformlarda satışta olan stoklu ürün yok.' : 'Ana depoda stoğu olan ürün yok.'}</p>
   </div>
   const money: Kpi[] = [
@@ -1691,7 +1690,6 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
     groups.slice(0, limit).map(group => ({ key: group.key, label: group.label, value: value(group), muted: !group.known }))
   const adet = (value: number) => `${formatNumber(value)} adet`
   return <div className="reports-summary">
-    <StockScope data={data} />
     <KpiStrip label="Stoğun parası" items={money} />
     <KpiStrip label="Stoğun durumu" items={counts} />
     <div className="reports-grid">
@@ -1717,18 +1715,9 @@ function StockReport({ from, to, platforms }: { from: string; to: string; platfo
   </div>
 }
 
-// What the figures cover: stock now, the period only for the sales, the panel price.
-function StockScope({ data }: { data: ReportInventory }) {
-  return <p className="reports-stock-scope"><UiIcon name="info" size={15} />
-    <span>Stok anlık değerdir (ana depo, şu an); Dönem yalnız satış ve stok gün hesabını değiştirir. Tutarlar KDV dahil, satış değeri panel fiyatıyla.</span>
-    <time dateTime={data.generatedAt}>{new Date(data.generatedAt).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</time>
-  </p>
-}
-
 // The tab's shape while it loads, so nothing moves when the figures come in.
 function StockSkeleton() {
   return <div className="reports-summary reports-stock-skeleton" role="status" aria-label="Stok raporu hazırlanıyor">
-    <span className="reports-skeleton is-line" />
     {[6, 5].map(cells => <div key={cells} className={`reports-kpis is-${cells}`}>{Array.from({ length: cells }, (_, index) => <div key={index}>
       <span className="reports-skeleton is-label" /><span className="reports-skeleton is-figure" /><span className="reports-skeleton is-label" />
     </div>)}</div>)}

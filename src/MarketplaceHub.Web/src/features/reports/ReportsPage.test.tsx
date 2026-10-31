@@ -487,7 +487,7 @@ describe('ReportsPage', () => {
     expect(figures[4]).toContain('60 gün')
     expect(figures[5]).toContain('1 varyant · 2 adet')
     expect(figures[9]).toContain('Maliyeti Eksik1')
-    expect(body(page)).toContain('Stok anlık değerdir')
+    expect(page.querySelector('.reports-stock-scope')).toBeNull()
     expect(body(page)).toContain('Kategori Bazlı Stok')
     expect(body(page)).not.toContain('Fiyat Kaynağı')
     expect(body(page)).toContain('Ölü Stok')
