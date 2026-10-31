@@ -24,12 +24,12 @@ const target = (id: string, platformCode: string, writable = true): PlatformUpda
 
 const allGroups: PlatformUpdateGroupKey[] = ['product', 'shipping', 'sales']
 
-function render(selectedIds: string[], fields: PlatformUpdateField[], openGroups: PlatformUpdateGroupKey[] = allGroups, onFieldsChange = vi.fn(), onOpenGroupsChange = vi.fn(), onToggle = vi.fn(), onConfirm = vi.fn()) {
+function render(selectedIds: string[], fields: PlatformUpdateField[], openGroups: PlatformUpdateGroupKey[] = allGroups, onFieldsChange = vi.fn(), onOpenGroupsChange = vi.fn(), onSelectedIdsChange = vi.fn(), onConfirm = vi.fn()) {
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
-  act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA'), target('sh', 'SHOPIFY', false), target('pz', 'PAZARAMA')]} selectedIds={selectedIds} onToggle={onToggle} fields={fields} onFieldsChange={onFieldsChange} openGroups={openGroups} onOpenGroupsChange={onOpenGroupsChange} submitting={false} onClose={vi.fn()} onConfirm={onConfirm} />))
-  return { onFieldsChange, onOpenGroupsChange, onToggle, onConfirm }
+  act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA'), target('sh', 'SHOPIFY', false), target('pz', 'PAZARAMA')]} selectedIds={selectedIds} onSelectedIdsChange={onSelectedIdsChange} fields={fields} onFieldsChange={onFieldsChange} openGroups={openGroups} onOpenGroupsChange={onOpenGroupsChange} submitting={false} onClose={vi.fn()} onConfirm={onConfirm} />))
+  return { onFieldsChange, onOpenGroupsChange, onSelectedIdsChange, onConfirm }
 }
 
 const fieldLabels = () => [...document.querySelectorAll('.platform-update-field:not(.is-linked) > span')].map(node => node.textContent)
@@ -37,6 +37,7 @@ const card = (store: string) => [...document.querySelectorAll('.publish-platform
 const chipsOf = (store: string) => [...card(store)?.querySelectorAll('.platform-update-chips li') ?? []].map(node => node.textContent)
 const extraChipsOf = (store: string) => [...card(store)?.querySelectorAll('.platform-update-chips li.is-extra') ?? []].map(node => node.textContent)
 const sendsOf = (store: string) => card(store)?.querySelector('.platform-update-sends')?.textContent ?? ''
+const bulk = (section: number, label: string) => [...document.querySelectorAll('.platform-update-bulk')[section]?.querySelectorAll<HTMLButtonElement>('button') ?? []].find(button => button.textContent === label)!
 const groupCount = (index: number) => document.querySelectorAll('.platform-update-group-check small')[index]?.textContent
 
 describe('PlatformUpdateDialog', () => {
@@ -84,10 +85,10 @@ describe('PlatformUpdateDialog', () => {
   })
 
   it('ticks a field a newly selected store adds, and drops one no selected store takes any more', () => {
-    const { onFieldsChange, onToggle } = render(['pz'], ['PRICE'])
+    const { onFieldsChange, onSelectedIdsChange } = render(['pz'], ['PRICE'])
     const trendyolCard = [...document.querySelectorAll<HTMLButtonElement>('.publish-platform-card-head')].find(button => button.textContent?.includes('TRENDYOL'))!
     act(() => trendyolCard.click())
-    expect(onToggle).toHaveBeenLastCalledWith('ty')
+    expect(onSelectedIdsChange).toHaveBeenLastCalledWith(['pz', 'ty'])
     expect(onFieldsChange).toHaveBeenLastCalledWith(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'DELIVERY', 'PRICE'])
     act(() => root?.unmount()); root = undefined
     const second = render(['hb', 'ty'], ['TITLE', 'WARRANTY', 'DELIVERY', 'PRICE'])
@@ -142,5 +143,50 @@ describe('PlatformUpdateDialog', () => {
     render(['ty'], ['TITLE'], ['sales'])
     expect(document.querySelectorAll('.platform-update-group-body')).toHaveLength(1)
     expect(fieldLabels()).toEqual(['Fiyat', 'Stok', 'KDV Oranı'])
+  })
+
+  it('parts the fields from the stores under their own titles', () => {
+    render(['ty'], ['TITLE'])
+    expect([...document.querySelectorAll('.platform-update-section-head h3')].map(node => node.textContent)).toEqual(['Gönderilecek Bilgiler', 'Platformlar'])
+    expect(document.querySelectorAll('.platform-update-section-head small')[1]?.textContent).toBe('1/3 mağaza seçili · 1 mağaza güncellenemez')
+  })
+
+  it('picks every shown field or none, leaving the linked fields to follow theirs', () => {
+    const { onFieldsChange } = render(['ty'], ['TITLE', 'STOCK'])
+    act(() => bulk(0, 'Tümünü Seç').click())
+    expect(onFieldsChange).toHaveBeenLastCalledWith(['TITLE', 'STOCK', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'DELIVERY', 'PRICE', 'VAT_RATE'])
+    act(() => bulk(0, 'Temizle').click())
+    expect(onFieldsChange).toHaveBeenLastCalledWith([])
+    act(() => root?.unmount()); root = undefined
+    // A field no selected store takes is kept for later: only the shown ones are cleared.
+    render(['pz'], ['TITLE', 'PRICE'], allGroups, onFieldsChange)
+    act(() => bulk(0, 'Temizle').click())
+    expect(onFieldsChange).toHaveBeenLastCalledWith(['TITLE'])
+  })
+
+  it('greys out a bulk field pick that would change nothing, and blocks Güncelle with nothing picked', () => {
+    render(['pz'], ['PRICE', 'STOCK', 'VAT_RATE'])
+    expect(bulk(0, 'Tümünü Seç').disabled).toBe(true)
+    expect(bulk(0, 'Temizle').disabled).toBe(false)
+    act(() => root?.unmount()); root = undefined
+    render(['pz'], [])
+    expect(bulk(0, 'Temizle').disabled).toBe(true)
+    expect([...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!.disabled).toBe(true)
+  })
+
+  it('picks every store that can be updated, or none, and ticks the fields they bring', () => {
+    const { onSelectedIdsChange, onFieldsChange } = render(['pz'], ['PRICE'])
+    act(() => bulk(1, 'Tümünü Seç').click())
+    // Shopify is read-only here: it is never picked.
+    expect(onSelectedIdsChange).toHaveBeenLastCalledWith(['ty', 'hb', 'pz'])
+    expect(onFieldsChange).toHaveBeenLastCalledWith(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'DELIVERY', 'PRICE'])
+    act(() => bulk(1, 'Hiçbirini Seçme').click())
+    expect(onSelectedIdsChange).toHaveBeenLastCalledWith([])
+    act(() => root?.unmount()); root = undefined
+    render(['ty', 'hb', 'pz'], ['PRICE'])
+    expect(bulk(1, 'Tümünü Seç').disabled).toBe(true)
+    act(() => root?.unmount()); root = undefined
+    render([], ['PRICE'])
+    expect(bulk(1, 'Hiçbirini Seçme').disabled).toBe(true)
   })
 })

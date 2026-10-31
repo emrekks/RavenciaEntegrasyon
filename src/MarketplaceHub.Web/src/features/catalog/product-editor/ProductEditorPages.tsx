@@ -31,7 +31,7 @@ import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog } from './PlatformUpdateDialog'
 import { isProductDeliveryDays, productDeliveryDays } from './product-delivery-days'
-import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, writePlatformUpdatePreferences, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
+import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, writePlatformUpdatePreferences, writePlatformUpdateStores, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
 import { publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
@@ -1859,10 +1859,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   }
   function openPlatformUpdateDialog() {
     const updateableIds = updateableProductConnectionIds()
-    const currentSelection = selectedChannelIds.filter(id => updateableIds.includes(id))
-    setPlatformUpdateConnectionIds(currentSelection.length ? currentSelection : updateableIds)
+    // The stores picked last time, as they were left; the very first time, the ones picked for this product.
+    setPlatformUpdateConnectionIds(readPlatformUpdateStores(updateableIds, selectedChannelIds))
     setPlatformUpdatePreferences(readPlatformUpdatePreferences())
     setPlatformUpdateDialogOpen(true)
+  }
+  function changePlatformUpdateStores(connectionIds: string[]) {
+    setPlatformUpdateConnectionIds(connectionIds)
+    writePlatformUpdateStores(connectionIds)
   }
   function changePlatformUpdatePreferences(next: PlatformUpdatePreferences) {
     setPlatformUpdatePreferences(next)
@@ -3383,7 +3387,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     {platformUpdateDialogOpen && <PlatformUpdateDialog
       targets={productUpdateTargets}
       selectedIds={platformUpdateConnectionIds}
-      onToggle={connectionId => setPlatformUpdateConnectionIds(ids => ids.includes(connectionId) ? ids.filter(id => id !== connectionId) : [...ids, connectionId])}
+      onSelectedIdsChange={changePlatformUpdateStores}
       fields={platformUpdatePreferences.fields}
       onFieldsChange={fields => changePlatformUpdatePreferences({ ...platformUpdatePreferences, fields })}
       openGroups={platformUpdatePreferences.openGroups}
