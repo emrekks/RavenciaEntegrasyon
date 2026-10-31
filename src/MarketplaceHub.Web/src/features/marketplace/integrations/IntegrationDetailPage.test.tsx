@@ -182,6 +182,17 @@ describe('IntegrationsPage filters (W16)', () => {
     expect(container.querySelector('.im-field-notice.is-warning')).not.toBeNull()
   })
 
+  it('opens a new connection on the live environment, listed first, for every platform that has a test one', async () => {
+    await renderList('/integrations')
+    act(() => { container.querySelector<HTMLButtonElement>('.integration-add-button')!.click() })
+    for (const name of ['Trendyol', 'Hepsiburada', 'E-Faturam']) {
+      act(() => { Array.from(container.querySelectorAll<HTMLButtonElement>('.im-platforms button')).find(button => button.textContent === name)!.click() })
+      const environment = container.querySelector<HTMLSelectElement>('select[name="environment"]')!
+      expect(environment.value).toBe('PRODUCTION')
+      expect(environment.options[0].value).toBe('PRODUCTION')
+    }
+  })
+
   it('asks a new PTT AVM connection for its store id, API user name and API password on the live store only', async () => {
     await renderList('/integrations')
     act(() => { container.querySelector<HTMLButtonElement>('.integration-add-button')!.click() })

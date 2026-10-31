@@ -92,9 +92,11 @@ public static class AuthEndpoints
         }
         var raw = TokenHasher.NewToken(); var sessionId = Guid.NewGuid();
         AuthAudit.Record(db, context, AuthAudit.LoginSucceeded, user.Id, membership?.TenantId, $"state={SessionStateWire(state)}", now, sessionId);
-        db.UserSessions.Add(new UserSession { Id = sessionId, UserId = user.Id, TenantId = membership?.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, LastSeenAt = now, ExpiresAt = now.AddMinutes(30), AbsoluteExpiresAt = now.AddHours(12) });
+        var newSession = new UserSession { Id = sessionId, UserId = user.Id, TenantId = membership?.TenantId, State = state, TokenHash = hasher.Hash(raw), SessionVersion = user.SessionVersion, IssuedAt = now, LastSeenAt = now, AbsoluteExpiresAt = SessionLifetime.AbsoluteExpiry(now, request.RememberMe) };
+        newSession.ExpiresAt = SessionLifetime.IdleExpiry(newSession, now);
+        db.UserSessions.Add(newSession);
         user.LastLoginAt = now; await db.SaveChangesAsync(context.RequestAborted);
-        SetSessionCookie(context.Response, raw, now.AddHours(12));
+        SetSessionCookie(context.Response, raw, SessionLifetime.CookieExpiry(newSession));
         return Results.Ok(new { state = SessionStateWire(state) });
     }
 
@@ -156,7 +158,8 @@ public static class AuthEndpoints
             if (membership is null) return Problem("TENANT_NOT_AVAILABLE", "Aktif çalışma alanı bulunamadı.", 403);
             session.TenantId = membership.TenantId;
         }
-        var raw = TokenHasher.NewToken(); session.TokenHash = hasher.Hash(raw); await db.SaveChangesAsync(context.RequestAborted); SetSessionCookie(context.Response, raw, session.AbsoluteExpiresAt);
+        session.ExpiresAt = SessionLifetime.IdleExpiry(session, time.GetUtcNow());
+        var raw = TokenHasher.NewToken(); session.TokenHash = hasher.Hash(raw); await db.SaveChangesAsync(context.RequestAborted); SetSessionCookie(context.Response, raw, SessionLifetime.CookieExpiry(session));
         return Results.Ok(new { state = SessionStateWire(session.State) });
     }
 
@@ -309,6 +312,7 @@ public static class AuthEndpoints
         }
         // A forced password change follows the second factor.
         session.State = user.ForcePasswordChange ? SessionState.PasswordChangeRequired : SessionState.Active;
+        session.ExpiresAt = SessionLifetime.IdleExpiry(session, time.GetUtcNow());
         await db.SaveChangesAsync(context.RequestAborted); return Results.Ok(new { state = SessionStateWire(session.State) });
     }
 
@@ -481,14 +485,14 @@ public static class AuthEndpoints
             .Join(db.Tenants.AsNoTracking().Where(x => x.Status == RecordStatus.Active), membership => membership.TenantId, tenant => tenant.Id, (membership, _) => membership);
     private static Task<bool> HasActiveTenantMembershipAsync(AppDbContext db, Guid userId, Guid tenantId, CancellationToken cancellationToken) =>
         ActiveTenantMemberships(db, userId).AnyAsync(x => x.TenantId == tenantId, cancellationToken);
-    private static void SetSessionCookie(HttpResponse response, string token, DateTimeOffset expires) => response.Cookies.Append(SessionAuthMiddleware.CookieName(response.HttpContext), token, new CookieOptions { HttpOnly = true, Secure = SecureCookie(response.HttpContext), SameSite = SameSiteMode.Lax, Path = "/", Expires = expires });
+    private static void SetSessionCookie(HttpResponse response, string token, DateTimeOffset? expires) => response.Cookies.Append(SessionAuthMiddleware.CookieName(response.HttpContext), token, new CookieOptions { HttpOnly = true, Secure = SecureCookie(response.HttpContext), SameSite = SameSiteMode.Lax, Path = "/", Expires = expires });
     private static bool SecureCookie(HttpContext context) => !string.Equals(context.RequestServices.GetRequiredService<IConfiguration>()["MARKETPLACEHUB_ENVIRONMENT"], "PILOT_LOCAL", StringComparison.OrdinalIgnoreCase) || context.Request.IsHttps;
     internal static string Base32(byte[] data) { const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; var output = new StringBuilder(); var buffer = 0; var bits = 0; foreach (var b in data) { buffer = (buffer << 8) | b; bits += 8; while (bits >= 5) { output.Append(alphabet[(buffer >> (bits - 5)) & 31]); bits -= 5; } } if (bits > 0) output.Append(alphabet[(buffer << (5 - bits)) & 31]); return output.ToString(); }
     // The setup key in groups of four, as authenticator apps show it for typing in by hand.
     internal static string GroupedKey(string base32) => string.Join(' ', base32.Chunk(4).Select(chunk => new string(chunk)));
     private static string SessionStateWire(SessionState state) => state switch { SessionState.PasswordChangeRequired => "PASSWORD_CHANGE_REQUIRED", SessionState.MfaChallenge => "MFA_CHALLENGE", SessionState.Active => "ACTIVE", _ => "REVOKED" };
 
-    public sealed record LoginRequest(string Email, string Password, Guid? TenantId = null);
+    public sealed record LoginRequest(string Email, string Password, Guid? TenantId = null, bool RememberMe = false);
     public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
     public sealed record CodeRequest(string Code, string? RecoveryCode = null, Guid? TenantId = null);
     public sealed record ReauthenticateRequest(string Password, string? Code = null, string? RecoveryCode = null);
