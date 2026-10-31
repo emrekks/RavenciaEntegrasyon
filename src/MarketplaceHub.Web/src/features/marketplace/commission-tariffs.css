@@ -229,6 +229,11 @@
    stretched over the cell while it keeps its round look. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand:has(> .commission-model-toggle) { position: relative; cursor: pointer; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand > .commission-model-toggle::after { content: ""; position: absolute; inset: 0; }
+/* The global press effect scales the button, which makes it the hit area's containing block: the stretched area
+   shrank to the round button between mousedown and mouseup, so a press on the cell never became a click. The press
+   is shown on the icon instead. */
+.app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand > .commission-model-toggle:active { scale: none; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand > .commission-model-toggle:active svg { scale: var(--rv-motion-press); }
 /* On a phone the Toplu Seçim popover opens under the whole plan bar, inside the page's gutters. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .commission-tariffs .commission-plan-bar { position: relative; }
