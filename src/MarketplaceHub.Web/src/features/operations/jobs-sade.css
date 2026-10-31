@@ -30,12 +30,15 @@
 .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics th { height: 38px; padding: 0 16px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .app-shell.stitch-shell main .jobs-reference-page .job-queue-metrics td { padding: 8px 16px; font-size: 13px; }
 
-/* Category segment (second level under İş Takibi): one 36px box of equal text buttons, the chosen one on a lighter
-   ground in bold ink, the rest muted. The bold width is reserved, so choosing a category moves nothing. */
-.app-shell.stitch-shell main .jobs-reference-page .jobs-category-segment { box-sizing: border-box; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(max-content, 1fr); justify-self: start; gap: 2px; max-width: 100%; height: 36px; padding: 3px; overflow-x: auto; scrollbar-width: none; background: var(--rv-color-bg, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong, var(--rv-color-border)); border-radius: 12px; }
+/* Category segment (second level under İş Takibi): one 36px box as wide as its buttons, each with the same 12px sides
+   and a 6px step from label to count; the chosen one on a lighter ground in bold ink, the rest muted. The bold width is
+   reserved, so choosing a category moves nothing. Its first label starts where the status row's first chip does. */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-category-segment { box-sizing: border-box; display: inline-flex; align-items: center; justify-self: start; width: max-content; gap: 2px; max-width: 100%; height: 36px; padding: 3px; overflow-x: auto; scrollbar-width: none; background: var(--rv-color-bg, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong, var(--rv-color-border)); border-radius: 12px; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-category-segment::-webkit-scrollbar { display: none; }
+/* The canvas column never grows to its content, so a segment wider than the page scrolls inside itself instead. */
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-canvas { grid-template-columns: minmax(0, 1fr); }
 /* Label and count sit on one baseline: each is a full 26px line (the button less its border), so they stay centred too. */
-.app-shell.stitch-shell main .jobs-reference-page .jobs-category-segment > button { display: inline-flex; align-items: baseline; justify-content: center; gap: 6px; width: auto; height: 28px; min-height: 0; padding: 0 14px; color: var(--rv-color-muted); background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500; line-height: 26px; white-space: nowrap; text-transform: none; cursor: pointer; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-category-segment > button { display: inline-flex; align-items: baseline; justify-content: center; flex: none; gap: 6px; width: auto; height: 28px; min-height: 0; padding: 0 12px; color: var(--rv-color-muted); background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500; line-height: 26px; white-space: nowrap; text-transform: none; cursor: pointer; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-category-segment > button:hover { color: var(--rv-color-ink); background: none; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-category-segment > button.is-active { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong, var(--rv-color-border)); font-weight: 600; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-category-segment-label { display: inline-grid; }
