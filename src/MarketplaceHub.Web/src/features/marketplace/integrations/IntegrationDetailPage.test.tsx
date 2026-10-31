@@ -99,8 +99,10 @@ describe('IntegrationDetailPage credentials (W10)', () => {
     openSection('Mağaza ve Kimlik')
     const store = Array.from(container.querySelectorAll<HTMLInputElement>('.connection-settings-fields input')).find(input => input.value === '9999')!
     expect(store.readOnly).toBe(true)
-    expect(container.querySelector('.connection-scope-locked')!.textContent).toContain('Ortam ve mağaza bağlantı eklenirken belirlenir, sonradan değiştirilemez')
-    expect(container.querySelector<HTMLAnchorElement>('.connection-scope-locked a')!.getAttribute('href')).toBe('/integrations?yeni=1')
+    // The lock is explained behind the store field's help mark, which the field names.
+    const lock = document.getElementById(store.getAttribute('aria-describedby')!)!
+    expect(lock.textContent).toContain('Ortam ve mağaza bağlantı eklenirken belirlenir, sonradan değiştirilemez')
+    expect(lock.querySelector('a')!.getAttribute('href')).toBe('/integrations?yeni=1')
 
     const name = container.querySelector<HTMLInputElement>('.connection-settings-fields input:not([readonly])')!
     act(() => setValue(name, 'Trendyol Yeni Ad'))
