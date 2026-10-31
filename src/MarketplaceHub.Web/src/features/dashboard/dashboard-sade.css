@@ -134,7 +134,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-nm > span { display: grid; min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-nm b { font-weight: 500; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-nm small { color: var(--rr-subtle); font-size: 12px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt tr.rr-attn .rr-mx-nm small { color: var(--rr-warn); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-nm small.rr-attn { color: var(--rr-warn); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx i,
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-l { display: inline-block; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--rr-subtle); }
@@ -147,6 +147,9 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-warn { color: var(--rr-warn); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-bad { color: var(--rr-bad); font-weight: 500; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-off { color: var(--rr-subtle); }
+/* a marketplace without webhooks: no mark, the words alone */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-na { color: var(--rr-subtle); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-na i { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-off i,
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-l.rr-off { background: none; border: 1px dashed var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-act .rr-btn.rr-link { font-size: 12.5px; font-weight: 600; }
