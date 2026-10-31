@@ -2,7 +2,7 @@ import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState,
 import { useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../shared/api'
-import { LoadingState, Modal } from '../../shared/components'
+import { LoadingState, Modal, StickyActionBar } from '../../shared/components'
 import type { DataResetGroup } from '../../shared/components/DataResetLedger'
 import { NoticeToast, type NoticeToastKind } from '../../shared/components/NoticeToast'
 import { code128Bars, defaultShippingLabelBlockPosition, defaultShippingLabelSettings, normalizeShippingLabelSettings, shippingLabelBlockCatalog, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings } from '../shipping'
@@ -95,7 +95,7 @@ function SettingsPaneHead({ section, description, actions }: { section: Settings
 }
 
 function SettingsBar({ title, copy, dirty = false, children }: { title: string; copy: ReactNode; dirty?: boolean; children: ReactNode }) {
-  return <div className="ss-bar"><div className="ss-bar-copy"><strong>{title}</strong><span className={dirty ? 'is-dirty' : undefined}>{copy}</span></div><div className="ss-bar-actions">{children}</div></div>
+  return <StickyActionBar label={title} className="ss-bar"><div className="ss-bar-copy"><strong>{title}</strong><span className={dirty ? 'is-dirty' : undefined} title={typeof copy === 'string' ? copy : undefined}>{copy}</span></div><div className="ss-bar-actions">{children}</div></StickyActionBar>
 }
 
 function SettingsSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {

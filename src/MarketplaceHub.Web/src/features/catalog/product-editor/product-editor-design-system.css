@@ -1130,3 +1130,14 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 @keyframes field-error-shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 .field-error-shake { animation: field-error-shake 0.4s ease-in-out 2; }
 @media (prefers-reduced-motion: reduce) { .field-error-shake { animation: none; } }
+
+/* The save bar (step 1) and the publish bar (step 2) are StickyActionBars: one 56px row, the title and its note side by
+   side instead of stacked. */
+.app-shell.stitch-shell main :is(.product-submit-sticky, .publish-selection-footer).rv-action-bar > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.app-shell.stitch-shell main :is(.product-submit-sticky, .publish-selection-footer).rv-action-bar > div:first-child > :is(p, small) { margin: 0; }
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main :is(.product-submit-sticky, .publish-selection-footer).rv-action-bar > div:first-child { flex-wrap: nowrap; }
+  .app-shell.stitch-shell main :is(.product-submit-sticky, .publish-selection-footer).rv-action-bar > div:first-child > strong { flex: none; white-space: nowrap; }
+  .app-shell.stitch-shell main :is(.product-submit-sticky, .publish-selection-footer).rv-action-bar > div:first-child > :is(p, small) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .app-shell.stitch-shell main .product-submit-sticky.rv-action-bar button { white-space: nowrap; }
+}
