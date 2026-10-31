@@ -22,7 +22,9 @@ const target = (id: string, platformCode: string, writable = true): PlatformUpda
   capabilities: { writable, content: writable }
 })
 
-function render(selectedIds: string[], fields: PlatformUpdateField[], openGroups: PlatformUpdateGroupKey[] = ['product', 'sales'], onFieldsChange = vi.fn(), onOpenGroupsChange = vi.fn()) {
+const allGroups: PlatformUpdateGroupKey[] = ['product', 'shipping', 'sales']
+
+function render(selectedIds: string[], fields: PlatformUpdateField[], openGroups: PlatformUpdateGroupKey[] = allGroups, onFieldsChange = vi.fn(), onOpenGroupsChange = vi.fn()) {
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
@@ -30,26 +32,54 @@ function render(selectedIds: string[], fields: PlatformUpdateField[], openGroups
   return { onFieldsChange, onOpenGroupsChange }
 }
 
-const fieldLabels = () => [...document.querySelectorAll('.platform-update-field span')].map(node => node.textContent)
-const sendsOf = (store: string) => [...document.querySelectorAll('.publish-platform-card')].find(card => card.textContent?.includes(store))?.querySelector('.platform-update-sends')?.textContent ?? ''
+const fieldLabels = () => [...document.querySelectorAll('.platform-update-field:not(.is-linked) > span')].map(node => node.textContent)
+const card = (store: string) => [...document.querySelectorAll('.publish-platform-card')].find(item => item.textContent?.includes(store))
+const chipsOf = (store: string) => [...card(store)?.querySelectorAll('.platform-update-send-list li') ?? []].map(node => node.textContent)
+const sendsOf = (store: string) => card(store)?.querySelector('.platform-update-sends')?.textContent ?? ''
 
 describe('PlatformUpdateDialog', () => {
   it('shows only the fields the selected stores take, grouped', () => {
     render(['hb'], ['TITLE', 'PRICE'])
-    expect([...document.querySelectorAll('.platform-update-group-check strong')].map(node => node.textContent)).toEqual(['Ürün Bilgileri', 'Satış Bilgileri'])
+    expect([...document.querySelectorAll('.platform-update-group-check strong')].map(node => node.textContent)).toEqual(['Ürün Bilgileri', 'Kargo ve Teslimat', 'Satış Bilgileri'])
+    expect(fieldLabels()).toContain('Garanti Süresi')
     expect(fieldLabels()).not.toContain('Menşei')
     expect(fieldLabels()).not.toContain('Teslimat Süresi')
     act(() => root?.unmount()); root = undefined
-    render(['hb', 'ty'], ['TITLE', 'PRICE'])
+    render(['ty'], ['TITLE', 'PRICE'])
+    expect(fieldLabels()).not.toContain('Garanti Süresi')
     expect(fieldLabels()).toContain('Teslimat Süresi')
   })
 
-  it('tells each card what really goes, including what rides along', () => {
+  it('shows a linked field as a locked box that follows the field it rides with', () => {
+    render(['ty'], ['ATTRIBUTES'])
+    const linked = document.querySelector<HTMLLabelElement>('.platform-update-field.is-linked')!
+    expect(linked.textContent).toBe('Renk / BedenKategori Özellikleri ile')
+    const box = linked.querySelector('input')!
+    expect(box.disabled).toBe(true)
+    expect(box.checked).toBe(true)
+    // A linked box is not a pick of the group.
+    expect(document.querySelector('.platform-update-group-check small')?.textContent).toBe('1/4 seçili')
+  })
+
+  it('names the information that is never changed or never sent', () => {
+    render(['ty'], ['TITLE'])
+    const fixed = document.querySelector('.platform-update-fixed')!
+    expect(fixed.querySelector('summary')?.textContent).toBe('Değişmeyen ve Gönderilmeyen Bilgiler')
+    expect([...fixed.querySelectorAll('dt')].map(node => node.textContent)).toEqual(['Barkod', 'Stok Kodu', 'Marka, Kategori, Model Kodu', 'Gönderilmeyenler'])
+  })
+
+  it('lists on each card exactly what goes, including what rides along', () => {
     render(['ty', 'hb'], ['TITLE', 'PRICE'])
-    expect(sendsOf('TRENDYOL Mağaza')).toContain('Ürün Adı, Açıklama, Görseller, Kategori Özellikleri, Fiyat')
+    expect(chipsOf('TRENDYOL Mağaza')).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Renk / Beden', 'Liste Fiyatı', 'Satış Fiyatı'])
     expect(sendsOf('TRENDYOL Mağaza')).toContain('aynı istekte birlikte gider: Açıklama, Görseller, Kategori Özellikleri')
-    expect(sendsOf('HEPSIBURADA Mağaza')).toContain('Desi, KDV Oranı, Fiyat, garanti süresi, barkod ve video')
+    expect(chipsOf('HEPSIBURADA Mağaza')).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Renk / Beden', 'Garanti Süresi', 'Desi', 'KDV Oranı', 'Barkod', 'Satış Fiyatı'])
     expect(sendsOf('SHOPIFY Mağaza')).toContain('—')
+  })
+
+  it('keeps the bar out of the scrolling body, as the window footer', () => {
+    render(['ty'], ['TITLE'])
+    expect(document.querySelector('.platform-update-modal > footer.publish-selection-footer')).not.toBeNull()
+    expect(document.querySelector('.product-publish-popup-body .publish-selection-footer')).toBeNull()
   })
 
   it('blocks Güncelle when nothing picked goes to the selected stores', () => {
@@ -63,18 +93,18 @@ describe('PlatformUpdateDialog', () => {
     const { onFieldsChange, onOpenGroupsChange } = render(['ty'], ['TITLE'])
     const groupBoxes = [...document.querySelectorAll<HTMLInputElement>('.platform-update-group-check input')]
     expect(groupBoxes[0].indeterminate).toBe(true)
-    expect(groupBoxes[1].checked).toBe(false)
-    act(() => groupBoxes[1].click())
-    expect(onFieldsChange).toHaveBeenLastCalledWith(['TITLE', 'PRICE', 'STOCK'])
+    expect(groupBoxes[2].checked).toBe(false)
+    act(() => groupBoxes[2].click())
+    expect(onFieldsChange).toHaveBeenLastCalledWith(['TITLE', 'PRICE', 'STOCK', 'VAT_RATE'])
     const toggle = document.querySelector<HTMLButtonElement>('.platform-update-group-toggle')!
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
     act(() => toggle.click())
-    expect(onOpenGroupsChange).toHaveBeenLastCalledWith(['sales'])
+    expect(onOpenGroupsChange).toHaveBeenLastCalledWith(['shipping', 'sales'])
   })
 
   it('keeps a folded group folded', () => {
     render(['ty'], ['TITLE'], ['sales'])
     expect(document.querySelectorAll('.platform-update-group-body')).toHaveLength(1)
-    expect(fieldLabels()).toEqual(['Fiyat', 'Stok'])
+    expect(fieldLabels()).toEqual(['Fiyat', 'Stok', 'KDV Oranı'])
   })
 })

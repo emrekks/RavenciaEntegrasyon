@@ -29,11 +29,27 @@ public sealed class PlatformUpdateFieldSelectionTests
     [InlineData(new[] { "ORIGIN" }, false, true, false, false)]
     [InlineData(new[] { "DELIVERY" }, false, false, true, false)]
     [InlineData(new[] { "DESCRIPTION", "VAT_RATE", "DELIVERY" }, true, true, true, true)]
+    [InlineData(new[] { "WARRANTY" }, false, false, false, true)]
+    [InlineData(new[] { "warranty", "ORIGIN" }, false, true, false, true)]
     public void Fields_MapToTheRequestsThatCarryThem(string[] fields, bool content, bool variants, bool delivery, bool hepsiburada)
     {
         var sections = ProductUpdateFields.Sections(fields);
         Assert.True(sections.Succeeded, sections.Error?.Message);
         Assert.Equal(new ProductUpdateSections(content, variants, delivery, hepsiburada), sections.Value);
+        Assert.Equal(content || variants || delivery, sections.Value!.Trendyol);
+    }
+
+    [Fact]
+    public void Warranty_GoesOnlyInTheHepsiburadaPackage()
+    {
+        var warranty = ProductUpdateFields.Sections(["WARRANTY"]).Value!;
+        Assert.True(warranty.Hepsiburada);
+        Assert.False(warranty.Trendyol);
+        Assert.True(warranty.Any);
+        // Origin and delivery alone: nothing for Hepsiburada, still a Trendyol request.
+        var origin = ProductUpdateFields.Sections(["ORIGIN", "DELIVERY"]).Value!;
+        Assert.False(origin.Hepsiburada);
+        Assert.True(origin.Trendyol);
     }
 
     [Fact]

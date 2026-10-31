@@ -102,6 +102,17 @@ public sealed class PlatformUpdateFieldSelectionPostgreSqlTests(PostgreSqlTenant
         Assert.Equal("PRICE_INVENTORY_FIELDS_REQUIRED", (await service.EnqueueProductPriceInventorySyncAsync(tenant.Id, product.Id, connection.Id, $"k-{Guid.NewGuid():N}", "test", CancellationToken.None, price: false, stock: false)).Error?.Code);
     }
 
+    [PostgreSqlFact]
+    public async Task WarrantyAlone_SendsNothingToTrendyol_NotTheWholeCard()
+    {
+        var (tenant, connection, product, _) = await SeedTrendyolOfferAsync("warranty-only");
+        await using var db = fixture.CreateContext();
+        var sections = ProductUpdateFields.Sections(["WARRANTY"]);
+        Assert.True(sections.Succeeded, sections.Error?.Message);
+        var build = await new ProductUpdateComposer(db, new ConfigurationBuilder().Build()).BuildAsync(tenant.Id, product.Id, connection.Id, CancellationToken.None, sections.Value);
+        Assert.Equal("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", build.Error?.Code);
+    }
+
     // A Trendyol offer read in by an import (a variant link with the barcode), whose price and stock were never sent.
     private async Task<(Tenant Tenant, PlatformConnection Connection, Product Product, ChannelOffer Offer)> SeedTrendyolOfferAsync(string code)
     {

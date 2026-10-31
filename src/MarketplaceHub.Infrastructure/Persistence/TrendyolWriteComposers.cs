@@ -48,6 +48,9 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
             if (!sections.Hepsiburada) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Hepsiburada'ya gönderilemiyor.", 422);
             return await new HepsiburadaProductUpdateComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         }
+        // Trendyol takes no warranty: a pick of that alone has nothing to send there (it must not send the whole card of
+        // a product Trendyol has not approved yet).
+        if (!sections.Trendyol) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Trendyol'a gönderilemiyor.", 422);
         var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;

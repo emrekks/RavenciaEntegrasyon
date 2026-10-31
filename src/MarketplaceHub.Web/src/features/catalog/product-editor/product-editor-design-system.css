@@ -1059,7 +1059,7 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .platform-update-modal .publish-platform-facts dd { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .platform-update-modal .publish-platform-facts > .platform-update-sends { grid-column: 1 / -1; }
 /* The fields to send: collapsible groups laid out in as many columns as fit (one on a phone). */
-.app-shell.stitch-shell main .platform-update-field-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: start; gap: 12px; margin: 0 0 var(--rv-space-4); }
+.app-shell.stitch-shell main .platform-update-field-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); align-items: start; gap: 12px; margin: 0 0 var(--rv-space-4); }
 .app-shell.stitch-shell main .platform-update-field-group { min-width: 0; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .app-shell.stitch-shell main .platform-update-field-group > header { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 14px; }
 .app-shell.stitch-shell main .platform-update-group-check { display: flex; flex: 1; align-items: center; gap: 10px; min-width: 0; min-height: 36px; cursor: pointer; }
@@ -1080,7 +1080,31 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .platform-update-modal .publish-platform-facts > .platform-update-sends small { display: block; margin-top: 4px; color: var(--rv-color-muted); font-size: 12px; line-height: 1.45; }
 .app-shell.stitch-shell main .platform-update-actions { display: flex; gap: 8px; }
 .app-shell.stitch-shell main .platform-update-actions > button { height: 36px; min-height: 0; padding-block: 0; }
+/* The fields that ride with another one: the box follows that field and cannot be changed. */
+.app-shell.stitch-shell main .platform-update-field.is-linked { color: var(--rv-color-muted); cursor: default; }
+.app-shell.stitch-shell main .platform-update-field.is-linked > span { display: grid; line-height: 1.3; }
+.app-shell.stitch-shell main .platform-update-field.is-linked small { overflow: hidden; font-size: 11.5px; text-overflow: ellipsis; }
+/* Barkod, Stok Kodu, Marka…: sent to find the product or never changed by an update; information, not a pick. */
+.app-shell.stitch-shell main .platform-update-fixed { margin: 0 0 var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .platform-update-fixed > summary { display: flex; align-items: center; min-height: 36px; padding: 4px 14px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.app-shell.stitch-shell main .platform-update-fixed > dl { display: grid; gap: 8px; margin: 0; padding: 10px 14px 14px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .platform-update-fixed > dl > div { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 2px 12px; font-size: 12.5px; line-height: 1.5; }
+.app-shell.stitch-shell main .platform-update-fixed dt { font-weight: 600; }
+.app-shell.stitch-shell main .platform-update-fixed dd { margin: 0; color: var(--rv-color-muted); }
+/* What goes to a store: small chips that wrap. */
+.app-shell.stitch-shell main .platform-update-send-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 0; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .platform-update-send-list > li { padding: 1px 7px; font-size: 12px; font-weight: 500; line-height: 18px; white-space: nowrap; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+/* The bar is the window's footer (the third row of .workspace-modal): the body scrolls above it, so it never covers a
+   card, and the body keeps the same gap under the last card as above the first. */
+.platform-update-modal .product-publish-popup-body { padding-bottom: var(--popup-gap); }
+.app-shell.stitch-shell main .platform-update-modal > footer.platform-update-footer { position: static; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px 16px; margin: 0; padding: 12px 24px; background: var(--rv-color-surface); border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .platform-update-footer > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.app-shell.stitch-shell main .platform-update-footer small { color: var(--rv-color-muted); font-size: 12.5px; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .platform-update-modal > footer.platform-update-footer { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 16px; }
+}
 @media (max-width: 600px) {
+  .app-shell.stitch-shell main .platform-update-fixed > dl > div { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .platform-update-actions { width: 100%; }
   .app-shell.stitch-shell main .platform-update-actions > button { flex: 1 1 0; }
 }

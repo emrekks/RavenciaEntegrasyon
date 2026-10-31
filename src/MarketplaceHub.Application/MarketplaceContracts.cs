@@ -466,11 +466,15 @@ public sealed record ProductUpdatePublication(Guid ProductId, string Mode, strin
 // approved product in three separate calls: content (title, description, images, attributes), variant (desi, VAT rate,
 // origin) and delivery; each goes only when one of its fields was picked, and always whole. A product Trendyol has not
 // approved yet, and every Hepsiburada product, takes one full update carrying all of it.
-// Hepsiburada: whether a field its single update carries was picked (it takes no origin and no delivery).
+// Hepsiburada: whether a field its single update carries was picked (it takes no origin and no delivery; it alone takes
+// the warranty).
 public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true)
 {
     public static readonly ProductUpdateSections All = new(true, true, true);
-    public bool Any => Content || Variants || Delivery;
+    // Whether a Trendyol request has a picked field: a pick Trendyol does not carry (the warranty alone) sends nothing
+    // there, not the whole card.
+    public bool Trendyol => Content || Variants || Delivery;
+    public bool Any => Trendyol || Hepsiburada;
 }
 
 public static class ProductUpdateFields
@@ -483,11 +487,12 @@ public static class ProductUpdateFields
     public const string VatRate = "VAT_RATE";
     public const string Origin = "ORIGIN";
     public const string Delivery = "DELIVERY";
+    public const string Warranty = "WARRANTY";
 
     private static readonly string[] ContentFields = [Title, Description, Images, Attributes];
     private static readonly string[] VariantFields = [Desi, VatRate, Origin];
-    private static readonly string[] HepsiburadaFields = [Title, Description, Images, Attributes, Desi, VatRate];
-    public static readonly IReadOnlySet<string> Known = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery], StringComparer.Ordinal);
+    private static readonly string[] HepsiburadaFields = [Title, Description, Images, Attributes, Warranty, Desi, VatRate];
+    public static readonly IReadOnlySet<string> Known = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery, Warranty], StringComparer.Ordinal);
 
     // No list (an older client) is every section, as before; an unknown code is refused rather than ignored.
     public static ServiceResult<ProductUpdateSections> Sections(IReadOnlyCollection<string>? fields)

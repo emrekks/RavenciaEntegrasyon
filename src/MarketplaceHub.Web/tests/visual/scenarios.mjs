@@ -42,6 +42,17 @@ export const scenarios = [
       await page.locator('.platform-update-modal .publish-selection-footer').waitFor()
     },
   },
+  // The same window in the light theme, scrolled to the end: the cards end above the footer bar, never under it.
+  {
+    name: 'product-platform-update-light', path: '/products/p1', widths: [375, 1280],
+    act: async page => {
+      await page.locator('.rv-topbar-theme').click()
+      await page.locator('html[data-theme="light"]').waitFor()
+      await page.locator('.platform-update-settings').click()
+      await page.locator('.platform-update-modal > footer.publish-selection-footer').waitFor()
+      await page.locator('.platform-update-modal .product-publish-popup-body').evaluate(body => { body.scrollTop = body.scrollHeight })
+    },
+  },
   {
     name: 'orders-shopify-invoice-status', path: '/orders', widths: [375, 1280],
     act: async page => {
