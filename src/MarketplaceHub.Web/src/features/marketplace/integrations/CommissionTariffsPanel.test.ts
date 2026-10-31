@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandLimitHint, bandLimitText, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitHint, bandLimitText, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, shareRangeText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -238,5 +238,16 @@ describe('commission tariff periods', () => {
   it('tells how many products took the open period\'s price where the periods\' prices differ', () => {
     expect(exportMessage(3, false, 1, '3 Gün')).toContain('1 üründe iki dönem için farklı fiyat seçili; dosya ürün başına tek fiyat taşıdığından bu ürünlere 3 Gün döneminin fiyatı yazıldı.')
     expect(exportMessage(3, false, 0, '3 Gün')).not.toContain('farklı fiyat')
+  })
+})
+
+describe('shareRangeText', () => {
+  // Profit on cost, as a single price's badge gives it: 51,39 on a cost of 100 is %51,39.
+  const choice = (remaining: number | null, cost = 100) => ({ tier: 2, price: 500, rate: 20, commission: 100, remaining, costs: { cost, cargo: 0, serviceFee: 0, stoppage: 0, netVat: 0, vatRate: 10 } })
+  it('gives the lowest and highest share of the variants whose profit is known', () => {
+    expect(shareRangeText([choice(51.39), choice(60.1), choice(null)])).toBe('(%51,39 – %60,10)')
+    expect(shareRangeText([choice(51.39), choice(51.39)])).toBe('(%51,39)')
+    expect(shareRangeText([choice(-12.5), choice(40, 200)])).toBe('(%−12,50 – %20,00)')
+    expect(shareRangeText([choice(null)])).toBeNull()
   })
 })

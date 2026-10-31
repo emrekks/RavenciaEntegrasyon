@@ -220,6 +220,8 @@
 .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: auto; margin: 4px 0 0; padding: 2px 9px; color: var(--rv-color-accent); font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; text-transform: none; background: var(--rv-color-accent-soft); border: 0; border-radius: 999px; box-shadow: none; }
 .app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge { cursor: pointer; }
 .app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge > span { color: inherit; font-size: 13px; font-weight: 700; line-height: 1; }
+.app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge > span.unit-profit-range { display: grid; justify-items: start; gap: 1px; color: inherit; font-size: 12px; font-weight: 600; line-height: 1.25; text-align: left; white-space: nowrap; }
+.app-shell.stitch-shell main .commission-tariffs .commission-table button.unit-profit-badge .unit-profit-range > small { display: block; margin: 0; color: inherit; font-size: 11px; font-weight: 500; opacity: .85; }
 .app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge:is(:hover, :focus-visible) { box-shadow: inset 0 0 0 1px currentColor; }
 .app-shell.stitch-shell main .commission-tariffs button.unit-profit-badge:focus-visible { outline: 2px solid var(--rv-color-accent); outline-offset: 2px; }
 .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
