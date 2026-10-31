@@ -1,19 +1,35 @@
 import { describe, expect, it } from 'vitest'
-import { quickEditOfferPrices, quickPriceTarget } from './quick-price-edit'
+import { quickEditOfferPrices, quickPriceBody, quickPriceTarget } from './quick-price-edit'
 
 describe('quick price target', () => {
-  it('updates the existing offer at the loaded version', () => {
-    expect(quickPriceTarget({ offerId: 'offer-1', offerVersion: 4 }, '', 2)).toEqual({ kind: 'update', offerId: 'offer-1', offerVersion: 4 })
+  const variant = { platformStatuses: [
+    { connectionId: 'conn-1', offerId: 'offer-1', offerVersion: 4, listPrice: 500, salePrice: 450, offerStatus: 'PASSIVE' },
+    { connectionId: 'conn-2', offerId: null, offerVersion: null },
+  ] }
+
+  it('updates the offer the chosen channel has, at the loaded version', () => {
+    expect(quickPriceTarget(variant, 'conn-1', 2)).toMatchObject({ kind: 'update', offerId: 'offer-1', offerVersion: 4 })
   })
 
   it('refuses an offer whose version is missing instead of skipping silently', () => {
-    expect(quickPriceTarget({ offerId: 'offer-1', offerVersion: null }, 'conn-1', 2)).toMatchObject({ kind: 'blocked' })
+    expect(quickPriceTarget({ platformStatuses: [{ connectionId: 'conn-1', offerId: 'offer-1', offerVersion: null }] }, 'conn-1', 2)).toMatchObject({ kind: 'blocked' })
   })
 
-  it('creates a first offer only on the channel the person chose', () => {
-    expect(quickPriceTarget({ offerId: null, offerVersion: null }, '', 2)).toEqual({ kind: 'blocked', reason: 'İlk fiyat için önce Fiyat Kanalı seçin.' })
-    expect(quickPriceTarget({ offerId: null, offerVersion: null }, 'conn-2', 2)).toEqual({ kind: 'create', connectionId: 'conn-2' })
-    expect(quickPriceTarget({ offerId: null, offerVersion: null }, '', 0)).toMatchObject({ kind: 'blocked' })
+  it('creates an offer on a chosen channel that has none, and never picks a channel itself', () => {
+    expect(quickPriceTarget(variant, 'conn-2', 2)).toEqual({ kind: 'create', connectionId: 'conn-2' })
+    expect(quickPriceTarget(variant, '', 2)).toEqual({ kind: 'blocked', reason: 'Önce Fiyat Kanalı seçin.' })
+    expect(quickPriceTarget(variant, '', 0)).toMatchObject({ kind: 'blocked' })
+  })
+
+  it('refuses when the per-channel prices were not loaded, so no duplicate offer is created', () => {
+    expect(quickPriceTarget({}, 'conn-2', 2)).toMatchObject({ kind: 'blocked' })
+  })
+
+  it("keeps the channel offer's own settings and status", () => {
+    const target = quickPriceTarget(variant, 'conn-1', 2)
+    if (target.kind !== 'update') throw new Error('expected update')
+    const body = quickPriceBody(target, { id: 'v1', currency: null, vatRate: 20, vatInclusion: null, roundingMode: null, safetyStock: null }, { listPrice: 600, salePrice: 550 }, 'test')
+    expect(body).toMatchObject({ connectionId: '', listPrice: 600, salePrice: 550, status: 'PASSIVE', vatRate: 20 })
   })
 })
 

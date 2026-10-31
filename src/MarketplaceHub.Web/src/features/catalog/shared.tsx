@@ -42,7 +42,7 @@ export type VariantPlatformStatus = {
   isMissing?: boolean
   connectionId?: string | null; offerId?: string | null; listPrice?: number | null; salePrice?: number | null
   currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null
-  safetyStock?: number | null; offerVersion?: number | null
+  safetyStock?: number | null; offerVersion?: number | null; offerStatus?: string | null
 }
 export type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string
