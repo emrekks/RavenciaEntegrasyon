@@ -1,0 +1,37 @@
+/* StickyActionBar: one bottom action bar for every page (product, order, return and invoice selections, the product
+   editor's save bar). Docked to the bottom with no gap and an opaque background, so the rows scrolling behind it never
+   show beneath or around it; a hairline and a soft shadow above it separate it from the page. A page bar spans the
+   whole content column (out to the page padding) and covers the page's bottom padding, so at the end of the page it
+   sits on the bottom edge right after the last row (also when it is the last part of a page form, as in the product
+   editor). Page rules keep their own inner layout (flex/grid, gap). */
+.app-shell.stitch-shell > main > .content { --rv-page-pad-x: 24px; --rv-page-pad-b: 28px; }
+@media (max-width: 760px) { .app-shell.stitch-shell > main > .content { --rv-page-pad-x: 16px; --rv-page-pad-b: 16px; } }
+
+.app-shell.stitch-shell main .rv-action-bar.rv-action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--rv-z-sticky, 30);
+  box-sizing: border-box;
+  margin: 16px 0 0;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--rv-color-surface-raised, var(--rv-color-surface));
+  backdrop-filter: none;
+  border: 0;
+  border-top: 1px solid var(--rv-color-border-strong, var(--rv-color-border));
+  border-radius: 0;
+  box-shadow: 0 -10px 24px -12px rgb(0 0 0 / 35%);
+  animation: rv-action-bar-in .18s cubic-bezier(.2, .8, .2, 1) both;
+}
+.app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
+.app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar {
+  margin: 16px calc(-1 * var(--rv-page-pad-x)) calc(-1 * var(--rv-page-pad-b));
+  max-width: none;
+  padding-inline: var(--rv-page-pad-x);
+}
+.app-shell.stitch-shell main .rv-action-bar.rv-action-bar:has(.rr-menu) { z-index: 80; }
+.app-shell.stitch-shell main .rv-action-bar.rv-action-bar.is-leaving { animation: rv-action-bar-out .16s ease-in both; pointer-events: none; }
+@keyframes rv-action-bar-in { from { transform: translateY(100%); opacity: 0; } }
+@keyframes rv-action-bar-out { to { transform: translateY(100%); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell main .rv-action-bar.rv-action-bar, .app-shell.stitch-shell main .rv-action-bar.rv-action-bar.is-leaving { animation: none; }
+}

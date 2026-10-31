@@ -2,13 +2,6 @@
 
 
 /* It floats a little above the bottom of the window instead of resting on its edge. */
-.app-shell.stitch-shell main .product-submit-sticky {
-  position: sticky;
-  bottom: 16px;
-  z-index: var(--rv-z-sticky);
-  background: color-mix(in srgb, var(--rv-color-surface) 94%, transparent);
-  backdrop-filter: blur(12px);
-}
 
 .app-shell.stitch-shell main .variant-header-action-icon {
   width: 20px;

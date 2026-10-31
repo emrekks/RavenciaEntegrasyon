@@ -102,7 +102,6 @@
   :root .app-shell.stitch-shell .rv-topbar { padding-top: var(--m-safe-top) !important; min-height: calc(62px + var(--m-safe-top)) !important; }
   :root body .rr-anchor > :is(.rr-menu, .rr-pop):not(.rr-static) { padding-bottom: calc(10px + var(--m-safe-bottom)) !important; }
   :root body .rr-fopen .rr-fbtns { padding-bottom: calc(12px + var(--m-safe-bottom)) !important; }
-  :root body .rr-bulk { bottom: calc(12px + var(--m-safe-bottom)) !important; }
   :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop) { padding-top: max(24px, calc(var(--m-safe-top) + 12px)) !important; padding-bottom: max(24px, calc(var(--m-safe-bottom) + 12px)) !important; }
   :root body :is(.integration-settings-modal, .job-detail-drawer, .rv-drawer) { padding-top: var(--m-safe-top) !important; padding-bottom: var(--m-safe-bottom) !important; }
 }

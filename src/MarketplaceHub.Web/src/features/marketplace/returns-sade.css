@@ -283,7 +283,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button { min-width: 32px; height: 32px; padding: 0 8px; color: var(--rr-muted); background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button.rr-on { color: var(--rr-violet); background: var(--rr-primary-soft); border-color: var(--rr-violet-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pages button:hover:not(.rr-on) { color: var(--rr-ink); background: var(--rv-hover, var(--rr-raised)); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk { position: sticky; bottom: 16px; z-index: 30; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; background: var(--rr-raised); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: 0 16px 40px rgb(0 0 0 / 45%); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; } /* docking, surface and motion: StickyActionBar */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-bulk .rr-grow { flex: 1; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-empty { display: grid; justify-items: center; gap: 6px; padding: 40px 24px; text-align: center; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-empty .rr-ei { display: grid; place-items: center; width: 44px; height: 44px; color: var(--rr-violet); background: var(--rr-primary-soft); border: 1px solid var(--rr-violet-line); border-radius: 12px; }
