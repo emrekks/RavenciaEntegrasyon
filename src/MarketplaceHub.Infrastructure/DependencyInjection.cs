@@ -182,6 +182,7 @@ public static class DependencyInjection
         services.AddScoped<SafeRemoteDocumentDownloader>();
         services.AddScoped<TrendyolEFaturamAuthenticationHandler>();
         services.AddSingleton<TrendyolEFaturamTokenCache>();
+        services.AddSingleton<TrendyolEFaturamTaxpayerCache>();
         services.AddScoped<TrendyolEFaturamHttpClient>();
         services.AddScoped<IInvoiceProviderPort>(provider => provider.GetRequiredService<TrendyolEFaturamHttpClient>());
         services.AddScoped<IInvoiceMarketplacePort>(provider => provider.GetRequiredService<MarketplacePortRouter>());

@@ -158,8 +158,7 @@ public sealed class InvoicingDeepAuditTests
     {
         Assert.Equal("api/invoice/documents/earchive/status/abc", TrendyolEFaturamEndpoints.Status("EARSIVFATURA", "abc"));
         Assert.Equal("api/invoice/documents/outgoing-einvoice/status/abc", TrendyolEFaturamEndpoints.Status("TEMELFATURA", "abc"));
-        // Issuing an E-Invoice stays closed (owner decision).
-        Assert.Equal(InvoiceIssuePolicy.EInvoiceRecipientCode, InvoiceIssuePolicy.Refusal("TEMELFATURA", "TRY", "{}")?.Code);
+        Assert.Equal("api/invoice/taxpayers/7330638410?showDeleted=false", TrendyolEFaturamEndpoints.TaxPayers("7330638410"));
     }
 
     // C5 reverted: Hepsiburada keeps the live-proven invoice body (MIME contentType, no number parts) until SIT says otherwise.

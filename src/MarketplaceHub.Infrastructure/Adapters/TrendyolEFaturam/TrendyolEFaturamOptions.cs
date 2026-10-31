@@ -20,5 +20,7 @@ internal static class TrendyolEFaturamEndpoints
     public const string CancelEArchive = "api/invoice/documents/earchive/cancel";
     public static string EArchiveStatus(string uuid) => $"api/invoice/documents/earchive/status/{Uri.EscapeDataString(uuid)}";
     public static string OutgoingInvoiceStatus(string uuid) => $"api/invoice/documents/outgoing-einvoice/status/{Uri.EscapeDataString(uuid)}";
+    // "getTaxPayersByTaxId" (developers.trendyolefaturam.com/OpenApi/Mükellef Sorgulama): 200 lists the aliases, 404 tax-payer-not-found.
+    public static string TaxPayers(string taxId) => $"api/invoice/taxpayers/{Uri.EscapeDataString(taxId)}?showDeleted=false";
     public static string Status(string? invoiceType, string uuid) => invoiceType == "EARSIVFATURA" ? EArchiveStatus(uuid) : OutgoingInvoiceStatus(uuid);
 }

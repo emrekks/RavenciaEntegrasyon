@@ -50,6 +50,11 @@ export function invoiceTypeLabel(invoiceType: string | null | undefined) {
   return ({ EARSIVFATURA: 'e-Arşiv Fatura', TEMELFATURA: 'e-Fatura (Temel)', TICARIFATURA: 'e-Fatura (Ticari)' } as Record<string, string>)[invoiceType?.trim().toUpperCase() ?? ''] ?? readable(invoiceType ?? '')
 }
 
+/** The E-Faturam taxpayer lookup behind the invoice type (InvoiceWorkspacePreviewItem.TaxpayerStatus); null when not looked up. */
+export function taxpayerStatusLabel(status: string | null | undefined) {
+  return ({ REGISTERED: 'e-Fatura Mükellefi', NOT_REGISTERED: 'e-Fatura Mükellefi Değil', UNKNOWN: 'Sorgulanamadı' } as Record<string, string>)[status ?? ''] ?? null
+}
+
 /** The outcome of one order after "Onayla ve Faturayı Kes" (InvoiceWorkspaceConfirmItemResult.Status). */
 export function invoiceConfirmResultLabel(status: string) {
   return ({
