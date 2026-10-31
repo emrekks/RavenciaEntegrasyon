@@ -358,3 +358,8 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Variant stock table: a little less room on the right, where the last size's cell padding added to the popup's. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { padding-right: 6px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vtab :is(th, td):last-child { padding-right: 2px; }
+/* Variant groups sit in as many columns as fit; an opened group takes the whole row so its variants keep room. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); align-items: start; gap: 8px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) > :not(.rr-vgroup) { grid-column: 1 / -1; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) > .rr-vgroup { margin-top: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step:has(> .rr-vgroup) > .rr-vgroup.rr-open { grid-column: 1 / -1; }
