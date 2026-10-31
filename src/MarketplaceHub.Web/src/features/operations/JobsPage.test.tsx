@@ -344,15 +344,37 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
   it('sends the result filter and clears it with Temizle', async () => {
     await renderPage('/jobs?sekme=loglar')
     await logViewLoaded()
-    const select = container.querySelector<HTMLSelectElement>('select[aria-label="Sonuç"]')!
-    await act(async () => { select.value = 'FAILED'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    const clearButton = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.psl-clear'))[0]
+    expect(clearButton().disabled).toBe(true)
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="Sonuç: Tüm Sonuçlar"]')!.click() })
+    const menu = container.querySelector('[role="group"][aria-label="Sonuç"]')!
+    expect(Array.from(menu.querySelectorAll('.psl-menu-heading')).map(heading => heading.textContent)).toEqual(['Başarılı', 'Sorunlu', 'Bekleyen', 'Diğer'])
+    // The Sorunlu heading picks its whole group.
+    const problems = Array.from(menu.querySelectorAll<HTMLLabelElement>('.psl-menu-heading')).find(heading => heading.textContent === 'Sorunlu')!
+    await act(async () => { problems.querySelector('input')!.click() })
     await settle()
-    expect(logRequests().at(-1)!.get('results')).toBe('FAILED')
+    expect(logRequests().at(-1)!.get('results')).toBe('REJECTED,FAILED,UNKNOWN')
+    expect(container.querySelector('button[aria-label="Sonuç: 3 Sonuç"]')).not.toBeNull()
     expect(container.textContent).toContain('Seçili filtrelerle eşleşen gönderim kaydı bulunamadı.')
+    expect(clearButton().disabled).toBe(false)
+    expect(clearButton().textContent).toBe('Temizle1')
 
-    await act(async () => { button('Temizle')!.click() })
+    await act(async () => { clearButton().click() })
     await settle()
     expect(logRequests().at(-1)!.get('results')).toBeNull()
+  })
+
+  it('orders by Zaman, newest first by default and oldest first on a click', async () => {
+    await renderPage('/jobs?sekme=loglar')
+    await logViewLoaded()
+    const header = container.querySelector('.psl-table th[aria-sort]')!
+    expect(header.getAttribute('aria-sort')).toBe('descending')
+    expect(logRequests().at(-1)!.get('order')).toBeNull()
+
+    await act(async () => { header.querySelector<HTMLButtonElement>('button')!.click() })
+    await settle()
+    expect(container.querySelector('.psl-table th[aria-sort]')!.getAttribute('aria-sort')).toBe('ascending')
+    expect(logRequests().at(-1)!.get('order')).toBe('asc')
   })
 })
 

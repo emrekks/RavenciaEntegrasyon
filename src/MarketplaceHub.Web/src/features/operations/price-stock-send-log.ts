@@ -52,6 +52,17 @@ const results: Record<string, { label: string; tone: SendLogTone; description: s
 
 export const sendLogResultOptions = Object.keys(results)
 
+export type SendLogOptionGroup = { label: string; values: string[] }
+
+// The filter menus group the codes by what they mean, the most common first in each group. A sent line still waiting
+// for its answer is neither a success nor a problem, so it has a group of its own.
+export const sendLogResultGroups: SendLogOptionGroup[] = [
+  { label: 'Başarılı', values: ['APPLIED', 'UNCHANGED'] },
+  { label: 'Sorunlu', values: ['REJECTED', 'FAILED', 'UNKNOWN'] },
+  { label: 'Bekleyen', values: ['SUBMITTED'] },
+  { label: 'Diğer', values: ['SUPERSEDED'] }
+]
+
 const triggers: Record<string, string> = {
   ORDER: 'Sipariş',
   MANUAL_STOCK: 'Manuel Stok',
@@ -64,6 +75,14 @@ const triggers: Record<string, string> = {
 }
 
 export const sendLogTriggerOptions = Object.keys(triggers)
+
+// Otomatik: the panel sent it on its own after an order, a stock change or a check; Panelden: someone changed or sent
+// it by hand; Aktarım: stock read from a marketplace and passed on.
+export const sendLogTriggerGroups: SendLogOptionGroup[] = [
+  { label: 'Otomatik', values: ['ORDER', 'STOCK_CHANGE', 'AUTOMATIC', 'RECONCILE'] },
+  { label: 'Panelden', values: ['PANEL_SEND', 'MANUAL_STOCK', 'PRICE_EDIT'] },
+  { label: 'Aktarım', values: ['STOCK_IMPORT'] }
+]
 
 /** The result's label; an unknown code is shown as it came. */
 export function sendLogResultLabel(result: string) {
@@ -122,17 +141,22 @@ export function listPriceChanged(entry: Pick<PriceStockSendLogEntry, 'previousLi
 export type SendLogFilters = {
   search: string
   platforms: string[]
-  result: string
-  trigger: string
+  results: string[]
+  triggers: string[]
   /** Istanbul calendar days, YYYY-MM-DD, or '' for no bound. */
   from: string
   to: string
 }
 
-export const emptySendLogFilters: SendLogFilters = { search: '', platforms: [], result: '', trigger: '', from: '', to: '' }
+export const emptySendLogFilters: SendLogFilters = { search: '', platforms: [], results: [], triggers: [], from: '', to: '' }
+
+/** How many filters narrow the list: the search, each of platform, result and trigger, and the dates count once each. */
+export function sendLogFilterCount(filters: SendLogFilters) {
+  return [filters.search.trim(), filters.platforms.length, filters.results.length, filters.triggers.length, filters.from || filters.to].filter(Boolean).length
+}
 
 export function hasSendLogFilters(filters: SendLogFilters) {
-  return Boolean(filters.search.trim() || filters.platforms.length || filters.result || filters.trigger || filters.from || filters.to)
+  return sendLogFilterCount(filters) > 0
 }
 
 /** The instant an Istanbul day starts (or ends) as a UTC ISO string; '' for an empty or unreadable day. */
@@ -143,19 +167,20 @@ export function istanbulDayToIso(day: string, endOfDay = false) {
   return Number.isNaN(instant.getTime()) ? '' : instant.toISOString()
 }
 
-/** The request for one page: ?limit=50&search=…&platforms=…&results=…&triggers=…&from=…&to=…&after=… */
-export function sendLogQueryString(filters: SendLogFilters, after: string | null = null, limit = sendLogPageSize) {
+/** The request for one page: ?limit=50&search=…&platforms=…&results=…&triggers=…&from=…&to=…&order=asc&after=… */
+export function sendLogQueryString(filters: SendLogFilters, after: string | null = null, limit = sendLogPageSize, oldestFirst = false) {
   const params = new URLSearchParams()
   params.set('limit', String(Math.min(Math.max(1, limit), 100)))
   const search = filters.search.trim().slice(0, 100)
   if (search) params.set('search', search)
   if (filters.platforms.length) params.set('platforms', [...new Set(filters.platforms.map(code => code.toUpperCase()))].join(','))
-  if (filters.result) params.set('results', filters.result)
-  if (filters.trigger) params.set('triggers', filters.trigger)
+  if (filters.results.length) params.set('results', [...new Set(filters.results)].join(','))
+  if (filters.triggers.length) params.set('triggers', [...new Set(filters.triggers)].join(','))
   const from = istanbulDayToIso(filters.from)
   const to = istanbulDayToIso(filters.to, true)
   if (from) params.set('from', from)
   if (to) params.set('to', to)
+  if (oldestFirst) params.set('order', 'asc')
   if (after) params.set('after', after)
   return `?${params.toString()}`
 }

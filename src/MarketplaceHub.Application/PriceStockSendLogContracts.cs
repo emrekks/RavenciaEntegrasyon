@@ -124,9 +124,11 @@ public static class PriceStockSendLogPolicy
     }
 }
 
-// The log list: newest first, at most Limit rows (default 50, max 100); After is the NextCursor of the previous page.
+// The log list: newest first (oldest first with OldestFirst), at most Limit rows (default 50, max 100); After is the
+// NextCursor of the previous page in the same order.
 public sealed record PriceStockSendLogQuery(int? Limit = null, string? After = null, IReadOnlyList<string>? Platforms = null, Guid? ConnectionId = null,
-    DateTimeOffset? From = null, DateTimeOffset? To = null, string? Search = null, IReadOnlyList<string>? Results = null, IReadOnlyList<string>? Triggers = null)
+    DateTimeOffset? From = null, DateTimeOffset? To = null, string? Search = null, IReadOnlyList<string>? Results = null, IReadOnlyList<string>? Triggers = null,
+    bool OldestFirst = false)
 {
     public const int DefaultLimit = 50;
     public const int MaximumLimit = 100;

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
+import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Button, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
@@ -8,8 +9,8 @@ import { formatIstanbul } from '../../shared/format-date'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import {
-  emptySendLogFilters, hasSendLogFilters, listPriceChanged, priceChange, quantityChange, sendLogQueryString, sendLogResultLabel,
-  sendLogResultOptions, sendLogResultTone, sendLogResultTooltip, sendLogTriggerLabel, sendLogTriggerOptions,
+  emptySendLogFilters, hasSendLogFilters, listPriceChanged, priceChange, quantityChange, sendLogFilterCount, sendLogQueryString, sendLogResultGroups,
+  sendLogResultLabel, sendLogResultTone, sendLogResultTooltip, sendLogTriggerGroups, sendLogTriggerLabel,
   type PriceStockSendLogEntry, type PriceStockSendLogPage, type SendLogFilters, type ValueChange
 } from './price-stock-send-log'
 import './price-stock-send-log.css'
@@ -50,68 +51,94 @@ function ProductCell({ entry }: { entry: PriceStockSendLogEntry }) {
   </div>
 }
 
+type FilterMenuOption = { value: string; label: string; mark?: ReactNode }
+type FilterMenuGroup = { label?: string; options: FilterMenuOption[] }
+
+// One filter of the bar: a 36px button naming what is chosen ("Tüm Sonuçlar", the one value, or "2 Sonuç") and a menu
+// of checkboxes under it. A group's heading picks or drops its whole group.
+function FilterMenu({ name, allLabel, unit, groups, selected, onChange, emptyText }: { name: string; allLabel: string; unit: string; groups: FilterMenuGroup[]; selected: string[]; onChange: (values: string[]) => void; emptyText?: string }) {
+  const [open, setOpen] = useState(false)
+  const wrap = useRef<HTMLDivElement>(null)
+  useDismissable(open, [wrap], () => setOpen(false))
+  const options = groups.flatMap(group => group.options)
+  const single = selected.length === 1 ? options.find(option => option.value === selected[0]) : undefined
+  const summary = selected.length === 0 ? allLabel : single ? single.label : `${selected.length} ${unit}`
+  const toggle = (value: string) => onChange(selected.includes(value) ? selected.filter(item => item !== value) : [...selected, value])
+  const toggleGroup = (group: FilterMenuGroup) => {
+    const values = group.options.map(option => option.value)
+    onChange(values.every(value => selected.includes(value)) ? selected.filter(value => !values.includes(value)) : [...new Set([...selected, ...values])])
+  }
+  return <div className="psl-menu-wrap" ref={wrap}>
+    <button type="button" className={`psl-control psl-menu-toggle${selected.length ? ' is-set' : ''}`} aria-label={`${name}: ${summary}`} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+      {single?.mark}<span className="psl-menu-summary">{summary}</span><UiIcon name="chevronDown" size={14} />
+    </button>
+    {open && <div className="psl-menu" role="group" aria-label={name}>
+      {options.length === 0 && emptyText && <p className="psl-menu-empty">{emptyText}</p>}
+      {groups.map((group, index) => {
+        const picked = group.options.filter(option => selected.includes(option.value)).length
+        return <div className="psl-menu-group" key={group.label ?? index}>
+          {group.label && <label className="psl-menu-heading">
+            <input type="checkbox" checked={picked === group.options.length} ref={input => { if (input) input.indeterminate = picked > 0 && picked < group.options.length }} onChange={() => toggleGroup(group)} />{group.label}
+          </label>}
+          {group.options.map(option => <label key={option.value} className="psl-menu-option">
+            <input type="checkbox" checked={selected.includes(option.value)} onChange={() => toggle(option.value)} />{option.mark}{option.label}
+          </label>)}
+        </div>
+      })}
+    </div>}
+  </div>
+}
+
+const resultGroups: FilterMenuGroup[] = sendLogResultGroups.map(group => ({ label: group.label, options: group.values.map(value => ({ value, label: sendLogResultLabel(value) })) }))
+const triggerGroups: FilterMenuGroup[] = sendLogTriggerGroups.map(group => ({ label: group.label, options: group.values.map(value => ({ value, label: sendLogTriggerLabel(value) })) }))
+
 export function PriceStockSendLog({ platformOptions, onOpenJob }: { platformOptions: string[]; onOpenJob: (jobId: string) => void }) {
   const [filters, setFilters] = useState<SendLogFilters>(emptySendLogFilters)
   const [searchText, setSearchText] = useState('')
-  const [platformOpen, setPlatformOpen] = useState(false)
-  const platformWrap = useRef<HTMLDivElement>(null)
-  useDismissable(platformOpen, [platformWrap], () => setPlatformOpen(false))
+  // Zaman is the one order the server pages by: newest first, or oldest first.
+  const [oldestFirst, setOldestFirst] = useState(false)
   // The search goes to the server once typing pauses, not on every key.
   useEffect(() => {
     const timeout = window.setTimeout(() => setFilters(current => current.search === searchText ? current : { ...current, search: searchText }), searchDelayMs)
     return () => window.clearTimeout(timeout)
   }, [searchText])
   const update = (patch: Partial<SendLogFilters>) => setFilters(current => ({ ...current, ...patch }))
-  const clear = () => { setSearchText(''); setFilters(emptySendLogFilters); setPlatformOpen(false) }
-  const togglePlatform = (code: string) => update({ platforms: filters.platforms.includes(code) ? filters.platforms.filter(item => item !== code) : [...filters.platforms, code] })
+  const clear = () => { setSearchText(''); setFilters(emptySendLogFilters) }
 
   const list = useInfiniteQuery({
-    queryKey: ['price-stock-send-log', filters],
-    queryFn: context => hubPoll<PriceStockSendLogPage>(`/price-stock-send-log${sendLogQueryString(filters, context.pageParam)}`),
+    queryKey: ['price-stock-send-log', filters, oldestFirst],
+    queryFn: context => hubPoll<PriceStockSendLogPage>(`/price-stock-send-log${sendLogQueryString(filters, context.pageParam, undefined, oldestFirst)}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
     placeholderData: keepPreviousData,
-    refetchInterval: query => (query.state.data?.pages.length ?? 0) <= 1 ? firstPagePollMs : false
+    // Only the newest page can gain rows, so only it is polled.
+    refetchInterval: query => !oldestFirst && (query.state.data?.pages.length ?? 0) <= 1 ? firstPagePollMs : false
   })
   const rows = useMemo(() => {
     const seen = new Set<string>()
     return (list.data?.pages ?? []).flatMap(page => page.items).filter(entry => !seen.has(entry.id) && Boolean(seen.add(entry.id)))
   }, [list.data])
   const filtered = hasSendLogFilters(filters)
-  const options = useMemo(() => [...new Set([...platformOptions.filter(code => code !== 'TRENDYOL_EFATURAM'), ...filters.platforms])], [platformOptions, filters.platforms])
-  const platformSummary = filters.platforms.length === 0 ? 'Tüm Platformlar' : filters.platforms.length === 1 ? marketplacePlatformLabel(filters.platforms[0]) : `${filters.platforms.length} Platform`
+  // The typed search counts as soon as it is typed, before it reaches the server.
+  const filterCount = sendLogFilterCount({ ...filters, search: searchText })
+  const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: [...new Set([...platformOptions.filter(code => code !== 'TRENDYOL_EFATURAM'), ...filters.platforms])]
+    .map(code => ({ value: code, label: marketplacePlatformLabel(code), mark: <PlatformSquareMark code={code} name={marketplacePlatformLabel(code)} /> })) }], [platformOptions, filters.platforms])
 
   return <div className="psl">
     <div className="psl-filters" role="search" aria-label="Gönderim kaydı filtreleri">
       <label className="jobs-reference-search psl-search"><UiIcon name="search" size={15} /><input value={searchText} onChange={event => setSearchText(event.target.value.slice(0, 100))} placeholder="Barkod, stok kodu, model kodu veya ürün adı…" aria-label="Gönderim kayıtlarında ara" /></label>
-      <div className="psl-platform-wrap" ref={platformWrap}>
-        <button type="button" className="psl-control psl-platform-toggle" aria-haspopup="true" aria-expanded={platformOpen} onClick={() => setPlatformOpen(open => !open)}>
-          {filters.platforms.length === 1 && <PlatformSquareMark code={filters.platforms[0]} name={platformSummary} />}{platformSummary}<UiIcon name="chevronDown" size={14} />
-        </button>
-        {platformOpen && <div className="psl-platform-menu" role="group" aria-label="Platformlar">
-          {options.length === 0 && <p className="psl-platform-empty">Bağlı pazaryeri yok.</p>}
-          {options.map(code => <label key={code} className="psl-platform-option">
-            <input type="checkbox" checked={filters.platforms.includes(code)} onChange={() => togglePlatform(code)} />
-            <PlatformSquareMark code={code} name={marketplacePlatformLabel(code)} />{marketplacePlatformLabel(code)}
-          </label>)}
-        </div>}
+      <FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={filters.platforms} onChange={platforms => update({ platforms })} emptyText="Bağlı pazaryeri yok." />
+      <FilterMenu name="Sonuç" allLabel="Tüm Sonuçlar" unit="Sonuç" groups={resultGroups} selected={filters.results} onChange={results => update({ results })} />
+      <FilterMenu name="Tetikleyen" allLabel="Tüm Tetikleyenler" unit="Tetikleyen" groups={triggerGroups} selected={filters.triggers} onChange={triggers => update({ triggers })} />
+      <DateRangePicker className="psl-dates" label="Gönderim Tarihi" placeholder="Tüm Tarihler" from={filters.from} to={filters.to} onChange={range => update({ from: range.from, to: range.to })} />
+      <div className="psl-filter-actions">
+        <button type="button" className="psl-control psl-clear" onClick={clear} disabled={filterCount === 0}>Temizle{filterCount > 0 && <span className="psl-clear-count" aria-label={`${filterCount} filtre`}>{filterCount}</span>}</button>
+        <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="Gönderim kayıtlarını yenile" onClick={() => void list.refetch()}><UiIcon name="refresh" size={16} /></button>
       </div>
-      <select className="psl-control" aria-label="Sonuç" value={filters.result} onChange={event => update({ result: event.target.value })}>
-        <option value="">Tüm Sonuçlar</option>
-        {sendLogResultOptions.map(result => <option key={result} value={result}>{sendLogResultLabel(result)}</option>)}
-      </select>
-      <select className="psl-control" aria-label="Tetikleyen" value={filters.trigger} onChange={event => update({ trigger: event.target.value })}>
-        <option value="">Tüm Tetikleyenler</option>
-        {sendLogTriggerOptions.map(trigger => <option key={trigger} value={trigger}>{sendLogTriggerLabel(trigger)}</option>)}
-      </select>
-      <label className="psl-date"><span>Başlangıç</span><input className="psl-control" type="date" value={filters.from} max={filters.to || undefined} onChange={event => update({ from: event.target.value })} /></label>
-      <label className="psl-date"><span>Bitiş</span><input className="psl-control" type="date" value={filters.to} min={filters.from || undefined} onChange={event => update({ to: event.target.value })} /></label>
-      <button type="button" className="psl-control psl-clear" onClick={clear} disabled={!filtered && !searchText}>Temizle</button>
-      <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="Gönderim kayıtlarını yenile" onClick={() => void list.refetch()}><UiIcon name="refresh" size={16} /></button>
     </div>
     {list.isLoading ? <Busy text="Gönderim kayıtları yükleniyor…" /> : list.isError && !list.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">Gönderim kayıtları alınamadı.{list.error instanceof Error && list.error.message ? ` ${list.error.message}` : ''}</div> : <>
       <div className="psl-table-scroll"><table className="psl-table">
-        <thead><tr><th>Zaman</th><th>Platform</th><th>Ürün</th><th>Stok</th><th>Fiyat</th><th>Tetikleyen</th><th>Sonuç</th><th><span className="sr-only">İş</span></th></tr></thead>
+        <thead><tr><th scope="col" aria-sort={oldestFirst ? 'ascending' : 'descending'}><button type="button" className="psl-sort is-on" onClick={() => setOldestFirst(current => !current)} title={oldestFirst ? 'Yeniden eskiye sırala' : 'Eskiden yeniye sırala'}>Zaman<span aria-hidden="true">{oldestFirst ? '↑' : '↓'}</span></button></th><th>Platform</th><th>Ürün</th><th>Stok</th><th>Fiyat</th><th>Tetikleyen</th><th>Sonuç</th><th><span className="sr-only">İş</span></th></tr></thead>
         <tbody>
           {rows.map(entry => {
             const sale = priceChange(entry.previousSalePrice, entry.newSalePrice, entry.currency)

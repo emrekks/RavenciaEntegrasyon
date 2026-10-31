@@ -139,6 +139,12 @@ public sealed class PriceStockSendLogPostgreSqlTests(PostgreSqlTenantIsolationFi
         var first = await service.PageAsync(seed.Tenant.Id, new PriceStockSendLogQuery(Limit: 1), CancellationToken.None);
         var second = await service.PageAsync(seed.Tenant.Id, new PriceStockSendLogQuery(Limit: 1, After: first.Value!.NextCursor), CancellationToken.None);
         var unknownResult = await service.PageAsync(seed.Tenant.Id, new PriceStockSendLogQuery(Results: ["NOPE"]), CancellationToken.None);
+        var oldest = await service.PageAsync(seed.Tenant.Id, new PriceStockSendLogQuery(Limit: 1, OldestFirst: true), CancellationToken.None);
+        var oldestNext = await service.PageAsync(seed.Tenant.Id, new PriceStockSendLogQuery(Limit: 1, After: oldest.Value!.NextCursor, OldestFirst: true), CancellationToken.None);
+
+        // Oldest first reads the same two rows the other way round, its cursor continuing in its own order.
+        Assert.Equal(new[] { second.Value!.Items[0].Id, first.Value!.Items[0].Id }, new[] { oldest.Value.Items[0].Id, Assert.Single(oldestNext.Value!.Items).Id });
+        Assert.False(oldestNext.Value.HasMore);
 
         var titled = Assert.Single(byTitle.Value!.Items);
         Assert.Equal((seed.Lines[1].VariantId, $"Ürün 2 {seed.Tag}", "Hepsiburada"), (titled.VariantId, titled.ProductTitle, titled.StoreName));
