@@ -412,23 +412,16 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname b { overflow: hidden; color: var(--rr-ink); font-weight: 400; white-space: nowrap; text-overflow: ellipsis; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname small { overflow: hidden; color: var(--rr-subtle); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tr.rr-off .rr-qname b { color: var(--rr-muted); }
-/* Column groups: a line before each marketplace, a stronger one (and a shadow while scrolled) after the panel price. */
+/* Column groups: a line before the panel price and each marketplace; only the selection and variant columns stay put. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-gs { border-left: 1px solid var(--rr-line); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-panel { border-left: 1px solid var(--rr-line-strong); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(thead tr:first-child th.rr-qt-panel, .rr-qt-sub th.rr-qt-ps, tbody td.rr-qt-panel) { border-right: 1px solid var(--rr-line-strong); box-shadow: 6px 0 8px -6px rgb(0 0 0 / 18%); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-stick { position: sticky; z-index: 1; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-sel { left: 0; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-var { left: 40px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices .rr-qt-stock { left: 230px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices .rr-qt-panel { left: 230px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices.rr-qt-has-stock .rr-qt-panel { left: 318px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices .rr-qt-panel.rr-qt-ps { left: 338px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices.rr-qt-has-stock .rr-qt-panel.rr-qt-ps { left: 426px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(.rr-in, .rr-qpair span) { font-size: 13px; font-variant-numeric: tabular-nums; }
-/* The panel price is the column people edit: a faint tint over its cells (over the row stripe too), one header
+/* One header
    height across the groups now that each title is a single line. */
 @media (min-width: 761px) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(thead th.rr-qt-panel, tbody td.rr-qt-panel) { background-image: linear-gradient(color-mix(in srgb, var(--rr-primary) 7%, transparent), color-mix(in srgb, var(--rr-primary) 7%, transparent)); }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead tr:first-child th { height: 40px; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody :is(td, th) { height: 52px; }
 }
