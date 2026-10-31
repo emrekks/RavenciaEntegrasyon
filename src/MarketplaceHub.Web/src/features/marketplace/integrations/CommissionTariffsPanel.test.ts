@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandLimitText, bandRange, commissionTariffPlatforms, exportMessage, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitText, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodTabLabel, tariffGroups, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -181,5 +181,38 @@ describe('saved tariff picks', () => {
     expect(exportMessage(12, false)).toMatch(/^12 ürünün fiyatı Trendyol tarife dosyasına yazıldı/)
     expect(exportMessage(Number.NaN, false)).toMatch(/^Seçilen ürünlerin fiyatı/)
     expect(exportMessage(1, true)).toContain('aynı tarife dosyasını bir kez daha yükleyin')
+  })
+})
+
+describe('commission tariff periods', () => {
+  // Trendyol's file of 31 Oct 2026: a 3-day and a 4-day period, stored as a tariff each (the end exclusive, in UTC).
+  const period = (id: string, start: string, end: string, values: Partial<CommissionTariff> = {}) =>
+    ({ id, platformCode: 'TRENDYOL', periodStart: start, periodEnd: end, periodText: id, fileName: '930112.xlsx', uploadedAt: start, rowCount: 641, matchedRowCount: 600, isCurrent: false, ...values }) as CommissionTariff
+  const three = period('p3', '2026-10-29T05:00:00Z', '2026-11-01T05:00:00Z', { periodLabel: '3 Gün', groupId: 'p3' })
+  const four = period('p4', '2026-11-01T05:00:00Z', '2026-11-05T05:00:00Z', { periodLabel: '4 Gün', groupId: 'p3' })
+  const older = period('old', '2026-10-22T05:00:00Z', '2026-10-29T05:00:00Z')
+
+  it('lists a file once with its periods in order, a tariff of an older server as a file of its own', () => {
+    const groups = tariffGroups([four, three, older])
+    expect(groups.map(group => `${group.id}:${group.periods.map(item => item.id).join(',')}`)).toEqual(['p3:p3,p4', 'old:old'])
+  })
+
+  it('opens the period in force now, else the first', () => {
+    expect(defaultPeriod([three, { ...four, isCurrent: true }])?.id).toBe('p4')
+    expect(defaultPeriod([three, four])?.id).toBe('p3')
+    expect(defaultPeriod([])).toBeNull()
+  })
+
+  it('names the span and each period as the tabs show them, up to the last minute of each', () => {
+    expect(groupRangeText([three, four])).toBe('29 Eki 2026 – 5 Kas 2026')
+    expect(periodTabLabel(three)).toBe('3 Gün (29 Eki – 1 Kas 2026)')
+    expect(periodTabLabel(four)).toBe('4 Gün (1 Kas – 5 Kas 2026)')
+    // Without the file's name for it, a period is named by its days.
+    expect(periodTabLabel(older)).toBe('7 Gün (22 Eki – 29 Eki 2026)')
+  })
+
+  it('tells how many products took the open period\'s price where the periods\' prices differ', () => {
+    expect(exportMessage(3, false, 1, '3 Gün')).toContain('1 üründe iki dönem için farklı fiyat seçili; dosya ürün başına tek fiyat taşıdığından bu ürünlere 3 Gün döneminin fiyatı yazıldı.')
+    expect(exportMessage(3, false, 0, '3 Gün')).not.toContain('farklı fiyat')
   })
 })

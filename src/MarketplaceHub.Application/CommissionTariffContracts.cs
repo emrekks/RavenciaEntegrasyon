@@ -19,7 +19,11 @@ public sealed record CommissionTariffView(
     DateTimeOffset UploadedAt,
     int RowCount,
     int MatchedRowCount,
-    bool IsCurrent);
+    bool IsCurrent,
+    // The file's name for the period ("3 Gün"; null when it names none) and the file the period came from: the periods
+    // of one file (Trendyol's "3 Gün" and "4 Gün" of a week) share a GroupId, the Id of the file's first period.
+    string? PeriodLabel = null,
+    Guid? GroupId = null);
 
 public sealed record CommissionTariffUploadResult(IReadOnlyList<CommissionTariffView> Tariffs, int ImportedRows, int SkippedRows, bool AlreadyUploaded, IReadOnlyList<string> Warnings);
 
@@ -87,8 +91,10 @@ public sealed record CommissionTariffFacets(IReadOnlyList<string> Categories, IR
 public sealed record CommissionTariffChoice(Guid RowId, int? Tier, decimal? Price);
 // The Excel of the picks: Trendyol's own tariff workbook with each picked row's price in "YENİ TSF (FİYAT GÜNCELLE)" and
 // its period in "Tarife Seçimi". FromSourceFile: false when the uploaded file is not kept (a tariff uploaded before
-// files were kept) and the workbook is written again from the stored rows.
-public sealed record CommissionTariffExportFile(byte[] Content, string FileName, int Rows, bool FromSourceFile = true);
+// files were kept) and the workbook is written again from the stored rows. The file carries the picks of every period
+// of the tariff's file; Conflicts counts the rows picked at different prices in two periods, where the file (one price
+// per row) took the exported period's pick.
+public sealed record CommissionTariffExportFile(byte[] Content, string FileName, int Rows, bool FromSourceFile = true, int Conflicts = 0);
 
 // The seller's saved picks on a tariff (as the export request carries them) and when they were last saved.
 public sealed record CommissionTariffSelectionView(string? Bulk, int? Tier, decimal? MinRate, decimal? MinAmount, decimal? MaxRate, decimal? MaxAmount,
@@ -105,6 +111,7 @@ public interface ICommissionTariffService
     Task<ServiceResult<CommissionTariffUploadResult>> UploadAsync(Guid tenantId, Guid? userId, Guid connectionId, string fileName, Stream content, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CommissionTariffView>>> ListAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<CommissionTariffRowPage>> RowsAsync(Guid tenantId, Guid connectionId, Guid tariffId, string? search, int page, int pageSize, CommissionTariffRowFilter filter, CancellationToken cancellationToken);
+    // Deletes the tariff with every other period of its file.
     Task<ServiceResult<bool>> DeleteAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<CommissionTariffFacets>> FacetsAsync(Guid tenantId, Guid connectionId, Guid tariffId, CancellationToken cancellationToken);
     // Without picks in the request (no Bulk and no Choices) the saved picks are written.

@@ -14,7 +14,41 @@ import '../commission-tariffs.css'
 export const commissionTariffPlatforms = new Set(['TRENDYOL'])
 
 export type CommissionBand = { tier: number; min: number | null; max: number | null; rate: number }
-export type CommissionTariff = { id: string; platformCode: string; periodStart: string; periodEnd: string; periodText: string; fileName: string; uploadedAt: string; rowCount: number; matchedRowCount: number; isCurrent: boolean }
+// One period of an uploaded file. A file with more than one period (Trendyol's "3 Gün" and "4 Gün" of a week) lists a
+// tariff for each, sharing groupId (the file's first period); periodLabel is the file's name for the period. Both are
+// absent in an older server's answer.
+export type CommissionTariff = { id: string; platformCode: string; periodStart: string; periodEnd: string; periodText: string; fileName: string; uploadedAt: string; rowCount: number; matchedRowCount: number; isCurrent: boolean
+  periodLabel?: string | null; groupId?: string | null }
+// An uploaded file with its periods, the earliest first.
+export type TariffGroup = { id: string; periods: CommissionTariff[] }
+
+// The listed tariffs by file, in the list's order (the latest file first); a tariff without a group is a file of its own.
+export function tariffGroups(tariffs: CommissionTariff[]): TariffGroup[] {
+  const groups = new Map<string, CommissionTariff[]>()
+  for (const tariff of tariffs) {
+    const key = tariff.groupId ?? tariff.id
+    groups.set(key, [...(groups.get(key) ?? []), tariff])
+  }
+  return [...groups].map(([id, periods]) => ({ id, periods: [...periods].sort((a, b) => Date.parse(a.periodStart) - Date.parse(b.periodStart)) }))
+}
+
+// The period a file opens on: the one in force now, else its first.
+export const defaultPeriod = (periods: CommissionTariff[]) => periods.find(period => period.isCurrent) ?? periods[0] ?? null
+
+// The stored end is exclusive (the minute after the file's last one); a period is shown up to its own last minute.
+const lastMinute = (end: string) => new Date(Date.parse(end) - 60_000)
+const shortDay = (value: string | Date, year: boolean) => formatIstanbul(value, year ? { day: 'numeric', month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' })
+// The span of a file's periods: "29 Eki 2026 – 5 Kas 2026".
+export function groupRangeText(periods: CommissionTariff[]) {
+  if (!periods.length) return '—'
+  const end = periods.reduce((last, period) => Date.parse(period.periodEnd) > Date.parse(last) ? period.periodEnd : last, periods[0].periodEnd)
+  return `${shortDay(periods[0].periodStart, true)} – ${shortDay(lastMinute(end), true)}`
+}
+// A period's tab: its name (else its length in days) and its days, "3 Gün (29 Eki – 1 Kas 2026)".
+export function periodTabLabel(period: CommissionTariff) {
+  const days = Math.max(1, Math.round((Date.parse(period.periodEnd) - Date.parse(period.periodStart)) / 86_400_000))
+  return `${period.periodLabel?.trim() || `${days} Gün`} (${shortDay(period.periodStart, false)} – ${shortDay(lastMinute(period.periodEnd), true)})`
+}
 export type CommissionTariffRow = {
   id: string; barcode: string; sellerSku: string | null; modelCode: string | null; productName: string | null; size: string | null
   basisPrice: number | null; currentSalePrice: number | null; currentRate: number | null; currentTier: number | null; currentBandRate: number | null
@@ -63,11 +97,14 @@ export function selectionState(saved: TariffSelection | undefined): { picks: Map
   return { picks: new Map((saved?.choices ?? []).map(choice => [choice.rowId, { tier: choice.price !== null ? null : choice.tier, price: choice.price }])), bulk }
 }
 
-// What the download says: how many products the Trendyol file carries a price for, and when the file had to be written
-// again from the stored rows (a tariff uploaded before files were kept).
-export function exportMessage(rows: number, rebuilt: boolean) {
+// What the download says: how many products the Trendyol file carries a price for, when the file had to be written
+// again from the stored rows (a tariff uploaded before files were kept), and how many products were picked at different
+// prices in the file's two periods (the file holds one price per product: the open period's was written).
+export function exportMessage(rows: number, rebuilt: boolean, conflicts = 0, period?: string) {
   const count = Number.isFinite(rows) ? `${rows.toLocaleString('tr-TR')} ürünün` : 'Seçilen ürünlerin'
-  const text = `${count} fiyatı Trendyol tarife dosyasına yazıldı (YENİ TSF ve Tarife Seçimi sütunları). Dosyayı Trendyol'da Ürün Komisyon Tarifeleri sayfasından yükleyin.`
+  let text = `${count} fiyatı Trendyol tarife dosyasına yazıldı (YENİ TSF ve Tarife Seçimi sütunları). Dosyayı Trendyol'da Ürün Komisyon Tarifeleri sayfasından yükleyin.`
+  if (Number.isFinite(conflicts) && conflicts > 0)
+    text += ` ${conflicts.toLocaleString('tr-TR')} üründe iki dönem için farklı fiyat seçili; dosya ürün başına tek fiyat taşıdığından bu ürünlere ${period ? `${period} döneminin` : 'açık sekmenin'} fiyatı yazıldı.`
   return rebuilt ? `${text} Bu tarifenin yüklenen dosyası saklanmadığı için dosya kayıtlı satırlardan yeniden yazıldı; Trendyol'un kendi dosyası için aynı tarife dosyasını bir kez daha yükleyin.` : text
 }
 
@@ -179,8 +216,9 @@ export function rateDisagrees(row: Pick<CommissionTariffRow, 'currentRate' | 'cu
   return row.currentRate !== null && row.currentBandRate !== null && Math.abs(row.currentRate - row.currentBandRate) > 0.0001
 }
 
-// The stored end is exclusive (the minute after the file's last one); the label shows the file's own last minute.
-const periodLabel = (tariff: CommissionTariff) => `${formatIstanbul(tariff.periodStart, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })} – ${formatIstanbul(new Date(new Date(tariff.periodEnd).getTime() - 60_000), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+// A file's span from its first period's start to its last one's end; the stored end is exclusive (the minute after the
+// file's last one), so the label shows the file's own last minute.
+const periodLabel = (periods: CommissionTariff[]) => `${formatIstanbul(periods[0].periodStart, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })} – ${formatIstanbul(lastMinute(periods[periods.length - 1].periodEnd), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`
 
 // Weekly commission tariffs the seller downloads from the marketplace and uploads here. The panel reads a sale's
 // commission from the band its price falls in when the order does not carry it, and shows which price earns a lower
@@ -195,7 +233,11 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] } | null>(null)
   const [confirm, confirmDialog] = useConfirmDialog()
   const tariffs = useQuery({ queryKey: ['commission-tariffs', connectionId], queryFn: () => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`) })
-  const active = tariffs.data?.find(tariff => tariff.id === selected) ?? tariffs.data?.find(tariff => tariff.isCurrent) ?? tariffs.data?.[0] ?? null
+  // The list shows a file once; its periods are the tabs over the table. The open period is the one picked, else the
+  // period in force now of the file in force now, else the first file's.
+  const groups = useMemo(() => tariffGroups(tariffs.data ?? []), [tariffs.data])
+  const activeGroup = groups.find(group => group.periods.some(period => period.id === selected)) ?? groups.find(group => group.periods.some(period => period.isCurrent)) ?? groups[0] ?? null
+  const active = activeGroup?.periods.find(period => period.id === selected) ?? (activeGroup ? defaultPeriod(activeGroup.periods) : null)
   const rows = useQuery({
     queryKey: ['commission-tariff-rows', connectionId, active?.id, filter, page],
     queryFn: () => hubApi<RowPage>(`/connections/${connectionId}/commission-tariffs/${active!.id}/rows?${new URLSearchParams({ page: String(page), limit: '50',
@@ -209,7 +251,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
       return hubApi<UploadResult>(`/connections/${connectionId}/commission-tariffs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff') }, body })
     },
     onSuccess: async result => {
-      setSelected(result.tariffs[0]?.id ?? null)
+      setSelected(defaultPeriod(result.tariffs)?.id ?? null)
       setPage(0)
       setMessage(result.alreadyUploaded
         ? { kind: 'info', text: 'Bu dosya bu dönem için daha önce yüklenmiş; mevcut tarife gösteriliyor.' }
@@ -234,9 +276,12 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     upload.mutate(file)
   }
   const onDrop = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]) }
-  const askDelete = async (tariff: CommissionTariff) => {
-    if (!(await confirm({ title: 'Tarife Silinsin mi?', message: `${tariff.periodText} dönemine ait tarife, ${tariff.rowCount.toLocaleString('tr-TR')} ürün satırı ve kaydedilen seçimler silinecek. Bu dönemin satışlarında komisyon bu tarifeden okunamaz.`, confirmLabel: 'Tarifeyi Sil', destructive: true }))) return
-    remove.mutate(tariff)
+  // A file goes with all its periods (the server deletes them together).
+  const askDelete = async (group: TariffGroup) => {
+    const periods = group.periods.map(period => period.periodText).join(' ve ')
+    const many = group.periods.length > 1
+    if (!(await confirm({ title: 'Tarife Silinsin mi?', message: `${periods} ${many ? 'dönemlerine' : 'dönemine'} ait tarife, ${group.periods[0].rowCount.toLocaleString('tr-TR')} ürün satırı ve kaydedilen seçimler silinecek. ${many ? 'Bu dönemlerin' : 'Bu dönemin'} satışlarında komisyon bu tarifeden okunamaz.`, confirmLabel: 'Tarifeyi Sil', destructive: true }))) return
+    remove.mutate(group.periods[0])
   }
   const pageCount = rows.data ? Math.max(1, Math.ceil(rows.data.totalCount / rows.data.pageSize)) : 1
 
@@ -253,17 +298,33 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     {tariffs.isLoading && <Busy />}
     {tariffs.isError && <ErrorBox error={tariffs.error} onRetry={() => void tariffs.refetch()} />}
     {tariffs.data && tariffs.data.length === 0 && <p className="cs-empty">Henüz tarife yüklenmedi. Komisyon yalnız siparişin kendi bilgisinden okunuyor.</p>}
-    {tariffs.data && tariffs.data.length > 0 && <div className="commission-periods" role="list">
-      {tariffs.data.map(tariff => <div key={tariff.id} role="listitem" className={`commission-period${tariff.id === active?.id ? ' is-on' : ''}`}>
-        <button type="button" className="commission-period-main" aria-pressed={tariff.id === active?.id} onClick={() => { setSelected(tariff.id); setPage(0) }}>
-          <span className="commission-period-title">{periodLabel(tariff)}{tariff.isCurrent && <em className="commission-badge is-current">Geçerli</em>}</span>
-          <small>{tariff.rowCount.toLocaleString('tr-TR')} ürün · {tariff.matchedRowCount.toLocaleString('tr-TR')} panelde eşleşti · {tariff.fileName} · {formatIstanbul(tariff.uploadedAt, { dateStyle: 'medium', timeStyle: 'short' })}</small>
-        </button>
-        <button type="button" className="secondary commission-period-delete" disabled={remove.isPending} onClick={() => void askDelete(tariff)} aria-label={`${tariff.periodText} tarifesini sil`}>Sil</button>
-      </div>)}
+    {groups.length > 0 && <div className="commission-periods" role="list">
+      {groups.map(group => {
+        const first = group.periods[0]
+        const on = group.id === activeGroup?.id
+        const many = group.periods.length > 1
+        return <div key={group.id} role="listitem" className={`commission-period${on ? ' is-on' : ''}`}>
+          <button type="button" className="commission-period-main" aria-pressed={on} onClick={() => { setSelected(defaultPeriod(group.periods)?.id ?? null); setPage(0) }}>
+            <span className="commission-period-title">{periodLabel(group.periods)}{group.periods.some(period => period.isCurrent) && <em className="commission-badge is-current">Geçerli</em>}</span>
+            <small>{many ? `${group.periods.length.toLocaleString('tr-TR')} dönem (${group.periods.map(period => period.periodLabel?.trim() || period.periodText).join(', ')}) · ` : ''}{first.rowCount.toLocaleString('tr-TR')} ürün · {first.matchedRowCount.toLocaleString('tr-TR')} panelde eşleşti · {first.fileName} · {formatIstanbul(first.uploadedAt, { dateStyle: 'medium', timeStyle: 'short' })}</small>
+          </button>
+          <button type="button" className="secondary commission-period-delete" disabled={remove.isPending} onClick={() => void askDelete(group)} aria-label={`${group.periods.map(period => period.periodText).join(' ve ')} tarifesini sil`}>Sil</button>
+        </div>
+      })}
     </div>}
 
-    {active && <TariffPlan key={active.id} connectionId={connectionId} tariff={active} rows={rows.data} loading={rows.isLoading} error={rows.isError ? rows.error : null} onRetry={() => void rows.refetch()}
+    {/* A file with more than one period: its span and a tab for each period; the table, the band cards, Toplu Seçim and
+        the picks are the open period's. */}
+    {activeGroup && active && activeGroup.periods.length > 1 && <div className="commission-period-switch">
+      <span className="commission-period-range">Geçerli Tarih Aralığı: <strong>{groupRangeText(activeGroup.periods)}</strong></span>
+      <div className="commission-period-tabs" role="group" aria-label="Tarife dönemi">
+        {activeGroup.periods.map(period => <button key={period.id} type="button" aria-pressed={period.id === active.id} onClick={() => { setSelected(period.id); setPage(0) }}>
+          {periodTabLabel(period)}{period.isCurrent && <em>Şu An</em>}
+        </button>)}
+      </div>
+    </div>}
+
+    {active && <TariffPlan key={active.id} connectionId={connectionId} tariff={active} periods={activeGroup?.periods ?? [active]} rows={rows.data} loading={rows.isLoading} error={rows.isError ? rows.error : null} onRetry={() => void rows.refetch()}
       filter={filter} onFilter={value => { setFilter(value); setPage(0) }} page={page} pageCount={pageCount} onPage={setPage} onMessage={setMessage} />}
     {confirmDialog}
   </section>
@@ -490,7 +551,7 @@ function TariffPlan(props: TariffPlanProps) {
 }
 
 type TariffPlanProps = {
-  connectionId: string; tariff: CommissionTariff; rows: RowPage | undefined; loading: boolean; error: unknown; onRetry: () => void
+  connectionId: string; tariff: CommissionTariff; periods: CommissionTariff[]; rows: RowPage | undefined; loading: boolean; error: unknown; onRetry: () => void
   filter: TariffFilter; onFilter: (filter: TariffFilter) => void
   page: number; pageCount: number; onPage: (page: number) => void; onMessage: (message: PanelMessage | null) => void
 }
@@ -499,7 +560,7 @@ type TariffPlanProps = {
 // after the commission and the product cost. A pick is made row by row (a band, or a price of the seller's own) or for
 // every row at once; the picks are saved as they change and go out as Trendyol's own tariff file with the picked prices
 // filled in. Picks are kept across pages, searches and visits.
-function TariffPlanBody({ connectionId, tariff, rows, loading, error, onRetry, filter, onFilter, page, pageCount, onPage, onMessage, saved }: TariffPlanProps & { saved: TariffSelection }) {
+function TariffPlanBody({ connectionId, tariff, periods, rows, loading, error, onRetry, filter, onFilter, page, pageCount, onPage, onMessage, saved }: TariffPlanProps & { saved: TariffSelection }) {
   const [picks, setPicks] = useState<Map<string, TariffPick>>(() => selectionState(saved).picks)
   // The pick for every row, set in the Toplu Seçim popover.
   const [bulk, setBulk] = useState<TariffBulk>(() => selectionState(saved).bulk)
@@ -537,6 +598,9 @@ function TariffPlanBody({ connectionId, tariff, rows, loading, error, onRetry, f
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
   const facets = useQuery({ queryKey: ['commission-tariff-facets', connectionId, tariff.id], queryFn: () => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`) })
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
+  // A file with more than one period: the picks are the open period's, and the Excel carries every period's.
+  const manyPeriods = periods.length > 1
+  const periodName = tariff.periodLabel?.trim() || tariff.periodText
   const download = useMutation({
     // The picks are saved first; the server writes the saved picks, so the file holds what the page shows.
     mutationFn: async () => {
@@ -553,7 +617,8 @@ function TariffPlanBody({ connectionId, tariff, rows, loading, error, onRetry, f
       link.click()
       setTimeout(() => URL.revokeObjectURL(url), 0)
       const rebuilt = headers.get('X-Tariff-File') === 'rebuilt'
-      onMessage({ kind: rebuilt ? 'info' : 'success', text: exportMessage(Number(headers.get('X-Picked-Rows') ?? Number.NaN), rebuilt) })
+      const conflicts = Number(headers.get('X-Price-Conflicts') ?? 0)
+      onMessage({ kind: rebuilt || conflicts > 0 ? 'info' : 'success', text: exportMessage(Number(headers.get('X-Picked-Rows') ?? Number.NaN), rebuilt, conflicts, periodName) })
     },
     onError: reason => onMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Excel hazırlanamadı.' })
   })
@@ -563,15 +628,16 @@ function TariffPlanBody({ connectionId, tariff, rows, loading, error, onRetry, f
 
   return <div className="commission-rows">
     <div className="commission-rows-head">
-      <strong>{tariff.periodText} Bantları</strong>
+      <strong>{tariff.periodLabel?.trim() ? `${tariff.periodLabel.trim()} · ` : ''}{tariff.periodText} Bantları</strong>
     </div>
+    {manyPeriods && <p className="commission-period-note">Seçimler her dönem için ayrı kaydedilir. Excel İndir tüm dönemlerin seçimlerini Trendyol dosyasına birlikte yazar: iki dönemde aynı fiyatı seçtiğiniz ürüne “7 Günlük Fiyat”, tek dönemde seçtiğiniz ürüne o dönemin fiyatı yazılır. Bir ürüne iki dönemde farklı fiyat seçtiyseniz dosya ürün başına tek fiyat taşıdığı için Excel’i indirdiğiniz sekmenin ({periodName}) fiyatı yazılır.</p>}
     {/* Which products the list shows. */}
     <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} onApply={onFilter} />
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
       <span className="commission-plan-count" role="status">{summary}{saving.status === 'saving' ? <small> · Kaydediliyor…</small> : saving.status === 'error' ? <small className="commission-warn"> · Seçimler kaydedilemedi</small> : null}</span>
       <BulkPicker bulk={bulk} onApply={setBulk} onClearColumn={clearColumn} onClearAll={() => { setBulk(noBulk); setPicks(new Map()) }} />
-      <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0) || download.isPending} onClick={() => download.mutate()}>
+      <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0 && !manyPeriods) || download.isPending} onClick={() => download.mutate()}>
         <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}
       </button>
     </div>

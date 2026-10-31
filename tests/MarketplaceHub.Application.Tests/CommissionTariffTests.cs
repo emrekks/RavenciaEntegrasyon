@@ -187,6 +187,82 @@ public sealed class CommissionTariffTests
         Assert.Contains(parsed.Warnings, warning => warning.Contains("birden çok kez", StringComparison.Ordinal));
     }
 
+    // Trendyol's export of 31 Oct 2026: the band limits once, then "Tarih aralığı (3 Gün)" with its four rates and
+    // "Tarih aralığı (4 Gün)" with four more. Each period is a tariff of its own with its own rates.
+    [Fact]
+    public void ATwoPeriodExportIsReadAsATariffForEachPeriodWithItsOwnRates()
+    {
+        var bytes = TrendyolTariffWorkbookTests.Workbook(("Bluz M", "RYP00101", TrendyolTariffWorkbookTests.Period3, null), ("Etek", "ETK001", TrendyolTariffWorkbookTests.Period3, null));
+        var parsed = CommissionTariffFileParser.Parse(ImportFileReader.ReadXlsxTable(new MemoryStream(bytes), 10_000_000), TrendyolTariffWorkbookTests.Now);
+
+        Assert.Equal(0, parsed.SkippedRows);
+        Assert.Equal(2, parsed.Tariffs.Count);
+        var (three, four) = (parsed.Tariffs[0], parsed.Tariffs[1]);
+        Assert.Equal(("3 Gün", TrendyolTariffWorkbookTests.Period3), (three.Label, three.PeriodText));
+        Assert.Equal(("4 Gün", TrendyolTariffWorkbookTests.Period4), (four.Label, four.PeriodText));
+        var istanbul = TimeSpan.FromHours(3);
+        Assert.Equal((new DateTimeOffset(2026, 10, 29, 8, 0, 0, istanbul), new DateTimeOffset(2026, 11, 1, 8, 0, 0, istanbul)), (three.PeriodStart, three.PeriodEnd));
+        Assert.Equal((new DateTimeOffset(2026, 11, 1, 8, 0, 0, istanbul), new DateTimeOffset(2026, 11, 5, 8, 0, 0, istanbul)), (four.PeriodStart, four.PeriodEnd));
+        Assert.Equal(TimeSpan.Zero, four.PeriodStart.Offset);
+        var row3 = three.Rows.Single(x => x.Barcode == "RYP00101");
+        var row4 = four.Rows.Single(x => x.Barcode == "RYP00101");
+        Assert.NotEqual(row3.Id, row4.Id);
+        // The limits are the file's one set; the rates are each period's.
+        Assert.Equal((464.63m, 464.62m, 432.26m, 400.1m), (row4.Tier1Min!.Value, row4.Tier2Max!.Value, row4.Tier3Max!.Value, row4.Tier4Max!.Value));
+        Assert.Equal((row3.Tier1Min, row3.Tier4Max), (row4.Tier1Min, row4.Tier4Max));
+        Assert.Equal((21.5m, 20.6m, 19.6m, 18.3m), (row3.Rate1!.Value, row3.Rate2!.Value, row3.Rate3!.Value, row3.Rate4!.Value));
+        Assert.Equal((21.5m, 15.8m, 14.4m, 12.8m), (row4.Rate1!.Value, row4.Rate2!.Value, row4.Rate3!.Value, row4.Rate4!.Value));
+        // At 464,62 the 4-day period's 2. band is %15,8, the 3-day's %20,6.
+        Assert.Equal(15.8m, CommissionTariffBands.BandFor(row4, 464.62m)?.Rate);
+        Assert.Equal(20.6m, CommissionTariffBands.BandFor(row3, 464.62m)?.Rate);
+        Assert.Equal(519.75m, row4.BasisPrice);
+    }
+
+    // The reports' fallback commission reads the period a sale was made in: the 3-day rate before 1 Nov 08.00, the 4-day
+    // rate from then on.
+    [Fact]
+    public void AReportLineTakesTheRateOfThePeriodItWasSoldIn()
+    {
+        var bytes = TrendyolTariffWorkbookTests.Workbook(("Bluz M", "RYP00101", TrendyolTariffWorkbookTests.Period3, null));
+        var parsed = CommissionTariffFileParser.Parse(ImportFileReader.ReadXlsxTable(new MemoryStream(bytes), 10_000_000), TrendyolTariffWorkbookTests.Now);
+        var connection = Guid.NewGuid();
+        var uploaded = TrendyolTariffWorkbookTests.Now;
+        var tariffs = new Infrastructure.Persistence.ReportCommissionTariffs(parsed.Tariffs.SelectMany(period =>
+        {
+            var tariff = new CommissionTariff { Id = Guid.NewGuid(), ConnectionId = connection, PlatformCode = "TRENDYOL", PeriodStart = period.PeriodStart, PeriodEnd = period.PeriodEnd, PeriodText = period.PeriodText, PeriodLabel = period.Label, FileName = "930112.xlsx", FileHash = "H", UploadedAt = uploaded };
+            return period.Rows.Select(row => (tariff, row));
+        }));
+        var istanbul = TimeSpan.FromHours(3);
+        Assert.Equal(20.6m, tariffs.Rate(connection, "RYP00101", null, new DateTimeOffset(2026, 11, 1, 7, 59, 0, istanbul).ToUniversalTime(), 450m));
+        Assert.Equal(15.8m, tariffs.Rate(connection, "RYP00101", null, new DateTimeOffset(2026, 11, 1, 8, 0, 0, istanbul).ToUniversalTime(), 450m));
+        Assert.Equal(12.8m, tariffs.Rate(connection, "RYP00101", null, new DateTimeOffset(2026, 11, 4, 20, 0, 0, istanbul).ToUniversalTime(), 399m));
+        Assert.Null(tariffs.Rate(connection, "RYP00101", null, new DateTimeOffset(2026, 11, 5, 8, 0, 0, istanbul).ToUniversalTime(), 399m));
+    }
+
+    // A row whose second period is empty or does not read is kept in the period that reads, with a warning for the other;
+    // a row neither period reads is skipped.
+    [Fact]
+    public void ARowIsKeptInThePeriodsThatRead()
+    {
+        string[] headers = ["BARKOD", "1.Fiyat Alt Limit", "4.Fiyat Üst Limiti", "Tarih aralığı (3 Gün)", "1.KOMİSYON", "4.KOMİSYON", "Tarih aralığı (4 Gün)", "1.KOMİSYON", "4.KOMİSYON"];
+        var bytes = Xlsx(headers,
+        [
+            ["A1", "500", "400", "29 Ekim 08.00-1 Kasım 07.59", "21.5", "18", "1 Kasım 08.00-5 Kasım 07.59", "21.5", "12"],
+            ["A2", "500", "400", "29 Ekim 08.00-1 Kasım 07.59", "21.5", "18", "", "", ""],
+            ["A3", "500", "400", "29 Ekim 08.00-1 Kasım 07.59", "21.5", "18", "1 Kasım 08.00-5 Kasım 07.59", "abc", "12"],
+            ["A4", "500", "400", "", "21.5", "18", "1 Kasım 08.00-5 Kasım 07.59", "21.5", "12"],
+            ["A5", "500", "400", "", "", "", "", "", ""]
+        ]);
+        var parsed = CommissionTariffFileParser.Parse(ImportFileReader.ReadXlsxTable(new MemoryStream(bytes), 10_000_000), TrendyolTariffWorkbookTests.Now);
+
+        Assert.Equal(["A1", "A2", "A3"], parsed.Tariffs[0].Rows.Select(x => x.Barcode));
+        Assert.Equal(["A1", "A4"], parsed.Tariffs[1].Rows.Select(x => x.Barcode));
+        Assert.Equal(12m, parsed.Tariffs[1].Rows[0].Rate4);
+        Assert.Equal(1, parsed.SkippedRows);
+        Assert.Contains(parsed.Warnings, warning => warning.StartsWith("Satır 4:", StringComparison.Ordinal) && warning.Contains("(4 Gün)", StringComparison.Ordinal));
+        Assert.Contains(parsed.Warnings, warning => warning.StartsWith("Satır 5:", StringComparison.Ordinal) && warning.Contains("(3 Gün)", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void AFileWithoutTheTariffColumnsIsRefusedInTurkish()
     {
