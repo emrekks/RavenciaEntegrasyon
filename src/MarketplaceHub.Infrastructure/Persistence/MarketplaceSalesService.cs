@@ -143,7 +143,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var variantIds = lines.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
         var lineSkus = lines.Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineSkuKeys = lines.SelectMany(x => CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.Ordinal).ToArray();
-        var marketplaceSkuKeys = lines.Select(x => MarketplaceVariantLinkCoverage.Normalize(x.Sku)).Where(x => x.Length > 0).Distinct().ToArray();
+        var marketplaceSkuKeys = lines.SelectMany(LineMarketplaceIdentities).Distinct().ToArray();
         var lineBarcodes = lines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineBarcodeKeys = lines.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var lineVariantLinks = marketplaceSkuKeys.Length == 0
@@ -170,8 +170,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         {
             var variant = ResolveVariant(line, variants, variantsBySku, variantsByBarcode);
             if (variant is not null) return variant;
-            var key = (order.ConnectionId, ExternalId: MarketplaceVariantLinkCoverage.Normalize(line.Sku));
-            return variantsByMarketplaceIdentity.TryGetValue(key, out var variantId) ? variants.GetValueOrDefault(variantId) : null;
+            foreach (var identity in LineMarketplaceIdentities(line))
+                if (variantsByMarketplaceIdentity.TryGetValue((order.ConnectionId, identity), out var variantId) && variants.GetValueOrDefault(variantId) is { } linked) return linked;
+            return null;
         }
         var rows = orders.Select(order =>
         {
@@ -574,6 +575,38 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (!string.IsNullOrWhiteSpace(link.ExternalSku)) yield return MarketplaceVariantLinkCoverage.Normalize(link.ExternalSku);
     }
 
+    // The marketplace's own ids for the sold item in a line snapshot (Trendyol productCode/contentId, Hepsiburada
+    // hbSku/listingId, Shopify variant_id), which a variant link is keyed by. They still find the linked variant after
+    // the barcode or stock code was changed on one side only: Trendyol line MZ052BOD-16 is listing 1696621714, linked
+    // to the panel variant still coded MZ051BYC-16, and matched no variant by its codes.
+    private static readonly string[] SourceListingIdFields = ["productCode", "contentId", "hbSku", "listingId", "variantId", "variant_id"];
+
+    internal static string[] LineMarketplaceIdentities(string? sku, string? sourceSnapshotJson)
+    {
+        var identities = new List<string>();
+        var normalizedSku = MarketplaceVariantLinkCoverage.Normalize(sku);
+        if (normalizedSku.Length > 0) identities.Add(normalizedSku);
+        if (!string.IsNullOrWhiteSpace(sourceSnapshotJson))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(sourceSnapshotJson);
+                if (document.RootElement.ValueKind == JsonValueKind.Object)
+                    foreach (var field in SourceListingIdFields)
+                    {
+                        if (!document.RootElement.TryGetProperty(field, out var value)) continue;
+                        var text = value.ValueKind switch { JsonValueKind.String => value.GetString(), JsonValueKind.Number => value.GetRawText(), _ => null };
+                        var normalized = MarketplaceVariantLinkCoverage.Normalize(text);
+                        if (normalized.Length > 0 && normalized != "0" && !identities.Contains(normalized)) identities.Add(normalized);
+                    }
+            }
+            catch (JsonException) { }
+        }
+        return identities.ToArray();
+    }
+
+    private static string[] LineMarketplaceIdentities(OrderLine line) => LineMarketplaceIdentities(line.Sku, line.SourceSnapshotJson);
+
     internal static string[] CatalogLookupKeys(string? value, int maximum = 160)
     {
         var normalized = NormalizeCatalogKey(value, maximum);
@@ -735,16 +768,29 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var lineSkuKeys = activeOrderLines.SelectMany(x => CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.Ordinal).ToArray();
         var lineBarcodes = activeOrderLines.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToArray();
         var lineBarcodeKeys = activeOrderLines.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var lineLinkKeys = activeOrderLines.SelectMany(LineMarketplaceIdentities).Distinct().ToArray();
+        var lineVariantLinks = lineLinkKeys.Length == 0
+            ? []
+            : await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == order.ConnectionId
+                    && (lineLinkKeys.Contains(x.ExternalId.Trim().ToUpper()) || x.ExternalSku != null && lineLinkKeys.Contains(x.ExternalSku.Trim().ToUpper())))
+                .ToListAsync(cancellationToken);
+        var linkedVariantIds = lineVariantLinks.Select(link => link.VariantId).Distinct().ToArray();
         var variantRows = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId &&
-            (variantIds.Contains(x.Id) || lineSkus.Contains(x.Sku) || lineSkuKeys.Contains(x.SkuNormalized) ||
+            (variantIds.Contains(x.Id) || linkedVariantIds.Contains(x.Id) || lineSkus.Contains(x.Sku) || lineSkuKeys.Contains(x.SkuNormalized) ||
              lineBarcodes.Contains(x.Barcode) || lineBarcodeKeys.Contains(x.BarcodeNormalized))).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         var variants = variantRows.ToDictionary(x => x.Id, x => x);
         var variantsBySku = variantRows.GroupBy(x => x.Sku, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
         var variantsByBarcode = BarcodeVariantLookup(variantRows);
+        var variantsByMarketplaceIdentity = lineVariantLinks
+            .SelectMany(link => LinkIdentities(link).Select(identity => (Identity: identity, link.VariantId)))
+            .GroupBy(entry => entry.Identity, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First().VariantId, StringComparer.Ordinal);
         var imageUrls = await MediaUrls(tenantId, variantRows.Select(x => (Guid?)x.Id), cancellationToken);
         var lines = activeOrderLines.Select(x =>
         {
-            var variant = ResolveVariant(x, variants, variantsBySku, variantsByBarcode);
+            var variant = ResolveVariant(x, variants, variantsBySku, variantsByBarcode)
+                ?? LineMarketplaceIdentities(x).Select(identity => variantsByMarketplaceIdentity.TryGetValue(identity, out var linkedId) ? variants.GetValueOrDefault(linkedId) : null).FirstOrDefault(linked => linked is not null);
             var source = SourceLine(x.SourceSnapshotJson);
             var images = LineImageUrls(source.ImageUrl, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
             return new OrderLineView(x.Id, x.Sku, x.Barcode, x.TitleSnapshot, x.OrderedQuantity, x.CancelledQuantity, x.ShippedQuantity, x.DeliveredQuantity, x.ReturnedQuantity, x.UnitPrice, x.VatRate, x.RawStatus, x.VariantId, variant?.ModelCode ?? source.ModelCode, variant?.OptionSignature ?? source.OptionSignature, images.ImageUrl, allocatedQuantities.GetValueOrDefault(x.Id), FallbackImageUrl: images.FallbackImageUrl);
@@ -1909,12 +1955,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var returnLineSkuKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var returnLineBarcodes = orderLines.Values.Select(x => x.Barcode).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var returnLineBarcodeKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var returnVariantLinks = returnLineSkuKeys.Length == 0
+        var returnLinkKeys = returnLineSkuKeys.Concat(orderLines.Values.SelectMany(LineMarketplaceIdentities)).Distinct(StringComparer.Ordinal).ToArray();
+        var returnVariantLinks = returnLinkKeys.Length == 0
             ? []
             : await db.MarketplaceVariantLinks.AsNoTracking()
                 .Where(x => x.TenantId == tenantId
                     && connectionIds.Contains(x.ConnectionId)
-                    && (returnLineSkuKeys.Contains(x.ExternalId.Trim().ToUpper()) || x.ExternalSku != null && returnLineSkuKeys.Contains(x.ExternalSku.Trim().ToUpper())))
+                    && (returnLinkKeys.Contains(x.ExternalId.Trim().ToUpper()) || x.ExternalSku != null && returnLinkKeys.Contains(x.ExternalSku.Trim().ToUpper())))
                 .ToListAsync(cancellationToken);
         var linkedReturnVariantIds = returnVariantLinks.Select(x => x.VariantId).Distinct().ToArray();
         var returnVariantIds = orderLines.Values.Where(x => x.VariantId.HasValue).Select(x => x.VariantId!.Value).Distinct().ToArray();
@@ -1947,10 +1994,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             foreach (var key in CatalogLookupKeys(line.Barcode, 160))
                 if (returnVariantsByBarcode.TryGetValue(key, out var byBarcode)) return byBarcode;
             var connectionId = orders.GetValueOrDefault(line.OrderId)?.ConnectionId;
-            var identity = (connectionId ?? Guid.Empty, ExternalId: MarketplaceVariantLinkCoverage.Normalize(line.Sku));
-            return returnVariantsByMarketplaceIdentity.TryGetValue(identity, out var linkedId)
-                ? returnVariantsById.GetValueOrDefault(linkedId)
-                : null;
+            foreach (var identity in LineMarketplaceIdentities(line))
+                if (returnVariantsByMarketplaceIdentity.TryGetValue((connectionId ?? Guid.Empty, identity), out var linkedId) && returnVariantsById.GetValueOrDefault(linkedId) is { } linked) return linked;
+            return null;
         }
         var packages = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).OrderByDescending(x => x.StatusOccurredAt).ToListAsync(cancellationToken);
         var invoices = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId) && x.OriginalInvoiceId == null
@@ -2151,11 +2197,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var dispositions = await db.ReturnStockDispositions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).GroupBy(x => x.ReturnLineId).Select(x => new { ReturnLineId = x.Key, Quantity = x.Sum(y => y.Quantity) }).ToDictionaryAsync(x => x.ReturnLineId, x => x.Quantity, cancellationToken);
         var lineSkuKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var lineBarcodeKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var variantLinks = lineSkuKeys.Length == 0
+        var linkKeys = lineSkuKeys.Concat(orderLines.Values.SelectMany(LineMarketplaceIdentities)).Distinct(StringComparer.Ordinal).ToArray();
+        var variantLinks = linkKeys.Length == 0
             ? []
             : await db.MarketplaceVariantLinks.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == claim.ConnectionId
-                    && (lineSkuKeys.Contains(x.ExternalId.Trim().ToUpper()) || x.ExternalSku != null && lineSkuKeys.Contains(x.ExternalSku.Trim().ToUpper())))
+                    && (linkKeys.Contains(x.ExternalId.Trim().ToUpper()) || x.ExternalSku != null && linkKeys.Contains(x.ExternalSku.Trim().ToUpper())))
                 .ToListAsync(cancellationToken);
         var candidateVariantIds = orderLines.Values.Where(x => x.VariantId.HasValue).Select(x => x.VariantId!.Value)
             .Concat(variantLinks.Select(x => x.VariantId)).Distinct().ToArray();
@@ -2180,8 +2227,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 if (variantsBySku.TryGetValue(key, out var bySku)) return bySku;
             foreach (var key in CatalogLookupKeys(line.Barcode, 160))
                 if (variantsByBarcode.TryGetValue(key, out var byBarcode)) return byBarcode;
-            var normalizedSku = MarketplaceVariantLinkCoverage.Normalize(line.Sku);
-            return variantsByExternalSku.TryGetValue(normalizedSku, out var linkedId) ? variantsById.GetValueOrDefault(linkedId) : null;
+            foreach (var identity in LineMarketplaceIdentities(line))
+                if (variantsByExternalSku.TryGetValue(identity, out var linkedId) && variantsById.GetValueOrDefault(linkedId) is { } linked) return linked;
+            return null;
         }
         var resolvedVariants = orderLines.Values.Select(ResolveReturnDetailVariant).Where(x => x is not null).Select(x => x!).ToArray();
         var variantIds = resolvedVariants.Select(x => x.Id).Distinct().ToArray();

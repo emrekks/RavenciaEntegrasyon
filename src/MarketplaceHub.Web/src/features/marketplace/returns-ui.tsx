@@ -272,12 +272,12 @@ export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => vo
 export { thumbnailUrl } from '../../shared/product-thumbnail'
 
 export function RrThumb({ src, fallbackSrc, quantity, large, small, onOpen, alt }: { src: string | null | undefined; fallbackSrc?: string | null; quantity?: number; large?: boolean; small?: boolean; onOpen?: () => void; alt: string }) {
-  // Each address that fails moves to the next (thumbnailSources); after the last one the frame stays empty.
+  // Each address that fails moves to the next (thumbnailSources); after the last one the frame says no photo is known.
   const [stage, setStage] = useState(0)
   useEffect(() => setStage(0), [src, fallbackSrc])
   const sources = thumbnailSources(src, fallbackSrc)
   const shown = sources[stage] ?? null
-  const content = <>{shown ? <img key={shown} src={shown} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setStage(value => value + 1)} /> : null}{quantity ? <span className="rr-qb" data-q={Math.min(quantity, 5)} role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
+  const content = <>{shown ? <img key={shown} src={shown} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setStage(value => value + 1)} /> : <span className="rr-thumb-none" title="Görsel yok"><RrIcon name="image" size={16} /></span>}{quantity ? <span className="rr-qb" data-q={Math.min(quantity, 5)} role="img" aria-label={`${quantity} adet`}>{quantity}</span> : null}</>
   const className = `rr-thumb${large ? ' rr-lg' : ''}${small ? ' rr-sm' : ''}`
   return onOpen ? <button type="button" className={className} onClick={event => { event.preventDefault(); event.stopPropagation(); onOpen() }} aria-label={`${alt} görselini büyüt`}>{content}</button> : <span className={className} role="img" aria-label={alt}>{content}</span>
 }

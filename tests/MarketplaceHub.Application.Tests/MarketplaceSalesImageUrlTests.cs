@@ -99,6 +99,17 @@ public sealed class MarketplaceSalesImageUrlTests
     }
 
     [Fact]
+    public void LineMarketplaceIdentitiesNameTheStockCodeThenTheListingIds()
+    {
+        const string trendyol = """{"sku":"MZ052BOD-16","productCode":1696621714,"contentId":1696621714,"id":6139565733}""";
+        Assert.Equal(["MZ052BOD-16", "1696621714"], MarketplaceSalesService.LineMarketplaceIdentities(" mz052bod-16 ", trendyol));
+        Assert.Equal(["HBV0000ABC", "123-LISTING"], MarketplaceSalesService.LineMarketplaceIdentities("HBV0000ABC", """{"hbSku":"hbv0000abc","listingId":"123-listing"}"""));
+        Assert.Equal(["SKU-1"], MarketplaceSalesService.LineMarketplaceIdentities("SKU-1", """{"productCode":0,"listingId":"","variantId":null}"""));
+        Assert.Equal(["SKU-1"], MarketplaceSalesService.LineMarketplaceIdentities("SKU-1", "not json"));
+        Assert.Empty(MarketplaceSalesService.LineMarketplaceIdentities(null, null));
+    }
+
+    [Fact]
     public void CatalogLookupKeysRemoveHepsiburadaZeroPaddingForAlphaNumericBarcodes()
     {
         Assert.Equal(["0000MZ029YD22", "MZ029YD22"], MarketplaceSalesService.CatalogLookupKeys("0000MZ029YD22"));

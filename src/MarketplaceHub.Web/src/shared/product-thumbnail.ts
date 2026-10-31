@@ -12,7 +12,7 @@ export function thumbnailUrl(src: string): string {
 }
 
 // The addresses a thumbnail tries in turn: the small CDN copy, then the original, then the same for the catalog's
-// photo (when the marketplace's address no longer loads). Empty when no picture is known: the frame stays empty.
+// photo (when the marketplace's address no longer loads). Empty when no picture is known: the frame shows the no-photo placeholder.
 export function thumbnailSources(src: string | null | undefined, fallbackSrc?: string | null): string[] {
   const sources = [src, fallbackSrc].flatMap(value => value ? [thumbnailUrl(value), value] : [])
   return [...new Set(sources)]
