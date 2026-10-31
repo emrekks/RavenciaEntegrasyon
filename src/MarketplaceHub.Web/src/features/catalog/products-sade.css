@@ -351,38 +351,81 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Variant stock table: a little less room on the right, where the last size's cell padding added to the popup's. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { padding-right: 6px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vtab :is(th, td):last-child { padding-right: 2px; }
-/* Quick edit window: wide, its colour groups in one column. An open group is a matrix: variant, stock, the panel price
-   and each channel's price side by side, the column titles once at the top of the group, so the rows stay one line.
-   Many channels scroll sideways inside the group; a phone stacks each row's fields under the variant, each titled. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-modal.rr-qe-modal { width: min(1200px, 100%); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qmatrix { overflow-x: auto; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow { display: grid; gap: 8px; align-items: center; min-width: max-content; padding: 6px 12px; border-top: 1px solid var(--rr-line); font-size: 13px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow.rr-qhead { padding-block: 6px 4px; border-top: 0; color: var(--rr-muted); font-size: 12px; font-weight: 600; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow.rr-off { color: var(--rr-muted); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qhcell { display: grid; gap: 1px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qhcell b { overflow: hidden; color: var(--rr-ink); font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qhcell small { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 4px; color: var(--rr-subtle); font-size: 11px; font-weight: 500; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qhcell i { font-style: normal; }
+/* Quick edit window. A price window is as wide as a table needs (it scrolls sideways anyway); a stock window is
+   narrower and sets its colour groups in two columns (one on a phone), their rows being a name and one stock field. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-modal.rr-qe-modal { width: min(980px, 100%); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-modal.rr-qe-modal.rr-qe-stock { width: min(820px, 100%); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qe-modal .rr-step { min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups.rr-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups .rr-vgroup { min-width: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups .rr-vgroup + .rr-vgroup { margin-top: 0; }
+/* An open group is a table: Varyant (and Stok) and the panel price stay on the left while the marketplaces scroll
+   under a two-level header, each marketplace's name over its Liste / Satış, with its "Özel Fiyat" box. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable-wrap { overflow-x: auto; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs { display: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; table-layout: fixed; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices { width: max-content; min-width: 100%; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-w-sel { width: 40px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-w-stock { width: 88px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-prices .rr-qt-w-var { width: 190px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-w-price { width: 108px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(th, td) { padding: 6px 8px; vertical-align: middle; background: var(--rr-surface); border-bottom: 1px solid var(--rr-line); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:last-child > * { border-bottom: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:nth-child(even) > * { background: var(--rr-raised); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead th { color: var(--rr-muted); font-size: 12px; font-weight: 600; text-align: left; white-space: nowrap; background: var(--rr-raised); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead .rr-qt-sub th { padding-block: 3px 5px; color: var(--rr-subtle); font-size: 11px; font-weight: 500; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-num { text-align: right; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-sel { padding-inline: 12px 4px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody th.rr-qt-var { font-weight: 400; text-align: left; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname { display: grid; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname b { overflow: hidden; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname small { color: var(--rr-subtle); font-size: 12px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell { display: grid; gap: 4px; min-width: 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell.rr-qprice { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell.rr-qprice.rr-qsale { grid-template-columns: minmax(0, 1fr); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell-h { display: none; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell .rr-in { height: 32px; min-width: 0; padding: 0 6px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
-/* The panel price is the card's own; a line sets it apart from the channel prices. Shown from a channel (no panel
-   price saved yet) it is muted until changed. */
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow > .rr-qpanel { padding-right: 8px; border-right: 1px solid var(--rr-line); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell.rr-qfallback .rr-in { color: var(--rr-muted); font-style: italic; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname b { overflow: hidden; color: var(--rr-ink); font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname small { overflow: hidden; color: var(--rr-subtle); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tr.rr-off .rr-qname b { color: var(--rr-muted); }
+/* Column groups: a line before each marketplace, a stronger one (and a shadow while scrolled) after the panel price. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-gs { border-left: 1px solid var(--rr-line); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-panel { border-left: 1px solid var(--rr-line-strong); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(thead tr:first-child th.rr-qt-panel, .rr-qt-sub th.rr-qt-ps, tbody td.rr-qt-panel) { border-right: 1px solid var(--rr-line-strong); box-shadow: 6px 0 8px -6px rgb(0 0 0 / 18%); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-stick { position: sticky; z-index: 1; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-sel { left: 0; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-var { left: 40px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices .rr-qt-stock { left: 230px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices .rr-qt-panel { left: 230px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices.rr-qt-has-stock .rr-qt-panel { left: 318px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices .rr-qt-panel.rr-qt-ps { left: 338px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices.rr-qt-has-stock .rr-qt-panel.rr-qt-ps { left: 426px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable thead th.rr-qt-panel { color: var(--rr-ink); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qt-ch { padding-block: 6px 4px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-chname { display: block; overflow: hidden; color: var(--rr-ink); text-overflow: ellipsis; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-custom { display: inline-flex; align-items: center; gap: 6px; height: 24px; color: var(--rr-muted); font-size: 12px; font-weight: 500; cursor: pointer; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-custom.rr-on { color: var(--rr-primary); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-custom b { color: var(--rr-ink); font-weight: 600; }
+/* Fields: 36 px, numbers to the right; a pair (Liste, Satış) shares its marketplace's cell. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-in { width: 100%; height: 36px; min-width: 0; padding: 0 8px; text-align: right; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-in[aria-invalid="true"] { border-color: var(--rr-bad); }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qpair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qpair.rr-qsale { grid-template-columns: minmax(0, 1fr); }
+/* A marketplace at the panel price shows it read-only and muted; a panel price taken from a channel (none saved yet)
+   is muted until changed. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-follow .rr-qpair span { padding-right: 9px; color: var(--rr-subtle); line-height: 36px; font-variant-numeric: tabular-nums; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable .rr-qfallback .rr-in { color: var(--rr-muted); font-style: italic; }
 @media (max-width: 760px) {
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow.rr-qhead { display: none; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow { display: flex; flex-wrap: wrap; gap: 8px 10px; min-width: 0; padding: 10px 12px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qname { flex: 1 1 calc(100% - 30px); }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell { flex: 1 1 150px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell:is(.rr-qstock, .rr-qsale) { flex: 1 1 96px; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell-h { display: block; grid-column: 1 / -1; overflow: hidden; color: var(--rr-subtle); font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qrow > .rr-qpanel { padding-right: 0; border-right: 0; }
-  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qcell .rr-in { height: 36px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vgroups.rr-two { grid-template-columns: minmax(0, 1fr); }
+  /* A phone shows each variant as a card: its name, then each field under a title; the "Özel Fiyat" boxes sit above. */
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs { display: grid; gap: 2px; padding: 6px 12px; border-bottom: 1px solid var(--rr-line); background: var(--rr-raised); }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs .rr-qt-custom { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; height: 32px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs .rr-qt-custom b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qt-customs .rr-qt-custom span { white-space: nowrap; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable.rr-qt-prices { display: block; width: 100%; min-width: 0; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable :is(thead, colgroup) { display: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody { display: block; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 10px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--rr-line); }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:nth-child(even) { background: var(--rr-raised); }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:last-child { border-bottom: 0; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr > * { position: static; padding: 0; background: none; border: 0; box-shadow: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody tr:nth-child(even) > * { background: none; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l] { display: grid; grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td[data-l]::before { content: attr(data-l); overflow: hidden; color: var(--rr-subtle); font-size: 12px; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td.rr-qt-stock { grid-template-columns: minmax(0, 1fr) 120px; align-items: center; }
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qpair { gap: 8px; }
 }

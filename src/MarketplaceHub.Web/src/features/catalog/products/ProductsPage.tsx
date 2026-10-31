@@ -1,5 +1,5 @@
 // Ürünler (/products).
-import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type InputHTMLAttributes } from 'react'
 import { variantOptionParts } from '../variant-option-label'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -20,7 +20,7 @@ import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFi
 import { productImportConnection, singleProductLookupLabel } from '../product-import-platforms'
 import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { productPlatformFilterGroups } from '../product-platform-filter'
-import { channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, quickEditGridTemplate, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
+import { channelOffer, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
 import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
@@ -151,10 +151,19 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
   // person picks (its offer updated, or created when the variant has none there). The screen never picks a channel.
   const [priceConnectionId, setPriceConnectionId] = useState(PANEL_PRICE_CHOICE)
   const priceChannelName = connections.find(connection => connection.id === priceConnectionId)?.displayName ?? null
-  // The per-variant matrix: stock, the panel price and every channel's price side by side, each saved on its own.
+  // The per-variant table: stock, the panel price and every channel's price side by side, each saved on its own.
   const priceColumns = quickPriceColumns(connections)
+  const channelColumns = priceColumns.filter(column => column.id !== PANEL_PRICE_CHOICE)
   const showStockColumn = mode !== 'price'; const showPriceColumns = mode !== 'stock'
-  const matrixColumns = quickEditGridTemplate(priceColumns, showStockColumn, showPriceColumns)
+  // "Özel Fiyat" per marketplace, as in the product editor: unticked, the marketplace sells at the panel price and a
+  // panel price saved here is written to its offers too. The first state is read from the offers once the products
+  // are in (see initialCustomChannels); a marketplace not read yet counts as ticked, so nothing is overwritten.
+  const [derivedCustom, setDerivedCustom] = useState<Record<string, boolean> | null>(() => variants.length ? initialCustomChannels(variants, priceColumns) : null)
+  if (derivedCustom == null && variants.length) setDerivedCustom(initialCustomChannels(variants, priceColumns))
+  const [customOverrides, setCustomOverrides] = useState<Record<string, boolean>>({})
+  const customChannels: Record<string, boolean> = Object.fromEntries(channelColumns.map(column => [column.id, customOverrides[column.id] ?? derivedCustom?.[column.id] ?? true]))
+  const setCustomChannel = (connectionId: string, custom: boolean) => setCustomOverrides(current => ({ ...current, [connectionId]: custom }))
+  const followerColumns = panelFollowerColumns(priceColumns, customChannels)
   // A marketplace that takes no list price shows only Satış Fiyatı; its offer's list price follows the sale price.
   const showListPrice = priceConnectionId === PANEL_PRICE_CHOICE || channelTakesListPrice(connections.find(connection => connection.id === priceConnectionId)?.platformCode)
   const needsPriceConnection = mode !== 'stock'
@@ -223,6 +232,11 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
               if (!prices.ok) throw new Error(prices.message)
               await hubApi(`/variants/${target.variantId}/default-prices`, { method: 'PATCH', headers: { 'If-Match': `"v${target.version}"` }, body: JSON.stringify({ listPrice: prices.listPrice, salePrice: prices.salePrice, reason: 'Toplu ürün fiyat düzenleme' }) })
               if (prices.saleDefaulted) saleDefaulted.push({ sku: variant.sku, currency: variant.currency || 'TRY' })
+              // The marketplaces without "Özel Fiyat" sell at the panel price: their offers take the same price.
+              for (const failure of await writePanelFollowers(variant, followerColumns, prices, 'Toplu ürün fiyat düzenleme')) {
+                if (failure.stale) anyStale = true
+                failures.push({ sku: variant.sku, message: failure.message })
+              }
             } else {
               const target = quickPriceTarget(variant, priceConnectionId, connections.length)
               if (target.kind === 'blocked') throw new Error(target.reason)
@@ -262,24 +276,52 @@ function ProductQuickEditModal({ products, connections, mode = 'both', onChanged
     if (anyStale) resetStockBaseline.current = true
   }
   const toggleColorGroup = (color: string) => setOpenColorGroups(current => current.includes(color) ? current.filter(item => item !== color) : [...current, color])
-  return <RrModal crumb={mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="xl" modalClass="rr-qe-modal" locked={saving} onClose={onClose} foot={<><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} varyant</b> seçildi</> : 'Varyant seçimi bekleniyor'}</span><button type="button" className="rr-btn" onClick={onClose} disabled={saving}>Vazgeç</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !selectionDraft.length}>{saving ? 'Uygulanıyor…' : 'Seçilenlere Uygula'}</button></>}>
+  return <RrModal crumb={mode === 'stock' ? 'Hızlı Stok Güncelleme' : 'Toplu Düzenleme'} title={contextTitle} desc={contextModelCode ? `Model Kodu: ${contextModelCode}` : undefined} size="xl" modalClass={`rr-qe-modal${mode === 'stock' ? ' rr-qe-stock' : ''}`} locked={saving} onClose={onClose} foot={<><span className="rr-note">{activeSelection.length ? <><b>{activeSelection.length} varyant</b> seçildi</> : 'Varyant seçimi bekleniyor'}</span><button type="button" className="rr-btn" onClick={onClose} disabled={saving}>Vazgeç</button><button type="submit" form="product-quick-edit-form" className="rr-btn rr-primary" disabled={saving || !selectionDraft.length}>{saving ? 'Uygulanıyor…' : 'Seçilenlere Uygula'}</button></>}>
     <form id="product-quick-edit-form" style={{ display: 'contents' }} onSubmit={apply}>
       <section className="rr-step"><header><span className="rr-stepn">1</span><div className="rr-h3">Varyantları Seç</div><div className="rr-step-tools">
         <RrAnchor trigger={(open, toggleOpen) => <button type="button" className={`rr-trigger rr-sm${open ? ' rr-on' : ''}`} onClick={toggleOpen}><span>Renk: {selectedColors.length ? `${selectedColors.length} Seçili` : 'Tümü'}</span><RrIcon name="chev" /></button>}>{() => <div className="rr-pop rr-right" role="dialog" style={{ minWidth: 240 }}><label className="rr-opt"><input type="checkbox" className="rr-cb" checked={!selectedColors.length} onChange={() => { setSelectedColors([]); applyFilterSelection([], selectedSizes) }} /><span className="rr-grow">Tümü</span><small>{variants.filter(item => !selectedSizes.length || selectedSizes.includes(sizeOf(item))).length} varyant</small></label>{colorOptions.map(color => <label key={color} className="rr-opt"><input type="checkbox" className="rr-cb" checked={selectedColors.includes(color)} onChange={() => toggleColor(color)} /><span className="rr-grow">{colorLabels[color] || formatCatalogOptionLabel(color)}</span><small>{groups[color].length} varyant</small></label>)}</div>}</RrAnchor>
         <RrAnchor trigger={(open, toggleOpen) => <button type="button" className={`rr-trigger rr-sm${open ? ' rr-on' : ''}`} onClick={toggleOpen}><span>Beden: {selectedSizes.length ? `${selectedSizes.length} Seçili` : 'Tümü'}</span><RrIcon name="chev" /></button>}>{() => <div className="rr-pop rr-right" role="dialog" style={{ minWidth: 220 }}>{sizeOptions.map(size => <label key={size} className="rr-opt"><input type="checkbox" className="rr-cb" checked={selectedSizes.includes(size)} onChange={() => toggleSize(size)} /><span className="rr-grow">{size}</span><small>{variants.filter(item => (!selectedColors.length || selectedColors.includes(colorOf(item))) && sizeOf(item) === size).length} varyant</small></label>)}</div>}</RrAnchor>
       </div></header>
-        {colorOptions.map(color => {
+        {/* A stock window's groups sit in two columns (their rows are short); a price window keeps one column. */}
+        <div className={`rr-vgroups${mode === 'stock' ? ' rr-two' : ''}`}>{colorOptions.map(color => {
           const items = groups[color]
           const isOpen = openColorGroups.includes(color)
           const selectedCount = items.filter(item => selectedSet.has(item.variant.id)).length
           const groupSelection = variantGroupSelectionState(items.map(item => item.variant.id), selectedSet)
           const groupLabel = colorLabels[color] || formatCatalogOptionLabel(color)
-          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && <div className="rr-qmatrix"><div className="rr-qrow rr-qhead" style={{ gridTemplateColumns: matrixColumns }} aria-hidden="true"><span /><span>Varyant</span>{showStockColumn && <span>Stok</span>}{showPriceColumns && priceColumns.map(column => <span key={column.id} className={`rr-qhcell${column.id === PANEL_PRICE_CHOICE ? ' rr-qpanel' : ''}`}><b title={column.label}>{column.label}</b><small>{column.takesListPrice && <i>Liste</i>}<i>Satış</i></small></span>)}</div>{items.map(item => { const parts = variantAxisParts(item.variant.optionSignature); const select = () => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id]); const fail = (message: string) => setNotice(`Başarısız: ${item.variant.sku}: ${message}`); return <div className={`rr-qrow${selectedSet.has(item.variant.id) ? '' : ' rr-off'}`} style={{ gridTemplateColumns: matrixColumns }} key={item.variant.id}><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /><span className="rr-qname"><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>Stok Kodu: {item.variant.sku}</small></span>{showStockColumn && <QuickEditStockCell variant={item.variant} onChanged={onChanged} onStockSaved={(variantId, onHand) => stockBaseline.current.set(variantId, onHand)} onError={fail} onSelect={select} />}{showPriceColumns && priceColumns.map(column => <QuickEditPriceCell key={column.id} column={column} variant={item.variant} product={item.product} connectionCount={connections.length} onChanged={onChanged} onError={fail} onSelect={select} />)}</div> })}</div>}</div>
-        })}
+          return <div className={`rr-vgroup${isOpen ? ' rr-open' : ''}`} key={color}><div className="rr-vg-h"><input type="checkbox" className="rr-cb" checked={groupSelection.checked} data-mixed={groupSelection.indeterminate ? '' : undefined} aria-label={`${groupLabel} rengindeki tüm varyantları seç`} onChange={event => setSelectionDraft(current => updateVariantGroupSelection(current, items.map(item => item.variant.id), event.currentTarget.checked))} /><button type="button" className="rr-vg-t" aria-expanded={isOpen} onClick={() => toggleColorGroup(color)}><b>{groupLabel}</b><small>{selectedCount ? `${selectedCount}/${items.length} seçili` : `${items.length} varyant`}</small><RrIcon name="chev" /></button></div>{isOpen && <div className="rr-qtable-wrap">
+            {showPriceColumns && channelColumns.length > 0 && <div className="rr-qt-customs" role="group" aria-label="Pazaryerlerine özel fiyat">{channelColumns.map(column => <QuickEditCustomToggle key={column.id} column={column} custom={customChannels[column.id]} onChange={value => setCustomChannel(column.id, value)} />)}</div>}
+            <table className={`rr-qtable${showPriceColumns ? ' rr-qt-prices' : ''}${showStockColumn ? ' rr-qt-has-stock' : ''}`}>
+              <caption className="sr-only">{groupLabel} varyantları</caption>
+              <colgroup><col className="rr-qt-w-sel" /><col className="rr-qt-w-var" />{showStockColumn && <col className="rr-qt-w-stock" />}{showPriceColumns && priceColumns.flatMap(column => column.takesListPrice ? [<col key={`${column.id}-l`} className="rr-qt-w-price" />, <col key={`${column.id}-s`} className="rr-qt-w-price" />] : [<col key={column.id} className="rr-qt-w-price" />])}</colgroup>
+              <thead>
+                <tr>
+                  <th scope="col" rowSpan={showPriceColumns ? 2 : 1} className="rr-qt-sel rr-qt-stick"><span className="sr-only">Seç</span></th>
+                  <th scope="col" rowSpan={showPriceColumns ? 2 : 1} className="rr-qt-var rr-qt-stick">Varyant</th>
+                  {showStockColumn && <th scope="col" rowSpan={showPriceColumns ? 2 : 1} className="rr-qt-stock rr-qt-stick rr-qt-num">Stok</th>}
+                  {showPriceColumns && <th scope="colgroup" colSpan={2} className="rr-qt-panel rr-qt-stick rr-qt-gs">Panel Fiyatı</th>}
+                  {showPriceColumns && channelColumns.map(column => <th key={column.id} scope="colgroup" colSpan={column.takesListPrice ? 2 : 1} className={`rr-qt-ch rr-qt-gs${customChannels[column.id] ? ' rr-on' : ''}`}><span className="rr-qt-chname" title={column.label}>{column.label}</span><QuickEditCustomToggle column={column} custom={customChannels[column.id]} onChange={value => setCustomChannel(column.id, value)} compact /></th>)}
+                </tr>
+                {showPriceColumns && <tr className="rr-qt-sub">
+                  <th scope="col" className="rr-qt-panel rr-qt-stick rr-qt-gs rr-qt-num">Liste</th><th scope="col" className="rr-qt-panel rr-qt-stick rr-qt-ps rr-qt-num">Satış</th>
+                  {channelColumns.map(column => column.takesListPrice ? [<th key={`${column.id}-l`} scope="col" className="rr-qt-gs rr-qt-num">Liste</th>, <th key={`${column.id}-s`} scope="col" className="rr-qt-num">Satış</th>] : <th key={column.id} scope="col" className="rr-qt-gs rr-qt-num">Satış</th>)}
+                </tr>}
+              </thead>
+              <tbody>{items.map(item => { const parts = variantAxisParts(item.variant.optionSignature); const select = () => setSelectionDraft(current => current.includes(item.variant.id) ? current : [...current, item.variant.id]); const fail = (message: string) => setNotice(`Başarısız: ${item.variant.sku}: ${message}`); return <tr className={selectedSet.has(item.variant.id) ? 'rr-on' : 'rr-off'} key={item.variant.id}>
+                <td className="rr-qt-sel rr-qt-stick"><input type="checkbox" className="rr-cb" checked={selectedSet.has(item.variant.id)} onChange={() => toggle(item.variant.id)} aria-label={`${item.variant.optionSignature || item.variant.sku} varyantını seç`} /></td>
+                <th scope="row" className="rr-qt-var rr-qt-stick"><span className="rr-qname"><b>{parts.length ? parts.map(part => part.value).join(' · ') : 'Varyant'}</b><small>{item.variant.sku}</small></span></th>
+                {showStockColumn && <QuickEditStockCell variant={item.variant} onChanged={onChanged} onStockSaved={(variantId, onHand) => stockBaseline.current.set(variantId, onHand)} onError={fail} onSelect={select} />}
+                {showPriceColumns && priceColumns.map(column => column.id === PANEL_PRICE_CHOICE || customChannels[column.id]
+                  ? <QuickEditPriceCell key={column.id} column={column} followers={column.id === PANEL_PRICE_CHOICE ? followerColumns : []} variant={item.variant} product={item.product} connectionCount={connections.length} onChanged={onChanged} onError={fail} onSelect={select} />
+                  : <QuickEditFollowCell key={column.id} column={column} variant={item.variant} product={item.product} />)}
+              </tr> })}</tbody>
+            </table>
+          </div>}</div>
+        })}</div>
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{mode === 'stock' ? 'Stok Değerini Düzenle' : mode === 'price' ? 'Fiyat Değerini Düzenle' : 'Fiyat ve Stok Değerini Düzenle'}</div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small></header>
         {activeSelection.length ? <div className="rr-chips">{variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id} className="rr-chip">{variantAxisParts(item.variant.optionSignature).map(part => part.value).join(' · ') || item.variant.sku}</span>)}</div> : <p className="rr-lead">Değeri şimdi girebilirsiniz; uygulamak için en az bir varyantı işaretleyin.</p>}
-        {needsPriceConnection && <label className="rr-fld"><small>Fiyat Kanalı</small><select className="rr-in" aria-label="Fiyat kanalı" aria-describedby="quick-price-choice-help" value={priceConnectionId} onChange={event => setPriceConnectionId(event.target.value)}><option value={PANEL_PRICE_CHOICE}>Panel Ana Fiyatı</option>{connections.length > 0 && <optgroup label="Pazaryeri Kanalı">{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName}</option>)}</optgroup>}</select><small className="rr-lead" id="quick-price-choice-help" aria-live="polite">{quickPriceChoiceHelp(priceConnectionId, priceChannelName)}</small></label>}
+        {needsPriceConnection && <label className="rr-fld"><small>Fiyat Kanalı</small><select className="rr-in" aria-label="Fiyat kanalı" aria-describedby="quick-price-choice-help" value={priceConnectionId} onChange={event => setPriceConnectionId(event.target.value)}><option value={PANEL_PRICE_CHOICE}>Panel Ana Fiyatı</option>{connections.length > 0 && <optgroup label="Pazaryeri Kanalı">{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName}</option>)}</optgroup>}</select><small className="rr-lead" id="quick-price-choice-help" aria-live="polite">{quickPriceChoiceHelp(priceConnectionId, priceChannelName, followerColumns.map(column => column.label))}</small></label>}
         <div className="rr-dgrid">{mode !== 'stock' && <>{showListPrice && <label className="rr-fld"><small>Liste Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label>}<label className="rr-fld"><small>Satış Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></>}{mode !== 'price' && <><label className="rr-fld"><small>Stok İşlemi</small><select className="rr-in" value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu Sayıya Eşitle</option><option value="ADD">Bu Kadar Ekle (+)</option><option value="SUBTRACT">Bu Kadar Çıkar (−)</option></select></label><label className="rr-fld"><small>Miktar</small><input className="rr-in rr-num" type="number" min="0" step="1" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></>}</div>
       </section>
       {notice && <div className={`rr-callout${notice.startsWith('Başarısız:') ? ' rr-danger' : ''}`} role={notice.startsWith('Başarısız:') ? 'alert' : 'status'}><RrIcon name={notice.startsWith('Başarısız:') ? 'alert' : 'info'} /><span>{notice}</span></div>}
@@ -317,13 +359,48 @@ function QuickEditStockCell({ variant, onChanged, onSelect, onStockSaved, onErro
       await onChanged().catch(() => undefined)
     }
   }
-  return <label className="rr-qcell rr-qstock"><small className="rr-qcell-h">Stok</small><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(variant.onHand); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></label>
+  return <td className="rr-qt-stock rr-qt-stick rr-qt-num" data-l="Stok"><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(variant.onHand); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></td>
 }
-// One variant's price on one column of the quick edit matrix: the panel price (the product editor's variant Fiyat /
-// Liste Fiyatı; sends nothing to a marketplace) or one channel's offer (updated at the version loaded, or created when
-// the variant has none there). Saved when focus leaves the pair, so moving from Liste to Satış does not save half a
-// change. A problem is told in the dialog's notice and on the field (red border, title), never as text under it.
-function QuickEditPriceCell({ column, variant, product, connectionCount, onChanged, onSelect, onError }: { column: QuickPriceColumn; variant: Variant; product: Product; connectionCount: number; onChanged: () => Promise<unknown>; onSelect: () => void; onError: (message: string) => void }) {
+// "Özel Fiyat" for one marketplace: ticked, its own prices are edited in its cells; unticked, it sells at the panel
+// price. Shown in the column title, and above the table on a phone, where the table becomes cards.
+function QuickEditCustomToggle({ column, custom, onChange, compact = false }: { column: QuickPriceColumn; custom: boolean; onChange: (custom: boolean) => void; compact?: boolean }) {
+  return <label className={`rr-qt-custom${custom ? ' rr-on' : ''}`} title={custom ? `${column.label}: kendi fiyatıyla satılır; panel fiyatı değişince değişmez.` : `${column.label}: ana fiyatla satılır; panel fiyatı kaydedilince bu pazaryerinin fiyatı da aynı değere güncellenir.`}><input type="checkbox" className="rr-cb" checked={custom} onChange={event => onChange(event.currentTarget.checked)} aria-label={`${column.label} özel fiyat`} />{!compact && <b>{column.label}</b>}<span>Özel Fiyat</span></label>
+}
+// A price field: the number as typed while focused, Turkish money digits ("1.249,90") otherwise.
+function QuickPriceInput({ value, onValue, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & { value: string; onValue: (value: string) => void }) {
+  const [focused, setFocused] = useState(false)
+  return <input {...props} type="text" inputMode="decimal" autoComplete="off" value={focused ? value : formatPriceField(value)} onFocus={event => { setFocused(true); props.onFocus?.(event) }} onBlur={event => { setFocused(false); props.onBlur?.(event) }} onChange={event => onValue(normalizePriceInput(event.target.value))} />
+}
+// The panel price written to the marketplaces that follow it (no "Özel Fiyat"): each existing offer of the variant
+// there, at the version loaded, through the same channel offer update as a marketplace's own cell. Returns what failed.
+async function writePanelFollowers(variant: Variant, followers: ReadonlyArray<QuickPriceColumn>, prices: { listPrice: number; salePrice: number }, reason: string) {
+  const failures: Array<{ message: string; stale: boolean }> = []
+  for (const write of panelFollowerWrites(variant, followers, prices)) {
+    if (write.kind === 'blocked') { failures.push({ message: `${write.column.label} fiyatı: ${write.reason}`, stale: false }); continue }
+    try {
+      const body = quickPriceBody({ kind: 'update', offerId: write.offerId, offerVersion: write.offerVersion, offer: write.offer }, variant, { listPrice: write.listPrice, salePrice: write.salePrice }, reason)
+      await hubApi(`/channel-offers/${write.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${write.offerVersion}"` }, body: JSON.stringify(body) })
+    } catch (error) {
+      failures.push({ message: `${write.column.label} fiyatı: ${error instanceof Error ? error.message : 'kaydedilmedi'}`, stale: isStaleStockError(error) })
+    }
+  }
+  return failures
+}
+// A marketplace that follows the panel price: its cells show the panel price, read-only. A variant with no offer there
+// shows a dash: a panel save changes nothing on that marketplace (publishing creates the offer).
+function QuickEditFollowCell({ column, variant, product }: { column: QuickPriceColumn; variant: Variant; product: Product }) {
+  const listed = channelOffer(variant, column.id) != null
+  const panel = panelPrices(variant, product)
+  const text = (value: number | null) => listed && value != null ? formatPriceField(String(value)) : '—'
+  const title = listed ? `${column.label} ana fiyatla satılır: panel fiyatı kaydedilince bu fiyat da güncellenir. Kendi fiyatını girmek için başlıktaki Özel Fiyat kutusunu işaretleyin.` : `${column.label}: bu varyantın bu pazaryerinde fiyatı yok; panel fiyatı kaydedilince burada bir şey değişmez.`
+  return <td className="rr-qt-follow rr-qt-gs rr-qt-num" colSpan={column.takesListPrice ? 2 : 1} data-l={`${column.label} · Ana Fiyat`} title={title}><div className={`rr-qpair${column.takesListPrice ? '' : ' rr-qsale'}`}>{column.takesListPrice && <span>{text(panel.listPrice)}</span>}<span>{text(panel.salePrice)}</span></div></td>
+}
+// One variant's price on one column of the quick edit table: the panel price (the product editor's variant Fiyat /
+// Liste Fiyatı) or one ticked ("Özel Fiyat") channel's offer (updated at the version loaded, or created when the
+// variant has none there). A panel price saved here also goes to the offers of the marketplaces that follow it
+// (`followers`); with none, it sends nothing to a marketplace. Saved when focus leaves the pair, so moving from Liste
+// to Satış does not save half a change. A problem is told in the dialog's notice and on the field (red border, title).
+function QuickEditPriceCell({ column, followers, variant, product, connectionCount, onChanged, onSelect, onError }: { column: QuickPriceColumn; followers: ReadonlyArray<QuickPriceColumn>; variant: Variant; product: Product; connectionCount: number; onChanged: () => Promise<unknown>; onSelect: () => void; onError: (message: string) => void }) {
   const isPanel = column.id === PANEL_PRICE_CHOICE
   const showListPrice = column.takesListPrice
   const shown = quickInlinePrices(column.id, variant, product)
@@ -345,8 +422,11 @@ function QuickEditPriceCell({ column, variant, product, connectionCount, onChang
     if (!prices.ok) { failPrice(prices.message); return }
     setSavingPrice(true); setPriceError('')
     try {
-      if (priceTarget.kind === 'panel') await hubApi(`/variants/${priceTarget.variantId}/default-prices`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.version}"` }, body: JSON.stringify({ listPrice: prices.listPrice, salePrice: prices.salePrice, reason: 'Hızlı varyant fiyat düzenleme' }) })
-      else {
+      if (priceTarget.kind === 'panel') {
+        await hubApi(`/variants/${priceTarget.variantId}/default-prices`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.version}"` }, body: JSON.stringify({ listPrice: prices.listPrice, salePrice: prices.salePrice, reason: 'Hızlı varyant fiyat düzenleme' }) })
+        const failures = await writePanelFollowers(variant, followers, prices, 'Hızlı varyant fiyat düzenleme')
+        if (failures.length) { await onChanged().catch(() => undefined); failPrice(`panel fiyatı kaydedildi; ${failures.map(failure => failure.message).join(' · ')}`); return }
+      } else {
         const body = quickPriceBody(priceTarget, variant, prices, 'Hızlı varyant fiyat düzenleme')
         if (priceTarget.kind === 'update') await hubApi(`/channel-offers/${priceTarget.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${priceTarget.offerVersion}"` }, body: JSON.stringify(body) })
         else await sendWithVersionedIdempotencyKey(offerCreateKey, key => hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify(body) }))
@@ -363,8 +443,8 @@ function QuickEditPriceCell({ column, variant, product, connectionCount, onChang
   // A card without a saved panel price shows its first channel price, as the product editor does; said on hover.
   const fallback = isPanel && panelPriceIsFallback(variant, product)
   const priceTitle = priceError || priceBlocked || (fallback ? 'Kayıtlı panel fiyatı yok; ürün düzenleyicideki gibi ilk aktif kanal fiyatı gösteriliyor. Değiştirirseniz panel fiyatı olarak kaydedilir.' : undefined)
-  const fieldProps = { className: 'rr-in rr-num', type: 'number', min: '0', step: '0.01', 'aria-invalid': priceError ? true : undefined, title: priceTitle, disabled: savingPrice || !!priceBlocked, onFocus: onSelect } as const
-  return <div className={`rr-qcell rr-qprice${showListPrice ? '' : ' rr-qsale'}${isPanel ? ' rr-qpanel' : ''}${fallback ? ' rr-qfallback' : ''}`} role="group" aria-label={`${variant.sku} ${column.label}`} title={priceTitle} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void savePrice() }}><small className="rr-qcell-h">{column.label}</small>{showListPrice && <input {...fieldProps} placeholder="Liste" aria-label={`${variant.sku} ${column.label} liste fiyatı`} value={listPrice} onChange={event => { onSelect(); setPriceError(''); setListPrice(event.target.value) }} />}<input {...fieldProps} placeholder="Satış" aria-label={`${variant.sku} ${column.label} satış fiyatı`} value={salePrice} onChange={event => { onSelect(); setPriceError(''); setSalePrice(event.target.value) }} /></div>
+  const fieldProps = { className: 'rr-in rr-num', 'aria-invalid': priceError ? true : undefined, title: priceTitle, disabled: savingPrice || !!priceBlocked, onFocus: onSelect } as const
+  return <td className={`rr-qt-gs rr-qt-num${isPanel ? ' rr-qt-panel rr-qt-stick' : ' rr-qt-own'}${fallback ? ' rr-qfallback' : ''}`} colSpan={showListPrice ? 2 : 1} data-l={isPanel ? 'Panel Fiyatı' : `${column.label} · Özel Fiyat`} title={priceTitle} onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) void savePrice() }}><div className={`rr-qpair${showListPrice ? '' : ' rr-qsale'}`} role="group" aria-label={`${variant.sku} ${column.label}`}>{showListPrice && <QuickPriceInput {...fieldProps} placeholder="Liste" aria-label={`${variant.sku} ${column.label} liste fiyatı`} value={listPrice} onValue={value => { onSelect(); setPriceError(''); setListPrice(value) }} />}<QuickPriceInput {...fieldProps} placeholder="Satış" aria-label={`${variant.sku} ${column.label} satış fiyatı`} value={salePrice} onValue={value => { onSelect(); setPriceError(''); setSalePrice(value) }} /></div></td>
 }
 function lowStockModelCode(group: ProductGroup) {
   return group.products.map(product => product.modelCode).find(value => value?.trim())

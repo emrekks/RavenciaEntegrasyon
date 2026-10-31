@@ -19,14 +19,14 @@ export const scenarios = [
   { name: 'jobs', path: '/jobs' },
   // Windows and tools that only open on request.
   { name: 'label-designer', path: '/settings?tab=designer' },
-  // The products list's quick edit: one column of colour groups, an open group a matrix of the panel price and every
-  // channel's price (price window) or the stock (stock window).
+  // The products list's quick edit: a price window's open colour group is a table of the panel price and every
+  // marketplace's price (each with its "Özel Fiyat" box); a stock window sets its groups in two columns.
   {
     name: 'products-quick-price', path: '/products', widths: [375, 1280],
     act: async page => {
       await page.locator('.rr-qbtn[title="Fiyatı hızlı düzenle"]').first().click()
       await page.locator('.rr-modal.rr-qe-modal .rr-vg-t').first().click()
-      await page.locator('.rr-modal.rr-qe-modal .rr-qrow:not(.rr-qhead)').first().waitFor()
+      await page.locator('.rr-modal.rr-qe-modal .rr-qtable tbody tr').first().waitFor()
     },
   },
   {
@@ -34,7 +34,7 @@ export const scenarios = [
     act: async page => {
       await page.locator('.rr-qbtn[title="Stoğu hızlı düzenle"]').first().click()
       await page.locator('.rr-modal.rr-qe-modal .rr-vg-t').first().click()
-      await page.locator('.rr-modal.rr-qe-modal .rr-qrow:not(.rr-qhead)').first().waitFor()
+      await page.locator('.rr-modal.rr-qe-modal .rr-qtable tbody tr').first().waitFor()
     },
   },
   {
