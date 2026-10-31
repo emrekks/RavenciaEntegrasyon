@@ -59,16 +59,24 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
         var productLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);
-        var publication = Split(productId, productLink?.ExternalId, draft.PayloadJson, sections);
+        // Trendyol approved a product whose colours it split into contents of their own: its variants are linked (they
+        // link only once approved) but no single content is the product's. It is not an unapproved product.
+        var variantIds = draft.Variants.Select(variant => variant.VariantId).ToArray();
+        var splitContents = productLink is null && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId), cancellationToken);
+        var publication = Split(productId, productLink?.ExternalId, draft.PayloadJson, sections, splitContents);
         if (!publication.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(publication.Error!.Code, publication.Error.Message, publication.Error.Status);
         return ServiceResult<ProductUpdateDraft>.Ok(new(draft.ProfileId, publication.Value!, draft.Variants));
     }
 
     // The Trendyol create payload split into the update requests. contentIdText: the product link's id once Trendyol has
-    // approved the product (null before: then the create payload goes whole to the unapproved update).
-    internal static ServiceResult<ProductUpdatePublication> Split(Guid productId, string? contentIdText, string createPayloadJson, ProductUpdateSections sections)
+    // approved the product (null before: then the create payload goes whole to the unapproved update). splitContents: the
+    // product is approved as one content per colour, so its variants and delivery go as approved, and its content (one
+    // per colour, none of them the product's) cannot go from here.
+    internal static ServiceResult<ProductUpdatePublication> Split(Guid productId, string? contentIdText, string createPayloadJson, ProductUpdateSections sections, bool splitContents = false)
     {
-        var mode = contentIdText is null ? "UNAPPROVED" : "APPROVED";
+        var mode = contentIdText is null && !splitContents ? "UNAPPROVED" : "APPROVED";
+        if (mode == "APPROVED" && contentIdText is null && sections.Content)
+            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_CONTENT_SPLIT", "Bu ürün Trendyol'da her renk ayrı bir ürün olarak yayında; başlık, açıklama, görsel ve özellikler buradan gönderilemez. Varyant ve teslimat bilgilerini seçerek gönderebilirsiniz.", 422);
         using var source = JsonDocument.Parse(createPayloadJson);
         if (!source.RootElement.TryGetProperty("items", out var sourceItems) || sourceItems.ValueKind != JsonValueKind.Array || sourceItems.GetArrayLength() == 0)
             return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncelleme payload'ı oluşturulamadı.", 422);
@@ -80,10 +88,11 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
         if (mode == "APPROVED")
         {
-            if (!long.TryParse(contentIdText, out var contentId)) return ServiceResult<ProductUpdatePublication>.Fail("REMOTE_CONTENT_ID_INVALID", "Trendyol contentId sayısal değil; otomatik güncelleme güvenli biçimde durduruldu.", 409);
+            var contentId = 0L;
+            if (contentIdText is not null && !long.TryParse(contentIdText, out contentId)) return ServiceResult<ProductUpdatePublication>.Fail("REMOTE_CONTENT_ID_INVALID", "Trendyol contentId sayısal değil; otomatik güncelleme güvenli biçimde durduruldu.", 409);
             var first = sourceItems[0];
             // A request whose fields were not picked goes empty; the job skips an empty phase without a call.
-            if (sections.Content) contentItems.Add(new Dictionary<string, object?>
+            if (sections.Content && contentIdText is not null) contentItems.Add(new Dictionary<string, object?>
             {
                 ["contentId"] = contentId,
                 ["title"] = Clone(first, "title"),

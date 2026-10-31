@@ -7610,8 +7610,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // A listing without a product link of its own can still be a panel product's: Trendyol lists each colour as
         // its own content, while a product published from the panel keeps its colours in one product and links only
         // its variants. Its variants find it; the listing then brings only its stock and prices (the panel's content
-        // stays), and no second, empty product is opened beside it.
-        if (product is null && !observeOnly)
+        // stays), and no second, empty product is opened beside it. A link that already leads to such an empty product
+        // (one an earlier import opened) gives way to the owner too, so that product is not filled in again.
+        var linkedProductHollow = product is not null && !observeOnly && !await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.ProductId == product.Id, cancellationToken);
+        if ((product is null || linkedProductHollow) && !observeOnly)
         {
             var owners = await CatalogProductsOwningVariants(tenantId, connectionId, snapshot, cancellationToken);
             if (owners.Count > 1)

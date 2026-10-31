@@ -7944,12 +7944,17 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     // Trendyol lists each colour as its own content. Reading those contents back opened an empty product per colour
     // (no variant: they belong to the panel product). No import mode opens one: "Mevcut Ürünleri Güncelle" never
     // opens a product, and every mode finds the panel product through its variants and keeps its content.
+    // emptyProductLinked: an earlier import already opened that empty product and linked the content to it; the content
+    // still goes to the panel product, and the empty one is left as it is (not filled in again).
     [PostgreSqlTheory]
-    [InlineData("{\"existingOnly\":true,\"includeArchived\":true,\"updateExistingProducts\":false,\"updateExistingPricesAndStock\":true}")]
-    [InlineData("{\"full\":true,\"includeArchived\":true,\"updateExistingProducts\":true}")]
-    [InlineData("{\"newOnly\":true,\"includeArchived\":true}")]
-    public async Task TrendyolColourContent_OfAPanelProduct_OpensNoEmptyProduct(string payloadJson)
+    [InlineData("{\"existingOnly\":true,\"includeArchived\":true,\"updateExistingProducts\":false,\"updateExistingPricesAndStock\":true}", false)]
+    [InlineData("{\"full\":true,\"includeArchived\":true,\"updateExistingProducts\":true}", false)]
+    [InlineData("{\"newOnly\":true,\"includeArchived\":true}", false)]
+    [InlineData("{\"full\":true,\"includeArchived\":true,\"updateExistingProducts\":true}", true)]
+    [InlineData("{\"existingOnly\":true,\"includeArchived\":true,\"updateExistingProducts\":false,\"updateExistingPricesAndStock\":true}", true)]
+    public async Task TrendyolColourContent_OfAPanelProduct_OpensNoEmptyProduct(string payloadJson, bool emptyProductLinked)
     {
+        var emptyProductId = Guid.CreateVersion7();
         var tenant = NewTenant("trendyol-colour-content");
         var connection = NewQuestionConnection(tenant);
         var productId = Guid.CreateVersion7();
@@ -7972,6 +7977,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             seedDb.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Panel ürünü", Description = "Panel açıklaması", Status = ProductStatus.Active, CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 4 });
             seedDb.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenant.Id, ProductId = productId, SortOrder = 0, Sku = "MZ036YNC-01", SkuNormalized = "MZ036YNC-01", Barcode = "MZ036YNC-01", BarcodeNormalized = "MZ036YNC-01", ModelCode = "MZ036YNC", OptionSignature = "-", CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 2 });
             seedDb.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variantId, ExternalId = "ty-variant-1", Version = 1 });
+            if (emptyProductLinked)
+            {
+                seedDb.Products.Add(new Product { Id = emptyProductId, TenantId = tenant.Id, Title = "Boş ürün", Description = "", Status = ProductStatus.Active, CreatedAt = fixture.Now.AddDays(-1), UpdatedAt = fixture.Now.AddDays(-1), Version = 1 });
+                seedDb.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = emptyProductId, ExternalId = "1227181871", Version = 1 });
+            }
             await seedDb.SaveChangesAsync();
         }
 
@@ -7987,11 +7997,20 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             }
 
             await using var verificationDb = fixture.CreateContext();
-            var product = await verificationDb.Products.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
-            Assert.Equal(productId, product.Id);
-            Assert.Equal("Panel ürünü", product.Title);
+            var products = await verificationDb.Products.AsNoTracking().Where(row => row.TenantId == tenant.Id).ToListAsync();
+            Assert.Equal(emptyProductLinked ? 2 : 1, products.Count);
+            Assert.Equal("Panel ürünü", products.Single(row => row.Id == productId).Title);
             Assert.Equal(productId, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id)).ProductId);
-            Assert.False(await verificationDb.MarketplaceProductLinks.AnyAsync(row => row.TenantId == tenant.Id));
+            var productLinks = await verificationDb.MarketplaceProductLinks.AsNoTracking().Where(row => row.TenantId == tenant.Id).ToListAsync();
+            if (emptyProductLinked)
+            {
+                var empty = products.Single(row => row.Id == emptyProductId);
+                Assert.Equal("Boş ürün", empty.Title);
+                Assert.Equal(1, empty.Version);
+                Assert.Equal(emptyProductId, Assert.Single(productLinks).ProductId);
+                Assert.False(await verificationDb.ProductMedia.AnyAsync(row => row.TenantId == tenant.Id && row.ProductId == emptyProductId));
+            }
+            else Assert.Empty(productLinks);
             Assert.Equal(0, productPort.WriteAttempts);
         }
         finally

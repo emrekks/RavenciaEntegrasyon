@@ -170,6 +170,21 @@ public sealed class PlatformUpdateFieldSelectionTests
     }
 
     [Fact]
+    public void TrendyolColourSplit_SendsVariantsAsApproved_AndRefusesTheContent()
+    {
+        // Trendyol approved the panel product as one content per colour: no content is the product's, so it is not sent
+        // as an unapproved card either.
+        var variantsOnly = ProductUpdateComposer.Split(Guid.CreateVersion7(), null, CreatePayload, new(false, true, false), splitContents: true);
+        Assert.True(variantsOnly.Succeeded, variantsOnly.Error?.Message);
+        Assert.Equal("APPROVED", variantsOnly.Value!.Mode);
+        Assert.Empty(Items(variantsOnly.Value.ApprovedContentPayloadJson));
+        Assert.Equal(["B1", "B2"], Items(variantsOnly.Value.ApprovedVariantPayloadJson).Select(item => item!["barcode"]!.GetValue<string>()));
+
+        var withContent = ProductUpdateComposer.Split(Guid.CreateVersion7(), null, CreatePayload, ProductUpdateSections.All, splitContents: true);
+        Assert.Equal("PRODUCT_CONTENT_SPLIT", withContent.Error?.Code);
+    }
+
+    [Fact]
     public void PriceOrStockHeld_IsLeftOutOfTheRequest()
     {
         var variantId = Guid.CreateVersion7();
