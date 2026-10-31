@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, VAT_RATE_REQUIRED_MESSAGE } from './product-editor-state'
+import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, VAT_RATE_REQUIRED_MESSAGE } from './product-editor-state'
 
 describe('product editor state', () => {
   it('builds one seed key for the seed and for a version bump made by the editor itself', () => {
@@ -84,5 +84,17 @@ describe('product editor state', () => {
     expect(editorVatRateIssue('abc')).toBe(VAT_RATE_REQUIRED_MESSAGE)
     expect(editorVatRateIssue('0')).toBeUndefined()
     expect(editorVatRateIssue('10')).toBeUndefined()
+  })
+})
+
+describe('editorAwaitingSeed', () => {
+  it('masks an edit or a copy until the product and the category and brand lists are in', () => {
+    expect(editorAwaitingSeed({ seeding: true, productPending: true, listsPending: false })).toBe(true)
+    expect(editorAwaitingSeed({ seeding: true, productPending: false, listsPending: true })).toBe(true)
+    expect(editorAwaitingSeed({ seeding: true, productPending: false, listsPending: false })).toBe(false)
+  })
+
+  it('never masks a new product', () => {
+    expect(editorAwaitingSeed({ seeding: false, productPending: true, listsPending: true })).toBe(false)
   })
 })
