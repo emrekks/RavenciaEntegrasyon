@@ -147,3 +147,8 @@
   }
   html.theme-transitioning :is(*, *::before, *::after) { transition: none !important; }
 }
+
+/* Theme switch with View Transitions (features/settings/visual-theme.ts): the old page fades into the new one. */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .6s; animation-timing-function: cubic-bezier(.4, 0, .2, 1); }
+}
