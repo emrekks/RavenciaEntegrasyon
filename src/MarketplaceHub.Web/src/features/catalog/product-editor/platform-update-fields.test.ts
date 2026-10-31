@@ -21,7 +21,8 @@ describe('platform update fields', () => {
     expect(availablePlatformUpdateFields(['HEPSIBURADA'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'WARRANTY', 'DESI', 'PRICE', 'STOCK', 'VAT_RATE'])
     expect(availablePlatformUpdateFields(['HEPSIBURADA', 'TRENDYOL'])).toContain('DELIVERY')
     expect(availablePlatformUpdateFields(['SHOPIFY'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'PRICE', 'STOCK'])
-    for (const code of ['N11', 'PAZARAMA', 'PTTAVM']) expect(availablePlatformUpdateFields([code])).toEqual([])
+    expect(availablePlatformUpdateFields(['N11'])).toEqual(['DESCRIPTION', 'ATTRIBUTES', 'DELIVERY', 'PRICE', 'STOCK', 'VAT_RATE'])
+    for (const code of ['PAZARAMA', 'PTTAVM']) expect(availablePlatformUpdateFields([code])).toEqual([])
     expect(availablePlatformUpdateFields([])).toEqual([])
   })
 
@@ -101,9 +102,35 @@ describe('platform update fields', () => {
   })
 
   it('sends nothing to a read-only marketplace', () => {
-    const plan = platformUpdatePlan('N11', defaultPlatformUpdateFields)
+    const plan = platformUpdatePlan('PAZARAMA', defaultPlatformUpdateFields)
     expect(plan.sends).toEqual([])
     expect([plan.price, plan.stock]).toEqual([false, false])
+  })
+
+  it('sends to n11 only the picked fields its product-update task takes, price and stock together', () => {
+    const all = platformUpdatePlan('N11', defaultPlatformUpdateFields)
+    expect(all.productFields).toEqual(['DESCRIPTION', 'ATTRIBUTES', 'DELIVERY', 'VAT_RATE'])
+    expect([all.price, all.stock]).toEqual([true, true])
+    expect(all.sends).toEqual(['Açıklama', 'Kategori Özellikleri', 'KDV Oranı', 'Teslimat Süresi', 'Liste Fiyatı', 'Satış Fiyatı', 'Stok'])
+    expect(all.extras).toEqual(['Marka', 'Renk / Beden', 'Kargo Şablonu'])
+    // Each field is its own part of the task: a pick does not bring the others along.
+    const description = platformUpdatePlan('N11', ['DESCRIPTION'])
+    expect(description.productFields).toEqual(['DESCRIPTION'])
+    expect(description.bundled).toEqual([])
+    expect(description.sends).toEqual(['Açıklama'])
+    const delivery = platformUpdatePlan('N11', ['DELIVERY'])
+    expect(delivery.sends).toEqual(['Teslimat Süresi'])
+    expect(delivery.extras).toEqual(['Kargo Şablonu'])
+    // The n11 price-stock task cannot leave one part out: a pick of the price carries the stock.
+    const price = platformUpdatePlan('N11', ['PRICE'])
+    expect(price.bundled).toEqual(['STOCK'])
+    expect([price.price, price.stock]).toEqual([true, true])
+    expect(price.productFields).toEqual([])
+    // What n11 cannot change through its API is not sent.
+    const title = platformUpdatePlan('N11', ['TITLE', 'IMAGES', 'DESI', 'WARRANTY'])
+    expect(title.sends).toEqual([])
+    expect(title.productFields).toEqual([])
+    expect(partialPlatformUpdateField('TITLE', ['TRENDYOL', 'N11'])).toEqual(['TRENDYOL'])
   })
 
   it('remembers the pick and the open groups as they were left', () => {

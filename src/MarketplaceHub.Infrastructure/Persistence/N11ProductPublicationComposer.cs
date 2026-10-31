@@ -45,56 +45,12 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi N11 bağlantısına ait listing profile oluşturulmalıdır.");
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
 
-        var categoryMapping = product.CategoryId is Guid categoryId
-            ? await db.CategoryMappings.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == categoryId && x.Status == "VERIFIED")
-                .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping)
-                .SingleOrDefaultAsync(cancellationToken)
-            : null;
-        if (categoryMapping is null) return Fail("CATEGORY_MAPPING_REQUIRED", "Yayın öncesi güncel N11 kategori eşlemesi gerekir.", "categoryId");
-        if (!string.IsNullOrWhiteSpace(profile.ExternalCategoryId) && profile.ExternalCategoryId != categoryMapping.ExternalId)
-            return Fail("LISTING_MAPPING_CONFLICT", "Listing profile kategorisi güncel doğrulanmış N11 eşlemesiyle çelişiyor.", status: 409);
-        if (!long.TryParse(categoryMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var remoteCategoryId) || remoteCategoryId <= 0)
-            return Fail("CATEGORY_MAPPING_INVALID", "N11 kategori kimliği pozitif bir tam sayı olmalıdır.", "categoryId");
-        // n11 lists products only on leaf categories.
-        if (!await db.ReferenceItems.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.SnapshotId == categoryMapping.SnapshotId && x.ResourceType == "CATEGORIES" && x.ExternalId == categoryMapping.ExternalId && x.IsActive && x.IsLeaf, cancellationToken))
-            return Fail("CATEGORY_LEAF_REQUIRED", "N11'de ürün yalnız en alt kategoriye açılabilir; kategori eşlemesini bir alt kategoriye güncelleyin.", "categoryId");
+        var loaded = await LoadAttributeContextAsync(tenantId, product, connectionId, profile, cancellationToken);
+        if (!loaded.Succeeded) return Relay(loaded);
+        var attributeContext = loaded.Value!;
+        var brandName = attributeContext.BrandName;
+        var remoteCategoryId = attributeContext.RemoteCategoryId;
 
-        var categorySnapshot = await db.ReferenceSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.ScopeExternalId == categoryMapping.ExternalId && x.IsCurrent, cancellationToken);
-        if (categorySnapshot is null) return Fail("ATTRIBUTE_SNAPSHOT_REQUIRED", "Seçilen N11 kategorisinin güncel özellik snapshot'ı gerekir.");
-        var remoteAttributes = await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categorySnapshot.Id && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsActive).ToListAsync(cancellationToken);
-        var attributeMappings = await db.AttributeMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categoryMapping.ExternalId && x.SnapshotId == categorySnapshot.Id && x.Status == "VERIFIED").ToListAsync(cancellationToken);
-        if (attributeMappings.GroupBy(x => x.ExternalId, StringComparer.Ordinal).Any(group => group.Count() > 1))
-            return Fail("ATTRIBUTE_MAPPING_AMBIGUOUS", "Aynı N11 kategori özelliğine birden fazla yerel özellik eşlenmiş.", status: 409);
-        var remoteById = remoteAttributes.ToDictionary(x => x.ExternalId, StringComparer.Ordinal);
-        var mappingsByLocalId = attributeMappings.GroupBy(x => x.LocalId).ToDictionary(group => group.Key, group => (IReadOnlyList<AttributeMapping>)group.ToList());
-        foreach (var mapping in attributeMappings)
-        {
-            if (!remoteById.ContainsKey(mapping.ExternalId)) return Fail("ATTRIBUTE_MAPPING_STALE", "Özellik eşlemesi güncel N11 kategori snapshot'ında bulunamadı.", status: 409);
-            if (!long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out _)) return Fail("MAPPING_IDENTIFIER_INVALID", "N11 özellik kimlikleri sayısal olmalıdır.");
-        }
-        // The brand (attribute 1) is always filled from the product brand, so it needs no mapping.
-        var missingRequiredExternalIds = RequiredAttributeMappingPolicy.FindMissingExternalIds(
-            categorySnapshot.Id,
-            remoteAttributes.Where(x => x.IsRequired == true && x.ExternalId != BrandAttributeId).Select(x => new RequiredAttributeMappingReference(categorySnapshot.Id, x.ExternalId)),
-            attributeMappings.Select(x => new RequiredAttributeMappingReference(x.SnapshotId, x.ExternalId)));
-        // Connection defaults fill the attributes a product leaves empty, so a required
-        // attribute with a usable default needs no panel attribute mapping.
-        var attributeDefaults = await ResolveAttributeDefaultsAsync(tenantId, connectionId, categoryMapping.ExternalId, remoteAttributes, cancellationToken);
-        var fieldDefaults = (await ProductFieldSources.LoadAsync(db, tenantId, connectionId, remoteAttributes, cancellationToken)).Where(field => field.ExternalAttributeId != BrandAttributeId).ToList();
-        foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId) && fieldDefaults.All(field => field.ExternalAttributeId != x.ExternalId)))
-            return Fail("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu N11 özelliği '{required.Name}' eşlenmemiş.");
-
-        var brand = product.BrandId is Guid brandId
-            ? await db.Brands.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == brandId && x.IsActive, cancellationToken)
-            : null;
-        if (brand is null || string.IsNullOrWhiteSpace(brand.Name)) return Fail("BRAND_REQUIRED", "N11 ürün açma için etkin bir yerel marka seçilmelidir.", "brandId");
-        var brandName = brand.Name.Trim();
-
-        // A panel attribute the marketplace category has no field for (Cep on Hepsiburada Bluz) is not sent: only mapped
-        // attributes travel. Required marketplace fields are still checked above and per variant.
-        var assignments = (await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken))
-            .Where(x => mappingsByLocalId.ContainsKey(x.AttributeId)).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
         if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
         // A variant already live on n11 (live state and an n11 variant link) is not sent again: publishing a partly refused
@@ -121,13 +77,7 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         var productMainId = modelCodes[0]!;
 
         var variantIds = variants.Select(x => x.Id).ToArray();
-        var optionRows = await (from option in db.ProductOptions.AsNoTracking()
-                                join optionValue in db.ProductOptionValues.AsNoTracking() on new { option.TenantId, OptionId = option.Id } equals new { optionValue.TenantId, OptionId = optionValue.OptionId }
-                                join variantOption in db.VariantOptionValues.AsNoTracking() on new { optionValue.TenantId, OptionValueId = optionValue.Id } equals new { variantOption.TenantId, OptionValueId = variantOption.OptionValueId }
-                                where option.TenantId == tenantId && option.ProductId == productId && variantIds.Contains(variantOption.VariantId)
-                                select new { variantOption.VariantId, option.Label, ValueLabel = optionValue.Label }).ToListAsync(cancellationToken);
-        var localAttributes = await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && mappingsByLocalId.Keys.Contains(x.Id)).ToListAsync(cancellationToken);
-        var localValues = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && mappingsByLocalId.Keys.Contains(x.AttributeId) && x.IsActive).ToListAsync(cancellationToken);
+        var optionRows = await LoadOptionRowsAsync(tenantId, productId, variantIds, cancellationToken);
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId) && x.Status == "ACTIVE").ToDictionaryAsync(x => x.VariantId, cancellationToken);
         var inventories = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").ToDictionaryAsync(x => x.VariantId, cancellationToken);
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin N11 fiyat teklifi gerekir.");
@@ -167,68 +117,9 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
                 .Select(url => url!));
             if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir herkese açık HTTPS ürün görseli gerekir.");
 
-            var attributes = new List<N11SkuAttribute> { new(long.Parse(BrandAttributeId, CultureInfo.InvariantCulture), null, brandName) };
-            var emittedIds = new HashSet<long> { attributes[0].Id };
-            foreach (var group in VariantAttributeAssignments.ForVariant(assignments, variant.Id))
-            {
-                if (!mappingsByLocalId.TryGetValue(group.Key, out var mappings) || mappings.Count == 0) return Fail("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan özellik için doğrulanmış N11 eşlemesi bulunamadı.");
-                if (mappings.Count != 1) return Fail("ATTRIBUTE_MAPPING_AMBIGUOUS", "Üründe kullanılan panel özelliği birden fazla N11 özelliğine eşlenmiş; tek bir özellik seçilmelidir.", status: 409);
-                var mapping = mappings[0];
-                // The product brand is the n11 brand; a panel attribute mapped to it is not sent.
-                if (mapping.ExternalId == BrandAttributeId) continue;
-                var remote = remoteById[mapping.ExternalId];
-                var values = group.ToList();
-                if (values.Count > 1) return Fail("ATTRIBUTE_MULTIVALUE_UNSUPPORTED", $"N11 '{remote.Name}' özelliği için tek değer kabul eder.");
-                var resolved = await ResolveAssignmentAsync(tenantId, connectionId, categoryMapping.ExternalId, mapping.ExternalId, values[0], remote, localValues, cancellationToken);
-                if (!resolved.Succeeded) return ServiceResult<ProductPublicationDraft>.Fail(resolved.Error!.Code, resolved.Error.Message, resolved.Error.Status, resolved.Error.FieldErrors);
-                var attribute = resolved.Value!;
-                if (!emittedIds.Add(attribute.Id)) return Fail("ATTRIBUTE_MAPPING_AMBIGUOUS", $"'{remote.Name}' özelliğine birden fazla değer eşlenmiş.", status: 409);
-                attributes.Add(attribute);
-            }
-
-            foreach (var option in optionRows.Where(x => x.VariantId == variant.Id).OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase))
-            {
-                var localAttribute = localAttributes.FirstOrDefault(x => Normalize(option.Label) == Normalize(x.Name));
-                if (localAttribute is null || !mappingsByLocalId.TryGetValue(localAttribute.Id, out var optionMappings)) return Fail("OPTION_MAPPING_REQUIRED", $"'{option.Label}' varyant seçeneği için N11 özellik eşlemesi gerekir.");
-                if (optionMappings.Count != 1) return Fail("OPTION_MAPPING_AMBIGUOUS", $"'{option.Label}' varyant seçeneği birden fazla N11 özelliğine eşlenmiş; tek bir özellik seçilmelidir.", status: 409);
-                var optionMapping = optionMappings[0];
-                if (optionMapping.ExternalId == BrandAttributeId) continue;
-                if (!remoteById.TryGetValue(optionMapping.ExternalId, out var optionRemote)) return Fail("OPTION_MAPPING_REQUIRED", $"'{option.Label}' eşlemesi güncel N11 kategori snapshot'ında bulunamadı.");
-                var optionAttributeId = long.Parse(optionMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture);
-                var localValue = localValues.FirstOrDefault(x => x.AttributeId == localAttribute.Id && Normalize(x.Value) == Normalize(option.ValueLabel));
-                N11SkuAttribute optionAttribute;
-                if (localValue is not null)
-                {
-                    var valueId = await ResolveMappedValueIdAsync(tenantId, connectionId, categoryMapping.ExternalId, optionMapping.ExternalId, localValue.Id, localValue.Value, cancellationToken);
-                    if (valueId.Succeeded) optionAttribute = new(optionAttributeId, valueId.Value, null);
-                    else if (UnmappedFreeText(valueId, optionRemote, localValue.Value) is { } freeText) optionAttribute = new(optionAttributeId, null, freeText);
-                    else return ServiceResult<ProductPublicationDraft>.Fail(valueId.Error!.Code, valueId.Error.Message, valueId.Error.Status, valueId.Error.FieldErrors);
-                }
-                else if (optionRemote.AllowsCustomValue == true) optionAttribute = new(optionAttributeId, null, option.ValueLabel.Trim());
-                else return Fail("OPTION_VALUE_MAPPING_REQUIRED", $"'{option.Label}: {option.ValueLabel}' seçeneği için güncel N11 değer eşlemesi gerekir.");
-                // The variant option is the field's truth: an attribute assignment of the same field (Beden held on each
-                // variant as well, live 27 Oct 2026) is replaced by it instead of stopping the publication.
-                if (!emittedIds.Add(optionAttributeId)) attributes.RemoveAll(attribute => attribute.Id == optionAttributeId);
-                attributes.Add(optionAttribute);
-            }
-
-            // Defaults only fill attributes the product and its variant options left empty.
-            foreach (var (_, defaultAttribute) in attributeDefaults.OrderBy(entry => entry.Key, StringComparer.Ordinal))
-                if (emittedIds.Add(defaultAttribute.Id)) attributes.Add(defaultAttribute);
-            // Product fields (the variant's own model code, stock code, barcode or title) fill what the product left empty.
-            foreach (var field in fieldDefaults)
-            {
-                if (!long.TryParse(field.ExternalAttributeId, NumberStyles.None, CultureInfo.InvariantCulture, out var fieldAttributeId) || emittedIds.Contains(fieldAttributeId)) continue;
-                if (ProductFieldSources.Value(field.Field, variant, title) is not { } fieldValue) return Fail("PRODUCT_FIELD_EMPTY", ProductFieldSources.MissingValueMessage(variant.Sku, field));
-                emittedIds.Add(fieldAttributeId);
-                attributes.Add(new(fieldAttributeId, null, fieldValue));
-            }
-
-            var missingRequired = remoteAttributes
-                .Where(x => x.IsRequired == true && (!long.TryParse(x.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredId) || !emittedIds.Contains(requiredId)))
-                .Select(x => x.Name)
-                .ToList();
-            if (missingRequired.Count > 0) return Fail("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için N11'in zorunlu özellikleri eksik: {string.Join(", ", missingRequired)}. Ürünün kategori özelliklerinde bu alanlara değer seçin ve değerlerini eşleyin.");
+            var composed = await VariantAttributesAsync(attributeContext, optionRows, variant, title, cancellationToken);
+            if (!composed.Succeeded) return Relay(composed);
+            var attributes = composed.Value!;
 
             var barcode = string.IsNullOrWhiteSpace(variant.Barcode) ? null : variant.Barcode.Trim();
             var quantity = (int)N11PriceInventoryRules.Quantity(inventories[variant.Id].Available - offer.SafetyStock);
@@ -238,7 +129,162 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
 
         var payloadJson = Payload(N11PriceInventoryRules.Integrator, skus);
         var payloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payloadJson)));
-        return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, categoryMapping.ExternalId, brandName, payloadHash, payloadJson, draftVariants));
+        return ServiceResult<ProductPublicationDraft>.Ok(new(profile.Id, attributeContext.CategoryExternalId, brandName, payloadHash, payloadJson, draftVariants));
+    }
+
+    // What every SKU's attribute list is built from: the verified n11 category of the card, its attribute snapshot and
+    // mappings, the connection defaults and the product brand. Product create and product update share it, so an update
+    // sends the same attributes a create would.
+    internal sealed record AttributeContext(
+        string CategoryExternalId,
+        long RemoteCategoryId,
+        IReadOnlyList<ReferenceItem> RemoteAttributes,
+        IReadOnlyDictionary<string, ReferenceItem> RemoteById,
+        IReadOnlyDictionary<Guid, IReadOnlyList<AttributeMapping>> MappingsByLocalId,
+        IReadOnlyDictionary<string, N11SkuAttribute> AttributeDefaults,
+        IReadOnlyList<ProductFieldSources.FieldDefault> FieldDefaults,
+        IReadOnlyList<ProductAttributeAssignment> Assignments,
+        IReadOnlyList<AttributeDefinition> LocalAttributes,
+        IReadOnlyList<AttributeValue> LocalValues,
+        string BrandName,
+        Guid TenantId,
+        Guid ConnectionId);
+
+    internal sealed record OptionRow(Guid VariantId, string Label, string ValueLabel);
+
+    internal async Task<ServiceResult<AttributeContext>> LoadAttributeContextAsync(Guid tenantId, Product product, Guid connectionId, ChannelListingProfile profile, CancellationToken cancellationToken)
+    {
+        var categoryMapping = product.CategoryId is Guid categoryId
+            ? await db.CategoryMappings.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.LocalId == categoryId && x.Status == "VERIFIED")
+                .Join(db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORIES" && x.IsCurrent), mapping => mapping.SnapshotId, snapshot => snapshot.Id, (mapping, _) => mapping)
+                .SingleOrDefaultAsync(cancellationToken)
+            : null;
+        if (categoryMapping is null) return Refuse<AttributeContext>("CATEGORY_MAPPING_REQUIRED", "Yayın öncesi güncel N11 kategori eşlemesi gerekir.", "categoryId");
+        if (!string.IsNullOrWhiteSpace(profile.ExternalCategoryId) && profile.ExternalCategoryId != categoryMapping.ExternalId)
+            return Refuse<AttributeContext>("LISTING_MAPPING_CONFLICT", "Listing profile kategorisi güncel doğrulanmış N11 eşlemesiyle çelişiyor.", status: 409);
+        if (!long.TryParse(categoryMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var remoteCategoryId) || remoteCategoryId <= 0)
+            return Refuse<AttributeContext>("CATEGORY_MAPPING_INVALID", "N11 kategori kimliği pozitif bir tam sayı olmalıdır.", "categoryId");
+        // n11 lists products only on leaf categories.
+        if (!await db.ReferenceItems.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.SnapshotId == categoryMapping.SnapshotId && x.ResourceType == "CATEGORIES" && x.ExternalId == categoryMapping.ExternalId && x.IsActive && x.IsLeaf, cancellationToken))
+            return Refuse<AttributeContext>("CATEGORY_LEAF_REQUIRED", "N11'de ürün yalnız en alt kategoriye açılabilir; kategori eşlemesini bir alt kategoriye güncelleyin.", "categoryId");
+
+        var categorySnapshot = await db.ReferenceSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.ScopeExternalId == categoryMapping.ExternalId && x.IsCurrent, cancellationToken);
+        if (categorySnapshot is null) return Refuse<AttributeContext>("ATTRIBUTE_SNAPSHOT_REQUIRED", "Seçilen N11 kategorisinin güncel özellik snapshot'ı gerekir.");
+        var remoteAttributes = await db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == categorySnapshot.Id && x.ResourceType == "CATEGORY_ATTRIBUTES" && x.IsActive).ToListAsync(cancellationToken);
+        var attributeMappings = await db.AttributeMappings.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == categoryMapping.ExternalId && x.SnapshotId == categorySnapshot.Id && x.Status == "VERIFIED").ToListAsync(cancellationToken);
+        if (attributeMappings.GroupBy(x => x.ExternalId, StringComparer.Ordinal).Any(group => group.Count() > 1))
+            return Refuse<AttributeContext>("ATTRIBUTE_MAPPING_AMBIGUOUS", "Aynı N11 kategori özelliğine birden fazla yerel özellik eşlenmiş.", status: 409);
+        var remoteById = remoteAttributes.ToDictionary(x => x.ExternalId, StringComparer.Ordinal);
+        var mappingsByLocalId = attributeMappings.GroupBy(x => x.LocalId).ToDictionary(group => group.Key, group => (IReadOnlyList<AttributeMapping>)group.ToList());
+        foreach (var mapping in attributeMappings)
+        {
+            if (!remoteById.ContainsKey(mapping.ExternalId)) return Refuse<AttributeContext>("ATTRIBUTE_MAPPING_STALE", "Özellik eşlemesi güncel N11 kategori snapshot'ında bulunamadı.", status: 409);
+            if (!long.TryParse(mapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out _)) return Refuse<AttributeContext>("MAPPING_IDENTIFIER_INVALID", "N11 özellik kimlikleri sayısal olmalıdır.");
+        }
+        // The brand (attribute 1) is always filled from the product brand, so it needs no mapping.
+        var missingRequiredExternalIds = RequiredAttributeMappingPolicy.FindMissingExternalIds(
+            categorySnapshot.Id,
+            remoteAttributes.Where(x => x.IsRequired == true && x.ExternalId != BrandAttributeId).Select(x => new RequiredAttributeMappingReference(categorySnapshot.Id, x.ExternalId)),
+            attributeMappings.Select(x => new RequiredAttributeMappingReference(x.SnapshotId, x.ExternalId)));
+        // Connection defaults fill the attributes a product leaves empty, so a required
+        // attribute with a usable default needs no panel attribute mapping.
+        var attributeDefaults = await ResolveAttributeDefaultsAsync(tenantId, connectionId, categoryMapping.ExternalId, remoteAttributes, cancellationToken);
+        var fieldDefaults = (await ProductFieldSources.LoadAsync(db, tenantId, connectionId, remoteAttributes, cancellationToken)).Where(field => field.ExternalAttributeId != BrandAttributeId).ToList();
+        foreach (var required in remoteAttributes.Where(x => missingRequiredExternalIds.Contains(x.ExternalId) && !attributeDefaults.ContainsKey(x.ExternalId) && fieldDefaults.All(field => field.ExternalAttributeId != x.ExternalId)))
+            return Refuse<AttributeContext>("REQUIRED_ATTRIBUTE_MAPPING_REQUIRED", $"Zorunlu N11 özelliği '{required.Name}' eşlenmemiş.");
+
+        var brand = product.BrandId is Guid brandId
+            ? await db.Brands.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == brandId && x.IsActive, cancellationToken)
+            : null;
+        if (brand is null || string.IsNullOrWhiteSpace(brand.Name)) return Refuse<AttributeContext>("BRAND_REQUIRED", "N11 ürün açma için etkin bir yerel marka seçilmelidir.", "brandId");
+
+        // A panel attribute the marketplace category has no field for (Cep on Hepsiburada Bluz) is not sent: only mapped
+        // attributes travel. Required marketplace fields are still checked above and per variant.
+        var assignments = (await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == product.Id).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken))
+            .Where(x => mappingsByLocalId.ContainsKey(x.AttributeId)).ToList();
+        var localAttributes = await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && mappingsByLocalId.Keys.Contains(x.Id)).ToListAsync(cancellationToken);
+        var localValues = await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && mappingsByLocalId.Keys.Contains(x.AttributeId) && x.IsActive).ToListAsync(cancellationToken);
+        return ServiceResult<AttributeContext>.Ok(new(categoryMapping.ExternalId, remoteCategoryId, remoteAttributes, remoteById, mappingsByLocalId, attributeDefaults, fieldDefaults, assignments, localAttributes, localValues, brand.Name.Trim(), tenantId, connectionId));
+    }
+
+    internal async Task<IReadOnlyList<OptionRow>> LoadOptionRowsAsync(Guid tenantId, Guid productId, Guid[] variantIds, CancellationToken cancellationToken) =>
+        await (from option in db.ProductOptions.AsNoTracking()
+               join optionValue in db.ProductOptionValues.AsNoTracking() on new { option.TenantId, OptionId = option.Id } equals new { optionValue.TenantId, OptionId = optionValue.OptionId }
+               join variantOption in db.VariantOptionValues.AsNoTracking() on new { optionValue.TenantId, OptionValueId = optionValue.Id } equals new { variantOption.TenantId, OptionValueId = variantOption.OptionValueId }
+               where option.TenantId == tenantId && option.ProductId == productId && variantIds.Contains(variantOption.VariantId)
+               select new OptionRow(variantOption.VariantId, option.Label, optionValue.Label)).ToListAsync(cancellationToken);
+
+    // One SKU's n11 attributes: the brand (attribute 1, free text), the mapped product attributes, the variant options
+    // (colour, size), then connection defaults and product fields for what is still empty. Every attribute the category
+    // marks required must be there.
+    internal async Task<ServiceResult<IReadOnlyList<N11SkuAttribute>>> VariantAttributesAsync(AttributeContext context, IReadOnlyList<OptionRow> optionRows, ProductVariant variant, string title, CancellationToken cancellationToken)
+    {
+        var tenantId = context.TenantId;
+        var connectionId = context.ConnectionId;
+        var attributes = new List<N11SkuAttribute> { new(long.Parse(BrandAttributeId, CultureInfo.InvariantCulture), null, context.BrandName) };
+        var emittedIds = new HashSet<long> { attributes[0].Id };
+        foreach (var group in VariantAttributeAssignments.ForVariant(context.Assignments, variant.Id))
+        {
+            if (!context.MappingsByLocalId.TryGetValue(group.Key, out var mappings) || mappings.Count == 0) return Refuse<IReadOnlyList<N11SkuAttribute>>("ATTRIBUTE_MAPPING_REQUIRED", "Üründe kullanılan özellik için doğrulanmış N11 eşlemesi bulunamadı.");
+            if (mappings.Count != 1) return Refuse<IReadOnlyList<N11SkuAttribute>>("ATTRIBUTE_MAPPING_AMBIGUOUS", "Üründe kullanılan panel özelliği birden fazla N11 özelliğine eşlenmiş; tek bir özellik seçilmelidir.", status: 409);
+            var mapping = mappings[0];
+            // The product brand is the n11 brand; a panel attribute mapped to it is not sent.
+            if (mapping.ExternalId == BrandAttributeId) continue;
+            var remote = context.RemoteById[mapping.ExternalId];
+            var values = group.ToList();
+            if (values.Count > 1) return Refuse<IReadOnlyList<N11SkuAttribute>>("ATTRIBUTE_MULTIVALUE_UNSUPPORTED", $"N11 '{remote.Name}' özelliği için tek değer kabul eder.");
+            var resolved = await ResolveAssignmentAsync(tenantId, connectionId, context.CategoryExternalId, mapping.ExternalId, values[0], remote, context.LocalValues, cancellationToken);
+            if (!resolved.Succeeded) return Relay<N11SkuAttribute, IReadOnlyList<N11SkuAttribute>>(resolved);
+            var attribute = resolved.Value!;
+            if (!emittedIds.Add(attribute.Id)) return Refuse<IReadOnlyList<N11SkuAttribute>>("ATTRIBUTE_MAPPING_AMBIGUOUS", $"'{remote.Name}' özelliğine birden fazla değer eşlenmiş.", status: 409);
+            attributes.Add(attribute);
+        }
+
+        foreach (var option in optionRows.Where(x => x.VariantId == variant.Id).OrderBy(x => x.Label, StringComparer.OrdinalIgnoreCase))
+        {
+            var localAttribute = context.LocalAttributes.FirstOrDefault(x => Normalize(option.Label) == Normalize(x.Name));
+            if (localAttribute is null || !context.MappingsByLocalId.TryGetValue(localAttribute.Id, out var optionMappings)) return Refuse<IReadOnlyList<N11SkuAttribute>>("OPTION_MAPPING_REQUIRED", $"'{option.Label}' varyant seçeneği için N11 özellik eşlemesi gerekir.");
+            if (optionMappings.Count != 1) return Refuse<IReadOnlyList<N11SkuAttribute>>("OPTION_MAPPING_AMBIGUOUS", $"'{option.Label}' varyant seçeneği birden fazla N11 özelliğine eşlenmiş; tek bir özellik seçilmelidir.", status: 409);
+            var optionMapping = optionMappings[0];
+            if (optionMapping.ExternalId == BrandAttributeId) continue;
+            if (!context.RemoteById.TryGetValue(optionMapping.ExternalId, out var optionRemote)) return Refuse<IReadOnlyList<N11SkuAttribute>>("OPTION_MAPPING_REQUIRED", $"'{option.Label}' eşlemesi güncel N11 kategori snapshot'ında bulunamadı.");
+            var optionAttributeId = long.Parse(optionMapping.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture);
+            var localValue = context.LocalValues.FirstOrDefault(x => x.AttributeId == localAttribute.Id && Normalize(x.Value) == Normalize(option.ValueLabel));
+            N11SkuAttribute optionAttribute;
+            if (localValue is not null)
+            {
+                var valueId = await ResolveMappedValueIdAsync(tenantId, connectionId, context.CategoryExternalId, optionMapping.ExternalId, localValue.Id, localValue.Value, cancellationToken);
+                if (valueId.Succeeded) optionAttribute = new(optionAttributeId, valueId.Value, null);
+                else if (UnmappedFreeText(valueId, optionRemote, localValue.Value) is { } freeText) optionAttribute = new(optionAttributeId, null, freeText);
+                else return Relay<long, IReadOnlyList<N11SkuAttribute>>(valueId);
+            }
+            else if (optionRemote.AllowsCustomValue == true) optionAttribute = new(optionAttributeId, null, option.ValueLabel.Trim());
+            else return Refuse<IReadOnlyList<N11SkuAttribute>>("OPTION_VALUE_MAPPING_REQUIRED", $"'{option.Label}: {option.ValueLabel}' seçeneği için güncel N11 değer eşlemesi gerekir.");
+            // The variant option is the field's truth: an attribute assignment of the same field (Beden held on each
+            // variant as well, live 27 Oct 2026) is replaced by it instead of stopping the publication.
+            if (!emittedIds.Add(optionAttributeId)) attributes.RemoveAll(attribute => attribute.Id == optionAttributeId);
+            attributes.Add(optionAttribute);
+        }
+
+        // Defaults only fill attributes the product and its variant options left empty.
+        foreach (var (_, defaultAttribute) in context.AttributeDefaults.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+            if (emittedIds.Add(defaultAttribute.Id)) attributes.Add(defaultAttribute);
+        // Product fields (the variant's own model code, stock code, barcode or title) fill what the product left empty.
+        foreach (var field in context.FieldDefaults)
+        {
+            if (!long.TryParse(field.ExternalAttributeId, NumberStyles.None, CultureInfo.InvariantCulture, out var fieldAttributeId) || emittedIds.Contains(fieldAttributeId)) continue;
+            if (ProductFieldSources.Value(field.Field, variant, title) is not { } fieldValue) return Refuse<IReadOnlyList<N11SkuAttribute>>("PRODUCT_FIELD_EMPTY", ProductFieldSources.MissingValueMessage(variant.Sku, field));
+            emittedIds.Add(fieldAttributeId);
+            attributes.Add(new(fieldAttributeId, null, fieldValue));
+        }
+
+        var missingRequired = context.RemoteAttributes
+            .Where(x => x.IsRequired == true && (!long.TryParse(x.ExternalId, NumberStyles.None, CultureInfo.InvariantCulture, out var requiredId) || !emittedIds.Contains(requiredId)))
+            .Select(x => x.Name)
+            .ToList();
+        if (missingRequired.Count > 0) return Refuse<IReadOnlyList<N11SkuAttribute>>("REQUIRED_ATTRIBUTE_MISSING", $"'{variant.Sku}' için N11'in zorunlu özellikleri eksik: {string.Join(", ", missingRequired)}. Ürünün kategori özelliklerinde bu alanlara değer seçin ve değerlerini eşleyin.");
+        return ServiceResult<IReadOnlyList<N11SkuAttribute>>.Ok(attributes);
     }
 
     // The n11 body: {"payload":{"integrator":...,"skus":[...]}}. Prices carry exactly two
@@ -397,5 +443,8 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
 
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
     private static ServiceResult<ProductPublicationDraft> NotFound() => ServiceResult<ProductPublicationDraft>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
-    private static ServiceResult<ProductPublicationDraft> Fail(string code, string message, string? field = null, int status = 422) => ServiceResult<ProductPublicationDraft>.Fail(code, message, status, field is null ? null : new Dictionary<string, string[]> { [field] = [message] });
+    private static ServiceResult<ProductPublicationDraft> Fail(string code, string message, string? field = null, int status = 422) => Refuse<ProductPublicationDraft>(code, message, field, status);
+    internal static ServiceResult<T> Refuse<T>(string code, string message, string? field = null, int status = 422) => ServiceResult<T>.Fail(code, message, status, field is null ? null : new Dictionary<string, string[]> { [field] = [message] });
+    internal static ServiceResult<TOut> Relay<TIn, TOut>(ServiceResult<TIn> failed) => ServiceResult<TOut>.Fail(failed.Error!.Code, failed.Error.Message, failed.Error.Status, failed.Error.FieldErrors);
+    private static ServiceResult<ProductPublicationDraft> Relay<TIn>(ServiceResult<TIn> failed) => Relay<TIn, ProductPublicationDraft>(failed);
 }

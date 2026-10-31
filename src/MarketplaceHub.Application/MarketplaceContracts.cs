@@ -501,16 +501,21 @@ public static class ProductUpdateFields
     // The fields each marketplace's product update can take (the same table the editor's "Platformlarda Güncelle" shows;
     // platform-update-fields.ts). Trendyol: content, variant and delivery requests (no warranty). Hepsiburada: one
     // product update with the warranty and no delivery time. Shopify: the whole card in one productSet (price and stock ride
-    // along, so the picked fields do not narrow it). Every other marketplace has no product update in the panel yet.
+    // along, so the picked fields do not narrow it). n11: one product-update task (N11ProductUpdateComposer). Every other
+    // marketplace has no product update in the panel yet.
     public static IReadOnlySet<string> SupportedBy(string? platformCode) => platformCode?.Trim().ToUpperInvariant() switch
     {
         "TRENDYOL" => TrendyolSupported,
         "HEPSIBURADA" => HepsiburadaSupported,
         "SHOPIFY" => ShopifySupported,
+        "N11" => N11Supported,
         _ => NoneSupported
     };
     private static readonly IReadOnlySet<string> TrendyolSupported = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery], StringComparer.Ordinal);
     private static readonly IReadOnlySet<string> HepsiburadaSupported = new HashSet<string>(HepsiburadaFields, StringComparer.Ordinal);
+    // n11: one product-update task with the description, attributes, VAT rate and preparing day (with the shipment
+    // template); name, images, brand, category and desi cannot change through the n11 API.
+    private static readonly IReadOnlySet<string> N11Supported = new HashSet<string>([Description, Attributes, VatRate, Delivery], StringComparer.Ordinal);
     private static readonly IReadOnlySet<string> ShopifySupported = new HashSet<string>([Title, Description, Images], StringComparer.Ordinal);
     private static readonly IReadOnlySet<string> NoneSupported = new HashSet<string>(StringComparer.Ordinal);
 
