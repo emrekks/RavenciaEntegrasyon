@@ -23,9 +23,14 @@ let themeTransitionTimer: number | undefined
 export function switchVisualThemeSmoothly(theme: VisualTheme) {
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) { setVisualThemePreference(theme); return }
   if (typeof document.startViewTransition === 'function') {
-    // React applies the theme in an effect after the event: the new picture is taken once that has run.
+    // React applies the theme in an effect after the event: the new picture is taken once that has run. A page that
+    // is not being drawn (a hidden window) never runs the transition, so the theme is applied anyway after 300 ms.
+    let applied = false
+    const apply = () => { if (applied) return; applied = true; flushSync(() => setVisualThemePreference(theme)) }
+    const fallback = window.setTimeout(apply, 300)
     document.startViewTransition(async () => {
-      flushSync(() => setVisualThemePreference(theme))
+      window.clearTimeout(fallback)
+      apply()
       await new Promise(resolve => window.setTimeout(resolve, 0))
     })
     return

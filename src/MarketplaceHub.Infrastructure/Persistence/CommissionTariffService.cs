@@ -52,6 +52,10 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             if (existing is { } existingId)
             {
                 backfilled += await FillFactsAsync(tenantId, existingId, period.Rows, cancellationToken);
+                // The period's name ("3 Gün") for a tariff stored before it was read.
+                if (period.Label is { } label)
+                    backfilled += await db.CommissionTariffs.Where(x => x.TenantId == tenantId && x.Id == existingId && x.PeriodLabel == null)
+                        .ExecuteUpdateAsync(set => set.SetProperty(x => x.PeriodLabel, label), cancellationToken);
                 if (!await db.CommissionTariffSourceFiles.AnyAsync(x => x.TenantId == tenantId && x.TariffId == existingId, cancellationToken))
                 {
                     db.CommissionTariffSourceFiles.Add(new CommissionTariffSourceFile { TariffId = existingId, TenantId = tenantId, Content = bytes });
@@ -69,6 +73,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
                 PeriodStart = period.PeriodStart,
                 PeriodEnd = period.PeriodEnd,
                 PeriodText = period.PeriodText.Length > 120 ? period.PeriodText[..120] : period.PeriodText,
+                PeriodLabel = period.Label,
                 FileName = safeName,
                 FileHash = hash,
                 UploadedAt = now,
@@ -100,10 +105,25 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == hash && periodStarts.Contains(x.PeriodStart))
             .OrderBy(x => x.PeriodStart)
             .ToListAsync(cancellationToken);
-        var views = new List<CommissionTariffView>(tariffs.Count);
-        foreach (var tariff in tariffs) views.Add(await ViewAsync(tariff, now, cancellationToken));
-        return ServiceResult<CommissionTariffUploadResult>.Ok(new(views, imported, parsed.SkippedRows, alreadyUploaded, parsed.Warnings));
+        return ServiceResult<CommissionTariffUploadResult>.Ok(new(await ViewsAsync(tenantId, connectionId, tariffs, now, cancellationToken), imported, parsed.SkippedRows, alreadyUploaded, parsed.Warnings));
     }
+
+    // The tariffs as listed, each with the file it came from: the periods of one file share the Id of its first period.
+    private async Task<List<CommissionTariffView>> ViewsAsync(Guid tenantId, Guid connectionId, IReadOnlyList<CommissionTariff> tariffs, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var hashes = tariffs.Select(x => x.FileHash).Distinct().ToArray();
+        var groups = (await db.CommissionTariffs.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && hashes.Contains(x.FileHash))
+                .Select(x => new { x.Id, x.FileHash, x.PeriodStart }).ToListAsync(cancellationToken))
+            .GroupBy(x => x.FileHash).ToDictionary(group => group.Key, group => group.OrderBy(x => x.PeriodStart).ThenBy(x => x.Id).First().Id);
+        var views = new List<CommissionTariffView>(tariffs.Count);
+        foreach (var tariff in tariffs) views.Add(await ViewAsync(tariff, now, groups.GetValueOrDefault(tariff.FileHash, tariff.Id), cancellationToken));
+        return views;
+    }
+
+    // The tariffs of the same file as `tariff` (its periods), the earliest first; the tariff alone for a one-period file.
+    private Task<List<CommissionTariff>> PeriodsAsync(CommissionTariff tariff, CancellationToken cancellationToken) =>
+        db.CommissionTariffs.AsNoTracking().Where(x => x.TenantId == tariff.TenantId && x.ConnectionId == tariff.ConnectionId && x.FileHash == tariff.FileHash)
+            .OrderBy(x => x.PeriodStart).ThenBy(x => x.Id).ToListAsync(cancellationToken);
 
     public async Task<ServiceResult<IReadOnlyList<CommissionTariffView>>> ListAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
     {
@@ -114,9 +134,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             .OrderByDescending(x => x.PeriodStart).ThenByDescending(x => x.UploadedAt)
             .Take(60)
             .ToListAsync(cancellationToken);
-        var views = new List<CommissionTariffView>(tariffs.Count);
-        foreach (var tariff in tariffs) views.Add(await ViewAsync(tariff, now, cancellationToken));
-        return ServiceResult<IReadOnlyList<CommissionTariffView>>.Ok(views);
+        return ServiceResult<IReadOnlyList<CommissionTariffView>>.Ok(await ViewsAsync(tenantId, connectionId, tariffs, now, cancellationToken));
     }
 
     public async Task<ServiceResult<CommissionTariffRowPage>> RowsAsync(Guid tenantId, Guid connectionId, Guid tariffId, string? search, int page, int pageSize, CommissionTariffRowFilter filter, CancellationToken cancellationToken)
@@ -276,17 +294,74 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
     // period in "Tarife Seçimi", every other row left empty there (no change). Without the uploaded file (a tariff
     // stored before files were kept) the workbook is written again from the stored rows in Trendyol's column order.
     // Without picks in the request the saved picks are written, so the file holds what the page shows.
+    // A file with more than one period (Trendyol's "3 Gün" and "4 Gün") carries every period's saved picks, the exported
+    // tariff's own taken from the request: a row picked in one period gets that period's choice ("4 Günlük Fiyat"), one
+    // picked at the same price in every period the choice of them all ("7 Günlük Fiyat"), and one picked at different
+    // prices the exported period's price (the file holds one price per row), counted in Conflicts.
     public async Task<ServiceResult<CommissionTariffExportFile>> ExportAsync(Guid tenantId, Guid connectionId, Guid tariffId, CommissionTariffExportRequest request, CancellationToken cancellationToken)
     {
         var tariff = await db.CommissionTariffs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == tariffId, cancellationToken);
         if (tariff is null) return ServiceResult<CommissionTariffExportFile>.Fail("RESOURCE_NOT_FOUND", "Komisyon tarifesi bulunamadı.", 404);
         if (request.Bulk is null && request.Choices is null) request = Request(await SelectionViewAsync(tenantId, tariffId, cancellationToken));
-        if (Invalid(request, out var bulk) is { } invalid) return ServiceResult<CommissionTariffExportFile>.Fail(invalid.Code, invalid.Message, invalid.Status);
-        var picks = (request.Choices ?? []).GroupBy(x => x.RowId).ToDictionary(x => x.Key, x => x.Last());
-        var rows = await db.CommissionTariffRows.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == tariffId)
-            .OrderBy(x => x.ProductName).ThenBy(x => x.Barcode).ToListAsync(cancellationToken);
-        var facts = await ProfitFactsAsync(tenantId, connectionId, rows, cancellationToken);
+        if (Invalid(request, out _) is { } invalid) return ServiceResult<CommissionTariffExportFile>.Fail(invalid.Code, invalid.Message, invalid.Status);
+        var periods = await PeriodsAsync(tariff, cancellationToken);
+        var picks = new List<TrendyolTariffWorkbook.Pick>();
+        List<CommissionTariffRow> rows = [];
+        foreach (var period in periods)
+        {
+            var own = period.Id == tariff.Id;
+            var periodRequest = own ? request : Request(await SelectionViewAsync(tenantId, period.Id, cancellationToken));
+            // Saved picks of another period always read; ones that no longer do are left out rather than failing the file.
+            if (!own && Invalid(periodRequest, out _) is not null) continue;
+            var periodRows = await db.CommissionTariffRows.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == period.Id)
+                .OrderBy(x => x.ProductName).ThenBy(x => x.Barcode).ToListAsync(cancellationToken);
+            if (own) rows = periodRows;
+            var days = TrendyolTariffWorkbook.PeriodDays(period.PeriodStart, period.PeriodEnd);
+            foreach (var (row, price) in await ChosenAsync(tenantId, connectionId, periodRows, periodRequest, cancellationToken))
+                picks.Add(new(row.Barcode, period.PeriodText, days, price, own));
+        }
+        var tariffDays = TrendyolTariffWorkbook.PeriodDays(tariff.PeriodStart, tariff.PeriodEnd);
+        var name = $"komisyon-tarifesi-secimler-{periods[0].PeriodStart.ToOffset(CommissionTariffFileParser.TurkeyOffset):yyyyMMdd}.xlsx";
+        var periodIds = periods.Select(x => x.Id).ToArray();
+        // The periods of a file keep the same file; the exported tariff's own copy first.
+        var source = (await db.CommissionTariffSourceFiles.AsNoTracking().Where(x => x.TenantId == tenantId && periodIds.Contains(x.TariffId))
+            .Select(x => new { x.TariffId, x.Content }).ToListAsync(cancellationToken)).OrderBy(x => x.TariffId == tariffId ? 0 : 1).Select(x => x.Content).FirstOrDefault();
+        if (source is not null)
+        {
+            try
+            {
+                if (TrendyolTariffWorkbook.Fill(source, periods.Select(x => x.PeriodText).ToList(), picks) is { } filled)
+                    return ServiceResult<CommissionTariffExportFile>.Ok(new(filled.Content, name, filled.Filled, Conflicts: filled.Conflicts));
+            }
+            catch (Exception exception) when (exception is InvalidDataException or System.Xml.XmlException)
+            {
+                // A kept file that no longer reads is written again from the rows below.
+            }
+        }
+        // Written again from the exported period's rows, each with what its periods' picks resolve to.
+        var byBarcode = picks.GroupBy(x => x.Barcode, StringComparer.OrdinalIgnoreCase).ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
         var chosen = new Dictionary<Guid, (decimal Price, decimal Rate)>();
+        var choiceDays = new Dictionary<Guid, int>();
+        var conflicts = 0;
+        foreach (var row in rows)
+        {
+            if (!byBarcode.TryGetValue(row.Barcode, out var rowPicks) || TrendyolTariffWorkbook.Resolve(rowPicks) is not { } resolved) continue;
+            chosen[row.Id] = (resolved.Price, CommissionTariffBands.BandFor(row, resolved.Price)?.Rate ?? 0m);
+            if (resolved.Days != tariffDays) choiceDays[row.Id] = resolved.Days;
+            if (resolved.Conflict) conflicts++;
+        }
+        var written = TrendyolTariffWorkbook.Write(tariffDays, rows, tariff.PeriodText, chosen, choiceDays);
+        return ServiceResult<CommissionTariffExportFile>.Ok(new(written.Content, name, written.Filled, FromSourceFile: false, Conflicts: conflicts));
+    }
+
+    // The price each row of a period gets from the period's picks: its own pick (a band or a price of the seller's own),
+    // else the pick for every row; rows with neither are left out.
+    private async Task<List<(CommissionTariffRow Row, decimal Price)>> ChosenAsync(Guid tenantId, Guid connectionId, List<CommissionTariffRow> rows, CommissionTariffExportRequest request, CancellationToken cancellationToken)
+    {
+        Invalid(request, out var bulk);
+        var picks = (request.Choices ?? []).GroupBy(x => x.RowId).ToDictionary(x => x.Key, x => x.Last());
+        var facts = await ProfitFactsAsync(tenantId, connectionId, rows, cancellationToken);
+        var chosen = new List<(CommissionTariffRow, decimal)>();
         foreach (var row in rows)
         {
             var fact = facts(row);
@@ -294,27 +369,9 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             if (picks.TryGetValue(row.Id, out var pick))
                 choice = pick.Price is { } own ? CommissionTariffChoices.PricedAt(row, own, fact) : pick.Tier is { } tier ? CommissionTariffChoices.Of(row, fact).FirstOrDefault(x => x.Tier == tier) : null;
             else choice = string.IsNullOrEmpty(bulk) ? null : CommissionTariffChoices.Pick(CommissionTariffChoices.Of(row, fact), bulk, request.Tier, request.MinRate, request.MinAmount, request.MaxRate, request.MaxAmount);
-            if (choice is not null) chosen[row.Id] = (choice.Price, choice.Rate);
+            if (choice is not null) chosen.Add((row, choice.Price));
         }
-        var days = TrendyolTariffWorkbook.PeriodDays(tariff.PeriodStart, tariff.PeriodEnd);
-        var name = $"komisyon-tarifesi-secimler-{tariff.PeriodStart.ToOffset(CommissionTariffFileParser.TurkeyOffset):yyyyMMdd}.xlsx";
-        var source = await db.CommissionTariffSourceFiles.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == tariffId).Select(x => x.Content).SingleOrDefaultAsync(cancellationToken);
-        if (source is not null)
-        {
-            var prices = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-            foreach (var row in rows) if (chosen.TryGetValue(row.Id, out var pick)) prices.TryAdd(row.Barcode, pick.Price);
-            try
-            {
-                if (TrendyolTariffWorkbook.Fill(source, tariff.PeriodText, days, prices) is { } filled)
-                    return ServiceResult<CommissionTariffExportFile>.Ok(new(filled.Content, name, filled.Filled));
-            }
-            catch (Exception exception) when (exception is InvalidDataException or System.Xml.XmlException)
-            {
-                // A kept file that no longer reads is written again from the rows below.
-            }
-        }
-        var written = TrendyolTariffWorkbook.Write(days, rows, tariff.PeriodText, chosen);
-        return ServiceResult<CommissionTariffExportFile>.Ok(new(written.Content, name, written.Filled, FromSourceFile: false));
+        return chosen;
     }
 
     public async Task<ServiceResult<CommissionTariffSelectionView>> SelectionAsync(Guid tenantId, Guid connectionId, Guid tariffId, CancellationToken cancellationToken)
@@ -475,16 +532,18 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
 
     public async Task<ServiceResult<bool>> DeleteAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, string correlationId, CancellationToken cancellationToken)
     {
-        var tariff = await db.CommissionTariffs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == tariffId, cancellationToken);
+        var tariff = await db.CommissionTariffs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == tariffId, cancellationToken);
         if (tariff is null) return ServiceResult<bool>.Fail("RESOURCE_NOT_FOUND", "Komisyon tarifesi bulunamadı.", 404);
-        // The rows go with the tariff (the database cascades the delete).
-        db.CommissionTariffs.Remove(tariff);
-        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "COMMISSION_TARIFF_DELETED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = $"{tariff.FileName}: {tariff.PeriodText}", CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
+        // Every period of the file goes, the page listing them as one tariff; the rows, picks and kept file go with each
+        // period (the database cascades the delete).
+        var periods = await db.CommissionTariffs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == tariff.FileHash).OrderBy(x => x.PeriodStart).ToListAsync(cancellationToken);
+        db.CommissionTariffs.RemoveRange(periods);
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "COMMISSION_TARIFF_DELETED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = $"{tariff.FileName}: {string.Join(", ", periods.Select(x => x.PeriodText))}", CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }
 
-    private async Task<CommissionTariffView> ViewAsync(CommissionTariff tariff, DateTimeOffset now, CancellationToken cancellationToken)
+    private async Task<CommissionTariffView> ViewAsync(CommissionTariff tariff, DateTimeOffset now, Guid groupId, CancellationToken cancellationToken)
     {
         // A row counts as matched when a panel variant carries its barcode or seller SKU, or this connection's link
         // carries the barcode.
@@ -494,7 +553,7 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
                     || db.MarketplaceVariantLinks.Any(link => link.TenantId == tariff.TenantId && link.ConnectionId == tariff.ConnectionId && link.ExternalBarcode == row.Barcode)))
             .CountAsync(cancellationToken);
         return new(tariff.Id, tariff.PlatformCode, tariff.PeriodStart, tariff.PeriodEnd, tariff.PeriodText, tariff.FileName, tariff.UploadedAt, tariff.RowCount, matched,
-            now >= tariff.PeriodStart && now < tariff.PeriodEnd);
+            now >= tariff.PeriodStart && now < tariff.PeriodEnd, tariff.PeriodLabel, groupId);
     }
 
     private async Task<HashSet<string>> PanelMatchesAsync(Guid tenantId, Guid connectionId, string[] barcodes, string[] skus, CancellationToken cancellationToken)

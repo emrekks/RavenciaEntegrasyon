@@ -3,6 +3,8 @@ namespace MarketplaceHub.Domain;
 // A marketplace's commission tariff for one period, as the seller uploaded it (Trendyol's weekly "komisyon tarifesi"
 // export). Each row gives a product's price bands and the commission rate of each band for the period; a sale's
 // commission is the rate of the band its commission-basis price falls in. PeriodEnd is exclusive.
+// A file with more than one period (Trendyol's "3 Gün" and "4 Gün" of one week) is stored as one tariff per period, each
+// with its own rows, rates and picks; the tariffs of one file (the same FileHash on the connection) are its periods.
 public sealed class CommissionTariff
 {
     public Guid Id { get; set; }
@@ -12,6 +14,9 @@ public sealed class CommissionTariff
     public DateTimeOffset PeriodStart { get; set; }
     public DateTimeOffset PeriodEnd { get; set; }
     public required string PeriodText { get; set; }
+    // The file's own name for the period ("3 Gün"), from its date column's header; null when it names none (a tariff
+    // uploaded before it was read, or a one-period file).
+    public string? PeriodLabel { get; set; }
     public required string FileName { get; set; }
     public required string FileHash { get; set; }
     public DateTimeOffset UploadedAt { get; set; }

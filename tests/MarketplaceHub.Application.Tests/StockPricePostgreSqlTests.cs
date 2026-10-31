@@ -660,9 +660,10 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
-    // The seller's picks are saved per tariff and replaced as a whole, the Excel is the uploaded Trendyol workbook with the
-    // saved picks' prices in YENİ TSF and the period in Tarife Seçimi (written again from the rows when the file is not
-    // kept, kept again when the same file is uploaded), and the picks go with the tariff.
+    // Trendyol's two-period file is a tariff for each period (its own rates, the sale's commission from the period it
+    // falls in), the seller's picks are saved per period and replaced as a whole, the Excel is the uploaded Trendyol
+    // workbook with both periods' saved picks' prices in YENİ TSF and their period in Tarife Seçimi (written again from the
+    // rows when the file is not kept, kept again when the same file is uploaded), and the picks go with the tariff.
     [PostgreSqlFact]
     public async Task CommissionTariff_PicksAreSavedAndTheExcelIsTrendyolsFileWithThem()
     {
@@ -677,15 +678,41 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var file = TrendyolTariffWorkbookTests.Workbook(("Bluz M", "RYP00101", TrendyolTariffWorkbookTests.Period3, null), ("Bluz XL", "RYP00103", TrendyolTariffWorkbookTests.Period3, "999"),
             ("Etek", "ETK001", TrendyolTariffWorkbookTests.Period3, null));
         var clock = new FixedClock(TrendyolTariffWorkbookTests.Now);
-        Guid tariffId;
-        Dictionary<string, Guid> rowIds;
+        Guid tariffId, tariff4Id;
+        Dictionary<string, Guid> rowIds, rowIds4;
         await using (var db = fixture.CreateContext())
         {
             var uploaded = await new CommissionTariffService(db, clock).UploadAsync(tenant.Id, null, trendyol.Id, "930112.xlsx", new MemoryStream(file), "test", CancellationToken.None);
             Assert.True(uploaded.Succeeded, uploaded.Error?.Message);
-            tariffId = Assert.Single(uploaded.Value!.Tariffs).Id;
+            Assert.Equal(6, uploaded.Value!.ImportedRows);
+            Assert.Equal(2, uploaded.Value.Tariffs.Count);
+            tariffId = uploaded.Value.Tariffs[0].Id;
+            tariff4Id = uploaded.Value.Tariffs[1].Id;
+            // The 3-day period is the current one on 30 Oct; both are one file's periods.
+            Assert.Equal(("3 Gün", true, (Guid?)tariffId), (uploaded.Value.Tariffs[0].PeriodLabel, uploaded.Value.Tariffs[0].IsCurrent, uploaded.Value.Tariffs[0].GroupId));
+            Assert.Equal(("4 Gün", false, (Guid?)tariffId), (uploaded.Value.Tariffs[1].PeriodLabel, uploaded.Value.Tariffs[1].IsCurrent, uploaded.Value.Tariffs[1].GroupId));
+            var listed = (await new CommissionTariffService(db, clock).ListAsync(tenant.Id, trendyol.Id, CancellationToken.None)).Value!;
+            Assert.Equal(2, listed.Count);
+            Assert.All(listed, x => Assert.Equal(tariffId, x.GroupId));
             rowIds = await db.CommissionTariffRows.Where(x => x.TariffId == tariffId).ToDictionaryAsync(x => x.Barcode, x => x.Id);
+            rowIds4 = await db.CommissionTariffRows.Where(x => x.TariffId == tariff4Id).ToDictionaryAsync(x => x.Barcode, x => x.Id);
             Assert.True(await db.CommissionTariffSourceFiles.AnyAsync(x => x.TariffId == tariffId));
+
+            // Each period's rows show its own rates.
+            var service = new CommissionTariffService(db, clock);
+            var row4 = (await service.RowsAsync(tenant.Id, trendyol.Id, tariff4Id, "RYP00101", 0, 50, new CommissionTariffRowFilter(null, null), CancellationToken.None)).Value!.Items.Single();
+            Assert.Equal([21.5m, 15.8m, 14.4m, 12.8m], row4.Bands.Select(x => x.Rate));
+            var row3 = (await service.RowsAsync(tenant.Id, trendyol.Id, tariffId, "RYP00101", 0, 50, new CommissionTariffRowFilter(null, null), CancellationToken.None)).Value!.Items.Single();
+            Assert.Equal([21.5m, 20.6m, 19.6m, 18.3m], row3.Bands.Select(x => x.Rate));
+
+            // A sale with no commission of its own takes the rate of the period it was made in.
+            var lookup = new CommissionTariffLookup(db);
+            var istanbul = TimeSpan.FromHours(3);
+            Assert.Equal(20.6m, (await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 1, 7, 59, 0, istanbul), 450m, CancellationToken.None))?.Rate);
+            var later = await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 1, 8, 0, 0, istanbul), 450m, CancellationToken.None);
+            Assert.Equal((15.8m, tariff4Id), (later?.Rate, later?.TariffId));
+            Assert.Equal(12.8m, (await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 5, 7, 59, 0, istanbul), 399m, CancellationToken.None))?.Rate);
+            Assert.Null(await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 5, 8, 0, 0, istanbul), 399m, CancellationToken.None));
         }
 
         await using (var db = fixture.CreateContext())
@@ -731,15 +758,40 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
 
             // A tariff stored before files were kept: the workbook is written again from its rows, and the same file
             // uploaded again is kept.
-            await db.CommissionTariffSourceFiles.Where(x => x.TariffId == tariffId).ExecuteDeleteAsync();
+            await db.CommissionTariffSourceFiles.Where(x => x.TariffId == tariffId || x.TariffId == tariff4Id).ExecuteDeleteAsync();
             var rebuilt = (await service.ExportAsync(tenant.Id, trendyol.Id, tariffId, new(null, null, null), CancellationToken.None)).Value!;
             Assert.False(rebuilt.FromSourceFile);
             Assert.Equal(2, rebuilt.Rows);
             Assert.Contains("KomisyonTarifeleriÜrünleri", TrendyolTariffWorkbookTests.Part(rebuilt.Content, "xl/workbook.xml"), StringComparison.Ordinal);
             Assert.True((await service.UploadAsync(tenant.Id, null, trendyol.Id, "930112.xlsx", new MemoryStream(file), "test", CancellationToken.None)).Value!.AlreadyUploaded);
             Assert.True(await db.CommissionTariffSourceFiles.AnyAsync(x => x.TariffId == tariffId));
+            Assert.True(await db.CommissionTariffSourceFiles.AnyAsync(x => x.TariffId == tariff4Id));
+
+            // The 4-day period's own picks, saved apart: RYP00101 at the same 401 (both periods: "7 Günlük Fiyat"), RYP00103
+            // in its 3. band (4 days only) and ETK001 in its 2. band at 464,62 where the 3-day pick is 400,10 (a conflict).
+            Assert.True((await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariff4Id, new(null, null,
+                [new(rowIds4["RYP00101"], null, 401m), new(rowIds4["RYP00103"], 3, null), new(rowIds4["ETK001"], 2, null)]), CancellationToken.None)).Succeeded);
+            Assert.Equal(2, (await service.SelectionAsync(tenant.Id, trendyol.Id, tariffId, CancellationToken.None)).Value!.Choices.Count);
+            Assert.Equal(3, (await service.SelectionAsync(tenant.Id, trendyol.Id, tariff4Id, CancellationToken.None)).Value!.Choices.Count);
+            static (string, string) PickedIn(CommissionTariffExportFile file, string barcode)
+            {
+                var read = Infrastructure.Imports.ImportFileReader.ReadXlsxTable(new MemoryStream(file.Content), 10_000_000);
+                var cells = read.Rows.Single(x => x.Cells[1] == barcode).Cells;
+                return (cells.ElementAtOrDefault(read.Headers.ToList().IndexOf("YENİ TSF (FİYAT GÜNCELLE)")) ?? "", cells.ElementAtOrDefault(read.Headers.ToList().IndexOf("Tarife Seçimi")) ?? "");
+            }
+            var from3 = (await service.ExportAsync(tenant.Id, trendyol.Id, tariffId, new(null, null, null), CancellationToken.None)).Value!;
+            Assert.Equal((3, 1, true), (from3.Rows, from3.Conflicts, from3.FromSourceFile));
+            Assert.Equal(("401.00", "7 Günlük Fiyat"), PickedIn(from3, "RYP00101"));
+            Assert.Equal(("432.26", "4 Günlük Fiyat"), PickedIn(from3, "RYP00103"));
+            Assert.Equal(("400.10", "3 Günlük Fiyat"), PickedIn(from3, "ETK001"));
+            var from4 = (await service.ExportAsync(tenant.Id, trendyol.Id, tariff4Id, new(null, null, null), CancellationToken.None)).Value!;
+            Assert.Equal((3, 1), (from4.Rows, from4.Conflicts));
+            Assert.Equal(("464.62", "4 Günlük Fiyat"), PickedIn(from4, "ETK001"));
+            Assert.Equal(("401.00", "7 Günlük Fiyat"), PickedIn(from4, "RYP00101"));
+            Assert.Equal(from3.FileName, from4.FileName);
 
             // Taking every pick back leaves nothing to write.
+            await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariff4Id, new(null, null, []), CancellationToken.None);
             await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariffId, new(null, null, []), CancellationToken.None);
             Assert.Equal(0, (await service.ExportAsync(tenant.Id, trendyol.Id, tariffId, new(null, null, null), CancellationToken.None)).Value!.Rows);
             await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariffId, new("amount", null, [new(rowIds["ETK001"], 1, null)]), CancellationToken.None);
@@ -748,6 +800,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         await using (var db = fixture.CreateContext())
         {
             Assert.True((await new CommissionTariffService(db, clock).DeleteAsync(tenant.Id, null, trendyol.Id, tariffId, "test", CancellationToken.None)).Succeeded);
+            // The file's other period goes with it.
+            Assert.False(await db.CommissionTariffs.AnyAsync(x => x.Id == tariff4Id));
             Assert.False(await db.CommissionTariffPicks.AnyAsync(x => x.TariffId == tariffId));
             Assert.False(await db.CommissionTariffSelections.AnyAsync(x => x.TariffId == tariffId));
             Assert.False(await db.CommissionTariffSourceFiles.AnyAsync(x => x.TariffId == tariffId));

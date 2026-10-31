@@ -29,10 +29,30 @@ public static class TrendyolTariffWorkbook
 
     public static int PeriodDays(DateTimeOffset start, DateTimeOffset end) => Math.Max(1, (int)Math.Round((end - start).TotalDays, MidpointRounding.AwayFromZero));
 
-    // The uploaded workbook with each row of the period whose barcode has a price filled in (the price and the period's
-    // option) and every other row of the period emptied in those two cells; every other cell, style, list and formula is
-    // kept. Excel recalculates the file's formulas on opening. Null when the sheet has no barcode, price or choice column.
-    public static (byte[] Content, int Filled)? Fill(byte[] source, string periodText, int days, IReadOnlyDictionary<string, decimal> prices)
+    // One period's pick for a product: the price, the period ("29 Ekim 08.00-1 Kasım 07.59") and its length in days.
+    // Preferred: the period the Excel is downloaded from, whose price the row takes when the periods' prices differ.
+    public sealed record Pick(string Barcode, string PeriodText, int Days, decimal Price, bool Preferred = false);
+
+    // What one row of the file gets from its periods' picks. Trendyol's file carries one price per row and a choice of
+    // the periods it is for: one period picked is that period ("3 Günlük Fiyat"); every picked period at the same price
+    // is their days together ("7 Günlük Fiyat" for 3 + 4); different prices cannot go in one row, so the preferred
+    // period's pick (else the earliest) is written for its own period alone and the row counts as a conflict.
+    public static (decimal Price, int Days, bool Conflict)? Resolve(IReadOnlyList<Pick> picks)
+    {
+        if (picks.Count == 0) return null;
+        var periods = picks.GroupBy(pick => Spaces(pick.PeriodText), StringComparer.OrdinalIgnoreCase).Select(group => group.First()).ToList();
+        var prices = periods.Select(pick => decimal.Round(pick.Price, 2, MidpointRounding.AwayFromZero)).Distinct().ToList();
+        if (prices.Count == 1) return (prices[0], periods.Sum(pick => pick.Days), false);
+        var winner = periods.FirstOrDefault(pick => pick.Preferred) ?? periods[0];
+        return (decimal.Round(winner.Price, 2, MidpointRounding.AwayFromZero), winner.Days, true);
+    }
+
+    // The uploaded workbook with the picks filled in: each row of the picks' periods (a row whose date range columns
+    // hold one of `periodTexts`, or a row with none) gets its picks' price and choice (Resolve), and a row of those
+    // periods without a pick is emptied in those two cells; a row of another period and every other cell, style, list
+    // and formula is kept. Excel recalculates the file's formulas on opening. Null when the sheet has no barcode, price
+    // or choice column.
+    public static (byte[] Content, int Filled, int Conflicts)? Fill(byte[] source, IReadOnlyCollection<string> periodTexts, IReadOnlyList<Pick> picks)
     {
         using var input = new MemoryStream(source, writable: false);
         using var archive = new ZipArchive(input, ZipArchiveMode.Read);
@@ -47,7 +67,8 @@ public static class TrendyolTariffWorkbook
         var rows = sheet.Root.Element(main + "sheetData")?.Elements(main + "row").ToList() ?? [];
         if (rows.Count == 0) return null;
 
-        string? barcodeColumn = null, priceColumn = null, choiceColumn = null, periodColumn = null;
+        string? barcodeColumn = null, priceColumn = null, choiceColumn = null;
+        var periodColumns = new List<string>();
         foreach (var cell in rows[0].Elements(main + "c"))
         {
             var column = ColumnOf(cell);
@@ -55,28 +76,33 @@ public static class TrendyolTariffWorkbook
             if (key == "BARKOD") barcodeColumn ??= column;
             else if (key.StartsWith("YENITSF", StringComparison.Ordinal)) priceColumn ??= column;
             else if (key == "TARIFESECIMI") choiceColumn ??= column;
-            else if (key.StartsWith("TARIHARALIGI", StringComparison.Ordinal)) periodColumn ??= column;
+            else if (key.StartsWith("TARIHARALIGI", StringComparison.Ordinal)) periodColumns.Add(column);
         }
         if (barcodeColumn is null || priceColumn is null || choiceColumn is null) return null;
-        var choice = ChoiceFor(days, ListOptions(sheet, main, choiceColumn));
-        var period = Spaces(periodText);
-        var byBarcode = new Dictionary<string, decimal>(prices, StringComparer.OrdinalIgnoreCase);
+        var options = ListOptions(sheet, main, choiceColumn);
+        var exported = periodTexts.Select(Spaces).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var byBarcode = picks.GroupBy(pick => pick.Barcode.Trim(), StringComparer.OrdinalIgnoreCase).ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 
         var filled = 0;
+        var conflicts = 0;
         foreach (var row in rows.Skip(1))
         {
             var number = row.Attribute("r")?.Value;
             if (number is null) continue;
             var barcode = Cell(row, main, barcodeColumn) is { } barcodeCell ? Text(barcodeCell, main, shared).Trim() : string.Empty;
             if (barcode.Length == 0) continue;
-            // A row of another period of the same file belongs to that period's tariff and is left as it is.
-            if (periodColumn is not null && Cell(row, main, periodColumn) is { } periodCell && Spaces(Text(periodCell, main, shared)) is { Length: > 0 } rowPeriod
-                && !string.Equals(rowPeriod, period, StringComparison.OrdinalIgnoreCase)) continue;
-            if (byBarcode.TryGetValue(barcode, out var price))
+            // The periods the row is a row of; a row of none of the exported periods belongs to another tariff and is
+            // left as it is.
+            var rowPeriods = periodColumns.Select(column => Cell(row, main, column) is { } periodCell ? Spaces(Text(periodCell, main, shared)) : string.Empty)
+                .Where(text => text.Length > 0).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (rowPeriods.Count > 0 && !rowPeriods.Overlaps(exported)) continue;
+            var own = byBarcode.TryGetValue(barcode, out var found) ? found.Where(pick => rowPeriods.Count == 0 || rowPeriods.Contains(Spaces(pick.PeriodText))).ToList() : [];
+            if (Resolve(own) is { } resolved)
             {
-                SetNumber(CellFor(row, main, priceColumn, number), main, price);
-                SetText(CellFor(row, main, choiceColumn, number), main, choice);
+                SetNumber(CellFor(row, main, priceColumn, number), main, resolved.Price);
+                SetText(CellFor(row, main, choiceColumn, number), main, ChoiceFor(resolved.Days, options));
                 filled++;
+                if (resolved.Conflict) conflicts++;
             }
             else
             {
@@ -102,13 +128,15 @@ public static class TrendyolTariffWorkbook
                 else { using var from = entry.Open(); from.CopyTo(destination); }
             }
         }
-        return (output.ToArray(), filled);
+        return (output.ToArray(), filled, conflicts);
     }
 
     // The workbook written again from a tariff's stored rows when its uploaded file is not kept: Trendyol's columns in
     // its order for a one-period tariff, the picks in the price and choice columns. The file's display-only columns the
-    // panel never stored (the customer's price, Plus price, promotions, external ids) are left empty.
-    public static (byte[] Content, int Filled) Write(int days, IReadOnlyList<CommissionTariffRow> rows, string periodText, IReadOnlyDictionary<Guid, (decimal Price, decimal Rate)> picks)
+    // panel never stored (the customer's price, Plus price, promotions, external ids) are left empty. ChoiceDays: a row's
+    // choice when it is not the tariff's own period (picked at the same price in every period of the file: "7 Günlük").
+    public static (byte[] Content, int Filled) Write(int days, IReadOnlyList<CommissionTariffRow> rows, string periodText, IReadOnlyDictionary<Guid, (decimal Price, decimal Rate)> picks,
+        IReadOnlyDictionary<Guid, int>? choiceDays = null)
     {
         var choice = ChoiceFor(days, []);
         var span = $"({days.ToString(CultureInfo.InvariantCulture)} Gün)";
@@ -128,7 +156,7 @@ public static class TrendyolTariffWorkbook
             {
                 row.ProductName, row.Barcode, row.SellerSku, row.Size, row.ModelCode, row.Category, row.Brand, row.Stock, row.Tier1Min, row.Tier2Max, row.Tier2Min, row.Tier3Max, row.Tier3Min, row.Tier4Max,
                 periodText, row.Rate1, row.Rate2, row.Rate3, row.Rate4, row.BasisPrice, row.CurrentRate, row.CurrentSalePrice, null, null, null,
-                picked ? decimal.Round(pick.Price, 2, MidpointRounding.AwayFromZero) : null, picked ? pick.Rate : null, picked ? choice : null, null, null, null, row.TariffGroup
+                picked ? decimal.Round(pick.Price, 2, MidpointRounding.AwayFromZero) : null, picked ? pick.Rate : null, picked ? (choiceDays?.TryGetValue(row.Id, out var rowDays) == true ? ChoiceFor(rowDays, []) : choice) : null, null, null, null, row.TariffGroup
             });
         }
         double[] widths = [48, 18, 18, 10, 16, 16, 14, 10, 14, 14, 14, 14, 14, 14, 30, 12, 12, 12, 12, 16, 14, 12, 16, 16, 24, 20, 20, 18, 14, 14, 14, 34];

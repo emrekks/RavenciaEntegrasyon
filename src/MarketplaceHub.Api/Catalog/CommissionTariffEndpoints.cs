@@ -79,6 +79,8 @@ internal static class CommissionTariffEndpoints
         // How many rows carry a pick, and whether the file is the uploaded one or written again from the stored rows.
         http.Response.Headers["X-Picked-Rows"] = result.Value!.Rows.ToString(System.Globalization.CultureInfo.InvariantCulture);
         http.Response.Headers["X-Tariff-File"] = result.Value.FromSourceFile ? "original" : "rebuilt";
+        // The rows picked at different prices in two periods of the file, where the exported period's price was written.
+        http.Response.Headers["X-Price-Conflicts"] = result.Value.Conflicts.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return Results.File(result.Value.Content, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", result.Value.FileName);
     }
 

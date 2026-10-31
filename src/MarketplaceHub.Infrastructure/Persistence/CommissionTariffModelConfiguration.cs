@@ -10,7 +10,7 @@ internal static class CommissionTariffModelConfiguration
         builder.Entity<CommissionTariff>(entity =>
         {
             entity.ToTable("commission_tariffs", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id });
-            entity.Property(x => x.PlatformCode).HasMaxLength(64); entity.Property(x => x.PeriodText).HasMaxLength(120);
+            entity.Property(x => x.PlatformCode).HasMaxLength(64); entity.Property(x => x.PeriodText).HasMaxLength(120); entity.Property(x => x.PeriodLabel).HasMaxLength(40);
             entity.Property(x => x.FileName).HasMaxLength(260); entity.Property(x => x.FileHash).HasMaxLength(64);
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.PeriodStart, x.PeriodEnd });
             // The same file uploaded again for the same period is the same tariff.
