@@ -61,7 +61,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onToggle, fields, o
   return createPortal(
     <div className="workspace-modal-backdrop product-publish-popup-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
       <DialogSurface as="section" onClose={close} className="workspace-modal product-publish-popup-modal platform-update-modal" aria-labelledby="platform-update-title" onMouseDown={event => event.stopPropagation()}>
-        <header><div><p className="eyebrow">Ürün Güncelleme</p><h2 id="platform-update-title">Platformlarda Güncelle</h2><p>Değişiklikler önce panelde kaydedilir, sonra seçtiğiniz her mağazaya ayrı bir güncelleme işi gönderilir.</p></div><button type="button" className="modal-close" onClick={close} disabled={submitting} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
+        <header><div><p className="eyebrow">Ürün Güncelleme</p><h2 id="platform-update-title">Platformlarda Güncelle</h2></div><button type="button" className="modal-close" onClick={close} disabled={submitting} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
         <div className="product-publish-popup-body"><div className="product-add-page product-publish-popup"><section className="product-publish-step" aria-label="Ürünü platformlarda güncelle"><div className="product-publish-layout"><div className="product-publish-main">
           {groups.length > 0 && <div className="platform-update-field-groups" role="group" aria-label="Gönderilecek bilgiler">
             {groups.map(group => <PlatformUpdateFieldGroup key={group.key} group={group} picked={fields} open={openGroups.includes(group.key)} locked={submitting} onToggleOpen={() => toggleOpen(group.key)} onGroupChange={on => setGroup(group.fields.map(field => field.key), on)} onFieldChange={setField} />)}
@@ -93,7 +93,7 @@ function PlatformUpdateFieldGroup({ group, picked, open, locked, onToggleOpen, o
   onGroupChange: (on: boolean) => void
   onFieldChange: (field: PlatformUpdateField, on: boolean) => void
 }) {
-  const { key, label, description, fields, linked = [], hint } = group
+  const { key, label, fields, linked = [] } = group
   const count = fields.filter(field => picked.includes(field.key)).length
   const all = count === fields.length
   const groupInput = useRef<HTMLInputElement>(null)
@@ -108,14 +108,11 @@ function PlatformUpdateFieldGroup({ group, picked, open, locked, onToggleOpen, o
       <button type="button" className="platform-update-group-toggle" onClick={onToggleOpen} aria-expanded={open} aria-controls={bodyId} aria-label={`${label} alanlarını ${open ? 'gizle' : 'göster'}`}><UiIcon name="chevronDown" /></button>
     </header>
     {open && <div className="platform-update-group-body" id={bodyId}>
-      <p>{description}</p>
       <div className="platform-update-field-list">
         {fields.map(field => <label key={field.key} className="platform-update-field"><input type="checkbox" checked={picked.includes(field.key)} disabled={locked} onChange={event => onFieldChange(field.key, event.target.checked)} /><span>{field.label}</span></label>)}
         {/* Not a pick of its own: it goes whenever the field it rides with goes, so its box follows that field. */}
-        {linked.map(item => <label key={item.label} className="platform-update-field is-linked" title={item.note}><input type="checkbox" checked={picked.includes(item.with)} disabled aria-describedby={`${bodyId}-linked`} /><span>{item.label}<small>{platformUpdateFieldLabel(item.with)} ile</small></span></label>)}
+        {linked.map(item => <label key={item.label} className="platform-update-field is-linked"><input type="checkbox" checked={picked.includes(item.with)} disabled /><span>{item.label}<small>{platformUpdateFieldLabel(item.with)} ile</small></span></label>)}
       </div>
-      {linked.length > 0 && <small className="platform-update-group-hint" id={`${bodyId}-linked`}>{linked.map(item => item.note).join(' ')}</small>}
-      {hint && <small className="platform-update-group-hint">{hint}</small>}
     </div>}
   </section>
 }
@@ -136,8 +133,10 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
   const subtitle = !capabilities.writable ? 'Salt okunur, güncellenemez' : !writable ? 'Bağlantı aktif değil' : on ? 'Güncelleme için seçildi' : 'Güncelleme için seçilmedi'
   const plan = platformUpdatePlan(connection.platformCode, fields)
   const sends = !writable ? '—' : platformUpdateSummary(plan)
-  // What goes, as small chips: the dialog's fields first, then (dashed) what the requests also carry.
-  const chips = writable && plan.sends.length ? [...plan.sends.map(label => ({ label, extra: false })), ...plan.extras.map(label => ({ label, extra: true }))] : []
+  // What goes, as small chips: the dialog's fields first, then (dashed) what the requests also carry, last (struck
+  // through) the picked fields this marketplace does not take.
+  type Chip = { label: string; kind?: 'extra' | 'skipped' }
+  const chips: Chip[] = writable && plan.sends.length ? [...plan.sends.map(label => ({ label })), ...plan.extras.map(label => ({ label, kind: 'extra' as const })), ...plan.skipped.map(field => ({ label: platformUpdateFieldLabel(field), kind: 'skipped' as const }))] : []
   return <article className={`publish-platform-card${on ? ' selected' : ''}${writable ? '' : ' is-readonly'}`}>
     <button type="button" className="publish-platform-card-head" onClick={onToggle} aria-pressed={on} disabled={locked || !writable}>
       <span className={`publish-platform-mark ${connection.platformCode.trim().toLocaleLowerCase('tr-TR')}`}>{logo ? <img className={`publish-platform-logo ${platformLogoClass(connection.platformCode)}`} src={logo} alt="" aria-hidden="true" /> : <b aria-hidden="true">{storeName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R'}</b>}</span>
@@ -147,7 +146,7 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
     <dl className="publish-platform-facts">
       <div><dt>Mağaza</dt><dd title={connection.externalStoreId ? `Mağaza no: ${connection.externalStoreId}` : undefined}>{connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{platformName}</dd></div>
-      <div className="platform-update-sends"><dt>Gönderilecek</dt><dd title={sends}>{chips.length ? <ul className="platform-update-chips">{chips.map(chip => <li key={`${chip.extra}-${chip.label}`} className={chip.extra ? 'is-extra' : undefined} title={chip.extra ? 'Seçim değil, aynı istekte birlikte gider' : undefined}>{chip.label}</li>)}</ul> : writable ? sends : '—'}</dd>
+      <div className="platform-update-sends"><dt>Gönderilecek</dt><dd title={sends}>{chips.length ? <ul className="platform-update-chips">{chips.map(chip => <li key={`${chip.kind}-${chip.label}`} className={chip.kind ? `is-${chip.kind}` : undefined} title={chip.kind === 'extra' ? 'Seçim değil, aynı istekte birlikte gider' : undefined}>{chip.kind === 'skipped' ? <s>{chip.label}</s> : chip.label}</li>)}</ul> : writable ? sends : '—'}</dd>
         {writable && plan.bundled.length > 0 && <small>Seçilmedi ama aynı istekte birlikte gider: {plan.bundled.map(platformUpdateFieldLabel).join(', ')}.</small>}
       </div>
     </dl>

@@ -104,6 +104,12 @@ describe('PlatformUpdateDialog', () => {
     expect(chipsOf('HEPSIBURADA Mağaza')).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Garanti Süresi', 'Desi', 'KDV Oranı', 'Satış Fiyatı', 'Renk / Beden', 'Menşei', 'Barkod'])
     expect(chipsOf('SHOPIFY Mağaza')).toEqual([])
     expect(sendsOf('SHOPIFY Mağaza')).toContain('—')
+    act(() => root?.unmount()); root = undefined
+    // A picked field the store does not take stays on its card, struck through, after what goes.
+    render(['ty', 'pz'], ['TITLE', 'PRICE'])
+    expect(chipsOf('PAZARAMA Mağaza')).toEqual(['Liste Fiyatı', 'Satış Fiyatı', 'Stok', 'Ürün Adı'])
+    expect([...card('PAZARAMA Mağaza')!.querySelectorAll('.platform-update-chips li.is-skipped s')].map(node => node.textContent)).toEqual(['Ürün Adı'])
+    expect(card('TRENDYOL Mağaza')!.querySelector('.is-skipped')).toBeNull()
   })
 
   it('keeps the bar out of the scrolling body, as the window footer', () => {

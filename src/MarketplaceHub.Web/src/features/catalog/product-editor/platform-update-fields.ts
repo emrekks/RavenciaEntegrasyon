@@ -6,14 +6,13 @@ export type PlatformUpdateField = 'TITLE' | 'DESCRIPTION' | 'IMAGES' | 'ATTRIBUT
 export type PlatformUpdateGroupKey = 'product' | 'shipping' | 'sales'
 
 // linked: what a group shows that cannot be picked on its own; it goes whenever `with` goes.
-export type PlatformUpdateLinkedField = { label: string; with: PlatformUpdateField; note: string }
-export type PlatformUpdateGroup = { key: PlatformUpdateGroupKey; label: string; description: string; fields: { key: PlatformUpdateField; label: string }[]; linked?: PlatformUpdateLinkedField[]; hint?: string }
+export type PlatformUpdateLinkedField = { label: string; with: PlatformUpdateField }
+export type PlatformUpdateGroup = { key: PlatformUpdateGroupKey; label: string; fields: { key: PlatformUpdateField; label: string }[]; linked?: PlatformUpdateLinkedField[] }
 
 export const platformUpdateGroups: PlatformUpdateGroup[] = [
   {
     key: 'product',
     label: 'Ürün Bilgileri',
-    description: 'Ürün kartının içeriği.',
     fields: [
       { key: 'TITLE', label: 'Ürün Adı' },
       { key: 'DESCRIPTION', label: 'Açıklama' },
@@ -22,14 +21,13 @@ export const platformUpdateGroups: PlatformUpdateGroup[] = [
       { key: 'WARRANTY', label: 'Garanti Süresi' }
     ],
     linked: [
-      { label: 'Renk / Beden', with: 'ATTRIBUTES', note: 'Renk ve beden kategori özellikleriyle aynı listede gider.' },
-      { label: 'Menşei', with: 'ATTRIBUTES', note: 'Menşei bir kategori özelliğidir; Trendyol’da Desi ve KDV Oranı isteği de ilandaki menşeiyi taşır.' }
+      { label: 'Renk / Beden', with: 'ATTRIBUTES' },
+      { label: 'Menşei', with: 'ATTRIBUTES' }
     ]
   },
   {
     key: 'shipping',
     label: 'Kargo ve Teslimat',
-    description: 'Kargo ücretini belirleyen desi ve ürün kartındaki teslimat süresi.',
     fields: [
       { key: 'DESI', label: 'Desi' },
       { key: 'DELIVERY', label: 'Teslimat Süresi' }
@@ -38,13 +36,11 @@ export const platformUpdateGroups: PlatformUpdateGroup[] = [
   {
     key: 'sales',
     label: 'Satış Bilgileri',
-    description: 'Paneldeki güncel fiyat ve stok yalnız pazaryerindekinden farklıysa gider; KDV oranı ürün bilgisiyle gider.',
     fields: [
       { key: 'PRICE', label: 'Fiyat' },
       { key: 'STOCK', label: 'Stok' },
       { key: 'VAT_RATE', label: 'KDV Oranı' }
-    ],
-    hint: 'Trendyol liste ve satış fiyatını birlikte alır; Hepsiburada yalnız satış fiyatını alır. Para birimi gönderilmez, fiyat TL gider.'
+    ]
   }
 ]
 
@@ -181,6 +177,8 @@ export type PlatformUpdatePlan = {
   sends: string[]
   // What the requests also carry that is not a pick of the dialog.
   extras: string[]
+  // Picked fields this marketplace does not take: they stay out of its requests.
+  skipped: PlatformUpdateField[]
   // Sent to the API: the picked product fields this marketplace takes, and the price/stock parts.
   productFields: PlatformUpdateField[]
   price: boolean
@@ -199,6 +197,7 @@ export function platformUpdatePlan(platformCode: string, picked: Iterable<Platfo
     bundled: fields.filter(field => !selection.has(field)),
     sends,
     extras: [...new Set(requests.flatMap(request => request.extra ?? []))].filter(label => !sends.includes(label)),
+    skipped: platformUpdateFieldKeys.filter(field => selection.has(field) && !going.has(field)),
     productFields: profile?.wholeCard ? fields : fields.filter(field => !salesPartKeys.has(field) && selection.has(field)),
     price: !profile?.wholeCard && going.has('PRICE'),
     stock: !profile?.wholeCard && going.has('STOCK')
