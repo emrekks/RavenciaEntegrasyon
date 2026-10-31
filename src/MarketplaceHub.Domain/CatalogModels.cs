@@ -15,6 +15,10 @@ public sealed class Product
     public decimal? DefaultSalePrice { get; set; }
     // Warranty in months, sent to the marketplaces that take one (Hepsiburada GarantiSuresi); null when none is given.
     public int? WarrantyMonths { get; set; }
+    // Teslimat Süresi (gün): the days to hand an order to the carrier, sent as each marketplace's delivery/dispatch time
+    // (Trendyol deliveryOption.deliveryDuration, n11 preparingDay). A new card starts at 1; null only on a card that
+    // predates the column and was not backfilled.
+    public int? DeliveryDays { get; set; } = 1;
     // The panel colour value sent as Trendyol Web Color for every variant; null = each variant's own Renk (automatic).
     // Trendyol only: the other marketplaces never read it.
     public Guid? TrendyolWebColorValueId { get; set; }

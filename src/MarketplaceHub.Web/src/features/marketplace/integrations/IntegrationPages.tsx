@@ -537,7 +537,7 @@ function N11PublishSettingsPanel({ connectionId, displayName, version, shipmentT
   })
   return <section className="panel n11-price-stock-send">
     <h2>N11 Ürün Açma Ayarları</h2>
-    <p>N11’e yeni ürün açarken her ürüne bu kargo şablonu ve hazırlık süresi uygulanır. Şablonlar N11 satıcı panelinizden okunur.</p>
+    <p>N11’e yeni ürün açarken her ürüne bu kargo şablonu uygulanır. Hazırlık süresi ürün kartındaki Teslimat Süresi’nden gelir; bu değer yalnız teslimat süresi girilmemiş eski kartlarda kullanılır. Şablonlar N11 satıcı panelinizden okunur.</p>
     <form onSubmit={event => { event.preventDefault(); if (daysValid) save.mutate() }}>
       <label>Kargo Şablonu{templateChoices.length ? <select value={template} onChange={event => setTemplate(event.target.value)}><option value="">Şablon Seçin</option>{template && !templateChoices.includes(template) && <option value={template}>{template} (N11’de bulunamadı)</option>}{templateChoices.map(name => <option key={name} value={name}>{name}</option>)}</select> : <input value={template} onChange={event => setTemplate(event.target.value)} maxLength={100} placeholder={templates.isLoading ? 'N11’deki şablonlar yükleniyor…' : 'N11 satıcı panelindeki şablon adı'} autoComplete="off" />}{templates.isError && <small className="connection-settings-field-help">N11’deki şablonlar okunamadı; adı elle yazabilirsiniz.</small>}{templates.isSuccess && !templateChoices.length && <small className="connection-settings-field-help">N11 panelinde kargo şablonu bulunamadı; önce N11’de bir şablon oluşturun.</small>}</label>
       <label>Hazırlık Süresi (Gün)<input type="number" min={1} max={30} value={days} onChange={event => setDays(event.target.value)} /></label>

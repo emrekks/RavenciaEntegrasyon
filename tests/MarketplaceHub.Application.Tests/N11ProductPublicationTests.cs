@@ -118,6 +118,15 @@ public sealed class N11ProductPublicationTests
     }
 
     [Fact]
+    public void PreparingDay_IsTheProductCardsDeliveryDays_ElseTheConnections()
+    {
+        Assert.Equal(1, N11ProductPublicationComposer.PreparingDay(1, 3));
+        Assert.Equal(4, N11ProductPublicationComposer.PreparingDay(4, 1));
+        Assert.Equal(3, N11ProductPublicationComposer.PreparingDay(null, 3));
+        Assert.Equal(3, N11ProductPublicationComposer.PreparingDay(0, 3));
+    }
+
+    [Fact]
     public void CreatePayloadAddsTheIntegratorAndLimitsTheSkuCount()
     {
         var single = N11HttpClient.CreatePayload("""{"payload":{"integrator":"x","skus":[{"stockCode":"A"}]}}""", "Ravencia");

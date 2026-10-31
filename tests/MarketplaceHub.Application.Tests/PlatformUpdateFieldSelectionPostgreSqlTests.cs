@@ -102,6 +102,27 @@ public sealed class PlatformUpdateFieldSelectionPostgreSqlTests(PostgreSqlTenant
         Assert.Equal("PRICE_INVENTORY_FIELDS_REQUIRED", (await service.EnqueueProductPriceInventorySyncAsync(tenant.Id, product.Id, connection.Id, $"k-{Guid.NewGuid():N}", "test", CancellationToken.None, price: false, stock: false)).Error?.Code);
     }
 
+    [PostgreSqlFact]
+    public async Task ProductDeliveryDays_ArePersisted_AndANullIsReadAsNull()
+    {
+        var (tenant, _, product, _) = await SeedTrendyolOfferAsync("delivery-days");
+        await using (var db = fixture.CreateContext())
+        {
+            // A new card starts at 1 day.
+            Assert.Equal(1, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == product.Id)).DeliveryDays);
+            var stored = await db.Products.SingleAsync(x => x.Id == product.Id);
+            stored.DeliveryDays = 4;
+            await db.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            Assert.Equal(4, (await db.Products.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == product.Id)).DeliveryDays);
+            await db.Products.Where(x => x.Id == product.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.DeliveryDays, (int?)null));
+        }
+        await using (var db = fixture.CreateContext())
+            Assert.Null((await db.Products.AsNoTracking().SingleAsync(x => x.Id == product.Id)).DeliveryDays);
+    }
+
     // A Trendyol offer read in by an import (a variant link with the barcode), whose price and stock were never sent.
     private async Task<(Tenant Tenant, PlatformConnection Connection, Product Product, ChannelOffer Offer)> SeedTrendyolOfferAsync(string code)
     {

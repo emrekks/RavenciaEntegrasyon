@@ -2,7 +2,7 @@
 // each marketplace takes them in the requests its API has, and a request always carries all of its fields. A card
 // therefore lists what really goes, including a field that was not picked but rides in the same request.
 
-export type PlatformUpdateField = 'TITLE' | 'DESCRIPTION' | 'IMAGES' | 'ATTRIBUTES' | 'DESI' | 'VAT_RATE' | 'ORIGIN' | 'DELIVERY' | 'PRICE' | 'STOCK'
+export type PlatformUpdateField = 'TITLE' | 'DESCRIPTION' | 'IMAGES' | 'ATTRIBUTES' | 'DESI' | 'VAT_RATE' | 'DELIVERY' | 'PRICE' | 'STOCK'
 export type PlatformUpdateGroupKey = 'product' | 'sales'
 
 export type PlatformUpdateGroup = { key: PlatformUpdateGroupKey; label: string; description: string; fields: { key: PlatformUpdateField; label: string }[] }
@@ -19,7 +19,6 @@ export const platformUpdateGroups: PlatformUpdateGroup[] = [
       { key: 'ATTRIBUTES', label: 'Kategori Özellikleri' },
       { key: 'DESI', label: 'Desi' },
       { key: 'VAT_RATE', label: 'KDV Oranı' },
-      { key: 'ORIGIN', label: 'Menşei' },
       { key: 'DELIVERY', label: 'Teslimat Süresi' }
     ]
   },
@@ -40,18 +39,21 @@ const fieldLabel = new Map(platformUpdateGroups.flatMap(group => group.fields.ma
 
 // One request of a marketplace: its fields always go together. extra: what else the request carries that is not a
 // field of the dialog (shown on the card so nothing goes unsaid).
-type PlatformUpdateRequest = { fields: PlatformUpdateField[]; extra?: string }
+type PlatformUpdateRequest = { fields: PlatformUpdateField[]; extra?: string[] }
 type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string }
 
 // From the adapters (TrendyolWriteComposers, HepsiburadaProductUpdateComposer, PriceInventoryComposer):
 // - Trendyol, approved product: content-bulk-update (title, description, images, attributes), variant-bulk-update
-//   (desi, VAT rate, origin), delivery-info-bulk-update; price-and-inventory takes the price and the stock apart.
+//   (desi, VAT rate), delivery-info-bulk-update (the product card's Teslimat Süresi); price-and-inventory takes the price and the stock apart.
+//   Menşei is no field of its own: it is a category attribute and goes with Kategori Özellikleri.
 // - Hepsiburada: one product import update with all product information; the listing upload takes price and stock apart.
+// - n11, Pazarama, PTT AVM and Shopify have no product update in the panel yet: no field of the dialog goes there.
+// The API keeps the same table (ProductUpdateFields.SupportedBy).
 const profiles: Record<string, PlatformUpdateProfile> = {
   TRENDYOL: {
     requests: [
       { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES'] },
-      { fields: ['DESI', 'VAT_RATE', 'ORIGIN'] },
+      { fields: ['DESI', 'VAT_RATE'] },
       { fields: ['DELIVERY'] },
       { fields: ['PRICE'] },
       { fields: ['STOCK'] }
@@ -60,11 +62,11 @@ const profiles: Record<string, PlatformUpdateProfile> = {
   },
   HEPSIBURADA: {
     requests: [
-      { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'VAT_RATE'], extra: 'garanti süresi, barkod ve video' },
+      { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'VAT_RATE'], extra: ['Garanti Süresi', 'Barkod', 'Video'] },
       { fields: ['PRICE'] },
       { fields: ['STOCK'] }
     ],
-    note: 'Hepsiburada ürün bilgilerini tek pakette alır; menşei ve teslimat süresi gönderilmez.'
+    note: 'Hepsiburada ürün bilgilerini tek pakette alır; teslimat süresi gönderilmez.'
   }
 }
 
@@ -77,6 +79,26 @@ export function platformUpdateNote(platformCode: string) { return profileOf(plat
 export function availablePlatformUpdateFields(platformCodes: string[]): PlatformUpdateField[] {
   const available = new Set(platformCodes.flatMap(code => profileOf(code)?.requests.flatMap(request => request.fields) ?? []))
   return platformUpdateFieldKeys.filter(field => available.has(field))
+}
+
+export function platformTakesUpdateField(platformCode: string, field: PlatformUpdateField) {
+  return profileOf(platformCode)?.requests.some(request => request.fields.includes(field)) ?? false
+}
+
+// The platform codes of a field that only some of the stores take (shown beside it: "Yalnız Trendyol"); empty when every
+// store takes it or none does.
+export function partialPlatformUpdateField(field: PlatformUpdateField, platformCodes: string[]): string[] {
+  const takers = platformCodes.filter(code => platformTakesUpdateField(code, field))
+  if (!takers.length || takers.length === platformCodes.length) return []
+  return [...new Set(takers.map(code => code.trim().toUpperCase()))]
+}
+
+// The pick after the stores changed: a field no longer shown is dropped, a field shown only now comes in ticked, the
+// rest stays as the user left it.
+export function platformUpdateFieldsForStores(fields: PlatformUpdateField[], before: PlatformUpdateField[], after: PlatformUpdateField[]): PlatformUpdateField[] {
+  const picked = new Set(fields.filter(field => after.includes(field)))
+  for (const field of after) if (!before.includes(field)) picked.add(field)
+  return platformUpdateFieldKeys.filter(field => picked.has(field))
 }
 
 export type PlatformUpdatePlan = {
@@ -100,7 +122,7 @@ export function platformUpdatePlan(platformCode: string, picked: Iterable<Platfo
   return {
     sends,
     bundled: sends.filter(field => !selection.has(field)),
-    extras: requests.flatMap(request => request.extra ? [request.extra] : []),
+    extras: requests.flatMap(request => request.extra ?? []),
     productFields: sends.filter(field => productFieldKeys.has(field) && selection.has(field)),
     price: going.has('PRICE'),
     stock: going.has('STOCK')

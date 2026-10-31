@@ -113,7 +113,8 @@ public sealed record ProductView(
     int? WarrantyMonths = null,
     Guid? TrendyolWebColorValueId = null,
     decimal? VatRate = null,
-    string? VatInclusion = null)
+    string? VatInclusion = null,
+    int? DeliveryDays = null)
 {
     public IReadOnlyList<string>? FamilyOrderedMediaUrls { get; init; }
     // Every product card of the family (same brand and model code: one per colour), the opened one first.
@@ -150,7 +151,7 @@ public sealed record CreateVariantCommand(string Sku, string? Barcode, string? M
 // the same way with LoadedDesi, since the products import writes desi too.
 public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, string? ModelCode, int SortOrder = 0, IReadOnlyDictionary<string, string>? Options = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null, decimal? CostPrice = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, decimal? LoadedCostPrice = null, decimal? Desi = null, decimal? LoadedDesi = null);
 public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
-public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null);
+public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null);
 public sealed record BulkProductStatusCommand(IReadOnlyList<Guid> ProductIds, string Status);
 public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
 // Toplu KDV Ata: the product cards' own VAT only; existing marketplace offers keep theirs.
@@ -163,7 +164,16 @@ public sealed record BulkProductVatResult(int UpdatedCount, int UnchangedCount);
 public sealed record BulkPublicationCommand(IReadOnlyList<Guid> ProductIds, IReadOnlyList<Guid> ConnectionIds, decimal? VatRate = null);
 public sealed record BulkPublicationFailure(Guid ProductId, string ProductTitle, Guid ConnectionId, string Code, string Message);
 public sealed record BulkPublicationResult(int Queued, int Skipped, IReadOnlyList<BulkPublicationFailure> Failed);
-public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null);
+public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null);
+// Teslimat Süresi on the product card: whole days, 1-30 (n11 takes at most 30); a new card starts at 1.
+public static class ProductDeliveryDays
+{
+    public const int Default = 1;
+    public const int Min = 1;
+    public const int Max = 30;
+    public const string InvalidMessage = "Teslimat süresi 1-30 gün arasında tam sayı olmalıdır.";
+    public static bool IsValid(int days) => days is >= Min and <= Max;
+}
 public sealed record UpsertListingProfileCommand(string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled);
 
 // The codes a marketplace holds for each variant of a product's colour family, as its last import read them:

@@ -148,6 +148,8 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         if (title.Length is < 1 or > 100) return Fail("PRODUCT_TITLE_INVALID", "Trendyol yayın başlığı 1-100 karakter olmalıdır.");
         if (description.Length is < 1 or > 30000) return Fail("PRODUCT_DESCRIPTION_INVALID", "Trendyol açıklaması 1-30000 karakter olmalıdır.");
         if (!string.IsNullOrWhiteSpace(profile.Origin) && (profile.Origin.Trim().Length != 2 || !profile.Origin.Trim().All(char.IsLetter))) return Fail("ORIGIN_INVALID", "Menşei iki harfli ülke kodu olmalıdır.");
+        // Teslimat Süresi: a listing's own override, else the product card's days (Trendyol deliveryOption.deliveryDuration).
+        var deliveryDays = DeliveryDays(profile.DeliveryTimeDays, product.DeliveryDays);
 
         var items = new List<Dictionary<string, object?>>(variants.Count);
         var draftVariants = new List<PublicationVariantDraft>(variants.Count);
@@ -315,7 +317,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 ["listPrice"] = PriceInventoryComposer.OutboundListPrice(offer),
                 ["salePrice"] = PriceInventoryComposer.OutboundSalePrice(offer),
                 ["vatRate"] = (int)offer.VatRate,
-                ["deliveryOption"] = profile.DeliveryTimeDays is > 0 ? new Dictionary<string, object?> { ["deliveryDuration"] = profile.DeliveryTimeDays } : null,
+                ["deliveryOption"] = deliveryDays is > 0 ? new Dictionary<string, object?> { ["deliveryDuration"] = deliveryDays } : null,
                 ["images"] = imageUrls.Select(url => new Dictionary<string, object?> { ["url"] = url }).ToList(),
                 ["attributes"] = payloadAttributes
             };
@@ -459,6 +461,10 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     internal static bool HasDesi(decimal? desi) => desi is > 0;
 
     internal static bool IsTrendyolVatRate(decimal rate) => rate is 0m or 1m or 10m or 20m;
+
+    // The delivery days a marketplace gets: a listing's own override, else the product card's Teslimat Süresi; none of
+    // them (a card that predates the field) sends no delivery time, as before.
+    internal static int? DeliveryDays(int? listingDays, int? productDays) => listingDays is > 0 ? listingDays : productDays is > 0 ? productDays : null;
 
     private static bool IsValidBarcode(string value) => value.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_');
 

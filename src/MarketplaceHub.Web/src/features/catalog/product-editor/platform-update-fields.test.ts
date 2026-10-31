@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availablePlatformUpdateFields, defaultPlatformUpdatePreferences, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, writePlatformUpdatePreferences, defaultPlatformUpdateFields } from './platform-update-fields'
+import { availablePlatformUpdateFields, partialPlatformUpdateField, platformUpdateFieldsForStores, defaultPlatformUpdatePreferences, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, writePlatformUpdatePreferences, defaultPlatformUpdateFields } from './platform-update-fields'
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial))
@@ -17,7 +17,7 @@ describe('platform update fields', () => {
   it('keeps the old switch as the default: on was every field, the quick update price and stock', () => {
     expect(defaultPlatformUpdatePreferences.fields).toEqual(defaultPlatformUpdateFields)
     const all = platformUpdatePlan('TRENDYOL', defaultPlatformUpdateFields)
-    expect(all.productFields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'VAT_RATE', 'ORIGIN', 'DELIVERY'])
+    expect(all.productFields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'VAT_RATE', 'DELIVERY'])
     expect([all.price, all.stock]).toEqual([true, true])
     const quick = platformUpdatePlan('TRENDYOL', priceStockPlatformUpdateFields)
     expect(quick.productFields).toEqual([])
@@ -33,15 +33,43 @@ describe('platform update fields', () => {
     expect(platformUpdateSummary(plan)).toBe('Ürün Adı, Açıklama, Görseller, Kategori Özellikleri, Fiyat')
   })
 
-  it('sends the whole Hepsiburada product package for any product field, and nothing for origin or delivery alone', () => {
+  it('sends the whole Hepsiburada product package for any product field, and nothing for delivery alone', () => {
     const desi = platformUpdatePlan('HEPSIBURADA', ['DESI'])
     expect(desi.sends).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'VAT_RATE'])
-    expect(desi.extras).toEqual(['garanti süresi, barkod ve video'])
+    expect(desi.extras).toEqual(['Garanti Süresi', 'Barkod', 'Video'])
     expect(desi.productFields).toEqual(['DESI'])
-    const delivery = platformUpdatePlan('HEPSIBURADA', ['ORIGIN', 'DELIVERY'])
+    const delivery = platformUpdatePlan('HEPSIBURADA', ['DELIVERY'])
     expect(delivery.sends).toEqual([])
     expect(delivery.productFields).toEqual([])
     expect(platformUpdateSummary(delivery)).toBe('Seçili alanlardan hiçbiri bu platforma gönderilmiyor')
+  })
+
+  it('has no Menşei field: it is a category attribute', () => {
+    expect(availablePlatformUpdateFields(['TRENDYOL', 'HEPSIBURADA'])).not.toContain('ORIGIN')
+    expect(readPlatformUpdatePreferences(memoryStorage({ [platformUpdatePreferencesKey]: '{"fields":["ORIGIN","DESI"],"openGroups":[]}' })).fields).toEqual(['DESI'])
+  })
+
+  it('follows the stores: Trendyol alone shows its fields, Hepsiburada alone has no delivery time, the rest none', () => {
+    expect(availablePlatformUpdateFields(['TRENDYOL'])).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'DESI', 'VAT_RATE', 'DELIVERY', 'PRICE', 'STOCK'])
+    for (const code of ['N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY']) expect(availablePlatformUpdateFields([code])).toEqual([])
+  })
+
+  it('names the stores of a field only some of them take', () => {
+    expect(partialPlatformUpdateField('DELIVERY', ['TRENDYOL', 'HEPSIBURADA'])).toEqual(['TRENDYOL'])
+    expect(partialPlatformUpdateField('DELIVERY', ['trendyol', 'TRENDYOL ', 'HEPSIBURADA'])).toEqual(['TRENDYOL'])
+    expect(partialPlatformUpdateField('TITLE', ['TRENDYOL', 'HEPSIBURADA'])).toEqual([])
+    expect(partialPlatformUpdateField('DELIVERY', ['TRENDYOL'])).toEqual([])
+    expect(partialPlatformUpdateField('DELIVERY', ['HEPSIBURADA'])).toEqual([])
+  })
+
+  it('drops a field no longer shown and ticks one shown only now', () => {
+    const hepsiburada = availablePlatformUpdateFields(['HEPSIBURADA'])
+    const both = availablePlatformUpdateFields(['HEPSIBURADA', 'TRENDYOL'])
+    expect(platformUpdateFieldsForStores(['TITLE', 'PRICE'], hepsiburada, both)).toEqual(['TITLE', 'DELIVERY', 'PRICE'])
+    expect(platformUpdateFieldsForStores(['TITLE', 'DELIVERY', 'PRICE'], both, hepsiburada)).toEqual(['TITLE', 'PRICE'])
+    // A field the user unticked stays unticked while it stays shown.
+    expect(platformUpdateFieldsForStores(['TITLE'], both, availablePlatformUpdateFields(['TRENDYOL']))).toEqual(['TITLE'])
+    expect(platformUpdateFieldsForStores(['TITLE'], both, [])).toEqual([])
   })
 
   it('sends nothing to a read-only marketplace', () => {

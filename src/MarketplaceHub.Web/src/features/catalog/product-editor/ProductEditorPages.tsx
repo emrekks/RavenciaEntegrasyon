@@ -28,6 +28,7 @@ import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-ti
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog } from './PlatformUpdateDialog'
+import { isProductDeliveryDays, productDeliveryDays } from './product-delivery-days'
 import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, writePlatformUpdatePreferences, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
 import { publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
@@ -1151,7 +1152,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts()
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', listPrice: '0', salePrice: '0', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
+  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', deliveryDays: '1', listPrice: '0', salePrice: '0', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [bulkOptionSyncOpen, setBulkOptionSyncOpen] = useState(false)
@@ -1340,7 +1341,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
     initialEditModelCode.current = initialModelCode.trim()
     initialEditDesi.current = Number(primary?.desi ?? 1)
-    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), warrantyMonths: String(product.warrantyMonths ?? 0), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
+    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), warrantyMonths: String(product.warrantyMonths ?? 0), deliveryDays: String(product.deliveryDays ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
     if (!editProductId && duplicateProductId) setChannelPricing(Object.fromEntries((primary?.platformStatuses ?? []).flatMap(platform => platform.connectionId ? [[platform.connectionId, { listPrice: String(platform.listPrice ?? initialListPrice), salePrice: String(platform.salePrice ?? initialSalePrice) }] as const] : [])))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
     setFamilyMediaOrder(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
@@ -1832,8 +1833,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setPlatformUpdateDialogOpen(false)
     formElement.requestSubmit()
   }
-  function confirmPlatformUpdate() {
-    queuePlatformUpdate(platformUpdateConnectionIds, platformUpdatePreferences.fields)
+  function confirmPlatformUpdate(fields: PlatformUpdateField[]) {
+    queuePlatformUpdate(platformUpdateConnectionIds, fields)
   }
   function startQuickPlatformUpdate() {
     const connectionIds = quickPlatformUpdateTargets(selectedChannelIds, updateableProductConnectionIds())
@@ -2337,6 +2338,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
      if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
      if (!form.desi.trim() || !Number.isFinite(Number(form.desi)) || Number(form.desi) <= 0) issues.push('Desi sıfırdan büyük olmalıdır.')
      if (form.warrantyMonths.trim() && (!Number.isInteger(Number(form.warrantyMonths)) || Number(form.warrantyMonths) < 0 || Number(form.warrantyMonths) > 240)) issues.push('Garanti süresi 0-240 ay arasında tam sayı olmalıdır.')
+     if (!isProductDeliveryDays(form.deliveryDays)) issues.push('Teslimat süresi 1-30 gün arasında tam sayı olmalıdır.')
      if (requireCompleteCatalog && requirePublicationReadiness && selectedChannelIds.length) {
       if (!form.brandId) issues.push('Trendyol yayını için marka zorunludur.'); if (!form.modelCode.trim() || form.modelCode.trim().length > 40) issues.push('Trendyol yayını için en fazla 40 karakterlik model kodu zorunludur.'); if (form.title.trim().length > 100) issues.push('Trendyol ürün başlığı en fazla 100 karakter olabilir.')
       const publicMediaUrls = publicProductMediaUrls(publicationMediaRefs)
@@ -2460,6 +2462,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           defaultListPrice: Number(form.listPrice || 0),
           defaultSalePrice: Number(form.salePrice || 0),
           warrantyMonths: Number(form.warrantyMonths || 0),
+          deliveryDays: productDeliveryDays(form.deliveryDays),
           vatRate: Number(form.vatRate || 0),
           vatInclusion: form.vatIncluded || 'INCLUDED',
           trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : '00000000-0000-0000-0000-000000000000',
@@ -2506,7 +2509,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           }
         }
       } else {
-        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, vatRate: Number(form.vatRate || 0), vatInclusion: form.vatIncluded || 'INCLUDED', trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
+        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, deliveryDays: productDeliveryDays(form.deliveryDays), vatRate: Number(form.vatRate || 0), vatInclusion: form.vatIncluded || 'INCLUDED', trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
       productCreated = product; const completed: string[] = []; const warnings: string[] = []
       const publications: MarketplacePublishOutcome[] = []
@@ -2931,6 +2934,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             <label title={variantRows.length > 1 ? 'Varyantlı ürünlerde varyanta yazılır' : undefined}>{automaticBarcodeGeneration ? 'Tek Ürün Barkodu (otomatik oluşturuluyor)' : 'Barkod'}<input className="technical-field barcode-value" value={variantRows.length > 1 ? '' : form.barcode} onChange={event => updateField('barcode', event.target.value)} placeholder={variantRows.length > 1 ? '' : automaticBarcodeGeneration ? 'Model kodu ve sıra numarasından oluşturulur' : 'Varyantsız üründe kullanılır'} disabled={automaticBarcodeGeneration || variantRows.length > 1} title={variantRows.length > 1 ? 'Varyantlı ürünlerde varyanta yazılır' : undefined} /></label>
             <label className="desi-input-field">Desi<span className="desi-inline-control"><input value={form.desi} onChange={event => { setCalculateDesi(false); updateField('desi', event.target.value) }} type="number" min="0.01" step="0.01" required /><button type="button" className="secondary" onClick={() => setDesiCalculatorOpen(true)}>Hesapla</button></span></label>
             <label className="warranty-input-field">Garanti Süresi (Ay)<input value={form.warrantyMonths} onChange={event => updateField('warrantyMonths', event.target.value)} type="number" min="0" max="240" step="1" inputMode="numeric" placeholder="Garanti yok" /></label>
+            <label className="delivery-days-input-field" title="Siparişin kargoya teslim süresi; pazaryerlerine teslimat (sevkiyat) süresi olarak gider.">Teslimat Süresi (Gün)<input value={form.deliveryDays} onChange={event => updateField('deliveryDays', event.target.value)} type="number" min="1" max="30" step="1" inputMode="numeric" required /></label>
           </div>
           <div className="wide product-description-field"><span>Açıklama</span><RichTextEditor value={form.description} onChange={value => updateField('description', value)} /><EditorFieldError message={fieldErrors.description} /></div>
         </div>
