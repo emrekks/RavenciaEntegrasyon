@@ -9,14 +9,16 @@ namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
 // Product reads (phase 3). The seller product query has no modification
 // filter, so every read walks all pages (at most 250 per page). Each n11 item
-// is one SKU; items sharing a productMainId form one product. Product create
-// and price/stock writes are tasks; product update and archive come later.
+// is one SKU; items sharing a productMainId form one product. Product create,
+// product update and price/stock writes are tasks; archive comes later.
 public sealed partial class N11HttpClient : IProductPort
 {
     internal const int ProductPageSize = 250;
     internal const string ProductCreateTask = "ms/product/tasks/product-create";
+    internal const string ProductUpdateTask = "ms/product/tasks/product-update";
     internal const int MaxCreateSkus = 1000;
-    private const string ProductWritesLater = "N11 ürün güncelleme ve arşivleme sonraki entegrasyon aşamasında açılacak; N11'de yalnız yeni ürün açılabilir.";
+    private const string ProductWritesLater = "N11 ürün arşivleme sonraki entegrasyon aşamasında açılacak.";
+    private const string ProductUpdateOneTask = "N11 ürün güncellemesi tek görevle (içerik fazı) gider; bu güncelleme isteği N11'de yok.";
 
     internal static string ProductPage(int page, int size, ProductReadFilter filter)
     {
@@ -75,10 +77,30 @@ public sealed partial class N11HttpClient : IProductPort
             : Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "N11_TASK_CONTRACT_INVALID", "N11 ürün açma yanıtında görev numarası yok.", HttpStatusCode.BadGateway);
     }
 
-    public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
-    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductWriteUnsupported();
+    // Product update (developer.n11.com "Ürün Bilgisi Güncelleme"). The composer (N11ProductUpdateComposer) writes the
+    // whole task body into the content phase; n11 queues it as a PRODUCT_UPDATE task whose per-SKU result is read from
+    // the task details (GetOperationAsync), as for product create and price/stock.
+    public async Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken)
+    {
+        var body = CreatePayload(publication.ApprovedContentPayloadJson, settings.IntegratorName);
+        if (body is null)
+            return Failure<RemoteOperationRef>(AdapterErrorClass.Validation, "N11_PRODUCT_UPDATE_PAYLOAD_INVALID", $"N11 ürün güncelleme içeriği beklenen yapıda değil (1-{MaxCreateSkus} SKU).", HttpStatusCode.UnprocessableEntity);
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return CredentialMissing<RemoteOperationRef>();
+        if (WriteBlocked<RemoteOperationRef>(account, "ürün güncelleme isteği") is { } blocked) return blocked;
+        var result = await SendAsync(account, HttpMethod.Post, ProductUpdateTask, cancellationToken, new StringContent(body, Encoding.UTF8, "application/json"));
+        if (!result.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(result.Error!, result.RateLimit);
+        using var document = result.Value!;
+        return N11TaskMapper.Submitted(document.RootElement, timeProvider.GetUtcNow(), "ürün güncelleme", "PRODUCT_UPDATE") is { } submitted
+            ? submitted.Error is null
+                ? AdapterResult<RemoteOperationRef>.Success(submitted.Reference!, result.RateLimit)
+                : AdapterResult<RemoteOperationRef>.Failure(submitted.Error, result.RateLimit)
+            : Failure<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "N11_TASK_CONTRACT_INVALID", "N11 ürün güncelleme yanıtında görev numarası yok.", HttpStatusCode.BadGateway);
+    }
+
+    public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductUpdateRequestUnsupported();
+    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductUpdateRequestUnsupported();
+    public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => ProductUpdateRequestUnsupported();
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => ProductWriteUnsupported();
 
     // The shared port names the key "barcode"; on n11 a published SKU is found by its stock code.
@@ -99,9 +121,9 @@ public sealed partial class N11HttpClient : IProductPort
         }
     }
 
-    // The composer writes the whole n11 body; the integrator name comes from the
-    // adapter settings so every write carries the same name. Null when the body is
-    // not {"payload":{"skus":[1..1000 items]}}.
+    // The composer writes the whole n11 body (product create and product update alike); the
+    // integrator name comes from the adapter settings so every write carries the same name.
+    // Null when the body is not {"payload":{"skus":[1..1000 items]}}.
     internal static string? CreatePayload(string payloadJson, string integrator)
     {
         try
@@ -115,6 +137,9 @@ public sealed partial class N11HttpClient : IProductPort
 
     private static Task<AdapterResult<RemoteOperationRef>> ProductWriteUnsupported() =>
         Task.FromResult(NotSupported<RemoteOperationRef>("N11_PRODUCT_WRITE_UNSUPPORTED", ProductWritesLater));
+
+    private static Task<AdapterResult<RemoteOperationRef>> ProductUpdateRequestUnsupported() =>
+        Task.FromResult(NotSupported<RemoteOperationRef>("N11_PRODUCT_UPDATE_REQUEST_UNSUPPORTED", ProductUpdateOneTask));
 }
 
 public static class N11ProductMapper

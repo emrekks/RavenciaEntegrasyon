@@ -81,7 +81,12 @@ type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string;
 //   the colour/size options, the product type, price and stock of the whole model family in one request.
 // - Pazarama: product/vatRate/bulk takes the VAT rate per barcode; it has no content update API. Price and stock go by
 //   barcode in the price/stock send, which builds them together (each only when it differs from Pazarama's).
-// - n11 and PTT AVM have no product update in the panel yet: no field of the dialog goes there.
+// - n11: one product-update task per stock code that carries only the picked fields (N11ProductUpdateComposer):
+//   description, the category attributes (the whole list, brand and colour/size included, since n11 asks for every
+//   mandatory one), the VAT rate and the preparing day with the connection's shipment template. Name, images, brand,
+//   category, colour/size, barcode and desi cannot change through the n11 API. The price-stock task takes the list and
+//   sale price and the stock together.
+// - PTT AVM has no product update in the panel yet: no field of the dialog goes there.
 // The API keeps the same table (ProductUpdateFields.SupportedBy).
 const profiles: Record<string, PlatformUpdateProfile> = {
   TRENDYOL: {
@@ -116,6 +121,16 @@ const profiles: Record<string, PlatformUpdateProfile> = {
     ],
     note: 'Shopify ürünü tek istekte alır: hangi alan seçilirse seçilsin model ailesinin tüm kartı (ürün adı, açıklama, görseller, renk ve beden, fiyat ve stok) birlikte gider.',
     wholeCard: true
+  },
+  N11: {
+    requests: [
+      { fields: ['DESCRIPTION'], sends: ['Açıklama'] },
+      { fields: ['ATTRIBUTES'], sends: ['Kategori Özellikleri'], extra: ['Marka', 'Renk / Beden'] },
+      { fields: ['VAT_RATE'], sends: ['KDV Oranı'] },
+      { fields: ['DELIVERY'], sends: ['Teslimat Süresi'], extra: ['Kargo Şablonu'] },
+      { fields: ['PRICE', 'STOCK'], sends: ['Liste Fiyatı', 'Satış Fiyatı', 'Stok'] }
+    ],
+    note: 'N11 ürün adını, görselleri, markayı, kategoriyi, renk/bedeni, barkodu ve desiyi API ile güncellemez; bunlar N11 satıcı panelinden talep edilir. Kategori özellikleri marka ve renk/beden dahil tüm listeyle gider, N11 bunları değiştirmez. Fiyat ve stok birlikte gider.'
   }
 }
 
