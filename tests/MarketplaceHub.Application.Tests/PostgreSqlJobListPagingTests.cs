@@ -52,7 +52,10 @@ public sealed class PostgreSqlJobListPagingTests(PostgreSqlTenantIsolationFixtur
             Assert.Equal(jobs.Where(job => job.Status == JobStatus.Dead).Select(job => job.Id).Order(), dead.Select(job => job.Id).Order());
 
             var recent = await ReadAllPagesAsync(service, tenant.Id, new JobListQuery(Since: baseTime.AddSeconds(2), Limit: 2));
-            Assert.Equal(jobs.Where(job => job.CreatedAt >= baseTime.AddSeconds(2)).Select(job => job.Id).Order(), recent.Select(job => job.Id).Order());
+            // A period keeps the jobs created or finished in it (JobOperationsService.InWindow): the job created a second
+            // before and finished at the start is in it too.
+            Assert.Equal(jobs.Where(job => job.CreatedAt >= baseTime.AddSeconds(2) || job.CompletedAt >= baseTime.AddSeconds(2)).Select(job => job.Id).Order(), recent.Select(job => job.Id).Order());
+            Assert.Contains(recent, job => job.CreatedAt < baseTime.AddSeconds(2));
 
             var invalid = await service.PageAsync(tenant.Id, new JobListQuery(After: "not-a-cursor"), CancellationToken.None);
             Assert.False(invalid.Succeeded);

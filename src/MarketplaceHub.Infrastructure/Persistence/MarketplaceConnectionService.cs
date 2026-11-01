@@ -622,6 +622,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var recoveryGapCritical = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapCriticalDays", 80), (int)recoveryGapWarning.TotalDays + 1, 120));
         // With healthy notifications the scheduler polls orders less often; health is judged by that cadence.
         var webhookHealthy = await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, id, now, cancellationToken);
+        // The open-return scan is not queued while no claim is open (ScheduledJobProducer), so its age then says nothing.
+        var openReturnsToFollow = await ScheduledJobProducer.OpenReturnClaimsExistAsync(db, tenantId, id, connection.PlatformCode, cancellationToken);
         var rows = policies.Select(x =>
         {
             var cursorResourceType = MarketplaceSyncPolicyRules.CursorResourceType(x.ResourceType);
@@ -633,6 +635,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             // Questions are read on a stretching interval (QuestionCadencePolicy): up to ten minutes while none arrive.
             if (string.Equals(x.ResourceType, "QUESTIONS", StringComparison.OrdinalIgnoreCase))
                 intervalSeconds = Math.Max(intervalSeconds, QuestionCadencePolicy.MaximumSeconds);
+            // Returns are read on a stretching interval too (ReturnCadencePolicy).
+            if (string.Equals(x.ResourceType, "RETURNS", StringComparison.OrdinalIgnoreCase))
+                intervalSeconds = ReturnCadencePolicy.MaximumSeconds(connection.PlatformCode, intervalSeconds);
             var expectedCadence = TimeSpan.FromSeconds(Math.Max(0, intervalSeconds) + Math.Max(0, x.JitterSeconds));
             var health = MarketplaceSyncHealthPolicy.Classify(
                 cursor?.LastSuccessAt,
@@ -645,6 +650,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 expectedCadence).ToString().ToUpperInvariant();
             // A write policy is a permission switch, not a scheduled read: it has no cursor to judge.
             if (MarketplaceExternalWritePolicies.IsPermissionPolicy(x.ResourceType)) health = "PERMISSION";
+            else if (string.Equals(x.ResourceType, "RETURN_LIFECYCLE", StringComparison.OrdinalIgnoreCase) && x.Enabled && !openReturnsToFollow && (cursor?.ConsecutiveFailureCount ?? 0) == 0) health = "HEALTHY";
             var cursorProgress = MarketplaceCursorProgressPolicy.Classify(
                 cursor?.LastSuccessAt,
                 cursor?.LastCursorAdvancedAt,

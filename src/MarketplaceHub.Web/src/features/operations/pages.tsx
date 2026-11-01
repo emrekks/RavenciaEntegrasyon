@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
@@ -9,12 +9,11 @@ import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification, notificationError, notificationLinks, platformCodeFromName, type NotificationContext } from '../../shared/notifications'
 import { statusLabel } from '../../shared/status-labels'
-import { marketplaceQuestionSyncChange } from './marketplace-question-sync'
-import { catalogStructureImportChange } from './catalog-structure-import'
+import { fallbackJobChange, jobRelatedLinks, type JobChange } from './job-change'
 import { jobPresentation, jobSubtitle, jobTitle, jobTypeCode, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
+import { isJobInTimeRange, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
 import { jobPageSizes, jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState, type JobsMainTab, type JobStatusChip, type JobsViewState } from './jobs-url-state'
 import type { IntegrationFeedback } from '../marketplace/shared'
@@ -75,10 +74,9 @@ type JobSummary = {
 }
 type JobOrderContext = { orderId: string; orderNumber: string; externalOrderId: string; status: string; currency: string; netAmount: number; orderedAt: string; externalPackageId: string | null; cargoProvider: string | null; cargoTrackingNumber: string | null; customerName: string | null; lineCount: number }
 type JobInvoiceContext = { invoiceId: string; orderNumber: string; status: string; invoiceType: string; currency: string; payableTotal: number; invoiceNumber: string | null; externalPackageId: string | null }
-type JobChange = { label: string; value: string; detail: string | null }
 type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
 type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
-type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null }
+type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null; productId?: string | null }
 // The job a notice is about: its title ("Pazarama Ürün İşlemi"), number, marketplace and store.
 function jobNotificationContext(job: Pick<JobSummary, 'id' | 'connectionId' | 'jobType' | 'marketplace'>): NotificationContext {
   const title = jobTitle(job.jobType, job.marketplace)
@@ -150,26 +148,6 @@ function jobStatusChip(status: JobStatus): JobStatusChip {
 
 // The statuses each state filter stands for; the list asks the server for them so older jobs past the newest 2.000 show too.
 const jobChipStatuses: Record<JobStatusChip, JobStatus[]> = { success: ['SUCCEEDED'], running: ['LEASED'], waiting: ['PENDING', 'RETRY_SCHEDULED'], error: ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'], cancelled: ['CANCELLED'] }
-
-function fallbackJobChange(job: JobSummary): JobChange {
-  const type = job.jobType.toUpperCase()
-  if (type === 'MARKETPLACE_QUESTION_SYNC') return marketplaceQuestionSyncChange
-  if (type === 'CATALOG_STRUCTURE_IMPORT') return catalogStructureImportChange
-  if (type === 'STOCK_PROJECTION_DISPATCH') return { label: 'İşlem Türü', value: 'Stok gönderim hazırlığı', detail: 'Bu adım dış API’ye yazmaz. Dış yazma açıksa ayrı bir fiyat-stok gönderim işi oluşturur.' }
-  if (type === 'STOCK_RECONCILIATION') return { label: 'İşlem Türü', value: 'Stok uzlaştırma taraması', detail: 'Bu kayıt tek başına pazaryerine stok gönderildiği anlamına gelmez.' }
-  if (type === 'PRICE_INVENTORY_SYNC') return { label: 'İşlem Türü', value: 'Fiyat ve stok gönderimi', detail: 'Dış yazma kapalıysa Trendyol’a yeni gönderim yapılmaz.' }
-  if (type.includes('SHIPMENT_ACTION')) return { label: 'Yapılan Değişiklik', value: 'Paket işlemi', detail: 'Paket işlemi Trendyol’a gönderildi.' }
-  if (type === 'ORDER_STATUS_SYNC') return { label: 'Tarama Türü', value: 'Sipariş durum taraması', detail: 'Açık siparişlerin paket ve taşıma durumları kontrol edilerek yerel durum güncellenir.' }
-  if (type === 'TRENDYOL_ORDER_CARGO_INFO_RECONCILIATION') return { label: 'Tarama Türü', value: 'Trendyol kargo bilgisi taraması', detail: 'Teslim edilmiş paketlerin kargo bilgileri ayrı, salt okunur bir taramada yenilenir.' }
-  if (type === 'ORDER_RECONCILIATION') return { label: 'Tarama Türü', value: 'Kapsamlı sipariş taraması', detail: 'Yerel siparişler ile pazaryeri kayıtları karşılaştırılır; durum ve paket farklılıkları düzeltilir.' }
-  if (type === 'ORDER_INVOICE_RECONCILIATION') return { label: 'Tarama Türü', value: 'Paket fatura taraması', detail: 'Teslim edilmiş ve açık paketlerin pazaryeri fatura durumu kontrol edilir.' }
-  if (type === 'TRENDYOL_ORDER_RECOVERY_SYNC') return { label: 'Tarama Türü', value: 'Tam sipariş taraması', detail: 'Erişilebilen sipariş pencereleri taranarak eksik yerel kayıtlar tamamlanır.' }
-  if (type === 'TRENDYOL_ORDER_SYNC') return { label: 'Yapılan Değişiklik', value: 'Sipariş senkronizasyonu', detail: 'Sipariş bilgileri pazaryerinden eşitlendi.' }
-  if (type.includes('REFERENCE_SYNC')) return { label: 'Yapılan İşlem', value: type.startsWith('HEPSIBURADA_') ? 'Hepsiburada kategori ve eşleştirme verisi' : type.startsWith('N11_') ? 'N11 kategori ve eşleştirme verisi' : type.startsWith('PTTAVM_') ? 'PTT AVM kategori verisi' : type.startsWith('PAZARAMA_') ? 'Pazarama kategori, özellik ve marka verisi' : 'Trendyol kategori ve eşleştirme verisi', detail: 'Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.' }
-  if (type.includes('PRODUCT') || type.includes('CATALOG')) return { label: 'Yapılan Değişiklik', value: 'Ürün senkronizasyonu', detail: 'Ürün bilgileri pazaryerine gönderildi.' }
-  if (type.includes('INVOICE')) return { label: 'Yapılan Değişiklik', value: 'Fatura işlemi', detail: 'Fatura isteği pazaryerine gönderildi.' }
-  return { label: 'Yapılan Değişiklik', value: jobPresentation(job.jobType).action, detail: 'İşlem isteği sisteme kaydedildi.' }
-}
 
 // "Bugün" is the Istanbul day, as the time beside it, whatever the browser's clock says.
 export function formatJobTime(value: string, now: Date = new Date()) {
@@ -283,7 +261,8 @@ function JobStatusSummary({ job }: { job: JobSummary }) {
 function JobProgressSummary({ job }: { job: JobSummary }) {
   const productSync = isProductSyncJob(job)
   const received = Math.max(job.progressReceived, job.progressCurrent)
-  const hasCounters = productSync || received > 0 || job.progressProcessed > 0 || job.progressSkipped > 0 || job.progressFailed > 0 || job.progressTotal !== null
+  // A read that came back empty writes its label ("Pazaryerinden yeni kayıt gelmedi"), so it shows too.
+  const hasCounters = productSync || received > 0 || job.progressProcessed > 0 || job.progressSkipped > 0 || job.progressFailed > 0 || job.progressTotal !== null || Boolean(job.progressLabel)
   if (!hasCounters) return null
   const percent = jobProgressPercent(job)
   const totalLabel = job.progressTotal === null
@@ -346,7 +325,8 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
     </div>
     {detail.isLoading ? <div className="jobs-reference-drawer-body"><Busy text="İşlem ayrıntısı yükleniyor…" /></div> : detail.isError || !detail.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">İşlem ayrıntısı alınamadı.</div> : (() => {
       const job = detail.data.job
-      const change = detail.data.change ?? fallbackJobChange(job)
+      const change = detail.data.change ?? fallbackJobChange(job.jobType)
+      const relatedLinks = jobRelatedLinks(detail.data)
       const waiting = isWaitingJob(job)
       const hasError = job.status !== 'SUCCEEDED' && !waiting && Boolean(job.lastErrorCode || job.lastErrorSummary)
       const invoice = detail.data.invoice
@@ -358,7 +338,7 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
         <JobStatusSummary job={job} />
         {hasError && <div className="jobs-reference-error-alert"><strong>{job.lastErrorCode ?? 'İşlem hatası'}</strong><span>{job.lastErrorSummary ?? 'İşlem başarısız oldu ancak ayrıntılı hata açıklaması kaydedilmedi.'}</span></div>}
         {selectedIsRunning && actionPending && <p className="jobs-reference-cancel-note">Çalışan işlem durduruluyor. Dış API çağrısı tamamlanana kadar durum birkaç saniye daha “Çalışıyor” görünebilir.</p>}
-        <section className="jobs-reference-change-summary" aria-labelledby="job-change-title"><div><span className="jobs-reference-section-kicker">İşlem Özeti</span><h3 id="job-change-title">{change.value}</h3></div><div><strong>{change.label}</strong><p>{change.detail ?? 'İşlem ayrıntısı mevcut.'}</p></div></section>
+        <section className="jobs-reference-change-summary" aria-labelledby="job-change-title"><div><span className="jobs-reference-section-kicker">İşlem Özeti</span><h3 id="job-change-title">{change.value}</h3></div><div><strong>{change.label}</strong><p>{change.detail ?? 'İşlem ayrıntısı mevcut.'}</p></div>{relatedLinks.length > 0 && <nav className="jobs-reference-related-links" aria-label="İlgili Kayıtlar">{relatedLinks.map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}</nav>}</section>
         {detail.data.invoice && <section className="jobs-reference-order-context" aria-labelledby="job-invoice-context-title"><div><span className="jobs-reference-section-kicker">Fatura Denemesi</span><h3 id="job-invoice-context-title">Sipariş #{detail.data.invoice.orderNumber}</h3><p>Bu e-Fatura işlemi seçili sipariş için başlatıldı.</p></div><div className="jobs-reference-order-facts"><p><small>Fatura Kaydı</small><strong>{detail.data.invoice.invoiceId}</strong></p><p><small>Fatura Durumu</small><strong>{statusLabel(detail.data.invoice.status)}</strong></p><p><small>Fatura Türü</small><strong>{detail.data.invoice.invoiceType}</strong></p><p><small>Fatura Tutarı</small><strong>{formatMoney(detail.data.invoice.payableTotal, detail.data.invoice.currency)}</strong></p>{detail.data.invoice.invoiceNumber && <p><small>Fatura Numarası</small><strong>{detail.data.invoice.invoiceNumber}</strong></p>}{detail.data.invoice.externalPackageId && <p><small>Paket No</small><strong>{formatPackageLabel(detail.data.invoice.externalPackageId)}</strong></p>}</div></section>}
         <JobProgressSummary job={job} />
         <JobFailureReasons job={job} reasons={detail.data.failureReasons ?? null} />
@@ -518,12 +498,8 @@ export function JobsPage({ me }: { me: Me }) {
   }, [list.data])
   const rangeFiltered = useMemo(() => {
     if (timeRange === 'all') return rawJobs
-    const rangeMs = timeRange === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
-    const cutoff = Date.now() - rangeMs
-    return rawJobs.filter(job => {
-      const timestamp = new Date(job.createdAt).getTime()
-      return Number.isNaN(timestamp) || timestamp >= cutoff
-    })
+    const now = Date.now()
+    return rawJobs.filter(job => isJobInTimeRange(job, timeRange, now))
   }, [rawJobs, timeRange])
   const filtered = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('tr-TR')

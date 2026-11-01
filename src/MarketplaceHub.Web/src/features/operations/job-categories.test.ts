@@ -33,6 +33,29 @@ describe('job category tabs (G22)', () => {
     expect(jobTypesForCategoryTab('CATALOG')).toContain('IMPORT_PREVIEW')
   })
 
+  it('show every known type in at least one tab besides Tüm İşlemler', () => {
+    const tabs = jobCategoryTabs.filter(item => item.key !== 'ALL')
+    expect(knownJobTypes.filter(type => !tabs.some(tab => tab.match(type)))).toEqual([])
+  })
+
+  it('put reference reads in Ürün/Yayın, notifications in Sipariş/Kargo, questions and finance in a tab of their own kind', () => {
+    for (const type of ['TRENDYOL_REFERENCE_SYNC', 'HEPSIBURADA_REFERENCE_SYNC', 'N11_REFERENCE_SYNC', 'PAZARAMA_REFERENCE_SYNC', 'PTTAVM_REFERENCE_SYNC', 'MARKETPLACE_QUESTION_SYNC'])
+      expect(jobTypesForCategoryTab('CATALOG')).toContain(type)
+    for (const type of ['TRENDYOL_WEBHOOK_INGEST', 'SHOPIFY_WEBHOOK_INGEST', 'HEPSIBURADA_WEBHOOK_INGEST'])
+      expect(jobTypesForCategoryTab('ORDERS')).toContain(type)
+    expect(jobTypesForCategoryTab('INVOICES')).toContain('TRENDYOL_FINANCE_SYNC')
+    expect(jobTypesForCategoryTab('INVOICES')).toContain('PAZARAMA_FINANCE_SYNC')
+    expect(jobTypesForCategoryTab('SYSTEM')).toContain('EXTERNAL_EFFECT_RECONCILE')
+  })
+
+  it('count the invoice checks under Faturalar only', () => {
+    for (const type of ['ORDER_INVOICE_RECONCILIATION', 'SHOPIFY_ORDER_INVOICE_RECONCILIATION', 'HEPSIBURADA_ORDER_INVOICE_RECONCILIATION', 'MANUAL_ORDER_INVOICE_DELIVERY', 'INVOICE_DUE_SCAN']) {
+      expect(jobTypesForCategoryTab('INVOICES')).toContain(type)
+      expect(jobTypesForCategoryTab('ORDERS')).not.toContain(type)
+      expect(jobTypesForCategoryTab('SYSTEM')).not.toContain(type)
+    }
+  })
+
   it('give every tab except Tüm İşlemler at least one type', () => {
     for (const tab of jobCategoryTabs.filter(item => item.key !== 'ALL')) expect(jobTypesForCategoryTab(tab.key)!.length).toBeGreaterThan(0)
   })

@@ -882,6 +882,13 @@ public interface IReturnAuditPort
     Task<AdapterResult<IReadOnlyList<RemoteReturnLineAudit>>> ReturnLineAuditsAsync(AdapterContext context, string externalLineId, CancellationToken cancellationToken);
 }
 
+// Reads several return claims by their ids in one request (Trendyol getClaims claimIds, "tekil veya çoğul"); nothing is
+// written. Claims the marketplace does not return are simply missing from the list.
+public interface IReturnBatchReadPort
+{
+    Task<AdapterResult<IReadOnlyList<RemoteReturnClaim>>> GetManyAsync(AdapterContext context, IReadOnlyList<string> externalReturnIds, CancellationToken cancellationToken);
+}
+
 public interface IReturnPort
 {
     Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken);
