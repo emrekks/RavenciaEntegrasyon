@@ -1227,7 +1227,15 @@ public sealed record OrderListView(
     // When the order first reached the carrier (its first "shipped" status); null when not seen.
     DateTimeOffset? ShippedAt = null,
     // When a shipping label of the order was first printed from the panel (any computer).
-    DateTimeOffset? LabelPrintedAt = null);
+    DateTimeOffset? LabelPrintedAt = null,
+    // The small marks beside the order number; null when the order has none.
+    OrderRowMarks? Marks = null);
+// Facts the marketplace states about an order, shown as icons in the order row. Each is set only from a field the
+// marketplace sent: a missing field leaves the mark out (unknown), it never means "no".
+// MicroExport: Trendyol micro=true; MicroExportCountryCode: the buyer's country (ISO alpha-2) when known.
+// DeliveryPoint: Trendyol deliveryAddressType=CollectionPoint, n11 deliveryAddressType (KTN, EASYPOINT, PUP).
+// FastDeliveryType: Trendyol fastDeliveryType TodayDelivery, SameDayShipping or FastDelivery.
+public sealed record OrderRowMarks(bool MicroExport, string? MicroExportCountryCode, bool DeliveryPoint, string? DeliveryPointType, string? FastDeliveryType);
 public sealed record OrderAddressView(
     string? FullName,
     string? FullAddress,
