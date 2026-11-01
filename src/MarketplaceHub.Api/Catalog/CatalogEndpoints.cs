@@ -77,7 +77,10 @@ public static class CatalogEndpoints
         api.MapPost("/products/bulk-vat", async (BulkProductVatCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkSetVatAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : MissingContext(http));
         api.MapPost("/products/bulk-delete", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), count => Results.Ok(new { deletedCount = count })) : MissingContext(http));
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.BulkDeleteProductsAsync(tenant.TenantId, command, http.RequestAborted), deleted => Results.Ok(new { deletedCount = deleted.DeletedCount, cancelledJobCount = deleted.CancelledJobCount })) : MissingContext(http));
+        // The jobs a delete would cancel, for its confirmation; it changes nothing.
+        api.MapPost("/products/delete-preview", async (BulkProductDeleteCommand command, HttpContext http, ICatalogService service) =>
+            Tenant(http) is { } tenant ? Result(await service.PreviewProductDeleteAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapGet("/products/{id:guid}/marketplace-codes", async (Guid id, HttpContext http, ICatalogService service) =>
@@ -102,7 +105,7 @@ public static class CatalogEndpoints
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return TryIfMatch(http, out var version, out var failure)
-                ? Result(await service.DeleteProductAsync(tenant.TenantId, id, version, http.RequestAborted), count => Results.Ok(new { deletedCount = count }))
+                ? Result(await service.DeleteProductAsync(tenant.TenantId, id, version, http.RequestAborted), deleted => Results.Ok(new { deletedCount = deleted.DeletedCount, cancelledJobCount = deleted.CancelledJobCount }))
                 : failure!;
         });
         api.MapPost("/products/{id:guid}/archive", async (Guid id, HttpContext http, ICatalogService service) =>

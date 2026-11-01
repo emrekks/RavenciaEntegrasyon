@@ -27,6 +27,7 @@ import { formatMoney } from '../../../shared/format-money'
 import { readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { ProductTransferDialog } from './ProductTransferDialog'
 import { ModelCodeCopy } from './ModelCodeCopy'
+import { productDeleteJobNote, productDeleteResultMessage, type ProductDeleteResponse } from './product-delete-text'
 // Loaded with the editor's stylesheet only when a bulk publication opens, like a row's publish popup.
 const BulkPublishDialog = lazy(() => import('./BulkPublishDialog').then(module => ({ default: module.BulkPublishDialog })))
 const BulkVatDialog = lazy(() => import('./BulkVatDialog').then(module => ({ default: module.BulkVatDialog })))
@@ -651,9 +652,22 @@ type ProductDeleteRequest = {
 }
 function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { request: ProductDeleteRequest; deleting: boolean; onClose: () => void; onConfirm: () => void }) {
   const isGroup = request.productIds.length > 1
-  return <RrModal crumb="Katalog Kaydını Sil" title={isGroup ? 'Ürün Grubunu Sil' : 'Ürünü Sil'} desc="Bu işlem yerel katalog kaydını kalıcı olarak kaldırır. Sipariş geçmişi korunur; pazar yeri ilanı otomatik olarak silinmez." size="sm" locked={deleting} onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose} disabled={deleting}>Vazgeç</button><button type="button" className="rr-btn rr-solid" onClick={onConfirm} disabled={deleting}><RrIcon name="trash" />{deleting ? 'Siliniyor…' : isGroup ? `${request.productIds.length} Kaydı Sil` : 'Kalıcı Olarak Sil'}</button></>}>
+  // The publication and price/stock jobs still waiting for these products: the delete cancels them.
+  const preview = useQuery({
+    queryKey: ['product-delete-preview', request.productIds],
+    queryFn: async () => {
+      let pendingJobCount = 0
+      for (let index = 0; index < request.productIds.length; index += 500)
+        pendingJobCount += (await hubApi<{ pendingJobCount: number }>('/products/delete-preview', { method: 'POST', body: JSON.stringify({ productIds: request.productIds.slice(index, index + 500) }) })).pendingJobCount
+      return pendingJobCount
+    },
+    staleTime: 0
+  })
+  const jobNote = productDeleteJobNote(preview.data)
+  return <RrModal crumb="Katalog Kaydını Sil" title={isGroup ? 'Ürün Grubunu Sil' : 'Ürünü Sil'} desc="Bu işlem yerel katalog kaydını kalıcı olarak kaldırır ve geri alınamaz. Sipariş geçmişi korunur; pazar yeri ilanı otomatik olarak silinmez." size="sm" locked={deleting} onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose} disabled={deleting}>Vazgeç</button><button type="button" className="rr-btn rr-solid" onClick={onConfirm} disabled={deleting}><RrIcon name="trash" />{deleting ? 'Siliniyor…' : isGroup ? `${request.productIds.length} Kaydı Sil` : 'Kalıcı Olarak Sil'}</button></>}>
     <div className="rr-callout rr-danger"><RrIcon name="alert" /><span><b>{request.title}</b><br />{request.description}</span></div>
     <p className="rr-lead">Devam ederseniz bu kayıtların varyant, stok, fiyat ve platform eşleşmeleri ile stok geçmişi (sipariş ve iade stok hareketleri, rezervasyonlar) silinir; siparişler ve iadeler kalır.</p>
+    {jobNote && <p className="rr-lead" role="note">{jobNote}</p>}
   </RrModal>
 }
 const productPageSizes = [20, 50, 100]
@@ -971,12 +985,13 @@ export function ProductsPage() {
     if (!request || deletingProducts) return
     setDeletingProducts(true)
     try {
+      const responses: ProductDeleteResponse[] = []
       if (request.product && request.productIds.length === 1) {
-        await hubApi(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${request.product.version}"`, 'Idempotency-Key': newIdempotencyKey() } })
+        responses.push(await hubApi<ProductDeleteResponse>(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${request.product.version}"`, 'Idempotency-Key': newIdempotencyKey() } }))
       } else {
         for (let index = 0; index < request.productIds.length; index += 500) {
           const productIds = request.productIds.slice(index, index + 500)
-          await hubApi('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds }) })
+          responses.push(await hubApi<ProductDeleteResponse>('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds }) }))
         }
       }
       const targetIds = new Set(request.productIds)
@@ -985,7 +1000,7 @@ export function ProductsPage() {
       setAllProductsSelected(false)
       setDeleteRequest(null)
       // A deleted product has no page any more: the notice names it without a link.
-      showProductToast(request.productIds.length === 1 ? 'Ürün Silindi' : 'Ürünler Silindi', request.productIds.length === 1 ? 'Ürün ve varyantları yerel katalogdan silindi.' : `${request.productIds.length} katalog kaydı yerel katalogdan silindi.`, 'success', { operation: 'Katalogdan silme', subject: productNotificationSubject({ name: request.title, modelCode: request.product?.modelCode }) })
+      showProductToast(request.productIds.length === 1 ? 'Ürün Silindi' : 'Ürünler Silindi', productDeleteResultMessage(responses, request.productIds.length), 'success', { operation: 'Katalogdan silme', subject: productNotificationSubject({ name: request.title, modelCode: request.product?.modelCode }) })
       await refresh()
     } catch (err) {
       const failure = notificationError(err, 'Ürün silinemedi.')
