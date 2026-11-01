@@ -5,7 +5,8 @@
 .rr-omark:focus-visible { box-shadow: 0 0 0 2px var(--rr-info); }
 .rr-omark-flag { display: block; border-radius: 2px; }
 .rr-omark-ico { display: block; }
-.rr-omark-point { color: var(--rr-info); }
+/* Orange, the same in both themes: the warning token is brown in the light theme. */
+.rr-omark-point { color: #e8711c; }
 .rr-omark[data-tip]:hover::after,
 .rr-omark[data-tip]:focus::after { content: attr(data-tip); position: absolute; z-index: 70; bottom: calc(100% + 6px); left: 50%; width: max-content; max-width: 240px; padding: 6px 10px; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; transform: translateX(-50%); white-space: nowrap; pointer-events: none; }
 /* the first row's tip opens downwards: the table panel clips what rises above its header */
