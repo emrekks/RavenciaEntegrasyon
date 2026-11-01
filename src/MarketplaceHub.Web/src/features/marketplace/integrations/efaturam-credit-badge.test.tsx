@@ -67,11 +67,12 @@ describe('EFaturamCreditBadge', () => {
     renderBadge()
     expect(hubApi).toHaveBeenCalledWith('/connections/c-1/efaturam-remaining-credit', expect.anything())
     expect(container.innerHTML).toBe('')
-    await act(async () => {
-      resolve({ available: true, remainingCredit: 1240 })
-      await new Promise(done => setTimeout(done, 0))
-    })
-    expect(container.textContent).toBe('1.240 Kontör')
+    await act(async () => { resolve({ available: true, remainingCredit: 1240 }) })
+    // The query settles on its own schedule (slower on CI): wait for the badge rather than a fixed tick.
+    await vi.waitFor(async () => {
+      await act(async () => { await new Promise(done => setTimeout(done, 10)) })
+      expect(container.textContent).toBe('1.240 Kontör')
+    }, { timeout: 3000 })
   })
 
   it('stays empty for a non-partner account and on errors', async () => {
