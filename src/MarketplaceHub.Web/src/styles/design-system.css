@@ -7030,3 +7030,12 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
     margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; align-items: center;
   }
 }
+
+/* The page's scrollbar keeps its 12 px gutter (scrollbar-gutter: stable, so pages do not jump) but paints nothing
+   until it is used: its track is the page background, and the top bar carries its own surface and bottom rule on
+   across the gutter to the window's edge, so no strip of another colour runs down the right side. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell > main > .rv-topbar {
+    box-shadow: 12px 0 0 0 color-mix(in srgb, var(--rv-color-surface) 94%, transparent), 12px 1px 0 0 var(--rv-color-border);
+  }
+}
