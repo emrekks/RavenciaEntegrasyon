@@ -259,17 +259,18 @@ export function publicationReadinessQueryKey(connectionId: string, categoryId: s
 
 // The card's mapping check: category mapping, the marketplace's required attributes and the value mappings of what the
 // product uses. `cardName` names the marketplace in the messages.
-export async function loadPublicationAttributeIssues(connection: ReadinessConnection, cardName: string, categoryId: string, selectedAttributes: PublicationAttributeSelection[]): Promise<PublicationAttributeIssues> {
+// `categoryName` names the panel category in the "not mapped" gap.
+export async function loadPublicationAttributeIssues(connection: ReadinessConnection, cardName: string, categoryId: string, selectedAttributes: PublicationAttributeSelection[], categoryName = ''): Promise<PublicationAttributeIssues> {
   const connectionId = encodeURIComponent(connection.id)
   const categoryMapping = await readPublicationReadinessSource('Kategori eşlemesi', () => hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`))
   if (!categoryMapping || categoryMapping.status !== 'VERIFIED') {
-    return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `Yayın öncesi güncel ${cardName} kategori eşlemesi gerekir.` }], optionalWarnings: [] }
+    return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${categoryName ? `${categoryName} kategorisinin` : 'Ürün kategorisinin'} ${cardName} karşılığı seçilmemiş; kategoriyi eşleyin.` }], optionalWarnings: [], categoryMapping: 'missing' }
   }
 
   const categoryReferences = await readPublicationReadinessSource(`${cardName} kategori listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}`))
   const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryMapping.externalId && item.isActive && item.isLeaf)
   if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
-    return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${cardName} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [] }
+    return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${cardName} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [], categoryMapping: 'stale' }
   }
   if (connection.platformCode.trim().toUpperCase() === 'PTTAVM') return { requiredIssues: [], optionalWarnings: [], categoryScope: categoryMapping.externalId }
 

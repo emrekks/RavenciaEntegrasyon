@@ -43,6 +43,9 @@ export type PublicationAttributeIssues = {
   requiredIssues: PublicationAttributeIssue[]
   optionalWarnings: PublicationAttributeIssue[]
   categoryScope?: string
+  // The product's category has no current mapping on the store (none, or one to a category the store no longer lists):
+  // the card offers "Kategori Eşle".
+  categoryMapping?: 'missing' | 'stale'
 }
 
 // Every distinct value mapping the card can offer to fix, required ones first.

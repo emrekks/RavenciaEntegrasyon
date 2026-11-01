@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { hubApi } from '../../../shared/api'
+import { hubApi, loadAllPages } from '../../../shared/api'
 import { fixableValueMappings, type PublicationAttributeIssues, type PublicationValueMappingFix } from '../publication-attribute-readiness'
 import { isPublicationLive, isPublicationStatusPending } from '../publication-status'
 import { loadPublicationAttributeIssues, missingPublicationChecks, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessDraftFromProduct, publicationReadinessQueryKey, sortRequirements, type CategoryRequirement } from '../product-editor/publication-readiness'
-import type { MarketplaceConnection, Product } from '../shared'
+import type { Category, MarketplaceConnection, Product } from '../shared'
 import { bulkPublishChunks } from './bulk-publish-run'
 import { bulkPublishStatusBucket, productConnectionStatus } from './bulk-publish-status'
 
@@ -25,6 +25,12 @@ export type BulkProductReadiness = {
   issues: BulkReadinessIssue[]
   fixes: PublicationValueMappingFix[]
   categoryScope?: string
+  // The panel category, for "Kategori Eşle" when the store has no current mapping of it.
+  categoryId?: string
+  categoryName?: string
+  categoryMapping?: 'missing' | 'stale'
+  // The mapping check could not read what it needs (not a gap of the product): the card offers "Yeniden Dene".
+  checkFailed?: boolean
 }
 export type BulkConnectionReadiness = { entries: BulkProductReadiness[]; blocked: BulkProductReadiness[]; readyCount: number; skippedCount: number }
 
@@ -59,6 +65,9 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
     return results
   }
   const categoryId = product.categoryId ?? ''
+  // The editor's category list (same query), for the category's name in the "not mapped" gap.
+  const categories = categoryId ? await client.query({ queryKey: ['categories', 'new-product'], queryFn: () => loadAllPages<Category>('/catalog/categories'), staleTime: 60_000, retry: false }).catch(() => null) : null
+  const categoryName = categories?.items.find(item => item.id === categoryId)?.name ?? ''
   let requirements: CategoryRequirement[] = []
   let requirementsFailed = false
   if (categoryId) {
@@ -82,7 +91,7 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
     // As the editor's card: Shopify needs no category mapping, and nothing is checked without a category.
     if (!isShopify && categoryId) {
       try {
-        mapping = await client.query({ queryKey: publicationReadinessQueryKey(connection.id, categoryId, selectedAttributes), queryFn: () => loadPublicationAttributeIssues(connection, cardName, categoryId, selectedAttributes), staleTime: 15_000, retry: false })
+        mapping = await client.query({ queryKey: publicationReadinessQueryKey(connection.id, categoryId, selectedAttributes), queryFn: () => loadPublicationAttributeIssues(connection, cardName, categoryId, selectedAttributes, categoryName), staleTime: 15_000, retry: false })
       } catch (reason) { mappingError = reason }
     }
     results.set(connection.id, {
@@ -92,7 +101,11 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
       notPublished: standing === 'notPublished',
       issues: publicationBlockingIssues(missingPublicationChecks(productChecks, isShopify), [], mapping?.requiredIssues ?? [], mappingError, cardName),
       fixes: fixableValueMappings(mapping),
-      categoryScope: mapping?.categoryScope
+      categoryScope: mapping?.categoryScope,
+      categoryId,
+      categoryName,
+      categoryMapping: mapping?.categoryMapping,
+      checkFailed: Boolean(mappingError)
     })
   }
   return results

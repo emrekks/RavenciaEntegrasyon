@@ -286,7 +286,7 @@ public static class CatalogEndpoints
             api.MapGet($"/mappings/{routeType}", async (Guid connectionId, string? scopeExternalId, HttpContext http, IReferenceDataService service) =>
                 Tenant(http) is { } tenant ? Result(await service.ListMappingsAsync(tenant.TenantId, routeType, connectionId, scopeExternalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
             api.MapGet($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, HttpContext http, IReferenceDataService service) =>
-                Tenant(http) is { } tenant ? Result(await service.GetMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, http.RequestAborted), Results.Ok) : Unauthorized(http));
+                Tenant(http) is { } tenant ? Result(await service.GetMappingAsync(tenant.TenantId, routeType, localId, connectionId, scopeExternalId, externalId, http.RequestAborted), MappingOrNull) : Unauthorized(http));
             api.MapPut($"/mappings/{routeType}/{{localId:guid}}", async (Guid localId, UpsertCatalogMappingCommand command, HttpContext http, IReferenceDataService service) =>
             {
                 if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
@@ -993,6 +993,9 @@ public static class CatalogEndpoints
     private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) { if (!result.Succeeded) return Problem(http, result.Error!); http.Response.Headers.ETag = $"\"v{version(result.Value!)}\""; return Results.Ok(result.Value); }
     private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(null, result.Error!); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
     private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, result.Error!);
+    // No mapping yet is a JSON null, not an empty body: Results.Ok(null) writes nothing, and the panel read that as a
+    // failed request ("Hepsiburada kategori bilgisi alınamadı") instead of "not mapped".
+    public static IResult MappingOrNull(CatalogMappingView? mapping) => mapping is null ? Results.Content("null", "application/json") : Results.Ok(mapping);
     private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : MarketplaceHub.Api.Security.ApiProblems.Of(null, result.Error!);
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));

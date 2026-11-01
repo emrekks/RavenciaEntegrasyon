@@ -75,7 +75,7 @@ describe('publish readiness parity', () => {
       'Temel Ürün Verileri Eksik alanlar: açıklama.',
       'Görsel Kalitesi En az bir yüksek çözünürlüklü görsel ekleyin.',
       'Kategori ve Web Color Web Color için kategori özelliği eşleştirilmemiş.',
-      'Kategori eşlemesi Yayın öncesi güncel Trendyol Mağaza kategori eşlemesi gerekir.'
+      'Kategori eşlemesi Elbise kategorisinin Trendyol Mağaza karşılığı seçilmemiş; kategoriyi eşleyin.'
     ])
   })
 })
