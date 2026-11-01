@@ -3379,8 +3379,8 @@ small,
     align-items: center;
     width: var(--rv-sidebar-rail-width);
     min-width: var(--rv-sidebar-rail-width);
-    height: 44px;
-    min-height: 44px;
+    height: 36px;
+    min-height: 36px;
     margin-inline-start: 11.5px;
     margin-inline-end: 0;
     padding-inline-start: 10px;
