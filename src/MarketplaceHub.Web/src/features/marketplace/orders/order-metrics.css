@@ -1,15 +1,29 @@
-/* The order summary row has five cards: one row of five on desktop, three over two on tablet
-   (761–1024 px), two per row with the last one full width on phone (≤760 px). Builds on the shared
-   .rr-metrics rules in returns-sade.css. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-@media (max-width: 1024px) {
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article { grid-column: span 2; }
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article:nth-child(n + 4) { grid-column: span 3; }
+/* The order summary row has seven cards. Wide screens (≥1500 px): one row of seven. Below that, a row of four and a row
+   of three (761–1499 px). Phone (≤760 px): two per row, the last one full width. Builds on the shared .rr-metrics
+   rules in returns-sade.css. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article { grid-column: span 3; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article:nth-child(n + 5) { grid-column: span 4; }
+@media (min-width: 1500px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article,
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article:nth-child(n + 5) { grid-column: auto; }
 }
 @media (max-width: 760px) {
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: 1fr 1fr; }
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article,
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article:nth-child(n + 4) { grid-column: auto; }
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > article:last-child { grid-column: 1 / -1; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 { grid-template-columns: 1fr 1fr; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article,
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article:nth-child(n + 5) { grid-column: auto; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article:last-child { grid-column: 1 / -1; }
+}
+/* The İptal and Yeniden Gönderim cards open their tabs: same box as the others, the buttons inside are plain. The
+   global button rule sets min-height: 44px; it is reset on these. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link { align-content: start; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link:hover { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open { display: grid; gap: 2px; width: 100%; min-height: 0; height: auto; padding: 0; margin: 0; color: inherit; text-align: left; font: inherit; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; justify-content: normal; justify-items: start; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 24px; font-weight: 600; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-sub { min-height: 0; height: auto; padding: 0; margin: 0; color: var(--rr-muted); text-align: left; font: inherit; font-size: 12px; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-sub:hover { color: var(--rr-ink); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, .rr-metric-sub):focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 2px; border-radius: 6px; }
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 20px; }
 }
