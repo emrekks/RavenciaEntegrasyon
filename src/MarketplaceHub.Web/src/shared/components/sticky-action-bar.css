@@ -38,3 +38,9 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .rv-action-bar.rv-action-bar, .app-shell.stitch-shell main .rv-action-bar.rv-action-bar.is-leaving { animation: none; }
 }
+/* The product editor's publish step: its bar spans the content column like the save bar of step 1. */
+.app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.publish-selection-footer.rv-action-bar {
+  margin-inline: calc(-1 * var(--rv-page-pad-x));
+  max-width: none;
+  padding-inline: var(--rv-page-pad-x);
+}
