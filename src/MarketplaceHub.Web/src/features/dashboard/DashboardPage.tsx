@@ -266,9 +266,10 @@ export function DashboardPage() {
   const store = (connectionId: string) => channels.get(connectionId)
   const cancelled = cancellations.data?.stores
   const cancelTotal = (pick: (row: CancellationRow) => number) => (cancelled ?? []).reduce((total, row) => total + pick(row), 0)
-  // Whole cancellations are the card's number; the products cancelled and the orders left open with fewer products
-  // follow it. Cancellations whose time the marketplace does not give are listed apart, never counted in.
-  const cancelDetail = cancelled ? [`sipariş · ${count(cancelTotal(row => row.cancelledUnits))} ürün`, ...(cancelTotal(row => row.partialOrders) ? [`${count(cancelTotal(row => row.partialOrders))} kısmi`] : [])].join(' · ') : undefined
+  // Whole cancellations are the card's number under "İptal"; orders left open with fewer products follow as
+  // "N Kısmi İptal" only when there are some. Cancellations whose time the marketplace does not give are listed apart.
+  const partialCancels = cancelTotal(row => row.partialOrders)
+  const cancelLabel = cancelled && partialCancels ? `İptal · ${count(partialCancels)} Kısmi İptal` : 'İptal'
   const cancelRows: BreakdownRow[] = (cancelled ?? []).flatMap(row => {
     const name = store(row.connectionId)?.displayName ?? 'Kaldırılmış mağaza', code = store(row.connectionId)?.platformCode ?? ''
     const known = row.cancelledOrders + row.partialOrders
@@ -284,10 +285,11 @@ export function DashboardPage() {
     ['invoice', 'Bekleyen Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined],
     // Under Bekleyen Siparişler: the products of the same orders.
     ['units', 'Bekleyen Ürün Adedi', knownCount(bootstrap.isLoading, pendingUnitTotal), '', dashboardOperationalLinks.pendingOrders, pendingUnits ?? undefined],
+    // Today's cancellations; the section is about today, so the label does not repeat it.
+    ['cancel', cancelLabel, knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), '', dayCancellationsLink(today), cancelRows],
     // The same count as the product list's low-stock filter it opens.
     ['lowst', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
     ['due', 'Yaklaşan Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount), '', dashboardOperationalLinks.dueInvoices, undefined],
-    ['cancel', 'Günlük İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), '', dayCancellationsLink(today), cancelRows, cancelDetail],
   ]
   // The file is made from the data on screen only once it belongs to the chosen period and store.
   const reportReady = Boolean(data) && days !== null && !performance.isPlaceholderData && !performance.isFetching && data!.from === days.from && data!.to === days.to
