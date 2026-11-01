@@ -45,8 +45,8 @@ export function PublishIssueBadge({ id, label, count, heading, rows, actions, mo
   }, [open])
 
   return <span ref={wrapper} className="publish-issue-badge">
-    <button ref={trigger} type="button" className="publish-platform-status status-danger publish-issue-trigger" aria-haspopup={shortcut ? 'dialog' : 'true'} aria-expanded={shortcut ? undefined : open} aria-controls={id} title={shortcut ? shortcut.label : undefined} onMouseEnter={place} onFocus={place} onClick={() => { if (shortcut) shortcut.onRun(); else setOpen(value => !value) }}>
-      <i aria-hidden="true" />{label}{count ? <span className="publish-issue-count" aria-label={`${count} düzeltme`}>{count}</span> : null}<UiIcon name="chevronDown" size={12} />
+    <button ref={trigger} type="button" className="publish-platform-status status-danger publish-issue-trigger" aria-haspopup={shortcut ? 'dialog' : 'true'} aria-expanded={shortcut ? undefined : open} aria-controls={id} title={shortcut ? `${label} · ${shortcut.label}` : label} onMouseEnter={place} onFocus={place} onClick={() => { if (shortcut) shortcut.onRun(); else setOpen(value => !value) }}>
+      <i aria-hidden="true" /><span className="publish-issue-label">{label}</span>{count ? <span className="publish-issue-count" aria-label={`${count} düzeltme`}>{count}</span> : null}<UiIcon name="chevronDown" size={12} />
     </button>
     <div ref={panel} id={id} className={`publish-issue-tooltip${open ? ' is-open' : ''}`} role={open ? 'dialog' : 'tooltip'} aria-label={heading}>
       <strong>{heading}</strong>

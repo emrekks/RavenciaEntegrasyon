@@ -34,7 +34,14 @@
 .publish-platform-card.publish-platform-card > :last-child { border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }
 
 /* The badge is a button: hover previews the gaps, a press pins them with their fixes (PublishIssueBadge). */
-.publish-issue-badge { display: inline-flex; }
+/* The badge fits its cell: the label shortens with an ellipsis (the whole text is its title), the counter and the arrow
+   always show, and the refresh button beside it stays inside the card. */
+.publish-issue-badge { display: inline-flex; min-width: 0; max-width: 100%; }
+.publish-platform-fact-publication, .publish-platform-fact-publication dd { min-width: 0; }
+.publish-platform-fact-publication dd > .publish-issue-badge { flex: 0 1 auto; }
+.publish-issue-trigger.publish-platform-status { min-width: 0; max-width: 100%; white-space: nowrap; }
+.publish-issue-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.publish-issue-trigger > :is(i, .publish-issue-count, svg) { flex: none; }
 .publish-issue-trigger.publish-platform-status { gap: 6px; min-height: 0; cursor: pointer; font: inherit; }
 .publish-issue-trigger.publish-platform-status:hover { filter: brightness(1.08); }
 .publish-issue-trigger.publish-platform-status:focus-visible { outline: 2px solid var(--rv-color-danger); outline-offset: 2px; }
