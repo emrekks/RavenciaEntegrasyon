@@ -632,7 +632,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 ?? cursors.FirstOrDefault(candidate => candidate.ResourceType == x.ResourceType);
             // The interval the scheduler keeps this pass, worked out as ScheduledJobProducer does.
             var cadence = CadenceView(x, connection.PlatformCode, connection.Environment, webhookHealthy, lastQuestionAt, now);
-            var intervalSeconds = cadence?.EffectiveIntervalSeconds ?? x.IntervalSeconds;
+            // Health keeps judging by the interval without the test-environment floor, as it did before.
+            var intervalSeconds = cadence is null ? x.IntervalSeconds
+                : SyncCadencePolicy.EffectiveSeconds(connection.PlatformCode, x.ResourceType, null, x.IntervalSeconds, x.IdleBackoffEnabled, x.IdleIntervalSeconds, webhookHealthy, lastQuestionAt, now);
             // Health allows for the longest interval a question read can stretch to, not this pass's step.
             if (string.Equals(x.ResourceType, "QUESTIONS", StringComparison.OrdinalIgnoreCase) && x.IdleBackoffEnabled)
                 intervalSeconds = Math.Max(intervalSeconds, SyncCadencePolicy.IdleSeconds(connection.PlatformCode, x.ResourceType, x.IntervalSeconds, x.IdleIntervalSeconds));
