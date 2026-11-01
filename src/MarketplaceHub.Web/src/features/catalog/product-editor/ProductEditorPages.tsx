@@ -41,6 +41,7 @@ import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemovedMedia, withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
+import { clearAllMediaConfirmationText, clearAllMediaFeedbackText, familyMediaClearPlan, removePendingFamilyMedia, withPendingFamilyMediaRemovals } from '../family-media-clear'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
 import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, TURKISH_VAT_RATES, type EditorFieldErrors } from '../product-editor-state'
@@ -160,7 +161,7 @@ function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current
 }
 type ProductMediaOption = { value: string; label: string; url?: string; file?: File }
 type ProductFamilyMediaItem = NonNullable<Product['familyMediaItems']>[number]
-type MediaRemovalConfirmation = { kind: 'product'; url: string } | { kind: 'family'; item: ProductFamilyMediaItem }
+type MediaRemovalConfirmation = { kind: 'product'; url: string } | { kind: 'family'; item: ProductFamilyMediaItem } | { kind: 'all'; ownCount: number; familyItems: ProductFamilyMediaItem[]; keptCount: number }
 type PendingProductMediaFile = { id: string; file: File }
 type VariantMediaGroup = { id: string; name: string; values: Array<{ id: string; value: string }>; attributeId?: string }
 type VariantMediaModalState = { mode: 'variant'; rowKey: string; draftRefs: string[] } | { mode: 'bulk'; draftsBySelection: VariantMediaAssignmentDrafts; groupId: string; valueId: string }
@@ -1219,6 +1220,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [deletingFamilyMediaKey, setDeletingFamilyMediaKey] = useState<string | null>(null)
   const [deletingProductMediaKey, setDeletingProductMediaKey] = useState<string | null>(null)
   const [mediaRemovalConfirmation, setMediaRemovalConfirmation] = useState<MediaRemovalConfirmation | null>(null)
+  // Other colours' images "Tümünü Temizle" took off the strip; they are removed from those products on Kaydet.
+  const [pendingFamilyMediaRemovals, setPendingFamilyMediaRemovals] = useState<ProductFamilyMediaItem[]>([])
   const [familyMediaOrder, setFamilyMediaOrder] = useState<string[]>([])
   const [familyMediaOrderDirty, setFamilyMediaOrderDirty] = useState(false)
   const [draggedMedia, setDraggedMedia] = useState<{ kind: 'file' | 'url'; index: number } | null>(null); const [dragOverMedia, setDragOverMedia] = useState<{ kind: 'file' | 'url'; index: number } | null>(null)
@@ -1266,7 +1269,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const frame = requestAnimationFrame(() => { lastFieldReveal.current = Date.now(); revealFieldError(document.getElementById('product-creation-form')) })
     return () => cancelAnimationFrame(frame)
   }, [fieldErrors])
-  const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds }), [attributeSelections, attributeTextValues, familyMediaOrder, form, mediaFiles.length, removedVariantIds, variantRows])
+  const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds, pendingFamilyMediaRemovalUrls: pendingFamilyMediaRemovals.map(item => item.url) }), [attributeSelections, attributeTextValues, familyMediaOrder, form, mediaFiles.length, pendingFamilyMediaRemovals, removedVariantIds, variantRows])
   // A new product compares with the empty form it opened with; a copy and an edit with the form right after seeding.
   const editorDirty = seedSnapshot !== null && seedSnapshot !== currentEditorSnapshot
   const captureEditorSnapshot = useEffectEvent(() => setSeedSnapshot(currentEditorSnapshot))
@@ -1402,6 +1405,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       ? product.familyOrderedMediaUrls
       : [...savedMediaUrls, ...savedFamilyMediaUrls]), removedMediaKeys))
     setFamilyMediaOrderDirty(false)
+    setPendingFamilyMediaRemovals([])
     setMediaFiles(mediaFilesKeptOnReseed.current ?? [])
     mediaFilesKeptOnReseed.current = null
     const seededMediaRefs = seedVariantMediaRefs(product.variants).map(references => withoutCopyRemovedMediaRefs(references, removedMediaKeys))
@@ -1756,7 +1760,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     try { window.history.replaceState(historyStateWithCopyRemovedMedia(window.history.state, copyRemovedMedia.current), '') } catch { /* the in-memory list still holds */ }
     if (!editorDirty) setSnapshotRequest(value => value + 1)
   }
-  function clearAllMedia() {
+  // On the edit page the strip also shows the same model's other colours; clearing them is asked first, since Kaydet
+  // removes them from those products too.
+  function clearAllMedia(confirmed = false) {
+    const plan = editProductId ? familyMediaClearPlan(familyOnlyMediaItems) : { removable: [], keptCount: 0 }
+    if (!confirmed && plan.removable.length) {
+      setMediaRemovalConfirmation({ kind: 'all', ownCount: mediaUrls.length + mediaFiles.length, familyItems: plan.removable, keptCount: plan.keptCount })
+      return
+    }
+    if (plan.removable.length) setPendingFamilyMediaRemovals(current => withPendingFamilyMediaRemovals(current, plan.removable))
+    const ownCount = mediaUrls.length + mediaFiles.length
     rememberCopyRemovedMedia(mediaUrls)
     setMediaFiles([])
     updateField('mediaUrls', '')
@@ -1764,7 +1777,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: [] })))
     setDraggedMedia(null)
     setDragOverMedia(null)
-    showFeedback('Görseller Temizlendi', duplicateProductId && !editProductId ? 'Görseller kopyadan kaldırıldı. Kaynak ürünün görselleri değişmez.' : 'Ürün ve varyant görselleri temizlendi. Kalıcı olması için kaydedin.', 'info')
+    showFeedback('Görseller Temizlendi', duplicateProductId && !editProductId ? 'Görseller kopyadan kaldırıldı. Kaynak ürünün görselleri değişmez.' : clearAllMediaFeedbackText(ownCount, plan.removable.length, plan.keptCount), plan.keptCount ? 'error' : 'info')
   }
   async function removeProductMedia(url: string, confirmed = false) {
     const targetKey = mediaImageKey(url)
@@ -1863,7 +1876,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const confirmation = mediaRemovalConfirmation
     setMediaRemovalConfirmation(null)
     if (!confirmation) return
-    if (confirmation.kind === 'product') void removeProductMedia(confirmation.url, true)
+    if (confirmation.kind === 'all') clearAllMedia(true)
+    else if (confirmation.kind === 'product') void removeProductMedia(confirmation.url, true)
     else void removeFamilyMedia(confirmation.item, true)
   }
   function updateChannel(id: string) {
@@ -2654,6 +2668,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           if (file) { const data = new FormData(); data.set('file', file); data.set('productId', product.id); data.set('variantId', variant.id); data.set('mediaRole', upload.sortOrder === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(upload.sortOrder)); data.set('altText', altText); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data }) }
         }
       }
+      let removedFamilyMediaCount = 0
+      if (editProductId && pendingFamilyMediaRemovals.length) {
+        removedFamilyMediaCount = await removePendingFamilyMedia(pendingFamilyMediaRemovals, mediaIds => hubApi<{ deletedCount: number }>('/files/product-media-items', {
+          method: 'DELETE',
+          headers: { 'Idempotency-Key': newIdempotencyKey() },
+          body: JSON.stringify({ mediaIds })
+        }))
+        setPendingFamilyMediaRemovals([])
+      }
       if (editProductId && familyMediaOrderDirty) {
         const result = await hubApi<{ changedProductCount: number }>('/files/product-media-family-reorder', {
           method: 'PUT',
@@ -2664,6 +2687,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         setFamilyMediaOrderDirty(false)
       }
       if (editProductId ? productMediaChanged || mediaFiles.length > 0 : mediaUrls.length || mediaFiles.length) completed.push('görseller')
+      if (removedFamilyMediaCount) completed.push(`diğer renklerden kaldırılan ${removedFamilyMediaCount} görsel`)
       if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
       const targetConnectionIds = createOnly ? [] : platformUpdate?.connectionIds ?? selectedChannelIds
       // Only rows whose stock the user changed are sent, as absolute values against the stock loaded into the form;
@@ -2893,14 +2917,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // The card's own saved pictures the draft no longer holds ("Tümünü Temizle", a removed tile) go on the next save; the
   // family list still carries them until then, so they leave the gallery now instead of after Kaydet.
   const draftMediaKeys = new Set(mediaUrls.map(mediaImageKey))
-  const pendingRemovalMediaKeys = new Set(editProductId ? (productToEdit.data?.mediaUrls ?? []).map(mediaImageKey).filter(key => !draftMediaKeys.has(key)) : [])
+  const pendingRemovalMediaKeys = new Set(editProductId ? [...(productToEdit.data?.mediaUrls ?? []).map(mediaImageKey).filter(key => !draftMediaKeys.has(key)), ...pendingFamilyMediaRemovals.map(item => mediaImageKey(item.url))] : [])
   const familyOnlyMediaItems = familyMediaItems.filter(item => !draftMediaKeys.has(mediaImageKey(item.url)) && !pendingRemovalMediaKeys.has(mediaImageKey(item.url)))
   const defaultFamilyOrder = productToEdit.data?.familyOrderedMediaUrls?.length
     ? productToEdit.data.familyOrderedMediaUrls
     : [...mediaUrls, ...familyMediaItems.map(item => item.url)]
   const visibleMediaUrls = mediaUrlsInPreferredOrder(uniqueMediaUrls(defaultFamilyOrder), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
     .filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url)))
-  const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls, ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map(item => ({ value: `file|${item.id}`, label: `Yüklenen Görsel · ${item.file.name}`, file: item.file })))
+  const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls.filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url))), ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map(item => ({ value: `file|${item.id}`, label: `Yüklenen Görsel · ${item.file.name}`, file: item.file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
     const groupsByName = new Map<string, VariantMediaGroup>()
@@ -3153,7 +3177,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           <span>4</span>
             <div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilirsiniz. Görselleri sürükleyerek sıralayın; aynı modelin diğer renk görselleri de burada görünür ve sıralama kayıtta renk ürünlerine uygulanır.</p></div>
             <div className="product-media-header-actions">
-              {(mediaUrls.length > 0 || mediaFiles.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={clearAllMedia}>Tümünü Temizle</button>}
+              {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={() => clearAllMedia()}>Tümünü Temizle</button>}
             </div>
         </div>
         <label className="upload-ghost-box product-media-upload">
@@ -3394,18 +3418,20 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           <header>
             <div>
               <p className="eyebrow">Görsel Yönetimi</p>
-              <h2 id="media-removal-confirm-title">{mediaRemovalConfirmation.kind === 'product' ? 'Görseli Hemen Kaldır' : 'Renk Ailesi Görselini Kaldır'}</h2>
+              <h2 id="media-removal-confirm-title">{mediaRemovalConfirmation.kind === 'all' ? 'Tüm Görselleri Temizle' : mediaRemovalConfirmation.kind === 'product' ? 'Görseli Hemen Kaldır' : 'Renk Ailesi Görselini Kaldır'}</h2>
             </div>
             <button type="button" className="modal-close" onClick={() => setMediaRemovalConfirmation(null)} aria-label="Görsel kaldırma onayını kapat"><UiIcon name="close" /></button>
           </header>
           <div className="media-removal-confirm-body">
-            <p id="media-removal-confirm-description">{mediaRemovalConfirmation.kind === 'product'
+            <p id="media-removal-confirm-description">{mediaRemovalConfirmation.kind === 'all'
+              ? clearAllMediaConfirmationText(mediaRemovalConfirmation.ownCount, mediaRemovalConfirmation.familyItems)
+              : mediaRemovalConfirmation.kind === 'product'
               ? 'Bu görsel aynı model ailesindeki ürün ve varyant kayıtlarından hemen kaldırılacak. Pazaryerindeki görsel değiştirilmez.'
               : `Bu renk ailesi görseli ${(mediaRemovalConfirmation.item.sourceProductTitles.length ? mediaRemovalConfirmation.item.sourceProductTitles.join(', ') : 'ürün ailesindeki kaynak ürünler')} kayıtlarından kaldırılacak. İşlem yalnızca paneldeki görsel bağlantılarını etkiler; pazaryerindeki ürün veya görsel silinmez.`}</p>
           </div>
           <footer>
             <button type="button" className="secondary" data-autofocus={touchScreen ? undefined : true} onClick={() => setMediaRemovalConfirmation(null)}>Vazgeç</button>
-            <button type="button" className="destructive" onClick={confirmMediaRemoval}>Görseli Kaldır</button>
+            <button type="button" className="destructive" onClick={confirmMediaRemoval}>{mediaRemovalConfirmation.kind === 'all' ? 'Tümünü Temizle' : 'Görseli Kaldır'}</button>
           </footer>
         </DialogSurface>
       </div>,
