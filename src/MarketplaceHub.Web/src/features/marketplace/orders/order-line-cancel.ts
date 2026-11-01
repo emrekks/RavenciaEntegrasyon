@@ -29,13 +29,15 @@ export function isPartlyCancelled(order: Pick<Order, 'derivedStatus' | 'lines'>)
 // An order whose delivery is done: what was cancelled of it no longer concerns the warehouse.
 const deliveredStatuses = ['DELIVERED', 'RETURN_IN_TRANSIT', 'RETURNED']
 
-// The lines a list row shows. In the İptal tab a partly cancelled order shows only what was cancelled of it. A
-// delivered order shows only what was delivered, unless the list asks for partial cancellations (the Ürün İptali
-// filter). An open order shows every line, the cancelled ones struck through so the warehouse does not pack them.
+// The lines a list row shows. In the İptal tab a partly cancelled order shows only what was cancelled of it; in the
+// Kısmi İptal tab (and under the Ürün İptali filter) the whole order, what is left first and the cancelled products
+// struck through after it. A delivered order shows only what was delivered. An open order shows every line, the
+// cancelled ones struck through so the warehouse does not pack them.
 export function rowLines(order: Pick<Order, 'derivedStatus' | 'lines'>, tab: string, showCancelled = false) {
   const lines = order.lines ?? []
   if (tab === 'CANCELLED' && isPartlyCancelled(order)) return lines.filter(line => lineCancel(line).cancelled > 0)
-  if (showCancelled || !deliveredStatuses.includes(order.derivedStatus.toUpperCase())) return lines
+  if (tab === 'PARTIALLY_CANCELLED' || showCancelled) return [...lines].sort((left, right) => Number(lineCancel(left).whole) - Number(lineCancel(right).whole))
+  if (!deliveredStatuses.includes(order.derivedStatus.toUpperCase())) return lines
   const delivered = lines.filter(line => lineCancel(line).active > 0)
   return delivered.length ? delivered : lines
 }

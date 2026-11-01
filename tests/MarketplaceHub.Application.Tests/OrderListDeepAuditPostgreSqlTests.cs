@@ -85,9 +85,9 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
-    // An order with some products cancelled stays open with the rest: it is in its own tab and in Kısmi İptal while
-    // open, its cancelled products are in İptal, every line goes to the list (the panel strikes the cancelled ones),
-    // and a delivered one is found under Tümü with the partial-cancel filter.
+    // An order with some products cancelled stays open with the rest: it is in its own tab and in Kısmi İptal (a
+    // delivered one too), its cancelled products are in İptal, every line goes to the list (the panel strikes the
+    // cancelled ones), and Tümü finds them with the partial-cancel filter.
     [PostgreSqlFact]
     public async Task APartlyCancelledOrderIsInItsOwnTabInKismiIptalAndItsCancelledProductsInIptal()
     {
@@ -119,7 +119,7 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             var service = NewService(db);
             async Task<List<Guid>> Ids(OrderListQuery query) => (await service.OrdersAsync(tenantId, 50, 1, null, query, CancellationToken.None)).Items.Select(x => x.Id).ToList();
 
-            Assert.Equal([open], await Ids(new OrderListQuery(Status: "PARTIALLY_CANCELLED")));
+            Assert.Equal(new[] { open, delivered }.OrderBy(x => x), (await Ids(new OrderListQuery(Status: "PARTIALLY_CANCELLED"))).OrderBy(x => x));
             Assert.Contains(open, await Ids(new OrderListQuery(Status: "NEW")));
             var cancelledTab = await Ids(new OrderListQuery(Status: "CANCELLED"));
             Assert.Contains(open, cancelledTab);
@@ -127,10 +127,10 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             Assert.Equal(new[] { open, delivered }.OrderBy(x => x), (await Ids(new OrderListQuery(PartialCancel: true))).OrderBy(x => x));
 
             var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None);
-            Assert.Equal(1, summary.PartiallyCancelled);
+            Assert.Equal(2, summary.PartiallyCancelled);
             Assert.Equal(summary.Cancelled, (await Ids(new OrderListQuery(Status: "CANCELLED"))).Count);
 
-            var row = (await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "PARTIALLY_CANCELLED"), CancellationToken.None)).Items.Single();
+            var row = (await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "PARTIALLY_CANCELLED"), CancellationToken.None)).Items.Single(x => x.Id == open);
             Assert.Equal(2, row.Lines!.Count);
             Assert.Contains(row.Lines!, line => line.OrderedQuantity == 1 && line.CancelledQuantity == 1);
             Assert.Equal(1, row.ProductQuantity);
