@@ -183,21 +183,22 @@ export function priceRange(values: number[]) {
 }
 // A band's prices, both limits included as Trendyol's file gives them (a band's lower limit is a kuruş over the next
 // band's upper one): the top band from its lower limit up ("464,63 ₺ ve üzeri"), the bottom band up to its upper limit
-// ("388,63 ₺ ve altı"), a band between them from limit to limit ("432,27 – 464,62 ₺"). Over a model's variants with
-// different limits, the prices they cover together.
+// ("388,63 ₺ ve altı"), a band between them from limit to limit ("464,62 – 432,27 ₺"). Over a model's variants with
+// different limits, the prices they cover together. The higher price comes first, as the bands run from the highest.
 export function bandLimitText(bands: Array<CommissionBand | undefined>) {
   const found = bands.filter((band): band is CommissionBand => band != null)
   if (!found.length) return null
   const mins = found.flatMap(band => band.min === null ? [] : [band.min])
   const maxes = found.flatMap(band => band.max === null ? [] : [band.max])
-  if (found[0].max === null) return mins.length ? `${priceRange(mins)} ve üzeri` : 'Tüm fiyatlar'
-  if (found[0].min === null || !mins.length) return maxes.length ? `${priceRange(maxes)} ve altı` : null
-  return `${amount(Math.min(...mins))} – ${money(Math.max(...maxes))}`
+  const downward = (values: number[]) => { const low = Math.min(...values), high = Math.max(...values); return low === high ? money(high) : `${amount(high)} – ${money(low)}` }
+  if (found[0].max === null) return mins.length ? `${downward(mins)} ve üzeri` : 'Tüm fiyatlar'
+  if (found[0].min === null || !mins.length) return maxes.length ? `${downward(maxes)} ve altı` : null
+  return `${amount(Math.max(...maxes))} – ${money(Math.min(...mins))}`
 }
-// The same band in words, for its hint: "432,27 ₺ ile 464,62 ₺ arası (ikisi de dahil)".
+// The same band in words, for its hint: "464,62 ₺ ile 432,27 ₺ arası (ikisi de dahil)".
 export function bandLimitHint(bands: Array<CommissionBand | undefined>) {
   const found = bands.filter((band): band is CommissionBand => band != null)
-  const texts = [...new Set(found.map(band => band.min !== null && band.max !== null ? `${money(band.min)} ile ${money(band.max)} arası (ikisi de dahil)`
+  const texts = [...new Set(found.map(band => band.min !== null && band.max !== null ? `${money(band.max)} ile ${money(band.min)} arası (ikisi de dahil)`
     : band.min !== null ? `${money(band.min)} ve üzeri (${money(band.min)} dahil)` : band.max !== null ? `${money(band.max)} ve altı (${money(band.max)} dahil)` : 'Tüm fiyatlar'))]
   return texts.length === 1 ? texts[0] : texts.length ? `Bedenlere göre: ${texts.join('; ')}` : undefined
 }
