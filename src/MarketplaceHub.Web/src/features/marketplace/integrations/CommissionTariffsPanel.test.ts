@@ -134,20 +134,20 @@ describe('commission tariff profit range', () => {
 })
 
 describe('bandLimitText', () => {
-  // Trendyol's 29 Ekim tariff: 563,84 ₺ ve üzeri, 510,42–563,83, 457,01–510,41, 457,00 ₺ ve altı (each limit included).
+  // Trendyol's 29 Ekim tariff: 563,84 ₺ and up, 563,83–510,42, 510,41–457,01, 457,00 ₺ and down (each limit included).
   const bands = [{ tier: 1, min: 563.84, max: null, rate: 21.5 }, { tier: 2, min: 510.42, max: 563.83, rate: 20.8 }, { tier: 3, min: 457.01, max: 510.41, rate: 19.3 }, { tier: 4, min: null, max: 457, rate: 17.5 }]
-  it('states the top band from its lower limit, the bottom band up to its upper one and the bands between as ranges', () => {
-    expect(bands.map(band => bandLimitText([band]))).toEqual(['563,84 ₺ ve üzeri', '563,83 – 510,42 ₺', '510,41 – 457,01 ₺', '457,00 ₺ ve altı'])
+  it('heads the top band by its lower limit and every other band by its upper one, as the Trendyol panel does', () => {
+    expect(bands.map(band => bandLimitText([band]))).toEqual(['563,84 ₺ ve üstü', '563,83 ₺ ve altı', '510,41 ₺ ve altı', '457,00 ₺ ve altı'])
     expect(bandLimitText([undefined])).toBeNull()
   })
   it('over a model\'s variants covers the prices of all of them', () => {
-    expect(bandLimitText([{ tier: 1, min: 463.13, max: null, rate: 21.5 }, { tier: 1, min: 464.63, max: null, rate: 21.5 }])).toBe('464,63 – 463,13 ₺ ve üzeri')
-    expect(bandLimitText([bands[1], { tier: 2, min: 500.02, max: 553.5, rate: 20.8 }])).toBe('563,83 – 500,02 ₺')
+    expect(bandLimitText([{ tier: 1, min: 463.13, max: null, rate: 21.5 }, { tier: 1, min: 464.63, max: null, rate: 21.5 }])).toBe('464,63 – 463,13 ₺ ve üstü')
+    expect(bandLimitText([bands[1], { tier: 2, min: 500.02, max: 553.5, rate: 20.8 }])).toBe('563,83 – 553,50 ₺ ve altı')
     expect(bandLimitText([bands[3], { tier: 4, min: null, max: 450, rate: 17.5 }])).toBe('457,00 – 450,00 ₺ ve altı')
   })
   it('says in words that both limits are included', () => {
     expect(bandLimitHint([bands[1]])).toBe('563,83 ₺ ile 510,42 ₺ arası (ikisi de dahil)')
-    expect(bandLimitHint([bands[0]])).toBe('563,84 ₺ ve üzeri (563,84 ₺ dahil)')
+    expect(bandLimitHint([bands[0]])).toBe('563,84 ₺ ve üstü (563,84 ₺ dahil)')
     expect(bandLimitHint([bands[3]])).toBe('457,00 ₺ ve altı (457,00 ₺ dahil)')
     expect(bandLimitHint([bands[1], bands[1]])).toBe('563,83 ₺ ile 510,42 ₺ arası (ikisi de dahil)')
     expect(bandLimitHint([undefined])).toBeUndefined()
