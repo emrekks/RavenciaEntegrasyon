@@ -251,8 +251,6 @@ public sealed class InvoicingDeepAuditTests
                 new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "QUEUED", "SUBMIT", "Sırada")])));
         }
 
-        public Task<ServiceResult<InvoicePolicyView>> GetPolicyAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) => throw new NotSupportedException();
-        public Task<ServiceResult<InvoicePolicyView>> UpsertPolicyAsync(Guid tenantId, Guid connectionId, long? expectedVersion, UpsertInvoicePolicyCommand command, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<PageResult<InvoiceListView>> ListAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<IReadOnlyList<InvoiceWorkspaceItemView>> WorkspaceAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<InvoiceWorkspacePageView> WorkspacePageAsync(Guid tenantId, InvoiceWorkspacePageQuery query, CancellationToken cancellationToken) => throw new NotSupportedException();

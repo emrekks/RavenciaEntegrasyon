@@ -27,39 +27,6 @@ public sealed partial class InvoicingBillingService(
     private readonly IDataProtector _taxProtector = dataProtection.CreateProtector("MarketplaceHub.InvoiceTaxIdentity.v1");
     private readonly IDataProtector _partyProtector = dataProtection.CreateProtector("MarketplaceHub.InvoicePartySnapshot.v1");
 
-    public async Task<ServiceResult<InvoicePolicyView>> GetPolicyAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
-    {
-        var policy = await db.InvoicePolicies.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProviderConnectionId == connectionId, cancellationToken);
-        return policy is null ? NotFound<InvoicePolicyView>() : ServiceResult<InvoicePolicyView>.Ok(Map(policy));
-    }
-
-
-    public async Task<ServiceResult<InvoicePolicyView>> UpsertPolicyAsync(Guid tenantId, Guid connectionId, long? expectedVersion, UpsertInvoicePolicyCommand command, CancellationToken cancellationToken)
-    {
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
-        if (connection is null) return Invalid<InvoicePolicyView>("connectionId", "Trendyol E-Faturam provider bağlantısı bulunamadı.");
-        if (new[] { command.TriggerState, command.PackageScope, command.DueRule, command.RoundingRule, command.AdjustmentRule }.Any(string.IsNullOrWhiteSpace)) return Invalid<InvoicePolicyView>("policy", "Policy alanları boş olamaz.");
-        var policyValues = new[] { Normalize(command.TriggerState), Normalize(command.PackageScope), Normalize(command.DueRule), Normalize(command.RoundingRule), Normalize(command.AdjustmentRule) };
-        var approvedManualPolicy = policyValues.SequenceEqual(["MANUAL_CONFIRMED", "SHIPMENT_PACKAGE", "IMMEDIATE", "LINE_HALF_AWAY_FROM_ZERO", "REJECT_OVER_ONE_KURUS"]);
-        if (!approvedManualPolicy && policyValues.Any(x => x != "UNAPPROVED")) return ServiceResult<InvoicePolicyView>.Fail("FISCAL_POLICY_DECISION_REQUIRED", "Yalnız doğrulanmış manuel paket faturası politikası veya tüm alanlarda UNAPPROVED kabul edilir.", 422);
-        if (command.AutoSubmit) return ServiceResult<InvoicePolicyView>.Fail("AUTO_INVOICE_DISABLED", "Onaylı mali karar kaydı olmadan otomatik fatura açılamaz.", 422);
-
-        var now = timeProvider.GetUtcNow(); var policy = await db.InvoicePolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProviderConnectionId == connectionId, cancellationToken);
-        if (policy is null)
-        {
-            if (expectedVersion is not null) return NotFound<InvoicePolicyView>();
-            policy = new InvoicePolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ProviderConnectionId = connectionId, TriggerState = Normalize(command.TriggerState), PackageScope = Normalize(command.PackageScope), DueRule = Normalize(command.DueRule), RoundingRule = Normalize(command.RoundingRule), AdjustmentRule = Normalize(command.AdjustmentRule), AutoSubmit = command.AutoSubmit, CreatedAt = now, UpdatedAt = now, Version = 1 };
-            db.InvoicePolicies.Add(policy);
-        }
-        else
-        {
-            if (expectedVersion is null) return PreconditionRequired<InvoicePolicyView>();
-            if (policy.Version != expectedVersion) return Precondition<InvoicePolicyView>(policy.Version);
-            policy.TriggerState = Normalize(command.TriggerState); policy.PackageScope = Normalize(command.PackageScope); policy.DueRule = Normalize(command.DueRule); policy.RoundingRule = Normalize(command.RoundingRule); policy.AdjustmentRule = Normalize(command.AdjustmentRule); policy.AutoSubmit = command.AutoSubmit; policy.UpdatedAt = now; policy.Version++;
-        }
-        await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<InvoicePolicyView>.Ok(Map(policy));
-    }
 
     public async Task<PageResult<InvoiceListView>> ListAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken)
     {
@@ -1808,7 +1775,6 @@ public sealed partial class InvoicingBillingService(
     }
     private InvoicePartySnapshot Snapshot(Invoice invoice, string role, string content, DateTimeOffset now) => new() { Id = Guid.CreateVersion7(), TenantId = invoice.TenantId, InvoiceId = invoice.Id, Role = role, ProtectedContent = _partyProtector.Protect(content), ContentHash = Hash(content), CreatedAt = now };
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));
-    private static string Normalize(string value) => value.Trim().ToUpperInvariant();
     private static bool Unapproved(string value) => value is "UNKNOWN" or "UNAPPROVED";
     private static string Status(InvoiceStatus value) => value.ToString().ToUpperInvariant();
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
@@ -1937,7 +1903,6 @@ public sealed partial class InvoicingBillingService(
         var now = timeProvider.GetUtcNow(); var policy = new InvoicePolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ProviderConnectionId = providerConnectionId, TriggerState = "MANUAL_CONFIRMED", PackageScope = "SHIPMENT_PACKAGE", DueRule = "IMMEDIATE", RoundingRule = "LINE_HALF_AWAY_FROM_ZERO", AdjustmentRule = "REJECT_OVER_ONE_KURUS", AutoSubmit = false, CreatedAt = now, UpdatedAt = now, Version = 1 };
         db.InvoicePolicies.Add(policy); await db.SaveChangesAsync(cancellationToken); return policy;
     }
-    private static InvoicePolicyView Map(InvoicePolicy value) => new(value.Id, value.ProviderConnectionId, value.TriggerState, value.PackageScope, value.DueRule, value.RoundingRule, value.AdjustmentRule, value.AutoSubmit, value.Version);
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     // The sale gates read from the order as it is now, so a draft created before a gate existed is stopped too.
     private async Task<InvoiceIssueRefusal?> SaleIssueRefusalAsync(Guid tenantId, Invoice invoice, CancellationToken cancellationToken)
@@ -1956,9 +1921,7 @@ public sealed partial class InvoicingBillingService(
     private static ServiceResult<T> Refuse<T>(InvoiceIssueRefusal refusal) => ServiceResult<T>.Fail(refusal.Code, refusal.Message, 422);
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
-    private static ServiceResult<T> PreconditionRequired<T>() => ServiceResult<T>.Fail("PRECONDITION_REQUIRED", "Mevcut kayıt için If-Match gereklidir.", 428);
     private static ServiceResult<T> CapabilityUnknown<T>(string capability) => ServiceResult<T>.Fail("EXTERNAL_WRITE_NOT_ENABLED", "Bu bağlantıda dış yazma işlemi etkin değil.", 422);
-
 }
 
 internal sealed record InvoiceFiscalDeliveryPackageSnapshot(string? ExternalPackageId, string? CargoProviderExternalId, DateTimeOffset? StatusOccurredAt);

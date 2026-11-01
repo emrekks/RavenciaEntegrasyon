@@ -39,8 +39,6 @@ public static class InvoicingEndpoints
         }
         api.MapGet("/public/manual-invoice-documents/{token}/content", OpenPublicManualOrderInvoiceDocumentAsync);
 
-        api.MapGet("/billing/invoice-policies/{connectionId:guid}", async (Guid connectionId, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.GetPolicyAsync(tenant.TenantId, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http));
-        api.MapPut("/billing/invoice-policies/{connectionId:guid}", UpsertPolicy);
 
         api.MapGet("/invoices", async (HttpContext http, IInvoicingBillingService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
         api.MapGet("/invoice-workspace/summary", async (HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Results.Ok(await service.WorkspaceSummaryAsync(tenant.TenantId, http.RequestAborted)) : Unauthorized(http));
@@ -141,12 +139,6 @@ public static class InvoicingEndpoints
         });
         api.MapGet("/invoices/{invoiceId:guid}/documents/{documentId:guid}/content", async (Guid invoiceId, Guid documentId, HttpContext http, IInvoicingBillingService service) => Tenant(http) is { } tenant ? Stream(await service.OpenDocumentAsync(tenant.TenantId, invoiceId, documentId, http.RequestAborted), http) : Unauthorized(http));
         return endpoints;
-    }
-
-    private static async Task<IResult> UpsertPolicy(Guid connectionId, UpsertInvoicePolicyCommand command, HttpContext http, IInvoicingBillingService service)
-    {
-        var tenant = Tenant(http); if (tenant is null) return Unauthorized(http); var version = OptionalIfMatch(http, out var failure); if (failure is not null) return failure;
-        return WithEtag(http, await service.UpsertPolicyAsync(tenant.TenantId, connectionId, version, command, http.RequestAborted), x => x.Version);
     }
 
     private static async Task<IResult> CreateManualOrderInvoiceDocumentAsync(HttpContext http, AppDbContext db, IPrivateFileStorage storage, TimeProvider timeProvider, IDataProtectionProvider protection, IConfiguration configuration)

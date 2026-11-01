@@ -22,7 +22,6 @@ public static class CatalogEndpoints
             catch (ArgumentException exception) { var (code, message) = MarketplaceHub.Api.Security.RequestArgumentError.From(exception); return Problem(context.HttpContext, new(code, message, 400)); }
         });
 
-        api.MapHepsiburadaProductMatchEndpoints();
         api.MapCommissionTariffEndpoints();
         api.MapProductTransferEndpoints();
 
@@ -83,12 +82,6 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Result(await service.GetProductMarketplaceCodesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPut("/products/{id:guid}/marketplace-codes", async (Guid id, UpdateMarketplaceCodesCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.UpdateProductMarketplaceCodesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http));
-        api.MapPost("/products/{id:guid}/duplicate", async (Guid id, HttpContext http, ICatalogService service) =>
-        {
-            if (Tenant(http) is not { } tenant) return Unauthorized(http);
-            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-            return Result(await service.DuplicateProductAsync(tenant.TenantId, id, http.RequestAborted), product => Results.Created($"/api/v1/products/{product.Id:D}", product));
-        });
         api.MapPost("/products", async (CreateProductCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/products") : MissingContext(http));
         api.MapPatch("/products/{id:guid}", async (Guid id, UpdateProductCommand command, HttpContext http, ICatalogService service) =>
@@ -104,8 +97,6 @@ public static class CatalogEndpoints
                 ? Result(await service.DeleteProductAsync(tenant.TenantId, id, version, http.RequestAborted), count => Results.Ok(new { deletedCount = count }))
                 : failure!;
         });
-        api.MapPost("/products/{id:guid}/archive", async (Guid id, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant ? (RequireIdempotency(http) is { } keyFailure ? keyFailure : TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.ArchiveProductAsync(tenant.TenantId, id, version, http.RequestAborted), x => x.Version) : failure!) : Unauthorized(http));
         api.MapGet("/products/{id:guid}/listing-profiles/{connectionId:guid}", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetListingProfileAsync(tenant.TenantId, id, connectionId, http.RequestAborted), x => x.Version) : Unauthorized(http));
         api.MapPut("/products/{id:guid}/listing-profiles/{connectionId:guid}", async (Guid id, Guid connectionId, UpsertListingProfileCommand command, HttpContext http, ICatalogService service) =>
@@ -137,12 +128,6 @@ public static class CatalogEndpoints
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return Accepted(await service.EnqueuePazaramaSaleStatusAsync(tenant.TenantId, connectionId, command.Barcodes ?? [], command.Close, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
-        });
-        api.MapPost("/products/{id:guid}/archive-jobs", async (Guid id, ProductArchiveRequest command, HttpContext http, ICatalogService service) =>
-        {
-            if (Tenant(http) is not { } tenant) return Unauthorized(http);
-            var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-            return Accepted(await service.EnqueueProductArchiveAsync(tenant.TenantId, id, command.ConnectionId, command.Archived, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted));
         });
         api.MapPost("/products/{id:guid}/publication-status/{connectionId:guid}/refresh", async (Guid id, Guid connectionId, HttpContext http, ICatalogService service) =>
         {
@@ -213,7 +198,6 @@ public static class CatalogEndpoints
         api.MapDelete("/files/product-media-item", DeleteProductMediaItemAsync);
         api.MapDelete("/files/product-media-items", DeleteProductMediaItemsAsync);
         api.MapDelete("/files/product-media", ClearProductMediaAsync);
-        api.MapDelete("/files/product-media-variant", ClearProductVariantMediaAsync);
 
         api.MapGet("/imports", async (HttpContext http, IImportService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
@@ -241,20 +225,11 @@ public static class CatalogEndpoints
 
         api.MapGet("/inventory", async (HttpContext http, IInventoryService service, int? limit, string? after) =>
             Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
-        api.MapGet("/inventory/{variantId:guid}/ledger", async (Guid variantId, HttpContext http, IInventoryService service, int? limit, string? after) =>
-            Tenant(http) is { } tenant ? Results.Ok(await service.LedgerAsync(tenant.TenantId, variantId, PageSize(limit), after, http.RequestAborted)) : Unauthorized(http));
-        api.MapPost("/inventory/{variantId:guid}/adjustments", async (Guid variantId, StockAdjustmentCommand command, HttpContext http, IInventoryService service) =>
-        {
-            if (Tenant(http) is not { } tenant) return Unauthorized(http); var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-            return WithEtag(http, await service.AdjustAsync(tenant.TenantId, tenant.UserId, variantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version);
-        });
         api.MapPut("/inventory/{variantId:guid}/on-hand", async (Guid variantId, StockSetCommand command, HttpContext http, IInventoryService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http); var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
             return WithEtag(http, await service.SetOnHandAsync(tenant.TenantId, tenant.UserId, variantId, command, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted), x => x.Version);
         });
-        api.MapPost("/inventory/stock-sync-jobs", async (HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.ValidateExternalSyncAsync(tenant.TenantId, "STOCK_SYNC", http.RequestAborted)) : MissingContext(http));
         api.MapPost("/channel-offers", async (UpsertChannelOfferCommand command, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.UpsertOfferAsync(tenant.TenantId, tenant.UserId, command, http.RequestAborted), value => Results.Created($"/api/v1/channel-offers/{value.Id:D}", value)) : MissingContext(http));
         api.MapGet("/channel-offers/{id:guid}", async (Guid id, HttpContext http, IInventoryService service) =>
@@ -264,8 +239,6 @@ public static class CatalogEndpoints
         // The "Özel Fiyat" choice of the variants' offers on one connection, stored without a price change.
         api.MapPut("/channel-offers/panel-price-follow", async (SetChannelOfferPanelFollowCommand command, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant ? Result(await service.SetOfferPanelFollowAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/channel-offers/price-sync-jobs", async (HttpContext http, IInventoryService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.ValidateExternalSyncAsync(tenant.TenantId, "PRICE_SYNC", http.RequestAborted)) : MissingContext(http));
         api.MapPost("/connections/{connectionId:guid}/price-inventory-sync-jobs", async (Guid connectionId, string? stockCode, HttpContext http, IInventoryService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Accepted(await service.EnqueuePriceInventorySyncAsync(tenant.TenantId, connectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, stockCode)) : MissingContext(http));
         // The body may name the parts to send ({"price": true, "stock": false}); an empty body sends both, as before.
@@ -848,23 +821,6 @@ public static class CatalogEndpoints
         return Results.Created($"/api/v1/products/{command.ProductId:D}", new { media.Id, media.ProductId, media.VariantId, media.FileAssetId, url, media.MediaRole, media.SortOrder, media.AltText, media.Status });
     }
 
-    private static async Task<IResult> ClearProductVariantMediaAsync(Guid productId, Guid variantId, HttpContext http, AppDbContext db, TimeProvider timeProvider)
-    {
-        if (Tenant(http) is not { } tenant) return Unauthorized(http);
-        var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-        if (!await db.Products.AnyAsync(x => x.TenantId == tenant.TenantId && x.Id == productId)
-            || !await db.ProductVariants.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.Id == variantId))
-            return Problem(http, new("RESOURCE_NOT_FOUND", "Ürün veya varyant bulunamadı.", 404));
-
-        var media = await db.ProductMedia
-            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId && x.Status == "ACTIVE")
-            .ToListAsync(http.RequestAborted);
-        foreach (var item in media) item.Status = "ARCHIVED";
-        if (media.Count > 0) await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, [productId], timeProvider.GetUtcNow(), http.RequestAborted);
-        await db.SaveChangesAsync(http.RequestAborted);
-        return Results.NoContent();
-    }
-
     private static async Task<IResult> ClearProductMediaAsync(Guid productId, HttpContext http, AppDbContext db, TimeProvider timeProvider)
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
@@ -1041,7 +997,6 @@ public static class CatalogEndpoints
     // Fields: "Platformlarda Güncelle" picks (ProductUpdateFields codes); omitted on a publication and by older clients.
     public sealed record PublicationRequest(Guid ConnectionId, IReadOnlyList<string>? Fields = null);
     public sealed record PriceInventoryFieldsRequest(bool? Price = null, bool? Stock = null);
-    public sealed record ProductArchiveRequest(Guid ConnectionId, bool Archived);
     public sealed record PazaramaSaleStatusRequest(IReadOnlyList<string>? Barcodes, bool Close);
     public sealed record RegisterProductMediaUrl(Guid ProductId, Guid? VariantId, string Url, string? MediaRole, int SortOrder, string? AltText);
     public sealed record ReconcileProductMediaCommand(Guid ProductId, Guid? VariantId, IReadOnlyList<ReconcileProductMediaItem>? Items, string? AltText);

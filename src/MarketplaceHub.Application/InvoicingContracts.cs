@@ -354,8 +354,6 @@ public interface IHepsiburadaInvoiceStatusPort
 
 public sealed record RemoteCancelledOrderLine(string OrderNumber, string? LineItemId, DateTimeOffset? CancelledAt);
 
-public sealed record InvoicePolicyView(Guid Id, Guid ProviderConnectionId, string TriggerState, string PackageScope, string DueRule, string RoundingRule, string AdjustmentRule, bool AutoSubmit, long Version);
-public sealed record UpsertInvoicePolicyCommand(string TriggerState, string PackageScope, string DueRule, string RoundingRule, string AdjustmentRule, bool AutoSubmit);
 public sealed record CreateInvoiceCommand(Guid OrderId, Guid? PackageId, Guid ProviderConnectionId, Guid? OriginalInvoiceId, bool IncludeInternetSalesInfo = true);
 public sealed record InvoiceWorkspacePreviewRequest(IReadOnlyList<InvoiceWorkspacePreviewTarget> Items, bool IncludeInternetSalesInfo = true);
 public sealed record InvoiceWorkspacePreviewTarget(Guid OrderId, Guid PackageId, Guid ProviderConnectionId);
@@ -540,8 +538,6 @@ public sealed record MarketplaceLinkRevocationView(Guid DeliveryStateId, Guid? P
 
 public interface IInvoicingBillingService
 {
-    Task<ServiceResult<InvoicePolicyView>> GetPolicyAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
-    Task<ServiceResult<InvoicePolicyView>> UpsertPolicyAsync(Guid tenantId, Guid connectionId, long? expectedVersion, UpsertInvoicePolicyCommand command, CancellationToken cancellationToken);
     Task<PageResult<InvoiceListView>> ListAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);
     Task<IReadOnlyList<InvoiceWorkspaceItemView>> WorkspaceAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<InvoiceWorkspacePageView> WorkspacePageAsync(Guid tenantId, InvoiceWorkspacePageQuery query, CancellationToken cancellationToken);
@@ -568,10 +564,4 @@ public interface IInvoicingBillingService
 public interface IInvoicingJobProcessor
 {
     Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken);
-}
-
-public sealed record InvoiceReconciliationView(Guid InvoiceId, string Status, IReadOnlyList<ReconciliationDifferenceView> Differences);
-public interface IInvoicingReconciliationService
-{
-    Task<ServiceResult<InvoiceReconciliationView>> RunLocalDryAsync(Guid tenantId, Guid invoiceId, CancellationToken cancellationToken);
 }

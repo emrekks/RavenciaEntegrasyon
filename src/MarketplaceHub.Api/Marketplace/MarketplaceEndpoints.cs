@@ -70,16 +70,9 @@ public static class MarketplaceEndpoints
         api.MapPost("/connections/{id:guid}/data-reset", async (Guid id, ResetOperationalDataCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.ResetConnectionDataAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : failure! : MissingContext(http));
         api.MapGet("/connections/{id:guid}/full-reset", async (Guid id, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant ? Result(await service.FullResetAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPost("/connections/{id:guid}/full-reset", async (Guid id, FullResetConnectionCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.RequestFullResetAsync(tenant.TenantId, tenant.UserId, id, version, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : failure! : MissingContext(http));
-        api.MapPut("/connections/{id:guid}/data-visibility", async (Guid id, DataVisibilityCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? TryIfMatch(http, out var version, out var failure) ? Result(await service.SetDataVisibilityAsync(tenant.TenantId, tenant.UserId, id, version, command.Hidden, http.TraceIdentifier, http.RequestAborted), Results.Ok) : failure! : MissingContext(http));
         api.MapGet("/settings/data-reset", async (HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant ? Result(await service.ResetCountsAsync(tenant.TenantId, null, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPost("/settings/data-reset", async (ResetOperationalDataCommand command, HttpContext http, IOperationalDataMaintenanceService service) => Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.ResetAsync(tenant.TenantId, tenant.UserId, command, http.TraceIdentifier, http.RequestAborted), Results.Ok) : MissingContext(http));
         api.MapGet("/connections/{id:guid}/capabilities", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.CapabilitiesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPut("/connections/{id:guid}/capabilities/{code}/evidence", async (Guid id, string code, RecordCapabilityEvidenceCommand command, HttpContext http, IMarketplaceConnectionService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null
-                ? TryIfMatch(http, out var version, out var failure)
-                    ? WithEtag(http, await service.RecordCapabilityEvidenceAsync(tenant.TenantId, tenant.UserId, id, code, version, command, http.TraceIdentifier, http.RequestAborted), x => x.Version)
-                    : failure!
-                : MissingContext(http));
         api.MapPost("/connections/{id:guid}/sync-policies/{resourceType}/runs", async (Guid id, string resourceType, HttpContext http, IScheduledJobProducer producer) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null
                 ? Accepted(await producer.RunNowAsync(tenant.TenantId, id, resourceType, OperationCorrelation(http), http.RequestAborted))
@@ -96,21 +89,6 @@ public static class MarketplaceEndpoints
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
             return Result(await service.UpsertSyncPolicyAsync(tenant.TenantId, id, resourceType, expected, command, http.RequestAborted), value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); });
-        });
-        api.MapGet("/connections/{id:guid}/webhooks", async (Guid id, HttpContext http, IMarketplaceConnectionService service) => Tenant(http) is { } tenant ? Result(await service.WebhooksAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
-        api.MapPost("/connections/{id:guid}/webhooks", async (Guid id, CreateWebhookSubscriptionCommand command, HttpContext http, IMarketplaceConnectionService service) =>
-        {
-            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
-            var result = await service.CreateWebhookAsync(tenant.TenantId, id, command, http.RequestAborted);
-            if (result is { Succeeded: true, Value: { } created }) await AuditAsync(http, tenant, "WEBHOOK_SUBSCRIPTION_CREATED", id, $"subscription:{created.Subscription.Id:D};{created.Subscription.AuthenticationType}");
-            return Created(result, $"/api/v1/connections/{id:D}/webhooks");
-        });
-        api.MapDelete("/connections/{id:guid}/webhooks/{subscriptionId:guid}", async (Guid id, Guid subscriptionId, HttpContext http, IMarketplaceConnectionService service) =>
-        {
-            if (Tenant(http) is not { } tenant || RequireIdempotency(http) is not null) return MissingContext(http);
-            var result = await service.RevokeWebhookAsync(tenant.TenantId, id, subscriptionId, http.RequestAborted);
-            if (result.Succeeded) await AuditAsync(http, tenant, "WEBHOOK_SUBSCRIPTION_REVOKED", id, $"subscription:{subscriptionId:D}");
-            return Result(result, Results.Ok);
         });
 
         api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted) =>

@@ -20,7 +20,7 @@ public sealed partial class HepsiburadaHttpClient(
     TimeProvider timeProvider,
     IConfiguration configuration,
     ILogger<HepsiburadaHttpClient> logger)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IHepsiburadaProductMatchPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IOrderPackageReadPort, IReturnPort, IInvoiceMarketplacePort, IHepsiburadaInvoiceStatusPort
 {
     private readonly HepsiburadaOptions settings = options.Value;
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
@@ -210,59 +210,6 @@ public sealed partial class HepsiburadaHttpClient(
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteProduct>>.Failure(result.Error!, result.RateLimit);
         var products = result.Value!.Items.SelectMany(product => product.Variants.Select(variant => new RemoteProduct(product.ExternalProductId, variant.ExternalVariantId, variant.Barcode, variant.Sku, variant.RawJson))).ToArray();
         return AdapterResult<AdapterPageResult<RemoteProduct>>.Success(new(products, result.Value.NextCursor, result.Value.HasMore, result.Value.TotalCount, result.Value.Issues), result.RateLimit);
-    }
-
-    public async Task<AdapterResult<AdapterPageResult<RemoteProductMatch>>> ListPendingProductMatchesAsync(AdapterContext context, AdapterPageRequest page, CancellationToken cancellationToken)
-    {
-        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
-            return await Unsupported<AdapterPageResult<RemoteProductMatch>>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar eşleşen ürünler okunmadı.");
-        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
-        if (account is null) return Failure<AdapterPageResult<RemoteProductMatch>>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
-        if (!IntegrationRuntimePolicy.AllowsManualRead(account.Connection)) return await Unsupported<AdapterPageResult<RemoteProductMatch>>("Hepsiburada eşleşme kuyruğu yalnız etkin veya doğrulanmış bağlantıdan okunabilir.");
-        if (account.CatalogBaseAddress is null) return await Unsupported<AdapterPageResult<RemoteProductMatch>>("Hepsiburada katalog base URL'si yapılandırılmamış.");
-        var (pageNumber, limit) = ReferencePage(page, 100);
-        var endpoint = PendingProductMatches(account, pageNumber, limit);
-        var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Get, endpoint, cancellationToken);
-        if (!response.IsSuccess) return AdapterResult<AdapterPageResult<RemoteProductMatch>>.Failure(response.Error!, response.RateLimit);
-        try
-        {
-            var mapped = HepsiburadaJsonMapper.PendingProductMatches(response.Value!.RootElement, pageNumber, limit);
-            return AdapterResult<AdapterPageResult<RemoteProductMatch>>.Success(mapped, response.RateLimit);
-        }
-        catch (JsonException)
-        {
-            return Failure<AdapterPageResult<RemoteProductMatch>>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_MATCH_CONTRACT_INVALID", "Hepsiburada eşleşen ürün yanıtı beklenen mağaza/SKU sözleşmesiyle eşleşmiyor.", HttpStatusCode.BadGateway);
-        }
-    }
-
-    public async Task<AdapterResult<bool>> ReviewProductMatchesAsync(AdapterContext context, IReadOnlyList<string> merchantSkus, bool approve, CancellationToken cancellationToken)
-    {
-        if (!string.Equals(settings.AuthenticationMode, "BASIC", StringComparison.OrdinalIgnoreCase))
-            return await Unsupported<bool>("Hepsiburada auth biçimi SIT hesabında doğrulanana kadar ürün eşleşmesi kararı gönderilmedi.");
-        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
-        if (account is null) return Failure<bool>(AdapterErrorClass.Authentication, "HEPSIBURADA_CREDENTIAL_INVALID", "Hepsiburada bağlantı bilgileri bulunamadı.", HttpStatusCode.Unauthorized);
-        if (account.CatalogBaseAddress is null) return await Unsupported<bool>("Hepsiburada katalog base URL'si yapılandırılmamış.");
-        if (!IntegrationRuntimePolicy.AllowsExternalWrite(account.Connection, context, GlobalWritesEnabled, ConnectionWritesEnabled(account.Connection.SettingsJson))
-            || !await authentication.HasVerifiedWriteEvidenceAsync(account.Connection, cancellationToken, HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(account.Connection)))
-            return await Unsupported<bool>("Ürün eşleşmesi kararı yalnız mevcut dış yazma kapıları ve mağaza/ortam kapsamlı fiyat ve stok yazma kanıtı sağlandığında kullanılabilir.");
-        if (!ValidMatchDecisionSkus(merchantSkus))
-            return Failure<bool>(AdapterErrorClass.Validation, "HEPSIBURADA_PRODUCT_MATCH_SKUS_INVALID", "Eşleşme kararı için 1-100 benzersiz, boşluksuz büyük harf merchantSku gerekir.", HttpStatusCode.BadRequest);
-
-        var body = ProductMatchDecisionPayload(account.Connection.ExternalStoreId, merchantSkus);
-        using var content = new StringContent(body, Encoding.UTF8, "application/json");
-        var endpoint = ProductMatchDecision(approve);
-        var response = await SendAsync(account, account.CatalogBaseAddress, HttpMethod.Post, endpoint, content, cancellationToken);
-        if (!response.IsSuccess) return AdapterResult<bool>.Failure(response.Error!, response.RateLimit);
-        try
-        {
-            if (!HepsiburadaJsonMapper.ProductMatchDecisionAccepted(response.Value!.RootElement))
-                return Failure<bool>(AdapterErrorClass.Validation, "HEPSIBURADA_PRODUCT_MATCH_DECISION_REJECTED", "Hepsiburada eşleşme kararı yanıtı başarısızlık bildirdi.", HttpStatusCode.BadGateway);
-            return AdapterResult<bool>.Success(true, response.RateLimit);
-        }
-        catch (JsonException)
-        {
-            return Failure<bool>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_PRODUCT_MATCH_DECISION_CONTRACT_INVALID", "Hepsiburada eşleşme kararı yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway);
-        }
     }
 
     private async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogStructureAsync(HepsiburadaRequestContext account, AdapterPageRequest page, CancellationToken cancellationToken)
@@ -1381,12 +1328,6 @@ public sealed partial class HepsiburadaHttpClient(
         }
         catch (JsonException) { return false; }
     }
-    internal static string PendingProductMatches(HepsiburadaRequestContext context, int page, int size) => $"api/products/products-by-merchant-and-status?merchantId={Uri.EscapeDataString(context.Connection.ExternalStoreId)}&productStatus=PRE_MATCHED&taskStatus=false&version=1&page={page.ToString(CultureInfo.InvariantCulture)}&size={size.ToString(CultureInfo.InvariantCulture)}";
-    internal static string ProductMatchDecision(bool approve) => approve ? "api/products/approve-prematch" : "api/products/reject-prematch";
-    internal static string ProductMatchDecisionPayload(string merchantId, IReadOnlyList<string> merchantSkus) => JsonSerializer.Serialize(new[] { new { merchant = merchantId, merchantSkuList = merchantSkus.Select(sku => sku.Trim()).ToArray() } });
-    internal static bool ValidMatchDecisionSkus(IReadOnlyList<string> merchantSkus) => merchantSkus.Count is > 0 and <= 100
-        && merchantSkus.All(sku => !string.IsNullOrWhiteSpace(sku) && sku == sku.Trim() && sku == sku.ToUpperInvariant() && !sku.Any(char.IsWhiteSpace))
-        && merchantSkus.Distinct(StringComparer.OrdinalIgnoreCase).Count() == merchantSkus.Count;
     internal static string CategoryAttributes(string categoryId) => $"api/categories/{Uri.EscapeDataString(categoryId)}/attributes?version=2";
     internal static string AttributeValues(string categoryId, string attributeId, int page, int limit) => $"api/categories/{Uri.EscapeDataString(categoryId)}/attribute/{Uri.EscapeDataString(attributeId)}/values?version=5&page={page.ToString(CultureInfo.InvariantCulture)}&size={limit.ToString(CultureInfo.InvariantCulture)}";
 

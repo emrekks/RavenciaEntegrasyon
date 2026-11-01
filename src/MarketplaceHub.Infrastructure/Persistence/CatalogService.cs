@@ -893,193 +893,6 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return await GetProductAsync(tenantId, product.Id, cancellationToken);
     }
 
-    public async Task<ServiceResult<ProductView>> DuplicateProductAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken)
-    {
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
-        var source = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
-        if (source is null) return NotFound<ProductView>();
-
-        var familyProductIds = await ProductFamilyProductIdsAsync(tenantId, source, cancellationToken);
-        var sourceProducts = await db.Products.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && familyProductIds.Contains(x.Id))
-            .OrderBy(x => x.Id == productId ? 0 : 1).ThenBy(x => x.CreatedAt).ThenBy(x => x.Id)
-            .ToListAsync(cancellationToken);
-        var sourceProductIds = sourceProducts.Select(x => x.Id).ToArray();
-        var sourceVariants = await db.ProductVariants.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && sourceProductIds.Contains(x.ProductId))
-            .OrderBy(x => x.ProductId).ThenBy(x => x.SortOrder).ThenBy(x => x.Id)
-            .ToListAsync(cancellationToken);
-        if (sourceVariants.Count == 0) return Invalid<ProductView>("variants", "Varyantı olmayan ürün kopyalanamaz.");
-        if (sourceVariants.Count > 1000) return Invalid<ProductView>("variants", "Tek ürün kaydında en fazla 1000 varyant oluşturulabilir.");
-
-        var sourceAssignments = await db.ProductAttributeAssignments.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && sourceProductIds.Contains(x.ProductId))
-            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
-            .ToListAsync(cancellationToken);
-        var sourceOptions = await db.ProductOptions.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && sourceProductIds.Contains(x.ProductId))
-            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
-            .ToListAsync(cancellationToken);
-        var sourceOptionIds = sourceOptions.Select(x => x.Id).ToArray();
-        var sourceOptionValues = sourceOptionIds.Length == 0
-            ? []
-            : await db.ProductOptionValues.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && sourceOptionIds.Contains(x.OptionId))
-                .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
-                .ToListAsync(cancellationToken);
-        var sourceVariantIds = sourceVariants.Select(x => x.Id).ToArray();
-        var sourceVariantOptions = sourceVariantIds.Length == 0
-            ? []
-            : await db.VariantOptionValues.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && sourceVariantIds.Contains(x.VariantId))
-                .ToListAsync(cancellationToken);
-        var sourceMedia = await db.ProductMedia.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && sourceProductIds.Contains(x.ProductId) && x.Status == "ACTIVE")
-            .OrderBy(x => x.SortOrder).ThenBy(x => x.Id)
-            .ToListAsync(cancellationToken);
-
-        var now = timeProvider.GetUtcNow();
-        var copyProductIds = new Dictionary<Guid, Guid>(sourceProducts.Count);
-        var copies = new List<Product>(sourceProducts.Count);
-        foreach (var sourceProduct in sourceProducts)
-        {
-            var copyId = Guid.CreateVersion7();
-            copyProductIds.Add(sourceProduct.Id, copyId);
-            copies.Add(new Product
-            {
-                Id = copyId,
-                TenantId = tenantId,
-                Title = ProductCopyCodePolicy.WithCopySuffix(sourceProduct.Title, 320),
-                Description = sourceProduct.Description,
-                BrandId = sourceProduct.BrandId,
-                CategoryId = sourceProduct.CategoryId,
-                DefaultListPrice = sourceProduct.DefaultListPrice,
-                DefaultSalePrice = sourceProduct.DefaultSalePrice,
-                VatRate = sourceProduct.VatRate,
-                VatInclusion = sourceProduct.VatInclusion,
-                DeliveryDays = sourceProduct.DeliveryDays ?? ProductDeliveryDays.Default,
-                Status = ProductStatus.Draft,
-                SourcePolicyVersion = sourceProduct.SourcePolicyVersion,
-                CreatedAt = now,
-                UpdatedAt = now
-            });
-        }
-
-        var token = copyProductIds[productId].ToString("N")[..8];
-        // Every copy code carries the token, so only stored codes containing it can collide; load those
-        // instead of every code of the tenant.
-        var tokenKey = token.ToUpperInvariant();
-        var usedSkus = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.SkuNormalized.Contains(tokenKey)).Select(x => x.SkuNormalized).ToListAsync(cancellationToken)).Select(value => Normalize(value)).ToHashSet(StringComparer.Ordinal);
-        var usedBarcodes = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.BarcodeNormalized != null && x.BarcodeNormalized.Contains(tokenKey)).Select(x => x.BarcodeNormalized!).ToListAsync(cancellationToken)).Select(value => Normalize(value)).ToHashSet(StringComparer.Ordinal);
-        var usedModelCodes = (await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ModelCode != null && x.ModelCode.ToUpper().Contains(tokenKey)).Select(x => x.ModelCode!).ToListAsync(cancellationToken)).Select(value => Normalize(value)).ToHashSet(StringComparer.Ordinal);
-        var modelCodeCopies = new Dictionary<string, string>(StringComparer.Ordinal);
-        var newVariants = new List<ProductVariant>(sourceVariants.Count);
-        var variantIdMap = new Dictionary<Guid, Guid>(sourceVariants.Count);
-        for (var variantIndex = 0; variantIndex < sourceVariants.Count; variantIndex++)
-        {
-            var sourceVariant = sourceVariants[variantIndex];
-            var newVariantId = Guid.CreateVersion7();
-            variantIdMap.Add(sourceVariant.Id, newVariantId);
-            var variantToken = $"{token}{variantIndex + 1}";
-            string? modelCode = null;
-            if (!string.IsNullOrWhiteSpace(sourceVariant.ModelCode))
-            {
-                var normalizedModelCode = Normalize(sourceVariant.ModelCode);
-                if (!modelCodeCopies.TryGetValue(normalizedModelCode, out modelCode))
-                {
-                    modelCode = ProductCopyCodePolicy.WithUniqueCopySuffix(sourceVariant.ModelCode, token, usedModelCodes, 160);
-                    modelCodeCopies.Add(normalizedModelCode, modelCode);
-                }
-            }
-
-            var sku = ProductCopyCodePolicy.WithUniqueCopySuffix(sourceVariant.Sku, variantToken, usedSkus);
-            var barcode = string.IsNullOrWhiteSpace(sourceVariant.Barcode)
-                ? null
-                : ProductCopyCodePolicy.WithUniqueCopySuffix(sourceVariant.Barcode, variantToken, usedBarcodes);
-            newVariants.Add(new ProductVariant
-            {
-                Id = newVariantId,
-                TenantId = tenantId,
-                ProductId = copyProductIds[sourceVariant.ProductId],
-                SortOrder = sourceVariant.SortOrder,
-                Sku = sku,
-                SkuNormalized = Normalize(sku),
-                Barcode = barcode,
-                BarcodeNormalized = NormalizeBarcode(barcode),
-                ModelCode = modelCode,
-                OptionSignature = sourceVariant.OptionSignature,
-                Status = ProductStatus.Draft,
-                Weight = sourceVariant.Weight,
-                Width = sourceVariant.Width,
-                Height = sourceVariant.Height,
-                Length = sourceVariant.Length,
-                Desi = sourceVariant.Desi,
-                CostPrice = sourceVariant.CostPrice,
-                DefaultListPrice = sourceVariant.DefaultListPrice,
-                DefaultSalePrice = sourceVariant.DefaultSalePrice,
-                CreatedAt = now,
-                UpdatedAt = now
-            });
-        }
-
-        var optionIdMap = new Dictionary<Guid, Guid>(sourceOptions.Count);
-        foreach (var option in sourceOptions)
-        {
-            var newOptionId = Guid.CreateVersion7();
-            optionIdMap.Add(option.Id, newOptionId);
-            db.ProductOptions.Add(new ProductOption { Id = newOptionId, TenantId = tenantId, ProductId = copyProductIds[option.ProductId], Label = option.Label, NormalizedKey = option.NormalizedKey, SortOrder = option.SortOrder });
-        }
-
-        var optionValueIdMap = new Dictionary<Guid, Guid>(sourceOptionValues.Count);
-        foreach (var optionValue in sourceOptionValues)
-        {
-            var newOptionValueId = Guid.CreateVersion7();
-            optionValueIdMap.Add(optionValue.Id, newOptionValueId);
-            db.ProductOptionValues.Add(new ProductOptionValue { Id = newOptionValueId, TenantId = tenantId, OptionId = optionIdMap[optionValue.OptionId], Label = optionValue.Label, NormalizedKey = optionValue.NormalizedKey, SortOrder = optionValue.SortOrder });
-        }
-
-        db.Products.AddRange(copies);
-        db.ProductVariants.AddRange(newVariants);
-        db.ProductAttributeAssignments.AddRange(sourceAssignments.Select(assignment => new ProductAttributeAssignment
-        {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ProductId = copyProductIds[assignment.ProductId],
-            VariantId = assignment.VariantId is Guid oldVariantId ? variantIdMap[oldVariantId] : null,
-            AttributeId = assignment.AttributeId,
-            ValueId = assignment.ValueId,
-            TextValue = assignment.TextValue,
-            NumberValue = assignment.NumberValue,
-            BooleanValue = assignment.BooleanValue,
-            SortOrder = assignment.SortOrder
-        }));
-        db.VariantOptionValues.AddRange(sourceVariantOptions.Select(assignment => new VariantOptionValue
-        {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            VariantId = variantIdMap[assignment.VariantId],
-            OptionId = optionIdMap[assignment.OptionId],
-            OptionValueId = optionValueIdMap[assignment.OptionValueId]
-        }));
-        db.ProductMedia.AddRange(sourceMedia.Select(media => new ProductMedia
-        {
-            Id = Guid.CreateVersion7(),
-            TenantId = tenantId,
-            ProductId = copyProductIds[media.ProductId],
-            VariantId = media.VariantId is Guid oldVariantId ? variantIdMap[oldVariantId] : null,
-            FileAssetId = media.FileAssetId,
-            MediaRole = media.MediaRole,
-            SortOrder = media.SortOrder,
-            AltText = media.AltText,
-            Status = media.Status
-        }));
-
-        await EnsureMainInventoryAsync(tenantId, newVariants, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return await GetProductAsync(tenantId, copyProductIds[productId], cancellationToken);
-    }
-
     // Hepsiburada and Shopify address a variant by their own code (hbSku, variant id); the product editor shows
     // them for every variant of the colour family it edits.
     private static readonly string[] MarketplaceCodePlatforms = ["HEPSIBURADA", "SHOPIFY"];
@@ -1623,15 +1436,6 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     private const decimal MaxDefaultPrice = 100_000_000m;
     private static string Truncate(string value, int length) => value.Length <= length ? value : value[..length];
 
-    public async Task<ServiceResult<ProductView>> ArchiveProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
-    {
-        var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version); product.Status = ProductStatus.Archived; product.ArchivedAt = timeProvider.GetUtcNow(); product.UpdatedAt = product.ArchivedAt.Value; product.Version++; var variants = await db.ProductVariants.Where(x => x.TenantId == tenantId && x.ProductId == id).ToListAsync(cancellationToken); foreach (var variant in variants) { variant.Status = ProductStatus.Archived; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }
-        // D4 (K8): archiving is a status flip only. Images stay as they are: an archived image is a removed one
-        // and cannot be told apart from it later, so an archive that removed them could not be undone.
-        await MarkMarketplaceLinksDirtyAsync(tenantId, id, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken); return await GetProductAsync(tenantId, id, cancellationToken);
-    }
-
     private Task MarkMarketplaceLinksDirtyAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken) =>
         CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, [productId], CatalogLocalEdits.ProductField, cancellationToken);
 
@@ -1963,30 +1767,6 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var payload = JsonSerializer.Serialize(new ProductUpdateJobPayload(jobId, productId, profile.Id, phase, draft.Publication.Mode, draft.Publication.PayloadHash, draft.Publication.UnapprovedPayloadJson, draft.Publication.ApprovedContentPayloadJson, draft.Publication.ApprovedVariantPayloadJson, draft.Publication.ApprovedDeliveryPayloadJson, null, null));
         db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductUpdate, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         return await SavePublicationJobAsync(transaction, tenantId, MarketplaceJobTypes.ProductUpdate, dedup, jobId, cancellationToken);
-    }
-
-    public async Task<ServiceResult<Guid>> EnqueueProductArchiveAsync(Guid tenantId, Guid productId, Guid connectionId, bool archived, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
-    {
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
-        var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode != "TRENDYOL" || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Arşiv işlemi için ACTIVE veya doğrulanmış STAGE Trendyol bağlantısı gerekir.", 422);
-        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Arşiv işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
-        if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
-        var build = await new ProductArchiveComposer(db).BuildAsync(tenantId, productId, connectionId, archived, cancellationToken);
-        if (!build.Succeeded) return ServiceResult<Guid>.Fail(build.Error!.Code, build.Error.Message, build.Error.Status, build.Error.FieldErrors);
-        var draft = build.Value!; var dedup = $"product-archive:{connectionId:N}:{productId:N}:{archived}:{draft.PayloadHash}";
-        var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.ProductArchive && x.JobDedupKey == dedup, cancellationToken);
-        if (existing is not null && await ReuseOrRetirePublicationJobAsync(existing, dedup, reuseSucceeded: false, cancellationToken)) { await transaction.CommitAsync(cancellationToken); return ServiceResult<Guid>.Ok(existing.Id); }
-        var profile = await db.ChannelListingProfiles.SingleAsync(x => x.TenantId == tenantId && x.Id == draft.ProfileId, cancellationToken);
-        profile.DesiredStatus = archived ? "ARCHIVED" : "LIVE"; profile.ActualStatus = archived ? "ARCHIVE_QUEUED" : "UNARCHIVE_QUEUED"; profile.LastRejectionCode = null; profile.Version++;
-        var listingVariants = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
-        foreach (var listing in listingVariants) { listing.DesiredStatus = archived ? "ARCHIVED" : "LIVE"; listing.ActualStatus = profile.ActualStatus; listing.RejectionCode = null; }
-        var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && draft.Variants.Select(v => v.VariantId).Contains(x.VariantId)).ToListAsync(cancellationToken);
-        foreach (var state in states) { state.DesiredStatus = archived ? "ARCHIVED" : "LIVE"; state.ActualStatus = profile.ActualStatus; state.LastRejectionCode = null; state.PayloadHash = draft.PayloadHash; state.Version++; }
-        var jobId = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
-        var payload = JsonSerializer.Serialize(new ProductArchiveJobPayload(jobId, productId, profile.Id, archived, "SUBMIT", draft.PayloadHash, draft.PayloadJson, null, now, now.AddHours(24)));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductArchive, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 20, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
-        return await SavePublicationJobAsync(transaction, tenantId, MarketplaceJobTypes.ProductArchive, dedup, jobId, cancellationToken);
     }
 
     // Pazarama: close (or reopen) mapped products for sale by barcode. There is no listing profile behind a
@@ -2569,7 +2349,6 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var hasCustomMediaOrder = customMediaOrderProductIds.Contains(product.Id);
             return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id), hasCustomMediaOrder, customMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion, product.DeliveryDays);
         }).ToList();
-
     }
 
     private static IReadOnlyList<string> ProductMediaForView(IReadOnlyList<ProductVariantView> variants, IReadOnlyList<string>? globalMedia, bool hasCustomMediaOrder, IReadOnlyList<string>? customOrderedMedia)
@@ -2828,7 +2607,6 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                     db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == profile.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED") && connection.DisplayName == platformName)));
             }
         }
-
     }
 
     // The catalog's variants matched on a marketplace (a variant link or a listing on one of its active connections) and

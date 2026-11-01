@@ -67,9 +67,9 @@ public sealed class InvoiceLifecycleAuditTests
             new InvoiceLine { DescriptionSnapshot = "B", UnitSnapshot = "ADET", LineTotal = 108m }
         };
 
-        Assert.Empty(InvoicingReconciliationService.LocalDifferences(invoice, lines));
+        Assert.Empty(InvoiceTotalsReconciliationPolicy.LocalDifferences(invoice, lines));
 
         invoice.TaxTotal = 30m;
-        Assert.Equal("TOTAL_EQUATION", Assert.Single(InvoicingReconciliationService.LocalDifferences(invoice, lines)).FieldName);
+        Assert.Equal("TOTAL_EQUATION", Assert.Single(InvoiceTotalsReconciliationPolicy.LocalDifferences(invoice, lines)).FieldName);
     }
 }

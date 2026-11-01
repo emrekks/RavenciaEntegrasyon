@@ -24,24 +24,6 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         return Page(rows, limit, x => x.Id);
     }
 
-    public async Task<PageResult<LedgerEntryView>> LedgerAsync(Guid tenantId, Guid variantId, int limit, string? after, CancellationToken cancellationToken)
-    {
-        var afterId = Decode(after);
-        var itemIds = db.InventoryItems.Where(x => x.TenantId == tenantId && x.VariantId == variantId).Select(x => x.Id);
-        var rows = await db.StockLedgerEntries.AsNoTracking()
-            // Opening balances and shipment-progress markers are reconciliation
-            // metadata, not new physical stock movements shown in this ledger.
-            .Where(x => x.TenantId == tenantId
-                && x.MovementType != "ORDER_STOCK_BASELINE"
-                && x.MovementType != "ORDER_SHIPMENT_PROGRESS"
-                && x.MovementType != OrderInventoryStockPolicy.ShortfallMovementType
-                && itemIds.Contains(x.InventoryItemId) && (afterId == Guid.Empty || x.Id.CompareTo(afterId) > 0))
-            .OrderBy(x => x.Id).Take(limit + 1)
-            .Select(x => new LedgerEntryView(x.Id, x.MovementType, x.QuantityDelta, x.SourceType, x.SourceId, x.OccurredAt, x.CorrelationId))
-            .ToListAsync(cancellationToken);
-        return Page(rows, limit, x => x.Id);
-    }
-
     public async Task<ServiceResult<InventoryItemView>> AdjustAsync(Guid tenantId, Guid userId, Guid variantId, StockAdjustmentCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         if (command.QuantityDelta == 0) return Invalid<InventoryItemView>("quantityDelta", "Stok düzeltme miktarı sıfır olamaz.");
@@ -282,9 +264,6 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     }
 
     private const int MaxPanelFollowVariants = 2000;
-
-    public Task<ServiceResult<Guid>> ValidateExternalSyncAsync(Guid tenantId, string operation, CancellationToken cancellationToken) =>
-        Task.FromResult(ServiceResult<Guid>.Fail("USE_COMBINED_PRICE_INVENTORY", $"{operation} Trendyol'da ayrık gönderilmez; birleşik price-and-inventory işi kullanılmalıdır.", 422));
 
     // stockCode (n11) limits the send to one linked variant, which is how the
     // first controlled n11 write is made before the automatic flows are on.
