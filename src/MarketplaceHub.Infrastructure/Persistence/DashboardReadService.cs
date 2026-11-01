@@ -26,9 +26,11 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var channels = await ChannelsAsync(tenantId, cancellationToken);
         if (snapshot is null) return new(EmptyMetrics(), channels, timeProvider.GetUtcNow(), 0);
         var breakdown = ReadBreakdown(snapshot.PendingByPlatformJson);
+        // A snapshot written before it held the pending products is read live until the next rebuild.
+        var pendingUnits = breakdown.PendingUnits ?? await PendingUnitsAsync(tenantId, timeProvider.GetUtcNow(), cancellationToken);
         return new(
             new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.PendingReturns, breakdown.Pending, breakdown.Late, breakdown.Returns,
-                snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount),
+                snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount, pendingUnits),
             channels,
             snapshot.UpdatedAt,
             snapshot.Version);
@@ -50,6 +52,18 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             && DashboardMetricPolicy.PendingOrderStatuses.Contains(x.DerivedStatus));
         return query.ExcludeStaleUnpackaged(db, tenantId, now);
     }
+
+    // The products of the pending orders per store: each line's ordered quantity less what was cancelled of it.
+    internal static IQueryable<PendingUnitGroup> PendingUnitsQuery(AppDbContext db, Guid tenantId, DateTimeOffset now) =>
+        from order in PendingOrderMetricsQuery(db, tenantId, now)
+        join line in db.OrderLines.AsNoTracking() on new { order.TenantId, OrderId = order.Id } equals new { line.TenantId, line.OrderId }
+        group line by order.ConnectionId into grouped
+        select new PendingUnitGroup(grouped.Key, grouped.Sum(line => line.OrderedQuantity > line.CancelledQuantity ? line.OrderedQuantity - line.CancelledQuantity : 0m));
+
+    internal sealed record PendingUnitGroup(Guid ConnectionId, decimal Units);
+
+    private async Task<IReadOnlyDictionary<string, decimal>> PendingUnitsAsync(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        (await PendingUnitsQuery(db, tenantId, now).ToListAsync(cancellationToken)).ToDictionary(x => x.ConnectionId.ToString("D"), x => x.Units);
 
     // Pending orders whose ship-by time has passed. Trendyol stores that time three hours ahead (Turkey wall time
     // labelled UTC), so its orders are late only once the stored value is behind now plus that offset.
@@ -306,6 +320,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var pending = await PendingOrderMetricsQuery(db, tenantId, now).GroupBy(x => x.ConnectionId).Select(x => new { x.Key, Count = x.Count() }).ToListAsync(cancellationToken);
         var late = await LateOrderMetricsQuery(db, tenantId, now).GroupBy(x => x.ConnectionId).Select(x => new { x.Key, Count = x.Count() }).ToListAsync(cancellationToken);
         var returns = await PendingReturnMetricsQuery(db, tenantId, now).GroupBy(x => x.ConnectionId).Select(x => new { x.Key, Count = x.Count() }).ToListAsync(cancellationToken);
+        var pendingUnits = await PendingUnitsAsync(tenantId, now, cancellationToken);
         var deadJobCount = await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.Status == JobStatus.Dead, cancellationToken);
         var manualReviewJobCount = await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.Status == JobStatus.ManualReview, cancellationToken);
         var recentJobCount = await db.IntegrationJobs.AsNoTracking().CountAsync(x => x.TenantId == tenantId && x.CreatedAt >= rateLimitWindowStart, cancellationToken);
@@ -313,7 +328,8 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var breakdown = new DashboardBreakdown(
             pending.ToDictionary(x => x.Key.ToString("D"), x => x.Count),
             late.ToDictionary(x => x.Key.ToString("D"), x => x.Count),
-            returns.ToDictionary(x => x.Key.ToString("D"), x => x.Count));
+            returns.ToDictionary(x => x.Key.ToString("D"), x => x.Count),
+            pendingUnits);
         var snapshot = await db.DashboardSnapshots.SingleOrDefaultAsync(x => x.TenantId == tenantId, cancellationToken);
         var existed = snapshot is not null;
         if (snapshot is null)
@@ -356,7 +372,8 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
 
     // The three per-store breakdowns live in the snapshot's one JSON column. A snapshot written before they were
     // grouped by store holds a flat name → count map; it is ignored until the next rebuild.
-    internal sealed record DashboardBreakdown(IReadOnlyDictionary<string, int> Pending, IReadOnlyDictionary<string, int> Late, IReadOnlyDictionary<string, int> Returns);
+    // PendingUnits: the pending orders' products per store; null in a snapshot written before it was kept.
+    internal sealed record DashboardBreakdown(IReadOnlyDictionary<string, int> Pending, IReadOnlyDictionary<string, int> Late, IReadOnlyDictionary<string, int> Returns, IReadOnlyDictionary<string, decimal>? PendingUnits = null);
 
     internal static string WriteBreakdown(DashboardBreakdown breakdown) => JsonSerializer.Serialize(breakdown, BreakdownJson);
 
@@ -365,7 +382,9 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
     {
         static bool Same(IReadOnlyDictionary<string, int> a, IReadOnlyDictionary<string, int> b) =>
             a.Count == b.Count && a.All(item => b.TryGetValue(item.Key, out var value) && value == item.Value);
-        return Same(left.Pending, right.Pending) && Same(left.Late, right.Late) && Same(left.Returns, right.Returns);
+        static bool SameUnits(IReadOnlyDictionary<string, decimal>? a, IReadOnlyDictionary<string, decimal>? b) =>
+            a is null || b is null ? a is null && b is null : a.Count == b.Count && a.All(item => b.TryGetValue(item.Key, out var value) && value == item.Value);
+        return Same(left.Pending, right.Pending) && Same(left.Late, right.Late) && Same(left.Returns, right.Returns) && SameUnits(left.PendingUnits, right.PendingUnits);
     }
 
     internal static DashboardBreakdown ReadBreakdown(string? json)
@@ -380,7 +399,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                 || document.RootElement.EnumerateObject().FirstOrDefault(property => string.Equals(property.Name, "pending", StringComparison.OrdinalIgnoreCase)).Value.ValueKind != JsonValueKind.Object)
                 return new(empty, empty, empty);
             var parsed = JsonSerializer.Deserialize<DashboardBreakdown>(json, BreakdownJson);
-            return new(parsed?.Pending ?? empty, parsed?.Late ?? empty, parsed?.Returns ?? empty);
+            return new(parsed?.Pending ?? empty, parsed?.Late ?? empty, parsed?.Returns ?? empty, parsed?.PendingUnits);
         }
         catch (JsonException) { return new(empty, empty, empty); }
     }

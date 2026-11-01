@@ -9,9 +9,6 @@ export const dashboardOperationalLinks = {
   dueInvoices: '/invoices?tab=DUE_SOON'
 } as const
 
-// The day's sold units open the order list on that Istanbul day (the list's from/to date filter).
-export const dayOrdersLink = (day: string) => `/orders?${new URLSearchParams({ from: day, to: day })}`
-
 const returnStatusValues = ['ALL', 'REQUESTED', 'SHIPPING', 'ACTION_REQUIRED', 'APPROVED', 'REJECTED', 'REVIEW', 'DISPUTED', 'SUSPENDED'] as const
 const invoiceTabValues = ['ALL', 'UNINVOICED', 'INVOICED', 'DUE_SOON', 'HIDDEN'] as const
 

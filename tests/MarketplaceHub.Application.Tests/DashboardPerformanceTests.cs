@@ -214,6 +214,23 @@ public sealed class DashboardPerformanceTests
         Assert.Equal(8, read.Pending[store]);
         Assert.Equal(1, read.Late[store]);
         Assert.Empty(read.Returns);
+        // A snapshot from before the pending products were kept has none: they are read live, not taken as 0.
+        Assert.Null(read.PendingUnits);
+    }
+
+    [Fact]
+    public void The_pending_products_are_kept_with_the_breakdowns_and_a_change_in_them_announces_the_snapshot()
+    {
+        var store = Guid.NewGuid().ToString("D");
+        var counts = new Dictionary<string, int> { [store] = 28 };
+        var written = DashboardReadService.WriteBreakdown(new(counts, counts, counts, new Dictionary<string, decimal> { [store] = 35 }));
+
+        var read = DashboardReadService.ReadBreakdown(written);
+
+        Assert.Equal(35, read.PendingUnits![store]);
+        Assert.True(DashboardReadService.SameBreakdown(read, new(counts, counts, counts, new Dictionary<string, decimal> { [store] = 35 })));
+        Assert.False(DashboardReadService.SameBreakdown(read, new(counts, counts, counts, new Dictionary<string, decimal> { [store] = 34 })));
+        Assert.False(DashboardReadService.SameBreakdown(read, new(counts, counts, counts)));
     }
 
     [Fact]
