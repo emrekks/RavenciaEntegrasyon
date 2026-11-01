@@ -85,7 +85,7 @@ export function variantCodeChangeConfirmText({ target, mode, codesByKey }: Varia
   return {
     title: barcode ? 'Barkodları Model Kodundan Üret' : 'Stok Kodlarını Model Kodundan Üret',
     description: mode === 'missing'
-      ? `${barcode ? 'Barkodu' : 'Stok kodu'} boş ${count} varyanta kod üretilecek; dolu kodlara dokunulmaz.`
+      ? `${barcode ? 'Barkodu' : 'Stok kodu'} eksik ${count} varyanta kod üretilecek; dolu kodlara dokunulmaz.`
       : `Mevcut ${barcode ? 'barkod' : 'stok kodu'} alanı ${count} varyant için değiştirilecek.`,
     range: codes.length > 1 ? `${codes[0]} – ${codes.at(-1)}` : codes[0] ?? '',
     action: barcode ? 'Barkodları Üret' : 'Stok Kodlarını Üret',

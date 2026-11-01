@@ -116,6 +116,6 @@ describe('column-menu variant codes', () => {
 
   it('words the confirmation for each choice', () => {
     expect(variantCodeChangeConfirmText({ target: 'sku', mode: 'clear', codesByKey: { a: '', d: '' } })).toMatchObject({ title: 'Tüm Stok Kodlarını Temizle', range: '', action: 'Stok Kodlarını Temizle' })
-    expect(variantCodeChangeConfirmText({ target: 'barcode', mode: 'missing', codesByKey: { b: 'M-02', d: 'M-04' } })).toMatchObject({ description: 'Barkodu boş 2 varyanta kod üretilecek; dolu kodlara dokunulmaz.', range: 'M-02 – M-04' })
+    expect(variantCodeChangeConfirmText({ target: 'barcode', mode: 'missing', codesByKey: { b: 'M-02', d: 'M-04' } })).toMatchObject({ description: 'Barkodu eksik 2 varyanta kod üretilecek; dolu kodlara dokunulmaz.', range: 'M-02 – M-04' })
   })
 })
