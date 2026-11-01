@@ -1,5 +1,6 @@
 // İadeler (/returns, /returns/:id).
 import { copyText } from '../../../shared/copy-text'
+import { observeUnitPriceAlignment } from '../unit-price-alignment'
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -146,17 +147,7 @@ function ReturnReferenceRow({ item, order, onNotice, selection, selectColumn, no
   // Each unit price sits level with its product line (desktop table only).
   useLayoutEffect(() => {
     const row = rowRef.current
-    if (!row) return
-    const align = () => {
-      const products = row.querySelectorAll<HTMLElement>('.rr-pline'), prices = row.querySelectorAll<HTMLElement>('.rr-pr')
-      const table = window.innerWidth > 1024
-      prices.forEach((price, index) => { price.style.height = table && products[index] ? `${products[index].getBoundingClientRect().height}px` : '' })
-    }
-    align()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(align)
-    row.querySelectorAll('.rr-pline').forEach(element => observer.observe(element))
-    return () => observer.disconnect()
+    return row ? observeUnitPriceAlignment(row) : undefined
   }, [lines.length, noBuyer])
   function toggleReturnLine(lineId: string) { setSelectedReturnLineIds(current => current.includes(lineId) ? current.filter(id => id !== lineId) : [...current, lineId]) }
   async function copyReturnOrderNumber() { try { if (!await copyText(item.orderNumber)) throw new Error('copy'); setCopiedOrderNumber(true); window.setTimeout(() => setCopiedOrderNumber(false), 1400) } catch { setCopiedOrderNumber(false) } }

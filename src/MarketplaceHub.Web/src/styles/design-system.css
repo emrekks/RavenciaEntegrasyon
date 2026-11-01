@@ -7076,3 +7076,23 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
      window's bottom edge (and to meet the menu's profile line). */
   .app-shell.stitch-shell.stitch-shell > main > :is(.content, .rv-page) .rv-action-bar.rv-action-bar { bottom: calc(-1 * var(--rv-page-pad-b, 28px)); }
 }
+
+/* Pinning or unpinning the menu moves the page in one step: the content column, the top bar and every table in the
+   page take their new width at once instead of being laid out again in each frame of a 220-860 ms grid transition
+   (a 50-row order table froze the page while the menu moved). Only the menu itself moves; while it closes it stays
+   above the page, as it does after a hover. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell.stitch-shell.stitch-shell { transition: none; }
+  .app-shell.stitch-shell.stitch-shell.stitch-shell > aside { contain: layout style; }
+  /* A pinned menu sits at the layer a hover-opened one has, so after unpinning it closes over the page (and the top
+     bar) that already took its new place; the collapsed rule drops the layer only once the edge is back. */
+  .app-shell.stitch-shell.stitch-shell.sidebar-pinned > aside { z-index: calc(var(--rv-z-dropdown) + 10); }
+}
+@media (min-width: 761px) {
+  .app-shell.stitch-shell.stitch-shell.stitch-shell .rv-topbar { transition: none; }
+}
+@media (min-width: 701px) and (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell.stitch-shell.stitch-shell > aside,
+  .app-shell.stitch-shell.stitch-shell.stitch-shell > aside :is(.sidebar-brand-row, .sidebar-pin-toggle, .brand.wordmark, .sidebar-profile-copy, nav a, .nav-label, .logout-link, .logout-label, .nav-count),
+  .app-shell.stitch-shell.stitch-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before { transition: none !important; }
+}

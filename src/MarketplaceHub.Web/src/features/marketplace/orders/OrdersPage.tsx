@@ -1,5 +1,6 @@
 // Siparişler (/orders).
 import { copyText } from '../../../shared/copy-text'
+import { observeUnitPriceAlignment } from '../unit-price-alignment'
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router'
@@ -545,13 +546,7 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   // Each unit price sits level with its product line (desktop table only).
   useLayoutEffect(() => {
     const row = rowRef.current
-    if (!row) return
-    const align = () => { const products = row.querySelectorAll<HTMLElement>('.rr-pline'), prices = row.querySelectorAll<HTMLElement>('.rr-pr'); const table = window.innerWidth > 1024; prices.forEach((price, index) => { price.style.height = table && products[index] ? `${products[index].getBoundingClientRect().height}px` : '' }) }
-    align()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(align)
-    row.querySelectorAll('.rr-pline').forEach(element => observer.observe(element))
-    return () => observer.disconnect()
+    return row ? observeUnitPriceAlignment(row) : undefined
   }, [lines.length, noBuyer])
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailActionsOpen, setDetailActionsOpen] = useState(false)
