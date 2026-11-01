@@ -18,6 +18,9 @@ export type ReturnSummary = {
   cargoCounts?: Record<string, number>
   reasonCounts?: Record<string, number>
   invoiceStatusCounts?: Record<string, number>
+  // The metric cards: rejected returns whose package back to the customer has not been handed to cargo (and those
+  // whose package state is not known), and the returns approved and rejected since 00:00 Istanbul.
+  metrics?: { rejectedAwaitingCargo: number; rejectedCargoUnknown: number; todayApproved: number; todayRejected: number } | null
 }
 
 export function returnSummaryParams(filters: ReturnFilters, refinements: ReturnRefinements) {

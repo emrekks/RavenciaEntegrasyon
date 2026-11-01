@@ -67,10 +67,28 @@ public sealed class ReturnsAndJobTrackingFixesTests
             .Append(Claim(tenantId, Guid.NewGuid(), ReturnClaimStatus.Requested, "Created"))
             .ToArray();
 
-        var followed = MarketplaceJobProcessor.ReturnLifecycleCandidates(claims.AsQueryable(), tenantId, connectionId, "TRENDYOL").Select(x => x.Status).ToArray();
+        var followed = MarketplaceJobProcessor.ReturnLifecycleCandidates(claims.AsQueryable(), tenantId, connectionId, "N11").Select(x => x.Status).ToArray();
 
         Assert.Equal([ReturnClaimStatus.Requested, ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Disputed], followed);
         Assert.All(Enum.GetValues<ReturnClaimStatus>(), status => Assert.Equal(followed.Contains(status), ReturnCadencePolicy.IsOpen(status)));
+        // Trendyol also follows a rejected claim until its package back to the customer has left (or is never sent).
+        var trendyol = MarketplaceJobProcessor.ReturnLifecycleCandidates(claims.AsQueryable(), tenantId, connectionId, "TRENDYOL").Select(x => x.Status).ToArray();
+        Assert.Equal([.. followed.Take(4), ReturnClaimStatus.Rejected, ReturnClaimStatus.Disputed], trendyol);
+    }
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData(ReturnRejectedPackageStates.None, true)]
+    [InlineData(ReturnRejectedPackageStates.AwaitingCargo, true)]
+    [InlineData(ReturnRejectedPackageStates.Shipped, false)]
+    [InlineData(ReturnRejectedPackageStates.DontShipBack, false)]
+    public void ARejectedTrendyolClaimIsFollowedUntilItsPackageLeaves(string? packageState, bool followed)
+    {
+        var tenantId = Guid.NewGuid();
+        var connectionId = Guid.NewGuid();
+        var claim = Claim(tenantId, connectionId, ReturnClaimStatus.Rejected, "Rejected");
+        claim.RejectedPackageState = packageState;
+        Assert.Equal(followed, MarketplaceJobProcessor.ReturnLifecycleCandidates(new[] { claim }.AsQueryable(), tenantId, connectionId, "TRENDYOL").Any());
     }
 
     [Fact]

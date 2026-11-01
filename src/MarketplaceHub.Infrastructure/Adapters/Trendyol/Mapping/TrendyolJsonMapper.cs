@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
+using ReturnRejectedPackageStates = MarketplaceHub.Domain.ReturnRejectedPackageStates;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
 
@@ -744,10 +745,24 @@ public static class TrendyolJsonMapper
                 ?? (IsWaitingInAction(status) && lastModifiedAt is { } waitingInActionAt ? (DateTimeOffset?)waitingInActionAt.AddHours(48) : null)
                 ?? (claimDate is { } requestedAt ? (DateTimeOffset?)requestedAt.AddDays(7) : null);
             rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), actionDueAt, lastModifiedAt ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink"),
-                ActionDueAtEstimated: remoteDueAt is null && actionDueAt is not null));
+                ActionDueAtEstimated: remoteDueAt is null && actionDueAt is not null, RejectedPackageState: RejectedPackageState(claim, status)));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
         return new(rows, hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore);
+    }
+
+    // getClaims rejectedPackageInfo, read on a rejected claim only: the field is missing while no package back to the
+    // customer exists, cargoTrackingLink comes once the package is on its way, dontShipBack says it is never sent back.
+    // A value of another shape is not guessed at (null).
+    internal static string? RejectedPackageState(JsonElement claim, string rawStatus)
+    {
+        if (!string.Equals(rawStatus, "Rejected", StringComparison.OrdinalIgnoreCase)) return null;
+        if (!claim.TryGetProperty("rejectedPackageInfo", out var package) && !claim.TryGetProperty("rejectedpackageinfo", out package))
+            return ReturnRejectedPackageStates.None;
+        if (package.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return ReturnRejectedPackageStates.None;
+        if (package.ValueKind != JsonValueKind.Object) return null;
+        if (package.TryGetProperty("dontShipBack", out var dontShipBack) && dontShipBack.ValueKind == JsonValueKind.True) return ReturnRejectedPackageStates.DontShipBack;
+        return string.IsNullOrWhiteSpace(NullText(package, "cargoTrackingLink")) ? ReturnRejectedPackageStates.AwaitingCargo : ReturnRejectedPackageStates.Shipped;
     }
 
     public static IReadOnlyList<RemoteReturnLine> ReturnLines(string json)
