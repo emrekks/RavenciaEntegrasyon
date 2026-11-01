@@ -71,17 +71,6 @@ export function writeJobsViewState(current: URLSearchParams, patch: Partial<Jobs
 const logsTabParam = 'sekme'
 const logsTabSlug = 'loglar'
 
-export function jobsLogsTabOpen(params: URLSearchParams) {
-  return params.get(logsTabParam) === logsTabSlug
-}
-
-export function withJobsLogsTab(current: URLSearchParams, open: boolean): URLSearchParams {
-  const params = new URLSearchParams(current)
-  if (open) params.set(logsTabParam, logsTabSlug)
-  else params.delete(logsTabParam)
-  return params
-}
-
 // The three main tabs of İşlem Takibi: the job list (no ?sekme), Loglar (?sekme=loglar) and API Sağlık
 // (?sekme=api-saglik, the price/stock sending health per connection). An unknown value opens the job list.
 export type JobsMainTab = 'jobs' | 'logs' | 'health'

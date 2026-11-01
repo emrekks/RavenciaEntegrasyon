@@ -132,13 +132,3 @@ export function Progress({ value, shown, tone, delay = 0 }: { value: number | nu
     <i style={{ width: shown ? `${width}%` : '0%', transitionDelay: `${delay}ms`, ...(tone?.startsWith('#') ? { background: tone } : {}) }} />
   </span>
 }
-
-// A half-circle gauge that sweeps from zero to its share when first seen; nothing is drawn for an unknown share.
-export function HalfGauge({ value, shown, tone = 'good', label }: { value: number | null; shown: boolean; tone?: 'good' | 'bad'; label: string }) {
-  const percent = value === null ? 0 : Math.max(0, Math.min(100, Math.abs(value) * 100))
-  const arc = 'M20,100 A80,80 0 0 1 180,100'
-  return <svg className={`reports-gauge is-${tone}`} viewBox="0 0 200 108" role="img" aria-label={label}>
-    <path className="reports-gauge-base" d={arc} pathLength={100} />
-    {value !== null && <path className="reports-gauge-value" d={arc} pathLength={100} strokeDasharray={`${shown ? percent : 0} 100`} />}
-  </svg>
-}

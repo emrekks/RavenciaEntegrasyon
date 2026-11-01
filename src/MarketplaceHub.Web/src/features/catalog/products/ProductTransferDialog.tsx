@@ -53,7 +53,6 @@ const outcomeLabels: Record<ProductTransferOutcome, [string, 'ok' | 'warn' | 'ba
   AMBIGUOUS: ['Belirsiz', 'bad'],
   ERROR: ['Hatalı', 'bad']
 }
-export function productTransferOutcomeLabel(outcome: ProductTransferOutcome) { return outcomeLabels[outcome]?.[0] ?? outcome }
 
 const count = (value: number) => value.toLocaleString('tr-TR')
 const formatNumber = (value: number | null) => value == null ? '—' : value.toLocaleString('tr-TR', { maximumFractionDigits: 2 })

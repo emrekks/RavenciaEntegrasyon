@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandLimitHint, bandLimitText, bestTiers, bandRange, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, nextBandHint, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, remainingText, shareRangeText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitHint, bandLimitText, bestTiers, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, shareRangeText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -83,27 +83,13 @@ describe('commission tariff picks', () => {
     expect(ownChoice({ bands: [{ tier: 1, min: null, max: null, rate: 15 }], costPrice: null }, 10.005)?.price).toBe(10.01)
   })
 
-  it('writes what a price leaves with its share, and says so when the cost is not entered', () => {
-    expect(remainingText({ tier: 2, price: 470.63, rate: 20.6, commission: 96.95, remaining: 104.39, costs: { cost: 160, cargo: 98.34, serviceFee: 13.19, stoppage: 4.28, netVat: -6.52, vatRate: 10 } })).toBe('104,39 ₺ Kâr (%65,24)')
-    expect(remainingText({ tier: 1, price: 470.64, rate: 21.5, commission: 101.19, remaining: -12.5, costs: { cost: 160, cargo: 98.34, serviceFee: 13.19, stoppage: 4.28, netVat: -6.52, vatRate: 10 } })).toBe('−12,50 ₺ Zarar (%−7,81)')
-    expect(remainingText({ tier: 1, price: 100, rate: 20, commission: 20, remaining: null })).toBe('Maliyet girilmemiş')
-  })
 })
 
 describe('commission tariff presentation', () => {
-  it('writes each band as the price range it covers', () => {
-    expect(bandRange({ tier: 1, min: 470.64, max: null, rate: 21.5 })).toBe('≥ 470,64 ₺')
-    expect(bandRange({ tier: 2, min: 435.98, max: 470.63, rate: 20.6 })).toBe('435,98 – 470,63 ₺')
-    expect(bandRange({ tier: 4, min: null, max: 388.63, rate: 17.5 })).toBe('≤ 388,63 ₺')
+  it('writes a commission rate as a percentage', () => {
     expect(rateText(21.5)).toBe('%21,5')
   })
 
-  it('names the price for the next lower rate, and says when there is none or the price is in no band', () => {
-    expect(nextBandHint({ basisPrice: 519.75, currentTier: 1, nextLowerBand: { tier: 2, min: 435.98, max: 470.63, rate: 20.6 } })).toBe('%20,6 için ≤ 470,63 ₺')
-    expect(nextBandHint({ basisPrice: 300, currentTier: 4, nextLowerBand: null })).toBe('En düşük komisyon bandında')
-    expect(nextBandHint({ basisPrice: 450, currentTier: null, nextLowerBand: null })).toBe('Fiyat hiçbir banda düşmüyor')
-    expect(nextBandHint({ basisPrice: null, currentTier: null, nextLowerBand: null })).toBe('Komisyona esas fiyat yok')
-  })
 
   it('flags a file rate that differs from the band the price falls in', () => {
     expect(rateDisagrees({ currentRate: 21.5, currentBandRate: 21.5 })).toBe(false)

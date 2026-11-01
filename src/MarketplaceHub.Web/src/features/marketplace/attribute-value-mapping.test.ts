@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { autoMatchScore, valueMatchScore } from '../../shared/value-matching'
-import { attributeValueMappingNeedsSave, hasDirectReferenceValue, isTemplateFilledRow, suggestValueMappings, visiblePanelValues, planDirectReferenceValues, looseReferenceValueKey, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
+import { attributeValueMappingNeedsSave, normalizeReferenceValueLabel, isTemplateFilledRow, suggestValueMappings, visiblePanelValues, planDirectReferenceValues, looseReferenceValueKey, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from './attribute-value-mapping'
 
 describe('attribute value reference mappings', () => {
   // 26 Oct 2026: values that are the same apart from spacing, punctuation, ı/i, a synonym or a filler word now match.
@@ -62,8 +62,8 @@ describe('attribute value reference mappings', () => {
   })
 
   it('matches labels despite whitespace around season separators', () => {
-    expect(hasDirectReferenceValue('Sonbahar / Kış', ['İlkbahar / Sonbahar', 'Sonbahar/Kış'])).toBe(true)
-    expect(hasDirectReferenceValue('Sonbahar / Kış', ['İlkbahar / Sonbahar', 'Kış'])).toBe(false)
+    expect(normalizeReferenceValueLabel('Sonbahar / Kış')).toBe(normalizeReferenceValueLabel('Sonbahar/Kış'))
+    expect(normalizeReferenceValueLabel('Sonbahar / Kış')).not.toBe(normalizeReferenceValueLabel('Kış'))
   })
 
   it('re-saves an unchanged mapping when the reference snapshot changes', () => {

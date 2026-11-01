@@ -1,14 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { describePlatformCodeIssues, isValidEan13, platformCodeIssues } from './platform-code-rules'
+import { describePlatformCodeIssues, platformCodeIssues } from './platform-code-rules'
 
 describe('platform code rules', () => {
-  it('checks the EAN-13 check digit', () => {
-    expect(isValidEan13('8690000000012')).toBe(true)
-    expect(isValidEan13('8690000000011')).toBe(false)
-    expect(isValidEan13('869000000001')).toBe(false)
-    expect(isValidEan13('869000000001A')).toBe(false)
-  })
-
   it('lets a valid EAN-13 and a stock code through every platform', () => {
     expect(platformCodeIssues(['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY'], '8690000000012', 'KZK-001-S')).toEqual([])
   })

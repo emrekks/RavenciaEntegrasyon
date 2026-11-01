@@ -37,12 +37,6 @@
 }
 
 /* Dashboard: metrics two to a row instead of one, so the operational summary fits on a screen. */
-@media (max-width: 760px) {
-
-  /* Icon on the left of the count and label, centred on them. */
-  /* The per-platform hover tooltip has no hover on touch screens. */
-  /* The sparkline sits under the value instead of beside it. */
-}
 
 /* Tablets: three operational metrics and two performance cards to a row. */
 
@@ -260,11 +254,11 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .content > *,
   html body .app-shell.stitch-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell) > * { min-width: 0; max-width: 100%; }
-  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs) {
+  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs) {
     box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
   }
-  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs)::-webkit-scrollbar { display: none; }
-  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs) > * { flex: 0 0 auto; }
+  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs)::-webkit-scrollbar { display: none; }
+  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .rv-questions-tabs) > * { flex: 0 0 auto; }
   html body .app-shell.stitch-shell main { overflow-x: clip; }
 }
 
@@ -274,7 +268,7 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .app-shell.stitch-shell main > .content > * { margin-top: 0; margin-bottom: 0; }
   html body .app-shell.stitch-shell main .page-heading { margin: 0; padding-bottom: 8px; gap: 8px; }
   html body .app-shell.stitch-shell main :is(.orders-reference-filter-shell, .returns-reference-filter-shell) { margin: 0; gap: 8px; }
-  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .jobs-reference-tabs, .rv-questions-tabs) { margin: 0; }
+  html body .app-shell.stitch-shell main :is(.rv-tabs, .order-tabs, .return-reference-tabs, .invoice-reference-tabs, .rv-questions-tabs) { margin: 0; }
   html body .app-shell.stitch-shell main .mfs:not(.is-open) { margin: 0; padding: 8px; gap: 8px; }
 }
 

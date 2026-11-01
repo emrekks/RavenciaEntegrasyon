@@ -1,13 +1,11 @@
-import { createElement, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ComponentPropsWithoutRef, type InputHTMLAttributes, type ReactNode, type RefObject } from 'react'
+import { createElement, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ComponentPropsWithoutRef, type ReactNode, type RefObject } from 'react'
 import { useRememberedTabCounts } from '../tab-counts'
 import { UiIcon } from './UiIcon'
-import { FieldHelp } from './FieldHelp'
 import { lockPageScroll } from '../hooks/useScrollLock'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type ControlSize = 'sm' | 'md' | 'lg'
 export type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
-type FieldProps = { label?: string; hint?: string; error?: string; required?: boolean }
 type DialogSurfaceProps = { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; description?: ReactNode; className?: string }
 
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
@@ -96,12 +94,6 @@ function IconButton({ label, size = 'md', variant = 'ghost', type = 'button', ch
   return <button {...props} type={type} aria-label={label} title={props.title ?? label} className={['rv-icon-button', `rv-icon-button-${size}`, `rv-icon-button-${variant}`, className].filter(Boolean).join(' ')}>{children}</button>
 }
 
-// A hint sits behind the label's help mark; only an error is written under the field.
-export function TextField({ label, hint, error, required, className, ...props }: InputHTMLAttributes<HTMLInputElement> & FieldProps) {
-  const hintId = useId()
-  return <label className={['rv-field', className].filter(Boolean).join(' ')}><span className="field-label">{label}{required && <b aria-hidden="true"> *</b>}{hint ? <FieldHelp id={hintId} label={typeof label === 'string' ? label : 'Alan'}>{hint}</FieldHelp> : null}</span><input {...props} aria-invalid={Boolean(error)} aria-describedby={[props['aria-describedby'], hint ? hintId : undefined].filter(Boolean).join(' ') || undefined} />{error ? <small className="rv-field-error">{error}</small> : null}</label>
-}
-
 export function Tabs({ items: givenItems, value, onChange, ariaLabel = 'Sekmeler', className }: { items: Array<{ value: string; label: ReactNode; count?: ReactNode }>; value: string; onChange: (value: string) => void; ariaLabel?: string; className?: string }) {
   const items = useRememberedTabCounts(ariaLabel, givenItems)
   return <div className={['rv-tabs', className].filter(Boolean).join(' ')} role="tablist" aria-label={ariaLabel}>{items.map((item, index) => <button key={item.value} type="button" role="tab" tabIndex={item.value === value ? 0 : -1} aria-selected={item.value === value} className={item.value === value ? 'is-active' : ''} onClick={() => onChange(item.value)} onKeyDown={event => {
@@ -116,10 +108,6 @@ export function Tabs({ items: givenItems, value, onChange, ariaLabel = 'Sekmeler
 type BadgeProps = { tone?: StatusTone; children: ReactNode; className?: string; title?: string; role?: 'status'; 'aria-label'?: string; icon?: ReactNode }
 export function Badge({ tone = 'neutral', children, className, icon, ...props }: BadgeProps) { return <span {...props} className={['rv-badge', `rv-badge-${tone}`, icon ? 'has-icon' : '', className].filter(Boolean).join(' ')}>{icon ?? <i aria-hidden="true" />}{children}</span> }
 export function StatusBadge({ tone, children, className, title, role, 'aria-label': ariaLabel, icon }: BadgeProps) { return <Badge tone={tone} className={className} title={title} role={role} aria-label={ariaLabel} icon={icon}>{children}</Badge> }
-
-export function Callout({ tone = 'info', children, role }: { tone?: StatusTone; children: ReactNode; role?: 'status' | 'alert' }) {
-  return <div className={`rv-callout rv-callout-${tone}`} role={role ?? (tone === 'danger' ? 'alert' : 'status')} aria-live={tone === 'danger' ? 'assertive' : 'polite'}><span className="rv-callout-icon" aria-hidden="true" /><div>{children}</div></div>
-}
 
 export function Pagination({ page, totalPages, hasNext, onPageChange, onPrevious, onNext, disabled = false, className, ariaLabel = 'Sayfalama' }: { page: number; totalPages: number; hasNext?: boolean; onPageChange: (page: number) => void; onPrevious: () => void; onNext: () => void; disabled?: boolean; className?: string; ariaLabel?: string }) {
   const safeTotalPages = Math.max(1, totalPages)

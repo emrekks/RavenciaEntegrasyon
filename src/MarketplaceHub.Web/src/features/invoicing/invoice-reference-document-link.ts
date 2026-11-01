@@ -1,27 +1,7 @@
 type InvoiceReferenceDocumentSource = {
-  invoiceId: string | null
-  invoiceDocumentAvailable: boolean
   marketplaceInvoiceUrl?: string | null
   currentPlatformInvoiceUrl?: string | null
   platformInvoiceStatus?: string | null
-  manualInvoiceDocumentUrl?: string | null
-}
-
-export function invoiceReferenceDocumentHref(item: InvoiceReferenceDocumentSource): string | null {
-  for (const candidate of [invoiceReferenceMarketplaceHref(item), item.manualInvoiceDocumentUrl]) {
-    const safeUrl = safeInvoiceReferenceUrl(candidate)
-    if (safeUrl) return safeUrl
-  }
-
-  return item.invoiceId && item.invoiceDocumentAvailable
-    ? `/api/v1/invoices/${encodeURIComponent(item.invoiceId)}/documents/latest/content`
-    : null
-}
-
-export function invoiceReferenceDocumentLabel(item: InvoiceReferenceDocumentSource): string | null {
-  if (invoiceReferenceMarketplaceHref(item)) return 'Fatura linki'
-  if (safeInvoiceReferenceUrl(item.manualInvoiceDocumentUrl)) return 'Manuel belge'
-  return item.invoiceId && item.invoiceDocumentAvailable ? 'Yerel PDF' : null
 }
 
 export function platformInvoiceLinkUnavailable(item: InvoiceReferenceDocumentSource): boolean {

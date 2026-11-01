@@ -68,8 +68,6 @@
   --rv-control-height-md: 36px;
   --rv-control-height-lg: 36px;
   --rv-icon-size-sm: 16px;
-  --rv-icon-size-md: 20px;
-  --rv-icon-size-lg: 24px;
   --rv-sidebar-width: 232px;
   --rv-sidebar-rail-width: 208px;
   --rv-sidebar-collapsed-width: 68px;
@@ -85,7 +83,6 @@
   --rv-space-4: 16px;
   --rv-space-5: 20px;
   --rv-space-6: 24px;
-  --rv-space-8: 32px;
   /* Three radii (CLAUDE.md UI): 7px for controls, chips inside cards and menu items; 12px for cards and popovers; 14px
      for windows, drawers and toasts. sm and md are both the control radius. */
   --rv-radius-sm: 7px;

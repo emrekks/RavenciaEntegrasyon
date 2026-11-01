@@ -1,5 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef } from 'react'
-import { NoticeToast } from '../../shared/components/NoticeToast'
+import { useEffect, useId, useMemo } from 'react'
 import { useToastStack } from '../../shared/components/toast-stack-context'
 import { appendNotification, normalizeNotificationKind, type NotificationContext, type NotificationDetail } from '../../shared/notifications'
 import type { ToastInput } from '../../shared/toast-stack'
@@ -68,32 +67,4 @@ export function useOperationFeedbackToasts() {
     /** Takes away the error toasts this screen showed (the form was edited after them). */
     dismissErrors: () => stack.dismissWhere(item => item.owner === owner && item.kind === 'error')
   }), [stack, owner])
-}
-
-/** A single feedback toast a component owns itself (outside the shell's column). */
-export function OperationFeedbackToast({ feedback, onClose }: { feedback: OperationFeedback | null; onClose: () => void }) {
-  const onCloseRef = useRef(onClose)
-
-  useEffect(() => { onCloseRef.current = onClose }, [onClose])
-  useEffect(() => {
-    if (feedback) recordOperationFeedback(feedback)
-  }, [feedback])
-  useLayoutEffect(() => {
-    if (!feedback || feedback.persistent) return
-    const timer = window.setTimeout(() => onCloseRef.current(), feedback.durationMs ?? OPERATION_FEEDBACK_TOAST_DURATION_MS)
-    return () => window.clearTimeout(timer)
-  }, [feedback])
-
-  if (!feedback) return null
-
-  const toast = operationFeedbackToast(feedback)
-  return <NoticeToast
-    key={`${toast.kind}:${feedback.message}`}
-    kind={toast.kind}
-    title={toast.title}
-    message={toast.message}
-    lines={toast.lines}
-    onClose={onClose}
-    durationMs={toast.durationMs}
-  />
 }

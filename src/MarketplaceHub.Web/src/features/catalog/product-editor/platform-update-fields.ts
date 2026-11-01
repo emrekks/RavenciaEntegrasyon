@@ -140,24 +140,11 @@ const profiles: Record<string, PlatformUpdateProfile> = {
 const profileOf = (platformCode: string) => profiles[platformCode.trim().toUpperCase()]
 
 export function platformUpdateFieldLabel(field: PlatformUpdateField) { return fieldLabel.get(field) ?? field }
-export function platformUpdateNote(platformCode: string) { return profileOf(platformCode)?.note }
 
 // The fields at least one of the marketplaces can take, in the dialog's order.
 export function availablePlatformUpdateFields(platformCodes: string[]): PlatformUpdateField[] {
   const available = new Set(platformCodes.flatMap(code => profileOf(code)?.requests.flatMap(request => request.fields) ?? []))
   return platformUpdateFieldKeys.filter(field => available.has(field))
-}
-
-export function platformTakesUpdateField(platformCode: string, field: PlatformUpdateField) {
-  return profileOf(platformCode)?.requests.some(request => request.fields.includes(field)) ?? false
-}
-
-// The platform codes of a field that only some of the stores take (shown beside it: "Yalnız Trendyol"); empty when every
-// store takes it or none does.
-export function partialPlatformUpdateField(field: PlatformUpdateField, platformCodes: string[]): string[] {
-  const takers = platformCodes.filter(code => platformTakesUpdateField(code, field))
-  if (!takers.length || takers.length === platformCodes.length) return []
-  return [...new Set(takers.map(code => code.trim().toUpperCase()))]
 }
 
 // The pick after the stores changed: a field no longer shown is dropped, a field shown only now comes in ticked, the

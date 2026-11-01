@@ -1,15 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { productImportOptionVisibility, supportsProductOptionsOnly } from './product-import-options'
+import { productImportOptionVisibility } from './product-import-options'
 
 describe('product import options', () => {
-  it('allows option-only repair for bulk Trendyol connections only', () => {
-    expect(supportsProductOptionsOnly('BULK', ['TRENDYOL'])).toBe(true)
-    expect(supportsProductOptionsOnly('BULK', ['trendyol', 'TRENDYOL'])).toBe(true)
-    expect(supportsProductOptionsOnly('SINGLE', ['TRENDYOL'])).toBe(false)
-    expect(supportsProductOptionsOnly('BULK', ['TRENDYOL', 'HEPSIBURADA'])).toBe(false)
-    expect(supportsProductOptionsOnly('BULK', [])).toBe(false)
-  })
-
   it('hides an empty options section for Hepsiburada mapping-only runs', () => {
     expect(productImportOptionVisibility({
       method: 'BULK',
