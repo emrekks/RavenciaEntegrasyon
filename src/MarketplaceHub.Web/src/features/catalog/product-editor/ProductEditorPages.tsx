@@ -26,6 +26,7 @@ import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinV
 import { isOptionRequirement, loadPublicationAttributeIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
 import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
+import { CategoryMappingDialog } from '../CategoryMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
@@ -741,7 +742,7 @@ function PublishPlatformCardSkeletons() {
   </article>)}</>
 }
 
-export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
+export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, categoryName = '', productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
   familyProductIds?: string[] | null
   lookupKeys?: { modelCode: string; barcode: string; sku: string }
   // How many of the family's variants are present on this marketplace (matched or live), and how many it no longer knows.
@@ -752,6 +753,8 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   settling?: boolean
   productId?: string
   categoryId: string
+  /** The panel category's name, for the "not mapped" gap and "Kategori Eşle". */
+  categoryName?: string
   productChecks: Array<{ title: string; detail: string; ok: boolean; shopifyOk?: boolean; shopifyDetail?: string }>
   selectedAttributes: PublicationAttributeSelection[]
   variantMediaWarning?: string
@@ -912,7 +915,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     && (pttAvmRetry ? Boolean(categoryId) : shouldCheckPublicationAttributes(categoryId, selectionStatus, publication.data?.lastJobStatus))
   const mappingReadiness = useQuery({
     queryKey: publicationReadinessQueryKey(card.connection.id, categoryId, selectedAttributes),
-    queryFn: () => loadPublicationAttributeIssues(card.connection, card.name, categoryId, selectedAttributes),
+    queryFn: () => loadPublicationAttributeIssues(card.connection, card.name, categoryId, selectedAttributes, categoryName),
     enabled: mappingReadinessEnabled,
     retry: false,
     staleTime: 15_000
@@ -924,6 +927,8 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const valueMappingFixes = mappingReadinessEnabled ? fixableValueMappings(mappingReadiness.data) : []
   const readinessCategoryScope = mappingReadinessEnabled ? mappingReadiness.data?.categoryScope : undefined
   const [valueFixOpen, setValueFixOpen] = useState(false)
+  const [categoryFixOpen, setCategoryFixOpen] = useState(false)
+  const categoryMappingGap = mappingReadinessEnabled ? mappingReadiness.data?.categoryMapping : undefined
   // The status opens the API job behind it; a card whose required fields are missing keeps its issue tooltip instead.
   const [jobDetailOpen, setJobDetailOpen] = useState(false)
   const [valueFixNotice, setValueFixNotice] = useState('')
@@ -964,6 +969,8 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
         ? <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} yayın durumu sorgulanıyor` : `${card.name} yayın durumunu güncelle`} aria-busy={refreshBusy} title={refreshBusy ? 'Platformdaki durum sorgulanıyor…' : 'Platformdaki mevcut durumu yeniden sorgula'} disabled={refreshBusy || isPublicationStatusJobRunning(publication.data?.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>
         : productId && card.mode !== 'READ_ONLY' && <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} mağazasında ürün aranıyor` : `${card.name} mağazasında ürünü ara`} aria-busy={refreshBusy} title={refreshBusy ? `${card.name} mağazasında ${lookupKey} aranıyor…` : lookupKey ? `${card.name} mağazasında ${lookupKey} ara ve varyantları eşleştir` : `${card.name} tek ürünü kendi ürün numarasıyla arar; bu ürün için o numara bilinmiyor. Ürün Aktar'dan arayın.`} disabled={!lookupKey || refreshBusy || publication.isPending} onClick={() => lookupProduct.mutate()}><UiIcon name="refresh" /></button>}{refreshJob.running && !(jobRunning && publication.data?.lastJobId === refreshJobId) && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={refreshJob.cancel.isPending ? `${card.name} sorgusu durduruluyor` : `${card.name} sorgusunu durdur`} title="Sorguyu Durdur" disabled={refreshJob.cancel.isPending} onClick={() => refreshJob.cancel.mutate()}><i aria-hidden="true" /></button>}{jobRunning &&<button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
     </dl>
+    {categoryMappingGap && categoryId && <button type="button" className="publish-platform-fix-mappings" onClick={() => setCategoryFixOpen(true)}><UiIcon name="link" />Kategori Eşle</button>}
+    {categoryFixOpen && categoryId && <CategoryMappingDialog connectionId={card.connection.id} platformName={card.name} categoryId={categoryId} categoryName={categoryName || 'Ürün'} onClose={() => setCategoryFixOpen(false)} onSaved={message => { setValueFixNotice(message) }} />}
     {valueMappingFixes.length > 0 && readinessCategoryScope && <button type="button" className="publish-platform-fix-mappings" onClick={() => setValueFixOpen(true)}><UiIcon name="link" />Eksik Değer Eşlemelerini Tamamla<span className="publish-platform-fix-count" aria-label={`${valueMappingFixes.length} değer`}>{valueMappingFixes.length}</span></button>}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification({ title: 'Değer Eşlemeleri Kaydedildi', message, kind: 'success', operation: 'Özellik değeri eşleştirme', platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, target: { href: '/mappings/attributes', label: 'Eşleştirmelere Git' } }) }} />}
     {jobDetailOpen && lastJobId && <PublicationJobDialog jobId={lastJobId} platformCode={card.connection.platformCode} platformName={card.name} storeName={card.connection.displayName} onClose={() => setJobDetailOpen(false)} />}
@@ -3158,6 +3165,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               lookupKeys={{ modelCode: form.modelCode, barcode: variantRows[0]?.barcode || form.barcode, sku: variantRows[0]?.sku || form.baseSku }}
               variantLinks={publishCardVariantLinks(publishLinkRows, card.connection.id)}
               categoryId={form.categoryId}
+              categoryName={leafCategories.find(item => item.id === form.categoryId)?.name ?? ''}
               selected={selectedChannelIds.includes(card.connection.id)}
               settling={editorHydrating}
               productChecks={productChecks}
