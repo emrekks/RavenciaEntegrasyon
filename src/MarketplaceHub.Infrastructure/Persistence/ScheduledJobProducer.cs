@@ -97,19 +97,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var isListingVerify = row.Policy.ResourceType == ListingVerificationPolicy.ResourceType;
             if (isListingVerify && row.Policy.LastScheduledAt is { } verifyQueuedAt && now - verifyQueuedAt < ListingVerificationPolicy.RetrySpacing) continue;
             if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) continue;
-            // Questions are rare; a connection without a new question for a while is asked less often.
-            if (row.Policy.ResourceType == "QUESTIONS")
-            {
-                var lastQuestionAt = await db.MarketplaceQuestions.AsNoTracking()
+            // Questions are rare; a connection without a new question for a while is asked less often. Healthy order
+            // notifications make the order polls a slower safety net. Both thin out to the policy's idle interval and
+            // only while its idle rule is on (SyncCadencePolicy, set in the panel).
+            var idleKind = row.Policy.IdleBackoffEnabled ? SyncCadencePolicy.IdleKind(row.Connection.PlatformCode, row.Policy.ResourceType) : null;
+            var lastQuestionAt = idleKind == SyncCadencePolicy.IdleQuiet
+                ? await db.MarketplaceQuestions.AsNoTracking()
                     .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
-                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken);
-                interval = QuestionCadencePolicy.IntervalSeconds(interval, lastQuestionAt, now);
-            }
-            // Healthy order notifications make the order polls a slower safety net.
-            if (WebhookPollingPolicy.StretchedIntervalSeconds(row.Connection.PlatformCode, row.Policy.ResourceType) is { } stretched
-                && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id))
-                interval = Math.Max(interval, stretched);
-            interval = ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment);
+                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+                : null;
+            var healthy = idleKind == SyncCadencePolicy.IdleWebhook
+                && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id);
+            interval = SyncCadencePolicy.EffectiveSeconds(row.Connection.PlatformCode, row.Policy.ResourceType, row.Connection.Environment, interval, idleKind is not null, row.Policy.IdleIntervalSeconds, healthy, lastQuestionAt, now);
             // Different scheduled job types can share one provider execution
             // lane (for example order sync and order reconciliation). Checking
             // the execution group keeps the queue coalesced before it reaches

@@ -95,6 +95,10 @@ public sealed class ConnectionSyncPolicy
     public bool Enabled { get; set; }
     // Set when a user saved the policy: the scheduler then never replaces its values with newer defaults.
     public bool UserDefined { get; set; }
+    // Whether the read thins out while nothing happens (healthy notifications, no new question) and the interval it
+    // thins out to; null keeps the application's (SyncCadencePolicy.DefaultIdleSeconds).
+    public bool IdleBackoffEnabled { get; set; } = true;
+    public int? IdleIntervalSeconds { get; set; }
     // When the scheduler last queued this policy's job, so it need not search the job table every pass.
     public DateTimeOffset? LastScheduledAt { get; set; }
     public long Version { get; set; } = 1;

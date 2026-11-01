@@ -26,7 +26,7 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
         var ids = connections.Select(x => x.Id).ToArray();
         var policies = await db.ConnectionSyncPolicies.AsNoTracking()
             .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && (x.ResourceType == MarketplaceExternalWritePolicies.Price || x.ResourceType == MarketplaceExternalWritePolicies.Stock || x.ResourceType == "ORDERS"))
-            .Select(x => new { x.ConnectionId, x.ResourceType, x.Enabled, x.IntervalSeconds })
+            .Select(x => new { x.ConnectionId, x.ResourceType, x.Enabled, x.IntervalSeconds, x.IdleBackoffEnabled, x.IdleIntervalSeconds })
             .ToListAsync(cancellationToken);
         // Webhook first: whether each connection's new orders come by notification or, its notifications being unhealthy
         // or absent, by the scheduled read, judged by the scheduler's own rule.
@@ -76,9 +76,8 @@ public sealed class PriceStockMonitorService(AppDbContext db, IConfiguration con
             queued.TryGetValue(connection.Id, out var queue);
             var healthy = webhookHealthy.Contains(connection.Id);
             var orderRead = policies.FirstOrDefault(x => x.ConnectionId == connection.Id && x.ResourceType == "ORDERS" && x.Enabled);
-            int? orderReadInterval = orderRead is null ? null : ScheduledOrderPollingCadencePolicy.ForEnvironment(
-                WebhookPollingPolicy.EffectiveOrderIntervalSeconds(connection.PlatformCode, Math.Clamp(orderRead.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds), healthy),
-                connection.Environment);
+            int? orderReadInterval = orderRead is null ? null : SyncCadencePolicy.EffectiveSeconds(connection.PlatformCode, "ORDERS", connection.Environment,
+                Math.Clamp(orderRead.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds), orderRead.IdleBackoffEnabled, orderRead.IdleIntervalSeconds, healthy, null, now);
             return new PriceStockConnectionMonitorView(
                 connection.Id,
                 connection.PlatformCode,
