@@ -42,10 +42,11 @@ is public; never commit them) in `C:/Users/emrek/OneDrive/Belgeler/Ravencia-API-
 | Pazarama | `pazarama-api-son.md` |
 | PttAVM | `pttavm-api-son.md` |
 | Shopify | `shopify-admin-graphql-referans-son.md` (GraphQL Admin 2026-10), `shopify-rehberler-son.md` (guides) |
+| Trendyol E-Faturam | `efaturam-api-son.md` (direct and marketplace/partner sections, 26 endpoints, error model) |
 
 They are 0.1-1.8 MB each: grep for the endpoint, field or heading and read around the hit; never read one whole.
 Look here before WebSearch/WebFetch; go to the web only when the answer is not in them or may have changed, and say
-which you used. N11 has no offline copy.
+which you used. N11 has no offline copy. E-Faturam: the remaining-credit endpoints are partner-only (`UserIsNotPartnerProblem`); a direct API user sees running out only as 409 `insufficient-credit` (see `efaturam.md`).
 
 **Trendyol: we use the v2 product services.** Its doc keeps v1 and v2 pages side by side (`## Ürün Yaratma v2`,
 `## Ürün Filtreleme - Onaylı Ürün v2`, `## Kategori Özellik Listesi v2`, `## Paket Listeleme V2`…); read the v2
