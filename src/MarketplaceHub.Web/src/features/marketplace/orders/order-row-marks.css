@@ -3,8 +3,12 @@
 .rr-omarks { display: inline-flex; flex: none; align-items: center; gap: 2px; vertical-align: middle; }
 .rr-omark { position: relative; display: inline-grid; place-items: center; width: 18px; height: 18px; color: var(--rr-muted); border-radius: 7px; outline: none; cursor: default; }
 .rr-omark:focus-visible { box-shadow: 0 0 0 2px var(--rr-info); }
-.rr-omark-flag { display: block; border-radius: 2px; }
+.rr-omark-flag { display: block; border-radius: 0; }
 .rr-omark-ico { display: block; }
+/* The micro-export flag stands bare: no box, no radius, no hover ground; a thin outline only for keyboard focus. The
+   explanation still shows on hover and focus. */
+.rr-omark-micro { width: auto; height: auto; background: none; border: 0; border-radius: 0; box-shadow: none; }
+.rr-omark-micro:focus-visible { box-shadow: none; outline: 1px solid var(--rr-info); outline-offset: 2px; }
 /* Orange, the same in both themes: the warning token is brown in the light theme. */
 .rr-omark-point { color: #e8711c; }
 .rr-omark[data-tip]:hover::after,

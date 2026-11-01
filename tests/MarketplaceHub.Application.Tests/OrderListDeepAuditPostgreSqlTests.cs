@@ -170,15 +170,71 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             var listed = (await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(MicroExport: true), CancellationToken.None)).Items.Select(x => x.OrderNumber).OrderBy(x => x).ToList();
             Assert.Equal(["mic-bg", "mic-sa1", "mic-sa2"], listed);
 
-            var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None);
+            var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None, ["ALL"]);
             Assert.Equal(3, summary.MicroExport);
             Assert.Equal(2, summary.MicroExportCountries!["SA"]);
             Assert.Equal(1, summary.MicroExportCountries["BG"]);
             // The count follows the list's filters but not its tab.
-            Assert.Equal(1, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Search: "mic-bg"), CancellationToken.None)).MicroExport);
-            Assert.Equal(3, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Status: "NEW"), CancellationToken.None)).MicroExport);
-            // A menu counter that asks for one tab leaves the micro-export count out.
+            Assert.Equal(1, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Search: "mic-bg"), CancellationToken.None, ["ALL"])).MicroExport);
+            Assert.Equal(3, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Status: "NEW"), CancellationToken.None, ["ALL"])).MicroExport);
+            // The card asks for the ALL tab alone, under a day filter: the count and countries follow the filter. The orders
+            // are stored 20 minutes ago, and Trendyol stores its order times three hours ahead of the real instant, so they
+            // were really placed about three hours and twenty minutes ago: a window around now misses them, one around that
+            // time holds them.
+            var around = (double fromHours, double toHours) => new OrderListQuery(DateFrom: DateTimeOffset.UtcNow.AddHours(fromHours), DateTo: DateTimeOffset.UtcNow.AddHours(toHours));
+            Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, around(-1, 1), CancellationToken.None, ["ALL"])).MicroExport);
+            Assert.Empty((await service.OrdersAsync(tenantId, 50, 1, null, around(-1, 1) with { MicroExport = true }, CancellationToken.None)).Items);
+            Assert.Equal(3, (await service.OrdersAsync(tenantId, 50, 1, null, around(-4, -3) with { MicroExport = true }, CancellationToken.None)).Items.Count);
+            var today = await service.OrderSummaryAsync(tenantId, around(-4, -3), CancellationToken.None, ["ALL"]);
+            Assert.Equal(3, today.MicroExport);
+            Assert.Equal(2, today.MicroExportCountries!["SA"]);
+            var otherDay = await service.OrderSummaryAsync(tenantId, new OrderListQuery(DateFrom: DateTimeOffset.UtcNow.AddDays(-3), DateTo: DateTimeOffset.UtcNow.AddDays(-2)), CancellationToken.None, ["ALL"]);
+            Assert.Equal(0, otherDay.MicroExport);
+            // The tab counters (every tab, no names) and a menu counter that asks for one other tab leave the micro-export count out.
+            Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None)).MicroExport);
             Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None, ["PENDING"])).MicroExport);
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
+    // The Yeniden Gönderim card counts the resent orders whose new package the carrier has not taken: created, being
+    // picked or ready to ship. A shipped, delivered or held package, or one of unknown standing, is not counted.
+    [PostgreSqlFact]
+    public async Task ResentNotShippedListsOnlyTheResendsWhosePackageIsStillWithTheSeller()
+    {
+        var tenantId = await SeedAsync("ol-rsn");
+        try
+        {
+            await using (var seedDb = fixture.CreateContext())
+            {
+                var connectionId = await seedDb.PlatformConnections.Where(x => x.TenantId == tenantId).Select(x => x.Id).SingleAsync();
+                var now = DateTimeOffset.UtcNow;
+                void Add(string suffix, ShipmentPackageStatus status)
+                {
+                    var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = $"rsn-{suffix}", OrderNumber = $"rsn-{suffix}", Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now.AddMinutes(-30), LastRemoteModifiedAt = now, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = status.ToString().ToUpperInvariant(), CreatedAt = now, UpdatedAt = now, Version = 1 };
+                    seedDb.Orders.Add(order);
+                    seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = $"rsn-{suffix}", OriginExternalPackageId = $"origin-{suffix}", CreatedBy = "resend", Status = status, RawStatus = status.ToString(), StatusOccurredAt = now, MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
+                }
+                Add("new", ShipmentPackageStatus.New);
+                Add("picking", ShipmentPackageStatus.Processing);
+                Add("ready", ShipmentPackageStatus.ReadyToShip);
+                Add("shipped", ShipmentPackageStatus.Shipped);
+                Add("hold", ShipmentPackageStatus.OnHold);
+                Add("delivered", ShipmentPackageStatus.Delivered);
+                await seedDb.SaveChangesAsync();
+            }
+
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            async Task<List<string>> Numbers(OrderListQuery query) => (await service.OrdersAsync(tenantId, 50, 1, null, query, CancellationToken.None)).Items.Select(x => x.OrderNumber).OrderBy(x => x).ToList();
+
+            Assert.Equal(6, (await Numbers(new OrderListQuery(Status: "RESENT"))).Count);
+            Assert.Equal(["rsn-new", "rsn-picking", "rsn-ready"], await Numbers(new OrderListQuery(Status: "RESENT", ResentNotShipped: true)));
+            // The filter belongs to the Yeniden Gönderimler tab; it does not narrow another tab.
+            Assert.Equal(1, (await Numbers(new OrderListQuery(Status: "DELIVERED", ResentNotShipped: true))).Count(number => number.StartsWith("rsn-")));
         }
         finally
         {

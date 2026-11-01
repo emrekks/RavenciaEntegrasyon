@@ -1,43 +1,24 @@
-/* The order summary row has seven cards. Wide screens (≥1500 px): one row of seven. Below that, a row of four and a row
-   of three (761–1499 px). Phone (≤760 px): two per row, the last one full width. Builds on the shared .rr-metrics
-   rules in returns-sade.css. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article { grid-column: span 3; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article:nth-child(n + 5) { grid-column: span 4; }
-@media (min-width: 1500px) {
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article,
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article:nth-child(n + 5) { grid-column: auto; }
-}
+/* The order summary row has eight cards in a grid of four by two (761 px and wider); two per row, four rows, on a phone
+   (≤760 px). Builds on the shared .rr-metrics rules in returns-sade.css. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-8 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 760px) {
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 { grid-template-columns: 1fr 1fr; }
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article,
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article:nth-child(n + 5) { grid-column: auto; }
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-7 > article:last-child { grid-column: 1 / -1; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-8 { grid-template-columns: 1fr 1fr; }
 }
-/* The İptal and Yeniden Gönderim cards open their tabs: same box as the others, the buttons inside are plain. The
-   global button rule sets min-height: 44px; it is reset on these. */
+/* The cards that open a list: same box as the others, the buttons inside are plain. The global button rule sets
+   min-height: 44px; it is reset on these. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link { align-content: start; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link:hover { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open { display: grid; gap: 2px; width: 100%; min-height: 0; height: auto; padding: 0; margin: 0; color: inherit; text-align: left; font: inherit; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; justify-content: normal; justify-items: start; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 24px; font-weight: 600; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-sub { min-height: 0; height: auto; padding: 0; margin: 0; color: var(--rr-muted); text-align: left; font: inherit; font-size: 12px; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-sub:hover { color: var(--rr-ink); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, .rr-metric-sub):focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 2px; border-radius: 6px; }
-@media (max-width: 760px) {
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 20px; }
-}
-/* The micro-export card lists its countries when hovered or focused: a small panel under the card. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-tipped { position: relative; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; min-width: 220px; padding: 8px 10px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tipped:is(:hover, :focus-within) .rr-metric-tip { display: grid; gap: 2px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; color: var(--rr-ink); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r b { font-weight: 600; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-none { width: 16px; height: 11px; border: 1px dashed var(--rr-line-strong); border-radius: 2px; }
-/* On the last cards the panel opens to the left so it stays on the screen. */
-@media (max-width: 760px) {
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { right: 0; left: auto; }
-}
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, .rr-metric-chip):focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 2px; border-radius: 6px; }
+/* A card's count and its short note on one line ("37 siparişte", "Kargoya verilmedi"). */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-note { color: var(--rr-muted); font-size: 12px; white-space: nowrap; }
+/* The İptal card: the count under the title like the others and, while orders were cancelled in part, a chip beside it
+   that opens them: a light border, 22 px high, as the side menu's counters. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-chipped { grid-template-columns: auto minmax(0, 1fr); align-items: end; column-gap: 8px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip { display: inline-flex; align-items: center; justify-self: start; min-height: 0; height: 22px; margin: 0 0 4px; padding: 0 8px; color: var(--rr-ink); background: var(--rr-soft); border: 1px solid var(--rr-line); border-radius: 7px; box-shadow: none; font: inherit; font-size: 11px; line-height: 1; text-decoration: none; cursor: pointer; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip:hover { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 /* A warning card with something to warn about (Geciken above 0): a faint red box and a dot beside its title that fades
    slowly in and out (the text and the number stay still); at 0 the card is as plain as the others. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert { border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); background: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); }
@@ -45,4 +26,19 @@
 @keyframes rr-alert-dot { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 @media (prefers-reduced-motion: reduce) {
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert small::before { animation: none; }
+}
+/* A card lists more on hover or focus (countries, stores): a small panel under it. It must open over the tab bar and
+   the filter card below, which paint over a plain neighbour: the row of cards is raised while one is open. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-tipped { position: relative; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics:has(.rr-metric-tipped:is(:hover, :focus-within)) { position: relative; z-index: 80; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; min-width: 220px; padding: 8px 10px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tipped:is(:hover, :focus-within) .rr-metric-tip { display: grid; gap: 2px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; color: var(--rr-ink); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r b { font-weight: 600; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-h { grid-column: 1 / -1; color: var(--rr-muted); font-size: 12px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-none { width: 16px; height: 11px; border: 1px dashed var(--rr-line-strong); border-radius: 0; }
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 20px; }
+  /* The panel of a card in the right-hand column opens to the left so it stays on the screen. */
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:nth-child(even) .rr-metric-tip { right: 0; left: auto; }
 }
