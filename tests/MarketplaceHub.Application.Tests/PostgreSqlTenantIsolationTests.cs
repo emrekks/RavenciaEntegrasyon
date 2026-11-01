@@ -8031,6 +8031,64 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // A listing whose barcode the panel does not know but whose stock code is another panel product's opened a product
+    // with no variant on the barcode-keyed marketplaces (the variant goes to no one twice). No mode keeps it.
+    [PostgreSqlTheory]
+    [InlineData("PAZARAMA", "{\"newOnly\":true,\"includeArchived\":true}")]
+    [InlineData("PTTAVM", "{\"full\":true,\"includeArchived\":true,\"updateExistingProducts\":true}")]
+    public async Task ListingWhoseVariantsAreAnotherProducts_OpensNoEmptyProduct(string platformCode, string payloadJson)
+    {
+        var tenant = NewTenant("listing-owned-variants");
+        var connection = NewQuestionConnection(tenant);
+        connection.PlatformCode = platformCode;
+        var productId = Guid.CreateVersion7();
+        var remoteProduct = new RemoteCatalogProduct(
+            "remote-1", "MDL-1", "Pazar yeri başlığı", "", null, null, null, null,
+            ["https://example.invalid/remote.jpg"],
+            [new RemoteCatalogVariant("remote-variant-1", "SK-1", "REMOTE-BARCODE-1", "MDL-1", new Dictionary<string, string>(), Archived: false, SalePrice: 100m, ListPrice: 120m, VatRate: 10m, StockQuantity: 3m, Currency: "TRY", RawJson: "{}")],
+            "{}");
+        var productPort = new ReadOnlyCatalogProductTestPort(remoteProduct);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Panel ürünü", Description = "", Status = ProductStatus.Active, CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 1 });
+            seedDb.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = productId, SortOrder = 0, Sku = "SK-1", SkuNormalized = "SK-1", Barcode = "PANEL-BARCODE-1", BarcodeNormalized = "PANEL-BARCODE-1", ModelCode = "MDL-1", OptionSignature = "-", CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, productPort, null!, null!, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, payloadJson, "listing-owned-variants", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            Assert.Equal(productId, (await verificationDb.Products.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id)).Id);
+            Assert.Equal(productId, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id)).ProductId);
+            Assert.False(await verificationDb.MarketplaceProductLinks.AnyAsync(row => row.TenantId == tenant.Id));
+            Assert.False(await verificationDb.ProductMedia.AnyAsync(row => row.TenantId == tenant.Id));
+            Assert.Equal(0, productPort.WriteAttempts);
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.ChannelPriceHistory.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.StockLedgerEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ReferenceSnapshots.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteCatalogOptionRepairTestTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task DeleteCatalogOptionRepairTestTenantAsync(Guid tenantId)
     {
         await using var db = fixture.CreateContext();
