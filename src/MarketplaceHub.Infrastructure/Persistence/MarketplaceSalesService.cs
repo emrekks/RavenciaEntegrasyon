@@ -1363,7 +1363,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.OrderRead, type, JsonSerializer.Serialize(new { connectionId, externalOrderId, full, packageNumber = normalizedPackageNumber }), correlationId, cancellationToken);
     }
 
-    public async Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool optionsOnly, bool includeArchived, bool includeDrafts, bool includePendingApproval, bool updateExistingProducts, bool updateExistingPricesAndStock, string? productLookup, string correlationId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<Guid>> EnqueueProductSyncAsync(Guid tenantId, Guid connectionId, bool full, bool newOnly, bool existingOnly, bool mappingOnly, bool optionsOnly, bool includeArchived, bool includeDrafts, bool includePendingApproval, bool updateExistingProducts, bool updatePrices, bool updateStock, string? productLookup, string correlationId, CancellationToken cancellationToken)
     {
         var platform = await db.PlatformConnections.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == connectionId)
@@ -1381,7 +1381,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             includeDrafts = false;
             includePendingApproval = true;
             updateExistingProducts = false;
-            updateExistingPricesAndStock = false;
+            updatePrices = false;
+            updateStock = false;
             productLookup = null;
         }
         includePendingApproval = includePendingApproval
@@ -1402,12 +1403,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             includeArchived = true;
             includeDrafts = true;
             updateExistingProducts = false;
-            updateExistingPricesAndStock = false;
+            updatePrices = false;
+            updateStock = false;
             optionsOnly = false;
         }
-        updateExistingPricesAndStock = updateExistingPricesAndStock && (full || existingOnly) && !newOnly && !mappingOnly && !optionsOnly && !string.Equals(platform, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "N11", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PTTAVM", StringComparison.OrdinalIgnoreCase);
+        var priceStockAllowed = (full || existingOnly) && !newOnly && !mappingOnly && !optionsOnly && !string.Equals(platform, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "N11", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PTTAVM", StringComparison.OrdinalIgnoreCase);
+        updatePrices = updatePrices && priceStockAllowed;
+        updateStock = updateStock && priceStockAllowed;
         var type = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.ProductSync);
-        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, type, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, mappingOnly, optionsOnly, includeArchived, includeDrafts, includePendingApproval, updateExistingProducts, updateExistingPricesAndStock, productLookup }), correlationId, cancellationToken);
+        return await EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ProductRead, type, JsonSerializer.Serialize(new { connectionId, full, newOnly, existingOnly, mappingOnly, optionsOnly, includeArchived, includeDrafts, includePendingApproval, updateExistingProducts, updatePrices, updateStock, productLookup }), correlationId, cancellationToken);
     }
 
     public async Task<ServiceResult<CatalogStructureRunView>> EnqueueCatalogStructureAsync(Guid tenantId, Guid connectionId, string mode, string correlationId, CancellationToken cancellationToken)

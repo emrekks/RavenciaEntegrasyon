@@ -5742,7 +5742,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // stock updates, so they are always part of their import.
         var includePendingApproval = flatCatalog || !isShopify && !isHepsiburada && ReadBoolean(payloadJson, "includePendingApproval");
         var updateExistingProducts = ReadBooleanOrDefault(payloadJson, "updateExistingProducts", true);
-        var updateExistingPricesAndStock = ReadBoolean(payloadJson, "updateExistingPricesAndStock");
+        // The single legacy flag still sits in jobs queued before the split: it stands for both halves.
+        var legacyUpdatePricesAndStock = ReadBoolean(payloadJson, "updateExistingPricesAndStock");
+        var updatePrices = ReadBooleanOrDefault(payloadJson, "updatePrices", legacyUpdatePricesAndStock);
+        var updateStock = ReadBooleanOrDefault(payloadJson, "updateStock", legacyUpdatePricesAndStock);
         // Shopify's single inactive-product option intentionally covers both
         // archived variants and draft products; keep older payloads compatible.
         var includeDrafts = ReadBoolean(payloadJson, "includeDrafts") || isShopify && includeArchived;
@@ -6124,7 +6127,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     var categoryContext = categoryReferences is null
                         ? null
                         : await EnsureCategoryAttributeContext(tenantId, connectionId, categoryReferences, snapshot, categoryItems, importedAttributeLibrary, categoryContexts, correlationId, cancellationToken);
-                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updateExistingPricesAndStock: updateExistingPricesAndStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly);
+                    var changed = await UpsertCatalogProduct(tenantId, connectionId, snapshot, categoryContext, brandReferences?.Id, inventoryPolicy, cancellationToken, saveChanges: false, onlyNewVariants: newOnly && productAlreadyLinked, observeOnly: isShopify || isHepsiburada || flatCatalog, preferBarcode: isShopify, matchBySku: isN11, onlyExistingVariants: existingOnly && isShopify, updateExistingProducts: updateExistingProducts, updatePrices: updatePrices, updateStock: updateStock, isHepsiburada: isHepsiburada, observedPlatformName: isPazarama ? "Pazarama" : isPttAvm ? "PTT AVM" : null, createdAt: CatalogImportOrdering.RemoteCreatedAt(snapshot, catalogOrderStamp) ?? catalogOrderStamp.AddMilliseconds(-catalogOrderPosition++), allowNewProduct: !existingOnly);
                     existingProductExternalIds?.Add(snapshot.ExternalProductId);
                     if (existingVariantExternalIds is not null)
                         foreach (var variant in snapshot.Variants)
@@ -7567,7 +7570,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updateExistingPricesAndStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, DateTimeOffset? createdAt = null, bool allowNewProduct = true)
+    private async Task<bool> UpsertCatalogProduct(Guid tenantId, Guid connectionId, RemoteCatalogProduct snapshot, CategoryAttributeContext? categoryContext, Guid? brandReferenceSnapshotId, ConnectionInventoryPolicy? inventoryPolicy, CancellationToken cancellationToken, bool saveChanges = true, bool onlyNewVariants = false, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingProducts = true, bool updatePrices = false, bool updateStock = false, bool isHepsiburada = false, bool matchBySku = false, string? observedPlatformName = null, DateTimeOffset? createdAt = null, bool allowNewProduct = true)
     {
         var now = timeProvider.GetUtcNow();
         var externalProductId = Short(snapshot.ExternalProductId, 256);
@@ -7695,11 +7698,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             if (owners.Count == 1 && await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == owners[0], cancellationToken) is { } owner)
             {
-                await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, owner, snapshot, inventoryPolicy, now, cancellationToken, updateExistingPricesAndStock: updateExistingPricesAndStock);
+                await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, owner, snapshot, inventoryPolicy, now, cancellationToken, updatePrices: updatePrices, updateStock: updateStock);
                 if (saveChanges)
                     await db.SaveChangesAsync(cancellationToken);
                 telemetrySkippedCount++;
-                return updateExistingPricesAndStock;
+                return updatePrices || updateStock;
             }
         }
         // "Mevcut Ürünleri Güncelle" never opens a product, and no mode opens one without a variant it can keep.
@@ -7786,7 +7789,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // that do not have a trustworthy imported-product version yet.
         if (!onlyNewVariants
             && !isNewProduct
-            && !updateExistingPricesAndStock
+            && !updatePrices
+            && !updateStock
             && link is not null
             && string.Equals(link.LastImportedPayloadHash, remoteHash, StringComparison.OrdinalIgnoreCase)
             && link.LastImportedProductVersion == product!.Version
@@ -7808,7 +7812,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // A previous import may have stored the remote observation while
             // leaving the untouched local projection at zero. Reconcile that
             // legacy state even when the payload itself has not changed.
-            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updateExistingPricesAndStock);
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updatePrices, updateStock);
             if (saveChanges)
                 await db.SaveChangesAsync(cancellationToken);
             telemetrySkippedCount++;
@@ -7875,7 +7879,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var externalVariantId = Short(remote.ExternalVariantId, 256);
                 if (onlyNewVariants && existingVariantExternalIds!.Contains(externalVariantId))
                     continue;
-                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, onlyExistingVariants, updateExistingPricesAndStock);
+                var importedVariant = await UpsertCatalogVariant(tenantId, connectionId, product, remote, sortOrder, categoryContext, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, onlyExistingVariants, updatePrices, updateStock);
                 if (importedVariant is not null)
                 {
                     importedVariants.Add(importedVariant);
@@ -7914,7 +7918,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // then apply the inventory part of the remote snapshot. Trendyol
             // media is a separate remote projection, so a manual product edit
             // must not leave an older Shopify gallery in place.
-            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updateExistingPricesAndStock, syncMedia: !observeOnly && updateExistingProducts);
+            await SyncCatalogInventoryForPreservedProduct(tenantId, connectionId, product, snapshot, inventoryPolicy, now, cancellationToken, observeOnly, preferBarcode, updatePrices, updateStock, syncMedia: !observeOnly && updateExistingProducts);
             if (!observeOnly && updateExistingProducts && snapshot.ImageUrls.Count > 0)
             {
                 var productImageUrls = CatalogImageIdentity.DistinctUrls(snapshot.ImageUrls);
@@ -8067,7 +8071,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         CancellationToken cancellationToken,
         bool observeOnly = false,
         bool preferBarcode = false,
-        bool updateExistingPricesAndStock = false,
+        bool updatePrices = false, bool updateStock = false,
         bool syncMedia = false)
     {
         var variants = await db.ProductVariants
@@ -8110,7 +8114,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             if (variant is null) continue;
 
-            await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: updateExistingPricesAndStock, observeOnly: observeOnly, updateStock: updateExistingPricesAndStock, forceStockUpdate: updateExistingPricesAndStock);
+            await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: updatePrices, observeOnly: observeOnly, updateStock: updateStock, forceStockUpdate: updateStock);
             if (syncMedia && remote.ImageUrls is not null)
                 await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {OptionSignature(remote.Options)}", cancellationToken);
         }
@@ -8307,7 +8311,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
     }
 
-    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updateExistingPricesAndStock = false)
+    private async Task<ProductVariant?> UpsertCatalogVariant(Guid tenantId, Guid connectionId, Product product, RemoteCatalogVariant remote, int sortOrder, CategoryAttributeContext? categoryContext, ConnectionInventoryPolicy? inventoryPolicy, DateTimeOffset now, CancellationToken cancellationToken, bool observeOnly = false, bool preferBarcode = false, bool onlyExistingVariants = false, bool updatePrices = false, bool updateStock = false)
     {
         var sku = Short(string.IsNullOrWhiteSpace(remote.Sku) ? remote.Barcode ?? remote.ExternalVariantId : remote.Sku, 160);
         var skuNormalized = NormalizeCatalogKey(sku, 160);
@@ -8420,7 +8424,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await UpsertCatalogOptions(tenantId, connectionId, product.Id, variant.Id, remote.Options, categoryContext, cancellationToken);
         if ((!observeOnly || isNewVariant) && categoryContext is not null)
             await UpsertProductAttributeAssignments(tenantId, connectionId, product, variant, remote.Options, categoryContext, cancellationToken);
-        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: isNewVariant || updateExistingPricesAndStock, observeOnly: observeOnly, updateStock: isNewVariant || updateExistingPricesAndStock, forceStockUpdate: !isNewVariant && updateExistingPricesAndStock);
+        await UpsertCatalogOfferAndInventory(tenantId, connectionId, variant, remote, inventoryPolicy, now, cancellationToken, updateOffer: isNewVariant || updatePrices, observeOnly: observeOnly, updateStock: isNewVariant || updateStock, forceStockUpdate: !isNewVariant && updateStock);
         if ((!observeOnly || isNewVariant) && remote.ImageUrls is not null)
             await UpsertCatalogMedia(tenantId, product, variant.Id, remote.ImageUrls, $"{product.Title} · {optionSignature}", cancellationToken);
         return variant;

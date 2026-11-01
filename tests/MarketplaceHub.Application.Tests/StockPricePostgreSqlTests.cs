@@ -297,6 +297,52 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Contains(dispatched, payload => payload.Contains(reserved.Id.ToString(), StringComparison.OrdinalIgnoreCase));
     }
 
+    // "Update Prices" and "Update Stock" are separate choices: each overwrites only its own value on an existing
+    // variant. A job queued before the split carries the single legacy flag, which still stands for both.
+    [PostgreSqlTheory]
+    [InlineData("{\"full\":true,\"updateExistingProducts\":false,\"updatePrices\":true,\"updateStock\":false}", true, false)]
+    [InlineData("{\"full\":true,\"updateExistingProducts\":false,\"updatePrices\":false,\"updateStock\":true}", false, true)]
+    [InlineData("{\"full\":true,\"updateExistingProducts\":false,\"updatePrices\":true,\"updateStock\":true}", true, true)]
+    [InlineData("{\"full\":true,\"updateExistingProducts\":false}", false, false)]
+    [InlineData("{\"full\":true,\"updateExistingProducts\":false,\"updateExistingPricesAndStock\":true}", true, true)]
+    [InlineData("{\"full\":true,\"updateExistingProducts\":false,\"updateExistingPricesAndStock\":false}", false, false)]
+    public async Task CatalogImport_AppliesPricesAndStockIndependently(string payload, bool pricesChange, bool stockChanges)
+    {
+        var tenant = NewTenant("catalog-price-stock-split");
+        var shopify = NewConnection(tenant, "SHOPIFY", writesEnabled: true);
+        var (product, variant) = NewVariant(tenant, "SPLIT-1", "8690000000601");
+        var inventory = NewInventory(tenant, variant, 10m);
+        var offer = NewOffer(tenant, shopify, variant);
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.ConnectionSyncPolicies.AddRange(AutomaticWritePolicies(tenant, shopify));
+            seed.Products.Add(product);
+            seed.ProductVariants.Add(variant);
+            seed.InventoryItems.Add(inventory);
+            seed.ChannelOffers.Add(offer);
+            seed.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, ProductId = product.Id, ExternalId = "split-product", LastImportedProductVersion = product.Version, SyncStatus = "SYNCED", Version = 1 });
+            seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = shopify.Id, VariantId = variant.Id, ExternalId = "split-variant" });
+            await seed.SaveChangesAsync();
+        }
+
+        var remote = new RemoteCatalogVariant("split-variant", "SPLIT-1", "8690000000601", null, new Dictionary<string, string>(), false, 90m, 100m, 20m, 7m, "TRY", "{}");
+        var port = new CatalogReadPort(new RemoteCatalogProduct("split-product", null, "Ürün", "", null, null, null, null, [], [remote], "{}"), () => Task.CompletedTask);
+        await using (var db = fixture.CreateContext())
+        {
+            var processor = new MarketplaceJobProcessor(db, null!, null!, port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, shopify.Id, MarketplaceJobTypes.ShopifyProductSync, payload, "catalog-price-stock-split", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        await using var check = fixture.CreateContext();
+        var inventoryAfter = await check.InventoryItems.AsNoTracking().SingleAsync(x => x.Id == inventory.Id);
+        var offerAfter = await check.ChannelOffers.AsNoTracking().SingleAsync(x => x.Id == offer.Id);
+        Assert.Equal(stockChanges ? 7m : 10m, inventoryAfter.OnHand);
+        Assert.Equal(pricesChange ? 90m : 120m, offerAfter.SalePrice);
+    }
+
     private sealed class CatalogReadPort(RemoteCatalogProduct snapshot, Func<Task> duringRead) : IProductPort
     {
         public async Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken)
