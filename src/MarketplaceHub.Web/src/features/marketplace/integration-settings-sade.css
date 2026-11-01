@@ -123,11 +123,11 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle strong { font-size: 14px; font-weight: 600; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle small { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .cs-workspace .cs-write-groups { display: grid; gap: 0; padding: 0 20px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups, .shopify-write-controls) .sync-policy-row { display: flex; align-items: center; gap: 14px; min-height: 0; margin: 0; padding: 14px 0; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
+.app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups) .sync-policy-row { display: flex; align-items: center; gap: 14px; min-height: 0; margin: 0; padding: 14px 0; background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; }
 .app-shell.stitch-shell main .cs-workspace .cs-write-groups .sync-policy-row:first-child { border-top: 0; }
-.app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups, .shopify-write-controls) .sync-policy-card-summary { flex: 1; display: grid; gap: 2px; }
-.app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups, .shopify-write-controls) .sync-policy-card-summary strong { font-size: 14px; font-weight: 600; }
-.app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups, .shopify-write-controls) .sync-policy-card-summary small { color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups) .sync-policy-card-summary { flex: 1; display: grid; gap: 2px; }
+.app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups) .sync-policy-card-summary strong { font-size: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups) .sync-policy-card-summary small { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel { gap: 18px; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel :is(input:not([type="checkbox"]), select) { height: 36px; min-height: 36px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel label { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }

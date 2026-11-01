@@ -10,16 +10,6 @@ export function productImportConnection(item: ProductImportConnectionLike): bool
     && ['ACTIVE', 'VERIFIED'].includes(normalizedCode(item.status))
 }
 
-export function productImportIdentityLabel(platformCodes: readonly string[]): string {
-  const codes = [...new Set(platformCodes.map(normalizedCode))]
-  if (codes.length !== 1) return 'ürün kimliği'
-  if (codes[0] === 'SHOPIFY') return 'barkod veya stok kodu'
-  if (codes[0] === 'HEPSIBURADA') return 'merchant SKU'
-  if (codes[0] === 'N11') return 'stok kodu'
-  if (codes[0] === 'PAZARAMA' || codes[0] === 'PTTAVM') return 'barkod'
-  return 'model kodu'
-}
-
 export function singleProductLookupLabel(platformCode: string): string {
   const code = normalizedCode(platformCode)
   if (code === 'SHOPIFY') return 'Shopify ürün linki veya barkod / stok kodu'

@@ -50,8 +50,6 @@ const results: Record<string, { label: string; tone: SendLogTone; description: s
   UNKNOWN: { label: 'Sonuç Belirsiz', tone: 'warning', description: 'Pazaryerinin yanıtı kesinleşmedi; değerler gönderilmiş sayılmadı.' }
 }
 
-export const sendLogResultOptions = Object.keys(results)
-
 export type SendLogOptionGroup = { label: string; values: string[] }
 
 // The filter menus group the codes by what they mean, the most common first in each group. A sent line still waiting
@@ -73,8 +71,6 @@ const triggers: Record<string, string> = {
   PANEL_SEND: 'Panelden Gönderim',
   AUTOMATIC: 'Otomatik'
 }
-
-export const sendLogTriggerOptions = Object.keys(triggers)
 
 // Otomatik: the panel sent it on its own after an order, a stock change or a check; Panelden: someone changed or sent
 // it by hand; Aktarım: stock read from a marketplace and passed on.

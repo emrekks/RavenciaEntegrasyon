@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptySendLogFilters, hasSendLogFilters, istanbulDayToIso, listPriceChanged, priceChange, quantityChange, sendLogFilterCount, sendLogQueryString,
-  sendLogResultGroups, sendLogResultLabel, sendLogResultOptions, sendLogResultTone, sendLogResultTooltip, sendLogTriggerGroups, sendLogTriggerLabel,
-  sendLogTriggerOptions
+  sendLogResultGroups, sendLogResultLabel, sendLogResultTone, sendLogResultTooltip, sendLogTriggerGroups, sendLogTriggerLabel
 } from './price-stock-send-log'
 
 describe('price/stock send log values', () => {
@@ -33,10 +32,12 @@ describe('price/stock send log values', () => {
 })
 
 describe('price/stock send log results and triggers', () => {
+  const resultCodes = ['SUBMITTED', 'APPLIED', 'UNCHANGED', 'REJECTED', 'FAILED', 'SUPERSEDED', 'UNKNOWN']
+  const triggerCodes = ['ORDER', 'MANUAL_STOCK', 'PRICE_EDIT', 'STOCK_IMPORT', 'STOCK_CHANGE', 'RECONCILE', 'PANEL_SEND', 'AUTOMATIC']
+
   it('labels and colours every result the server sends', () => {
-    expect(sendLogResultOptions).toEqual(['SUBMITTED', 'APPLIED', 'UNCHANGED', 'REJECTED', 'FAILED', 'SUPERSEDED', 'UNKNOWN'])
-    expect(sendLogResultOptions.map(sendLogResultLabel)).toEqual(['Gönderildi', 'Uygulandı', 'Zaten Güncel', 'Reddedildi', 'Başarısız', 'Yeni Sürüm Geldi', 'Sonuç Belirsiz'])
-    expect(sendLogResultOptions.map(sendLogResultTone)).toEqual(['neutral', 'success', 'success', 'danger', 'danger', 'warning', 'warning'])
+    expect(resultCodes.map(sendLogResultLabel)).toEqual(['Gönderildi', 'Uygulandı', 'Zaten Güncel', 'Reddedildi', 'Başarısız', 'Yeni Sürüm Geldi', 'Sonuç Belirsiz'])
+    expect(resultCodes.map(sendLogResultTone)).toEqual(['neutral', 'success', 'success', 'danger', 'danger', 'warning', 'warning'])
   })
 
   it('shows an unknown result or trigger as it came', () => {
@@ -46,14 +47,14 @@ describe('price/stock send log results and triggers', () => {
   })
 
   it('labels every trigger the server sends', () => {
-    expect(sendLogTriggerOptions.map(sendLogTriggerLabel)).toEqual(['Sipariş', 'Manuel Stok', 'Fiyat Değişikliği', 'Pazaryeri Stok Aktarımı', 'Stok Değişikliği', 'Kontrol Taraması', 'Panelden Gönderim', 'Otomatik'])
+    expect(triggerCodes.map(sendLogTriggerLabel)).toEqual(['Sipariş', 'Manuel Stok', 'Fiyat Değişikliği', 'Pazaryeri Stok Aktarımı', 'Stok Değişikliği', 'Kontrol Taraması', 'Panelden Gönderim', 'Otomatik'])
   })
 
   it('groups every result and every trigger exactly once', () => {
     const results = sendLogResultGroups.flatMap(group => group.values)
     const triggers = sendLogTriggerGroups.flatMap(group => group.values)
-    expect([...results].sort()).toEqual([...sendLogResultOptions].sort())
-    expect([...triggers].sort()).toEqual([...sendLogTriggerOptions].sort())
+    expect([...results].sort()).toEqual([...resultCodes].sort())
+    expect([...triggers].sort()).toEqual([...triggerCodes].sort())
     expect(sendLogResultGroups.map(group => group.label)).toEqual(['Başarılı', 'Sorunlu', 'Bekleyen', 'Diğer'])
     expect(sendLogTriggerGroups.map(group => group.label)).toEqual(['Otomatik', 'Panelden', 'Aktarım'])
   })

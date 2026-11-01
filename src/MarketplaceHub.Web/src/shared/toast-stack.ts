@@ -2,7 +2,6 @@ import type { NoticeToastKind } from './components/NoticeToast'
 
 /** At most this many toasts stand in the top-right column; a newer one pushes the oldest timed one out. */
 export const MAX_VISIBLE_TOASTS = 4
-export const DEFAULT_TOAST_DURATION_MS = 5500
 
 export type ToastInput = {
   kind: NoticeToastKind

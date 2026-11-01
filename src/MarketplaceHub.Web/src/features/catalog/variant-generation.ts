@@ -34,10 +34,6 @@ export function buildSequentialVariantCode(modelCode: string, sequence: number):
   return codeWithSuffix(modelCode || 'URUN', `-${String(safeSequence).padStart(2, '0')}`, GeneratedBarcodeMaxLength)
 }
 
-export function buildSequentialVariantIdentifiers(modelCode: string, variantCount: number) {
-  return buildSequentialVariantCodes(modelCode, variantCount).map(code => ({ barcode: code, sku: code }))
-}
-
 export function buildSequentialVariantCodes(modelCode: string, variantCount: number) {
   const count = Math.floor(variantCount)
   if (!modelCode.trim() || count < 1 || count > 1000) return []

@@ -25,7 +25,6 @@
 .rv-topbar-notification-trigger { position: relative; display: inline-grid; width: 44px; min-width: 44px; height: 44px; min-height: 44px; place-items: center; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
 .rv-topbar-notification-trigger:hover, .rv-topbar-notification-trigger[aria-expanded="true"] { background: var(--rv-hover, var(--rv-color-surface-raised)); border-color: var(--rv-color-border-strong); }
 .rv-topbar-notification-count { position: absolute; top: -5px; right: -5px; display: grid; min-width: 19px; height: 19px; place-items: center; padding: 0 4px; color: #fff; background: var(--rv-color-primary-fill); border: 2px solid var(--rv-color-surface); border-radius: 999px; font-size: 10px; font-weight: 850; line-height: 1; }
-@keyframes order-notice-progress { to { transform: scaleX(1); } }
 
 /* A collapsed sidebar expands above the page on hover; its layout column and
    topbar remain at the compact width so the content never shifts. Expanded, it
@@ -469,7 +468,6 @@
   .product-variant-value.is-healthy b { color: var(--rv-color-accent); }
   .product-variant-value.is-empty b { color: var(--rv-color-danger); }
   .product-status-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  @keyframes product-platform-status-rgb { 0%, 100% { background: #ff4d6d; box-shadow: 0 0 0 2px rgb(255 77 109 / 18%); } 33% { background: #8b5cf6; box-shadow: 0 0 0 2px rgb(139 92 246 / 18%); } 66% { background: #22d3ee; box-shadow: 0 0 0 2px rgb(34 211 238 / 18%); } }
   /* Mapping keeps its catalog scope fixed, but still exposes the optional
      Trendyol approval-pending scan. */
   .product-import-mode { display: grid; grid-template-columns: 18px minmax(0, 1fr); align-items: center; gap: var(--rv-space-3); min-width: 0; padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); cursor: pointer; }
@@ -477,7 +475,6 @@
   .product-import-mode > input[type='checkbox'], .product-import-mode > input[type='radio'] { width: 16px; height: 16px; margin: 0; align-self: center; }
   .product-import-mode > span { display: grid; min-width: 0; gap: 3px; }
   .product-import-mode small { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 500; line-height: 1.45; }
-  @keyframes rv-product-progress { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
   /* Returns use one continuous table surface: the header must never float over
      the first record while the page scrolls. */
   .order-reference-platform { display: flex; min-width: 0; min-height: 28px; align-items: center; justify-content: flex-start; }
@@ -1020,8 +1017,6 @@
   .rv-auth-footer { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); margin-top: var(--rv-space-4); padding-top: var(--rv-space-3); color: var(--rv-auth-subtle); border-top: 1px solid var(--rv-auth-border); font-size: var(--rv-font-size-xs); }
   .rv-auth-footer span { display: inline-flex; align-items: center; gap: var(--rv-space-2); }
   .rv-auth-footer small { text-align: right; }
-  @keyframes rv-auth-orbit { to { transform: translateX(-50%) rotate(360deg); } }
-  @keyframes rv-auth-scan { 0%, 100% { opacity: .18; transform: translateY(-12px); } 50% { opacity: .62; transform: translateY(12px); } }
 
   @media (min-width: 701px) and (max-height: 950px) {
     .rv-auth-header { min-height: 64px; padding-top: 12px; }
@@ -1164,7 +1159,6 @@
   .jobs-reference-filter-panel { width: min(420px, calc(100vw - 32px)); grid-template-columns: repeat(2, minmax(140px, 1fr)); min-width: 0; max-width: calc(100vw - 32px); align-items: end; }
   .jobs-reference-filter-panel label { display: grid; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
   .jobs-reference-canvas { display: grid; gap: var(--rv-space-4); }
-  .jobs-reference-canvas > .jobs-reference-tabs { margin-bottom: 0; }
   .jobs-reference-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-4); margin: 0; }
   .jobs-reference-status-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rv-space-3); min-width: 0; }
   .jobs-reference-status-summary > span { display: inline-flex; align-items: center; gap: var(--rv-space-1); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); white-space: nowrap; }
@@ -1233,13 +1227,13 @@
   /* Shared interaction language for the revised workspace surfaces. */
 
   /* Canonical workspace navigation. */
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) { display: flex; width: fit-content; max-width: 100%; min-width: 0; align-items: center; gap: 4px; overflow-x: auto; margin: 0 0 20px; padding: 4px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a) { display: inline-flex; flex: 0 0 auto; width: auto; min-width: 0; min-height: 34px; align-items: center; justify-content: center; gap: 8px; padding: 6px 12px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; font-size: var(--rv-font-size-sm); font-weight: 600; line-height: 1.4; white-space: nowrap; text-decoration: none; }
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); border-color: transparent; box-shadow: none; }
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-bottom-color: transparent; box-shadow: 0 1px 4px rgb(0 0 0 / 12%); }
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) :is(.status-tab-label, .rv-tab-label) { color: inherit; font-size: inherit; font-weight: inherit; white-space: nowrap; }
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) :is(.status-tab-count, .rv-tab-count, .jobs-reference-tab-count) { display: inline-flex; min-width: 24px; min-height: 22px; align-items: center; justify-content: center; padding: 2px 6px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 6px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) .status-tab-unit { font-size: 11px; color: var(--rv-color-muted); }
+  :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) { display: flex; width: fit-content; max-width: 100%; min-width: 0; align-items: center; gap: 4px; overflow-x: auto; margin: 0 0 20px; padding: 4px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
+  :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a) { display: inline-flex; flex: 0 0 auto; width: auto; min-width: 0; min-height: 34px; align-items: center; justify-content: center; gap: 8px; padding: 6px 12px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; font-size: var(--rv-font-size-sm); font-weight: 600; line-height: 1.4; white-space: nowrap; text-decoration: none; }
+  :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); border-color: transparent; box-shadow: none; }
+  :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) { color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border-bottom-color: transparent; box-shadow: 0 1px 4px rgb(0 0 0 / 12%); }
+  :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) :is(.status-tab-label, .rv-tab-label) { color: inherit; font-size: inherit; font-weight: inherit; white-space: nowrap; }
+  :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) :is(.status-tab-count, .rv-tab-count, .jobs-reference-tab-count) { display: inline-flex; min-width: 24px; min-height: 22px; align-items: center; justify-content: center; padding: 2px 6px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 6px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) .status-tab-unit { font-size: 11px; color: var(--rv-color-muted); }
   .rv-mobile-menu-toggle { display: none; }
   .rv-mobile-navigation { display: grid; gap: 6px; }
   .rv-mobile-navigation a { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 10px 12px; color: var(--rv-color-muted); text-decoration: none; border-radius: var(--rv-radius-md); }
@@ -1370,11 +1364,6 @@
 
   /* Product controls keep focus visible without turning the whole toolbar
      purple; the control itself still receives the standard keyboard ring. */
-  .operation-feedback-toast { position: fixed; right: var(--rv-space-5); bottom: var(--rv-space-5); z-index: var(--rv-z-toast); display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: var(--rv-space-3); width: min(420px, calc(100vw - 32px)); padding: var(--rv-space-4); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-left: 4px solid var(--rv-color-primary); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
-  .operation-feedback-toast > div { display: grid; min-width: 0; gap: 2px; }
-  .operation-feedback-toast strong { font-size: var(--rv-font-size-sm); line-height: 1.3; }
-  .operation-feedback-toast > button { display: grid; width: 28px; height: 28px; min-height: 28px; place-items: center; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: var(--rv-radius-sm); }
-  .operation-feedback-toast > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
   @keyframes rv-spin { to { transform: rotate(360deg); } }
 }
 
@@ -1563,7 +1552,6 @@
 @media (max-width: 480px) {
   .value-mapping-row { grid-template-columns: 1fr; }
   .value-mapping-row > b { transform: rotate(90deg); }
-  .operation-feedback-toast { right: 16px; bottom: 16px; width: calc(100vw - 32px); }
   .invoice-reference-metrics, .invoice-detail-summary { grid-template-columns: 1fr; }
   .order-column-filter-popover, .order-column-filter-popover.invoice-filter-popover, .jobs-reference-filter-panel { right: auto; left: 0; }
 }
@@ -1585,7 +1573,7 @@
 .content > .integration-reference-heading,
 .content > .jobs-reference-heading,
 .content > .mapping-reference-heading { margin-bottom: 0; }
-.content > :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) { margin-bottom: 0; }
+.content > :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) { margin-bottom: 0; }
 .sidebar-profile-copy { justify-items: center; text-align: center; }
 .sidebar-profile-copy strong { font-size: var(--rv-font-size-md); }
 
@@ -1638,12 +1626,12 @@
 .mapping-section-heading h2 .ui-icon, .mapping-saved-card > header h2 .ui-icon { flex: 0 0 18px; }
 .mapping-saved-card > header { margin-bottom: 0; }
 
-:is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) {
+:is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) {
   color: var(--rv-color-ink);
   background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface-raised));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-primary) 35%, transparent), 0 2px 8px rgb(0 0 0 / 16%);
 }
-:is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) :is(.status-tab-count, .rv-tab-count, .jobs-reference-tab-count) {
+:is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):is(.active, .is-active, [aria-selected="true"]) :is(.status-tab-count, .rv-tab-count, .jobs-reference-tab-count) {
   color: var(--rv-color-ink);
   background: var(--rv-color-surface);
   border-color: color-mix(in srgb, var(--rv-color-primary) 42%, var(--rv-color-border));
@@ -2328,7 +2316,7 @@ button,
 /* Button labels use one consistent medium weight throughout the workspace. */
 
 /* Every tablist uses the same 36px control height as a standard button. */
-:is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs, .shipping-designer-format-tabs, .shipping-designer-inspector-tabs) {
+:is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs, .shipping-designer-format-tabs, .shipping-designer-inspector-tabs) {
   height: var(--rv-control-height-md);
   min-height: var(--rv-control-height-md);
   box-sizing: border-box;
@@ -2668,11 +2656,6 @@ button,
   .rv-auth-hero-symbol { width: 58px; height: 58px; flex-basis: 58px; padding: 0; }
 }
 
-@keyframes rv-auth-breathe {
-  0%, 100% { opacity: .48; transform: translateX(-50%) scale(.98); }
-  50% { opacity: .9; transform: translateX(-50%) scale(1.02); }
-}
-
 @keyframes rv-auth-logo-float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
@@ -2691,22 +2674,6 @@ button,
 @keyframes rv-auth-status-pulse {
   0%, 100% { opacity: .72; transform: scale(.86); box-shadow: 0 0 0 2px color-mix(in srgb, var(--rv-color-accent) 10%, transparent), 0 0 8px color-mix(in srgb, var(--rv-color-accent) 44%, transparent); }
   50% { opacity: 1; transform: scale(1.12); box-shadow: 0 0 0 4px color-mix(in srgb, var(--rv-color-accent) 16%, transparent), 0 0 18px color-mix(in srgb, var(--rv-color-accent) 72%, transparent); }
-}
-
-@keyframes rv-auth-node-drift {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  50% { transform: translate3d(0, -6px, 0); }
-}
-
-@keyframes rv-auth-api-transfer {
-  0% { left: 0; opacity: 0; transform: translate(-50%, -50%) scale(.75); }
-  12%, 78% { opacity: 1; }
-  100% { left: 100%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
-}
-
-@keyframes rv-auth-marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2971,28 +2938,8 @@ button,
   animation: auth-card-ambient 9s ease-in-out infinite;
 }
 
-@keyframes auth-signal-rotate {
-  to { transform: translate(-50%, -50%) rotate(360deg); }
-}
-
-@keyframes auth-signal-rotate-reverse {
-  to { transform: translate(-50%, -50%) rotate(-360deg); }
-}
-
 @keyframes auth-signal-orbits-turn {
   to { transform: rotate(360deg); }
-}
-
-@keyframes auth-route-dash {
-  to { stroke-dashoffset: -160; }
-}
-
-@keyframes auth-pulse-orbit {
-  to { transform: translate(-50%, -50%) rotate(360deg); }
-}
-
-@keyframes auth-pulse-orbit-reverse {
-  to { transform: translate(-50%, -50%) rotate(-360deg); }
 }
 
 @keyframes auth-orbit-tag-drift {
@@ -3256,7 +3203,7 @@ small,
   line-height: 1.3;
 }
 
-.app-shell.stitch-shell main :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs, .shipping-designer-format-tabs, .shipping-designer-inspector-tabs) {
+.app-shell.stitch-shell main :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs, .shipping-designer-format-tabs, .shipping-designer-inspector-tabs) {
   height: auto;
   min-height: 0;
   gap: 4px;
@@ -3264,7 +3211,7 @@ small,
   border-radius: var(--rv-radius-md);
 }
 
-.app-shell.stitch-shell main :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs, .shipping-designer-format-tabs, .shipping-designer-inspector-tabs) > :is(button, a) {
+.app-shell.stitch-shell main :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs, .shipping-designer-format-tabs, .shipping-designer-inspector-tabs) > :is(button, a) {
   min-height: 36px;
   padding: 6px 12px;
   border-radius: 5px;
@@ -4697,7 +4644,6 @@ small,
 
 /* UI kit feedback language: inline messages, async states and toasts share
    the same compact callout geometry and semantic color treatment. */
-.rv-callout,
 .app-shell.stitch-shell main :is(.error, .notice) {
   display: flex;
   align-items: center;
@@ -4713,12 +4659,10 @@ small,
   line-height: 1.45;
 }
 
-.rv-callout > div,
 .app-shell.stitch-shell main :is(.error, .notice) > span {
   min-width: 0;
 }
 
-.rv-callout-icon,
 .app-shell.stitch-shell main :is(.error, .notice)::before {
   display: block;
   width: 8px;
@@ -4735,83 +4679,22 @@ small,
   content: '';
 }
 
-.rv-callout-success,
 .app-shell.stitch-shell main .success {
   color: var(--rv-color-accent);
   background: var(--rv-color-accent-soft);
   border-color: color-mix(in srgb, var(--rv-color-accent) 38%, transparent);
 }
 
-.rv-callout-warning,
 .app-shell.stitch-shell main .notice:not(.order-bulk-notice-success) {
   color: var(--rv-color-warning);
   background: var(--rv-color-warning-soft);
   border-color: color-mix(in srgb, var(--rv-color-warning) 38%, transparent);
 }
 
-@keyframes return-action-toast-progress {
-  to { transform: scaleX(1); }
-}
-
-.rv-callout-danger,
 .app-shell.stitch-shell main .error {
   color: var(--rv-color-danger);
   background: var(--rv-color-danger-soft);
   border-color: color-mix(in srgb, var(--rv-color-danger) 38%, transparent);
-}
-
-.rv-callout-neutral {
-  color: var(--rv-color-muted);
-  background: var(--rv-color-surface-soft);
-  border-color: var(--rv-color-border);
-}
-
-.operation-feedback-toast {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: fit-content;
-  max-width: min(360px, calc(100vw - 32px));
-  min-width: 0;
-  padding: 16px;
-  color: var(--rv-color-ink);
-  background: var(--rv-color-surface-raised);
-  border: 1px solid var(--rv-color-border-strong);
-  border-radius: 10px;
-  box-shadow: var(--rv-shadow-lg);
-  animation: rv-toast-in .2s var(--rv-ease-standard);
-}
-
-.operation-feedback-toast > div {
-  flex: 1 1 auto;
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-  line-height: 1.45;
-}
-
-.operation-feedback-toast strong { margin: 0; }
-
-.operation-feedback-toast > button {
-  margin-left: auto;
-  display: grid;
-  width: 28px;
-  height: 28px;
-  min-height: 28px;
-  flex: 0 0 28px;
-  place-items: center;
-  padding: 0;
-  color: var(--rv-color-muted);
-  background: transparent;
-  border: 0;
-  border-radius: var(--rv-radius-sm);
-}
-
-.operation-feedback-toast > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
-
-@media (max-width: 480px) {
-  .operation-feedback-toast { right: 16px; bottom: 16px; width: calc(100vw - 32px); }
 }
 
 /* Final sidebar interaction pass: keep the pin control on the same right
@@ -5086,19 +4969,6 @@ small,
   outline: 2px solid var(--rv-color-primary);
   outline-offset: 2px;
 }
-
-.app-shell.stitch-shell main .sync-policy-health {
-  display: grid;
-  gap: 3px;
-  margin-top: var(--rv-space-2);
-  font-size: var(--rv-font-size-xs);
-}
-
-.app-shell.stitch-shell main .sync-policy-health > b {
-  color: var(--rv-color-muted);
-}
-.app-shell.stitch-shell main .sync-policy-health > small { color: var(--rv-color-muted); }
-.app-shell.stitch-shell main .sync-policy-health > .sync-policy-health-error { color: var(--rv-color-danger); }
 
 .app-shell.stitch-shell main .sync-policy-card-summary {
   display: grid;
@@ -5690,7 +5560,6 @@ small,
 
 /* The store and environment a connection was added for cannot change; the field only shows it. */
 .app-shell.stitch-shell main .connection-settings-fields input[readonly] { color: var(--rv-color-muted); background: var(--rv-color-surface-raised); cursor: default; }
-.app-shell.stitch-shell main .connection-scope-locked { margin-top: var(--rv-space-2); }
 
 /* Keep the fixed topbar stacking context above catalog cards. The notification
    history can grow over the metric row, so its child z-index is not enough if
@@ -6205,16 +6074,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .app-shell.stitch-shell main .invoice-reference-order:has(> .invoice-reference-select) { padding-left: 34px; }
 .app-shell.stitch-shell main .invoice-reference-order > .invoice-reference-select { right: auto; left: 10px; }
 
-.operation-feedback-toast { overflow: hidden; }
-.operation-feedback-toast > button:hover,
-.operation-feedback-toast > button:focus-visible {
-  color: var(--rv-color-muted);
-  background: transparent !important;
-}
-.operation-feedback-toast > button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
-@keyframes operation-feedback-toast-countdown { to { transform: scaleX(0); } }
-@keyframes operation-feedback-toast-indeterminate { to { transform: translateX(460%); } }
-
 @media (max-width: 1024px) {
   .publish-platform-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -6530,13 +6389,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 .marketplace-pricing-open > span:last-child { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 8px; color: var(--rv-color-primary); font-size: 12px; font-weight: 750; }
 .marketplace-pricing-open strong { font-size: 13px; }
 .marketplace-pricing-open small { color: var(--rv-color-muted); font-size: 11px; }
-.shopify-write-controls { display: grid; gap: 14px; }
 .shopify-write-toggle-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.shopify-write-controls .integration-write-toggle.is-disabled { opacity: .68; cursor: not-allowed; }
 @media (max-width: 700px) { .shopify-write-toggle-list { grid-template-columns: minmax(0, 1fr); } }
-
-/* Add breathing room above the Shopify permissions notice. */
-.app-shell.stitch-shell main .integration-detail-write-panel.shopify-write-controls { margin-top: var(--rv-space-3); }
 
 /* The combined question date range opens one calendar for both endpoints. */
 .date-range-picker { position: relative; display: grid; min-width: 0; gap: 5px; }
@@ -6750,7 +6604,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 
 /* Light theme interaction language. Hovers are quiet tonal changes, colour is kept for the active state and focus:
    list-like items get a faint ink tint, outlined controls darken their border, cards and rows settle on the raised tone. */
-:root[data-theme="light"] .app-shell.stitch-shell > aside :is(nav, .settings-nav) a:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell > aside .logout-link:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell main .bulk-action-menu > button:hover:not(:disabled), :root[data-theme="light"] .platform-multi-select-option:hover, :root[data-theme="light"] .row-menu > div button:hover, :root[data-theme="light"] .order-column-filter-popover button:hover, :root[data-theme="light"] .integration-filter-menu button:hover, :root[data-theme="light"] .jobs-reference-range-menu button:hover, :root[data-theme="light"] .reference-menu-popover :is(a, button):hover:not(:disabled), :root[data-theme="light"] .panel-category-picker [role="option"]:hover, :root[data-theme="light"] .appearance-theme-menu > button:hover, :root[data-theme="light"] .date-range-picker-grid > button:hover, :root[data-theme="light"] :is(.rv-tabs, .settings-tabs, .jobs-reference-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):not(.active, .is-active, [aria-selected="true"]):hover {
+:root[data-theme="light"] .app-shell.stitch-shell > aside :is(nav, .settings-nav) a:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell > aside .logout-link:hover:not(.active), :root[data-theme="light"] .app-shell.stitch-shell main .bulk-action-menu > button:hover:not(:disabled), :root[data-theme="light"] .platform-multi-select-option:hover, :root[data-theme="light"] .row-menu > div button:hover, :root[data-theme="light"] .order-column-filter-popover button:hover, :root[data-theme="light"] .integration-filter-menu button:hover, :root[data-theme="light"] .jobs-reference-range-menu button:hover, :root[data-theme="light"] .reference-menu-popover :is(a, button):hover:not(:disabled), :root[data-theme="light"] .panel-category-picker [role="option"]:hover, :root[data-theme="light"] .appearance-theme-menu > button:hover, :root[data-theme="light"] .date-range-picker-grid > button:hover, :root[data-theme="light"] :is(.rv-tabs, .settings-tabs, .invoice-reference-tabs, .mapping-view-tabs, .mapping-section-tabs, .order-tabs, .return-reference-tabs, .mapping-saved-tabs, .mapping-platform-tabs) > :is(button, a):not(.active, .is-active, [aria-selected="true"]):hover {
   color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-hover-fill)); border-color: transparent; box-shadow: none;
 }
 :root[data-theme="light"] .app-shell.stitch-shell main :where(input, select, textarea):hover:not(:disabled) {

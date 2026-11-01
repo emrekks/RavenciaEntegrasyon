@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isApprovalWaitJob, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, missingPublicationChecks, publicationStatusLabel, publicationStatusNote, isSkippedByPublish, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
+import { isApprovalWaitJob, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isPublicationStatusPending, publicationStatusLabel, publicationStatusNote, isSkippedByPublish, publicationStatusTone, shouldCheckPublicationAttributes } from './publication-status'
 
 describe('product publication status', () => {
   it('describes the marketplace result rather than the connection state', () => {
@@ -50,15 +50,6 @@ describe('product publication status', () => {
 
   it('shows an unknown listing as not published after a successful missing-product check', () => {
     expect(publicationStatusLabel('UNKNOWN', 'SUCCEEDED')).toBe('Henüz yayınlanmadı')
-  })
-
-  it('returns only incomplete publication checks', () => {
-    const checks = [
-      { title: 'Görseller', ok: true },
-      { title: 'Kategori', ok: false },
-      { title: 'Varyant', ok: true }
-    ]
-    expect(missingPublicationChecks(checks).map(check => check.title)).toEqual(['Kategori'])
   })
 
   it('uses distinct tones for live, pending and rejected results', () => {

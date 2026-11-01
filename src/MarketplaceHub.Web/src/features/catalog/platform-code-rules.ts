@@ -15,13 +15,6 @@ export const platformCodeNames: Record<string, string> = {
 
 const simpleBarcodePattern = /^[A-Za-z0-9._-]+$/
 
-// EAN-13 with its check digit (a GTIN). Hepsiburada takes the seller's own barcode as well, so it is not required.
-export function isValidEan13(value: string) {
-  if (!/^\d{13}$/.test(value)) return false
-  const sum = [...value.slice(0, 12)].reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0)
-  return (10 - sum % 10) % 10 === Number(value[12])
-}
-
 function barcodeIssue(platformCode: string, barcode: string): string | null {
   switch (platformCode) {
     // Hepsiburada keeps the seller's own barcode ("RYP004-01"), as Trendyol does.

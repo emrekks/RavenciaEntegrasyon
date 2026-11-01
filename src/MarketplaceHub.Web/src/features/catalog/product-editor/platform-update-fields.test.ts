@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { availablePlatformUpdateFields, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, partialPlatformUpdateField, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, platformUpdateStoresKey, writePlatformUpdatePreferences, writePlatformUpdateStores } from './platform-update-fields'
+import { availablePlatformUpdateFields, defaultPlatformUpdateFields, defaultPlatformUpdatePreferences, platformUpdateFieldsForStores, platformUpdateGroups, platformUpdatePlan, platformUpdatePreferencesKey, platformUpdateSummary, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, platformUpdateStoresKey, writePlatformUpdatePreferences, writePlatformUpdateStores } from './platform-update-fields'
 
 function memoryStorage(initial: Record<string, string> = {}) {
   const values = new Map(Object.entries(initial))
@@ -27,16 +27,14 @@ describe('platform update fields', () => {
     expect(availablePlatformUpdateFields([])).toEqual([])
   })
 
-  it('names the stores of a field only some of them take', () => {
-    expect(partialPlatformUpdateField('DELIVERY', ['TRENDYOL', 'SHOPIFY'])).toEqual(['TRENDYOL'])
-    expect(partialPlatformUpdateField('WARRANTY', ['TRENDYOL', 'HEPSIBURADA'])).toEqual(['HEPSIBURADA'])
-    expect(partialPlatformUpdateField('DELIVERY', ['trendyol', 'TRENDYOL ', 'SHOPIFY'])).toEqual(['TRENDYOL'])
-    expect(partialPlatformUpdateField('TITLE', ['TRENDYOL', 'HEPSIBURADA'])).toEqual([])
+  it('knows which stores take a field only some of them take', () => {
+    const takes = (code: string, field: string) => availablePlatformUpdateFields([code]).includes(field as never)
+    expect([takes('TRENDYOL', 'DELIVERY'), takes('SHOPIFY', 'DELIVERY')]).toEqual([true, false])
+    expect([takes('TRENDYOL', 'WARRANTY'), takes('HEPSIBURADA', 'WARRANTY')]).toEqual([false, true])
+    expect([takes('TRENDYOL', 'TITLE'), takes('HEPSIBURADA', 'TITLE'), takes('PAZARAMA', 'TITLE')]).toEqual([true, true, false])
     // Hepsiburada now takes the delivery time too.
-    expect(partialPlatformUpdateField('DELIVERY', ['TRENDYOL', 'HEPSIBURADA'])).toEqual([])
-    expect(partialPlatformUpdateField('DELIVERY', ['TRENDYOL'])).toEqual([])
-    expect(partialPlatformUpdateField('TITLE', ['TRENDYOL', 'PAZARAMA'])).toEqual(['TRENDYOL'])
-    expect(partialPlatformUpdateField('VAT_RATE', ['SHOPIFY', 'PAZARAMA'])).toEqual(['PAZARAMA'])
+    expect(takes('HEPSIBURADA', 'DELIVERY')).toBe(true)
+    expect([takes('SHOPIFY', 'VAT_RATE'), takes('PAZARAMA', 'VAT_RATE')]).toEqual([false, true])
   })
 
   it('drops a field no longer shown and ticks one shown only now', () => {
@@ -177,7 +175,7 @@ describe('platform update fields', () => {
     const title = platformUpdatePlan('N11', ['TITLE', 'IMAGES', 'DESI', 'WARRANTY'])
     expect(title.sends).toEqual([])
     expect(title.productFields).toEqual([])
-    expect(partialPlatformUpdateField('TITLE', ['TRENDYOL', 'N11'])).toEqual(['TRENDYOL'])
+    expect(availablePlatformUpdateFields(['N11'])).not.toContain('TITLE')
   })
 
   it('remembers the pick and the open groups as they were left', () => {
