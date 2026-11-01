@@ -46,3 +46,6 @@
 @media (prefers-reduced-motion: reduce) {
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert small::before { animation: none; }
 }
+/* The partial line sits at the left like the card's other text, under the count. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-sub { justify-self: start; width: auto; justify-content: flex-start; text-align: left; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-h { grid-column: 1 / -1; color: var(--rr-muted); font-size: 12px; }

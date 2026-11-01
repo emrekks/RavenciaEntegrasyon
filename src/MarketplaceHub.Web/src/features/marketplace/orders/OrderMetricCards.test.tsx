@@ -5,7 +5,7 @@ import { microCountryRows, OrderMetricCards } from './OrderMetricCards'
 afterEach(cleanup)
 
 const metric = (value: number | undefined, loading = false) => ({ value, loading })
-const props = (extra: Partial<Parameters<typeof OrderMetricCards>[0]> = {}) => ({ newOrders: metric(12), processing: metric(1234), late: metric(2), shipped: metric(40), microExport: metric(186), microCountries: { SA: 55, BG: 40, RO: 33, AZ: 24, GR: 22, AE: 12 }, cancelled: metric(68), partiallyCancelled: metric(1), resent: metric(3), onOpenTab: () => undefined, onOpenMicro: () => undefined, ...extra })
+const props = (extra: Partial<Parameters<typeof OrderMetricCards>[0]> = {}) => ({ newOrders: metric(12), processing: metric(1234), late: metric(2), shipped: metric(40), microExport: metric(186), microCountries: { SA: 55, BG: 40, RO: 33, AZ: 24, GR: 22, AE: 12 }, cancelled: metric(68), partiallyCancelled: metric(1), resent: metric(3), onOpenTab: () => undefined, onOpenDay: () => undefined, ...extra })
 
 describe('order summary cards', () => {
   it('shows the orders taken into processing next to the new ones, seven cards in one grid, a title and a count each', () => {
@@ -34,16 +34,17 @@ describe('order summary cards', () => {
     expect(host.querySelector('.rr-metric-tip')).toBeNull()
   })
 
-  it('opens the İptal tab from the cancelled count, Kısmi İptal from its line and Yeniden Gönderimler from its card', () => {
-    const open = vi.fn()
-    const { host } = render(<OrderMetricCards {...props({ onOpenTab: open })} />)
+  it('opens the day lists from the cancelled count and its Kısmi İptal line, and the Yeniden Gönderimler tab from its card', () => {
+    const openDay = vi.fn(), openTab = vi.fn()
+    const { host } = render(<OrderMetricCards {...props({ onOpenDay: openDay, onOpenTab: openTab })} />)
 
     Array.from(host.querySelectorAll<HTMLButtonElement>('.rr-metric-open')).find(button => button.textContent?.includes('İptal'))!.click()
     const partial = host.querySelector<HTMLButtonElement>('.rr-metric-sub')!
     expect(partial.textContent).toBe('1 Kısmi İptal')
     partial.click()
     Array.from(host.querySelectorAll<HTMLButtonElement>('.rr-metric-open')).find(button => button.textContent?.includes('Yeniden Gönderim'))!.click()
-    expect(open.mock.calls.map(call => call[0])).toEqual(['CANCELLED', 'PARTIALLY_CANCELLED', 'RESENT'])
+    expect(openDay.mock.calls.map(call => call[0])).toEqual(['cancelled', 'partial'])
+    expect(openTab.mock.calls.map(call => call[0])).toEqual(['RESENT'])
   })
 
   it('draws no Kısmi İptal line when no order is partly cancelled', () => {
@@ -54,11 +55,14 @@ describe('order summary cards', () => {
   })
 
   it('opens the micro-export list from its card and lists the countries, the biggest first', () => {
-    const openMicro = vi.fn()
-    const { host } = render(<OrderMetricCards {...props({ onOpenMicro: openMicro })} />)
+    const openDay = vi.fn()
+    const { host } = render(<OrderMetricCards {...props({ onOpenDay: openDay })} />)
 
     Array.from(host.querySelectorAll<HTMLButtonElement>('.rr-metric-open')).find(button => button.textContent?.includes('Mikro İhracat'))!.click()
-    expect(openMicro).toHaveBeenCalledTimes(1)
+    expect(openDay.mock.calls).toEqual([['micro']])
+    // The cards say it is today: in the panel's header and on hover, not in the card titles.
+    expect(host.querySelector('.rr-metric-tip-h')?.textContent).toBe('Bugün')
+    expect(Array.from(host.querySelectorAll('.rr-metric-open')).find(button => button.textContent?.includes('Mikro'))!.getAttribute('title')).toBe('Bugün verilen mikro ihracat siparişleri')
     const rows = Array.from(host.querySelectorAll('.rr-metric-tip-r')).map(row => [row.querySelector('span')?.textContent, row.querySelector('b')?.textContent, row.querySelector('svg.rr-omark-flag') !== null])
     expect(rows).toEqual([
       ['Suudi Arabistan', '55', true], ['Bulgaristan', '40', true], ['Romanya', '33', true],
