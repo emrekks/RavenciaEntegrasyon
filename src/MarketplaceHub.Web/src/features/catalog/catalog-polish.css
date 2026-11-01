@@ -44,6 +44,9 @@
 .app-shell.stitch-shell main .variant-table-toolbar { flex-wrap: wrap; }
 .app-shell.stitch-shell main .variant-table-toolbar-actions { flex-wrap: nowrap; margin-left: auto; }
 .app-shell.stitch-shell main .variant-table-toolbar-actions > button { white-space: nowrap; }
+/* Clearing the variant rows is destructive: the panel's danger outline (as in the mapping and commission dialogs). */
+.app-shell.stitch-shell main .variant-table-toolbar-actions > button.variant-clear-button.is-danger { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border)); }
+.app-shell.stitch-shell main .variant-table-toolbar-actions > button.variant-clear-button.is-danger:hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: var(--rv-color-danger); }
 @media (max-width: 640px) { .app-shell.stitch-shell main .variant-table-toolbar-actions { flex-wrap: wrap; margin-left: 0; } }
 
 /* Marketplace pricing: a disclosure with the title on top and the channels opening right below it. */
