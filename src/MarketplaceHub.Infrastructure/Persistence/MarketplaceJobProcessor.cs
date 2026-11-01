@@ -9571,6 +9571,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var statusAt = PackageIngestionSafety.StatusTime(remotePackage, package?.StatusOccurredAt, now);
             // A package the panel unpacked is history; a late read of it does not bring it back.
             if (package is not null && ShipmentPackageSupersession.IsLocallyUnpacked(package.RawStatus)) continue;
+            // Trendyol's package read closing an undelivered (claim-built) package as returned is applied although its
+            // modification time is older than the claim time the package holds; the return is dated no earlier than the
+            // status it ends, so the history stays in order.
+            if (isTrendyol && package is not null && statusAt < package.StatusOccurredAt
+                && PackageIngestionSafety.ClosesReturnRegardlessOfTime(package.Status, target, remotePackage.IsStatusObservation))
+                statusAt = package.StatusOccurredAt;
             var legacyTrendyolHoldCorrection = isTrendyol
                 && package is not null
                 && package.Status == ShipmentPackageStatus.OnHold
@@ -9764,6 +9770,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     terminalConflict
                         ? $"Pazaryeri paket {package.ExternalPackageId} için {remotePackage.RawStatus} bildirdi ancak paneldeki durumdan bu geçiş yapılamıyor; paket manuel incelemeye alındı."
                         : "Out-of-order veya izin verilmeyen package geçişi mevcut durumu geriye götürmedi.", cancellationToken);
+            }
+            // An older read is not applied, but it still fills the cargo details the package lacks (a claim-built
+            // package has no tracking number; its package read does).
+            else if (!accept && PackageIngestionSafety.FillMissingCargoMetadata(package, remotePackage))
+            {
+                package.UpdatedAt = now;
+                package.Version++;
+                telemetryUpdatedCount++;
             }
             if (package is not null && !remotePackage.IsStatusObservation && !string.IsNullOrWhiteSpace(remotePackage.CreatedBy)) package.CreatedBy = remotePackage.CreatedBy;
             if (accept && package is not null)
