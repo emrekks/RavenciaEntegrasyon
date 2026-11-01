@@ -6187,6 +6187,56 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     }
 
     [PostgreSqlFact]
+    public async Task InvoiceWorkspacePage_HiddenCountEqualsTheHiddenListWhenAHiddenPackageIsGone()
+    {
+        var tenant = NewTenant("invoice-workspace-hidden");
+        var connection = NewQuestionConnection(tenant);
+        var rows = Enumerable.Range(0, 3).Select(index =>
+        {
+            var orderId = Guid.CreateVersion7();
+            var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, $"hidden-order-{index}", isReturnClaim: false, fixture.Now);
+            var package = NewInvoiceTestPackage(tenant.Id, connection.Id, orderId, Guid.CreateVersion7(), $"hidden-package-{index}", fixture.Now);
+            package.CreatedBy = "MARKETPLACE_DETAIL";
+            package.StatusOccurredAt = fixture.Now.AddDays(-(6 + index));
+            package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.NotInvoiced;
+            return (order, package);
+        }).ToArray();
+        // Two live packages and one deleted since it was hidden (a reset or a resync removed it).
+        var hiddenIds = new[] { rows[0].package.Id, rows[1].package.Id, Guid.CreateVersion7() };
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.AddRange(rows.Select(row => row.order));
+            seedDb.ShipmentPackages.AddRange(rows.Select(row => row.package));
+            seedDb.TenantSettings.Add(new TenantSetting { TenantId = tenant.Id, Key = "invoice-workspace-hidden-packages", ValueJson = JsonSerializer.Serialize(hiddenIds), UpdatedAt = fixture.Now, Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var dataProtection = new EphemeralDataProtectionProvider();
+            var service = new InvoicingBillingService(db, new CursorCodec(dataProtection, fixture.TimeProvider), dataProtection, null!,
+                new ConfigurationBuilder().Build(), fixture.TimeProvider, null!);
+
+            var hidden = await service.WorkspacePageAsync(tenant.Id, new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "HIDDEN"), CancellationToken.None);
+            var all = await service.WorkspacePageAsync(tenant.Id, new InvoiceWorkspacePageQuery(PageNumber: 1, PageSize: 20, Tab: "ALL"), CancellationToken.None);
+
+            Assert.Equal(2, hidden.HiddenCount);
+            Assert.Equal(hidden.HiddenCount, hidden.TotalCount);
+            Assert.Equal(hidden.HiddenCount, hidden.Items.Count);
+            Assert.Equal(2, all.HiddenCount);
+            Assert.Equal(rows[2].package.Id, Assert.Single(all.Items).PackageId);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    [PostgreSqlFact]
     public async Task InvoiceWorkspacePage_KeepsUnverifiedCustomerInvoiceSnapshotUninvoiced()
     {
         var tenant = NewTenant("invoice-unknown");

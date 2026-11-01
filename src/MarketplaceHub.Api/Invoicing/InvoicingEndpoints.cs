@@ -571,6 +571,10 @@ public static class InvoicingEndpoints
 
         var setting = await db.TenantSettings.SingleOrDefaultAsync(item => item.TenantId == tenant.TenantId && item.Key == "invoice-workspace-hidden-packages", http.RequestAborted);
         var hiddenIds = setting is null ? new HashSet<Guid>() : JsonSerializer.Deserialize<HashSet<Guid>>(setting.ValueJson) ?? [];
+        // Ids of packages deleted since they were hidden (a reset or a resync) are dropped while the setting is written.
+        var storedIds = hiddenIds.ToArray();
+        var existingIds = await db.ShipmentPackages.AsNoTracking().Where(package => package.TenantId == tenant.TenantId && storedIds.Contains(package.Id)).Select(package => package.Id).ToListAsync(http.RequestAborted);
+        hiddenIds.IntersectWith(existingIds);
         foreach (var packageId in packageIds)
         {
             if (command.Hidden) hiddenIds.Add(packageId);

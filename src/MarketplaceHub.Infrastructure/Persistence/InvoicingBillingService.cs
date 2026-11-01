@@ -312,6 +312,9 @@ public sealed partial class InvoicingBillingService(
         var selectedUninvoiced = 0;
         var selectedInvoiced = 0;
         var selectedDueSoon = 0;
+        // Hidden packages the Gizlenenler list can show: an id the setting still holds for a package deleted or left
+        // out of the workspace since (a reset, a resync, a disconnected store) is not counted.
+        var selectedHidden = 0;
         var hasPendingMarketplaceInvoices = false;
         var filteredCount = 0;
         var pageCandidates = new List<WorkspaceCandidate>(pageSize);
@@ -336,6 +339,7 @@ public sealed partial class InvoicingBillingService(
             {
                 var isHidden = hiddenPackageIds.Contains(candidate.Package.Id);
                 var platformSelected = selectedPlatforms.Count == 0 || selectedPlatforms.Contains(candidate.Connection.PlatformCode);
+                if (platformSelected && isHidden) selectedHidden++;
                 if (platformSelected && !isHidden)
                 {
                     selectedTotal++;
@@ -379,7 +383,7 @@ public sealed partial class InvoicingBillingService(
             pageCandidates = lastPageCandidates.TakeLast(lastPageSize).ToList();
         }
         var items = await MaterializeWorkspacePageAsync(tenantId, pageCandidates, cancellationToken);
-        return new(items, filteredCount, pageNumber, pageSize, totalPages, selectedUninvoiced, selectedInvoiced, selectedDueSoon, hiddenPackageIds.Count, selectedTotal, hasPendingMarketplaceInvoices,
+        return new(items, filteredCount, pageNumber, pageSize, totalPages, selectedUninvoiced, selectedInvoiced, selectedDueSoon, selectedHidden, selectedTotal, hasPendingMarketplaceInvoices,
             shipmentStatuses.Order(StringComparer.Ordinal).ToArray(), cargoProviders.Order(StringComparer.OrdinalIgnoreCase).ToArray(), invoiceStatuses.Order(StringComparer.Ordinal).ToArray(),
             platformCounts);
     }
