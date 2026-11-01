@@ -42,4 +42,24 @@ public sealed class ShopifyWebhookReplayTests
     {
         Assert.Equal(fresh, ShopifyWebhookVerifier.IsFresh(triggeredAt, Now));
     }
+
+    [Theory]
+    [InlineData("products/delete", "PRODUCTS_DELETE")]
+    [InlineData(" Products/Delete ", "PRODUCTS_DELETE")]
+    [InlineData("refunds/create", "REFUNDS")]
+    [InlineData("orders/updated", "ORDERS")]
+    public void ADeletedProductIsItsOwnResourceAndKeepsItsOwnId(string topic, string resourceType)
+    {
+        var body = Encoding.UTF8.GetBytes("""{"id":788032119674292922}""");
+
+        Assert.Equal(resourceType, ShopifyWebhookVerifier.ResourceType(topic));
+        Assert.NotEqual(ShopifyWebhookVerifier.MessageId("products/delete", body), ShopifyWebhookVerifier.MessageId("orders/updated", body));
+        Assert.StartsWith("products/delete:", ShopifyWebhookVerifier.MessageId("products/delete", body));
+    }
+
+    [Fact]
+    public void TheProductDeleteTopicIsNotSubscribedUntilTheUserApprovesIt()
+    {
+        Assert.DoesNotContain(ShopifyHttpClient.ProductDeleteTopic, ShopifyHttpClient.WebhookTopics);
+    }
 }
