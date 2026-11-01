@@ -11,9 +11,6 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open { display: grid; gap: 2px; width: 100%; min-height: 0; height: auto; padding: 0; margin: 0; color: inherit; text-align: left; font: inherit; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; justify-content: normal; justify-items: start; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 24px; font-weight: 600; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, .rr-metric-chip):focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 2px; border-radius: 6px; }
-/* A card's count and its short note on one line ("37 siparişte", "Kargoya verilmedi"). */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-note { color: var(--rr-muted); font-size: 12px; white-space: nowrap; }
 /* The İptal card: the count under the title like the others and, while orders were cancelled in part, a chip beside it
    that opens them: a light border, 22 px high, as the side menu's counters. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-chipped { grid-template-columns: auto minmax(0, 1fr); align-items: end; column-gap: 8px; }
@@ -28,9 +25,9 @@
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert small::before { animation: none; }
 }
 /* A card lists more on hover or focus (countries, stores): a small panel under it. It must open over the tab bar and
-   the filter card below, which paint over a plain neighbour: the row of cards is raised while one is open. */
+   the filter card below (the tab bar sits at z-index 80): the row of cards is raised above it while one is open. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-tipped { position: relative; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics:has(.rr-metric-tipped:is(:hover, :focus-within)) { position: relative; z-index: 80; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics:has(.rr-metric-tipped:is(:hover, :focus-within)) { position: relative; z-index: 90; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; min-width: 220px; padding: 8px 10px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tipped:is(:hover, :focus-within) .rr-metric-tip { display: grid; gap: 2px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; color: var(--rr-ink); }

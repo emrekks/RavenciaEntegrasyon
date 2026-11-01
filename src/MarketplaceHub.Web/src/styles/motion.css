@@ -72,6 +72,9 @@
   :where(.rr-metrics > article, .invoice-reference-metrics > article, .integration-grid > *) {
     transition: translate var(--rv-motion-fast) var(--rv-ease-out), border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard);
   }
+  /* The summary cards stay on their own layer, so their text is drawn once and moves with the card; redrawn at each
+     sub-pixel step of the lift, it shimmered. */
+  :where(.rr-metrics > article, .invoice-reference-metrics > article) { will-change: translate; }
   :where(.rr-metrics > article, .invoice-reference-metrics > article):hover { translate: 0 var(--rv-motion-lift); }
   :where(.rr-metrics > article, .invoice-reference-metrics > article, .integration-grid > *):hover { box-shadow: 0 10px 24px -14px rgb(0 0 0 / 55%); }
 }
