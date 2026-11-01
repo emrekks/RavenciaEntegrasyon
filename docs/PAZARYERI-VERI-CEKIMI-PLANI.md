@@ -54,7 +54,7 @@ alma, fatura kesme, iade kararı gibi kullanıcı işlemleri kuyruk beklemeden a
 - Fatura gönderimi / teslimi (öncelik -1): son 14 günde en çok 3 sn bekleme.
 - Açık `ExternalEffectRecord`: 3 adet `TRENDYOL_RETURN_ACTION`, 2026-09-15'ten beri.
 - `webhook_subscriptions` = 0.
-- Sunucu her gece ~00:30–09:00 kapalı.
+- Sunucu 27 Ekim 2026’dan beri 7/24 açık (bu planın yazıldığı 18 Ekim’de her gece ~00:30–09:00 kapalıydı).
 
 ### 1.2 Kök nedenler (kodda doğrulandı)
 1. **Tek kota, çok tüketici.**

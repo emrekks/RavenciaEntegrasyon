@@ -29,8 +29,8 @@ changes: commit first (English message, no attribution lines).
    - `pushed`: main now points at the commit. `not pushed: merge conflict with main`: resolve it, re-test, ship
      again. `not pushed: main moved outside ship`: someone pushed to main without this script; ship again.
      Never force-push.
-   - `live: …`: the edge, api and worker images all run the commit. Without it the deploy has not finished; while the
-     host is stopped (00:30-09:00 Istanbul time) the 09:20 scheduled run ships it.
+   - `live: …`: the edge, api and worker images all run the commit. Without it the deploy has not finished. The host
+     runs around the clock; if it was stopped by hand, `gh workflow run deploy.yml --ref main` ships main once it is up.
 4. Only after `live:` check the change on the live panel (your own browser tab) before calling it done.
 
 To stop a running ship, stop its background task; nothing is pushed to `main` before Validate is green.
