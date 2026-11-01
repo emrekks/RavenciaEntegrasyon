@@ -432,3 +432,19 @@
 @media (min-width: 761px) { .app-shell .panel.mapping-step.cm-card.cm-card .cm-detail { padding: 18px; } }
 /* A field with value choices not saved yet: a yellow dot after its name (the window keeps them until Kaydet). */
 .cm-card .cm-item.is-unsaved .cm-name::after { content: ""; display: inline-block; width: 7px; height: 7px; margin-left: 7px; vertical-align: middle; background: var(--rv-color-warning); border-radius: 50%; }
+/* A product's publish card opened the window: the fields its publish check found missing are marked (red for a required
+   gap, yellow for an optional warning, with a halo so it never reads as the unsaved dot), and the list can be narrowed
+   to them. A value gap's row in the value table carries a "Bu Üründe" tag. */
+.cm-card .cm-product-filter { padding: 10px 14px 4px; }
+.cm-card .cm-product-filter > button.cm-toggle { box-sizing: border-box; width: 100%; height: 32px; min-height: 0; justify-content: center; border-radius: 7px; font-size: 13px; }
+.cm-card .cm-item.is-product-required { --cm-product-tone: var(--rv-color-danger); }
+.cm-card .cm-item.is-product-optional { --cm-product-tone: var(--rv-color-warning); }
+.app-shell .panel.mapping-step.cm-card .cm-item.has-product-issue, .cm-card .cm-item.has-product-issue { box-shadow: inset 3px 0 0 var(--cm-product-tone); }
+.app-shell .panel.mapping-step.cm-card .cm-item.has-product-issue:not(.is-selected), .cm-card .cm-item.has-product-issue:not(.is-selected) { background: color-mix(in srgb, var(--cm-product-tone) 7%, transparent); }
+.cm-card .cm-product-issue { display: inline-block; width: 8px; height: 8px; margin-left: 7px; vertical-align: middle; background: var(--cm-product-tone); border-radius: 50%; box-shadow: 0 0 0 2px color-mix(in srgb, var(--cm-product-tone) 28%, transparent); }
+.cm-card .cm-product-note { margin: 0 0 12px; padding: 8px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; background: color-mix(in srgb, var(--cm-product-tone) 9%, transparent); border: 1px solid color-mix(in srgb, var(--cm-product-tone) 32%, transparent); border-radius: 7px; }
+.cm-card .cm-product-note.is-required { --cm-product-tone: var(--rv-color-danger); }
+.cm-card .cm-product-note.is-optional { --cm-product-tone: var(--rv-color-warning); }
+.cm-card .cm-product-note > b { margin-right: 6px; color: var(--cm-product-tone); font-weight: 600; }
+.cm-card .cm-vrow.is-product-issue { background: color-mix(in srgb, var(--rv-color-warning) 8%, transparent); }
+.cm-card .cm-product-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, transparent); border-radius: 7px; font-size: 11px; font-weight: 600; vertical-align: middle; white-space: nowrap; }

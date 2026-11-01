@@ -119,10 +119,11 @@ describe('BulkPublishDialog readiness', () => {
     act(() => badge.click())
     expect(card().querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
     expect(badge.getAttribute('aria-expanded')).toBe('true')
-    const link = card().querySelector<HTMLAnchorElement>('.publish-issue-tooltip li a')!
-    expect(link.querySelector('b')?.textContent).toBe('Elbise RYP006')
+    // A chip per record: its title only, the gap in its hover text.
+    const link = card().querySelector<HTMLAnchorElement>('.publish-issue-tooltip a.publish-issue-chip')!
+    expect(link.textContent).toBe('Elbise RYP006')
     expect(link.getAttribute('href')).toBe('/products/p6')
-    expect(card().querySelector('.publish-issue-tooltip li')?.textContent).toContain('Temel Ürün Verileri')
+    expect(link.title).toContain('Temel Ürün Verileri')
     act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
     expect(card().querySelector('.publish-issue-tooltip.is-open')).toBeNull()
     act(() => cardButton().click())
@@ -155,7 +156,7 @@ describe('BulkPublishDialog readiness', () => {
     const hepsiburada = { id: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', externalStoreId: 'hb-1', status: 'ACTIVE', externalWritesEnabled: true }
     await render(['p7'], [hepsiburada])
     await settle()
-    expect(card().textContent).toContain('Kazak kategorisinin Hepsiburada karşılığı seçilmemiş; kategoriyi eşleyin.')
+    expect(card().querySelector('.publish-issue-required .publish-issue-chip')?.getAttribute('title')).toContain('Kazak kategorisinin Hepsiburada karşılığı seçilmemiş; kategoriyi eşleyin.')
     expect(card().textContent).not.toContain('alınamadı')
     // One record and one fix: pressing the badge opens Kategori Eşle directly; the card has no fix rows of its own.
     expect(card().querySelector('.publish-platform-fix-mappings')).toBeNull()
@@ -184,7 +185,7 @@ describe('BulkPublishDialog readiness', () => {
     expect(card().querySelector('.publish-issue-optional li')?.textContent).toContain('Renk')
     // The warning row itself opens its value mappings; there is no row of fix buttons.
     expect(card().querySelector('.publish-issue-actions')).toBeNull()
-    expect(card().querySelector('.publish-issue-optional button.publish-issue-row')?.textContent).toContain('Renk')
+    expect(card().querySelector('.publish-issue-optional button.publish-issue-chip')?.textContent).toContain('Renk')
     expect(cardButton().disabled).toBe(false)
   })
 })

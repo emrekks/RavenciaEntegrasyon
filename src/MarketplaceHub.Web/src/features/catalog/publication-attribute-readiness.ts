@@ -37,7 +37,9 @@ export type PublicationValueMappingFix = {
   valueLabel: string
 }
 
-export type PublicationAttributeIssue = { attribute: string; detail: string; fix?: PublicationValueMappingFix }
+// `externalAttributeId` names the marketplace field the gap is about (the field the category fields window opens on);
+// `localValueId` the panel value of a value gap.
+export type PublicationAttributeIssue = { attribute: string; detail: string; fix?: PublicationValueMappingFix; externalAttributeId?: string; localValueId?: string }
 
 export type PublicationAttributeIssues = {
   requiredIssues: PublicationAttributeIssue[]
@@ -102,14 +104,14 @@ export function classifyPublicationAttributeIssues(input: {
   )
   const mappedExternalIds = new Set(currentAttributeMappings.map(mapping => mapping.externalId))
   // Unmapped marketplace fields by their name read through the synonym list (Kumaş Tipi ≈ Materyal).
-  const unmappedRemoteByKey = new Map([...remoteById.values()].filter(remote => !mappedExternalIds.has(remote.externalId)).map(remote => [canonicalKey(remote.name), remote.name]))
+  const unmappedRemoteByKey = new Map([...remoteById.values()].filter(remote => !mappedExternalIds.has(remote.externalId)).map(remote => [canonicalKey(remote.name), remote]))
 
   const defaulted = new Set(input.defaultedAttributeIds ?? [])
   for (const remote of remoteById.values()) {
     if (!remote.isRequired) continue
     if (defaulted.has(remote.externalId)) continue
     if (!mappedExternalIds.has(remote.externalId)) {
-      addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için güncel ve doğrulanmış eşleme yok.` })
+      addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için güncel ve doğrulanmış eşleme yok.`, externalAttributeId: remote.externalId })
       continue
     }
 
@@ -120,7 +122,7 @@ export function classifyPublicationAttributeIssues(input: {
       mappedLocalIds.has(selected.attributeId) && (selected.values.length > 0 || selected.hasCustomValue)
     )
     if (!hasSelectedValue) {
-      addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için ürün veya varyant değeri seçilmemiş ya da girilmemiş.` })
+      addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için ürün veya varyant değeri seçilmemiş ya da girilmemiş.`, externalAttributeId: remote.externalId })
     }
   }
 
@@ -143,7 +145,7 @@ export function classifyPublicationAttributeIssues(input: {
       // (a mapping forgotten); one the category does not list at all (Cep on Hepsiburada Bluz) is simply not its business.
       const counterpart = unmappedRemoteByKey.get(canonicalKey(selected.name))
       if (counterpart)
-        addIssue(false, { attribute: selected.name, detail: `${platformName} kategorisindeki “${counterpart}” alanı eşlenmemiş; eşlenmezse bu değer gönderilmez.` })
+        addIssue(false, { attribute: selected.name, detail: `${platformName} kategorisindeki “${counterpart.name}” alanı eşlenmemiş; eşlenmezse bu değer gönderilmez.`, externalAttributeId: counterpart.externalId })
       continue
     }
 
@@ -159,13 +161,15 @@ export function classifyPublicationAttributeIssues(input: {
         if (!activeWebColor) addIssue(webColorRemote?.isRequired === true || required, {
           attribute: webColorRemote?.name ?? 'Web Color',
           detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} Web Color değer eşlemesi yok.`,
-          fix: { externalAttributeId: webColorMapping.externalId, attributeName: webColorRemote?.name ?? 'Web Color', localValueId: value.id, valueLabel: value.label }
+          fix: { externalAttributeId: webColorMapping.externalId, attributeName: webColorRemote?.name ?? 'Web Color', localValueId: value.id, valueLabel: value.label },
+          externalAttributeId: webColorMapping.externalId,
+          localValueId: value.id
         })
       }
     }
 
     if (selected.hasCustomValue && remote.allowsCustomValue !== true) {
-      addIssue(required, { attribute: selected.name, detail: `${platformName} bu özellik için serbest değeri kabul etmiyor.` })
+      addIssue(required, { attribute: selected.name, detail: `${platformName} bu özellik için serbest değeri kabul etmiyor.`, externalAttributeId: remote.externalId })
     }
 
     if (isCustomPanelColorName(remote.name)) continue
@@ -180,7 +184,9 @@ export function classifyPublicationAttributeIssues(input: {
         addIssue(required, {
           attribute: selected.name,
           detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} değer eşlemesi yok.`,
-          fix: { externalAttributeId: remote.externalId, attributeName: remote.name, localValueId: value.id, valueLabel: value.label }
+          fix: { externalAttributeId: remote.externalId, attributeName: remote.name, localValueId: value.id, valueLabel: value.label },
+          externalAttributeId: remote.externalId,
+          localValueId: value.id
         })
       }
     }
