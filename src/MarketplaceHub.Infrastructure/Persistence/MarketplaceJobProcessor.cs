@@ -7752,8 +7752,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var preserveLocal = preserveDueToLocalChanges || preserveDueToImportOption;
         if (!onlyNewVariants && !preserveLocal)
         {
-            product.Title = ProductTitle(snapshot.Title, externalProductId);
-            product.Description = snapshot.Description ?? "";
+            // A title or description the listing does not carry is unknown, not empty: the panel's stays.
+            if (isNewProduct || !string.IsNullOrWhiteSpace(snapshot.Title)) product.Title = ProductTitle(snapshot.Title, externalProductId);
+            if (isNewProduct || snapshot.Description is not null) product.Description = snapshot.Description ?? "";
             product.Status = ProductStatus.Active;
             product.ArchivedAt = null;
             product.UpdatedAt = now;
@@ -7810,6 +7811,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     existingVariantExternalIds?.Add(externalVariantId);
                 }
             }
+            // Whatever the import options, a product is never opened without a variant of its own: when every variant
+            // turned out to be another panel product's, the new product, its link and options are dropped again.
+            if (isNewProduct && importedVariants.Count == 0)
+            {
+                DropNewCatalogProduct(product);
+                telemetryInsertedCount = Math.Max(0, telemetryInsertedCount - 2);
+                telemetrySkippedCount++;
+                await RecordIssue(tenantId, $"product-sync-no-variant:{connectionId}:{Short(externalProductId, 200)}", "PRODUCT_VARIANT_CONFLICT", Short($"Pazar yeri ürünü panelde açılmadı: varyantlarının hiçbiri eklenemedi (stok kodları başka panel ürünlerinde) · {snapshot.Title}", 1000), cancellationToken);
+                if (saveChanges)
+                    await db.SaveChangesAsync(cancellationToken);
+                return false;
+            }
             if (categoryContext is not null && importedVariants.Count > 0)
                 await PromoteCommonImportedAttributes(tenantId, product, importedVariants, categoryContext, cancellationToken);
 
@@ -7817,7 +7830,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 var productImageUrls = CatalogImageIdentity.DistinctUrls(
                     snapshot.ImageUrls.Concat(snapshot.Variants.SelectMany(variant => variant.ImageUrls ?? [])));
-                await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
+                // A listing read without images says nothing about them: the panel's gallery stays.
+                if (productImageUrls.Count > 0 || isNewProduct)
+                    await UpsertCatalogMedia(tenantId, product, null, productImageUrls, product.Title, cancellationToken);
             }
         }
         else
@@ -7857,6 +7872,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             : observeOnly
                 ? !isNewProduct
                 : !preserveLocal;
+    }
+
+    // Takes back a product this import added and has not saved yet, with every row added for it (its link, options,
+    // media). Shared rows the import may have added beside it (a brand, a category) stay.
+    private void DropNewCatalogProduct(Product product)
+    {
+        foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.State == EntityState.Added).ToList())
+        {
+            if (ReferenceEquals(entry.Entity, product)
+                || entry.Metadata.FindProperty("ProductId") is { } productIdProperty && entry.Property(productIdProperty.Name).CurrentValue is Guid owner && owner == product.Id)
+                entry.State = EntityState.Detached;
+        }
     }
 
     // The panel products a listing's variants already belong to: by this connection's variant link, then the stock
