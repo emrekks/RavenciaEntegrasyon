@@ -10,13 +10,16 @@ const invoiceFixtures = [
   { id: 'inv-3', orderId: 'order-3', packageId: 'trendyol-package-3', orderNumber: 'TY-1003', customerName: 'Zeynep Demir', orderedAt: '2026-10-04T12:00:00Z', shipmentStatus: 'NEW', deliveredAt: null, invoiceDueAt: null, isDueSoon: true, currency: 'TRY', amount: 499, productCount: 1, primaryImageUrl: null, cargoProviderName: 'Aras', cargoTrackingNumber: 'TRK-3', invoiceId: null, invoiceStatus: 'FATURA_BEKLIYOR', invoiceNumber: null, canCreateInvoice: true, shipmentAddressJson: null, invoiceAddressJson: null, lines: [], invoiceErrorCode: null, invoiceDeliveryStatus: null, invoiceDeliveryReference: null, invoiceDocumentAvailable: false, marketplaceInvoiceUrl: null, platformInvoiceStatus: 'NOT_INVOICED', allowedActions: ['CHECK_PLATFORM'], platformCode: 'TRENDYOL', platformDisplayName: 'Trendyol', invoiceCreationEnabled: true, marketplaceConnectionId: 'trendyol-connection', externalOrderId: 'external-ty-1003', externalPackageNumber: 'package-ty-3' },
 ]
 
-const apiState = vi.hoisted(() => ({ deliveryKeys: [] as string[], uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }>, reconcileRequests: [] as string[], hiddenRequests: [] as Array<{ packageIds: string[]; hidden: boolean }> }))
+const apiState = vi.hoisted(() => ({ deliveryKeys: [] as string[], uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }>, reconcileRequests: [] as string[], hiddenRequests: [] as Array<{ packageIds: string[]; hidden: boolean }>, totalPages: 1, pageDelayMs: 0 }))
 
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
     if (path.startsWith('/invoice-workspace/page?')) {
       apiState.pageRequests.push(path)
-      return { items: invoiceFixtures.map(item => ({ ...item })), totalCount: invoiceFixtures.length, pageNumber: 1, pageSize: 20, totalPages: 1, uninvoicedCount: 3, invoicedCount: 0, dueSoonCount: 3, totalPackageCount: 3, hasPendingMarketplaceInvoices: true, shipmentStatuses: ['DELIVERED'], cargoProviders: ['Aras', 'Yurtiçi'], invoiceStatuses: ['FATURA_BEKLIYOR'] }
+      // The server answers the page it was asked for (clamped to the last one), after an optional delay.
+      const requestedPage = Math.min(apiState.totalPages, Number(new URLSearchParams(path.split('?')[1]).get('pageNumber') ?? 1))
+      if (apiState.pageDelayMs) await new Promise(resolve => setTimeout(resolve, apiState.pageDelayMs))
+      return { items: invoiceFixtures.map(item => ({ ...item })), totalCount: invoiceFixtures.length * apiState.totalPages, pageNumber: requestedPage, pageSize: 20, totalPages: apiState.totalPages, uninvoicedCount: 3, invoicedCount: 0, dueSoonCount: 3, totalPackageCount: 3, hasPendingMarketplaceInvoices: true, shipmentStatuses: ['DELIVERED'], cargoProviders: ['Aras', 'Yurtiçi'], invoiceStatuses: ['FATURA_BEKLIYOR'] }
     }
     if (path === '/invoice-workspace/manual-status') {
       const body = JSON.parse(String(init?.body)) as { status: string; packageIds: string[] }
@@ -69,6 +72,8 @@ beforeEach(async () => {
   apiState.orderSyncRequests = []
   apiState.reconcileRequests = []
   apiState.hiddenRequests = []
+  apiState.totalPages = 1
+  apiState.pageDelayMs = 0
   container = document.createElement('div')
   document.body.append(container)
   client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false }, mutations: { retry: false } } })
@@ -235,10 +240,13 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     await settle()
     const items = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'))
     expect(items.some(item => item.textContent?.includes('Sipariş Durumunu Güncelle'))).toBe(false)
+    const invalidated = vi.spyOn(client, 'invalidateQueries')
     act(() => items.find(item => item.textContent?.includes('Siparişi Gizle'))!.click())
     await settle()
     expect(apiState.hiddenRequests).toEqual([{ packageIds: ['shopify-package-1'], hidden: true }])
     expect(apiState.orderSyncRequests).toEqual([])
+    // The menu badge and the Orders/Dashboard cards read the summary: it refreshes with the list.
+    expect(invalidated.mock.calls.some(([filters]) => JSON.stringify(filters?.queryKey) === '["invoice-workspace-summary"]')).toBe(true)
   })
 
   it('opens manual invoice upload from the row actions menu without sending it', async () => {
@@ -300,6 +308,34 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     }
     expect(container.querySelector('.invoice-reference-bulk-toolbar')?.textContent).toContain('3 sipariş seçildi')
     expect(button('Siparişleri Gizle').querySelector('.ui-icon-eyeOff')).not.toBeNull()
+  })
+
+  it('moves to the next page while that page loads instead of falling back to the shown one', async () => {
+    apiState.totalPages = 3
+    await act(async () => { await client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }) })
+    await settle()
+    apiState.pageDelayMs = 60
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki sayfa"]')!.click())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)) })
+
+    expect(apiState.pageRequests.at(-1)).toContain('pageNumber=2')
+    expect(apiState.pageRequests.filter(path => path.includes('pageNumber=1')).length).toBe(2)
+    expect(container.querySelector('.invoice-pager [aria-current="page"]')?.textContent ?? container.querySelector('.invoice-pager')?.textContent).toContain('2')
+  })
+
+  it('goes back to the first page when the tab changes', async () => {
+    apiState.totalPages = 3
+    await act(async () => { await client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }) })
+    await settle()
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki sayfa"]')!.click())
+    await settle()
+    expect(apiState.pageRequests.at(-1)).toContain('pageNumber=2')
+    apiState.pageDelayMs = 60
+    act(() => button('Tümü').click())
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)) })
+
+    expect(apiState.pageRequests.at(-1)).toContain('tab=ALL')
+    expect(apiState.pageRequests.at(-1)).toContain('pageNumber=1')
   })
 
   it('shows the all invoices tab and requests unhidden invoice records', async () => {
