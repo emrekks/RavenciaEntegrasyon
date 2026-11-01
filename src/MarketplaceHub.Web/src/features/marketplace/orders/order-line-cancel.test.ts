@@ -29,6 +29,18 @@ describe('order line cancellations', () => {
     expect(remainingText(order)).toBe('Kalan 2 ürün: Kargoda')
   })
 
+  // Live #R1013: a delivered Shopify order with 25 of its 26 lines cancelled listed them all, struck, in Teslim
+  // Edildi. A delivered order shows what was delivered; its cancelled lines are in İptal and under Ürün İptali.
+  it('shows only the delivered products of a delivered order, its cancelled ones in İptal and under Ürün İptali', () => {
+    const order = { derivedStatus: 'DELIVERED', lines: [line('kept', 1, 0), ...Array.from({ length: 25 }, (_, index) => line(`gone-${index}`, 1, 1))] }
+    for (const tab of ['ALL', 'DELIVERED']) expect(rowLines(order, tab).map(item => item.id)).toEqual(['kept'])
+    expect(rowLines(order, 'CANCELLED')).toHaveLength(25)
+    expect(rowLines(order, 'ALL', true)).toHaveLength(26)
+    expect(rowLines({ derivedStatus: 'RETURNED', lines }, 'ALL').map(item => item.id)).toEqual(['a', 'b'])
+    // An open order keeps its cancelled lines struck through, for the warehouse.
+    expect(rowLines({ derivedStatus: 'PROCESSING', lines }, 'PROCESSING')).toHaveLength(3)
+  })
+
   it('shows an order cancelled whole as it is', () => {
     const order = { derivedStatus: 'CANCELLED', lines: [line('a', 1, 1), line('b', 2, 2)] }
     expect(isPartlyCancelled(order)).toBe(false)
