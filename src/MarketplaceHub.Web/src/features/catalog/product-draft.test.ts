@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductTitle, editorStatusFor, isDraftStatus } from './product-draft'
+import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductTitle, editorStatusFor, isDraftStatus, variantCodeRulesStopSave } from './product-draft'
 
 describe('product drafts', () => {
   it('offers Taslak Olarak Kaydet on a new card and on a draft, never on a card on sale or closed', () => {
@@ -37,6 +37,12 @@ describe('product drafts', () => {
     expect(draftBlockingIssues([row, { ...row, optionSignature: 'Renk:Mavi' }], { listPrice: '0', salePrice: '0' })).toEqual(['Stok kodları benzersiz olmalıdır.'])
     expect(draftBlockingIssues([{ ...row, barcode: 'x1' }, { ...row, sku: 'B', barcode: 'X1', optionSignature: 'Renk:Mavi' }], { listPrice: '0', salePrice: '0' })).toEqual(['Barkodlar benzersiz olmalıdır.'])
     expect(draftBlockingIssues([row], { listPrice: '10', salePrice: '20' })).toHaveLength(1)
+  })
+
+  it('lets Taslak Olarak Kaydet through red variant codes and stops every other save', () => {
+    expect(variantCodeRulesStopSave(true, '2 varyantta kod hatası')).toBe(false)
+    expect(variantCodeRulesStopSave(false, '2 varyantta kod hatası')).toBe(true)
+    expect(variantCodeRulesStopSave(false, '')).toBe(false)
   })
 
   it('lists at most three missing items and counts the rest', () => {

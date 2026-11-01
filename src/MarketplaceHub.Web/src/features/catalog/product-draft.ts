@@ -46,6 +46,12 @@ export function draftBlockingIssues(rows: ReadonlyArray<{ sku: string; barcode: 
   return issues
 }
 
+// Red variant codes (a marketplace's barcode or stock code rule) stop every save but Taslak Olarak Kaydet: a draft is
+// never sent, so it may keep them until it is completed.
+export function variantCodeRulesStopSave(saveDraft: boolean, codeRuleBlock: string | null | undefined) {
+  return !saveDraft && Boolean(codeRuleBlock)
+}
+
 // The list of what the draft still lacks, split into its sentences, at most `shown` of them with the rest counted.
 export function draftMissingSummary(issueText: string, shown = 3) {
   const issues = issueText.split(/(?<=\.)\s+/u).map(item => item.trim()).filter(Boolean)

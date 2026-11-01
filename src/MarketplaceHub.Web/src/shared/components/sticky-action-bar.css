@@ -27,10 +27,23 @@
   box-shadow: 0 -10px 24px -12px rgb(0 0 0 / 35%);
   animation: rv-action-bar-in .18s cubic-bezier(.2, .8, .2, 1) both;
 }
+/* A page's own bar (a direct child of the page, or of its form) docks like the settings bar: the card's bottom part.
+   It is as wide as the cards above it, framed (1 px border, the cards' 14 px radius), and stays sticky while the page
+   scrolls. It is not pulled over the page's bottom padding: at the end of the page it rests right after the last card
+   with the page's bottom spacing beneath it, the same place it floats at while stuck (12 px above the edge). */
 .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
-.app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar,
+.app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar {
+  margin: 16px 0 0;
+  max-width: none;
+  padding-inline: 16px;
+  border: 1px solid var(--rv-color-border-strong, var(--rv-color-border));
+  border-radius: 14px;
+}
+.app-shell.stitch-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
+.app-shell.stitch-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar { bottom: 12px; }
+/* The publish step's bar sits inside the step's own layout (a popup), square on the bottom edge of its panel. */
 .app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar {
-  margin: 16px 0 calc(-1 * var(--rv-page-pad-b));
+  margin: 16px 0 0;
   max-width: none;
   padding-inline: 16px;
 }
@@ -41,5 +54,3 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .rv-action-bar.rv-action-bar, .app-shell.stitch-shell main .rv-action-bar.rv-action-bar.is-leaving { animation: none; }
 }
-/* The publish step's bar sits inside the step's own layout, not at the end of the page. */
-.app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar { margin-bottom: 0; }

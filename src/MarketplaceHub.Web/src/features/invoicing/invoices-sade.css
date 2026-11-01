@@ -107,7 +107,7 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .45; }
 
 /* Pagination and floating bulk bar */
 .app-shell.stitch-shell main .reference-invoices-page .order-pagination { padding: 12px 16px; border-top: 1px solid var(--rv-color-border); color: var(--rv-color-muted); font-size: 13px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-bulk-toolbar { position: sticky; bottom: 12px; z-index: var(--rv-z-sticky); display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 12px 12px; padding: 10px 12px 10px 16px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); }
+.app-shell.stitch-shell main .reference-invoices-page .invoice-reference-bulk-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px 10px 16px; } /* docking, surface and motion: StickyActionBar */
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-bulk-toolbar > span { flex: 1; font-weight: 500; }
 
 /* Provider notice as a warning callout */
