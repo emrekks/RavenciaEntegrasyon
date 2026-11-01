@@ -50,3 +50,9 @@ export function mediaSaveProgressMessage(step: 'upload' | 'variants' | 'prices',
   const label = step === 'upload' ? 'Görseller yükleniyor' : step === 'variants' ? 'Varyant görselleri kaydediliyor' : 'Kanal fiyatları kaydediliyor'
   return `${label} (${done}/${total})…`
 }
+
+// The queued new files after a save that stopped part-way: the ones it uploaded are on the product now and leave the
+// queue (sending them again would add them twice); the rest stay for the next try.
+export function mediaFilesLeftAfterFailedSave<T extends { id: string }>(files: readonly T[], uploadedIds: ReadonlySet<string>): T[] {
+  return files.filter(file => !uploadedIds.has(file.id))
+}
