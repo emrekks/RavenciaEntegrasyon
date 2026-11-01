@@ -166,6 +166,40 @@ public static class PackageIngestionSafety
                 && ShipmentPackageSupersession.IsSplitParentRawStatus(incomingRawStatus)
                 && ShipmentPackageSupersession.CanSupersede(current));
 
+    // An undelivered or returning parcel ends returned. The marketplace's own package read reporting Returned closes it
+    // even when the read's modification time is older than the stored status time: a Trendyol package first built from
+    // an undelivered-shipment return claim holds the claim's modification time, which is not the package's clock (live
+    // 1 Nov 2026: seven packages stayed "Teslim Edilemedi" because their package read was 4-7 seconds older than the
+    // claim). Nothing follows Returned, so the older read cannot undo a later state.
+    public static bool ClosesReturnRegardlessOfTime(ShipmentPackageStatus current, ShipmentPackageStatus incoming, bool isStatusObservation) =>
+        !isStatusObservation
+        && incoming == ShipmentPackageStatus.Returned
+        && current is ShipmentPackageStatus.Undelivered or ShipmentPackageStatus.ReturnInTransit;
+
+    // An older read of the package is not applied, but the cargo details it carries fill those the package does not
+    // have yet: they are facts about the parcel, not a status. A value already held (it may come from a newer read) is
+    // never replaced, and nothing is blanked.
+    public static bool FillMissingCargoMetadata(ShipmentPackage package, RemotePackage remote)
+    {
+        var changed = false;
+        if (string.IsNullOrWhiteSpace(package.CargoProviderExternalId) && !string.IsNullOrWhiteSpace(remote.CargoProviderExternalId))
+        {
+            package.CargoProviderExternalId = remote.CargoProviderExternalId.Trim();
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(package.CargoTrackingNumber) && !string.IsNullOrWhiteSpace(remote.CargoTrackingNumber))
+        {
+            package.CargoTrackingNumber = remote.CargoTrackingNumber.Trim();
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(package.OriginExternalPackageId) && !string.IsNullOrWhiteSpace(remote.OriginExternalPackageId))
+        {
+            package.OriginExternalPackageId = remote.OriginExternalPackageId.Trim();
+            changed = true;
+        }
+        return changed;
+    }
+
     // A refused transition to an end state means the panel and the
     // marketplace disagree about the outcome; an operator has to look.
     public static bool IsTerminalConflict(ShipmentPackageStatus incoming, string? incomingRawStatus) =>

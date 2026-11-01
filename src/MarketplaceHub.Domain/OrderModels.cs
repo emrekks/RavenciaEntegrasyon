@@ -389,6 +389,9 @@ public static class TrendyolShipmentPackageStatusPolicy
         // is already in transit.
         "UNPACKED" => ShipmentPackageStatus.Cancelled,
         "ATCOLLECTIONPOINT" => ShipmentPackageStatus.Shipped,
+        // shipmentPackageStatus of a parcel the carrier could not deliver and brought back to the seller (its top-level
+        // status reads Returned): returned, never delivered.
+        "UNDELIVEREDANDRETURNED" => ShipmentPackageStatus.Returned,
         _ => ShipmentPackageStatusPolicy.FromRemote(rawStatus)
     };
 
