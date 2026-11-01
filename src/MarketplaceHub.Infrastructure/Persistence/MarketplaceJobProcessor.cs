@@ -496,6 +496,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", AmbiguousCreateSummary(error), error.RemoteRequestId), cancellationToken, payload.PayloadHash);
                 db.ExternalEffectRecords.Remove(effect);
                 await db.SaveChangesAsync(cancellationToken);
+                // "Platformlarda Güncelle" found no product under the card's handle: it was deleted in Shopify. The card's links
+                // are dropped and its publication reset, as a status check that finds none of its SKUs does, so the card can be
+                // published again at once instead of reading live until the nightly verification.
+                if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) && error.Code == MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.UpdateTargetMissingCode)
+                {
+                    var missingListings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == profile.Id).ToListAsync(cancellationToken);
+                    var missingVariantIds = missingListings.Select(x => x.VariantId).ToArray();
+                    var missingStates = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && missingVariantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
+                    var reset = await ResetMissingPublication(tenantId, connectionId, profile, missingListings, missingStates, payload.PayloadHash, job.Id, cancellationToken);
+                    if (reset.Kind == JobCompletionKind.Retry) return reset;
+                    return JobExecutionResult.Blocked(error.Code, "Shopify'da bu kartın ürünü yok (Shopify'dan silinmiş); paneldeki Shopify bağları kaldırıldı. Ürünü Platformlarda Yayınla ile yeniden gönderebilirsiniz.");
+                }
                 // The variant send's dry run: the request was built and checked, nothing was written.
                 if (isPttAvmFamily && error.Code == PttAvmProductPayloadRules.DryRunCode)
                     return await MarkPublicationResult(tenantId, connectionId, profile, "DRY_RUN", error.Code, JobExecutionResult.Blocked(error.Code, error.SafeMessage), cancellationToken, payload.PayloadHash);
@@ -1260,7 +1272,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     AND ("JobDedupKey" = {approvalDedup} OR "JobDedupKey" LIKE {approvalManualPrefix + "%"})))
             FOR UPDATE
             """).ToListAsync(cancellationToken);
-        if (relatedJobs.Any(job => job.JobType != MarketplaceJobTypes.ProductApprovalReconcile
+        if (relatedJobs.Any(job => job.Id != currentJobId && job.JobType != MarketplaceJobTypes.ProductApprovalReconcile
             && job.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled))
             return JobExecutionResult.Retry("PRODUCT_WRITE_IN_PROGRESS", "Ürün için başka bir yayın işlemi sürüyor; durum kontrolü yeniden denenecek.", TimeSpan.FromMinutes(1));
         if (relatedJobs.Any(job => job.JobType == MarketplaceJobTypes.ProductApprovalReconcile
