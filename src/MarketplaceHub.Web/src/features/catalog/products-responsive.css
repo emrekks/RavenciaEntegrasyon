@@ -271,25 +271,6 @@
 /* The variant filter's clear button keeps its label on one line. */
 .app-shell.stitch-shell main .product-add-page .variant-filter-clear { white-space: nowrap; }
 
-/* Picture order buttons: on phones a pair of arrows sits along the bottom of every picture and moves it one place
-   earlier or later. On wider screens pictures are dragged; the arrows stay out of sight but in the Tab order and show
-   while the picture has keyboard focus, so the order can be changed without a mouse too. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons { position: absolute; right: 4px; bottom: 4px; left: 4px; z-index: 2; display: flex; justify-content: space-between; gap: 4px; }
-}
-@media (min-width: 761px) {
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons { position: absolute; right: 4px; bottom: 4px; left: 4px; z-index: 2; display: flex; justify-content: space-between; gap: 4px; transition: opacity .15s ease; }
-}
-/* With a mouse the tile's buttons (order arrows, zoom, remove) wait for the pointer or keyboard focus on the tile;
-   a touch screen shows them all the time. Hidden buttons stay clickable and focusable. */
-@media (min-width: 761px) and (hover: hover) {
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons { opacity: 0; }
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card:is(:hover, :focus-within) .media-move-buttons { opacity: 1; }
-}
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button { display: grid; width: 34px; min-width: 0; height: 28px; min-height: 28px; padding: 0; place-items: center; color: #fff; background: rgb(15 16 22 / 72%); border: 1px solid rgb(255 255 255 / 18%); border-radius: 7px; box-shadow: none; }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons > button:disabled { opacity: .35; }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .media-move-buttons .ui-icon { width: 16px; height: 16px; }
-
 /* The keyboard way to the picture zoom (MediaZoomButton): a small corner button, shown on hover and on keyboard focus;
    a touch screen taps the picture itself. */
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn { position: absolute; top: 4px; left: 4px; z-index: 2; display: grid; width: 20px; min-width: 20px; height: 20px; min-height: 20px; padding: 0; place-items: center; color: #fff; background: rgb(9 20 39 / 86%); border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; opacity: 0; }
@@ -300,7 +281,7 @@
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn .ui-icon { width: 14px; height: 14px; }
 }
 
-/* Picture tile buttons scale with the tile (a container): remove, zoom and the order arrows draw at 18–24px with a
+/* Picture tile buttons scale with the tile (a container): remove and zoom draw at 18–24px with a
    proportional icon, quiet until the tile is hovered or focused, while each keeps a hit area of at least 32px. Touch
    screens show the remove button all the time. */
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card { container: media-tile / inline-size; --media-tile-button: 20px; }
@@ -314,9 +295,8 @@
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn) { opacity: 0; }
 }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-zoom-btn { left: 5px; }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn, .media-move-buttons > button)::after { content: ""; position: absolute; inset: min(-7px, calc((var(--media-tile-button) - 32px) / 2)); }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .media-move-buttons > button { position: relative; width: calc(var(--media-tile-button) * 1.3); min-width: 0; height: var(--media-tile-button); min-height: 0; border-radius: 6px; }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn, .media-move-buttons > button) .ui-icon { width: calc(var(--media-tile-button) * .65); height: calc(var(--media-tile-button) * .65); }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn)::after { content: ""; position: absolute; inset: min(-7px, calc((var(--media-tile-button) - 32px) / 2)); }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn) .ui-icon { width: calc(var(--media-tile-button) * .65); height: calc(var(--media-tile-button) * .65); }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card:is(:hover, :focus-within) :is(.image-remove-btn, .image-zoom-btn), .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn):focus-visible { opacity: 1; }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-zoom-btn:hover { background: var(--rv-color-primary); }
 /* Clicking the picture does nothing (only the zoom button zooms): no zoom cursor or hover frame on it. */

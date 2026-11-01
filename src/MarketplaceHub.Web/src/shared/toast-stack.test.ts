@@ -40,6 +40,15 @@ describe('toast stack', () => {
     expect(done[1]).toMatchObject({ id: running[1].id, kind: 'success', version: 1 })
   })
 
+  it('moves a running toast on in place without remounting it, so progress steps do not pop up as new toasts', () => {
+    const newId = ids()
+    const running = push([], [{ kind: 'pending', message: 'Görseller yükleniyor (1/14)…', key: 'save' }], newId)
+    const steps = push(running, [2, 3, 14].map(step => ({ kind: 'pending' as const, message: `Görseller yükleniyor (${step}/14)…`, key: 'save' })), newId)
+    expect(steps).toHaveLength(1)
+    expect(steps[0]).toMatchObject({ id: running[0].id, version: running[0].version, message: 'Görseller yükleniyor (14/14)…' })
+    expect(addToast(steps, { kind: 'success', message: 'Kaydedildi', key: 'save' }, newId)[0].version).toBe(running[0].version + 1)
+  })
+
   it(`keeps at most ${MAX_VISIBLE_TOASTS}: the oldest timed one goes first, persistent errors stay`, () => {
     const items = push([], [stuckError('Hata 1'), timed('Eski'), { kind: 'pending', message: 'Sürüyor' }, stuckError('Hata 2'), timed('Yeni')])
     expect(items.map(item => item.message)).toEqual(['Hata 1', 'Sürüyor', 'Hata 2', 'Yeni'])

@@ -847,8 +847,12 @@ public static class CatalogEndpoints
         var mediaIds = command.MediaIds?.Distinct().ToArray() ?? [];
         if (mediaIds.Length is 0 or > 100) return Problem(http, new("PRODUCT_MEDIA_DELETE_LIMIT", "Bir işlemde 1-100 görsel bağlantısı kaldırılabilir.", 422));
 
-        var media = await db.ProductMedia.Where(item => item.TenantId == tenant.TenantId && mediaIds.Contains(item.Id) && item.Status == "ACTIVE").ToListAsync(http.RequestAborted);
-        if (media.Count != mediaIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel bağlantılarından biri bulunamadı veya daha önce kaldırıldı.", 404));
+        // A row the same save already archived (the variant pictures Kaydet reconciled a moment before) counts as removed;
+        // only an id this tenant never had is refused.
+        var found = await db.ProductMedia.Where(item => item.TenantId == tenant.TenantId && mediaIds.Contains(item.Id)).ToListAsync(http.RequestAborted);
+        if (found.Count != mediaIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görsel bağlantılarından biri bulunamadı.", 404));
+        var media = found.Where(item => item.Status == "ACTIVE").ToList();
+        if (media.Count == 0) return Results.Ok(new { deletedCount = 0 });
         var productIds = media.Select(item => item.ProductId).Distinct().ToArray();
         var products = await db.Products.Where(product => product.TenantId == tenant.TenantId && productIds.Contains(product.Id)).ToListAsync(http.RequestAborted);
         if (products.Count != productIds.Length) return Problem(http, new("PRODUCT_MEDIA_NOT_FOUND", "Görselin kaynak ürünü bulunamadı.", 404));
