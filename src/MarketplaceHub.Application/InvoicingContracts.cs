@@ -153,13 +153,54 @@ public static class InvoiceDeliveryRecoveryPolicy
         && observedAt is { } readAt
         && readAt > acceptedAttemptAt;
 
+    // A read that says only "an invoice is there" (no number) cannot contradict a delivery that was confirmed, whether
+    // the invoice already reads Completed or still waits for its other packages (MarketplacePending).
     public static bool ShouldPreservePreviouslyConfirmedDelivery(
         InvoiceStatus invoiceStatus,
         string? deliveryStatus,
         string? remoteInvoiceNumber) =>
-        invoiceStatus == InvoiceStatus.Completed
+        invoiceStatus is InvoiceStatus.Completed or InvoiceStatus.MarketplacePending
         && string.Equals(deliveryStatus, "CONFIRMED", StringComparison.Ordinal)
         && string.IsNullOrWhiteSpace(remoteInvoiceNumber);
+
+    public static bool DeliveryStateChanges(InvoiceStatus currentStatus, string? currentErrorCode, InvoiceStatus status, string? errorCode) =>
+        currentStatus != status || !string.Equals(currentErrorCode, errorCode, StringComparison.Ordinal);
+
+    // The state row a marketplace read creates for an invoice nothing was ever sent for (RecordMarketplaceInvoiceDeliveryObservationAsync).
+    public const string ObservationOnlyStateKeyPrefix = "marketplace-observation:";
+    public const string DocumentMissingNotDeliveredErrorCode = "INVOICE_DOCUMENT_MISSING_NOT_DELIVERED";
+
+    // A delivery was attempted (or proven) for this package when its state row came from a delivery, a proof or an
+    // operator, not from a read alone. No state row means nothing was ever sent.
+    public static bool HasDeliveryAttempt(string? deliveryStateKey) =>
+        !string.IsNullOrWhiteSpace(deliveryStateKey)
+        && !deliveryStateKey.StartsWith(ObservationOnlyStateKeyPrefix, StringComparison.Ordinal);
+
+    // "Removed from the marketplace" needs something that was there: a read-only state row that says REVOKED for an
+    // invoice nothing was sent for reads as not sent.
+    public static string? DisplayDeliveryStatus(string? deliveryStateStatus, string? deliveryStateKey) =>
+        string.Equals(deliveryStateStatus, "REVOKED", StringComparison.Ordinal) && !HasDeliveryAttempt(deliveryStateKey)
+            ? "NOT_SENT"
+            : deliveryStateStatus;
+
+    // An invoice that was never sent, which an earlier read marked "removed from the marketplace": it is not a removal,
+    // the document could not be fetched and nothing was delivered.
+    public static bool IsNeverDeliveredMarkedNotPresent(InvoiceStatus invoiceStatus, string? lastErrorCode, bool hasDeliveryAttempt, bool hasDocument) =>
+        !hasDeliveryAttempt && !hasDocument
+        && invoiceStatus == InvoiceStatus.MarketplaceFailed
+        && string.Equals(lastErrorCode, MarketplaceInvoiceNotPresentErrorCode, StringComparison.Ordinal);
+
+    // A read without references (Hepsiburada's missing-invoice list, a status-only detail) proves the delivery when the
+    // references the package already holds are exactly this invoice's number and link.
+    public static bool StoredReferencesProveDelivery(
+        string? packageInvoiceNumber,
+        string? packageInvoiceUrl,
+        string? invoiceNumber,
+        string? invoiceLink) =>
+        !string.IsNullOrWhiteSpace(packageInvoiceNumber) && !string.IsNullOrWhiteSpace(packageInvoiceUrl)
+        && !string.IsNullOrWhiteSpace(invoiceNumber) && !string.IsNullOrWhiteSpace(invoiceLink)
+        && string.Equals(packageInvoiceNumber.Trim(), invoiceNumber.Trim(), StringComparison.Ordinal)
+        && string.Equals(packageInvoiceUrl.Trim(), invoiceLink.Trim(), StringComparison.Ordinal);
 
     public static bool ShouldMarkMarketplaceInvoiceNotPresent(
         InvoiceStatus invoiceStatus,
@@ -172,11 +213,15 @@ public static class InvoiceDeliveryRecoveryPolicy
             || (invoiceStatus == InvoiceStatus.ManualReview
                 && string.Equals(lastErrorCode, MarketplaceInvoiceIdentityMismatchErrorCode, StringComparison.Ordinal)));
 
+    // Only an invoice that was delivered before (or reads Completed) is sent again: an issued invoice nothing was ever
+    // sent for waits for its document and the normal delivery, it was not "removed" from the marketplace.
     public static bool ShouldQueueAutomaticRedelivery(
         InvoiceStatus invoiceStatus,
         string? lastErrorCode,
-        MarketplaceInvoiceStatus marketplaceStatus) =>
+        MarketplaceInvoiceStatus marketplaceStatus,
+        bool hasDeliveryAttempt = true) =>
         marketplaceStatus == MarketplaceInvoiceStatus.NotInvoiced
+        && (hasDeliveryAttempt || invoiceStatus == InvoiceStatus.Completed)
         && (invoiceStatus is InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.Completed
             || invoiceStatus == InvoiceStatus.MarketplaceFailed
                 && string.Equals(lastErrorCode, MarketplaceInvoiceNotPresentErrorCode, StringComparison.Ordinal));

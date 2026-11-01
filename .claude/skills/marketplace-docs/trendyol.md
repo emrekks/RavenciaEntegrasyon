@@ -99,4 +99,6 @@ purpose (`TurkeyTime.cs`).
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),
 _ORDER_CARGO_INFO_RECONCILIATION, _FINANCE_SYNC (daily, 90-day first read, 3-day overlap, 15-day windows),
 _WEBHOOK_INGEST, _COMMON_LABEL, _CAPABILITY_PROBE, _STAGE_TEST_ORDER; plus shared ORDER_STATUS_SYNC (3 min),
-ORDER_INVOICE_RECONCILIATION (15 min), RETURN_SYNC (3 min, 15-min overlap), PRODUCT_SYNC.
+ORDER_INVOICE_RECONCILIATION (15 min), RETURN_SYNC (10 min, 20–30 min while no claim is open; ReturnCadencePolicy;
+15-min overlap), RETURN_STATUS_SYNC (open claims only, claimIds batched), PRODUCT_SYNC. The webhook carries order
+packages only, no claim events.

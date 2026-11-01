@@ -178,6 +178,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     if (succeeded) await RecordSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, true, null, cancellationToken);
                     else await TryRecordFailedSyncCompletion(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, "F3_JOB_REJECTED", cancellationToken);
                 }
+                if (succeeded) await RecordReadProgressAsync(tenantId, jobId, jobType, cancellationToken);
                 return succeeded ? JobExecutionResult.Success() : JobExecutionResult.Blocked("F3_JOB_REJECTED", "Job payload, capability or current entity state did not permit the operation.");
             }
             catch (JobProcessingException exception) when (exception.Result.Continues)
@@ -390,6 +391,44 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         telemetryImportProcessedCount = 0;
         telemetryImportSkippedCount = 0;
         telemetryImportFailedCount = 0;
+    }
+
+    // Order and return reads write what they brought on the job (received, new, updated), so the list tells a read that
+    // came back empty from one that brought records. The counts are the run's own telemetry.
+    internal static bool RecordsReadProgress(string jobType) => jobType is
+        MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync
+        or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync or MarketplaceJobTypes.PttAvmOrderRecoverySync
+        or MarketplaceJobTypes.OrderStatusSync or MarketplaceJobTypes.ShopifyOrderStatusSync or MarketplaceJobTypes.HepsiburadaOrderStatusSync or MarketplaceJobTypes.PazaramaOrderStatusSync or MarketplaceJobTypes.PttAvmOrderStatusSync
+        or MarketplaceJobTypes.ReturnSync or MarketplaceJobTypes.HepsiburadaReturnSync or MarketplaceJobTypes.ReturnStatusSync or MarketplaceJobTypes.ReturnReconciliation;
+
+    internal static string ReadProgressLabel(int received, int inserted, int updated) =>
+        received == 0 && inserted == 0 && updated == 0
+            ? "Pazaryerinden yeni kayıt gelmedi"
+            : $"{received} kayıt alındı · {inserted} yeni · {updated} güncellendi";
+
+    private async Task RecordReadProgressAsync(Guid tenantId, Guid? jobId, string jobType, CancellationToken cancellationToken)
+    {
+        if (jobId is not { } id || !RecordsReadProgress(jobType)) return;
+        var received = telemetryReceivedCount;
+        var inserted = telemetryInsertedCount;
+        var updated = telemetryUpdatedCount;
+        var skipped = telemetrySkippedCount;
+        var label = ReadProgressLabel(received, inserted, updated);
+        try
+        {
+            await db.IntegrationJobs
+                .Where(job => job.TenantId == tenantId && job.Id == id && job.JobType == jobType)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(job => job.ProgressReceived, received)
+                    .SetProperty(job => job.ProgressCurrent, received)
+                    .SetProperty(job => job.ProgressProcessed, inserted + updated)
+                    .SetProperty(job => job.ProgressSkipped, skipped)
+                    .SetProperty(job => job.ProgressLabel, label), cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // Display only: a failed progress write never fails the read it describes.
+        }
     }
 
     private void TrackRequest() => telemetryRequestCount++;
@@ -4894,6 +4933,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             totalOrders == 0 ? "Kontrol edilecek sipariş bulunamadı" : $"0 / {totalOrders:N0} sipariş kontrol edildi",
             cancellationToken);
 
+        var changedOrders = 0;
         async Task ReconcileOrderInvoiceAsync(string externalOrderId)
         {
             if (isTrendyol)
@@ -4918,9 +4958,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
 
             TrackReceived();
+            var updatedBefore = telemetryUpdatedCount;
             if (isHepsiburada && !await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken))
                 hepsiburadaInvoiceStatusUnavailable.Add(externalOrderId);
             await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, persistFinancialObservations: isShopify);
+            // "İşlenen" counts orders, not rows: one order read once is processed once, however many of its rows moved.
+            if (telemetryUpdatedCount > updatedBefore) changedOrders++;
             await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
         }
 
@@ -4951,7 +4994,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         totalOrders,
                         percent,
                         $"{processedOrders:N0} / {totalOrders:N0} sipariş kontrol edildi",
-                        cancellationToken);
+                        cancellationToken,
+                        isTrendyol ? null : changedOrders);
                 }
             }
 
@@ -5006,7 +5050,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : stoppedByTimeBudget
                     ? $"{processedOrders:N0} / {totalOrders:N0} sipariş kontrol edildi; süre sınırı nedeniyle kalanlar sonraki taramada"
                     : $"{totalOrders:N0} / {totalOrders:N0} sipariş kontrol edildi",
-            cancellationToken);
+            cancellationToken,
+            isTrendyol ? null : changedOrders);
 
         return (true, isTrendyol && stoppedByTimeBudget);
     }
@@ -5144,9 +5189,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         int total,
         int percent,
         string label,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? processedCount = null)
     {
         if (jobId is null) return Task.FromResult(0);
+        var processed = processedCount ?? telemetryUpdatedCount;
 
         return db.IntegrationJobs
             .Where(job => job.TenantId == tenantId
@@ -5160,7 +5207,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .SetProperty(job => job.ProgressPercent, percent)
                 .SetProperty(job => job.ProgressLabel, label)
                 .SetProperty(job => job.ProgressReceived, telemetryReceivedCount)
-                .SetProperty(job => job.ProgressProcessed, telemetryUpdatedCount)
+                .SetProperty(job => job.ProgressProcessed, processed)
                 .SetProperty(job => job.ProgressSkipped, telemetrySkippedCount)
                 .SetProperty(job => job.ProgressFailed, telemetryFailedCount), cancellationToken);
     }
@@ -10021,14 +10068,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id,
                 cancellationToken);
             var previouslyConfirmed = string.Equals(deliveryState?.Status, "CONFIRMED", StringComparison.Ordinal);
+            var hasDeliveryAttempt = InvoiceDeliveryRecoveryPolicy.HasDeliveryAttempt(deliveryState?.ExternalIdempotencyKey);
             var shouldMarkNotPresent = InvoiceDeliveryRecoveryPolicy.ShouldMarkMarketplaceInvoiceNotPresent(invoice.Status, invoice.LastErrorCode, incomingStatus);
-            var shouldQueueRedelivery = InvoiceDeliveryRecoveryPolicy.ShouldQueueAutomaticRedelivery(invoice.Status, invoice.LastErrorCode, incomingStatus);
+            var shouldQueueRedelivery = InvoiceDeliveryRecoveryPolicy.ShouldQueueAutomaticRedelivery(invoice.Status, invoice.LastErrorCode, incomingStatus, hasDeliveryAttempt);
             if (previouslyConfirmed || shouldMarkNotPresent || shouldQueueRedelivery)
             {
                 await RecordMarketplaceInvoiceDeliveryObservationAsync(invoice, package, "REVOKED", observedAt, cancellationToken);
                 await UpdateOrderInvoiceDeliveryStatusAsync(invoice, observedAt, cancellationToken,
                     InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode);
                 await QueueAutomaticInvoiceRedelivery(invoice, package, cancellationToken);
+            }
+            else if (InvoiceDeliveryRecoveryPolicy.IsNeverDeliveredMarkedNotPresent(invoice.Status, invoice.LastErrorCode, hasDeliveryAttempt,
+                await db.InvoiceDocuments.AsNoTracking().AnyAsync(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id, cancellationToken)))
+            {
+                // An earlier read marked an invoice nothing was ever sent for as removed: say what happened instead
+                // (no document, not delivered). Nothing is queued; the delivery waits for the operator.
+                invoice.LastErrorCode = InvoiceDeliveryRecoveryPolicy.DocumentMissingNotDeliveredErrorCode;
+                invoice.UpdatedAt = observedAt;
+                invoice.Version++;
             }
             return;
         }
@@ -10054,7 +10111,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 new(package.ExternalPackageId, observation?.RawStatus ?? string.Empty, true,
                     observation?.InvoiceNumber, observation?.InvoiceUrl, observation?.ReferencesAreAuthoritative == true),
                 invoice.InvoiceNumber,
-                localInvoiceLink);
+                localInvoiceLink)
+                // A read without references is weaker than what the package already holds: when that is exactly this
+                // invoice's number and link, the read confirms it instead of sending a confirmed delivery to review.
+                || string.IsNullOrWhiteSpace(observation?.InvoiceNumber) && string.IsNullOrWhiteSpace(observation?.InvoiceUrl)
+                    && InvoiceDeliveryRecoveryPolicy.StoredReferencesProveDelivery(
+                        package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceUrl, invoice.InvoiceNumber, localInvoiceLink);
             if (exactProof)
             {
                 await RecordExactMarketplaceInvoiceProofAsync(invoice, package, observedAt, cancellationToken);
@@ -10093,10 +10155,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 else
                 {
                     await RecordMarketplaceInvoiceDeliveryObservationAsync(invoice, package, "REVIEW_REQUIRED", observedAt, cancellationToken);
-                    invoice.Status = InvoiceStatus.MarketplacePending;
-                    invoice.LastErrorCode = InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode;
-                    invoice.UpdatedAt = observedAt;
-                    invoice.Version++;
+                    SetInvoiceDeliveryState(invoice, InvoiceStatus.MarketplacePending,
+                        InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, observedAt);
                 }
             }
         }
@@ -10238,6 +10298,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             db.MarketplaceDeliveryStates.Add(state);
             return;
         }
+        // The same proof read again changes nothing.
+        if (state.Status == "CONFIRMED" && state.ErrorCode is null && state.ExternalIdempotencyKey == proofKey && state.RequestHash == proofHash
+            && state.ConnectionId == package.ConnectionId && state.ExternalReference == package.ExternalPackageId)
+            return;
 
         state.ConnectionId = package.ConnectionId;
         state.PackageId = package.Id;
@@ -10279,12 +10343,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Select(x => x.PackageId!.Value)
             .ToHashSet();
         var allConfirmed = MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed(targetPackageIds, confirmedPackageIds);
-        invoice.Status = allConfirmed ? InvoiceStatus.Completed
-            : incompleteErrorCode is not null ? InvoiceStatus.MarketplaceFailed
-            : InvoiceStatus.MarketplacePending;
-        invoice.LastErrorCode = allConfirmed ? null : incompleteErrorCode;
-        invoice.UpdatedAt = observedAt;
+        SetInvoiceDeliveryState(invoice,
+            allConfirmed ? InvoiceStatus.Completed
+                : incompleteErrorCode is not null ? InvoiceStatus.MarketplaceFailed
+                : InvoiceStatus.MarketplacePending,
+            allConfirmed ? null : incompleteErrorCode,
+            observedAt);
+    }
+
+    // A read that finds the invoice as it already is writes nothing: Version and UpdatedAt move only on a real change,
+    // so an unchanged invoice is neither "updated" on every scan nor raced by the optimistic lock.
+    internal static bool SetInvoiceDeliveryState(Invoice invoice, InvoiceStatus status, string? lastErrorCode, DateTimeOffset at)
+    {
+        if (!InvoiceDeliveryRecoveryPolicy.DeliveryStateChanges(invoice.Status, invoice.LastErrorCode, status, lastErrorCode)) return false;
+        invoice.Status = status;
+        invoice.LastErrorCode = lastErrorCode;
+        invoice.UpdatedAt = at;
         invoice.Version++;
+        return true;
     }
 
     private void RecordAcceptedHepsiburadaReadbackProof(MarketplaceDeliveryState state, ShipmentPackage package, DateTimeOffset observedAt)
@@ -11098,7 +11174,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
             return await SyncPazaramaReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
         if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase))
-            return await SyncPttAvmReturns(tenantId, connectionId, correlationId, cancellationToken);
+            return await SyncPttAvmReturns(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
 
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var configuredOverlapSeconds = await db.ConnectionSyncPolicies.AsNoTracking()
@@ -11474,13 +11550,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static readonly string[] HepsiburadaOpenClaimStatuses = ["NewRequest", "AwaitingAction", "InDispute", "AwaitingPreApproval", "PREAPPROVAL_CONFIRM_SUBMITTED"];
     private static readonly string[] HepsiburadaClaimFollowUpStatuses = ["Accepted", "Refunded", "Rejected", "Cancelled", "InDispute", "AwaitingPreApproval", "AwaitingAction"];
 
+    // The claims the open-return scan follows; the scheduler asks the same question before it queues a scan. Hepsiburada
+    // follows its own open claim words. Elsewhere only claims still moving on the marketplace are read again (Requested,
+    // AwaitingShipment, InTransit, ActionRequired, Disputed): an approved or rejected claim is settled, and a later change
+    // of it still comes with the incremental return read, which lists claims by their last change.
+    internal static IQueryable<ReturnClaim> ReturnLifecycleCandidates(IQueryable<ReturnClaim> claims, Guid tenantId, Guid connectionId, string? platformCode)
+    {
+        claims = claims.Where(claim => claim.TenantId == tenantId && claim.ConnectionId == connectionId);
+        return string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
+            ? claims.Where(claim => claim.Status != ReturnClaimStatus.Completed && claim.Status != ReturnClaimStatus.Cancelled
+                && HepsiburadaOpenClaimStatuses.Contains(claim.RawStatus))
+            : claims.Where(claim => claim.Status == ReturnClaimStatus.Requested || claim.Status == ReturnClaimStatus.AwaitingShipment
+                || claim.Status == ReturnClaimStatus.InTransit || claim.Status == ReturnClaimStatus.ActionRequired || claim.Status == ReturnClaimStatus.Disputed);
+    }
+
     private async Task<bool> SyncHepsiburadaOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
         var cursor = await Cursor(tenantId, connectionId, "RETURN_LIFECYCLE", cancellationToken);
-        var open = await db.ReturnClaims.AsNoTracking()
-            .Where(claim => claim.TenantId == tenantId && claim.ConnectionId == connectionId
-                && claim.Status != ReturnClaimStatus.Completed && claim.Status != ReturnClaimStatus.Cancelled
-                && HepsiburadaOpenClaimStatuses.Contains(claim.RawStatus))
+        var open = await ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, "HEPSIBURADA")
             .Select(claim => new { claim.ExternalClaimId, claim.RawStatus, claim.CreatedAt })
             .ToListAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -11676,12 +11763,31 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var (incompleteCargoBudget, completeCargoBudget) = ReturnLifecycleBatchPolicy.SplitBatch(batchSize);
         var incompleteCargoCursor = await Cursor(tenantId, connectionId, "RETURN_LIFECYCLE_CARGO_MISSING", cancellationToken);
         var completeCargoCursor = await Cursor(tenantId, connectionId, "RETURN_LIFECYCLE_CARGO_COMPLETE", cancellationToken);
-        var incompleteCargoClaims = await ReadReturnLifecycleBatchAsync(tenantId, connectionId, incompleteCargoCursor, missingCargo: true, incompleteCargoBudget, cancellationToken);
-        var completeCargoClaims = await ReadReturnLifecycleBatchAsync(tenantId, connectionId, completeCargoCursor, missingCargo: false, completeCargoBudget, cancellationToken);
+        var incompleteCargoClaims = await ReadReturnLifecycleBatchAsync(tenantId, connectionId, platformCode, incompleteCargoCursor, missingCargo: true, incompleteCargoBudget, cancellationToken);
+        var completeCargoClaims = await ReadReturnLifecycleBatchAsync(tenantId, connectionId, platformCode, completeCargoCursor, missingCargo: false, completeCargoBudget, cancellationToken);
         var openClaims = incompleteCargoClaims.Select(claim => (claim.Id, claim.ExternalClaimId, Cursor: incompleteCargoCursor))
             .Concat(completeCargoClaims.Select(claim => (claim.Id, claim.ExternalClaimId, Cursor: completeCargoCursor)))
             .ToArray();
         if (openClaims.Length == 0) return true;
+
+        // Trendyol answers several claims in one request (claimIds, comma separated). A claim the batch did not bring
+        // is asked for on its own below, as before; a batch the marketplace refuses as a request falls back to that too.
+        var prefetched = new Dictionary<string, RemoteReturnClaim>(StringComparer.OrdinalIgnoreCase);
+        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase) && returns is IReturnBatchReadPort batchReader)
+        {
+            foreach (var ids in ReturnLifecycleBatchPolicy.ClaimIdRequests(openClaims.Select(claim => claim.ExternalClaimId)))
+            {
+                TrackRequest();
+                var many = await batchReader.GetManyAsync(Context(tenantId, connectionId, correlationId, $"return-lifecycle-batch:{ids[0]}:{ids.Length}"), ids, cancellationToken);
+                if (!many.IsSuccess)
+                {
+                    TrackResultFailure(many.Error);
+                    if (many.Error?.Class is AdapterErrorClass.Validation or AdapterErrorClass.ContractViolation) break;
+                    throw JobProcessingException.FromAdapter(many.Error!);
+                }
+                foreach (var claim in many.Value!) prefetched.TryAdd(claim.ExternalClaimId, claim);
+            }
+        }
 
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var (claimId, externalClaimId, cursor) in openClaims)
@@ -11690,11 +11796,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.LastAttemptAt = timeProvider.GetUtcNow();
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
-            TrackRequest();
-            var result = await returns.GetAsync(
-                Context(tenantId, connectionId, correlationId, $"return-lifecycle:{externalClaimId}"),
-                externalClaimId,
-                cancellationToken);
+            AdapterResult<RemoteReturnClaim> result;
+            if (prefetched.TryGetValue(externalClaimId, out var batched)) result = AdapterResult<RemoteReturnClaim>.Success(batched);
+            else
+            {
+                TrackRequest();
+                result = await returns.GetAsync(
+                    Context(tenantId, connectionId, correlationId, $"return-lifecycle:{externalClaimId}"),
+                    externalClaimId,
+                    cancellationToken);
+            }
             if (!result.IsSuccess)
             {
                 if (result.Error?.Class == AdapterErrorClass.NotFound)
@@ -11721,14 +11832,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private async Task<IReadOnlyList<(Guid Id, string ExternalClaimId)>> ReadReturnLifecycleBatchAsync(
         Guid tenantId,
         Guid connectionId,
+        string? platformCode,
         SyncCursor cursor,
         bool missingCargo,
         int batchSize,
         CancellationToken cancellationToken)
     {
-        var claims = db.ReturnClaims.AsNoTracking()
-            .Where(claim => claim.TenantId == tenantId && claim.ConnectionId == connectionId
-                && claim.Status != ReturnClaimStatus.Completed && claim.Status != ReturnClaimStatus.Cancelled);
+        var claims = ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode);
         claims = missingCargo
             ? claims.Where(claim => claim.CargoProviderName == null || claim.CargoProviderName == "" || claim.CargoTrackingNumber == null || claim.CargoTrackingNumber == "")
             : claims.Where(claim => claim.CargoProviderName != null && claim.CargoProviderName != "" && claim.CargoTrackingNumber != null && claim.CargoTrackingNumber != "");
@@ -11979,10 +12089,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var partialLineDecisionPending = string.Equals(claim.RawStatus, "PARTIAL_LINE_DECISION_PENDING", StringComparison.Ordinal) && !allLinesKnown;
             if (remoteIsFresh && !partialLineDecisionPending && (lineStatusOverrides || ReturnClaimStateMachine.CanTransition(claim.Status, target)))
             {
+                // CanTransition allows staying in the same status; a read that brings the same status, raw status and
+                // change time is not an update (no Version or UpdatedAt bump).
+                claimChanged = ReturnStatusObservationChanges(claim, target, remote.RawStatus, remote.LastModifiedAt);
                 claim.Status = target;
                 claim.RawStatus = remote.RawStatus;
                 claim.LastRemoteModifiedAt = remote.LastModifiedAt;
-                claimChanged = true;
             }
             else if (remoteIsFresh && !partialLineDecisionPending
                 && (claim.Status != target || !string.Equals(claim.RawStatus, remote.RawStatus, StringComparison.Ordinal) || claim.LastRemoteModifiedAt != remote.LastModifiedAt))
@@ -12110,6 +12222,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }
+
+    // Whether a read of a claim says anything new about its status: another status, raw status or marketplace change time.
+    internal static bool ReturnStatusObservationChanges(ReturnClaim claim, ReturnClaimStatus target, string remoteRawStatus, DateTimeOffset remoteLastModifiedAt) =>
+        claim.Status != target
+        || !string.Equals(claim.RawStatus, remoteRawStatus, StringComparison.Ordinal)
+        || claim.LastRemoteModifiedAt != remoteLastModifiedAt;
 
     internal static ReturnClaim NewReturnClaim(Guid tenantId, Guid connectionId, Guid orderId, RemoteReturnClaim remote, ReturnClaimStatus status, DateTimeOffset now) => new()
     {

@@ -16,6 +16,8 @@ public static class ScheduledOrderPollingCadencePolicy
     // only while their notifications are unhealthy; healthy notifications stretch the read to the 8-minute safety net.
     public const int UnnotifiedOrderIntervalSeconds = 120;
 
+    public const int ShopifyInvoiceReconciliationIntervalSeconds = 21_600;
+
     public static int ForEnvironment(int intervalSeconds, string? environment) =>
         string.Equals(environment, "STAGE", StringComparison.OrdinalIgnoreCase) ? Math.Max(intervalSeconds, StageMinimumIntervalSeconds) : intervalSeconds;
 
@@ -94,6 +96,20 @@ public static class ScheduledOrderPollingCadencePolicy
         {
             return (1800, Math.Min(jitterSeconds, 10));
         }
+
+        // A Shopify order holds only the invoice link the panel writes, and every write is read back at once; the
+        // invoice scan only notices a link changed by hand in Shopify. Every quarter hour it read the same orders 93
+        // times a day (1 Nov 2026), so it runs every six hours.
+        if (string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+            && resourceType == "ORDER_INVOICE_RECONCILIATION"
+            && intervalSeconds == 900)
+        {
+            return (ShopifyInvoiceReconciliationIntervalSeconds, jitterSeconds);
+        }
+
+        // The worker reads returns every ten minutes at most (ReturnCadencePolicy); the default says so, so the panel
+        // shows the interval that runs.
+        if (resourceType == "RETURNS") return (Math.Max(intervalSeconds, MarketplaceHub.Application.ReturnCadencePolicy.BaseSeconds), jitterSeconds);
 
         return (intervalSeconds, jitterSeconds);
     }

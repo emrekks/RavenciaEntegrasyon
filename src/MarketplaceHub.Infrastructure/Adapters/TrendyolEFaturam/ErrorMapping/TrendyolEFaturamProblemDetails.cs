@@ -11,6 +11,10 @@ internal static class TrendyolEFaturamProblemDetails
     // The taxpayer lookup's documented "not an e-Invoice taxpayer" answer (404). Any other 404 stays an error.
     internal const string TaxPayerNotFoundReference = "problem:/etransformation/gateway/tax-payer-not-found";
     private const string TaxPayerNotFoundPath = "/etransformation/gateway/tax-payer-not-found";
+    // The status reads' documented "no invoice with this UUID" answers (404). A bare 404 (a moved path) is not one.
+    internal const string EArchiveNotFoundReference = "problem:/etransformation/gateway/earchive-not-found";
+    internal const string OutgoingEInvoiceNotFoundReference = "problem:/etransformation/gateway/outgoing-einvoice-not-found";
+    private static readonly string[] InvoiceNotFoundPaths = ["/etransformation/gateway/earchive-not-found", "/etransformation/gateway/outgoing-einvoice-not-found"];
 
     public static async Task<string?> TryReadReferenceAsync(HttpContent content, CancellationToken cancellationToken)
     {
@@ -96,8 +100,12 @@ internal static class TrendyolEFaturamProblemDetails
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
         var path = value.Trim();
+        // An invoice "not found" decides whether an invoice exists, so it is taken only from the provider's own host
+        // (or a bare path), never from a look-alike path on another host.
+        var foreignHost = false;
         if (!path.StartsWith('/') && Uri.TryCreate(path, UriKind.Absolute, out var absolute))
         {
+            foreignHost = !string.Equals(absolute.Host, "api.trendyol.com", StringComparison.OrdinalIgnoreCase);
             // The provider documents this stable ProblemDetails type outside the
             // historical /problem/* namespace. Accept only the official host and
             // exact path so no arbitrary response URL is persisted.
@@ -107,6 +115,9 @@ internal static class TrendyolEFaturamProblemDetails
             if (string.Equals(absolute.Host, "api.trendyol.com", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(absolute.AbsolutePath, TaxPayerNotFoundPath, StringComparison.OrdinalIgnoreCase))
                 return TaxPayerNotFoundReference;
+            if (string.Equals(absolute.Host, "api.trendyol.com", StringComparison.OrdinalIgnoreCase)
+                && InvoiceNotFoundReference(absolute.AbsolutePath) is { } invoiceNotFound)
+                return invoiceNotFound;
             path = absolute.AbsolutePath + (string.IsNullOrEmpty(absolute.Query) ? absolute.Fragment : string.Empty);
         }
         var queryIndex = path.IndexOf('?');
@@ -117,8 +128,16 @@ internal static class TrendyolEFaturamProblemDetails
             return ApplicationMismatchReference;
         if (string.Equals(path, TaxPayerNotFoundPath, StringComparison.OrdinalIgnoreCase))
             return TaxPayerNotFoundReference;
+        if (!foreignHost && InvoiceNotFoundReference(path) is { } notFound) return notFound;
         return path.StartsWith("/problem/", StringComparison.OrdinalIgnoreCase) ? $"problem:{path}" : null;
     }
+
+    private static string? InvoiceNotFoundReference(string path) =>
+        InvoiceNotFoundPaths.FirstOrDefault(known => string.Equals(path, known, StringComparison.OrdinalIgnoreCase)) is { } match
+            ? $"problem:{match}"
+            : null;
+
+    internal static bool IsInvoiceNotFound(string? reference) => reference is EArchiveNotFoundReference or OutgoingEInvoiceNotFoundReference;
 
     internal static string? ToOperatorSummary(string? reference)
     {

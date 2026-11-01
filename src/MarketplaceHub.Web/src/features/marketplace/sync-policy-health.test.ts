@@ -39,4 +39,12 @@ describe('syncPolicyHealthPresentation', () => {
   it('shows a write permission as on, never as waiting for a first run', () => {
     expect(syncPolicyHealthPresentation({ enabled: true, healthStatus: 'PERMISSION', lastSuccessAt: null })).toEqual({ label: 'İzin açık', tone: 'healthy', stalled: false })
   })
+
+  it('shows an open-return scan with no open return as waiting, not late', () => {
+    expect(syncPolicyHealthPresentation({ enabled: true, healthStatus: 'PAUSED_NO_OPEN_RETURNS', lastSuccessAt: '2026-10-01T10:00:00Z' })).toEqual({ label: 'Beklemede · Açık iade yok', tone: 'paused', stalled: false })
+  })
+
+  it('shows a stock reconciliation held by closed price/stock writes as waiting, not late', () => {
+    expect(syncPolicyHealthPresentation({ enabled: true, healthStatus: 'PAUSED_WRITES_OFF', lastSuccessAt: '2026-09-17T10:00:00Z', cursorProgressStatus: 'STALLED' })).toEqual({ label: 'Beklemede · Otomatik fiyat/stok yazma kapalı', tone: 'paused', stalled: false })
+  })
 })

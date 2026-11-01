@@ -27,14 +27,17 @@ export const knownJobTypes: readonly string[] = [
   'IMPORT_PREVIEW', 'IMPORT_APPLY'
 ]
 
+// Every known type sits in at least one tab besides Tüm İşlemler (job-categories.test.ts). Invoice work, the order invoice
+// checks included, is counted under Faturalar only. Category and attribute reads (*_REFERENCE_SYNC) and product questions
+// belong to Ürün/Yayın; notifications (*_WEBHOOK_INGEST) bring orders; finance reads sit with the invoices.
 export const jobCategoryTabs: ReadonlyArray<{ key: JobCategory; label: string; match: (type: string) => boolean }> = [
   { key: 'ALL', label: 'Tüm İşlemler', match: () => true },
-  { key: 'ORDERS', label: 'Sipariş/Kargo', match: t => /ORDER|SHIPMENT|PACKAGE|COURIER|LABEL/i.test(t) },
+  { key: 'ORDERS', label: 'Sipariş/Kargo', match: t => /ORDER|SHIPMENT|PACKAGE|COURIER|LABEL|WEBHOOK_INGEST/i.test(t) && !/INVOICE/i.test(t) },
   { key: 'PRICE_INVENTORY', label: 'Fiyat/Stok', match: t => /PRICE|INVENTORY|STOCK|OFFER/i.test(t) },
-  { key: 'CATALOG', label: 'Ürün/Yayın', match: t => /PRODUCT|CATALOG|IMPORT|ATTRIBUTE|CATEGORY|BRAND|PUBLICATION|LISTING/i.test(t) },
-  { key: 'INVOICES', label: 'Faturalar', match: t => /INVOICE|EFATURAM|BILLING/i.test(t) },
+  { key: 'CATALOG', label: 'Ürün/Yayın', match: t => /PRODUCT|CATALOG|IMPORT|ATTRIBUTE|CATEGORY|BRAND|PUBLICATION|LISTING|REFERENCE_SYNC|QUESTION/i.test(t) },
+  { key: 'INVOICES', label: 'Faturalar', match: t => /INVOICE|EFATURAM|BILLING|FINANCE/i.test(t) },
   { key: 'RETURNS', label: 'İadeler', match: t => /RETURN|CLAIM/i.test(t) },
-  { key: 'SYSTEM', label: 'Sistem & Test', match: t => /TEST|PROBE|PING|MIGRATION|SCAN|SCHEDULER|RESET/i.test(t) }
+  { key: 'SYSTEM', label: 'Sistem & Test', match: t => /TEST|PROBE|PING|MIGRATION|SCAN|SCHEDULER|RESET|EXTERNAL_EFFECT/i.test(t) && !/INVOICE/i.test(t) }
 ]
 
 export function jobCategoryMatcher(category: JobCategory) {

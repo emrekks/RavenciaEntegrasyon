@@ -13,7 +13,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     public async Task<IReadOnlyList<JobCountView>> CountAsync(Guid tenantId, DateTimeOffset? since, IReadOnlyList<string>? platforms, CancellationToken cancellationToken)
     {
         var query = db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId);
-        if (since is { } from) query = query.Where(x => x.CreatedAt >= from);
+        if (since is { } from) query = InWindow(query, from);
         query = OfPlatforms(query, tenantId, platforms);
         var groups = await query
             .GroupBy(x => new { x.Status, x.JobType })
@@ -65,7 +65,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             if (statuses.Count == 0) return null;
             query = query.Where(x => statuses.Contains(x.Status));
         }
-        if (listQuery.Since is { } since) query = query.Where(x => x.CreatedAt >= since);
+        if (listQuery.Since is { } since) query = InWindow(query, since);
         if (listQuery.JobTypes is { Count: > 0 } jobTypes)
         {
             var types = jobTypes.Select(type => type.Trim().ToUpperInvariant()).Where(type => type.Length > 0).Distinct().ToArray();
@@ -73,6 +73,20 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         }
         return OfPlatforms(query, tenantId, listQuery.Platforms);
     }
+
+    // The jobs a period ("Son 24 saat", "Son 7 gün") shows, the counts and the list alike: created in it, finished in it
+    // (its last activity), or still open (waiting, running or to be retried). An approval check that has waited for days
+    // is still shown in the last 24 hours (P7 of the 1 Nov 2026 review).
+    internal static IQueryable<IntegrationJob> InWindow(IQueryable<IntegrationJob> query, DateTimeOffset since)
+    {
+        var from = since.ToUniversalTime();
+        return query.Where(x => x.CreatedAt >= from || x.CompletedAt >= from
+            || x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled);
+    }
+
+    // The same rule for one job, for the tests and any in-memory check.
+    internal static bool IsInWindow(IntegrationJob job, DateTimeOffset since) =>
+        InWindow(new[] { job }.AsQueryable(), since).Any();
 
     // Jobs whose connection belongs to one of the platforms (PlatformCode, e.g. TRENDYOL, TRENDYOL_EFATURAM). A job
     // without a connection has no platform, so it is left out whenever a platform is chosen.
@@ -451,7 +465,11 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             }
         }
         summary = await WithHepsiburadaStageReadBackAsync(job, summary, cancellationToken);
-        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice);
+        // The product the job is about (product publications, updates and approval checks carry it), for a link.
+        var productId = PayloadGuid(job.PayloadJson, "productId");
+        if (productId is { } payloadProductId && !await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == job.TenantId && x.Id == payloadProductId, cancellationToken))
+            productId = null;
+        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice, productId);
     }
 
     // Hepsiburada SIT certification read-back (STAGE Hepsiburada connections only): the job detail's external id
@@ -954,8 +972,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (type is MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync) return new("Yapılan değişiklik", "Sipariş senkronizasyonu", "Sipariş bilgileri pazaryerinden eşitlendi.");
         if (type is MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync or MarketplaceJobTypes.PazaramaReferenceSync or MarketplaceJobTypes.PttAvmReferenceSync)
             return new("Yapılan işlem", type == MarketplaceJobTypes.HepsiburadaReferenceSync ? "Hepsiburada kategori ve eşleştirme verisi" : type == MarketplaceJobTypes.N11ReferenceSync ? "N11 kategori ve eşleştirme verisi" : type == MarketplaceJobTypes.PttAvmReferenceSync ? "PTT AVM kategori verisi" : type == MarketplaceJobTypes.PazaramaReferenceSync ? "Pazarama kategori, özellik ve marka verisi" : "Trendyol kategori ve eşleştirme verisi", "Kategori, özellik ve eşleştirme referansları salt okunur yenilendi; dış platforma veri gönderilmedi.");
-        if (type.Contains("PRODUCT", StringComparison.Ordinal) || type.Contains("CATALOG", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Ürün senkronizasyonu", "Ürün bilgileri pazaryerinden okundu; dış yazma yapılmadı.");
-        if (type.Contains("INVOICE", StringComparison.Ordinal)) return new("Yapılan değişiklik", "Fatura işlemi", "Fatura isteği pazaryerine gönderildi.");
+        if (ProductOrInvoiceChange(type) is { } explicitChange) return explicitChange;
 
         try
         {
@@ -975,6 +992,28 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         catch (System.Text.Json.JsonException) { }
         return null;
     }
+
+    // Product and invoice jobs, each by its own type (P2/P3 of the 1 Nov 2026 review): a publication, update or archive
+    // writes to the marketplace; a product read and an approval check only read; only the invoice deliveries send the
+    // invoice to the marketplace; the due scan is the panel's own; E-Faturam reads come from E-Faturam.
+    internal static JobChangeView? ProductOrInvoiceChange(string jobType) => jobType.ToUpperInvariant() switch
+    {
+        MarketplaceJobTypes.ProductCreate => new("Yapılan değişiklik", "Ürün yayını", "Ürün pazaryerine gönderildi."),
+        MarketplaceJobTypes.ProductUpdate => new("Yapılan değişiklik", "Ürün güncellemesi", "Ürün değişiklikleri pazaryerine gönderildi."),
+        MarketplaceJobTypes.ProductArchive => new("Yapılan değişiklik", "Ürün arşivleme", "Arşivleme isteği pazaryerine gönderildi."),
+        MarketplaceJobTypes.ProductApprovalReconcile => new("Yapılan işlem", "Ürün onay kontrolü", "Gönderilen ürünün pazaryerindeki onay durumu okundu; pazaryerine veri gönderilmedi."),
+        MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync
+            => new("Yapılan işlem", "Ürün senkronizasyonu", "Ürün bilgileri pazaryerinden okundu; pazaryerine veri gönderilmedi."),
+        MarketplaceJobTypes.CatalogStructureImport => new("Yapılan işlem", "Kategori ve özellik yapısı", "Pazaryeri ürünlerinden panel kategorileri, seçenekleri, özellikleri ve eşleşmeleri çıkarıldı; pazaryerine veri gönderilmedi."),
+        InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.ManualOrderInvoiceDelivery
+            => new("Yapılan değişiklik", "Fatura iletimi", "Fatura isteği pazaryerine gönderildi."),
+        InvoicingJobTypes.InvoiceSubmit => new("Yapılan değişiklik", "Fatura kesimi", "Fatura E-Faturam'a gönderildi."),
+        InvoicingJobTypes.InvoiceCancellation => new("Yapılan değişiklik", "Fatura iptali", "İptal isteği E-Faturam'a gönderildi."),
+        InvoicingJobTypes.InvoiceReconcile => new("Yapılan işlem", "Fatura durumu", "Fatura durumu E-Faturam'dan okundu."),
+        InvoicingJobTypes.InvoiceDocumentFetch => new("Yapılan işlem", "Fatura belgesi", "Fatura belgesi E-Faturam'dan okundu."),
+        InvoicingJobTypes.InvoiceDueScan => new("Tarama türü", "Fatura vade taraması", "Panel içi tarama: kesilmesi gereken faturalar panelde kontrol edildi; dış servise istek gönderilmedi."),
+        _ => null
+    };
 
     // The platform a job talks to: the connection's platform when it has one (shared types such as ORDER_STATUS_SYNC
     // run for every marketplace), otherwise the platform its type names; invoicing jobs talk to E-Faturam. "Ravencia" is

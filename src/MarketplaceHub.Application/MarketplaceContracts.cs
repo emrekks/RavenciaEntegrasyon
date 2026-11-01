@@ -882,6 +882,13 @@ public interface IReturnAuditPort
     Task<AdapterResult<IReadOnlyList<RemoteReturnLineAudit>>> ReturnLineAuditsAsync(AdapterContext context, string externalLineId, CancellationToken cancellationToken);
 }
 
+// Reads several return claims by their ids in one request (Trendyol getClaims claimIds, "tekil veya çoğul"); nothing is
+// written. Claims the marketplace does not return are simply missing from the list.
+public interface IReturnBatchReadPort
+{
+    Task<AdapterResult<IReadOnlyList<RemoteReturnClaim>>> GetManyAsync(AdapterContext context, IReadOnlyList<string> externalReturnIds, CancellationToken cancellationToken);
+}
+
 public interface IReturnPort
 {
     Task<AdapterResult<AdapterPageResult<RemoteReturnClaim>>> PollAsync(AdapterContext context, ReturnPollWindow window, AdapterPageRequest page, CancellationToken cancellationToken);
@@ -1004,10 +1011,28 @@ public sealed record SyncPolicyView(
     int ConnectionDeadJobCount24h = 0,
     DateTimeOffset? LastCursorAdvancedAt = null,
     DateTimeOffset? CursorStagnantSince = null,
-    string CursorProgressStatus = "UNKNOWN");
+    string CursorProgressStatus = "UNKNOWN",
+    SyncCadenceView? Cadence = null);
+// The cadence the scheduler keeps for a policy (SyncCadencePolicy): the interval of this pass, the bounds a user may
+// choose within and why, and the idle rule. Null on policies without a user-chosen cadence.
+public sealed record SyncCadenceView(
+    int EffectiveIntervalSeconds,
+    int DefaultIntervalSeconds,
+    int MinimumIntervalSeconds,
+    int MaximumIntervalSeconds,
+    string Basis,
+    string? IdleKind,
+    bool IdleBackoffEnabled,
+    int? IdleIntervalSeconds,
+    int? DefaultIdleIntervalSeconds,
+    bool IdleActive,
+    bool StageFloor,
+    // Why the scheduler does not queue the flow right now (no open return, price/stock writes off); null when it runs.
+    string? HeldReason = null);
 // ResetToDefault puts the application default cadence back (the given cadence is ignored) and lets later
-// default changes reach the policy again.
-public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, bool ResetToDefault = false);
+// default changes reach the policy again. Null idle fields keep what the policy has; an idle interval of 0 puts the
+// application's back.
+public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, bool ResetToDefault = false, bool? IdleBackoffEnabled = null, int? IdleIntervalSeconds = null);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);
 
@@ -1211,7 +1236,15 @@ public sealed record OrderListView(
     // When the order first reached the carrier (its first "shipped" status); null when not seen.
     DateTimeOffset? ShippedAt = null,
     // When a shipping label of the order was first printed from the panel (any computer).
-    DateTimeOffset? LabelPrintedAt = null);
+    DateTimeOffset? LabelPrintedAt = null,
+    // The small marks beside the order number; null when the order has none.
+    OrderRowMarks? Marks = null);
+// Facts the marketplace states about an order, shown as icons in the order row. Each is set only from a field the
+// marketplace sent: a missing field leaves the mark out (unknown), it never means "no".
+// MicroExport: Trendyol micro=true; MicroExportCountryCode: the buyer's country (ISO alpha-2) when known.
+// DeliveryPoint: Trendyol deliveryAddressType=CollectionPoint, n11 deliveryAddressType (KTN, EASYPOINT, PUP).
+// FastDeliveryType: Trendyol fastDeliveryType TodayDelivery, SameDayShipping or FastDelivery.
+public sealed record OrderRowMarks(bool MicroExport, string? MicroExportCountryCode, bool DeliveryPoint, string? DeliveryPointType, string? FastDeliveryType);
 public sealed record OrderAddressView(
     string? FullName,
     string? FullAddress,

@@ -168,7 +168,8 @@ public sealed record JobDetailView(
     IReadOnlyList<JobOrderContextView>? RelatedOrders = null,
     JobScanView? Scan = null,
     IReadOnlyList<JobFailureReasonView>? FailureReasons = null,
-    JobInvoiceContextView? Invoice = null);
+    JobInvoiceContextView? Invoice = null,
+    Guid? ProductId = null);
 
 // The job list returns at most Limit of the newest matching jobs (default 200, max 1,000)
 // instead of the whole history. After is the NextCursor of the previous page (paged list only):

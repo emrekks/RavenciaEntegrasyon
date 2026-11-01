@@ -110,6 +110,11 @@ public sealed class TrendyolEFaturamHttpClient(
         // "get-outgoing-e-invoice-status" (developers.trendyolefaturam.com/OpenApi). An E-Invoice is issued only to a
         // buyer the taxpayer lookup found registered (EInvoiceRecipientPolicy); reading one only reports its state.
         var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Get, TrendyolEFaturamEndpoints.Status(reference.InvoiceType, uuid), null, cancellationToken);
+        // Only the documented earchive-not-found / outgoing-einvoice-not-found problem means "no invoice with this
+        // UUID"; a bare 404 (a moved path) stays an ordinary error.
+        if (!response.IsSuccess && response.Error is { HttpStatus: 404 } notFound && TrendyolEFaturamProblemDetails.IsInvoiceNotFound(notFound.RemoteRequestId))
+            return AdapterResult<InvoiceRemoteStatus>.Failure(new(AdapterErrorClass.NotFound, InvoiceProviderIdentityPolicy.NotFoundAtProviderCode,
+                "E-Faturam bu kimlikle bir fatura bulamadı.", 404, null, notFound.RemoteRequestId), response.RateLimit);
         if (!response.IsSuccess) return AdapterResult<InvoiceRemoteStatus>.Failure(response.Error!, response.RateLimit);
         try { return AdapterResult<InvoiceRemoteStatus>.Success(TrendyolEFaturamJsonMapper.InvoiceStatus(response.Value!.Body, reference.ExternalReference), response.RateLimit); }
         catch (JsonException) { return AdapterResult<InvoiceRemoteStatus>.Failure(TrendyolEFaturamErrorMapper.Contract(), response.RateLimit); }
@@ -135,6 +140,8 @@ public sealed class TrendyolEFaturamHttpClient(
         {
             var download = await documents.DownloadPdfAsync(permanentUrl, cancellationToken);
             if (download.RemoteStatus is { } status) return AdapterResult<RemoteInvoiceDocument>.Failure(TrendyolEFaturamErrorMapper.FromStatus(status, null, null));
+            if (!download.Succeeded && SafeRemoteDocumentDownloader.IsDocumentNotReady(download.ErrorCode))
+                return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.TransientNetwork, download.ErrorCode!, "E-Faturam belgesi henüz PDF olarak hazır değil; yeniden denenecek.", null, TimeSpan.FromMinutes(2), null));
             if (!download.Succeeded) return AdapterResult<RemoteInvoiceDocument>.Failure(new(AdapterErrorClass.ContractViolation, download.ErrorCode ?? "EFATURAM_DOCUMENT_REJECTED", "E-Faturam belge adresi veya PDF içeriği güvenlik doğrulamasını geçemedi.", null, null, null));
             return AdapterResult<RemoteInvoiceDocument>.Success(new("PDF", "application/pdf", $"invoice-{documentUuid}.pdf", download.Content!, documentUuid, download.FinalUrl), response.RateLimit);
         }

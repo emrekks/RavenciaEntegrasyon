@@ -36,9 +36,6 @@ public sealed class SafeRemoteDocumentDownloader(IHttpClientFactory clients, IOp
             if (!response.IsSuccessStatusCode) return SafeDocumentDownloadResult.RemoteFailure(response.StatusCode);
             if (response.Content.Headers.ContentLength is > MaximumDocumentBytes) return SafeDocumentDownloadResult.Rejected("DOCUMENT_TOO_LARGE");
             var mediaType = response.Content.Headers.ContentType?.MediaType;
-            if (!string.Equals(mediaType, "application/pdf", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(mediaType, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
-                return SafeDocumentDownloadResult.Rejected("DOCUMENT_CONTENT_TYPE_INVALID");
 
             await using var source = await response.Content.ReadAsStreamAsync(effectiveToken);
             await using var destination = new MemoryStream();
@@ -53,12 +50,33 @@ public sealed class SafeRemoteDocumentDownloader(IHttpClientFactory clients, IOp
                 await destination.WriteAsync(buffer.AsMemory(0, read), effectiveToken);
             }
             var content = destination.ToArray();
-            if (content.Length < 5 || content[0] != (byte)'%' || content[1] != (byte)'P' || content[2] != (byte)'D' || content[3] != (byte)'F' || content[4] != (byte)'-')
-                return SafeDocumentDownloadResult.Rejected("DOCUMENT_PDF_SIGNATURE_INVALID");
-            return SafeDocumentDownloadResult.Success(content, current.AbsoluteUri);
+            return ContentRejection(mediaType, content) is { } rejection
+                ? SafeDocumentDownloadResult.Rejected(rejection)
+                : SafeDocumentDownloadResult.Success(content, current.AbsoluteUri);
         }
         return SafeDocumentDownloadResult.Rejected("DOCUMENT_REDIRECT_REJECTED");
     }
+
+    public const string ContentTypeInvalidCode = "DOCUMENT_CONTENT_TYPE_INVALID";
+    public const string PdfSignatureInvalidCode = "DOCUMENT_PDF_SIGNATURE_INVALID";
+
+    // The bytes decide, not the declared type: a body that starts with the PDF signature is a PDF whatever the storage in
+    // front of it calls it (binary/octet-stream, application/x-pdf, no type at all). A body that is not a PDF keeps the
+    // code that says why: a non-PDF type (an HTML or JSON page served while the document is not ready) or a PDF/binary
+    // type whose bytes are not a PDF.
+    internal static string? ContentRejection(string? mediaType, byte[] content)
+    {
+        if (content.Length >= 5 && content[0] == (byte)'%' && content[1] == (byte)'P' && content[2] == (byte)'D' && content[3] == (byte)'F' && content[4] == (byte)'-')
+            return null;
+        return string.Equals(mediaType, "application/pdf", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(mediaType, "application/octet-stream", StringComparison.OrdinalIgnoreCase)
+            ? PdfSignatureInvalidCode
+            : ContentTypeInvalidCode;
+    }
+
+    // A non-PDF answer from the provider's own document link is a document that is not ready yet (the PDF of a just-issued
+    // e-Archive invoice is rendered after the invoice exists), so it is retried instead of parked for review.
+    public static bool IsDocumentNotReady(string? code) => code is ContentTypeInvalidCode or PdfSignatureInvalidCode;
 
     public static async ValueTask<Stream> ConnectPublicOnlyAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
     {

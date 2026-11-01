@@ -160,7 +160,7 @@ public sealed partial class InvoicingBillingService(
                 || !DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus)) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueAt = deliveredAt?.AddDays(7);
-            var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
+            var dueSoon = MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus) && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
             var image = orderLines.Select(line => WorkspaceLineImage(catalog, line)).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity), line.UnitPrice, line.VatRate, WorkspaceLineImage(catalog, line))).ToList();
@@ -172,7 +172,7 @@ public sealed partial class InvoicingBillingService(
                 ?? invoiceReadIssues.GetValueOrDefault($"order-invoice-reconciliation:{order.ConnectionId}:{order.ExternalOrderId}");
             if (invoiceReadIssue is not null && !InvoiceWorkspaceReadIssuePolicy.ShouldDisplay(invoiceReadIssue.Code))
                 invoiceReadIssue = null;
-            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), invoiceStatus == "FATURA_BEKLIYOR", order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary, connection?.Environment ?? "UNKNOWN", package.MarketplaceInvoiceUrl);
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus), order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary, connection?.Environment ?? "UNKNOWN", package.MarketplaceInvoiceUrl);
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
 
@@ -203,7 +203,7 @@ public sealed partial class InvoicingBillingService(
                 if (!hiddenPackageIds.Contains(candidate.Package.Id)
                     && candidate.Package.Status == ShipmentPackageStatus.Delivered
                     && now >= candidate.Package.StatusOccurredAt.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays)
-                    && candidate.InvoiceStatus == "FATURA_BEKLIYOR") dueSoonCount++;
+                    && MarketplaceSalesService.IsAwaitingInvoiceLabel(candidate.InvoiceStatus)) dueSoonCount++;
             }
             var last = candidates[^1];
             cursor = new(last.Package.StatusOccurredAt, last.Package.Id);
@@ -548,7 +548,7 @@ public sealed partial class InvoicingBillingService(
             };
             var invoiceStatus = WorkspaceInvoiceStatus(package, order, invoice, connection);
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
-            var dueSoon = invoiceStatus == "FATURA_BEKLIYOR" && deliveredAt is not null
+            var dueSoon = MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus) && deliveredAt is not null
                 && now >= deliveredAt.Value.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays);
             return new WorkspaceCandidate(
                 package,
@@ -556,7 +556,7 @@ public sealed partial class InvoicingBillingService(
                 connection,
                 invoice,
                 invoiceStatus,
-                string.Equals(invoiceStatus, "FATURA_BEKLIYOR", StringComparison.Ordinal),
+                MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus),
                 dueSoon,
                 deliveredAt,
                 deliveredAt?.AddDays(DashboardMetricPolicy.InvoiceDueDays),
@@ -629,7 +629,8 @@ public sealed partial class InvoicingBillingService(
     internal static bool IsWorkspaceInvoiceUninvoiced(string invoiceStatus, bool canCreateInvoice, bool marketplaceInvoicePresent = false) =>
         !marketplaceInvoicePresent && (canCreateInvoice
             || invoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "FATURA_KONTROLDE" or "FATURA_PLATFORMA_AKTARILMADI"
-                or MarketplaceSalesService.UnverifiedInvoiceLabel);
+                or MarketplaceSalesService.UnverifiedInvoiceLabel or MarketplaceSalesService.ShopifyUnconfirmedInvoiceLabel
+                or MarketplaceSalesService.InvoiceNeedsReviewLabel);
 
     // Evidence that the package holds an invoice outside a panel invoice record. A status the seller set by hand
     // (Shopify "Faturası yüklendi" / "Fatura bekliyor") decides; otherwise the marketplace's own observation does.
@@ -713,7 +714,7 @@ public sealed partial class InvoicingBillingService(
             ? []
             : await db.MarketplaceDeliveryStates.AsNoTracking()
                 .Where(state => state.TenantId == tenantId && invoiceIds.Contains(state.InvoiceId))
-                .Select(state => new { state.InvoiceId, state.PackageId, state.Status, state.ExternalReference, state.UpdatedAt })
+                .Select(state => new { state.InvoiceId, state.PackageId, state.Status, state.ExternalReference, state.UpdatedAt, state.ExternalIdempotencyKey })
                 .ToListAsync(cancellationToken);
         var deliveryAttempts = invoiceIds.Length == 0
             ? []
@@ -775,7 +776,7 @@ public sealed partial class InvoicingBillingService(
             if (!shouldDisplayReadIssue) issue = default;
             var hasFiscalDocument = candidate.Invoice is not null && invoiceDocumentIds.Contains(candidate.Invoice.Id);
             var deliveryStatus = manualDeliveryState?.Status
-                ?? deliveryState?.Status
+                ?? InvoiceDeliveryRecoveryPolicy.DisplayDeliveryStatus(deliveryState?.Status, deliveryState?.ExternalIdempotencyKey)
                 ?? deliveryAttempt?.Status
                 ?? (candidate.Package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced ? "REMOTE_PRESENT_UNMATCHED" : "NOT_SENT");
             var currentPlatformInvoiceUrl = packageDetailsForItem?.MarketplaceInvoiceUrl ?? candidate.Package.MarketplaceInvoiceUrl;
@@ -854,6 +855,7 @@ public sealed partial class InvoicingBillingService(
     private static string WorkspaceInvoiceDisplayStatus(WorkspaceCandidate candidate)
     {
         if (HasMarketplaceInvoiceObservation(candidate)) return "FATURA_KONTROLDE";
+        if (candidate.InvoiceStatus == MarketplaceSalesService.ShopifyUnconfirmedInvoiceLabel) return candidate.InvoiceStatus;
         if (candidate.CanCreateInvoice || candidate.InvoiceStatus == "FATURA_BEKLIYOR") return "FATURA_BEKLIYOR";
         if (candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ" or "REJECTED" or "VALIDATION_FAILED" or "MANUAL_REVIEW" or "MARKETPLACE_FAILED") return candidate.InvoiceStatus;
         if (candidate.InvoiceStatus is "FATURA_YUKLENDI" or "FATURA_KESILDI" or "COMPLETED") return "FATURA_KONTROLDE";
@@ -876,7 +878,10 @@ public sealed partial class InvoicingBillingService(
                 case MarketplaceInvoiceStatus.Invoiced: return "FATURA_KONTROLDE";
                 case MarketplaceInvoiceStatus.Received: return "FATURA_KONTROLDE";
                 case MarketplaceInvoiceStatus.Rejected: return "FATURA_REDDEDILDI";
-                case MarketplaceInvoiceStatus.NotInvoiced: return "FATURA_BEKLIYOR";
+                case MarketplaceInvoiceStatus.NotInvoiced:
+                    return string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+                        ? MarketplaceSalesService.ShopifyUnconfirmedInvoiceLabel
+                        : "FATURA_BEKLIYOR";
             }
             return MarketplaceSalesService.InvoiceLabelForPlatform(
                 null,

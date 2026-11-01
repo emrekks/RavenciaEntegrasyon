@@ -108,7 +108,7 @@ public sealed partial class PttAvmHttpClient
         catch (XmlException) { }
         // WCF answers a fault with HTTP 500; the fault decides, not the status.
         if (document?.Descendants().FirstOrDefault(x => x.Name.LocalName == "Fault" && x.Name.NamespaceName == EnvelopeNamespace) is { } fault)
-            return (null, FaultError(fault, (int)status));
+            return (null, FaultError(fault, (int)status, operation));
         if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
             return (null, new(AdapterErrorClass.Authentication, "PTTAVM_CREDENTIALS_REJECTED", PttAvmErrorAdvice.CredentialsRejected, (int)status, null, null));
         if (status == HttpStatusCode.RequestTimeout)
@@ -130,7 +130,18 @@ public sealed partial class PttAvmHttpClient
     // WCF security faults: a wrong user name or password, an expired Timestamp and a malformed request all come
     // back as "An error occurred when verifying security for the message" (code InvalidSecurity or
     // FailedAuthentication). Our envelopes always send i:nil for nulls, so here it means the credentials.
-    internal static AdapterError FaultError(XElement fault, int? status)
+    // The operations that only read; SaveInvoince, UpdateProductsStockPrice and UpdateProductsV3 write.
+    internal static bool IsReadOperation(string operation) => operation is "SiparisKontrolListesiV2" or "StokKontrolListesi" or "GetProductsWithVariants"
+        or "GetProductsTrackingResult" or "BarkodKontrol" or "GetCategoryTree" or "GetMainCategories" or "KullaniciTedarikciBilgisiGetir" or "KargoBilgiListesi";
+
+    // A fault text that names no cause: none at all, PTT AVM's "Bilinmeyen bir hata oluştu" or WCF's internal-error sentence.
+    internal static bool IsUnexplainedFault(string? reason) =>
+        string.IsNullOrWhiteSpace(reason)
+        || reason.Contains("Bilinmeyen", StringComparison.OrdinalIgnoreCase)
+        || reason.Contains("unknown error", StringComparison.OrdinalIgnoreCase)
+        || reason.Contains("internal error", StringComparison.OrdinalIgnoreCase);
+
+    internal static AdapterError FaultError(XElement fault, int? status, string? operation = null)
     {
         // SOAP 1.1 carries faultcode/faultstring; a SOAP 1.2 style Code/Value and Reason/Text are read too.
         var codes = string.Join(" ", fault.Descendants().Where(x => x.Name.LocalName is "faultcode" or "Value").Select(x => x.Value.Trim()));
@@ -139,6 +150,13 @@ public sealed partial class PttAvmHttpClient
             return new(AdapterErrorClass.Authentication, "PTTAVM_CREDENTIALS_REJECTED", PttAvmErrorAdvice.CredentialsRejected, status, null, null);
         if (PttAvmProductPayloadRules.IsRepeatRequestRefusal(reason)) return PttAvmProductPayloadRules.RepeatRequestError(status);
         var message = Clip(reason);
+        // A read PTT AVM answers with a fault that names no cause ("Bilinmeyen bir hata oluştu.", 31 Oct 2026: five order
+        // and return reads ended blocked on their first attempt) is the service's own trouble: it is tried again. A write
+        // keeps the rejection, since whether it took effect is not known.
+        if (operation is not null && IsReadOperation(operation) && IsUnexplainedFault(reason))
+            return new(AdapterErrorClass.Remote5xx, "PTTAVM_REMOTE_FAULT",
+                message is null ? "PTT AVM okuma isteğine nedeni belirtilmeyen bir hata döndü; yeniden denenecek." : $"PTT AVM okuma isteğine nedeni belirtilmeyen bir hata döndü ({message}); yeniden denenecek.",
+                status, TimeSpan.FromSeconds(60), null);
         return new(AdapterErrorClass.Validation, "PTTAVM_REQUEST_REJECTED",
             message is null ? "PTT AVM isteği reddetti (SOAP hatası)." : $"PTT AVM isteği reddetti: {PttAvmErrorAdvice.WithAdvice(message)}", status, null, null);
     }

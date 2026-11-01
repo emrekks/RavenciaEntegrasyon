@@ -7,7 +7,7 @@ export type SyncPolicyHealthInput = {
 
 export type SyncPolicyHealthPresentation = {
   label: string
-  tone: 'disabled' | 'healthy' | 'delayed' | 'degraded' | 'offline' | 'stalled' | 'unknown'
+  tone: 'disabled' | 'paused' | 'healthy' | 'delayed' | 'degraded' | 'offline' | 'stalled' | 'unknown'
   stalled: boolean
 }
 
@@ -20,6 +20,10 @@ export function syncPolicyHealthPresentation(
   const health = policy.healthStatus?.trim().toUpperCase()
   // Write policies (SHIPMENT_WRITE, RETURN_WRITE...) are permissions, not reads: there is nothing to be late.
   if (health === 'PERMISSION') return { label: 'İzin açık', tone: 'healthy', stalled: false }
+  // The open-return scan is not queued while no return is open.
+  if (health === 'PAUSED_NO_OPEN_RETURNS') return { label: 'Beklemede · Açık iade yok', tone: 'paused', stalled: false }
+  // The server holds a stock reconciliation while the automatic price/stock writes are off: waiting, not late.
+  if (health === 'PAUSED_WRITES_OFF') return { label: 'Beklemede · Otomatik fiyat/stok yazma kapalı', tone: 'paused', stalled: false }
   const stalled = policy.cursorProgressStatus?.trim().toUpperCase() === 'STALLED'
 
   if (health === 'OFFLINE') return { label: policy.lastSuccessAt ? 'Güncelleme gecikti' : 'İlk çalışma bekliyor', tone: 'offline', stalled }

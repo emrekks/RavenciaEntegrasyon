@@ -101,7 +101,8 @@ public sealed class InvoiceDeliveryRecoveryPolicyTests
     [Theory]
     [InlineData(InvoiceStatus.Completed, "CONFIRMED", null, true)]
     [InlineData(InvoiceStatus.Completed, "CONFIRMED", "INV-1", false)]
-    [InlineData(InvoiceStatus.MarketplacePending, "CONFIRMED", null, false)]
+    [InlineData(InvoiceStatus.MarketplacePending, "CONFIRMED", null, true)]
+    [InlineData(InvoiceStatus.Accepted, "CONFIRMED", null, false)]
     [InlineData(InvoiceStatus.Completed, "UNKNOWN", null, false)]
     public void PreservesPreviouslyConfirmedDeliveryWhenMarketplaceOmitsInvoiceNumber(
         InvoiceStatus invoiceStatus,

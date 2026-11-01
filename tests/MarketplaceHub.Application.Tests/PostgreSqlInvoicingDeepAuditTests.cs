@@ -460,6 +460,69 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // Item 20: a submission whose answer was lost is settled by reading the UUID its attempt sent, never by sending again.
+    [PostgreSqlTheory]
+    [InlineData(10, "NOT_FOUND")]
+    [InlineData(1, "NOT_FOUND")]
+    [InlineData(10, "ACCEPTED")]
+    public async Task Uuid_UncertainSubmissionIsOnlyReadByItsUuidAndNeverSentAgain(int minutesSinceSend, string providerAnswer)
+    {
+        var seed = NewSeed($"uuid-{providerAnswer.ToLowerInvariant()}-{minutesSinceSend}", InvoiceStatus.UnknownResult);
+        seed.Invoice.ExternalReference = null;
+        seed.Invoice.InvoiceNumber = null;
+        seed.Invoice.LastErrorCode = "INVOICE_SUBMISSION_TRANSPORT_UNKNOWN";
+        var uuid = InvoiceProviderIdentityPolicy.UuidFor(seed.Invoice.Id).ToString("D");
+        var attempt = new InvoiceSubmissionAttempt
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InvoiceId = seed.Invoice.Id,
+            AttemptNumber = 1,
+            RequestHash = "uuid-hash",
+            Outcome = "UNKNOWN",
+            ErrorCode = "INVOICE_SUBMISSION_TRANSPORT_UNKNOWN",
+            ExternalReference = uuid,
+            StartedAt = fixture.Now.AddMinutes(-minutesSinceSend),
+            CompletedAt = fixture.Now.AddMinutes(-minutesSinceSend)
+        };
+        await SeedAsync(seed, db => db.InvoiceSubmissionAttempts.Add(attempt));
+        try
+        {
+            var provider = new UuidReadingProvider { Found = providerAnswer == "ACCEPTED" };
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, null, OpenWrites, provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceReconcile,
+                    InvoicePayload(seed), $"uuid-{minutesSinceSend}", CancellationToken.None);
+                // A "not found" right after the send is read again later; one after the settle delay closes the read.
+                Assert.Equal(providerAnswer == "NOT_FOUND" && minutesSinceSend < 5 ? JobCompletionKind.Retry : JobCompletionKind.Succeeded, result.Kind);
+            }
+
+            // Only GETs by the attempt's UUID; no POST.
+            Assert.Equal(0, provider.SubmitCalls);
+            Assert.NotEmpty(provider.ReadUuids);
+            Assert.All(provider.ReadUuids, read => Assert.Equal(uuid, read));
+            await using var verification = fixture.CreateContext();
+            var stored = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
+            Assert.False(await verification.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceSubmit));
+            if (providerAnswer == "ACCEPTED")
+            {
+                Assert.Equal(uuid, stored.ExternalReference);
+                Assert.Equal(InvoiceStatus.Accepted, stored.Status);
+            }
+            else
+            {
+                // Not issued, but a new submission still waits for the operator: the invoice stays uncertain.
+                Assert.Equal(InvoiceStatus.UnknownResult, stored.Status);
+                Assert.Null(stored.ExternalReference);
+                Assert.Equal(minutesSinceSend < 5 ? "INVOICE_SUBMISSION_TRANSPORT_UNKNOWN" : InvoiceProviderIdentityPolicy.NotFoundAtProviderCode, stored.LastErrorCode);
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     private InvoicingBillingService NewBillingService(AppDbContext db, IDictionary<string, string?> configuration, IInvoiceMarketplacePort? marketplace = null)
     {
         var dataProtection = new EphemeralDataProtectionProvider();
@@ -702,6 +765,32 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
         public Task<AdapterResult<ConnectionIdentity>> TestConnectionAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<AdapterResult<RemoteInvoiceDocument>> GetDocumentAsync(AdapterContext context, ExternalInvoiceReference reference, string documentKind, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    // Answers a status read by UUID with the invoice (accepted) or E-Faturam's documented "not found"; any POST fails the test.
+    private sealed class UuidReadingProvider : IInvoiceProviderPort
+    {
+        public bool Found { get; init; }
+        public int SubmitCalls { get; private set; }
+        public List<string> ReadUuids { get; } = [];
+
+        public Task<AdapterResult<InvoiceSubmissionResult>> SubmitAsync(AdapterContext context, InvoiceSubmission submission, CancellationToken cancellationToken)
+        {
+            SubmitCalls++;
+            throw new InvalidOperationException("An uncertain invoice must not be sent again.");
+        }
+
+        public Task<AdapterResult<InvoiceRemoteStatus>> QueryStatusAsync(AdapterContext context, ExternalInvoiceReference reference, CancellationToken cancellationToken)
+        {
+            ReadUuids.Add(reference.EttnUuid ?? reference.ExternalReference);
+            return Task.FromResult(Found
+                ? AdapterResult<InvoiceRemoteStatus>.Success(new(reference.ExternalReference, "300", "ACCEPTED", "DAP2026000000999", reference.ExternalReference, true))
+                : AdapterResult<InvoiceRemoteStatus>.Failure(new(AdapterErrorClass.NotFound, InvoiceProviderIdentityPolicy.NotFoundAtProviderCode, "not found", 404, null, null)));
+        }
+
+        public Task<AdapterResult<ConnectionIdentity>> TestConnectionAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteInvoiceDocument>> GetDocumentAsync(AdapterContext context, ExternalInvoiceReference reference, string documentKind, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<InvoiceCancellationResult>> CancelAsync(AdapterContext context, InvoiceCancellation command, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class CancelledProvider : IInvoiceProviderPort

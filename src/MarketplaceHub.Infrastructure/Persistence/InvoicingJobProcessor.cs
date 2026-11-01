@@ -117,6 +117,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             invoice.LastErrorCode = staleAttempt.ErrorCode;
             invoice.UpdatedAt = uncertainNow;
             invoice.Version++;
+            await QueueUncertainSubmissionRead(tenantId, connectionId, invoice.Id, staleAttempt, correlationId);
             await db.SaveChangesAsync(cancellationToken);
             throw new JobProcessingException(JobExecutionResult.ManualReview("INVOICE_SUBMISSION_OUTCOME_UNKNOWN", "Önceki mali gönderim yanıtı alınmadan kesildi. Sağlayıcıdan kesin yokluk doğrulanmadan yeni mali gönderim yapılmadı."));
         }
@@ -247,9 +248,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 await BlockFiscalSubmission(invoice, recipientRefusal.Code, recipientRefusal.Message, cancellationToken);
             // Stamped after the marketplace reads, right before the request: the provider prints this as the invoice date and time.
             StampIssueTime(invoice, timeProvider.GetUtcNow());
+            // The invoice UUID is chosen here, before the request, and kept on the attempt: a lost answer is settled by
+            // reading this UUID at the provider, never by sending the invoice again.
+            var providerUuid = InvoiceProviderIdentityPolicy.UuidFor(invoice.Id).ToString("D");
             var canonical = JsonSerializer.Serialize(new
             {
                 invoice.Id,
+                InvoiceUuid = providerUuid,
                 invoice.InvoiceType,
                 invoice.Currency,
                 invoice.PayableTotal,
@@ -266,7 +271,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 Lines = lines.Select(x => new { x.LineSequence, x.DescriptionSnapshot, x.SkuSnapshot, x.UnitSnapshot, x.Quantity, x.UnitPrice, x.DiscountAmount, x.VatRate, x.VatAmount, x.LineTotal })
             });
             var hash = Hash(canonical); var started = timeProvider.GetUtcNow();
-            var attempt = new InvoiceSubmissionAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, AttemptNumber = await NextAttempt(tenantId, invoice.Id, cancellationToken), RequestHash = hash, Outcome = "STARTED", StartedAt = started };
+            var attempt = new InvoiceSubmissionAttempt { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, AttemptNumber = await NextAttempt(tenantId, invoice.Id, cancellationToken), RequestHash = hash, Outcome = "STARTED", ExternalReference = providerUuid, StartedAt = started };
             // A Submitting invoice with an error code means "refused, nothing in flight" (retryable in the
             // workspace); an automatic retry that reaches this point is in flight again, so the code goes.
             invoice.LastErrorCode = null;
@@ -282,12 +287,14 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             catch (OperationCanceledException)
             {
                 MarkSubmissionUnknown(invoice, attempt, "INVOICE_SUBMISSION_CANCELLED");
+                await QueueUncertainSubmissionRead(tenantId, connectionId, invoice.Id, attempt, correlationId);
                 await db.SaveChangesAsync(CancellationToken.None);
                 throw new JobProcessingException(JobExecutionResult.ManualReview("INVOICE_SUBMISSION_OUTCOME_UNKNOWN", "Mali fatura isteği sırasında bağlantı kesildi. Dış sonuç doğrulanmadan yeniden gönderilmedi."));
             }
             catch (Exception)
             {
                 MarkSubmissionUnknown(invoice, attempt, "INVOICE_SUBMISSION_TRANSPORT_UNKNOWN");
+                await QueueUncertainSubmissionRead(tenantId, connectionId, invoice.Id, attempt, correlationId);
                 await db.SaveChangesAsync(CancellationToken.None);
                 throw new JobProcessingException(JobExecutionResult.ManualReview("INVOICE_SUBMISSION_OUTCOME_UNKNOWN", "Mali sağlayıcı isteğinin sonucu kesinleşmedi. Dış sonuç doğrulanmadan yeniden gönderilmedi."));
             }
@@ -321,6 +328,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                         invoice.InvoiceNumber ??= partial.InvoiceNumber;
                         await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, "after-submit", correlationId, CancellationToken.None);
                     }
+                    else
+                        await QueueUncertainSubmissionRead(tenantId, connectionId, invoice.Id, attempt, correlationId);
                     await db.SaveChangesAsync(CancellationToken.None);
                     throw new JobProcessingException(JobExecutionResult.ManualReview("INVOICE_SUBMISSION_OUTCOME_UNKNOWN", "Sağlayıcı yanıtı mali faturanın oluşup oluşmadığını kesinleştirmedi. Aynı fatura yeniden gönderilmedi.", error.RemoteRequestId));
                 }
@@ -401,6 +410,61 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
     }
 
+    // Queues the read of the UUID an uncertain attempt sent (InvoiceReconcile settles it by a status read, never by
+    // sending again). Queueing it never stands in the way of recording the uncertainty itself.
+    private async Task QueueUncertainSubmissionRead(Guid tenantId, Guid connectionId, Guid invoiceId, InvoiceSubmissionAttempt attempt, string correlationId)
+    {
+        if (InvoiceProviderIdentityPolicy.UuidToRead(attempt.ExternalReference) is null) return;
+        try
+        {
+            await EnqueueAutomaticJob(tenantId, connectionId, invoiceId, InvoicingJobTypes.InvoiceReconcile, $"after-uncertain:{attempt.AttemptNumber}", correlationId, CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is System.Data.Common.DbException or InvalidOperationException or TimeoutException)
+        {
+            // The invoice stays UnknownResult; the operator still sees it and nothing is sent.
+        }
+    }
+
+    // A submission whose answer was lost, read by the UUID its attempt sent (GET getEArchiveStatus /
+    // getOutgoingEInvoiceStatus only; nothing is ever posted from here):
+    // - found: the provider issued it; its reference is recorded and the normal status read takes over;
+    // - "not found" (the documented 404) at least NotFoundSettleDelay after the send: not issued. The invoice stays
+    //   uncertain with that code; a new submission still needs the operator's confirmation;
+    // - an attempt from before the UUID was sent: nothing to read, the operator checks the provider portal.
+    private async Task<bool> SettleUncertainSubmission(Guid tenantId, Guid connectionId, Invoice invoice, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var attempt = await db.InvoiceSubmissionAttempts
+            .Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id)
+            .OrderByDescending(x => x.AttemptNumber)
+            .FirstOrDefaultAsync(cancellationToken);
+        var uuid = attempt?.Outcome == "UNKNOWN" ? InvoiceProviderIdentityPolicy.UuidToRead(attempt.ExternalReference) : null;
+        if (attempt is null || uuid is null) return false;
+        var result = await provider.QueryStatusAsync(Context(tenantId, connectionId, correlationId, $"uncertain-read:{invoice.Id:N}"), new(uuid, uuid, invoice.InvoiceType), cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        if (!result.IsSuccess)
+        {
+            if (result.Error!.Code != InvoiceProviderIdentityPolicy.NotFoundAtProviderCode) throw JobProcessingException.FromAdapter(result.Error);
+            if (!InvoiceProviderIdentityPolicy.NotFoundIsSettled(attempt.StartedAt, now))
+                throw new JobProcessingException(JobExecutionResult.Retry(InvoiceProviderIdentityPolicy.NotFoundAtProviderCode,
+                    "E-Faturam faturayı henüz göstermiyor; birkaç dakika sonra yeniden okunacak.", InvoiceProviderIdentityPolicy.NotFoundSettleDelay));
+            if (invoice.LastErrorCode != InvoiceProviderIdentityPolicy.NotFoundAtProviderCode)
+            {
+                invoice.LastErrorCode = InvoiceProviderIdentityPolicy.NotFoundAtProviderCode;
+                invoice.UpdatedAt = now;
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            return true;
+        }
+        invoice.ExternalReference = uuid;
+        invoice.EttnUuid ??= result.Value!.EttnUuid ?? uuid;
+        invoice.InvoiceNumber ??= result.Value!.InvoiceNumber;
+        invoice.UpdatedAt = now;
+        invoice.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return await Reconcile(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+    }
+
     private void MarkSubmissionUnknown(Invoice invoice, InvoiceSubmissionAttempt attempt, string errorCode)
     {
         var now = timeProvider.GetUtcNow();
@@ -437,6 +501,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     private async Task<bool> Reconcile(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
+        if (invoice is not null && invoice.ProviderConnectionId == connectionId && string.IsNullOrWhiteSpace(invoice.ExternalReference)
+            && invoice.Status == InvoiceStatus.UnknownResult)
+            return await SettleUncertainSubmission(tenantId, connectionId, invoice, payloadJson, correlationId, cancellationToken);
         if (invoice is null || invoice.ProviderConnectionId != connectionId || string.IsNullOrWhiteSpace(invoice.ExternalReference)) return false;
         var cancellationPending = invoice.Status == InvoiceStatus.CancellationPending;
         var result = await provider.QueryStatusAsync(Context(tenantId, connectionId, correlationId, $"reconcile:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, invoice.InvoiceType), cancellationToken);

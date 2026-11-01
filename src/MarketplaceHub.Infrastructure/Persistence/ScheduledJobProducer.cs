@@ -11,6 +11,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvider, IConfiguration configuration) : IScheduledJobProducer
 {
+    internal const int InvoiceDueScanIntervalSeconds = 1800;
+
+    // One due scan per tenant per half-hour bucket (the dedup key of INVOICE_DUE_SCAN).
+    internal static long InvoiceDueScanBucket(DateTimeOffset now) => now.ToUnixTimeSeconds() / InvoiceDueScanIntervalSeconds;
+
     // The policy passes run on their own slower timer (the worker calls this every five minutes and at
     // startup); the default upgrades only when asked, which the worker does at startup and hourly.
     public async Task MaintainPoliciesAsync(bool includeDefaults, CancellationToken cancellationToken)
@@ -19,6 +24,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         if (includeDefaults) await EnsureDefaultPoliciesAsync(cancellationToken);
         await DisableExternalWriteAutomationAsync(cancellationToken);
         db.ChangeTracker.Clear();
+        // Old failures of scheduled reads that a later run of the same read has replaced stop counting as errors. Display
+        // housekeeping only: a failure here never stops the pass.
+        try
+        {
+            await ScheduledReadSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException) { }
         // Marketplace lists a connection supports but has never read (at startup and hourly; once a day per gap).
         if (includeDefaults)
         {
@@ -96,20 +108,29 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             // within the last hour is not looked at again.
             var isListingVerify = row.Policy.ResourceType == ListingVerificationPolicy.ResourceType;
             if (isListingVerify && row.Policy.LastScheduledAt is { } verifyQueuedAt && now - verifyQueuedAt < ListingVerificationPolicy.RetrySpacing) continue;
-            if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) continue;
-            // Questions are rare; a connection without a new question for a while is asked less often.
-            if (row.Policy.ResourceType == "QUESTIONS")
-            {
-                var lastQuestionAt = await db.MarketplaceQuestions.AsNoTracking()
+            var shortestInterval = row.Policy.ResourceType == "RETURNS" ? Math.Max(interval, ReturnCadencePolicy.BaseSeconds) : interval;
+            if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(shortestInterval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) continue;
+            // Questions are rare; a connection without a new question for a while is asked less often. Healthy order
+            // notifications make the order polls a slower safety net. Both thin out to the policy's idle interval and
+            // only while its idle rule is on (SyncCadencePolicy, set in the panel).
+            var idleKind = row.Policy.IdleBackoffEnabled ? SyncCadencePolicy.IdleKind(row.Connection.PlatformCode, row.Policy.ResourceType) : null;
+            var lastQuestionAt = idleKind == SyncCadencePolicy.IdleQuiet
+                ? await db.MarketplaceQuestions.AsNoTracking()
                     .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
-                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken);
-                interval = QuestionCadencePolicy.IntervalSeconds(interval, lastQuestionAt, now);
-            }
-            // Healthy order notifications make the order polls a slower safety net.
-            if (WebhookPollingPolicy.StretchedIntervalSeconds(row.Connection.PlatformCode, row.Policy.ResourceType) is { } stretched
-                && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id))
-                interval = Math.Max(interval, stretched);
-            interval = ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment);
+                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+                : null;
+            // Returns are read every ten minutes at most and thin out while none is open, none came for a day or a week,
+            // or Hepsiburada's notifications bring them (ReturnCadencePolicy, through the same idle rule).
+            var isReturns = idleKind == SyncCadencePolicy.IdleReturns;
+            var healthy = (idleKind == SyncCadencePolicy.IdleWebhook || isReturns && ReturnCadencePolicy.NotificationsCarryClaims(row.Connection.PlatformCode))
+                && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id);
+            var hasOpenReturns = !isReturns || await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken);
+            var lastNewReturnAt = isReturns
+                ? await db.ReturnClaims.AsNoTracking()
+                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
+                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+                : null;
+            interval = SyncCadencePolicy.EffectiveSeconds(row.Connection.PlatformCode, row.Policy.ResourceType, row.Connection.Environment, interval, idleKind is not null, row.Policy.IdleIntervalSeconds, healthy, lastQuestionAt, now, hasOpenReturns, lastNewReturnAt);
             // Different scheduled job types can share one provider execution
             // lane (for example order sync and order reconciliation). Checking
             // the execution group keeps the queue coalesced before it reaches
@@ -174,6 +195,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 if (!ListingVerificationPolicy.MayQueueAgain(queuedRuns, blocked)) continue;
             }
             else if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) continue;
+            // An open-return scan with no open claim to follow has nothing to do and is not queued (a local check).
+            if (row.Policy.ResourceType == "RETURN_LIFECYCLE"
+                && !await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken)) continue;
             // A hot order read of a connection without any order yet runs at once, whatever its interval.
             if (isHotOrder && !IsDue(latest, interval, jitterSeconds, now)
                 && await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken)) continue;
@@ -216,8 +240,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .Where(tenant => db.Invoices.Any(invoice => invoice.TenantId == tenant.Id))
             .Select(tenant => tenant.Id)
             .ToListAsync(cancellationToken);
-        const int invoiceScanInterval = 300;
-        var invoiceBucket = now.ToUnixTimeSeconds() / invoiceScanInterval;
+        // Every 30 minutes (1 Nov 2026: every 5 minutes was 288 jobs a day, more than half of the invoice tab). The
+        // due list and its notices are therefore at most half an hour behind.
+        var invoiceBucket = InvoiceDueScanBucket(now);
         foreach (var tenantId in dueTenants)
         {
             var dedup = $"scheduled:invoice-due:{tenantId:N}:{invoiceBucket}";
@@ -343,6 +368,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         if (after >= before) return Task.FromResult(false);
         return db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.CreatedAt > after && order.CreatedAt <= before, cancellationToken);
     }
+
+    // Whether the connection has a claim the open-return scan follows (MarketplaceJobProcessor.ReturnLifecycleCandidates).
+    internal static Task<bool> OpenReturnClaimsExistAsync(AppDbContext db, Guid tenantId, Guid connectionId, string? platformCode, CancellationToken cancellationToken) =>
+        MarketplaceJobProcessor.ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode).AnyAsync(cancellationToken);
 
     // Missed orders are kept as {"missed":[...]}. The earlier bare list also counted orders the poll merely read
     // before their notification arrived, so it is not trusted and reads as no misses.
@@ -713,7 +742,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             "ORDER_RECOVERY" => (current.IntervalSeconds == 900 || current.IntervalSeconds == 2700 || current.IntervalSeconds == 3600) && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
             "QUESTIONS" => (current.IntervalSeconds == 60 || current.IntervalSeconds == 120) && current.OverlapSeconds == 0 && current.JitterSeconds == 0,
             "RETURNS" => current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5
-                || current.IntervalSeconds == 180 && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
+                || (current.IntervalSeconds == 180 || current.IntervalSeconds == 600) && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_LIFECYCLE" => (current.IntervalSeconds == 120 || current.IntervalSeconds == 180) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
                 || (current.IntervalSeconds == 480 || current.IntervalSeconds == 540 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_CARGO_INFO" => (current.IntervalSeconds == 300 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 15),
@@ -729,7 +758,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             "ORDER_INVOICE_RECONCILIATION" => current.OverlapSeconds == 0 && (platformCode == "HEPSIBURADA"
                 ? current.IntervalSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)
                     || current.IntervalSeconds == 300 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
-                : current.IntervalSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)),
+                : (current.IntervalSeconds == 900 || platformCode == "SHOPIFY" && current.IntervalSeconds == ScheduledOrderPollingCadencePolicy.ShopifyInvoiceReconciliationIntervalSeconds)
+                    && (current.JitterSeconds == 0 || current.JitterSeconds == 30)),
             "REFERENCE_DATA" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 60),
             "FINANCE" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             ListingVerificationPolicy.ResourceType => current.IntervalSeconds == ListingVerificationPolicy.DefaultIntervalSeconds && current.OverlapSeconds == 0 && current.JitterSeconds == ListingVerificationPolicy.DefaultJitterSeconds,
