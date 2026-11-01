@@ -66,7 +66,7 @@ sudo -n docker build --pull=false -t "$edge_image" -f deploy/caddy/Dockerfile.pr
 
 if [[ -n "${DEPLOY_REVISION:-}" ]]; then
   # The Validate workflow already ran the same tests against this exact commit
-  # on PostgreSQL 18.4, so only manual runs repeat them in the isolated stack.
+  # on PostgreSQL 18.6, so only manual runs repeat them in the isolated stack.
   echo "Skipping isolated test run: Validate already passed for $DEPLOY_REVISION."
 else
   validation_cleanup_needed=true

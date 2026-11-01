@@ -39,8 +39,8 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
 önce durdurulduğu için konteynerler bu sırada çalışır; deploy'un koştuğu SSH oturum kapsamları
 `/etc/systemd/system/session-.scope.d/ravencia-deploy-guard.conf` ile bu birimden sonra durdurulur.
 Sunucuda doğrulama: `systemctl show -p After session-<n>.scope` çıktısında `ravencia-deploy-guard.service`
-görünmeli. AWS durdurmayı kendi süre sınırından sonra zorlarsa bekleme yarıda kalır; 00:30'a yakın
-başlayan bir deploy yarıda kesilebilir.
+görünmeli. AWS durdurmayı kendi süre sınırından sonra zorlarsa bekleme yarıda kalır; elle durdurma sırasında
+süren bir deploy yarıda kesilebilir.
 `releases.tsv` her deploy/geri alma için bir satır tutar (zaman, tür, SHA, imajlar).
 
 **`ci-entrypoint.sh` değiştiğinde** sunucuda bir kez yeniden kurulmalıdır (root'a ait kopya):
@@ -181,15 +181,15 @@ MaxRetentionSec=30day
 
 | Birim | Ne zaman | Ne yapar |
 | --- | --- | --- |
-| `ravencia-backup.timer` | 20:30 UTC (23:30 TR) ±10 dk, `Persistent=true` | `daily-backup.sh`: api/caddy konteynerlerini 5 dk'ya kadar bekler, taze yedek + doğrulama |
+| `ravencia-backup.timer` | 08:59 ve 20:59 UTC (11:59 ve 23:59 TR), `Persistent=true` | `daily-backup.sh`: api/caddy konteynerlerini 5 dk'ya kadar bekler, taze yedek + doğrulama |
 | `ravencia-restore-drill.timer` | ayın ilk Pazar'ı 19:00 UTC (22:00 TR) | `monthly-restore-drill.sh`: en yeni seti izole konteynerlere geri yükler, migration/API/Worker sağlığını doğrular |
 | `ravencia-healthwatch.timer` | 5 dakikada bir, günün her saati | `healthwatch.sh`: `/health/ready`, `/health/queues`, Worker sağlığı; sağlıksız API'yi yeniden başlatır |
 | `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
 | `ravencia-deploy-guard.service` | açılışta etkin, iş kapanışta | `wait-for-deploy-lock.sh`: süren deploy'un kilidini en çok 23 dk bekler |
 
-**Yedek saklama** (`deploy/backup/backup.sh`): son 72 saatteki tüm setler + son **7 günün** her gününün
-en yeni seti + daha eski 4 ISO haftasının her birinin en yeni seti; en yeni set her koşulda kalır
-(`BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY` ile değiştirilebilir). Bir set ≈1,1 GB; olağan durumda
+**Yedek saklama** (`deploy/backup/backup.sh`): son 72 saatin en yeni **5** seti + son **7 günün** her yarım
+gününün en yeni seti + daha eski 4 haftanın her birinin ve 6 ayın her birinin en yeni seti; en yeni set her
+koşulda kalır (`BACKUP_KEEP_RECENT`, `BACKUP_KEEP_DAILY`, `BACKUP_KEEP_WEEKLY`, `BACKUP_KEEP_MONTHLY`). Bir set ≈1,1 GB; olağan durumda
 ~12–14 set ≈ 15 GB (72 GB kök diskte).
 
 **Disk koruması**: yeni set yazılmadan önce, en yeni setin boyutu kadar ekleme sonrası disk doluluğu
@@ -274,7 +274,7 @@ ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
 ## Hız
 
 - `Validate` paralel çalışır: `plan`, `ops`, `backend-format`, `backend`, `image-app`, `image-edge`,
-  `frontend`, sonda `gate`. Her iş en çok 30 dakika (`timeout-minutes`).
+  `frontend`, sonda `gate`. İşlerin süre sınırı 5 ya da 15 dakika (`timeout-minutes`).
 - Backend ve frontend işleri, **aynı içerik** (git tree hash) daha önce geçtiyse atlanır; geçen içerik
   için Actions cache'ine `validated-backend-*` / `validated-frontend-*` işareti yazılır. Hash'ler
   Dockerfile'ları ve `deploy/caddy`'yi de kapsar; imaj işi de geçmeden işaret yazılmaz.
@@ -283,10 +283,10 @@ ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
   kapanış kilidi beklemesi). Yerelde: `bash tests/ops/run.sh` (GNU coreutils, git, flock gerekir).
 - `ops` işi, sunucunun gerektirdiği Docker Compose 2.40.2'yi checksum'la kurup sürümü doğrular,
   birleşik compose dosyalarını ve journald sürücüsünü, systemd takvim ifadelerini denetler.
-- Ön yüz `npm run lint` adımı, `package.json`'da `lint` betiği varsa çalışır.
+- Ön yüz `npm run lint` adımı her zaman çalışır.
 - CI'dan gelen deploy'da (`DEPLOY_REVISION`) sunucudaki test tekrarı atlanır; elle çalıştırılan
   `fast-deploy.sh` testleri yine koşar.
 - Dockerfile yalnızca backend klasörlerini kopyalar, bu yüzden frontend değişikliği .NET katmanlarını
   yeniden derletmez. Build cache 7 gün korunur (disk 15 GB altına düşerse tamamı silinir).
-- Frontend CSS bundle bütçesi (`check-bundle-budget.mjs`, 655 KiB) sınırda; aşılırsa Validate kırmızı olur
+- Frontend CSS bundle bütçesi (`check-bundle-budget.mjs`, 672 KiB) sınırda; aşılırsa Validate kırmızı olur
   ve Deploy çalışmaz.

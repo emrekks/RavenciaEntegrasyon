@@ -9,16 +9,14 @@ Ravencia MarketplaceHub; pazaryeri mağazalarının ürün, varyant, kategori, �
 Aktif entegrasyonlar:
 
 - Trendyol Marketplace
-- Trendyol E-Faturam
-
-Planlanan entegrasyonlar:
-
 - Hepsiburada
 - N11
-- Amazon
 - Pazarama
 - PttAVM
 - Shopify
+- Trendyol E-Faturam (fatura)
+
+Platform başına desteklenen işlemler `.claude/skills/marketplace-docs` içinde anlatılır.
 
 Planlanan platformlar, ilgili adapter ve yetenekleri tamamlanmadan çalışan entegrasyon olarak kabul edilmez. Sistem yalnız doğrulanmış yetenekleri kullanıma açar.
 
