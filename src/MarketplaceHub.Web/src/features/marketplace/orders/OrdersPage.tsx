@@ -113,7 +113,7 @@ function orderFilterParams(filters: OrderFilters, serverLabelFilter: boolean) {
   if (serverLabelFilter && filters.label !== 'ALL') params.set('labelPrinted', filters.label === 'PRINTED' ? 'true' : 'false')
   if (filters.dateFrom) params.set('dateFrom', istanbulDayBoundary(filters.dateFrom))
   if (filters.dateTo) params.set('dateTo', istanbulDayBoundary(filters.dateTo, true))
-  // Orders with a line cancelled on these Istanbul days (the dashboard's Günlük İptal card opens today's).
+  // Orders with a line cancelled on these Istanbul days (the dashboard's İptaller card opens today's).
   if (filters.cancelFrom) params.set('cancelFrom', istanbulDayBoundary(filters.cancelFrom))
   if (filters.cancelTo) params.set('cancelTo', istanbulDayBoundary(filters.cancelTo, true))
   // Orders with some products cancelled, open or closed (a delivered one is not in the Kısmi İptal tab).

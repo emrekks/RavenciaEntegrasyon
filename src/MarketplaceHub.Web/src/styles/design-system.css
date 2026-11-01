@@ -6869,10 +6869,11 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
    put and labels never squeeze or move (no growing width, no ellipsis, no slide): the edge uncovers them, each fading in
    where it stands after the one above, and the active item's highlight grows with the edge from the icon's square.
    Closing fades every label out at once (60 ms), before the highlight and the edge draw back, so no text slides or
-   shows beside the icon's square. 280 ms in, 200 ms out; without motion when the device asks for less. */
+   shows beside the icon's square. 280 ms in, 200 ms out; without motion when the device asks for less.
+   The closing menu keeps its raised layer until its edge is back, so it never slides under the page's filter bar. */
 @media (min-width: 701px) {
-  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside { max-width: var(--rv-sidebar-width); overflow-x: hidden; transition: width 200ms cubic-bezier(.4, 0, .6, 1), box-shadow 200ms ease; }
-  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside { transition: width 280ms cubic-bezier(.2, .9, .25, 1), box-shadow 280ms ease; }
+  .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside { max-width: var(--rv-sidebar-width); overflow-x: hidden; transition: width 200ms cubic-bezier(.4, 0, .6, 1), box-shadow 200ms ease, z-index 0s linear 200ms; }
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside { transition: width 280ms cubic-bezier(.2, .9, .25, 1), box-shadow 280ms ease, z-index 0s; }
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link, .sidebar-brand-home, .sidebar-profile) { overflow: hidden; }
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
     display: block; flex: none; width: auto; max-width: 190px; overflow: visible; visibility: visible; opacity: 0; transform: none;

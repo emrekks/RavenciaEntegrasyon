@@ -66,16 +66,16 @@ describe('DashboardPage', () => {
     await render()
     expect(Array.from(container.querySelectorAll('.rr-opcard small')).map(label => label.textContent)).toEqual([
       'Bekleyen Siparişler', 'Geciken Siparişler', 'Bekleyen İadeler', 'Bekleyen Faturalar',
-      'Bekleyen Ürün Adedi', 'Düşük Stok', 'Yaklaşan Faturalar', 'Günlük İptal',
+      'Bekleyen Ürün Adedi', 'İptal · 1 Kısmi İptal', 'Düşük Stok', 'Yaklaşan Faturalar',
     ])
   })
 
-  it("counts today's whole cancellations, adds products and partial ones, and lists unknown times apart", async () => {
+  it("counts today's whole cancellations, shows partial ones beside the label, and lists unknown times apart", async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-11-01T09:00:00Z'))
     try { await render() } finally { vi.useRealTimers() }
-    const cancel = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Günlük İptal')!
-    expect(cancel.querySelector('strong')?.textContent).toBe('2sipariş · 4 ürün · 1 kısmi')
+    const cancel = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent?.startsWith('İptal'))!
+    expect(cancel.querySelector('strong')?.textContent).toBe('2')
     expect(cancel.getAttribute('href')).toBe('/orders?status=CANCELLED&cancelFrom=2026-11-01&cancelTo=2026-11-01')
     expect(Array.from(cancel.querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol2 sipariş · 1 kısmi · 4 adet', 'Hepsiburada · Zamanı Bilinmiyor1 sipariş · 3 adet'])
   })
@@ -83,7 +83,7 @@ describe('DashboardPage', () => {
   it('shows unread cancellations as unknown, not 0', async () => {
     apiState.failing = new Set(['/dashboard/cancellations'])
     await render()
-    expect(card('Günlük İptal')).toBe('—')
+    expect(card('İptal')).toBe('—')
   })
 
   it('opens the performance panel on today', async () => {
