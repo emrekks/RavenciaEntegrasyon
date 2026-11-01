@@ -20,7 +20,13 @@ export function updateVariantMediaAssignmentDraft(
   return { ...drafts, [key]: [...refs] }
 }
 
-export type VariantMediaReconcileRequest = { variantId: string; optionSignature: string; items: Array<{ url: string; sortOrder: number }> }
+// The edit page lists every colour card of the model; a variant's pictures are saved on its own card (the API refuses a
+// variant of another card: "Ürün varyantı bulunamadı").
+export function variantOwnerProductId(variants: ReadonlyArray<{ id: string; productId?: string | null }>, variantId: string, fallbackProductId: string) {
+  return variants.find(variant => variant.id === variantId)?.productId || fallbackProductId
+}
+
+export type VariantMediaReconcileRequest ={ variantId: string; optionSignature: string; items: Array<{ url: string; sortOrder: number }> }
 
 /**
  * The variant image assignments that can be saved on their own, without the rest of the form: one request per row

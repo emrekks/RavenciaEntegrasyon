@@ -1111,3 +1111,7 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
   .app-shell.stitch-shell main :is(.product-submit-sticky, .publish-selection-footer).rv-action-bar > div:first-child > :is(p, small) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .app-shell.stitch-shell main .product-submit-sticky.rv-action-bar button { white-space: nowrap; }
 }
+
+/* Other colours' images marked for removal wait for Kaydet; the action bar counts them and takes them back. */
+.app-shell.stitch-shell main .product-submit-sticky.rv-action-bar > div:first-child > p.product-submit-family-media-note { display: inline-flex; align-items: center; gap: 8px; color: var(--warning-text, var(--text-muted)); }
+.product-submit-undo-button { min-height: 0; height: 26px; padding: 0 10px; border-radius: 7px; font-size: 12px; font-weight: 600; flex: none; }

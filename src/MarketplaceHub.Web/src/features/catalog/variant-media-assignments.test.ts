@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests } from './variant-media-assignments'
+import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, variantOwnerProductId } from './variant-media-assignments'
 
 describe('variant media assignment drafts', () => {
   it('keeps each option value selection while switching between values', () => {
@@ -28,5 +28,19 @@ describe('variant media reconcile requests', () => {
   it('waits for the product save when a variant is new or a picture is not uploaded yet', () => {
     expect(variantMediaReconcileRequests([{ key: 'new-row', optionSignature: 'Yeşil', mediaRefs: ['url|https://cdn/a.jpg'] }], saved)).toBeNull()
     expect(variantMediaReconcileRequests([{ key: 'blue', optionSignature: 'Mavi', mediaRefs: ['file|local-1'] }], saved)).toBeNull()
+  })
+})
+
+describe('variantOwnerProductId', () => {
+  const familyVariants = [{ id: 'v-indigo-s', productId: 'p-indigo' }, { id: 'v-red-s', productId: 'p-red' }, { id: 'v-legacy', productId: null }]
+
+  it('saves a variant picture on the colour card the variant belongs to', () => {
+    expect(variantOwnerProductId(familyVariants, 'v-red-s', 'p-indigo')).toBe('p-red')
+    expect(variantOwnerProductId(familyVariants, 'v-indigo-s', 'p-indigo')).toBe('p-indigo')
+  })
+
+  it('falls back to the opened card when the variant names no card', () => {
+    expect(variantOwnerProductId(familyVariants, 'v-legacy', 'p-indigo')).toBe('p-indigo')
+    expect(variantOwnerProductId(familyVariants, 'v-unknown', 'p-indigo')).toBe('p-indigo')
   })
 })
