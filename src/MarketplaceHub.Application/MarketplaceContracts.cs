@@ -1011,10 +1011,26 @@ public sealed record SyncPolicyView(
     int ConnectionDeadJobCount24h = 0,
     DateTimeOffset? LastCursorAdvancedAt = null,
     DateTimeOffset? CursorStagnantSince = null,
-    string CursorProgressStatus = "UNKNOWN");
+    string CursorProgressStatus = "UNKNOWN",
+    SyncCadenceView? Cadence = null);
+// The cadence the scheduler keeps for a policy (SyncCadencePolicy): the interval of this pass, the bounds a user may
+// choose within and why, and the idle rule. Null on policies without a user-chosen cadence.
+public sealed record SyncCadenceView(
+    int EffectiveIntervalSeconds,
+    int DefaultIntervalSeconds,
+    int MinimumIntervalSeconds,
+    int MaximumIntervalSeconds,
+    string Basis,
+    string? IdleKind,
+    bool IdleBackoffEnabled,
+    int? IdleIntervalSeconds,
+    int? DefaultIdleIntervalSeconds,
+    bool IdleActive,
+    bool StageFloor);
 // ResetToDefault puts the application default cadence back (the given cadence is ignored) and lets later
-// default changes reach the policy again.
-public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, bool ResetToDefault = false);
+// default changes reach the policy again. Null idle fields keep what the policy has; an idle interval of 0 puts the
+// application's back.
+public sealed record UpdateSyncPolicyCommand(int IntervalSeconds, int OverlapSeconds, int JitterSeconds, bool Enabled, bool ResetToDefault = false, bool? IdleBackoffEnabled = null, int? IdleIntervalSeconds = null);
 public sealed record WebhookSubscriptionView(Guid Id, string AuthenticationType, string Status, string? ExternalSubscriptionId, DateTimeOffset? VerifiedAt, DateTimeOffset? LastReceivedAt, long Version);
 public sealed record CreateWebhookSubscriptionCommand(string AuthenticationType, string? Username, string? Password, string? ApiKey);
 

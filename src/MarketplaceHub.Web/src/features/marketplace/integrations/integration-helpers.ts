@@ -146,3 +146,46 @@ export function connectionTestFeedback(platformName: string, result: { succeeded
   const reason = result.errorSummary?.trim()
   return { kind: 'error' as const, title: 'Bağlantı Testi Başarısız', message: reason ? `${platformName} mağazasına erişilemedi: ${reason}` : `${platformName} mağazasına erişilemedi. Kimlik bilgilerini ve mağaza kimliğini kontrol edin.`, context }
 }
+
+/** The cadence the scheduler keeps for a sync flow (SyncCadenceView): this pass's interval, the bounds and the idle rule. */
+export type SyncCadence = {
+  effectiveIntervalSeconds: number
+  defaultIntervalSeconds: number
+  minimumIntervalSeconds: number
+  maximumIntervalSeconds: number
+  basis: string
+  idleKind: 'WEBHOOK' | 'QUIET' | null
+  idleBackoffEnabled: boolean
+  idleIntervalSeconds: number | null
+  defaultIdleIntervalSeconds: number | null
+  idleActive: boolean
+  stageFloor: boolean
+}
+
+/** A short interval for the flow table: "2 dk", "1 sa", "1 gün". */
+export function cadenceShortText(seconds: number) {
+  if (seconds >= 86400 && seconds % 86400 === 0) return `${seconds / 86400} gün`
+  if (seconds >= 3600 && seconds % 3600 === 0) return `${seconds / 3600} sa`
+  if (seconds >= 60 && seconds % 60 === 0) return `${seconds / 60} dk`
+  return `${seconds} sn`
+}
+
+/** The choices of a cadence select within the flow's bounds; the current value stays listed even when outside them. */
+export function cadenceChoices(intervals: Array<[number, string]>, minimum: number, maximum: number, current: number) {
+  const choices = intervals.filter(([seconds]) => seconds >= minimum && seconds <= maximum)
+  return choices.some(([seconds]) => seconds === current) ? choices : [...choices, [current, `${cadenceShortText(current)} (sınır dışı)`] as [number, string]].sort((a, b) => a[0] - b[0])
+}
+
+/** Why the flow runs at a different interval than its own this pass, or null. */
+export function cadenceNote(cadence: SyncCadence) {
+  if (cadence.idleActive) return cadence.idleKind === 'WEBHOOK' ? 'Bildirimler sağlıklı; seyrek okunuyor' : 'Yeni soru yok; seyrek okunuyor'
+  if (cadence.stageFloor) return 'Test ortamı en çok 10 dakikada bir okunur'
+  return null
+}
+
+/** What the idle rule of a flow does, for the editor. */
+export function idleRuleText(kind: SyncCadence['idleKind']) {
+  return kind === 'WEBHOOK'
+    ? 'Pazaryeri bildirimleri sağlıklı geldikçe bu okuma yalnız güvenlik ağıdır ve seyrek sıklıkta çalışır; bildirim aksarsa hemen kendi sıklığına döner.'
+    : 'Yeni soru gelmedikçe aralık her yarım saatte ikiye katlanır ve seyrek sıklıkta durur; yeni soru gelince kendi sıklığına döner.'
+}

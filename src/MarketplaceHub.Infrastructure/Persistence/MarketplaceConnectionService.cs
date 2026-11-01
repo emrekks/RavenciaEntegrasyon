@@ -622,6 +622,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var recoveryGapCritical = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapCriticalDays", 80), (int)recoveryGapWarning.TotalDays + 1, 120));
         // With healthy notifications the scheduler polls orders less often; health is judged by that cadence.
         var webhookHealthy = await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, id, now, cancellationToken);
+        var lastQuestionAt = policies.Any(x => x.ResourceType == "QUESTIONS")
+            ? await db.MarketplaceQuestions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+            : null;
         // The open-return scan is not queued while no claim is open (ScheduledJobProducer), so its age then says nothing.
         var openReturnsToFollow = await ScheduledJobProducer.OpenReturnClaimsExistAsync(db, tenantId, id, connection.PlatformCode, cancellationToken);
         var rows = policies.Select(x =>
@@ -629,13 +632,15 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             var cursorResourceType = MarketplaceSyncPolicyRules.CursorResourceType(x.ResourceType);
             var cursor = cursors.FirstOrDefault(candidate => candidate.ResourceType == cursorResourceType)
                 ?? cursors.FirstOrDefault(candidate => candidate.ResourceType == x.ResourceType);
-            var intervalSeconds = webhookHealthy && WebhookPollingPolicy.StretchedIntervalSeconds(connection.PlatformCode, x.ResourceType) is { } stretched
-                ? Math.Max(x.IntervalSeconds, stretched)
-                : x.IntervalSeconds;
-            // Questions are read on a stretching interval (QuestionCadencePolicy): up to ten minutes while none arrive.
-            if (string.Equals(x.ResourceType, "QUESTIONS", StringComparison.OrdinalIgnoreCase))
-                intervalSeconds = Math.Max(intervalSeconds, QuestionCadencePolicy.MaximumSeconds);
-            // Returns are read on a stretching interval too (ReturnCadencePolicy).
+            // The interval the scheduler keeps this pass, worked out as ScheduledJobProducer does.
+            var cadence = CadenceView(x, connection.PlatformCode, connection.Environment, webhookHealthy, lastQuestionAt, now);
+            // Health keeps judging by the interval without the test-environment floor, as it did before.
+            var intervalSeconds = cadence is null ? x.IntervalSeconds
+                : SyncCadencePolicy.EffectiveSeconds(connection.PlatformCode, x.ResourceType, null, x.IntervalSeconds, x.IdleBackoffEnabled, x.IdleIntervalSeconds, webhookHealthy, lastQuestionAt, now);
+            // Health allows for the longest interval a question read can stretch to, not this pass's step.
+            if (string.Equals(x.ResourceType, "QUESTIONS", StringComparison.OrdinalIgnoreCase) && x.IdleBackoffEnabled)
+                intervalSeconds = Math.Max(intervalSeconds, SyncCadencePolicy.IdleSeconds(connection.PlatformCode, x.ResourceType, x.IntervalSeconds, x.IdleIntervalSeconds));
+            // Returns are read on a stretching interval too (ReturnCadencePolicy): health allows for its longest step.
             if (string.Equals(x.ResourceType, "RETURNS", StringComparison.OrdinalIgnoreCase))
                 intervalSeconds = ReturnCadencePolicy.MaximumSeconds(connection.PlatformCode, intervalSeconds);
             var expectedCadence = TimeSpan.FromSeconds(Math.Max(0, intervalSeconds) + Math.Max(0, x.JitterSeconds));
@@ -662,7 +667,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             var gap = MarketplaceSyncHealthPolicy.RecoveryGap(cursor?.LastModifiedWatermark, now, recoveryGapWarning, recoveryGapCritical);
             var requiresExternalWrites = MarketplaceSyncPolicyRules.RequiresExternalWrites(x.ResourceType);
             var effectiveEnabled = x.Enabled && (!requiresExternalWrites || externalWritesEnabled);
-            return new SyncPolicyView(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, effectiveEnabled, x.Version, cursor?.LastSuccessAt, cursor?.LastModifiedWatermark, health, cursor?.LastAttemptAt, cursor?.ConsecutiveFailureCount ?? 0, cursor?.LastRequestCount ?? 0, cursor?.LastReceivedCount ?? 0, cursor?.LastChangedCount ?? 0, cursor?.LastInsertedCount ?? 0, cursor?.LastUpdatedCount ?? 0, cursor?.LastSkippedCount ?? 0, cursor?.LastFailedCount ?? 0, cursor?.LastRetryCount ?? 0, cursor?.LastRateLimitCount ?? 0, gap.Status, gap.Days, requiresExternalWrites, cursor?.LastDurationMs, connectionBacklog?.Count ?? 0, connectionBacklog?.OldestCreatedAt, manualReviewCount, deadJobCount24h, cursor?.LastCursorAdvancedAt, cursor?.CursorStagnantSince, cursorProgress);
+            return new SyncPolicyView(x.Id, x.ResourceType, x.IntervalSeconds, x.OverlapSeconds, x.JitterSeconds, effectiveEnabled, x.Version, cursor?.LastSuccessAt, cursor?.LastModifiedWatermark, health, cursor?.LastAttemptAt, cursor?.ConsecutiveFailureCount ?? 0, cursor?.LastRequestCount ?? 0, cursor?.LastReceivedCount ?? 0, cursor?.LastChangedCount ?? 0, cursor?.LastInsertedCount ?? 0, cursor?.LastUpdatedCount ?? 0, cursor?.LastSkippedCount ?? 0, cursor?.LastFailedCount ?? 0, cursor?.LastRetryCount ?? 0, cursor?.LastRateLimitCount ?? 0, gap.Status, gap.Days, requiresExternalWrites, cursor?.LastDurationMs, connectionBacklog?.Count ?? 0, connectionBacklog?.OldestCreatedAt, manualReviewCount, deadJobCount24h, cursor?.LastCursorAdvancedAt, cursor?.CursorStagnantSince, cursorProgress, cadence);
         }).ToList();
         return ServiceResult<IReadOnlyList<SyncPolicyView>>.Ok(rows);
     }
@@ -690,25 +695,77 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             if (requiredCapability is not null && !await HasVerifiedWriteEvidenceAsync(connection, cancellationToken, requiredCapability))
                 return ServiceResult<SyncPolicyView>.Fail("EXTERNAL_WRITE_EVIDENCE_REQUIRED", $"{requiredCapability} akışı açılamadı: aynı mağaza, ortam ve API sürümü için resmî kaynakla doğrulanmış yetenek ve Stage/SIT test kanıtı gerekir.", 422);
         }
-        var cadence = ScheduledOrderPollingCadencePolicy.ForPlatform(connection.PlatformCode, normalized, command.IntervalSeconds, command.JitterSeconds);
         var defaults = ScheduledJobProducer.DefaultPolicyValues(configuration, connection.PlatformCode, normalized);
         var policy = await db.ConnectionSyncPolicies.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.ResourceType == normalized, cancellationToken);
         var isNew = policy is null;
+        // The cadence a user saves is kept as it is and must lie within the marketplace's bounds (SyncCadencePolicy).
+        // A save that keeps the interval it had (switching the flow on or off) is not checked again.
+        var bounds = SyncCadencePolicy.For(connection.PlatformCode, normalized);
+        if (!command.ResetToDefault && bounds is not null && (isNew || policy!.IntervalSeconds != command.IntervalSeconds)
+            && (command.IntervalSeconds < bounds.MinimumSeconds || command.IntervalSeconds > bounds.MaximumSeconds))
+            return Invalid<SyncPolicyView>("intervalSeconds", $"Bu akışın sıklığı {CadenceText(bounds.MinimumSeconds)} ile {CadenceText(bounds.MaximumSeconds)} arasında olmalıdır. {bounds.Basis}");
+        var idleKind = SyncCadencePolicy.IdleKind(connection.PlatformCode, normalized);
+        if (!command.ResetToDefault && command.IdleIntervalSeconds is > 0 and var idle)
+        {
+            if (idleKind is null || bounds is null) return Invalid<SyncPolicyView>("idleIntervalSeconds", "Bu akışta seyrekleşme yok.");
+            if (idle < command.IntervalSeconds || idle > bounds.MaximumSeconds)
+                return Invalid<SyncPolicyView>("idleIntervalSeconds", $"Seyrek sıklık, akışın sıklığı ({CadenceText(command.IntervalSeconds)}) ile {CadenceText(bounds.MaximumSeconds)} arasında olmalıdır.");
+        }
         if (policy is null) { if (expectedVersion is not null) return NotFound<SyncPolicyView>(); policy = new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = id, ResourceType = normalized, Version = 1 }; db.ConnectionSyncPolicies.Add(policy); }
         else { if (expectedVersion is null) return ServiceResult<SyncPolicyView>.Fail("PRECONDITION_REQUIRED", "Mevcut sync policy için If-Match gereklidir.", 428); if (policy.Version != expectedVersion) return Precondition<SyncPolicyView>(policy.Version); policy.Version++; }
         // Only a save that changes the cadence makes the policy the user's own (the scheduler then never upgrades it
         // to a newer default); a reset puts the default back and lets later defaults reach it again.
-        var saved = command.ResetToDefault && defaults is { } reset ? reset : (cadence.IntervalSeconds, command.OverlapSeconds, cadence.JitterSeconds);
+        var saved = command.ResetToDefault && defaults is { } reset ? reset : (command.IntervalSeconds, command.OverlapSeconds, command.JitterSeconds);
         var current = isNew ? defaults : (policy.IntervalSeconds, policy.OverlapSeconds, policy.JitterSeconds);
         policy.UserDefined = !command.ResetToDefault && ScheduledJobProducer.MarksUserDefined(!isNew && policy.UserDefined, current, saved);
+        if (command.ResetToDefault) { policy.IdleBackoffEnabled = true; policy.IdleIntervalSeconds = null; }
+        else
+        {
+            if (command.IdleBackoffEnabled is { } idleEnabled) policy.IdleBackoffEnabled = idleEnabled;
+            if (command.IdleIntervalSeconds is { } idleSeconds) policy.IdleIntervalSeconds = idleSeconds > 0 ? idleSeconds : null;
+        }
         var switchedOn = command.Enabled && (isNew || !policy.Enabled);
         policy.IntervalSeconds = saved.Item1; policy.OverlapSeconds = saved.Item2; policy.JitterSeconds = saved.Item3; policy.Enabled = command.Enabled;
         // B: an automatic price or stock write switched on never sends what changed while it was off; every offer of
         // the connection counts as sent at its current values, committed with the switch.
         if (switchedOn && (normalized is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock))
             await AutomaticPriceStockWrites.MarkCurrentValuesSentAsync(db, tenantId, id, connection.PlatformCode, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken); return ServiceResult<SyncPolicyView>.Ok(Map(policy));
+        await db.SaveChangesAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var webhookHealthy = idleKind == SyncCadencePolicy.IdleWebhook && await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, id, now, cancellationToken);
+        var lastQuestionAt = idleKind == SyncCadencePolicy.IdleQuiet
+            ? await db.MarketplaceQuestions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+            : null;
+        return ServiceResult<SyncPolicyView>.Ok(Map(policy) with { Cadence = CadenceView(policy, connection.PlatformCode, connection.Environment, webhookHealthy, lastQuestionAt, now) });
     }
+
+    // The cadence of one policy as the scheduler keeps it (ScheduledJobProducer.EnqueueDueAsync), its bounds and idle rule.
+    private SyncCadenceView? CadenceView(ConnectionSyncPolicy policy, string platformCode, string? environment, bool webhookHealthy, DateTimeOffset? lastQuestionAt, DateTimeOffset now)
+    {
+        if (SyncCadencePolicy.For(platformCode, policy.ResourceType) is not { } bounds) return null;
+        var baseSeconds = Math.Clamp(policy.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds);
+        var idleKind = SyncCadencePolicy.IdleKind(platformCode, policy.ResourceType);
+        var effective = SyncCadencePolicy.EffectiveSeconds(platformCode, policy.ResourceType, environment, baseSeconds, policy.IdleBackoffEnabled, policy.IdleIntervalSeconds, webhookHealthy, lastQuestionAt, now);
+        var withoutIdle = SyncCadencePolicy.EffectiveSeconds(platformCode, policy.ResourceType, environment, baseSeconds, false, null, false, null, now);
+        return new SyncCadenceView(
+            effective,
+            ScheduledJobProducer.DefaultPolicyValues(configuration, platformCode, policy.ResourceType)?.IntervalSeconds ?? policy.IntervalSeconds,
+            bounds.MinimumSeconds,
+            bounds.MaximumSeconds,
+            bounds.Basis,
+            idleKind,
+            policy.IdleBackoffEnabled,
+            idleKind is null ? null : SyncCadencePolicy.IdleSeconds(platformCode, policy.ResourceType, baseSeconds, policy.IdleIntervalSeconds),
+            SyncCadencePolicy.DefaultIdleSeconds(platformCode, policy.ResourceType),
+            effective > withoutIdle,
+            withoutIdle > baseSeconds);
+    }
+
+    private static string CadenceText(int seconds) =>
+        seconds % 86_400 == 0 ? $"{seconds / 86_400} gün"
+        : seconds % 3600 == 0 ? $"{seconds / 3600} saat"
+        : seconds % 60 == 0 ? $"{seconds / 60} dakika"
+        : $"{seconds} saniye";
 
     public async Task<ServiceResult<CreatedWebhookSubscription>> CreateWebhookAsync(Guid tenantId, Guid id, CreateWebhookSubscriptionCommand command, CancellationToken cancellationToken)
     {
