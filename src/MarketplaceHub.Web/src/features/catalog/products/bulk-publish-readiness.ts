@@ -23,6 +23,8 @@ export type BulkProductReadiness = {
   // yayınlanmadı"): the card counts it as not published instead of unknown.
   notPublished?: boolean
   issues: BulkReadinessIssue[]
+  // Optional attributes the store would get without a value: they do not block, the card lists them as warnings.
+  warnings?: Array<BulkReadinessIssue & { fixable: boolean }>
   fixes: PublicationValueMappingFix[]
   categoryScope?: string
   // The panel category, for "Kategori Eşle" when the store has no current mapping of it.
@@ -100,6 +102,7 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
       skipped: false,
       notPublished: standing === 'notPublished',
       issues: publicationBlockingIssues(missingPublicationChecks(productChecks, isShopify), [], mapping?.requiredIssues ?? [], mappingError, cardName),
+      warnings: (mapping?.optionalWarnings ?? []).map(issue => ({ attribute: issue.attribute, detail: issue.detail, fixable: Boolean(issue.fix) })),
       fixes: fixableValueMappings(mapping),
       categoryScope: mapping?.categoryScope,
       categoryId,

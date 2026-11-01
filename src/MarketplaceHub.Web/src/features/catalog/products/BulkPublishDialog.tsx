@@ -183,6 +183,21 @@ function unmappedCategories(readiness: BulkConnectionReadiness | null) {
   return [...categories.entries()].map(([id, name]) => ({ id, name }))
 }
 
+// The optional warnings of the store's records, each once, with how many records have it.
+function warningRows(readiness: BulkConnectionReadiness | null) {
+  const rows = new Map<string, { attribute: string; detail: string; fixable: boolean; products: number }>()
+  for (const entry of readiness?.entries ?? []) {
+    if (entry.skipped) continue
+    for (const warning of entry.warnings ?? []) {
+      const key = `${warning.attribute}:${warning.detail}`
+      const row = rows.get(key) ?? { ...warning, products: 0 }
+      row.products += 1
+      rows.set(key, row)
+    }
+  }
+  return [...rows.entries()].map(([key, row]) => ({ key, title: row.attribute, detail: readiness && readiness.entries.length - readiness.skippedCount > 1 ? `${row.detail} (${row.products} ürün)` : row.detail, href: row.fixable ? undefined : '/mappings/attributes' }))
+}
+
 const shownBlockedProducts = 6
 
 function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, selected, locked, onToggle, onMappingsSaved }: {
@@ -212,7 +227,8 @@ function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, sel
   const categories = unmappedCategories(readiness)
   const groups = fixGroups(readiness)
   const checkFailed = (readiness?.entries ?? []).some(entry => entry.checkFailed)
-  const valueFixCount = groups.reduce((count, group) => count + group.fixes.length, 0)
+  const warnings = warningRows(readiness)
+  const optionalBadgeProps = { optionalCount: warnings.length || undefined, optionalHeading: warnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${warnings.length} isteğe bağlı özellik uyarısı`, optionalRows: warnings }
   // What the red badge's popover offers: map each unmapped category, complete each category's value mappings, check again.
   const fixActions = [
     ...categories.map(category => ({ key: `category:${category.id}`, label: categories.length > 1 ? `${category.name} Kategorisini Eşle` : 'Kategori Eşle', onRun: () => setCategoryToMap(category) })),
@@ -237,8 +253,8 @@ function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, sel
       <div className="publish-platform-fact-publication"><dt>Yayın Durumu</dt><dd id={statusId}>{settling
         ? <span className="publish-platform-status status-neutral"><i aria-hidden="true" />Kontrol ediliyor</span>
         : blocked.length
-          ? <PublishIssueBadge id={`${statusId}-issues`} label={`${format(blocked.length)}/${format(checkedCount)} üründe zorunlu eksik`} count={valueFixCount || undefined} heading="Zorunlu Eksiği Olan Ürünler" rows={blocked.slice(0, shownBlockedProducts).map(entry => ({ key: entry.productId, title: entry.title, href: `/products/${entry.productId}`, detail: `${entry.issues[0].attribute}: ${entry.issues[0].detail}${entry.issues.length > 1 ? ` (+${entry.issues.length - 1})` : ''}` }))} moreText={blocked.length > shownBlockedProducts ? `ve ${format(blocked.length - shownBlockedProducts)} ürün daha` : undefined} actions={fixActions} />
-          : summary ? <BulkPublishStatusPill summary={summary} modelTip={modelTip} platformName={storeName} tipId={`${statusId}-models`} /> : '—'}</dd>{!settling && detail && <small>{detail}</small>}</div>
+          ? <PublishIssueBadge id={`${statusId}-issues`} label={`${format(blocked.length)}/${format(checkedCount)} üründe zorunlu eksik`} requiredCount={blocked.length} {...optionalBadgeProps} heading="Zorunlu Eksiği Olan Ürünler" rows={blocked.slice(0, shownBlockedProducts).map(entry => ({ key: entry.productId, title: entry.title, href: `/products/${entry.productId}`, detail: `${entry.issues[0].attribute}: ${entry.issues[0].detail}${entry.issues.length > 1 ? ` (+${entry.issues.length - 1})` : ''}` }))} moreText={blocked.length > shownBlockedProducts ? `ve ${format(blocked.length - shownBlockedProducts)} ürün daha` : undefined} actions={fixActions} />
+          : <>{summary ? <BulkPublishStatusPill summary={summary} modelTip={modelTip} platformName={storeName} tipId={`${statusId}-models`} /> : '—'}{warnings.length > 0 && !allLive && <PublishIssueBadge id={`${statusId}-warnings`} label={`${format(warnings.length)} uyarı`} heading="" rows={[]} {...optionalBadgeProps} actions={fixActions} />}</>}</dd>{!settling && detail && <small>{detail}</small>}</div>
     </dl>
     {categoryToMap && <CategoryMappingDialog connectionId={connection.id} platformName={storeName} categoryId={categoryToMap.id} categoryName={categoryToMap.name} onClose={() => setCategoryToMap(null)} onSaved={() => onMappingsSaved()} />}
     {openGroup && <MissingValueMappingDialog connectionId={connection.id} platformName={storeName} categoryScope={openGroup.categoryScope} fixes={openGroup.fixes} onClose={() => setFixScope(null)} onSaved={() => onMappingsSaved()} />}

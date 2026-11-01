@@ -62,7 +62,7 @@ describe('publish readiness parity', () => {
     const editorClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => { root.render(<QueryClientProvider client={editorClient}><MemoryRouter><main><NewProductPage editProductId="p1" publishOnly /></main></MemoryRouter></QueryClientProvider>) })
     await settle()
-    const editorIssues = [...document.querySelectorAll('.publish-issue-tooltip li')].map(item => item.textContent?.replace(/\s+/g, ' ').trim())
+    const editorIssues = [...document.querySelectorAll('.publish-issue-required li')].map(item => item.textContent?.replace(/\s+/g, ' ').trim())
     expect(editorIssues.length).toBeGreaterThan(0)
 
     const bulkClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
