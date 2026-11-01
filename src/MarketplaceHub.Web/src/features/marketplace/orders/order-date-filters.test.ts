@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isCancelTab, tabDateFilters } from './order-date-filters'
+import { isCancelTab, tabDateFilters, tabKind } from './order-date-filters'
 
 const both = { dateFrom: '2026-11-01', dateTo: '2026-11-02', cancelFrom: '2026-10-30', cancelTo: '2026-10-31' }
 
@@ -21,5 +21,14 @@ describe('order date filters by tab', () => {
     expect(tabDateFilters('PARTIALLY_CANCELLED', cancelOnly)).toEqual(cancelOnly)
     const orderOnly = { dateFrom: '2026-11-01', dateTo: '', cancelFrom: '', cancelTo: '' }
     expect(tabDateFilters('SHIPPED', orderOnly)).toEqual(orderOnly)
+  })
+
+  // Sipariş Türü: the unshipped resends mean something in Yeniden Gönderimler only.
+  it('keeps the unshipped-resends kind only in the Yeniden Gönderimler tab and the micro-export kind everywhere', () => {
+    expect(tabKind('RESENT', 'RESENT_UNSHIPPED')).toBe('RESENT_UNSHIPPED')
+    expect(tabKind('NEW', 'RESENT_UNSHIPPED')).toBe('ALL')
+    expect(tabKind('ALL', 'MICRO')).toBe('MICRO')
+    expect(tabKind('CANCELLED', 'MICRO')).toBe('MICRO')
+    expect(tabKind('NEW', 'nonsense')).toBe('ALL')
   })
 })

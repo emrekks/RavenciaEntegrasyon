@@ -1282,7 +1282,10 @@ public sealed record OrderListQuery(
     // Orders with some products cancelled but not cancelled whole.
     bool? PartialCancel = null,
     // Trendyol micro-export orders: the rule of the row's flag icon (RowMarks), micro = true at the top of the package.
-    bool? MicroExport = null);
+    bool? MicroExport = null,
+    // In the Yeniden Gönderimler tab: only the orders whose resent package has not been handed to the carrier yet
+    // (Created, Picking or ready to ship: New, Processing, ReadyToShip). Any other status is left out, not guessed.
+    bool? ResentNotShipped = null);
 // Orders per column filter choice for the same filters as GET /orders, status tab included; a column's
 // own choice is left out of its counts. Platforms by platform code, cargos by cargo provider name.
 public sealed record OrderFacetsView(IReadOnlyDictionary<string, int> Platforms, IReadOnlyDictionary<string, int> Cargos);
