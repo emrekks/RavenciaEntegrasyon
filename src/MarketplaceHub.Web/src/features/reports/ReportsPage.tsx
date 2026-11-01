@@ -7,6 +7,7 @@ import { Busy, ErrorBox, Modal, UiIcon, type UiIconName } from '../../shared/com
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
+import { startViewTransitionSafely } from '../../shared/view-transition'
 import {
   bySalesChannel, change, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   stockQuery, type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportInventory, type ReportProduct, type ReportReason, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform, type ReportStockRow
@@ -119,9 +120,7 @@ export function ReportsPage() {
       if (nextSub) next.set('sub', nextSub); else next.delete('sub')
       return next
     }, { replace: true })
-    const transition = (document as Document & { startViewTransition?: (update: () => void) => unknown }).startViewTransition
-    if (transition && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) transition.call(document, () => flushSync(apply))
-    else apply()
+    startViewTransitionSafely(() => flushSync(apply))
   }
   // "Tümünü Gör": the area's tab, scrolled to the tabs so the breakdown starts at the top.
   const openDetail = (key: DetailKey) => { go(detailHome[key].view, detailHome[key].sub ?? null); body.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) }

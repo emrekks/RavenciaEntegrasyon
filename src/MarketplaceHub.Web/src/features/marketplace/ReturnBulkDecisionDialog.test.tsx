@@ -32,7 +32,7 @@ afterEach(cleanup)
 function renderDialog(onClose = vi.fn(), onDone = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><ReturnBulkDecisionDialog mode="APPROVE" items={items} onClose={onClose} onDone={onDone} /></QueryClientProvider>)
-  return { onClose, onDone }
+  return { onClose, onDone, client }
 }
 
 describe('bulk return approval dialog', () => {
@@ -61,5 +61,18 @@ describe('bulk return approval dialog', () => {
     expect(kind).toBe('info')
     expect(message).toContain('Onaylanamayan sipariş: #200. Neden: Pazar yeri yanıt vermedi.')
     expect(Array.from(document.querySelectorAll('button')).some(button => button.textContent === 'Kapat')).toBe(false)
+  })
+
+  it('reads each decided return detail again, so its next action sends the new version (no 409)', async () => {
+    const { onClose, client } = renderDialog()
+    await waitFor(() => byText(document.body, '.rr-bcard-p', 'Gömlek').textContent?.includes('SKU-ol-a'))
+    await waitFor(() => client.getQueryState(['return', 'b'])?.status === 'success')
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    click(byText(document.body, 'button', '2 İadeyi Onayla'))
+    await waitFor(() => document.querySelector('.rr-confirm-q'))
+    click(byText(document.querySelectorAll('.rr-modal')[1]!, 'button', 'Onayla'))
+    await waitFor(() => onClose.mock.calls.length === 1)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['return', 'a'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['return', 'b'] })
   })
 })

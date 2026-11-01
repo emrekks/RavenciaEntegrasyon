@@ -1255,7 +1255,9 @@ public sealed record OrderSummaryView(
     int Pending = 0,
     int Unverified = 0,
     int PaymentPending = 0,
-    int Undelivered = 0);
+    int Undelivered = 0,
+    // Pending orders past their ship-by time within the same filters (the Geciken tab).
+    int Late = 0);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,

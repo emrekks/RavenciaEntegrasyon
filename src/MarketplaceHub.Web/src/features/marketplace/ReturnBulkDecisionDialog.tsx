@@ -138,7 +138,9 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     }
     // An approval closes every popup when it ends and reports through the toast; a rejection keeps its result screen.
     if (!approving) setRunning(false)
-    await Promise.all([client.invalidateQueries({ queryKey: ['returns'] }), ...(stocked > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])]).catch(() => undefined)
+    // ['returns'] does not reach the detail cache (['return', id]): each decided claim's detail is read again, or its
+    // next action would send the old version in If-Match and get 409.
+    await Promise.all([client.invalidateQueries({ queryKey: ['returns'] }), ...items.map(item => client.invalidateQueries({ queryKey: ['return', item.id] })), ...(stocked > 0 ? [client.invalidateQueries({ queryKey: ['products'] })] : [])]).catch(() => undefined)
     const okCount = results.filter(outcome => outcome.ok).length
     const failCount = results.length - okCount
     const noun = approving ? 'onaylandı' : 'reddedildi'

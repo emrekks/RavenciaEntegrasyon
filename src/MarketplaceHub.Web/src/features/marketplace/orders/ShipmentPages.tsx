@@ -105,7 +105,8 @@ export function ShipmentDetailPage() {
       await packageRequest.mutateAsync({ path, body: JSON.stringify(payload), version: query.data.package.version })
       noticeFailureRef.current = null
       setNotice(success)
-      await Promise.all(refresh.map(queryKey => client.invalidateQueries({ queryKey })))
+      // The order and package lists (and the order details under ['orders']) show the package's state too.
+      await Promise.all([...refresh, ['orders'], ['shipments']].map(queryKey => client.invalidateQueries({ queryKey })))
     } catch (reason) { const failed = notificationError(reason, failure); noticeFailureRef.current = { title: sentenceTitle(failure), code: failed.code }; setNotice(failed.message) }
     finally { requestInFlight.current = false }
   }
