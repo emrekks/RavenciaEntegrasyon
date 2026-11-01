@@ -45,6 +45,9 @@
 .publish-issue-badge { display: inline-flex; min-width: 0; max-width: 100%; }
 .publish-platform-fact-publication, .publish-platform-fact-publication dd { min-width: 0; }
 .publish-platform-fact-publication dd > .publish-issue-badge { flex: 0 1 auto; }
+/* Partly live: the status, then what the rest would meet ("21 hazır" or the gaps badge) wrap within the card. */
+.publish-platform-fact-publication dd { flex-wrap: wrap; row-gap: 5px; }
+.publish-partial-ready { flex: none; white-space: nowrap; }
 .publish-issue-trigger.publish-platform-status { min-width: 0; max-width: 100%; white-space: nowrap; }
 .publish-issue-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .publish-issue-trigger > :is(i, .publish-issue-count, svg) { flex: none; }

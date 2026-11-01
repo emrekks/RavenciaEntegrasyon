@@ -26,10 +26,10 @@ let client: QueryClient
 
 const card = { code: 'trendyol', name: 'Trendyol', initial: 'T', tone: 'trendyol', mode: 'PUBLISH' as const, connection: { id: 'c1', platformCode: 'TRENDYOL', displayName: 'Mağaza', externalStoreId: '930112', status: 'ACTIVE' } }
 
-async function render(props: { familyProductIds?: string[]; settling?: boolean; onDeselect?: () => void } = {}) {
+async function render(props: { familyProductIds?: string[]; settling?: boolean; onDeselect?: () => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }> } = {}) {
   await act(async () => {
     root.render(<QueryClientProvider client={client}><MemoryRouter>
-      <PublishPlatformCard card={card} selected={false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} categoryId="" productChecks={[]} selectedAttributes={[]} onSelect={vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onFeedback={vi.fn()} />
+      <PublishPlatformCard card={card} selected={false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} categoryId="" productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onFeedback={vi.fn()} />
     </MemoryRouter></QueryClientProvider>)
   })
 }
@@ -88,5 +88,39 @@ describe('PublishPlatformCard first frames', () => {
     expect(container.querySelector('.publish-platform-toggle.on')).toBeNull()
     await render({ settling: false })
     expect(subtitle()).toBe('Zaten yayında · yeniden seçilemez')
+  })
+})
+
+describe('PublishPlatformCard partly live', () => {
+  const status = () => container.querySelector('.publish-platform-fact-publication dd')!
+
+  it('says the rest is ready to send when the publish check finds nothing missing', async () => {
+    await render({ familyProductIds: ['p1', 'p2'], productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksiksiz.', ok: true }] })
+    await answer('p1', { actualStatus: 'LIVE' })
+    await answer('p2', { actualStatus: 'UNKNOWN' })
+    expect(status().textContent).toContain('Kısmen yayında · 1/2 renk')
+    expect(status().querySelector('.publish-partial-ready')?.textContent).toBe('1 hazır')
+    expect(status().querySelector('.publish-issue-trigger')).toBeNull()
+  })
+
+  it('keeps the partial status and shows the gaps badge for the rest, opening the same gap list', async () => {
+    await render({ familyProductIds: ['p1', 'p2'], productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }] })
+    await answer('p1', { actualStatus: 'LIVE' })
+    await answer('p2', { actualStatus: 'UNKNOWN' })
+    expect(status().textContent).toContain('Kısmen yayında · 1/2 renk')
+    expect(status().querySelector('.publish-partial-ready')).toBeNull()
+    const badge = status().querySelector<HTMLButtonElement>('.publish-issue-trigger')!
+    expect(badge.title).toBe('1 renkte 1 eksik')
+    expect(badge.querySelector('.publish-issue-count')?.textContent).toBe('1')
+    await act(async () => { badge.click() })
+    expect(status().querySelector('.publish-issue-required .publish-issue-chip')?.textContent).toBe('Temel Ürün Verileri')
+  })
+
+  it('leaves a card with nothing live as it was', async () => {
+    await render({ familyProductIds: ['p1', 'p2'], productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }] })
+    await answer('p1', { actualStatus: 'UNKNOWN' })
+    await answer('p2', { actualStatus: 'UNKNOWN' })
+    expect(status().querySelector('.publish-issue-trigger')?.getAttribute('title')).toBe('Yayın için zorunlu eksik')
+    expect(status().querySelector('.publish-partial-ready')).toBeNull()
   })
 })
