@@ -1,4 +1,5 @@
 import { flushSync } from 'react-dom'
+import { startViewTransitionSafely } from '../../shared/view-transition'
 
 export type VisualTheme = 'light' | 'dark'
 
@@ -28,7 +29,7 @@ export function switchVisualThemeSmoothly(theme: VisualTheme) {
     let applied = false
     const apply = () => { if (applied) return; applied = true; flushSync(() => setVisualThemePreference(theme)) }
     const fallback = window.setTimeout(apply, 300)
-    document.startViewTransition(async () => {
+    startViewTransitionSafely(async () => {
       window.clearTimeout(fallback)
       apply()
       await new Promise(resolve => window.setTimeout(resolve, 0))

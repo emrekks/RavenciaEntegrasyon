@@ -17,27 +17,29 @@ import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoa
 import { useScrollLock } from '../../../shared/hooks/useScrollLock'
 import { appendNotification, normalizeNotificationKind, notificationError, notificationLinks, type NotificationContext } from '../../../shared/notifications'
 import { orderLinkOnlyTabs, orderStatusMoreTabs, orderStatusTabs, resolveOrderStatusTab } from '../order-status-tabs'
-import { onHoldOrderStatusText, overdueShipmentDays } from '../order-delivery-presentation'
-import { addressBlockFields, code128Bars, loadPrintedShippingLabels, shippingLabelPageCss, markShippingLabelPrinted, printedShippingLabelKey, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../../shipping'
+import { addressBlockFields, code128Bars, loadPrintedShippingLabels, shippingLabelPageCss, printedShippingLabelKey, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../../shipping'
 import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, marketplacePlatformLabel, marketplacePlatformOptions } from '../marketplace-platform-support'
 import { productImageFallbackUrls as createProductImageFallbackUrls } from '../product-image-lookups'
 import { visibleOrderLineVariantOptions } from '../order-line-variant-options'
 import { invoiceProviderForEnvironment } from '../../invoicing/invoice-creation-availability'
 import { InvoiceWorkspacePreviewModal, type InvoicePreviewTarget } from '../../invoicing/InvoiceWorkspacePreviewModal'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
-import { formatDateTime, formatIstanbul, fromDateTimeLocal, istanbulDateKey, istanbulDayBoundary } from '../../../shared/format-date'
+import { formatDateTime, fromDateTimeLocal, istanbulDateKey, istanbulDayBoundary } from '../../../shared/format-date'
 import { formatMoney } from '../../../shared/format-money'
 import { formatPackageLabel } from '../../../shared/package-label'
 import { readUrlChoice, readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from './shipping-label-data'
 import { OrderMetricCards } from './OrderMetricCards'
 import { orderDetailQueryKey } from './order-query-keys'
-import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnPlatformName, usableShipmentDueAt } from '../shared'
+import { deliveryDueLine, deliveryText, orderRingDetail } from './order-delivery'
+import { orderTabCount, type OrderSummary } from './order-summary'
+import { recordShippingLabelsPrinted } from './label-printed'
+import { applyFilterPatch } from './order-filter-apply'
+import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity, returnDateText, returnLineFacts, returnPlatformName } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
 const invoiceCreationDisabledHelp = 'Fatura oluşturmak için Entegrasyonlar > bu bağlantı ayarlarından “Fatura oluşturma” seçeneğini açın.'
 type ProductImagePreview = { url: string; fallbackUrl?: string | null; fallbackUrls?: string[]; title: string; modelCode?: string | null; variant?: string | null }
-type OrderSummary = { all: number; new: number; processing: number; shipped: number; delivered: number; resent: number; onHold: number; cancelled: number; returned: number; returnInTransit: number; partiallyCancelled: number; manualReview: number; pending: number; unverified: number; paymentPending: number; undelivered?: number }
 type OrderSort = 'DATE_DESC' | 'DATE_ASC' | 'DUE_DESC' | 'DUE_ASC' | 'SHIP_DESC' | 'SHIP_ASC'
 type OrderFilters = { search: string; status: string; platform: string; platforms: string[]; listing: string; cargo: string; invoice: string; invoiceType: string; invoiceRegion: string; label: string; sort: OrderSort; dateFrom: string; dateTo: string }
 type InvoiceViewer = { id: string; orderNumber: string; invoiceType: string; status: string; currency: string; payableTotal: number; taxTotal: number; invoiceNumber: string | null; lines: Array<{ id: string; description: string; sku: string | null; unit: string; quantity: number; vatRate: number; lineTotal: number }>; documents: Array<{ id: string; documentType: string; sha256: string }> }
@@ -152,8 +154,6 @@ function completeAddressLine(fullAddress: string, data: Record<string, unknown>)
 function addressText(value: string, platformCode = 'TRENDYOL') { const source = safeJson(value); return addressDataText([source.shipmentAddress, source.invoiceAddress, source.address].find(item => item && typeof item === 'object') as Record<string, unknown> | undefined ?? source, platformCode) }
 function listAddressText(address: OrderAddress | null | undefined, platformCode = 'TRENDYOL') { return addressDataText((address ?? {}) as Record<string, unknown>, platformCode) }
 function addressDataText(data: Record<string, unknown>, platformCode: string) { const fullAddress = typeof data.fullAddress === 'string' ? data.fullAddress.trim() : ''; const pointPrefix = data.isDeliveryPoint === true ? `Teslimat noktası${typeof data.deliveryPointType === 'string' ? ` (${data.deliveryPointType})` : ''}: ` : ''; if (meaningfulText(fullAddress)) return pointPrefix + completeAddressLine(fullAddress, data); const seen = new Set<string>(); const parts = ['address1', 'address2', 'neighborhood', 'district', 'countyName', 'city', 'province', 'provinceCode', 'country', 'countryCode', 'zip', 'postalCode'].map(key => data[key]).filter(meaningfulText).map(item => item.trim()).filter(item => { const normalized = item.toLocaleLowerCase('tr-TR'); if (seen.has(normalized)) return false; seen.add(normalized); return true }); return parts.length ? pointPrefix + parts.join(' · ') : platformCode === 'SHOPIFY' ? 'Shopify adres bilgisi bulunamadı' : 'Trendyol adres bilgisini maskeledi' }
-function longDate(value: string) { return formatIstanbul(new Date(value), { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
-function deliveryText(item: Order) { const shipment = orderDisplayShipment(item); const rawStatuses = [...(item.packages ?? []).map(value => value.rawStatus), ...(item.lines ?? []).map(value => value.rawStatus)]; if (item.derivedStatus === 'CANCELLED') return { label: 'İptal Tarihi', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'İptal zamanı bekleniyor', note: null, overdue: false }; if (item.derivedStatus === 'DELIVERED') return { label: 'Teslim Edildi', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Teslimat zamanı bekleniyor', note: null, overdue: false }; if (item.derivedStatus === 'UNVERIFIED') return { label: 'Sipariş Durumu', value: 'Durumu doğrulanmadı', note: 'Paket veya güncel sipariş yaşam döngüsü bilgisi bulunmadığından teslimat durumu doğrulanamadı.', overdue: false }; if (item.derivedStatus === 'PAYMENT_PENDING') return { label: 'Sipariş Durumu', value: 'Trendyol ödeme onayı bekleniyor', note: 'Ödeme onaylanana kadar paket işlemleri kullanılamaz.', overdue: false }; if (item.platformCode.trim().toUpperCase() === 'HEPSIBURADA' && item.derivedStatus === 'UNDELIVERED') return { label: 'Sipariş Durumu', value: onHoldOrderStatusText(item.platformCode, rawStatuses), note: null, overdue: false }; if (['SHIPPED', 'UNDELIVERED'].includes(item.derivedStatus)) return { label: 'Taşıma Durumunda', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Kargo zamanı bekleniyor', note: 'Kargoya teslim edildi', overdue: false }; if (item.derivedStatus === 'ON_HOLD') return { label: 'Sipariş Durumu', value: onHoldOrderStatusText(item.platformCode, rawStatuses), note: null, overdue: false }; const dueAt = usableShipmentDueAt(item.shipmentDueAt); const overdueDays = overdueShipmentDays(item.derivedStatus, dueAt); if (overdueDays > 0) return { label: '', value: `Siparişiniz ${overdueDays} gün gecikmiştir!`, note: 'Siparişinizi en kısa sürede kargoya teslim etmelisiniz.', overdue: true }; const urgent = Boolean(dueAt && new Date(dueAt).getTime() - Date.now() <= 86_400_000); return { label: 'Kalan Süre', value: dueAt ? remainingText(dueAt) : item.isMicroExport ? 'Trendyol termin bilgisi göndermedi' : 'Termin zamanı bekleniyor', note: null, overdue: urgent } }
 function InvoiceInfoModal({ item, onClose }: { item: Order; onClose: () => void }) {
   const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
   const order = detail.data
@@ -385,6 +385,7 @@ function LabelBarcode({ value, compact = false }: { value: string; compact?: boo
 }
 function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline = false, detail: suppliedDetail }: { item: Order; settings: ShippingLabelSettings; format?: ShippingLabelFormat; onClose: () => void; onPrinted?: () => void; inline?: boolean; detail?: OrderLabelDetail }) {
   format = format === 'sticker' ? 'sticker' : settings.defaultFormat
+  const client = useQueryClient()
   // The buyer's e-mail (and name and address) are read from the order detail when the label is printed.
   const detailQuery = useQuery({ queryKey: ['order-label-detail', item.id], queryFn: () => hubApi<OrderLabelDetail>(`/orders/${item.id}`), enabled: !inline && !suppliedDetail, staleTime: 30_000 })
   const detail = suppliedDetail ?? detailQuery.data
@@ -433,26 +434,20 @@ function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline
   </article>
   if (inline) return labelSurface
   const detailReady = Boolean(detail)
-  return <RrModal crumb="Yazdırma Önizlemesi" title={format === 'a4' ? 'A4 Kargo Etiketi' : 'Sticker Kargo Etiketi'} desc={`${displayOrderNumber(item.orderNumber)} · ${cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">Etiket bilgileri sipariş ve paket kaydından dolduruldu.</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={!detailReady} onClick={() => { window.print(); recordShippingLabelsPrinted([item.id], format, () => onPrinted?.()) }}><RrIcon name="print" />Yazdır</button></>}>
+  return <RrModal crumb="Yazdırma Önizlemesi" title={format === 'a4' ? 'A4 Kargo Etiketi' : 'Sticker Kargo Etiketi'} desc={`${displayOrderNumber(item.orderNumber)} · ${cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">Etiket bilgileri sipariş ve paket kaydından dolduruldu.</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={!detailReady} onClick={() => { window.print(); void recordShippingLabelsPrinted([item.id], format, () => onPrinted?.(), client) }}><RrIcon name="print" />Yazdır</button></>}>
     <style>{shippingLabelPageCss(format, settings)}</style>
     {detailQuery.isError && !detailReady ? <RrError error={detailQuery.error} onRetry={() => void detailQuery.refetch()} /> : !detailReady ? <RrLoading text="Alıcı bilgileri yükleniyor…" /> : <div className="shipping-label-preview-wrap rr-label-wrap">{labelSurface}</div>}
   </RrModal>
 }
-// After the print dialog closed (window.print blocks until then): the local mark, and the server keeps
-// the first print per order so every computer sees it, for a single label too (audit 2026-10-20 S8).
-function recordShippingLabelsPrinted(ids: readonly string[], format: ShippingLabelFormat, onPrinted: () => void) {
-  ids.forEach(id => markShippingLabelPrinted(id, format))
-  onPrinted()
-  void Promise.allSettled(ids.map(id => hubApi<void>(`/orders/${id}/label-printed`, { method: 'POST' }))).then(() => onPrinted())
-}
 function ShippingLabelBatchModal({ items, settings, format, onClose, onPrinted }: { items: Order[]; settings: ShippingLabelSettings; format: ShippingLabelFormat; onClose: () => void; onPrinted: () => void }) {
+  const client = useQueryClient()
   // Each selected order's detail is read (a few at a time) for the personal fields the labels print.
   const ids = items.map(item => item.id)
   const details = useQuery({ queryKey: ['order-label-details', ids], queryFn: () => loadOrderLabelDetails(ids, id => hubApi<OrderLabelDetail>(`/orders/${id}`)), staleTime: 30_000 })
   function printLabels() {
     if (!details.data) return
     window.print()
-    recordShippingLabelsPrinted(items.map(item => item.id), format, onPrinted)
+    void recordShippingLabelsPrinted(items.map(item => item.id), format, onPrinted, client)
   }
   return <RrModal crumb="Toplu Yazdırma" title="Kargo Stickerlarını Yazdır" desc={`${items.length} etiket · Takip numarası bulunan seçili paketler`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal shipping-label-batch-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">{details.data ? `${items.length} etiket yazdırılmaya hazır.` : details.isError ? 'Alıcı bilgileri alınamadı.' : 'Alıcı bilgileri yükleniyor…'}</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={!details.data} onClick={printLabels}><RrIcon name="print" />Yazdır</button></>}>
     <style>{shippingLabelPageCss(format, settings)}</style>
@@ -593,7 +588,7 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   const [ringTone, ringProgress, ringLabel] = orderRingState(item.derivedStatus)
   const ringDetail = orderRingDetail(delivery)
   // Time left (or days late) before shipping moves from the status ring to the bottom of the order info, in red under a day.
-  const dueLine = delivery.label === 'Kalan süre' || delivery.overdue ? ringDetail : null
+  const dueLine = deliveryDueLine(delivery)
   const facts = (line: OrderLine) => returnLineFacts(item.platformCode, line)
   const lineImage = (line: OrderLine) => line.imageUrl ?? (lines.length === 1 ? item.primaryImageUrl : null)
   // A line with no known photo asks the marketplace for it by barcode (the preview does the same); a miss shows the placeholder.
@@ -864,7 +859,8 @@ export function OrdersPage() {
   // invoice, label), so a counter equals its tab's total (audit 2026-10-20 S12).
   const summaryParams = orderFilterParams(orderQueryFilters, serverLabelFilter).toString()
   const summary = useQuery({ queryKey: ['orders', 'summary', 'filtered', summaryParams], queryFn: () => hubApi<OrderSummary>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary'), placeholderData: keepPreviousData })
-  // Metric cards: late orders come from the dashboard summary, invoices waiting to be cut from the invoice workspace.
+  // Metric cards: invoices waiting to be cut come from the invoice workspace; the dashboard summary stands in for the
+  // late count only while the order summary has no `late` counter.
   const lateOrdersQuery = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<{ metrics: { lateOrders: number; uninvoicedInvoices: number } }>('/dashboard/bootstrap'), staleTime: 30_000 })
   const invoiceSummaryQuery = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000 })
   const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
@@ -879,17 +875,11 @@ export function OrdersPage() {
   const platformOptions = marketplacePlatformOptions(connections.data?.items ?? [], allOrders.map(item => ({ platformCode: item.platformCode, displayName: item.platformDisplayName })))
   const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura Bekliyor'], ['FATURA_ISLENIYOR', 'Fatura İletiliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Fatura İletilemedi'], ['FATURA_KONTROLDE', 'Faturası Mevcut'], ['FATURA_REDDEDILDI', 'Fatura Oluşturulamadı'], ['FATURA_BELIRSIZ', 'Fatura Sonucu Belirsiz'], ['FATURA_IPTAL', 'Fatura İptal']] as const
   const isLabelPrinted = (item: Order) => Boolean(item.labelPrintedAt) || (['a4', 'sticker'] as ShippingLabelFormat[]).some(format => printedLabels.has(printedShippingLabelKey(item.id, format)))
-  const applyFilterValue = <K extends keyof OrderFilters>(key: K, value: OrderFilters[K]) => { const next = { ...filterForm, [key]: value }; setFilterForm(next); setFilters(next); setPage(1) }
+  const applyFilterValue = <K extends keyof OrderFilters>(key: K, value: OrderFilters[K]) => { const next = applyFilterPatch(filters, filterForm, { [key]: value } as Partial<OrderFilters>); setFilterForm(next.form); setFilters(next.applied); setPage(1) }
   const resetFilters = () => { const next = { ...initialOrderFilters }; setFilterForm(next); setFilters(next); setSelectedPlatforms([]); setPage(1); setColumnFilterOpen(null); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('search'); params.delete('status'); return params }, { replace: true }) }
-  const clearInvoiceFilters = () => { const next = { ...filterForm, invoice: 'ALL', invoiceType: 'ALL', invoiceRegion: 'ALL' }; setFilterForm(next); setFilters(next); setPage(1) }
+  const clearInvoiceFilters = () => { const next = applyFilterPatch(filters, filterForm, { invoice: 'ALL', invoiceType: 'ALL', invoiceRegion: 'ALL' }); setFilterForm(next.form); setFilters(next.applied); setPage(1) }
   const selectStatus = (requestedStatus: string) => { const status = resolveOrderStatusTab(requestedStatus); const next = { ...filterForm, status, sort: keepSort(status, filterForm.sort) }; setFilterForm(next); setFilters(current => ({ ...current, status, sort: keepSort(status, current.sort) })); setSearchParams(current => { const params = new URLSearchParams(current); if (status === 'ALL') params.delete('status'); else params.set('status', status); return params }, { replace: true }); setPage(1) }
-  const tabCount = (tab: string) => {
-    // The late view counts what the dashboard's "Geciken Siparişler" card counts.
-    if (tab === 'LATE') return lateOrdersQuery.data?.metrics.lateOrders ?? 0
-    const summaryKey = ({ ALL: 'all', NEW: 'new', UNVERIFIED: 'unverified', PROCESSING: 'processing', SHIPPED: 'shipped', DELIVERED: 'delivered', RESENT: 'resent', ON_HOLD: 'onHold', CANCELLED: 'cancelled', RETURNED: 'returned', RETURN_IN_TRANSIT: 'returnInTransit', PARTIALLY_CANCELLED: 'partiallyCancelled', MANUAL_REVIEW: 'manualReview', PAYMENT_PENDING: 'paymentPending', UNDELIVERED: 'undelivered', PENDING: 'pending' } as Record<string, keyof OrderSummary | undefined>)[tab]
-    if (summary.data && summaryKey && typeof summary.data[summaryKey] === 'number') return summary.data[summaryKey]
-    return 0
-  }
+  const tabCount = (tab: string) => orderTabCount(tab, summary.data, lateOrdersQuery.data?.metrics.lateOrders)
   // Status, search, platform, cargo, listing, date range, sort and pagination
   // are applied by the API. Only local presentation filters remain here.
   const items = all.filter(item => !hasLocalFilters || (filters.label === 'PRINTED' ? isLabelPrinted(item) : !isLabelPrinted(item)))
@@ -1016,14 +1006,14 @@ export function OrdersPage() {
   const orderRows = useMemo(() => pageItems.map(item => <OrderReferenceRow item={item} key={item.id} noBuyer={noBuyer} selectionMode={selectionMode} selected={selectedIds.includes(item.id)} processing={processingOrderId === item.id} onSelect={checked => updateSelection(item.id, checked)} openMenu={menu?.orderId === item.id ? menu.kind : null} onMenuChange={kind => setMenu(kind ? { orderId: item.id, kind } : null)} onInvoiceCreate={() => { setMenu(null); if (item.platformCode === 'SHOPIFY') setInvoiceUploadOrder(item); else setInvoiceDraftOrder(item) }} onInvoiceDetails={() => { setMenu(null); setInvoiceInfoOrder(item) }} onInvoiceUpload={() => { setMenu(null); setInvoiceUploadOrder(item) }} onCourierChange={() => { setMenu(null); setCourierOrder({ item, items: [item] }) }} onOrderStatusChange={() => { setMenu(null); setShopifyStatusOrder(item) }} onProcessOrder={() => void processSingleOrder(item)} onCreatePackage={() => { setMenu(null); setHepsiburadaPackageOrder(item) }} onPrintLabel={format => { if (isMicroExportLabelBlocked(item)) { showBulkNotice('Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.', 'error'); return } setMenu(null); setShippingLabel({ item, format }) }} onPreviewImage={setPreviewImage} labelSettings={labelSettings} printedLabels={printedLabels} />), [pageItemsKey, noBuyer, selectionMode, selectedIds, processingOrderId, menu, labelSettings, printedLabels])
   return <section className="content f3 rr rr-orders">
     <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>Siparişler</h1><p>Tüm pazaryerlerinden gelen siparişleri tek yerden hazırlayın, etiketleyin ve takip edin.</p></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={!items.length || exporting} aria-busy={exporting} title={exporting ? 'Dışa Aktarılıyor…' : undefined} onClick={() => void exportOrders()}><RrIcon name="export" />Dışa Aktar</button><button type="button" className="rr-btn" onClick={() => setShopifyCsvImportOpen(true)}><RrIcon name="import" />İçe Aktar</button><button type="button" className="rr-btn rr-primary" onClick={() => setSingleSyncOpen(true)}><RrIcon name="refresh" /><span className="rr-long">Sipariş Senkronizasyonu</span><span className="rr-short">Senkronize Et</span></button></div></div>
-    <OrderMetricCards newOrders={{ value: summary.data?.new, loading: !summary.data }} processing={{ value: summary.data?.processing, loading: !summary.data }} late={{ value: lateOrdersQuery.data?.metrics.lateOrders, loading: lateOrdersQuery.isLoading }} shipped={{ value: summary.data?.shipped, loading: !summary.data }} uninvoiced={{ value: invoiceSummaryQuery.data?.uninvoicedCount ?? lateOrdersQuery.data?.metrics.uninvoicedInvoices, loading: invoiceSummaryQuery.isLoading }} />
+    <OrderMetricCards newOrders={{ value: summary.data?.new, loading: !summary.data }} processing={{ value: summary.data?.processing, loading: !summary.data }} late={{ value: tabCount('LATE'), loading: !summary.data && lateOrdersQuery.isLoading }} shipped={{ value: summary.data?.shipped, loading: !summary.data }} uninvoiced={{ value: invoiceSummaryQuery.data?.uninvoicedCount ?? lateOrdersQuery.data?.metrics.uninvoicedInvoices, loading: invoiceSummaryQuery.isLoading }} />
     {bulkNotice && <NoticeToast key={bulkNoticeVersion} kind={bulkNoticeKind} message={bulkNotice} onClose={() => setBulkNotice('')} durationMs={bulkNoticeKind === 'pending' ? undefined : 5000} />}
     <div className="rr-fshell">
       <ViewTabsWithMore className="order-tabs" more={orderStatusMoreTabs} ariaLabel="Sipariş durumları" value={filters.status} onChange={selectStatus} items={orderStatusTabs.filter(([value]) => !orderLinkOnlyTabs.includes(value) || value === filters.status).map(([value, label]) => { const count = summary.isLoading ? '…' : summary.isError ? '—' : tabCount(value); return { value, label: viewTabLabel(({ ALL: 'all', NEW: 'new', PROCESSING: 'processing', SHIPPED: 'shipping', DELIVERED: 'done', CANCELLED: 'cancelled', RESENT: 'resend', ON_HOLD: 'paused', PARTIALLY_CANCELLED: 'partial', UNDELIVERED: 'attention', RETURN_IN_TRANSIT: 'return', RETURNED: 'return', MANUAL_REVIEW: 'review', PAYMENT_PENDING: 'waiting', UNVERIFIED: 'attention', PENDING: 'due', LATE: 'attention' } as const)[value], label), count: typeof count === 'number' ? count.toLocaleString('tr-TR') : count, countTone: value === 'NEW' && typeof count === 'number' && count > 0 ? 'warn' as const : undefined } })} />
       <RrFilterCard active={[(selectedPlatforms ?? []).length > 0, Boolean(filters.dateFrom), filters.cargo !== 'ALL', filters.invoice !== 'ALL', filters.invoiceType !== 'ALL', filters.invoiceRegion !== 'ALL', filters.label !== 'ALL', filters.sort !== 'DATE_DESC'].filter(Boolean).length}><div className="rr-filters rr-has-sort">
         <label className="rr-fld rr-search"><small>Sipariş Ara</small><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} aria-label="Sipariş ara" value={filterForm.search} onChange={event => setFilterForm(current => ({ ...current, search: event.target.value }))} onKeyDown={event => { if (event.key === 'Enter') { setFilters(filterForm); setPage(1) } }} placeholder="Sipariş no, müşteri veya barkod ara" /></span></label>
         <div className="rr-fld"><small>Platform</small><RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} onClick={toggle} disabled={!platformOptions.length}><span>{platformTriggerLabel}</span><RrIcon name="chev" /></button>}>{() => <ReturnPlatformPop title="Platform" options={platformOptions} selected={selectedPlatforms} onChange={setSelectedPlatforms} />}</RrAnchor></div>
-        <DateRangePicker className="rr-fld rr-date" from={filterForm.dateFrom} to={filterForm.dateTo} onChange={range => { const next = { ...filterForm, dateFrom: range.from, dateTo: range.to }; setFilterForm(next); setFilters(next); setPage(1) }} label="Sipariş Tarihi" placeholder="Başlangıç – Bitiş" icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
+        <DateRangePicker className="rr-fld rr-date" from={filterForm.dateFrom} to={filterForm.dateTo} onChange={range => { const next = applyFilterPatch(filters, filterForm, { dateFrom: range.from, dateTo: range.to }); setFilterForm(next.form); setFilters(next.applied); setPage(1) }} label="Sipariş Tarihi" placeholder="Başlangıç – Bitiş" icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
         <div className="rr-fld"><small>Sıralama</small><RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} onClick={toggle}><span>{sortOptions.find(option => option[0] === keepSort(filters.status, filterForm.sort))?.[1]}</span><RrIcon name="chev" /></button>}>{close => <div className="rr-pop rr-right" role="listbox" style={{ minWidth: 250 }}>{sortOptions.map(([value, label]) => { const on = value === keepSort(filters.status, filterForm.sort); return <button key={value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => { applyFilterValue('sort', value); close() }}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{label}</span></button> })}</div>}</RrAnchor></div>
         {sheetField('Kargo Firması', filterForm.cargo, cargoOptions, value => applyFilterValue('cargo', value))}
         {sheetField('Fatura Durumu', filterForm.invoice, invoiceOptions, value => applyFilterValue('invoice', value))}
@@ -1073,14 +1063,6 @@ function orderRingState(status: string): [RingTone, number, string] {
     case 'UNVERIFIED': return ['off', 0, 'Doğrulanmadı']
     default: return ['off', 0, titleTr(statusLabel(status))]
   }
-}
-// The line under the ring: time left, days late, or when the order was shipped, delivered or cancelled.
-function orderRingDetail(delivery: { label: string; value: string; note: string | null; overdue: boolean }): { text: string; cls?: string } {
-  const late = /^Siparişiniz (\d+) gün gecikmiştir!$/u.exec(delivery.value)
-  if (late) return { text: `${late[1]} gün gecikti`, cls: 'bad' }
-  if (delivery.label === 'Kalan süre') return { text: /kaldı|doldu|bekleniyor|göndermedi/u.test(delivery.value) ? delivery.value : `${delivery.value} kaldı`, cls: delivery.overdue ? 'crit' : undefined }
-  if (delivery.label === 'Taşıma durumunda') return { text: delivery.note ?? delivery.value }
-  return { text: delivery.value }
 }
 // A checkbox with its explanation. On phones the explanation stays folded behind an info button and opens on a tap.
 function RrHintCheck({ checked, onChange, label, hint }: { checked: boolean; onChange: (value: boolean) => void; label: string; hint: string }) {
