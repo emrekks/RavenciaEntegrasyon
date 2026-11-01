@@ -31,6 +31,17 @@ describe('product picture tile', () => {
     expect(onTileClick).not.toHaveBeenCalled()
   })
 
+  it('does not zoom when the picture itself is clicked', async () => {
+    const onZoom = vi.fn()
+    const { host } = render(<LocalImagePreview file={picture} alt="Ürün 1" caption="urun.jpg" draggable onZoom={onZoom} />)
+    await flush()
+    const image = host.querySelector('img')!
+    click(image)
+    expect(onZoom).not.toHaveBeenCalled()
+    expect(image.classList.contains('clickable-thumb')).toBe(false)
+    expect(image.title).not.toContain('Büyütmek')
+  })
+
   it('has no zoom button when the tile cannot zoom', async () => {
     const { host } = render(<LocalImagePreview file={picture} alt="Ürün 1" caption="urun.jpg" />)
     await flush()
