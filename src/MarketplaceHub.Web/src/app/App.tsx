@@ -8,6 +8,7 @@ import { api, ApiRequestError, hubApi, hubPoll, setUnauthorizedHandler, trackUse
 import { Drawer, ErrorBoundary, ErrorBox, Modal, UiIcon, type UiIconName } from '../shared/components'
 import { AttributesPage, AttributeMappingPage, BrandsPage, CategoriesPage, ImportDetailPage, ImportsPage, NewProductPage, ProductDetailPage, ProductsPage, PromotionsPage, IntegrationDetailPage, IntegrationsPage, MappingPage, OrdersPage, QuestionsPage, ReturnDetailPage, ReturnsPage, ShipmentDetailPage, ShipmentsPage, InvoiceDetailPage, InvoicesPage, JobsPage, ReportsPage } from './route-components'
 import { useOperationsRealtime } from './hooks/useOperationsRealtime'
+import { usePageEntryReveal } from './hooks/usePageEntryReveal'
 import { releaseOrphanedScrollLock, useScrollLock } from '../shared/hooks/useScrollLock'
 import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
@@ -30,10 +31,6 @@ const loadNotificationPanel = () => import('./NotificationPanel').then(module =>
 const NotificationPanel = lazyPage(() => loadNotificationPanel().then(module => ({ default: module.NotificationPanel })))
 const Dashboard = lazyPage(() => import('../features/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })))
 const SystemSettingsPage = lazyPage(() => import('../features/settings/SystemSettingsPage').then(module => ({ default: module.SystemSettingsPage })))
-
-// How long after a page appears its blocks may still play their entry (styles/motion.css): the longest staggered entry
-// and the row light have finished by then.
-const pageEntryWindowMs = 1400
 
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
@@ -63,16 +60,9 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const location = useLocation()
   const navigate = useNavigate()
-  // The page opening (styles/motion.css) plays on every page as it appears: the shell is `.is-entering` for a short
-  // window after each move to another page (and on load), so a block that mounts later, or data that arrives later,
-  // does not play it a second time.
-  const [entering, setEntering] = useState<string | null>(location.pathname)
-  useLayoutEffect(() => { setEntering(location.pathname) }, [location.pathname])
-  useEffect(() => {
-    if (!entering) return undefined
-    const timer = window.setTimeout(() => setEntering(null), pageEntryWindowMs)
-    return () => window.clearTimeout(timer)
-  }, [entering])
+  // Every block of a page plays the page entry (styles/motion.css) once, when it is first on screen.
+  const mainRef = useRef<HTMLElement>(null)
+  usePageEntryReveal(mainRef)
   // Every overlay holds the one counted page lock (shared/hooks/useScrollLock). After a page change, or when the browser
   // brings the tab back from its cache (iPhone browsers kept a stale lock until a reload), a lock style that no overlay
   // holds any more is cleared.
@@ -201,13 +191,13 @@ function Shell({ me }: { me: Me }) {
     { to: '/mappings/categories', label: 'Eşleştirmeler', description: 'Kategori ve özellik eşlemeleri', icon: 'layers' },
     { to: '/settings', label: 'Sistem Ayarları', description: 'Güvenlik ve görünüm ayarları', icon: 'settings' },
   ]
-  return <div className={`app-shell stitch-shell${entering ? ' is-entering' : ''} ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
+  return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
     <aside aria-label="Ravencia ana menüsü" onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave}>
       <div className="sidebar-brand-row"><Link className="sidebar-brand-home" to="/dashboard" aria-label="Genel bakışa git"><span className="stitch-brand-mark" aria-hidden="true"><img src="/pack/brand/ravencia-symbol-128.webp" alt="" /></span><span className="brand wordmark"><strong>Ravencia</strong></span></Link><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
       <nav aria-label="Ana menü">{navigation}</nav>
       <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" aria-label="Oturumu Kapat" title="Oturumu Kapat" onClick={() => void logout()}>{icon('logout')}<span className="logout-label">Oturumu Kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
     </aside>
-    <main>
+    <main ref={mainRef}>
       <header className={`rv-topbar${topbarHidden ? ' is-hidden' : ''}`}><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onPointerEnter={() => void loadNotificationPanel()} onFocus={() => void loadNotificationPanel()} onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{unreadNotificationCount > 0 && <span className="rv-topbar-notification-count" aria-label={`${unreadNotificationCount} okunmamış bildirim`}>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button></div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
       {notificationsOpen && createPortal(<div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi" style={notificationHistoryPosition}>{(() => { const Panel = loadedNotificationPanel ?? NotificationPanel; return <Suspense fallback={null}><Panel notifications={notifications} onNavigate={href => { setNotificationsOpen(false); navigate(href) }} onCleared={() => setNotifications([])} /></Suspense> })()}</div>, document.body)}
       <Modal open={quickSearchOpen} title="Hızlı Arama" description="Bir sayfa veya işlem seçin." onClose={() => setQuickSearchOpen(false)}><div className="rv-command-list" role="listbox" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</div></Modal>
