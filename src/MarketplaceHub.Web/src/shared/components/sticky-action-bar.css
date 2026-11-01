@@ -27,34 +27,29 @@
   box-shadow: 0 -10px 24px -12px rgb(0 0 0 / 35%);
   animation: rv-action-bar-in .18s cubic-bezier(.2, .8, .2, 1) both;
 }
-/* A page's own bar (a direct child of the page, or of its form) docks like the settings bar. While the page scrolls it
-   floats 12 px above the window's edge as a framed card of its own (border, 14 px radius, shadow). At the end of the page
-   it rests under the last card and merges with it (StickyActionBar sets data-docked): no gap, the card's bottom corners
-   go square, its bottom edge is the bar's top rule, and only the bar's bottom corners are rounded, so card and bar read
-   as one box. Phones keep the separate bar. */
+/* A page's own bar (a direct child of the page, or of its form) is the settings bar: flush with the window's bottom edge
+   while the page scrolls (the page-padding compensation in design-system.css), as wide as the cards, framed with the
+   cards' border colour and a hairline on top (the settings bar's top rule), square on top and 14 px round at the bottom,
+   with a soft shadow rising from it. At the end of the page it rests under the last card and merges with it
+   (StickyActionBar sets data-docked): no gap, the card's bottom corners go square, its bottom edge is the bar's top
+   rule, and the shadow goes. Phones keep the separate bar (fully rounded). */
 .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
 .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar {
   margin: 16px 0 0;
   max-width: none;
   padding-inline: 16px;
-  border: 1px solid var(--rv-color-border-strong, var(--rv-color-border));
+  border: 1px solid var(--rv-color-border);
+  border-top-color: var(--rv-color-border-strong, var(--rv-color-border));
   border-radius: 14px;
-}
-.app-shell.stitch-shell.stitch-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
-.app-shell.stitch-shell.stitch-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar { bottom: 12px; }
-/* On desktop the page scrolls inside .content, whose sticky edge is its content box (above the bottom padding), so the 12 px is taken from the window edge. */
-@media (min-width: 701px) {
-  .app-shell.stitch-shell.stitch-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
-  .app-shell.stitch-shell.stitch-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar { bottom: calc(12px - var(--rv-page-pad-b, 28px)); }
 }
 @media (min-width: 761px) {
   /* The grid gap above the bar (the page's, or the product form's) is taken back, so the bar starts at the card's edge. */
   .app-shell.stitch-shell > main > .content { --rv-bar-gap: 16px; }
   .app-shell.stitch-shell > main > .content > form.product-add-workspace { --rv-bar-gap: 20px; }
   .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
-  .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar { margin-top: calc(-1 * var(--rv-bar-gap, 16px)); }
+  .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar { margin-top: calc(-1 * var(--rv-bar-gap, 16px)); border-radius: 0 0 14px 14px; }
   .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar[data-docked="true"],
-  .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar[data-docked="true"] { border-radius: 0 0 14px 14px; box-shadow: none; }
+  .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar[data-docked="true"] { box-shadow: none; }
   /* The card above keeps its 1 px bottom border (made transparent, so nothing moves); the bar's top rule is the divider. */
   .app-shell.stitch-shell main .content > :has(+ .rv-action-bar[data-docked="true"]:not(.is-leaving)),
   .app-shell.stitch-shell main .content > form > .product-layout-grid:has(~ .rv-action-bar[data-docked="true"]:not(.is-leaving)) .product-main-stack > .product-step-card:last-child {
