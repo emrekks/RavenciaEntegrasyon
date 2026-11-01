@@ -1138,26 +1138,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                                      where item.TenantId == tenantId && familyProductIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                                      orderby item.SortOrder, item.ProductId, item.Id
                                      select new { MediaId = item.Id, item.ProductId, item.VariantId, item.SortOrder, AssetId = asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
-        var familyMediaSelection = familyMediaRows
-            .GroupBy(item => item.ProductId)
-            .SelectMany(group =>
-            {
-                var productMedia = group.Where(item => item.VariantId is null).OrderBy(item => item.SortOrder).ToList();
-                return productMedia.Count > 0 ? productMedia : group.OrderBy(item => item.SortOrder).Take(1).ToList();
-            })
-            .OrderBy(item => item.SortOrder)
-            .Select(item => new { Media = item, Url = CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url) })
-            .Where(item => !string.IsNullOrWhiteSpace(item.Url))
-            .ToList();
         var familyProductTitles = familyProducts.ToDictionary(item => item.Id, item => item.Title);
-        var familyMediaItems = familyMediaSelection
-            .GroupBy(item => CatalogImageIdentity.Key(item.Url), StringComparer.OrdinalIgnoreCase)
-            .Select(group => new ProductFamilyMediaView(
-                group.First().Url,
-                group.Select(item => item.Media.MediaId).Distinct().ToList(),
-                group.Select(item => familyProductTitles.GetValueOrDefault(item.Media.ProductId, "Ürün")).Distinct(StringComparer.OrdinalIgnoreCase).ToList()))
-            .ToList();
-        var familyMediaUrls = familyMediaItems.Select(item => item.Url).ToList();
+        var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(
+            familyMediaRows.Select(item => new CatalogFamilyMedia.Row(item.MediaId, item.ProductId, item.VariantId, item.SortOrder, CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url))).ToList(),
+            familyProductTitles);
         var familyOrderedMediaUrls = CatalogImageIdentity.DistinctDisplayUrls(familyMediaRows
             .Select(item => CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url)));
         return ServiceResult<ProductView>.Ok(primaryView with

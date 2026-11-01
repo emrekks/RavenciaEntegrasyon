@@ -140,7 +140,19 @@
 }
 
 @layer features {
-  .app-shell.stitch-shell main .product-media-upload input[type="file"] { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  .app-shell.stitch-shell main :is(.product-media-upload, .product-media-file-slot) input[type="file"] { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  .product-media-file-slot { position: relative; display: block; width: 0; height: 0; overflow: hidden; }
+}
+
+/* The plus tile closing the picture strip: a picture-sized dashed frame that opens the file picker (or takes dropped
+   files). The global button rule's 44px minimum is reset; the tile takes the picture tile's size and radius. */
+@layer features {
+  .media-preview-strip .media-add-tile { display: grid; width: 88px; height: 132px; min-width: 0; min-height: 0; margin: 0; padding: 4px; box-sizing: border-box; place-content: center; justify-items: center; gap: 6px; color: var(--rv-color-muted); background: transparent; border: 1px dashed var(--rv-color-border-strong, var(--rv-color-border)); border-radius: var(--rv-radius-md); box-shadow: none; cursor: pointer; font: inherit; transition: border-color .15s ease, background-color .15s ease, color .15s ease; }
+  .media-preview-strip .media-add-tile .ui-icon { width: 22px; height: 22px; }
+  .media-preview-strip .media-add-tile span { font-size: 11px; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+  .media-preview-strip .media-add-tile:hover:not(:disabled), .media-preview-strip .media-add-tile.is-file-over { color: var(--rv-color-primary); border-color: var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 8%, transparent); }
+  .media-preview-strip .media-add-tile:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+  .media-preview-strip .media-add-tile:disabled { cursor: not-allowed; opacity: .55; }
 }
 
 @layer features {

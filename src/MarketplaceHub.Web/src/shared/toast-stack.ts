@@ -44,7 +44,10 @@ export function addToast(items: readonly ToastItem[], input: ToastInput, newId: 
     : items.findIndex(item => !item.key && sameContent(item, input))
   if (index >= 0) {
     const current = items[index]
-    return items.map((item, position) => position === index ? { ...input, id: current.id, version: current.version + 1 } : item)
+    // A running toast that only moves on ("Görseller yükleniyor (3/14)…") updates in place: a new version remounts the
+    // toast and replays its entrance, which made every progress step look like a new notification popping up.
+    const version = current.kind === 'pending' && input.kind === 'pending' ? current.version : current.version + 1
+    return items.map((item, position) => position === index ? { ...input, id: current.id, version } : item)
   }
   return capToasts([...items, { ...input, id: newId(), version: 0 }], max)
 }

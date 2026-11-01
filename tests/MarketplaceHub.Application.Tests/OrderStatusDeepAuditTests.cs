@@ -98,6 +98,48 @@ public sealed class OrderStatusDeepAuditTests
         Assert.Null(MarketplaceEndpoints.PickingTarget([]));
     }
 
+    [Theory]
+    [InlineData(ShipmentPackageStatus.Undelivered, ShipmentPackageStatus.Returned, false, true)]
+    [InlineData(ShipmentPackageStatus.ReturnInTransit, ShipmentPackageStatus.Returned, false, true)]
+    [InlineData(ShipmentPackageStatus.Undelivered, ShipmentPackageStatus.Returned, true, false)]
+    [InlineData(ShipmentPackageStatus.Undelivered, ShipmentPackageStatus.Delivered, false, false)]
+    [InlineData(ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Returned, false, false)]
+    [InlineData(ShipmentPackageStatus.Delivered, ShipmentPackageStatus.Returned, false, false)]
+    [InlineData(ShipmentPackageStatus.Cancelled, ShipmentPackageStatus.Returned, false, false)]
+    public void Only_a_package_read_closing_an_undelivered_parcel_as_returned_ignores_the_time_order(
+        ShipmentPackageStatus current, ShipmentPackageStatus incoming, bool isStatusObservation, bool expected) =>
+        Assert.Equal(expected, PackageIngestionSafety.ClosesReturnRegardlessOfTime(current, incoming, isStatusObservation));
+
+    [Theory]
+    [InlineData("Returned", ShipmentPackageStatus.Returned)]
+    [InlineData("UnDeliveredAndReturned", ShipmentPackageStatus.Returned)]
+    [InlineData("UnDelivered", ShipmentPackageStatus.Undelivered)]
+    [InlineData("SomethingNew", ShipmentPackageStatus.ManualReview)]
+    public void Trendyol_undelivered_and_returned_is_returned(string rawStatus, ShipmentPackageStatus expected) =>
+        Assert.Equal(expected, TrendyolShipmentPackageStatusPolicy.FromRemote(rawStatus));
+
+    [Fact]
+    public void An_older_read_fills_only_missing_cargo_details()
+    {
+        var remote = new RemotePackage("p1", "origin-1", "Returned", DateTimeOffset.UnixEpoch, " Trendyol Express ", "7330038117226058", []);
+        var empty = new ShipmentPackage { ExternalPackageId = "p1", RawStatus = "UnDelivered" };
+        Assert.True(PackageIngestionSafety.FillMissingCargoMetadata(empty, remote));
+        Assert.Equal("Trendyol Express", empty.CargoProviderExternalId);
+        Assert.Equal("7330038117226058", empty.CargoTrackingNumber);
+        Assert.Equal("origin-1", empty.OriginExternalPackageId);
+        Assert.False(PackageIngestionSafety.FillMissingCargoMetadata(empty, remote));
+
+        var held = new ShipmentPackage { ExternalPackageId = "p1", RawStatus = "Delivered", CargoProviderExternalId = "Aras", CargoTrackingNumber = "111", OriginExternalPackageId = "o" };
+        Assert.False(PackageIngestionSafety.FillMissingCargoMetadata(held, remote));
+        Assert.Equal("Aras", held.CargoProviderExternalId);
+        Assert.Equal("111", held.CargoTrackingNumber);
+
+        var blankRemote = remote with { CargoProviderExternalId = null, CargoTrackingNumber = " ", OriginExternalPackageId = null };
+        var untouched = new ShipmentPackage { ExternalPackageId = "p1", RawStatus = "UnDelivered" };
+        Assert.False(PackageIngestionSafety.FillMissingCargoMetadata(untouched, blankRemote));
+        Assert.Null(untouched.CargoTrackingNumber);
+    }
+
     [Fact]
     public void A_created_read_right_after_an_instant_picking_is_an_echo()
     {
