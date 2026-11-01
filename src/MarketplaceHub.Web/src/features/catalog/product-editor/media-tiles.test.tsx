@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, click, flush, render } from '../../../test/render'
-import { LocalImagePreview, MediaMoveButtons } from './media-tiles'
+import { LocalImagePreview, MediaAddTile } from './media-tiles'
 
 beforeEach(() => {
   Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:picture-1'), revokeObjectURL: vi.fn() })
@@ -42,18 +42,40 @@ describe('product picture tile', () => {
     expect(image.title).not.toContain('Büyütmek')
   })
 
+  it('has no order arrows: pictures are sorted by dragging', async () => {
+    const { host } = render(<LocalImagePreview file={picture} alt="Ürün 1" caption="urun.jpg" draggable mediaIndex={0} />)
+    await flush()
+    expect(host.querySelector('.media-move-buttons')).toBeNull()
+    expect(host.querySelectorAll('button')).toHaveLength(0)
+  })
+
+  it('opens the file picker from the plus tile and takes dropped files, but not a dragged picture', () => {
+    const onOpen = vi.fn()
+    const onFiles = vi.fn()
+    const { host } = render(<MediaAddTile hint="JPEG veya PNG" onOpen={onOpen} onFiles={onFiles} />)
+    const tile = host.querySelector<HTMLButtonElement>('button.media-add-tile')!
+    expect(tile.type).toBe('button')
+    expect(tile.textContent).toContain('Görsel Ekle')
+    expect(tile.title).toBe('JPEG veya PNG')
+    expect(tile.draggable).toBe(false)
+    click(tile)
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    const drop = (types: string[], files: File[]) => {
+      const event = new Event('drop', { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'dataTransfer', { value: { types, files, dropEffect: 'none' } })
+      tile.dispatchEvent(event)
+      return event
+    }
+    expect(drop(['text/plain'], []).defaultPrevented).toBe(false)
+    expect(onFiles).not.toHaveBeenCalled()
+    expect(drop(['Files'], [picture]).defaultPrevented).toBe(true)
+    expect(onFiles).toHaveBeenCalledWith([picture])
+  })
+
   it('has no zoom button when the tile cannot zoom', async () => {
     const { host } = render(<LocalImagePreview file={picture} alt="Ürün 1" caption="urun.jpg" />)
     await flush()
     expect(host.querySelector('.image-zoom-btn')).toBeNull()
   })
 
-  it('moves a picture one place with the order buttons', () => {
-    const onMove = vi.fn()
-    const { host } = render(<MediaMoveButtons index={1} count={3} onMove={onMove} />)
-    const [earlier, later] = host.querySelectorAll('button')
-    click(earlier)
-    click(later)
-    expect(onMove.mock.calls).toEqual([[0], [2]])
-  })
 })

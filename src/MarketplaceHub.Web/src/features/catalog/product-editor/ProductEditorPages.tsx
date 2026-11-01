@@ -28,7 +28,7 @@ import { fixableValueMappings, type PublicationAttributeSelection } from '../pub
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { CategoryMappingDialog } from '../CategoryMappingDialog'
 import { PublishIssueBadge } from '../PublishIssueBadge'
-import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
+import { LocalImagePreview, MediaAddTile, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
@@ -43,7 +43,7 @@ import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
 import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemovedMedia, withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
-import { clearAllMediaConfirmationText, clearAllMediaFeedbackText, familyMediaClearPlan, removePendingFamilyMedia, withPendingFamilyMediaRemovals } from '../family-media-clear'
+import { clearAllMediaConfirmationText, clearAllMediaFeedbackText, familyItemsShownInStrip, familyMediaClearPlan, removePendingFamilyMedia, withPendingFamilyMediaRemovals } from '../family-media-clear'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
 import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, TURKISH_VAT_RATES, type EditorFieldErrors } from '../product-editor-state'
@@ -1141,6 +1141,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const allowReseedUntil = useRef(0)
   // New files a half-finished save did not upload: the refill after it keeps them queued instead of dropping them.
   const mediaFilesKeptOnReseed = useRef<PendingProductMediaFile[] | null>(null)
+  const mediaFileInputRef = useRef<HTMLInputElement>(null)
   // Idempotency-Keys of new channel offers in the variant price table, per (variant, marketplace).
   const offerPostKeys = useRef(new Map<string, { key: string; body: string }>())
   // "Pazaryerlerine Özel Fiyat" as the product opened (the marketplaces with their own price) and each card's price when
@@ -1268,7 +1269,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const sortedVariants = sortVariantsAlphabetically(product.variants)
     const removedMediaKeys = mode === 'copy' ? copyRemovedMedia.current : []
     const savedMediaUrls = withoutCopyRemovedMedia(orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder), removedMediaKeys)
-    const savedFamilyMediaUrls = withoutCopyRemovedMedia(product.familyMediaItems?.map(item => item.url) ?? product.familyMediaUrls ?? [], removedMediaKeys)
+    const savedFamilyMediaUrls = withoutCopyRemovedMedia(product.familyMediaUrls ?? product.familyMediaItems?.map(item => item.url) ?? [], removedMediaKeys)
     const initialListPrice = product.defaultListPrice ?? primary?.listPrice ?? primary?.salePrice ?? 0
     const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
     initialEditModelCode.current = initialModelCode.trim()
@@ -2698,6 +2699,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       })
       const message = result.lines.join(' ')
       setRemovedVariantIds([])
+      // The uploaded files are on the product now: they leave the queue here, not only when the refetch below refills
+      // the form, so the strip never shows a stored copy beside its local preview and the next Kaydet does not send it again.
+      mediaFilesKeptOnReseed.current = null
+      setMediaFiles(current => mediaFilesLeftAfterFailedSave(current, uploadedMediaFileIds))
       setNotice(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : message)
       // The saved form is the new clean state; the refetch below may refill it from the server.
       allowReseedUntil.current = Date.now() + 10_000
@@ -2786,12 +2791,17 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // family list still carries them until then, so they leave the gallery now instead of after Kaydet.
   const draftMediaKeys = new Set(mediaUrls.map(mediaImageKey))
   const pendingRemovalMediaKeys = new Set(editProductId ? [...(productToEdit.data?.mediaUrls ?? []).map(mediaImageKey).filter(key => !draftMediaKeys.has(key)), ...pendingFamilyMediaRemovals.map(item => mediaImageKey(item.url))] : [])
-  const familyOnlyMediaItems = familyMediaItems.filter(item => !draftMediaKeys.has(mediaImageKey(item.url)) && !pendingRemovalMediaKeys.has(mediaImageKey(item.url)))
+  // The default strip is each colour's product-level pictures (familyMediaUrls); the items cover every family picture
+  // a custom order can show, variant pictures included.
   const defaultFamilyOrder = productToEdit.data?.familyOrderedMediaUrls?.length
     ? productToEdit.data.familyOrderedMediaUrls
-    : [...mediaUrls, ...familyMediaItems.map(item => item.url)]
+    : [...mediaUrls, ...(productToEdit.data?.familyMediaUrls ?? familyMediaItems.map(item => item.url))]
   const visibleMediaUrls = mediaUrlsInPreferredOrder(uniqueMediaUrls(defaultFamilyOrder), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
     .filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url)))
+  const familyOnlyMediaItems = familyItemsShownInStrip(visibleMediaUrls, familyMediaItems, draftMediaKeys)
+  const hasMediaTiles = mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
+  const mediaUploadHint = 'Adet sınırı yok · JPEG veya PNG · dosya başına en fazla 6 MB'
+  const mediaFileInput = <input ref={mediaFileInputRef} type="file" accept="image/jpeg,image/png" multiple tabIndex={hasMediaTiles ? -1 : undefined} aria-label="Ürün görsellerini dosya olarak seç" onChange={event => { handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
   const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls.filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url))), ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map(item => ({ value: `file|${item.id}`, label: `Yüklenen Görsel · ${item.file.name}`, file: item.file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
@@ -2982,12 +2992,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={() => clearAllMedia()}>Tümünü Temizle</button>}
             </div>
         </div>
-        <label className="upload-ghost-box product-media-upload">
-          <input type="file" accept="image/jpeg,image/png" multiple onChange={event => { handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
-          <strong>{mediaFiles.length ? `${mediaFiles.length} Dosya Seçildi` : 'Ürün Görsellerini Dosya Olarak Seç'}</strong>
-          <small>Adet sınırı yok · JPEG veya PNG · dosya başına en fazla 6 MB</small>
-        </label>
-        {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0) && <div ref={mediaStripRef} className="media-preview-strip" onPointerDown={startMediaTouch} onPointerMove={moveMediaTouch} onPointerUp={endMediaTouch} onPointerCancel={cancelMediaTouch} onContextMenu={event => { if (mediaTouch.current) event.preventDefault() }} onClickCapture={event => { if (suppressMediaClick.current) { event.preventDefault(); event.stopPropagation() } }}>
+        {/* The wide box while there is no picture; after the first one the plus tile at the end of the strip opens the
+            same picker (one input, rendered where its opener is). */}
+        {!hasMediaTiles && <label className="upload-ghost-box product-media-upload">
+          {mediaFileInput}
+          <strong>Ürün Görsellerini Dosya Olarak Seç</strong>
+          <small>{mediaUploadHint}</small>
+        </label>}
+        {hasMediaTiles && <span className="product-media-file-slot">{mediaFileInput}</span>}
+        {hasMediaTiles && <div ref={mediaStripRef} className="media-preview-strip" onPointerDown={startMediaTouch} onPointerMove={moveMediaTouch} onPointerUp={endMediaTouch} onPointerCancel={cancelMediaTouch} onContextMenu={event => { if (mediaTouch.current) event.preventDefault() }} onClickCapture={event => { if (suppressMediaClick.current) { event.preventDefault(); event.stopPropagation() } }}>
           {visibleMediaUrls.map((url, index) => {
             const ownedUrl = mediaUrls.find(current => mediaImageKey(current) === mediaImageKey(url))
             const ownIndex = ownedUrl === undefined ? -1 : mediaUrls.findIndex(current => mediaImageKey(current) === mediaImageKey(url))
@@ -3000,11 +3013,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               {isProductMedia
                 ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli üründen hemen kaldır" aria-label="Görseli üründen hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>
                 : <button type="button" className="image-remove-btn" disabled={!familyItem || submitting} title="Renk ailesi görselini kaldır; Kaydet’te diğer renk ürünlerinden de kaldırılır" aria-label="Renk ailesi görselini kaldır" onClick={event => { event.stopPropagation(); if (familyItem) removeFamilyMedia(familyItem) }}><UiIcon name="close" /></button>}
-              {visibleMediaUrls.length > 1 && <MediaMoveButtons index={index} count={visibleMediaUrls.length} disabled={submitting || Boolean(deletingProductMediaKey)} onMove={target => reorderMedia(index, target)} />}
               <figcaption>{isProductMedia ? `${ownIndex === 0 ? 'Ana görsel' : `${ownIndex + 1}. görsel`} · sürükle` : 'Renk varyantı görseli · sürükle'}</figcaption>
             </figure>
           })}
-          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} mediaIndex={index} mediaCount={mediaFiles.length} onMove={target => reorderUploadedMedia(index, target)} file={item.file} alt={`${form.title || 'Ürün'} ${visibleMediaUrls.length + index + 1}`} caption={index === 0 && !visibleMediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
+          {mediaFiles.map((item, index) => <LocalImagePreview key={item.id} mediaIndex={index} file={item.file} alt={`${form.title || 'Ürün'} ${visibleMediaUrls.length + index + 1}`} caption={index === 0 && !visibleMediaUrls.length ? 'Ana görsel' : item.file.name} draggable={!touchPointer && !submitting} isDragOver={dragOverMedia?.kind === 'file' && dragOverMedia.index === index} onDragStart={event => { setDraggedMedia({ kind: 'file', index }); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', `file:${index}`) }} onDragOver={event => { if (draggedMedia?.kind !== 'file') return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverMedia({ kind: 'file', index }) }} onDrop={event => { event.preventDefault(); const transferValue = event.dataTransfer.getData('text/plain'); const transferIndex = transferValue.startsWith('file:') ? Number(transferValue.slice(5)) : draggedMedia?.kind === 'file' ? draggedMedia.index : -1; if (draggedMedia?.kind === 'file' && Number.isInteger(transferIndex)) reorderUploadedMedia(transferIndex, index) }} onDragEnd={() => { setDraggedMedia(null); setDragOverMedia(null) }} onRemove={() => removeUploadedMedia(item.id)} onZoom={url => setLightboxImage({ url, title: form.title || 'Ürün Görseli' })} />)}
+          <MediaAddTile hint={mediaUploadHint} disabled={submitting} onOpen={() => mediaFileInputRef.current?.click()} onFiles={handleMediaFiles} />
         </div>}
       </section>
 
