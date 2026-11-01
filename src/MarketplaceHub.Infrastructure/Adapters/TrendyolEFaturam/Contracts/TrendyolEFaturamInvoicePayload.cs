@@ -9,7 +9,7 @@ public sealed record EfaturamRecipient(string TaxId, string CountryCode, string 
 public sealed record EfaturamDelivery(string CarrierTaxId, string CarrierName, string? CarrierSurname, DateOnly SentAt);
 public sealed record EfaturamPayment(string PurchaseUrl, string? PaymentAgentName, string? PaymentType, DateTimeOffset PaymentDate, string PaymentMeans);
 public sealed record EfaturamInvoiceLine(string ItemName, string UnitCode, decimal Quantity, decimal UnitPrice, decimal TaxableAmount, decimal VatAmount, decimal VatRate, decimal DiscountAmount, decimal PayableAmount);
-public sealed record EfaturamInvoicePayloadSource(string LocalReferenceId, string InvoiceType, string Currency, string Note, string OrderNumber, DateOnly OrderDate, DateTimeOffset IssuedAt, EfaturamRecipient Recipient, IReadOnlyList<EfaturamInvoiceLine> Lines, EfaturamPayment? Payment = null, EfaturamDelivery? Delivery = null, string? TargetAlias = null);
+public sealed record EfaturamInvoicePayloadSource(string LocalReferenceId, string InvoiceType, string Currency, string Note, string OrderNumber, DateOnly OrderDate, DateTimeOffset IssuedAt, EfaturamRecipient Recipient, IReadOnlyList<EfaturamInvoiceLine> Lines, EfaturamPayment? Payment = null, EfaturamDelivery? Delivery = null, string? TargetAlias = null, Guid? InvoiceUuid = null);
 
 public static class TrendyolEFaturamInvoicePayload
 {
@@ -74,7 +74,9 @@ public static class TrendyolEFaturamInvoicePayload
             notes = new[] { source.Note },
             recipientInfo = EfaturamRecipientNormalizer.Normalize(source.Recipient),
             currencyInfo = new { currency = source.Currency, hasExchange = false },
-            invoiceInfo = new { invoiceType = source.InvoiceType, invoiceTypeCode = "SATIS" },
+            // invoiceInfo.invoiceUuid: "Faturanın ettn numarası istenilen durumda bu alana girilebilir" (createEArchive /
+            // createOutgoingEInvoice). The panel chooses it before sending so a lost answer is read by it, never resent.
+            invoiceInfo = new { invoiceType = source.InvoiceType, invoiceTypeCode = "SATIS", invoiceUuid = source.InvoiceUuid?.ToString("D") },
             invoiceLines = lineRows,
             totalTax = new { totalTaxAmount = Kurus(taxTotal), subTotalTaxes = taxes },
             invoiceTotal = new

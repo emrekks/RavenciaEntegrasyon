@@ -981,7 +981,7 @@ public sealed partial class ShopifyHttpClient(
         var read = await ReadInvoiceMetafieldsAsync(shop, orderId!, cancellationToken);
         if (!read.IsSuccess) return AdapterResult<InvoiceDeliveryStatus>.Failure(read.Error!, read.RateLimit);
         var invoiceUrl = EmptyToNull(read.Value!.PdfUrl?.Value);
-        return AdapterResult<InvoiceDeliveryStatus>.Success(new(orderId!, InvoiceStatusForUrl(invoiceUrl),
+        return AdapterResult<InvoiceDeliveryStatus>.Success(new(orderId!, DeliverySlotStatus(invoiceUrl),
             true, null, invoiceUrl, ReferencesAreAuthoritative: true), read.RateLimit);
     }
 
@@ -1012,8 +1012,13 @@ public sealed partial class ShopifyHttpClient(
     private static bool HasAnyInvoiceMetafield(ShopifyInvoiceMetafields values) =>
         !string.IsNullOrWhiteSpace(values.PdfUrl?.Value);
 
-    // The order's ravencia.invoice_pdf_url alone tells whether it holds an invoice: a link is an invoice, none is not.
-    internal static string InvoiceStatusForUrl(string? invoiceUrl) => EmptyToNull(invoiceUrl) is null ? "NOT_INVOICED" : "INVOICED";
+    // The order's ravencia.invoice_pdf_url is the only invoice evidence Shopify has: a link is an invoice. No link says
+    // nothing (the order may have been invoiced outside the panel), so the order observation keeps the state unknown.
+    internal static string InvoiceStatusForUrl(string? invoiceUrl) => EmptyToNull(invoiceUrl) is null ? "UNKNOWN" : "INVOICED";
+
+    // The delivery read before and after a write asks a narrower question: is the panel's own link slot empty? An empty
+    // slot is what lets the link be written (the write carries its compare digest), so it reads NOT_INVOICED there.
+    internal static string DeliverySlotStatus(string? invoiceUrl) => EmptyToNull(invoiceUrl) is null ? "NOT_INVOICED" : "INVOICED";
 
     internal static RemoteOrder AttachInvoiceMetafields(RemoteOrder order, string? invoiceUrl, DateTimeOffset observedAt)
     {
@@ -1026,8 +1031,8 @@ public sealed partial class ShopifyHttpClient(
             ReferencesAreAuthoritative: true);
         // Shopify invoice metafields are order-level. Project the same
         // read-only observation onto each fulfillment/remainder target so the
-        // shared reconciliation path can revoke stale package delivery proofs
-        // when metafields are removed and refresh changed links.
+        // shared reconciliation path refreshes changed links. A removed link reads
+        // UNKNOWN and leaves the recorded state as it is (unknown stays unknown).
         return order with { Packages = order.Packages.Select(package => package with { Invoice = observation }).ToArray() };
     }
 

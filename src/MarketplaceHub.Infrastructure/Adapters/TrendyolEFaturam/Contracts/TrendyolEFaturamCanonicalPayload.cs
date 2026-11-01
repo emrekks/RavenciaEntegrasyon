@@ -163,7 +163,8 @@ public static class TrendyolEFaturamCanonicalPayload
                     WithoutMarketplaceIds(Text(address, "fullAddress", "address1", "addressText", "address")), NullText(address, "postalCode"), NullText(address, "phone"),
                     NullText(address, "email") ?? NullText(customer.RootElement, "customerEmail"), recipientName,
                     recipientSurname, NullText(address, "taxOffice") ?? NullText(addressRoot, "taxOffice") ?? NullText(customer.RootElement, "taxOffice")),
-                lines, payment, delivery, targetAlias);
+                lines, payment, delivery, targetAlias,
+                NullText(root, "InvoiceUuid") is { } invoiceUuid ? (Guid.TryParse(invoiceUuid, out var parsedUuid) ? parsedUuid : throw new JsonException("EFATURAM_INVOICE_UUID_INVALID")) : null);
             return TrendyolEFaturamInvoicePayload.Create(account, source);
         }
         finally

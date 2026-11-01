@@ -11,6 +11,11 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvider, IConfiguration configuration) : IScheduledJobProducer
 {
+    internal const int InvoiceDueScanIntervalSeconds = 1800;
+
+    // One due scan per tenant per half-hour bucket (the dedup key of INVOICE_DUE_SCAN).
+    internal static long InvoiceDueScanBucket(DateTimeOffset now) => now.ToUnixTimeSeconds() / InvoiceDueScanIntervalSeconds;
+
     // The policy passes run on their own slower timer (the worker calls this every five minutes and at
     // startup); the default upgrades only when asked, which the worker does at startup and hourly.
     public async Task MaintainPoliciesAsync(bool includeDefaults, CancellationToken cancellationToken)
@@ -233,8 +238,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             .Where(tenant => db.Invoices.Any(invoice => invoice.TenantId == tenant.Id))
             .Select(tenant => tenant.Id)
             .ToListAsync(cancellationToken);
-        const int invoiceScanInterval = 300;
-        var invoiceBucket = now.ToUnixTimeSeconds() / invoiceScanInterval;
+        // Every 30 minutes (1 Nov 2026: every 5 minutes was 288 jobs a day, more than half of the invoice tab). The
+        // due list and its notices are therefore at most half an hour behind.
+        var invoiceBucket = InvoiceDueScanBucket(now);
         foreach (var tenantId in dueTenants)
         {
             var dedup = $"scheduled:invoice-due:{tenantId:N}:{invoiceBucket}";
@@ -743,7 +749,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             "ORDER_INVOICE_RECONCILIATION" => current.OverlapSeconds == 0 && (platformCode == "HEPSIBURADA"
                 ? current.IntervalSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)
                     || current.IntervalSeconds == 300 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
-                : current.IntervalSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 30)),
+                : (current.IntervalSeconds == 900 || platformCode == "SHOPIFY" && current.IntervalSeconds == ScheduledOrderPollingCadencePolicy.ShopifyInvoiceReconciliationIntervalSeconds)
+                    && (current.JitterSeconds == 0 || current.JitterSeconds == 30)),
             "REFERENCE_DATA" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 60),
             "FINANCE" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             ListingVerificationPolicy.ResourceType => current.IntervalSeconds == ListingVerificationPolicy.DefaultIntervalSeconds && current.OverlapSeconds == 0 && current.JitterSeconds == ListingVerificationPolicy.DefaultJitterSeconds,

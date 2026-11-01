@@ -4925,6 +4925,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             totalOrders == 0 ? "Kontrol edilecek sipariş bulunamadı" : $"0 / {totalOrders:N0} sipariş kontrol edildi",
             cancellationToken);
 
+        var changedOrders = 0;
         async Task ReconcileOrderInvoiceAsync(string externalOrderId)
         {
             if (isTrendyol)
@@ -4949,9 +4950,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
 
             TrackReceived();
+            var updatedBefore = telemetryUpdatedCount;
             if (isHepsiburada && !await MergeHepsiburadaOrderInvoiceState(tenantId, connectionId, result.Value!, cancellationToken))
                 hepsiburadaInvoiceStatusUnavailable.Add(externalOrderId);
             await UpsertOrder(tenantId, connectionId, result.Value!, cancellationToken, persistFinancialObservations: isShopify);
+            // "İşlenen" counts orders, not rows: one order read once is processed once, however many of its rows moved.
+            if (telemetryUpdatedCount > updatedBefore) changedOrders++;
             await ResolveIssue(tenantId, $"order-invoice-reconciliation:{connectionId}:{externalOrderId}", cancellationToken);
         }
 
@@ -4982,7 +4986,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         totalOrders,
                         percent,
                         $"{processedOrders:N0} / {totalOrders:N0} sipariş kontrol edildi",
-                        cancellationToken);
+                        cancellationToken,
+                        isTrendyol ? null : changedOrders);
                 }
             }
 
@@ -5037,7 +5042,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : stoppedByTimeBudget
                     ? $"{processedOrders:N0} / {totalOrders:N0} sipariş kontrol edildi; süre sınırı nedeniyle kalanlar sonraki taramada"
                     : $"{totalOrders:N0} / {totalOrders:N0} sipariş kontrol edildi",
-            cancellationToken);
+            cancellationToken,
+            isTrendyol ? null : changedOrders);
 
         return (true, isTrendyol && stoppedByTimeBudget);
     }
@@ -5175,9 +5181,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         int total,
         int percent,
         string label,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? processedCount = null)
     {
         if (jobId is null) return Task.FromResult(0);
+        var processed = processedCount ?? telemetryUpdatedCount;
 
         return db.IntegrationJobs
             .Where(job => job.TenantId == tenantId
@@ -5191,7 +5199,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .SetProperty(job => job.ProgressPercent, percent)
                 .SetProperty(job => job.ProgressLabel, label)
                 .SetProperty(job => job.ProgressReceived, telemetryReceivedCount)
-                .SetProperty(job => job.ProgressProcessed, telemetryUpdatedCount)
+                .SetProperty(job => job.ProgressProcessed, processed)
                 .SetProperty(job => job.ProgressSkipped, telemetrySkippedCount)
                 .SetProperty(job => job.ProgressFailed, telemetryFailedCount), cancellationToken);
     }
@@ -10052,14 +10060,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 x => x.TenantId == invoice.TenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id,
                 cancellationToken);
             var previouslyConfirmed = string.Equals(deliveryState?.Status, "CONFIRMED", StringComparison.Ordinal);
+            var hasDeliveryAttempt = InvoiceDeliveryRecoveryPolicy.HasDeliveryAttempt(deliveryState?.ExternalIdempotencyKey);
             var shouldMarkNotPresent = InvoiceDeliveryRecoveryPolicy.ShouldMarkMarketplaceInvoiceNotPresent(invoice.Status, invoice.LastErrorCode, incomingStatus);
-            var shouldQueueRedelivery = InvoiceDeliveryRecoveryPolicy.ShouldQueueAutomaticRedelivery(invoice.Status, invoice.LastErrorCode, incomingStatus);
+            var shouldQueueRedelivery = InvoiceDeliveryRecoveryPolicy.ShouldQueueAutomaticRedelivery(invoice.Status, invoice.LastErrorCode, incomingStatus, hasDeliveryAttempt);
             if (previouslyConfirmed || shouldMarkNotPresent || shouldQueueRedelivery)
             {
                 await RecordMarketplaceInvoiceDeliveryObservationAsync(invoice, package, "REVOKED", observedAt, cancellationToken);
                 await UpdateOrderInvoiceDeliveryStatusAsync(invoice, observedAt, cancellationToken,
                     InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode);
                 await QueueAutomaticInvoiceRedelivery(invoice, package, cancellationToken);
+            }
+            else if (InvoiceDeliveryRecoveryPolicy.IsNeverDeliveredMarkedNotPresent(invoice.Status, invoice.LastErrorCode, hasDeliveryAttempt,
+                await db.InvoiceDocuments.AsNoTracking().AnyAsync(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id, cancellationToken)))
+            {
+                // An earlier read marked an invoice nothing was ever sent for as removed: say what happened instead
+                // (no document, not delivered). Nothing is queued; the delivery waits for the operator.
+                invoice.LastErrorCode = InvoiceDeliveryRecoveryPolicy.DocumentMissingNotDeliveredErrorCode;
+                invoice.UpdatedAt = observedAt;
+                invoice.Version++;
             }
             return;
         }
@@ -10085,7 +10103,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 new(package.ExternalPackageId, observation?.RawStatus ?? string.Empty, true,
                     observation?.InvoiceNumber, observation?.InvoiceUrl, observation?.ReferencesAreAuthoritative == true),
                 invoice.InvoiceNumber,
-                localInvoiceLink);
+                localInvoiceLink)
+                // A read without references is weaker than what the package already holds: when that is exactly this
+                // invoice's number and link, the read confirms it instead of sending a confirmed delivery to review.
+                || string.IsNullOrWhiteSpace(observation?.InvoiceNumber) && string.IsNullOrWhiteSpace(observation?.InvoiceUrl)
+                    && InvoiceDeliveryRecoveryPolicy.StoredReferencesProveDelivery(
+                        package.MarketplaceInvoiceNumber, package.MarketplaceInvoiceUrl, invoice.InvoiceNumber, localInvoiceLink);
             if (exactProof)
             {
                 await RecordExactMarketplaceInvoiceProofAsync(invoice, package, observedAt, cancellationToken);
@@ -10124,10 +10147,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 else
                 {
                     await RecordMarketplaceInvoiceDeliveryObservationAsync(invoice, package, "REVIEW_REQUIRED", observedAt, cancellationToken);
-                    invoice.Status = InvoiceStatus.MarketplacePending;
-                    invoice.LastErrorCode = InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode;
-                    invoice.UpdatedAt = observedAt;
-                    invoice.Version++;
+                    SetInvoiceDeliveryState(invoice, InvoiceStatus.MarketplacePending,
+                        InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, observedAt);
                 }
             }
         }
@@ -10269,6 +10290,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             db.MarketplaceDeliveryStates.Add(state);
             return;
         }
+        // The same proof read again changes nothing.
+        if (state.Status == "CONFIRMED" && state.ErrorCode is null && state.ExternalIdempotencyKey == proofKey && state.RequestHash == proofHash
+            && state.ConnectionId == package.ConnectionId && state.ExternalReference == package.ExternalPackageId)
+            return;
 
         state.ConnectionId = package.ConnectionId;
         state.PackageId = package.Id;
@@ -10310,12 +10335,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Select(x => x.PackageId!.Value)
             .ToHashSet();
         var allConfirmed = MarketplaceInvoiceDeliveryEvidencePolicy.AllTargetsConfirmed(targetPackageIds, confirmedPackageIds);
-        invoice.Status = allConfirmed ? InvoiceStatus.Completed
-            : incompleteErrorCode is not null ? InvoiceStatus.MarketplaceFailed
-            : InvoiceStatus.MarketplacePending;
-        invoice.LastErrorCode = allConfirmed ? null : incompleteErrorCode;
-        invoice.UpdatedAt = observedAt;
+        SetInvoiceDeliveryState(invoice,
+            allConfirmed ? InvoiceStatus.Completed
+                : incompleteErrorCode is not null ? InvoiceStatus.MarketplaceFailed
+                : InvoiceStatus.MarketplacePending,
+            allConfirmed ? null : incompleteErrorCode,
+            observedAt);
+    }
+
+    // A read that finds the invoice as it already is writes nothing: Version and UpdatedAt move only on a real change,
+    // so an unchanged invoice is neither "updated" on every scan nor raced by the optimistic lock.
+    internal static bool SetInvoiceDeliveryState(Invoice invoice, InvoiceStatus status, string? lastErrorCode, DateTimeOffset at)
+    {
+        if (!InvoiceDeliveryRecoveryPolicy.DeliveryStateChanges(invoice.Status, invoice.LastErrorCode, status, lastErrorCode)) return false;
+        invoice.Status = status;
+        invoice.LastErrorCode = lastErrorCode;
+        invoice.UpdatedAt = at;
         invoice.Version++;
+        return true;
     }
 
     private void RecordAcceptedHepsiburadaReadbackProof(MarketplaceDeliveryState state, ShipmentPackage package, DateTimeOffset observedAt)

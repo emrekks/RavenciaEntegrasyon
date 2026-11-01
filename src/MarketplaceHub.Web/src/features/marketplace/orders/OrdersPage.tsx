@@ -128,7 +128,7 @@ async function loadAllOrderPages(filters: OrderFilters): Promise<Page<Order>> {
   }
   return { items, nextCursor: null, hasMore: false, totalCount: items.length }
 }
-const invoiceCreationStatuses = new Set(['FATURA_BEKLIYOR', 'FATURA_REDDEDILDI', 'FATURA_ISLENIYOR'])
+const invoiceCreationStatuses = new Set(['FATURA_BEKLIYOR', 'FATURA_INCELENECEK', 'FATURA_REDDEDILDI', 'FATURA_ISLENIYOR'])
 function isInvoicePending(item: Pick<Order, 'invoiceStatus'>) { return invoiceCreationStatuses.has(item.invoiceStatus) }
 function isMicroExportLabelBlocked(item: Pick<Order, 'isMicroExport' | 'invoiceStatus'>) { return item.isMicroExport && isInvoicePending(item) }
 function ProductImagePreviewModal({ preview, onClose }: { preview: ProductImagePreview; onClose: () => void }) {
@@ -850,7 +850,7 @@ export function OrdersPage() {
   const ordersLoading = ordersQuery.isPending; const ordersError = ordersQuery.error
   const cargos = Array.from(new Set(all.flatMap(item => [orderDisplayShipment(item)?.cargoProviderName ?? item.cargoProviderName].filter((value): value is string => !!value))))
   const platformOptions = marketplacePlatformOptions(connections.data?.items ?? [], allOrders.map(item => ({ platformCode: item.platformCode, displayName: item.platformDisplayName })))
-  const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura Bekliyor'], ['FATURA_ISLENIYOR', 'Fatura İletiliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Fatura İletilemedi'], ['FATURA_KONTROLDE', 'Faturası Mevcut'], ['FATURA_REDDEDILDI', 'Fatura Oluşturulamadı'], ['FATURA_BELIRSIZ', 'Fatura Sonucu Belirsiz'], ['FATURA_IPTAL', 'Fatura İptal']] as const
+  const invoiceStatuses = [['FATURA_BEKLIYOR', 'Fatura Bekliyor'], ['FATURA_ISLENIYOR', 'Fatura İletiliyor'], ['FATURA_PLATFORMA_AKTARILMADI', 'Fatura İletilemedi'], ['FATURA_INCELEME_GEREKLI', 'İnceleme Gerekli'], ['FATURA_KONTROLDE', 'Faturası Mevcut'], ['FATURA_REDDEDILDI', 'Fatura Oluşturulamadı'], ['FATURA_BELIRSIZ', 'Fatura Sonucu Belirsiz'], ['FATURA_IPTAL', 'Fatura İptal']] as const
   const isLabelPrinted = (item: Order) => Boolean(item.labelPrintedAt) || (['a4', 'sticker'] as ShippingLabelFormat[]).some(format => printedLabels.has(printedShippingLabelKey(item.id, format)))
   const applyFilterValue = <K extends keyof OrderFilters>(key: K, value: OrderFilters[K]) => { const next = applyFilterPatch(filters, filterForm, { [key]: value } as Partial<OrderFilters>); setFilterForm(next.form); setFilters(next.applied); setPage(1) }
   const resetFilters = () => { const next = { ...initialOrderFilters }; setFilterForm(next); setFilters(next); setSelectedPlatforms([]); setPage(1); setColumnFilterOpen(null); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('search'); params.delete('status'); return params }, { replace: true }) }
