@@ -480,6 +480,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
         var listing = options.Listing?.Trim().ToUpperInvariant();
         if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
+        // Micro-export orders: Trendyol's micro = true at the top of the package, as RowMarks reads it for the flag icon.
+        if (options.MicroExport == true)
+            query = query.Where(x => (x.CustomerSnapshotJson.Contains("\"micro\":true") || x.CustomerSnapshotJson.Contains("\"micro\": true"))
+                && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && connection.PlatformCode == "TRENDYOL"));
         // Orders with some products cancelled that were not cancelled whole, open or closed.
         if (options.PartialCancel == true)
             query = query.Where(x => x.DerivedStatus != "CANCELLED" && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id && line.CancelledQuantity > 0));
@@ -690,9 +694,24 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var counts = await tagged!.GroupBy(tab => tab).Select(group => new { Tab = group.Key, Count = group.Count() })
             .ToDictionaryAsync(row => row.Tab, row => row.Count, cancellationToken);
         int Count(string tab) => counts.GetValueOrDefault(tab);
+        // The micro-export card counts them under the same filters in any tab; the menu asks for one tab only and skips it.
+        var (micro, microCountries) = requested.Length == OrderSummaryTabs.Length ? await MicroExportCountsAsync(tenantId, options, cancellationToken) : (0, null);
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
-            Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"));
+            Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries);
     }
+
+    private async Task<(int Count, IReadOnlyDictionary<string, int> Countries)> MicroExportCountsAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
+    {
+        var rows = await FilteredOrders(tenantId, options with { Status = null, Sort = null, MicroExport = true })
+            .Select(order => new { order.InvoiceAddressSnapshotJson, order.StoreFrontCode }).ToListAsync(cancellationToken);
+        return (rows.Count, MicroExportCountryCounts(rows.Select(row => (row.InvoiceAddressSnapshotJson, row.StoreFrontCode))));
+    }
+
+    // Micro-export orders per country, the country the row's flag shows (the invoice address's, else the storefront's).
+    // An order whose country is not known (a domestic address and storefront) is listed as "".
+    internal static IReadOnlyDictionary<string, int> MicroExportCountryCounts(IEnumerable<(string InvoiceAddressJson, string? StoreFrontCode)> orders) => orders
+        .GroupBy(order => MicroExportCountry(order.InvoiceAddressJson, order.StoreFrontCode) ?? "")
+        .ToDictionary(group => group.Key, group => group.Count());
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, string Stamp, OrderFacetsView View)> OrderFacetsCache = new();
 
