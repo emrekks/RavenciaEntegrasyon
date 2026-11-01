@@ -4,7 +4,8 @@ Bu belge, Trendyol odaklı entegrasyon gereksinimlerinin Ravencia’daki uygulan
 
 ## Kapsam ve temel sınırlar
 
-- Aktif gerçek sağlayıcı Trendyol’dur. Trendyol E-Faturam fatura akışında ayrı bir sağlayıcı olarak korunur; kapsam dışı pazar yerleri için sahte adapter veya boş worker eklenmez.
+- Bu belge Trendyol senkronizasyonunu anlatır. Hepsiburada, N11, Pazarama, PttAVM ve Shopify da aynı kuyruk ve hat yapısında çalışır; platform farkları `.claude/skills/marketplace-docs` içindedir. Trendyol E-Faturam fatura akışında ayrı bir sağlayıcıdır.
+- Webhook sağlıklıyken sipariş okuma aralığı esnetilir (`WebhookPollingPolicy.EffectiveOrderIntervalSeconds`); aşağıdaki tablolardaki aralıklar webhook yokken geçerli olan taban değerlerdir.
 - Worker sipariş, iade, ürün, referans ve stok işlerini kalıcı `IntegrationJob` kuyruğundan alır. Aynı fiziksel worker içinde öncelik ve lease ile ayrılmış hot, recovery, lifecycle ve reconciliation hatları vardır.
 - Her yazma isteği idempotency anahtarı, external effect kaydı ve read-back/reconciliation ile korunur. Ağ kopması sonrası dış etkinin kesinliği yoksa tekrar yazmak yerine `MANUAL_REVIEW` durumuna geçilir.
 - Kullanıcı arayüzündeki yerel kaydetme Trendyol’a otomatik yazma yapmaz. Ürün importu salt-okunurdur; yayınlama, güncelleme, arşivleme ve fiyat/stok gönderimi açık bir iş olarak kuyruğa alınır.
