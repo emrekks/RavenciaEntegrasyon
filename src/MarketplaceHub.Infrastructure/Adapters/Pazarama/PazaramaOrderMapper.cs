@@ -84,7 +84,9 @@ public static class PazaramaOrderMapper
                 var sku = stockCode ?? barcode ?? "";
                 var title = Text(product, "name") ?? Text(product, "title") ?? sku;
                 var cancelled = raw == "Cancelled" ? quantity.Value : 0;
-                lines.Add(new(itemId, sku, barcode, title, quantity.Value, unitPrice.Value, Decimal(product, "vatRate"), raw, ItemSnapshot(item, product), cancelled));
+                // A cancelled item is dated by its own cancellation entry; another item's history never dates it.
+                var cancelledAt = raw == "Cancelled" ? CancelledAt(item) : null;
+                lines.Add(new(itemId, sku, barcode, title, quantity.Value, unitPrice.Value, Decimal(product, "vatRate"), raw, ItemSnapshot(item, product), cancelled, cancelledAt));
                 // The allocation counts only what is still active: a cancelled item's units are cancelled, not allocated, so the
                 // package check (active + cancelled <= ordered) holds when other items go on. A returned item was delivered first.
                 allocations.Add(new(itemId, quantity.Value - cancelled, cancelled, Shipped(raw) ? quantity.Value : 0, raw is "Delivered" or "Returned" ? quantity.Value : 0, raw is "Returned" ? quantity.Value : 0));
@@ -243,6 +245,20 @@ public static class PazaramaOrderMapper
         foreach (var entry in history.EnumerateArray())
             if (Instant(entry, "historyCreatedDate") is { } at && (latest is null || at > latest)) latest = at;
         return latest;
+    }
+
+    // When the item was cancelled: the historyCreatedDate of its latest history entry whose historyStatus is a
+    // cancellation (6 "Siparişiniz İptal Edildi", 13 "Tedarik Edilemedi"). Without such an entry the time is unknown.
+    private static DateTimeOffset? CancelledAt(JsonElement item)
+    {
+        if (!item.TryGetProperty("orderItemStatusHistory", out var history) || history.ValueKind != JsonValueKind.Array) return null;
+        DateTimeOffset? latest = null;
+        foreach (var entry in history.EnumerateArray())
+        {
+            if (Decimal(entry, "historyStatus") is not { } code || ItemStatus((int)code) != "Cancelled") continue;
+            if (Instant(entry, "historyCreatedDate") is { } at && (latest is null || at > latest)) latest = at;
+        }
+        return latest?.ToUniversalTime();
     }
 
     private static DateTimeOffset? Instant(JsonElement element, string property)

@@ -11,10 +11,12 @@ public sealed class PazaramaOrderMapperTests
 {
     private const string Money7 = """{"currency":"TL","value":7,"valueInt":700,"valueString":"7,00 TL"}""";
 
-    private static string Item(string id, int status, string productCode = "testurunu001", string stockCode = "212", int quantity = 1, string extra = "") =>
+    private const string DefaultHistory = """[{"historyStatus":3,"historyCreatedDate":"2026-02-17T17:23:33.16+03:00"},{"historyStatus":12,"historyCreatedDate":"2026-02-17T17:24:54.865+03:00"}]""";
+
+    private static string Item(string id, int status, string productCode = "testurunu001", string stockCode = "212", int quantity = 1, string extra = "", string history = DefaultHistory) =>
         $$"""
         {"orderItemId":"{{id}}","orderItemStatus":{{status}},"orderItemStatusName":"x",
-         "orderItemStatusHistory":[{"historyStatus":3,"historyCreatedDate":"2026-02-17T17:23:33.16+03:00"},{"historyStatus":12,"historyCreatedDate":"2026-02-17T17:24:54.865+03:00"}],
+         "orderItemStatusHistory":{{history}},
          "shipmentCode":"PZ00250056371","estimatedShippingDate":"2026-02-18T19:00:00+03:00","deliveryType":1,"quantity":{{quantity}},
          "listPrice":{"currency":"TL","value":9},"salePrice":{{Money7}},"totalPrice":{{Money7}},"discountAmount":{"currency":"TL","value":0},
          "cargo":{"companyName":"Aras Kargo","trackingNumber":"655675687","trackingUrl":"www.araskargo.com"},
@@ -153,6 +155,47 @@ public sealed class PazaramaOrderMapperTests
 
         Assert.True(PackageIngestionSafety.TryNormalizeAll(ordered, package.Allocations, ShipmentPackageStatus.Shipped, out var safe));
         Assert.Equal((1m, 1m), (safe["a1"].DeliveredQuantity, safe["a1"].ReturnedQuantity));
+    }
+
+    private static string CancelHistory(int code, string at) =>
+        $$"""[{"historyStatus":3,"historyCreatedDate":"2026-02-17T17:23:33.16+03:00"},{"historyStatus":{{code}},"historyStatusName":"x","historyCreatedDate":"{{at}}"}]""";
+
+    [Fact]
+    public void ACancelledItemTakesItsOwnCancellationTimeAndTheLiveItemNone()
+    {
+        // The live item's history is newer than the cancellation; it must not date the cancelled line.
+        var live = """[{"historyStatus":3,"historyCreatedDate":"2026-02-17T17:23:33.16+03:00"},{"historyStatus":5,"historyCreatedDate":"2026-02-20T10:00:00+03:00"}]""";
+        var order = Single(Item("a1", 6, history: CancelHistory(6, "2026-02-18T09:15:30.5+03:00")) + "," + Item("a2", 5, "bbb", "213", history: live));
+
+        var cancelled = order.Lines.Single(line => line.ExternalLineId == "a1");
+        Assert.Equal(new DateTimeOffset(2026, 2, 18, 6, 15, 30, 500, TimeSpan.Zero), cancelled.CancelledAt);
+        Assert.Equal(TimeSpan.Zero, cancelled.CancelledAt!.Value.Offset);
+        Assert.Null(order.Lines.Single(line => line.ExternalLineId == "a2").CancelledAt);
+        Assert.Null(order.Packages.Single().CancelledAt);
+        Assert.Equal(cancelled.CancelledAt, OrderLineCancelTime.Reported("a1", order));
+        Assert.Null(OrderLineCancelTime.Reported("a2", order));
+    }
+
+    [Fact]
+    public void EveryItemOfAFullyCancelledOrderKeepsItsOwnCancellationTime()
+    {
+        // 13 "Tedarik Edilemedi" is a cancellation too; a time without an offset is Turkey time.
+        var order = Single(Item("a1", 6, history: CancelHistory(6, "2026-02-18T09:00:00+03:00")) + "," + Item("a2", 13, "bbb", "213", history: CancelHistory(13, "2026-02-19 11:30:00")));
+
+        Assert.Equal("Cancelled", order.Packages.Single().RawStatus);
+        Assert.Equal(new DateTimeOffset(2026, 2, 18, 6, 0, 0, TimeSpan.Zero), order.Lines.Single(line => line.ExternalLineId == "a1").CancelledAt);
+        Assert.Equal(new DateTimeOffset(2026, 2, 19, 8, 30, 0, TimeSpan.Zero), order.Lines.Single(line => line.ExternalLineId == "a2").CancelledAt);
+    }
+
+    [Fact]
+    public void ACancelledItemWithoutACancellationEntryHasNoCancellationTime()
+    {
+        var withoutCancelEntry = Single(Item("a1", 6) + "," + Item("a2", 12, "bbb", "213"));
+        Assert.Null(withoutCancelEntry.Lines.Single(line => line.ExternalLineId == "a1").CancelledAt);
+
+        var withoutHistory = Single(Item("a1", 6, history: "null"));
+        Assert.Null(withoutHistory.Lines.Single().CancelledAt);
+        Assert.Null(OrderLineCancelTime.Reported("a1", withoutHistory));
     }
 
     [Fact]
