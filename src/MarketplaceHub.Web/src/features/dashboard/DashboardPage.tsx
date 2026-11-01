@@ -5,13 +5,13 @@ import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
 import type { Product } from '../catalog/shared'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
-import { dashboardOperationalLinks, dayCancellationsLink, dayOrdersLink } from '../../shared/dashboard-operational-links'
+import { dashboardOperationalLinks, dayCancellationsLink } from '../../shared/dashboard-operational-links'
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, soldUnits, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
 import { webhookCell } from './integration-health'
 import type { Connection } from '../marketplace/shared'
@@ -20,7 +20,7 @@ import { instantNotificationsQueryKey, type InstantNotificationStatus } from '..
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
-type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
+type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; pendingUnitsByConnection?: Record<string, number> | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
 type DashboardBootstrap = { metrics: DashboardMetrics; channels?: DashboardChannel[] }
 // GET /dashboard/cancellations: one store's cancellations of the day (DashboardCancellationRowView).
 type CancellationRow = { connectionId: string; cancelledOrders: number; partialOrders: number; cancelledUnits: number; unknownTimeOrders: number; unknownTimeUnits: number }
@@ -184,7 +184,8 @@ const LowStockDetailsModal = lazy(() => import('../catalog/products/ProductsPage
 export function DashboardPage() {
   // Periods are Istanbul calendar days, whatever the browser's clock says.
   const today = istanbulDateKey()
-  const [range, setRange] = useState<Range>('30')
+  // The panel opens on today (owner's call, 1 Nov 2026): hour by hour, against yesterday up to the same hour.
+  const [range, setRange] = useState<Range>('today')
   const [custom, setCustom] = useState({ from: today, to: today })
   // The store picked in the channel list filters the whole performance card; the metric picks what the chart draws.
   const [channel, setChannel] = useState('ALL')
@@ -199,8 +200,6 @@ export function DashboardPage() {
   const matrix = useQuery({ queryKey: ['dashboard', 'integration-matrix'], queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix', poll), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
   // A custom range picked only halfway asks for nothing until its end is picked too.
   const days = periodDays(range, custom, today)
-  // Today's sold units on every store, from the same report as the performance card (its "Bugün" shares the request).
-  const todaySales = useQuery({ queryKey: ['dashboard', 'performance', today, today], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${today}&to=${today}`, poll), ...refresh })
   // Today's cancellations, each counted on the day the marketplace says it happened.
   const cancellations = useQuery({ queryKey: ['dashboard', 'cancellations', today], queryFn: () => hubApi<{ stores: CancellationRow[] }>(`/dashboard/cancellations?day=${today}`, poll), ...refresh })
   const performance = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'performance', days?.from, days?.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, poll), enabled: days !== null, ...refresh })
@@ -250,7 +249,7 @@ export function DashboardPage() {
     return { row, auth, webhook, attention }
   })
   const attention = health.filter(item => item.attention).length
-  const errors = [bootstrap.error, invoiceSummary.error, todaySales.error, cancellations.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
+  const errors = [bootstrap.error, invoiceSummary.error, cancellations.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
   const loadingValue = (busy: boolean, value: number | undefined) => { const known = knownCount(busy, value); return known === null ? '—' : count(known) }
   // The bar places the latest finished day (or hour) between the weakest and strongest ones. The day still running
   // is left out: just after midnight it is near zero, which pinned the low end to 0 and the dot to the left.
@@ -259,7 +258,9 @@ export function DashboardPage() {
   const orderStats = dailyStats(finished.map(point => point.orderCount), count, orders / dayCount)
   const basketStats = dailyStats(finished.filter(point => point.orderCount > 0).map(point => point.amount / point.orderCount), value => money(value, currency), basket)
   const products = productSummary.data
-  const sold = todaySales.data ? soldUnits(todaySales.data.current) : undefined
+  // The products of the pending orders (ordered less cancelled), from the same orders the Bekleyen Siparişler card counts.
+  const pendingUnits = metrics?.pendingUnitsByConnection
+  const pendingUnitTotal = pendingUnits ? Object.values(pendingUnits).reduce((sum, value) => sum + value, 0) : undefined
   const breakdown = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1])
     .map(([connectionId, value]) => { const store = channels.get(connectionId); return { key: connectionId, code: store?.platformCode ?? '', name: store?.displayName ?? 'Kaldırılmış mağaza', value: `${count(value)} adet` } })
   const store = (connectionId: string) => channels.get(connectionId)
@@ -281,11 +282,11 @@ export function DashboardPage() {
     ['late', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
     ['ret', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
     ['invoice', 'Bekleyen Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined],
-    ['due', 'Yaklaşan Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount), '', dashboardOperationalLinks.dueInvoices, undefined],
+    // Under Bekleyen Siparişler: the products of the same orders.
+    ['units', 'Bekleyen Ürün Adedi', knownCount(bootstrap.isLoading, pendingUnitTotal), '', dashboardOperationalLinks.pendingOrders, pendingUnits ?? undefined],
     // The same count as the product list's low-stock filter it opens.
     ['lowst', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
-    // Units sold today (Istanbul) on every store, counted as the report counts them; it opens today's orders.
-    ['units', 'Satılan Ürün Adedi', knownCount(todaySales.isLoading, sold?.total), '', dayOrdersLink(today), sold?.byConnection],
+    ['due', 'Yaklaşan Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount), '', dashboardOperationalLinks.dueInvoices, undefined],
     ['cancel', 'Günlük İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), '', dayCancellationsLink(today), cancelRows, cancelDetail],
   ]
   // The file is made from the data on screen only once it belongs to the chosen period and store.

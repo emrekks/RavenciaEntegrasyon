@@ -11,7 +11,9 @@ public sealed record DashboardMetricsView(
     IReadOnlyDictionary<string, int> PendingReturnsByConnection,
     int DeadJobCount = 0,
     int ManualReviewJobCount = 0,
-    int RecentJobCount = 0);
+    int RecentJobCount = 0,
+    // The products of the pending orders (ordered less cancelled), per store; null while unknown.
+    IReadOnlyDictionary<string, decimal>? PendingUnitsByConnection = null);
 
 public sealed record DashboardChannelView(Guid ConnectionId, string PlatformCode, string DisplayName, string Status);
 public sealed record DashboardIntegrationCellView(string State, DateTimeOffset? LastSuccessAt, DateTimeOffset? LastProblemAt);

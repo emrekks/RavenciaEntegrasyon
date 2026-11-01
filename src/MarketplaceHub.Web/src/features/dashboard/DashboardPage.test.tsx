@@ -11,15 +11,11 @@ vi.mock('../../shared/api', async importOriginal => {
   const respond = async (path: string) => {
     const route = path.split('?')[0]
     if (apiState.failing.has(route)) throw new Error(`${route} failed`)
-    if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 4, lateOrders: 1, pendingReturns: 2 }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
+    if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 4, lateOrders: 1, pendingReturns: 2, pendingUnitsByConnection: { ty: 34, hb: 1 } }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
     if (route === '/dashboard/cancellations') return { stores: [
       { connectionId: 'ty', cancelledOrders: 2, partialOrders: 1, cancelledUnits: 4, unknownTimeOrders: 0, unknownTimeUnits: 0 },
       { connectionId: 'hb', cancelledOrders: 0, partialOrders: 0, cancelledUnits: 0, unknownTimeOrders: 1, unknownTimeUnits: 3 },
     ] }
-    if (route === '/dashboard/performance' && path.includes('from=2026-11-01&to=2026-11-01')) {
-      const row = (connectionId: string, currency: string, productQuantity: number) => ({ day: '2026-11-01', connectionId, currency, amount: 100, orderCount: 1, productQuantity, packageCount: 1, returnedAmount: 0, returnedOrderCount: 0 })
-      return { from: '2026-11-01', to: '2026-11-01', previousFrom: '2026-10-31', previousTo: '2026-10-31', current: [row('ty', 'TRY', 30), row('ty', 'EUR', 4), row('hb', 'TRY', 6)], previous: [row('ty', 'TRY', 99)], channels: [], partialDay: true, currentEnd: '2026-11-01T09:00:00Z' }
-    }
     if (route === '/invoice-workspace/summary') return { dueSoonCount: 3, uninvoicedCount: 7 }
     if (route === '/products/summary') return { totalCount: 10, activeCount: 8, outOfStockCount: 1, lowStockCount: 2 }
     if (route === '/dashboard/integration-matrix') return [{ connectionId: 'c1', platformCode: 'TRENDYOL', displayName: 'Trendyol', externalStoreId: '9999', status: 'ACTIVE', cells: {}, issue: 'Son sipariş çekimi hata verdi' }]
@@ -66,14 +62,12 @@ describe('DashboardPage', () => {
     expect(container.querySelector('.rr-callout.rr-warn')).toBeNull()
   })
 
-  it('counts today\'s sold units on every store, splits them by store and opens today\'s orders', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
-    vi.setSystemTime(new Date('2026-11-01T09:00:00Z'))
-    try { await render() } finally { vi.useRealTimers() }
-    expect(card('Satılan Ürün Adedi')).toBe('40')
-    const units = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Satılan Ürün Adedi')!
-    expect(units.getAttribute('href')).toBe('/orders?from=2026-11-01&to=2026-11-01')
-    expect(Array.from(units.querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol34 adet', 'Hepsiburada6 adet'])
+  it('places the pending products under the pending orders', async () => {
+    await render()
+    expect(Array.from(container.querySelectorAll('.rr-opcard small')).map(label => label.textContent)).toEqual([
+      'Bekleyen Siparişler', 'Geciken Siparişler', 'Bekleyen İadeler', 'Bekleyen Faturalar',
+      'Bekleyen Ürün Adedi', 'Düşük Stok', 'Yaklaşan Faturalar', 'Günlük İptal',
+    ])
   })
 
   it("counts today's whole cancellations, adds products and partial ones, and lists unknown times apart", async () => {
@@ -92,10 +86,18 @@ describe('DashboardPage', () => {
     expect(card('Günlük İptal')).toBe('—')
   })
 
-  it('shows unread sold units as unknown, not 0', async () => {
-    apiState.failing = new Set(['/dashboard/performance'])
+  it('opens the performance panel on today', async () => {
     await render()
-    expect(card('Satılan Ürün Adedi')).toBe('—')
+    expect(container.querySelector('.rr-seg [aria-checked="true"]')?.textContent).toBe('Bugün')
+    expect(container.querySelector('.rr-pf-h p')?.textContent).toBe('Bugün · Tüm Platformlar')
+  })
+
+  it('counts the products of the pending orders, splits them by store and opens the pending orders', async () => {
+    await render()
+    expect(card('Bekleyen Ürün Adedi')).toBe('35')
+    const units = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Bekleyen Ürün Adedi')!
+    expect(units.getAttribute('href')).toBe('/orders?status=PENDING')
+    expect(Array.from(units.querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol34 adet', 'Hepsiburada1 adet'])
   })
 
   it('shows an unread invoice summary or bootstrap as unknown, not 0, and says data is missing', async () => {
@@ -105,6 +107,7 @@ describe('DashboardPage', () => {
     expect(card('Yaklaşan Faturalar')).toBe('—')
     expect(card('Bekleyen Siparişler')).toBe('—')
     expect(card('Geciken Siparişler')).toBe('—')
+    expect(card('Bekleyen Ürün Adedi')).toBe('—')
     expect(card('Düşük Stok')).toBe('2')
     expect(container.querySelector('.rr-callout.rr-warn')?.textContent).toContain('Bazı rapor verileri alınamadı')
   })
