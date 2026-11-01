@@ -212,4 +212,45 @@ public sealed class N11OrderMapperTests
         Assert.Equal("INVOICED", invoiced?.RawStatus);
         Assert.Equal("https://example.test/fatura.pdf", invoiced?.InvoiceUrl);
     }
+
+    private static RemotePackage SinglePackage(string status, string histories)
+    {
+        var page = $$"""
+            {"page":0,"totalPages":1,"content":[{
+              "orderNumber":"203872347800","id":"112999455244800",
+              "lines":[{"orderLineId":"L1","quantity":1,"productName":"Bluz","stockCode":"BLZ-1","price":100,"sellerInvoiceAmount":100,"orderItemLineItemStatusName":"{{status.Trim()}}"}],
+              "lastModifiedDate":1724500000000,"packageHistories":{{histories}},"shipmentPackageStatus":"{{status}}"}]}
+            """;
+        return Assert.Single(Assert.Single(N11OrderMapper.Packages(page).Items).Packages);
+    }
+
+    [Theory]
+    [InlineData("Cancelled")]
+    [InlineData(" Cancelled")]
+    [InlineData("UnSupplied")]
+    public void ACancelledPackageTakesItsCancellationTimeFromThePackageHistory(string status)
+    {
+        var package = SinglePackage(status, $$"""[{"createdDate":1724274054460,"status":"Created"},{"createdDate":1724274255751,"status":"Picking"},{"createdDate":1724300000000,"status":"{{status}}"}]""");
+
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1724300000000), package.CancelledAt);
+        Assert.Equal(TimeSpan.Zero, package.CancelledAt!.Value.Offset);
+    }
+
+    [Fact]
+    public void ACancelledPackageWithoutACancellationEntryHasNoCancellationTime()
+    {
+        // lastModifiedDate is close to but not the cancellation time; it is never used for it.
+        Assert.Null(SinglePackage("Cancelled", """[{"createdDate":1724274054460,"status":"Created"},{"createdDate":1724274255751,"status":"Picking"}]""").CancelledAt);
+        Assert.Null(SinglePackage("Cancelled", "[]").CancelledAt);
+        Assert.Null(SinglePackage("Cancelled", "null").CancelledAt);
+    }
+
+    [Fact]
+    public void APackageThatIsNotCancelledHasNoCancellationTime()
+    {
+        Assert.Null(SinglePackage("Delivered", """[{"createdDate":1724274054460,"status":"Created"},{"createdDate":1724396400000,"status":" Delivered"}]""").CancelledAt);
+        // A split parent is not a cancellation.
+        Assert.Null(SinglePackage("UnPacked", """[{"createdDate":1724274054460,"status":"Created"},{"createdDate":1724300000000,"status":"UnPacked"}]""").CancelledAt);
+        Assert.Null(N11OrderMapper.Packages(DocumentedPage).Items[0].Packages[0].CancelledAt);
+    }
 }

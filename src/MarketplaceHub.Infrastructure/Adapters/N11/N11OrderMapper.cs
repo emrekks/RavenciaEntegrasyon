@@ -82,7 +82,8 @@ public static class N11OrderMapper
         var modified = Instant(package, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch;
         var ordered = CreatedAt(package) ?? modified;
         var status = Text(package, "shipmentPackageStatus") ?? "";
-        var remotePackage = new RemotePackage(packageId, null, status, modified, Text(package, "cargoProviderName") ?? Text(package, "shipmentCompanyId"), cargoCode, allocations, gross, gross - net, net, Invoice(package));
+        var remotePackage = new RemotePackage(packageId, null, status, modified, Text(package, "cargoProviderName") ?? Text(package, "shipmentCompanyId"), cargoCode, allocations, gross, gross - net, net, Invoice(package),
+            CancelledAt: CancelledAt(package, status));
         return new(orderNumber, orderNumber, ordered, modified, "TRY", gross, gross - net, net,
             CustomerSnapshot(package), AddressSnapshot(package, "shippingAddress"), AddressSnapshot(package, "billingAddress"),
             lines, [remotePackage], package.GetRawText(), Instant(package, "agreedDeliveryDate"));
@@ -140,6 +141,29 @@ public static class N11OrderMapper
         }
         return created ?? earliest;
     }
+
+    // n11 package statuses that end a package as cancelled (UnPacked is a split parent, not a cancellation).
+    private static readonly string[] CancelledStatuses = ["Cancelled", "UnSupplied"];
+
+    // A cancelled package's cancellation time is the createdDate of its Cancelled/UnSupplied history entry (the
+    // latest, should n11 repeat one). lastModifiedDate is not used: it moves for other reasons too. A package that
+    // is not cancelled, or whose history has no such entry, has no known cancellation time. n11 lines carry no
+    // time of their own, so lines take the package's time through the order merge.
+    private static DateTimeOffset? CancelledAt(JsonElement package, string status)
+    {
+        if (!IsCancelledStatus(status)) return null;
+        if (!package.TryGetProperty("packageHistories", out var histories) || histories.ValueKind != JsonValueKind.Array) return null;
+        DateTimeOffset? cancelled = null;
+        foreach (var history in histories.EnumerateArray())
+        {
+            if (!IsCancelledStatus(Text(history, "status")) || Instant(history, "createdDate") is not { } at) continue;
+            if (cancelled is null || at > cancelled) cancelled = at;
+        }
+        return cancelled;
+    }
+
+    private static bool IsCancelledStatus(string? status) =>
+        status is not null && CancelledStatuses.Any(cancelled => string.Equals(status, cancelled, StringComparison.OrdinalIgnoreCase));
 
     // Keeps the raw package fields and adds the names the panel and invoicing
     // read for every platform (customerName, customerFirstName/LastName, email).
