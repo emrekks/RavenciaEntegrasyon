@@ -38,7 +38,7 @@ import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdateP
 import { publishCardVariantLinks, publishCardVariantPresence, withLatestVariantLinks } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
-import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
+import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeFieldIssueText } from '../platform-code-rules'
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
@@ -2837,12 +2837,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // Every active connection's barcode and stock code rules: a product goes to all of them with one pair of codes.
   const codeRulePlatforms = useMemo(() => [...new Set((connections.data?.items ?? []).filter(connection => connection.status === 'ACTIVE' || connection.status === 'VERIFIED').map(connection => connection.platformCode))], [connections.data])
   const variantCodeIssues = useMemo(() => new Map(variantRows.map(row => [row.key, platformCodeIssues(codeRulePlatforms, row.barcode, row.sku)])), [codeRulePlatforms, variantRows])
-  // Rows with a red code field: a platform rule broken, or no stock code at all (every variant needs one to be saved).
-  const variantCodeIssueSummary = useMemo(() => {
-    const rowsWithIssues = variantRows.filter(row => (variantCodeIssues.get(row.key)?.length ?? 0) > 0 || !row.sku.trim())
-    const platforms = [...new Set(rowsWithIssues.flatMap(row => variantCodeIssues.get(row.key) ?? []).map(issue => platformCodeNames[issue.platformCode] ?? issue.platformCode))]
-    return rowsWithIssues.length ? { rows: rowsWithIssues.length, platforms, title: `${rowsWithIssues.length.toLocaleString('tr-TR')} varyantın kodu platform kurallarına uymuyor` } : null
-  }, [variantCodeIssues, variantRows])
+  // Rows with a red code field, missing codes and broken platform rules counted apart.
+  const variantCodeIssueSummary = useMemo(() => summarizeVariantCodeIssues(variantRows, variantCodeIssues), [variantCodeIssues, variantRows])
   // Kaydet, Hızlı Güncelle and Yayınlamaya Devam Et wait while a code field is red; they say why and lead to it.
   const codeRuleSaveBlock = variantCodeIssueSummary?.title ?? ''
   function goToFirstVariantCodeIssue() {
@@ -3233,8 +3229,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               <span className="variant-code-rule-notice-icon" aria-hidden="true"><UiIcon name="alert" size={16} /></span>
               <div className="variant-code-rule-notice-text">
                 <strong>{variantCodeIssueSummary.title}</strong>
-                {variantCodeIssueSummary.platforms.length > 0 && <ul className="variant-code-rule-notice-platforms" aria-label="Kuralı ihlal edilen platformlar">{variantCodeIssueSummary.platforms.map(platform => <li key={platform}>{platform}</li>)}</ul>}
-                <small>Kırmızı alanların üzerine gelince ayrıntı görünür. Düzeltilene kadar Kaydet pasif kalır.</small>
+                {variantCodeIssueSummary.rulePlatforms.length > 0 && <ul className="variant-code-rule-notice-platforms" aria-label="Kuralı ihlal edilen platformlar">{variantCodeIssueSummary.rulePlatforms.map(platform => <li key={platform}>{platform}</li>)}</ul>}
+                <small>{variantCodeIssueSummary.ruleRows ? 'Kırmızı alanların üzerine gelince ayrıntı görünür.' : 'Eksik kodları kırmızı alanlara girin.'} Düzeltilene kadar Kaydet pasif kalır.</small>
               </div>
               <button type="button" className="secondary variant-code-rule-notice-action" onClick={goToFirstVariantCodeIssue}>İlk Hataya Git</button>
             </div>}
@@ -3250,10 +3246,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 const matchesFilter = rowMatchesVariantFilters(row)
                 const rowPlatforms = row.platformStatuses?.length ? row.platformStatuses : !editProductId ? variantPricingPlatforms : []
                 const codeIssues = variantCodeIssues.get(row.key) ?? []
-                const barcodeIssueText = describePlatformCodeIssues(codeIssues, 'barcode')
-                // Every variant needs its own stock code to be saved, with or without an active marketplace, so an
-                // empty one is red here too.
-                const skuIssueText = describePlatformCodeIssues(codeIssues, 'sku') || (row.sku.trim() ? '' : 'Stok kodu zorunlu')
+                // An empty needed code says "… eksik"; a filled one names the rules it breaks. Every variant needs its
+                // own stock code, with or without an active marketplace.
+                const barcodeIssueText = variantCodeFieldIssueText(codeIssues, 'barcode', row.barcode)
+                const skuIssueText = variantCodeFieldIssueText(codeIssues, 'sku', row.sku)
                 return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
                   <div className="variant-option-cell"><span className="variant-option-text" aria-label={`${index + 1}. varyant seçenekleri`} title={displayVariantOptionSignature(row.optionSignature, row.options)}>{displayVariantOptionSignature(row.optionSignature, row.options)}</span><button type="button" className="variant-option-edit-button" onClick={() => setOptionEditRowKey(row.key)} aria-label={`${index + 1}. varyantın seçeneklerini düzenle`} title="Seçenekleri düzenle" disabled={!rowOptionEntries(row).length}><UiIcon name="edit" size={14} /></button></div>

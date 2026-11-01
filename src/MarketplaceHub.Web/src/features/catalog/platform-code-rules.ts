@@ -56,6 +56,43 @@ export function platformCodeIssues(platformCodes: readonly string[], barcode: st
   return issues
 }
 
+// A red code field's hover text: "Barkod eksik" / "Stok kodu eksik" when it is empty and needed, otherwise the rules
+// it breaks. A stock code is needed on every variant; a barcode only where some active platform requires one.
+export function variantCodeFieldIssueText(issues: readonly PlatformCodeIssue[], field: PlatformCodeField, value: string) {
+  const ruleText = describePlatformCodeIssues(issues, field)
+  if (value.trim()) return ruleText
+  if (field === 'sku') return 'Stok kodu eksik'
+  return ruleText ? 'Barkod eksik' : ''
+}
+
+export type VariantCodeIssueSummary = { missingBarcodes: number; missingSkus: number; ruleRows: number; rulePlatforms: string[]; title: string }
+
+// The variant code callout: missing codes and broken rules counted apart, the platforms named only for the rules.
+export function summarizeVariantCodeIssues(rows: readonly { key: string; barcode: string; sku: string }[], issuesByKey: ReadonlyMap<string, readonly PlatformCodeIssue[]>): VariantCodeIssueSummary | null {
+  let missingBarcodes = 0
+  let missingSkus = 0
+  let ruleRows = 0
+  const platforms = new Set<string>()
+  for (const row of rows) {
+    const issues = issuesByKey.get(row.key) ?? []
+    const barcodeEmpty = !row.barcode.trim()
+    const skuEmpty = !row.sku.trim()
+    if (barcodeEmpty && issues.some(issue => issue.field === 'barcode')) missingBarcodes++
+    if (skuEmpty) missingSkus++
+    const broken = issues.filter(issue => issue.field === 'barcode' ? !barcodeEmpty : !skuEmpty)
+    if (broken.length) {
+      ruleRows++
+      for (const issue of broken) platforms.add(platformCodeNames[issue.platformCode] ?? issue.platformCode)
+    }
+  }
+  const parts = [
+    missingBarcodes ? `${missingBarcodes.toLocaleString('tr-TR')} varyantta barkod eksik` : '',
+    missingSkus ? `${missingSkus.toLocaleString('tr-TR')} varyantta stok kodu eksik` : '',
+    ruleRows ? `${ruleRows.toLocaleString('tr-TR')} varyantın kodu platform kurallarına uymuyor` : '',
+  ].filter(Boolean)
+  return parts.length ? { missingBarcodes, missingSkus, ruleRows, rulePlatforms: [...platforms], title: parts.join(' · ') } : null
+}
+
 // "Hepsiburada: barkod geçerli 13 haneli EAN-13 olmalı · Trendyol: …" for a field's issues.
 export function describePlatformCodeIssues(issues: readonly PlatformCodeIssue[], field: PlatformCodeField) {
   return issues.filter(issue => issue.field === field).map(issue => `${platformCodeNames[issue.platformCode] ?? issue.platformCode}: ${issue.message}`).join(' · ')
