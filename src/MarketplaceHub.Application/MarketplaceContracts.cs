@@ -1280,7 +1280,9 @@ public sealed record OrderListQuery(
     DateTimeOffset? CancelFrom = null,
     DateTimeOffset? CancelTo = null,
     // Orders with some products cancelled but not cancelled whole.
-    bool? PartialCancel = null);
+    bool? PartialCancel = null,
+    // Trendyol micro-export orders: the rule of the row's flag icon (RowMarks), micro = true at the top of the package.
+    bool? MicroExport = null);
 // Orders per column filter choice for the same filters as GET /orders, status tab included; a column's
 // own choice is left out of its counts. Platforms by platform code, cargos by cargo provider name.
 public sealed record OrderFacetsView(IReadOnlyDictionary<string, int> Platforms, IReadOnlyDictionary<string, int> Cargos);
@@ -1302,7 +1304,11 @@ public sealed record OrderSummaryView(
     int PaymentPending = 0,
     int Undelivered = 0,
     // Pending orders past their ship-by time within the same filters (the Geciken tab).
-    int Late = 0);
+    int Late = 0,
+    // Micro-export orders within the same filters (any tab), and their count per country (invoice address, else the
+    // storefront); null when only some tabs were asked for.
+    int MicroExport = 0,
+    IReadOnlyDictionary<string, int>? MicroExportCountries = null);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,
