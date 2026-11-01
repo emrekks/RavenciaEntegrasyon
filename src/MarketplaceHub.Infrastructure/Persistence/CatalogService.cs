@@ -1190,8 +1190,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
         if (command.DeliveryDays is { } deliveryDays && !ProductDeliveryDays.IsValid(deliveryDays)) return Invalid<ProductView>("deliveryDays", ProductDeliveryDays.InvalidMessage);
         // A card stays a draft only while it is one (ProductDraftPolicy); a draft may still lack its KDV and the category's
-        // required attributes. A save that leaves out the status keeps the card's own.
-        var keepsDraft = command.Status is null ? ProductDraftPolicy.IsDraft(product.Status) : ProductDraftPolicy.IsDraftRequest(command.Status);
+        // required attributes. Only an explicit "DRAFT" (Taslak Olarak Kaydet) relaxes the checks; a save that leaves out
+        // the status is checked in full.
+        var keepsDraft = ProductDraftPolicy.IsDraftRequest(command.Status);
         if (keepsDraft && !ProductDraftPolicy.MayBecomeDraft(product.Status)) return Conflict<ProductView>(ProductDraftPolicy.DraftNotAllowedCode, ProductDraftPolicy.DraftNotAllowedMessage);
         // A card with no VAT yet must get one on this save; a card that has one keeps it when the rate is left out.
         if (command.VatRate is null && product.VatRate is null && !keepsDraft) return Invalid<ProductView>("vatRate", VatRateRequired);
@@ -1364,8 +1365,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var previousStatus = product.Status;
         var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft);
         var statusChanged = command.Status is not null && productStatus != previousStatus;
-        // A draft completed by this save goes on sale alone: another draft of its family is completed in its own editor.
-        var familyStatusProductIds = statusChanged && !ProductDraftPolicy.IsDraft(previousStatus)
+        var familyStatusProductIds = statusChanged
             ? (await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.Id) && x.Id != id && x.Status == previousStatus).Select(x => x.Id).ToListAsync(cancellationToken)).ToHashSet()
             : [];
         // K5: other products of the model-code family whose rows this save changes are local edits too.
