@@ -48,7 +48,7 @@
 .publish-issue-trigger.publish-platform-status { min-width: 0; max-width: 100%; white-space: nowrap; }
 .publish-issue-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .publish-issue-trigger > :is(i, .publish-issue-count, svg) { flex: none; }
-.publish-issue-trigger.publish-platform-status { gap: 6px; min-height: 0; cursor: pointer; font: inherit; }
+.publish-issue-trigger.publish-platform-status { gap: 6px; min-height: 30px; box-sizing: border-box; cursor: pointer; font: inherit; }
 .publish-issue-trigger.publish-platform-status:hover { filter: brightness(1.08); }
 .publish-issue-trigger.publish-platform-status:focus-visible { outline: 2px solid var(--rv-color-danger); outline-offset: 2px; }
 .publish-issue-trigger svg { flex: none; opacity: .8; }

@@ -86,9 +86,10 @@ export function editorVariantDesiUpdate(desi: number, openedDesi: number, loaded
 }
 
 // Field messages the server attached to a refused save (422 fieldErrors), keyed the way the editor shows them.
-export type EditorFieldErrors = Partial<Record<'title' | 'description' | 'categoryId' | 'brandId' | 'prices' | 'variants' | 'attributes' | 'stock' | 'vatRate', string>>
+export type EditorFieldErrors = Partial<Record<'title' | 'description' | 'categoryId' | 'brandId' | 'prices' | 'variants' | 'attributes' | 'stock' | 'vatRate' | 'modelCode', string>>
 const serverFieldToEditorField: Record<string, keyof EditorFieldErrors> = {
   title: 'title',
+  modelcode: 'modelCode',
   vatrate: 'vatRate',
   vatinclusion: 'vatRate',
   description: 'description',

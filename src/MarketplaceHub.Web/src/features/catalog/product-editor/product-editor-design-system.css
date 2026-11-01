@@ -172,11 +172,11 @@
 }
 
 @layer features {
-  .app-shell.stitch-shell main .variant-auto-barcode-toggle { display: flex; align-items: flex-start; gap: var(--rv-space-2); margin-top: var(--rv-space-2); }
+  .app-shell.stitch-shell main .variant-auto-barcode-toggle { display: flex; align-items: center; gap: var(--rv-space-2); margin-top: var(--rv-space-2); }
 }
 
 @layer features {
-  .app-shell.stitch-shell main .variant-auto-barcode-toggle > input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; margin: 2px 0 0; }
+  .app-shell.stitch-shell main .variant-auto-barcode-toggle > input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; }
 }
 
 @layer features {
@@ -857,7 +857,7 @@
 }
 .variant-header-action-menu-portal button strong { font-size: var(--rv-font-size-sm); }
 .publish-platform-fact-publication dd { display: flex; min-width: 0; align-items: center; gap: 5px; }
-.publish-platform-fact-publication .publish-platform-status { max-width: 100%; min-height: 28px; padding-inline: 8px; font-size: 11px; white-space: normal; line-height: 1.25; padding-block: 4px; text-align: left; }
+.publish-platform-fact-publication .publish-platform-status { max-width: 100%; min-height: 30px; box-sizing: border-box; padding-inline: 8px; font-size: 11px; white-space: normal; line-height: 1.25; padding-block: 4px; text-align: left; }
 .publish-platform-fact-publication .publish-tracking-action { display: grid; width: 30px; min-width: 30px; height: 30px; min-height: 0; place-items: center; padding: 0; }
 /* A running publication job shows inside the status row, so the card keeps its height: the badge dot turns into a
    spinner (job message on hover), the stop control sits beside refresh, a stopped job leaves one cut-off line. */
