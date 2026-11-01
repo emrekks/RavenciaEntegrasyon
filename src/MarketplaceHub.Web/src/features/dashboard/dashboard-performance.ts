@@ -72,6 +72,14 @@ export function daySeries(rows: PerformanceRow[], from: string, to: string, chan
   return dayKeys(from, to).map(day => byDay.get(day) ?? { day, amount: 0, orderCount: 0, productQuantity: 0, packageCount: 0, returnedAmount: 0, returnedOrderCount: 0 })
 }
 
+/** Products sold in the period on every store, by store: the report's units (cancelled orders and the cancelled and
+ * returned quantities of a line are not sold), in every currency since a unit has none. */
+export function soldUnits(rows: PerformanceRow[]) {
+  const byConnection: Record<string, number> = {}
+  for (const row of rows) byConnection[row.connectionId] = (byConnection[row.connectionId] ?? 0) + row.productQuantity
+  return { total: Object.values(byConnection).reduce((sum, value) => sum + value, 0), byConnection }
+}
+
 /** Revenue in currencies other than the panel's, which is never added into its total. */
 export function otherCurrencies(rows: PerformanceRow[], channel: string, primary: string) {
   const totals = new Map<string, { amount: number; orders: number }>()

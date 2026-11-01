@@ -5,13 +5,13 @@ import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
 import type { Product } from '../catalog/shared'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
-import { dashboardOperationalLinks } from '../../shared/dashboard-operational-links'
+import { dashboardOperationalLinks, dayOrdersLink } from '../../shared/dashboard-operational-links'
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, soldUnits, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
 import { webhookCell } from './integration-health'
 import type { Connection } from '../marketplace/shared'
@@ -43,6 +43,7 @@ const ICONS = {
   ret: icon(<><path d="M5.5 4 2.5 7l3 3" /><path d="M2.5 7h7a4 4 0 0 1 0 8H7" /></>),
   invoice: icon(<><path d="M4 2h5l3 3v9H4z" /><path d="M9 2v3h3M6 8.5h4M6 11h3" /></>),
   due: icon(<><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3M8 9v2" /></>),
+  units: icon(<><path d="M3 5.5h10l-.9 8H3.9z" /><path d="M5.8 5.5V4.3a2.2 2.2 0 0 1 4.4 0v1.2" /><path d="M6.3 9.6l1.2 1.2 2.3-2.4" /></>),
   lowst: icon(<><path d="M2.5 5 8 2.2 13.5 5v6L8 13.8 2.5 11z" /><path d="M2.5 5 8 7.8 13.5 5M8 7.8v6" /></>),
   up: icon(<path d="M4 10l4-4 4 4" />, 12),
   down: icon(<path d="M4 6l4 4 4-4" />, 12),
@@ -194,6 +195,8 @@ export function DashboardPage() {
   const matrix = useQuery({ queryKey: ['dashboard', 'integration-matrix'], queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix', poll), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
   // A custom range picked only halfway asks for nothing until its end is picked too.
   const days = periodDays(range, custom, today)
+  // Today's sold units on every store, from the same report as the performance card (its "Bugün" shares the request).
+  const todaySales = useQuery({ queryKey: ['dashboard', 'performance', today, today], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${today}&to=${today}`, poll), ...refresh })
   const performance = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'performance', days?.from, days?.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, poll), enabled: days !== null, ...refresh })
 
   const metrics = bootstrap.data?.metrics
@@ -241,7 +244,7 @@ export function DashboardPage() {
     return { row, auth, webhook, attention }
   })
   const attention = health.filter(item => item.attention).length
-  const errors = [bootstrap.error, invoiceSummary.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
+  const errors = [bootstrap.error, invoiceSummary.error, todaySales.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
   const loadingValue = (busy: boolean, value: number | undefined) => { const known = knownCount(busy, value); return known === null ? '—' : count(known) }
   // The bar places the latest finished day (or hour) between the weakest and strongest ones. The day still running
   // is left out: just after midnight it is near zero, which pinned the low end to 0 and the dot to the left.
@@ -250,6 +253,7 @@ export function DashboardPage() {
   const orderStats = dailyStats(finished.map(point => point.orderCount), count, orders / dayCount)
   const basketStats = dailyStats(finished.filter(point => point.orderCount > 0).map(point => point.amount / point.orderCount), value => money(value, currency), basket)
   const products = productSummary.data
+  const sold = todaySales.data ? soldUnits(todaySales.data.current) : undefined
   const breakdown = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1])
     .map(([connectionId, value]) => { const store = channels.get(connectionId); return { key: connectionId, code: store?.platformCode ?? '', name: store?.displayName ?? 'Kaldırılmış mağaza', value: `${count(value)} adet` } })
   const ops: Array<[keyof typeof ICONS, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | undefined]> = [
@@ -260,6 +264,8 @@ export function DashboardPage() {
     ['due', 'Yaklaşan Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount), '', dashboardOperationalLinks.dueInvoices, undefined],
     // The same count as the product list's low-stock filter it opens.
     ['lowst', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
+    // Units sold today (Istanbul) on every store, counted as the report counts them; it opens today's orders.
+    ['units', 'Satılan Ürün Adedi', knownCount(todaySales.isLoading, sold?.total), '', dayOrdersLink(today), sold?.byConnection],
   ]
   // The file is made from the data on screen only once it belongs to the chosen period and store.
   const reportReady = Boolean(data) && days !== null && !performance.isPlaceholderData && !performance.isFetching && data!.from === days.from && data!.to === days.to
