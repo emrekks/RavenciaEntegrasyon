@@ -666,8 +666,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     {
         var requested = tabs is null ? OrderSummaryTabs : OrderSummaryTabs.Where(tab => tabs.Contains(tab, StringComparer.OrdinalIgnoreCase)).ToArray();
         if (requested.Length == 0) requested = OrderSummaryTabs;
-        // The micro-export count is read only by the card that asks for the ALL tab by name; the tab counters skip it.
-        var includeMicro = tabs is not null && tabs.Contains("ALL", StringComparer.OrdinalIgnoreCase);
+        // The micro-export count and its countries are read only by the card, which asks for one tab by name over the
+        // micro-export orders (micro=true): the pending ones (PENDING). The tab counters skip them.
+        var includeMicro = options.MicroExport == true && tabs is not null && requested.Length == 1;
         if (!allowCached) return await CountOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
 
         var key = $"{tenantId:N}|{string.Join(',', requested)}|{JsonSerializer.Serialize(options)}";
@@ -711,15 +712,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var counts = await tagged!.GroupBy(tab => tab).Select(group => new { Tab = group.Key, Count = group.Count() })
             .ToDictionaryAsync(row => row.Tab, row => row.Count, cancellationToken);
         int Count(string tab) => counts.GetValueOrDefault(tab);
-        // The micro-export card counts them under the same filters in any tab (it asks for the ALL tab under a day filter).
-        var (micro, microCountries) = includeMicro ? await MicroExportCountsAsync(tenantId, options, cancellationToken) : (0, null);
+        // The micro-export card counts them in the one tab it asked for, under the same filters.
+        var (micro, microCountries) = includeMicro ? await MicroExportCountsAsync(tenantId, options with { Status = requested[0] }, cancellationToken) : (0, null);
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
             Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries);
     }
 
     private async Task<(int Count, IReadOnlyDictionary<string, int> Countries)> MicroExportCountsAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
     {
-        var rows = await FilteredOrders(tenantId, options with { Status = null, Sort = null, MicroExport = true })
+        var rows = await FilteredOrders(tenantId, options with { Sort = null, MicroExport = true })
             .Select(order => new { order.InvoiceAddressSnapshotJson, order.StoreFrontCode }).ToListAsync(cancellationToken);
         return (rows.Count, MicroExportCountryCounts(rows.Select(row => (row.InvoiceAddressSnapshotJson, row.StoreFrontCode))));
     }

@@ -142,8 +142,8 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
-    // The micro-export card counts the orders the row's flag marks (Trendyol micro = true), under the list's filters
-    // and in any tab, per country; its filter lists exactly those orders.
+    // The micro-export card counts the pending orders the row's flag marks (Trendyol micro = true), per country, under
+    // the list's filters; its filter lists exactly those orders.
     [PostgreSqlFact]
     public async Task MicroExportFilterListsTheFlaggedOrdersAndTheSummaryCountsThemPerCountry()
     {
@@ -170,29 +170,30 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             var listed = (await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(MicroExport: true), CancellationToken.None)).Items.Select(x => x.OrderNumber).OrderBy(x => x).ToList();
             Assert.Equal(["mic-bg", "mic-sa1", "mic-sa2"], listed);
 
-            var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None, ["ALL"]);
+            // The card asks for the PENDING tab alone over the micro-export orders: the pending ones (not yet handed to the
+            // carrier, whatever day they were placed) and their countries; it is the PENDING count of the same request.
+            var pending = await service.OrderSummaryAsync(tenantId, new OrderListQuery(MicroExport: true), CancellationToken.None, ["PENDING"]);
+            Assert.Equal(1, pending.MicroExport);
+            Assert.Equal(pending.Pending, pending.MicroExport);
+            Assert.Equal(new Dictionary<string, int> { ["SA"] = 1 }, pending.MicroExportCountries);
+            // The list the card opens (the micro-export orders in the PENDING tab) holds exactly those orders.
+            Assert.Equal(["mic-sa1"], (await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "PENDING", MicroExport: true), CancellationToken.None)).Items.Select(x => x.OrderNumber).ToList());
+            // In the ALL tab every micro-export order counts, per country, and the count follows the list's filters.
+            var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(MicroExport: true), CancellationToken.None, ["ALL"]);
             Assert.Equal(3, summary.MicroExport);
             Assert.Equal(2, summary.MicroExportCountries!["SA"]);
             Assert.Equal(1, summary.MicroExportCountries["BG"]);
-            // The count follows the list's filters but not its tab.
-            Assert.Equal(1, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Search: "mic-bg"), CancellationToken.None, ["ALL"])).MicroExport);
-            Assert.Equal(3, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Status: "NEW"), CancellationToken.None, ["ALL"])).MicroExport);
-            // The card asks for the ALL tab alone, under a day filter: the count and countries follow the filter. The orders
-            // are stored 20 minutes ago, and Trendyol stores its order times three hours ahead of the real instant, so they
-            // were really placed about three hours and twenty minutes ago: a window around now misses them, one around that
-            // time holds them.
+            Assert.Equal(1, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Search: "mic-bg", MicroExport: true), CancellationToken.None, ["ALL"])).MicroExport);
+            // The list's day filter: the orders are stored 20 minutes ago, and Trendyol stores its order times three hours
+            // ahead of the real instant, so they were really placed about three hours and twenty minutes ago.
             var around = (double fromHours, double toHours) => new OrderListQuery(DateFrom: DateTimeOffset.UtcNow.AddHours(fromHours), DateTo: DateTimeOffset.UtcNow.AddHours(toHours));
-            Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, around(-1, 1), CancellationToken.None, ["ALL"])).MicroExport);
             Assert.Empty((await service.OrdersAsync(tenantId, 50, 1, null, around(-1, 1) with { MicroExport = true }, CancellationToken.None)).Items);
             Assert.Equal(3, (await service.OrdersAsync(tenantId, 50, 1, null, around(-4, -3) with { MicroExport = true }, CancellationToken.None)).Items.Count);
-            var today = await service.OrderSummaryAsync(tenantId, around(-4, -3), CancellationToken.None, ["ALL"]);
-            Assert.Equal(3, today.MicroExport);
-            Assert.Equal(2, today.MicroExportCountries!["SA"]);
-            var otherDay = await service.OrderSummaryAsync(tenantId, new OrderListQuery(DateFrom: DateTimeOffset.UtcNow.AddDays(-3), DateTo: DateTimeOffset.UtcNow.AddDays(-2)), CancellationToken.None, ["ALL"]);
-            Assert.Equal(0, otherDay.MicroExport);
-            // The tab counters (every tab, no names) and a menu counter that asks for one other tab leave the micro-export count out.
+            // The tab counters (every tab, no names), a menu counter that asks for one tab without micro=true, and the
+            // micro-export list's own tab counters (several tabs) leave the micro-export count out.
             Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None)).MicroExport);
             Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None, ["PENDING"])).MicroExport);
+            Assert.Null((await service.OrderSummaryAsync(tenantId, new OrderListQuery(MicroExport: true), CancellationToken.None)).MicroExportCountries);
         }
         finally
         {
