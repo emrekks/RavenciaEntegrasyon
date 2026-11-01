@@ -161,7 +161,6 @@ public sealed class ListingVerificationPolicyTests
     {
         Assert.Equal("Trendyol: 3 ürün pazaryerinde bulunamadı.", ListingVerificationPolicy.NotFoundSummary("TRENDYOL", 3, 3));
         Assert.Equal("n11: 2 ürün (5 varyant) pazaryerinde bulunamadı.", ListingVerificationPolicy.NotFoundSummary("N11", 2, 5));
-        Assert.Equal("/products?platform=TRENDYOL:NOT_FOUND", ListingVerificationPolicy.NotFoundHref("trendyol"));
     }
 
     [Fact]

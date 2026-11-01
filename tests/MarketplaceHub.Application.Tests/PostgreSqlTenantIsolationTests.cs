@@ -2374,7 +2374,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             await using var db = fixture.CreateContext();
             var service = new JobRetentionService(db, fixture.TimeProvider);
             await service.PurgeAsync(TimeSpan.FromDays(14), TimeSpan.FromDays(30), maximumBatches: 5, CancellationToken.None);
-            await service.PurgeProcessedInboxAsync(TimeSpan.FromDays(30), maximumBatches: 5, CancellationToken.None);
+            await service.PurgeInboxAsync(TimeSpan.FromDays(30), TimeSpan.FromDays(90), maximumBatches: 5, CancellationToken.None);
 
             var ids = all.Select(job => job.Id).ToArray();
             var remaining = await db.IntegrationJobs.AsNoTracking().Where(job => ids.Contains(job.Id)).Select(job => job.Id).ToListAsync();

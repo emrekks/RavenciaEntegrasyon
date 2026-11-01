@@ -5,25 +5,13 @@ namespace MarketplaceHub.Application.Tests;
 
 public sealed class DashboardMetricPolicyTests
 {
-    [Fact]
-    public void InvoiceIsDueSoonOnlyDuringFiveToSevenDayReminderWindow()
-    {
-        var now = new DateTimeOffset(2026, 9, 1, 12, 0, 0, TimeSpan.Zero);
-
-        Assert.True(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-5), now));
-        Assert.True(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-6), now));
-        Assert.False(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-7), now));
-        Assert.False(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-8), now));
-        Assert.False(DashboardMetricPolicy.IsInvoiceDueSoon(now.AddDays(-4), now));
-    }
-
     [Theory]
     [InlineData("NEW")]
     [InlineData("PROCESSING")]
     [InlineData("READY_TO_SHIP")]
     [InlineData("PARTIALLY_CANCELLED")]
     [InlineData("MANUAL_REVIEW")]
-    public void OnlyUnshippedOrdersCanBeLate(string status) => Assert.True(DashboardMetricPolicy.IsLateOrderStatus(status));
+    public void OnlyUnshippedOrdersCanBeLate(string status) => Assert.Contains(status, DashboardMetricPolicy.LateOrderStatuses);
 
     [Theory]
     [InlineData("SHIPPED")]
@@ -31,7 +19,7 @@ public sealed class DashboardMetricPolicyTests
     [InlineData("ON_HOLD")]
     [InlineData("DELIVERED")]
     [InlineData("RETURNED")]
-    public void ShippedOrClosedOrdersAreNotLateFulfillmentOrders(string status) => Assert.False(DashboardMetricPolicy.IsLateOrderStatus(status));
+    public void ShippedOrClosedOrdersAreNotLateFulfillmentOrders(string status) => Assert.DoesNotContain(status, DashboardMetricPolicy.LateOrderStatuses);
 
     [Theory]
     [InlineData("NEW")]
@@ -39,7 +27,7 @@ public sealed class DashboardMetricPolicyTests
     [InlineData("READY_TO_SHIP")]
     [InlineData("PARTIALLY_CANCELLED")]
     [InlineData("MANUAL_REVIEW")]
-    public void PendingOrdersAreLimitedToWarehouseActionStatuses(string status) => Assert.True(DashboardMetricPolicy.IsPendingOrderStatus(status));
+    public void PendingOrdersAreLimitedToWarehouseActionStatuses(string status) => Assert.Contains(status, DashboardMetricPolicy.PendingOrderStatuses);
 
     [Theory]
     [InlineData("SHIPPED")]
@@ -48,11 +36,11 @@ public sealed class DashboardMetricPolicyTests
     [InlineData("DELIVERED")]
     [InlineData("RETURNED")]
     [InlineData("CANCELLED")]
-    public void TransportAndTerminalOrdersAreNotPending(string status) => Assert.False(DashboardMetricPolicy.IsPendingOrderStatus(status));
+    public void TransportAndTerminalOrdersAreNotPending(string status) => Assert.DoesNotContain(status, DashboardMetricPolicy.PendingOrderStatuses);
 
     [Theory]
     [InlineData(ReturnClaimStatus.ActionRequired)]
-    public void OnlyActionRequiredReturnsArePending(ReturnClaimStatus status) => Assert.True(DashboardMetricPolicy.IsPendingReturn(status));
+    public void OnlyActionRequiredReturnsArePending(ReturnClaimStatus status) => Assert.Contains(status, DashboardMetricPolicy.PendingReturnStatuses);
 
     [Theory]
     [InlineData(ReturnClaimStatus.Requested)]
@@ -63,7 +51,7 @@ public sealed class DashboardMetricPolicyTests
     [InlineData(ReturnClaimStatus.Disputed)]
     [InlineData(ReturnClaimStatus.Completed)]
     [InlineData(ReturnClaimStatus.Cancelled)]
-    public void ResolvedOrSeparateReturnQueuesAreNotPending(ReturnClaimStatus status) => Assert.False(DashboardMetricPolicy.IsPendingReturn(status));
+    public void ResolvedOrSeparateReturnQueuesAreNotPending(ReturnClaimStatus status) => Assert.DoesNotContain(status, DashboardMetricPolicy.PendingReturnStatuses);
 
     [Theory]
     [InlineData(ShipmentPackageStatus.New)]
@@ -115,18 +103,4 @@ public sealed class DashboardMetricPolicyTests
     [InlineData(ShipmentPackageStatus.Shipped)]
     [InlineData(ShipmentPackageStatus.Delivered)]
     public void LivePackagesCanGetASaleInvoice(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(status));
-
-    [Theory]
-    [InlineData(JobStatus.Pending)]
-    [InlineData(JobStatus.Leased)]
-    [InlineData(JobStatus.RetryScheduled)]
-    public void ActiveQueueStatusesAreObservable(JobStatus status) => Assert.True(DashboardMetricPolicy.IsQueuedJobStatus(status));
-
-    [Theory]
-    [InlineData("REMOTE_RATE_LIMITED")]
-    [InlineData("EFATURAM_RATE_LIMITED")]
-    public void KnownRateLimitErrorsAreCounted(string errorCode) => Assert.True(DashboardMetricPolicy.IsRateLimitError(errorCode));
-
-    [Fact]
-    public void UnknownErrorsAreNotCountedAsRateLimits() => Assert.False(DashboardMetricPolicy.IsRateLimitError("REMOTE_SERVER_ERROR"));
 }

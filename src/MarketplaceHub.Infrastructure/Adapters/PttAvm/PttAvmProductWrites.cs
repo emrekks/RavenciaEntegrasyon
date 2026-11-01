@@ -638,7 +638,8 @@ public static class PttAvmProductPayloadRules
 
     private static string Words(string text) => string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
-    // The family a publication went out as (its product job's request), or null; see PublicationParentBarcode.
+    // The family a publication went out as, read from its product jobs' payloads (ProductPublicationJobPayload JSON):
+    // the family request of the job with this product (else any job) and this publication hash. Null when none is a family.
     public static ProductDraft? PublicationFamily(IEnumerable<string> jobPayloads, Guid productId, string publicationHash)
     {
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -657,11 +658,6 @@ public static class PttAvmProductPayloadRules
             .Select(x => Read(x.PayloadJson, out _))
             .FirstOrDefault(x => x?.Variants is { Count: > 0 });
     }
-
-    // The parent barcode of a publication from its product jobs' payloads (ProductPublicationJobPayload JSON): the
-    // family request of the job with this product (else any job) and this publication hash. Null when none is a family.
-    public static string? PublicationParentBarcode(IEnumerable<string> jobPayloads, Guid productId, string publicationHash)
-        => PublicationFamily(jobPayloads, productId, publicationHash)?.Barcode.Trim();
 
     // The parent product of a model family: the listed product whose own barcode is the parent barcode.
     public static RemoteCatalogProduct? FamilyProduct(string parentBarcode, IReadOnlyList<RemoteCatalogProduct> listed) =>

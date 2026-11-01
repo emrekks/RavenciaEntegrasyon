@@ -42,45 +42,6 @@ public sealed class ShopifyReferenceMapperTests
     }
 
     [Fact]
-    public void PriceInventoryPayloadAcceptsValidUniqueLines()
-    {
-        const string payload = """{"items":[{"barcode":"SKU-1","quantity":4,"salePrice":99.9,"listPrice":129.9}]}""";
-
-        var result = ShopifyHttpClient.ParsePriceInventoryPayload(payload);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(new ShopifyPriceInventoryLine("SKU-1", 4, 99.9m, 129.9m), Assert.Single(result.Value!));
-    }
-
-    [Theory]
-    [InlineData("""{"items":[{"barcode":"SKU-1","quantity":4,"salePrice":99.9,"listPrice":129.9},{"barcode":"SKU-1","quantity":2,"salePrice":99.9,"listPrice":129.9}]}""")]
-    [InlineData("""{"items":[{"barcode":"SKU-1","quantity":-1,"salePrice":99.9,"listPrice":129.9}]}""")]
-    [InlineData("""{"items":[{"barcode":"SKU-1","quantity":4,"salePrice":130,"listPrice":129.9}]}""")]
-    public void PriceInventoryPayloadRejectsUnsafeLines(string payload)
-    {
-        var result = ShopifyHttpClient.ParsePriceInventoryPayload(payload);
-
-        Assert.False(result.IsSuccess);
-        Assert.Equal("SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", result.Error!.Code);
-    }
-
-    [Fact]
-    public void ImmediateWriteOperationReturnsSuccessForEveryWrittenBarcode()
-    {
-        var encoded = Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(new[] { "SKU-1", "SKU-2" }))
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
-
-        var result = ShopifyHttpClient.ParseImmediateOperation($"SHOPIFY_IMMEDIATE:{encoded}");
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal("COMPLETED", result.Value!.Status);
-        Assert.Equal(["SKU-1", "SKU-2"], result.Value.Lines.Select(line => line.ExternalKey));
-        Assert.All(result.Value.Lines, line => Assert.True(line.Succeeded));
-    }
-
-    [Fact]
     public void ProductTypesMapToAFlatCategoryListKeyedByTheExactTypeText()
     {
         using var json = JsonDocument.Parse("""

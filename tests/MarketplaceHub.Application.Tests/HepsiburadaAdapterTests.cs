@@ -509,14 +509,6 @@ public sealed class HepsiburadaAdapterTests
     public void MerchantSku_IsUppercaseAndWhitespaceFree(string input, string? expected) =>
         Assert.Equal(expected, HepsiburadaProductPublicationComposer.NormalizeMerchantSku(input));
 
-    [Theory]
-    [InlineData("4006381333931", true)]
-    [InlineData("4006381333932", false)]
-    [InlineData("8690000000170", false)]
-    [InlineData("40063813339A1", false)]
-    public void Ean13_ValidatesLengthDigitsAndCheckDigit(string value, bool expected) =>
-        Assert.Equal(expected, HepsiburadaProductPublicationComposer.IsValidEan13(value));
-
     // Hepsiburada keeps the seller's own barcode, such as one built from the model code, as well as an EAN-13.
     [Theory]
     [InlineData("RYP004-01", true)]

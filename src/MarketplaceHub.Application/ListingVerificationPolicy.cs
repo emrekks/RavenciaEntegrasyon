@@ -125,7 +125,6 @@ public static class ListingVerificationPolicy
 
     // Where the summary leads: the products page filtered to the platform's products the marketplace no longer knows
     // (the page's platform filter takes "<PLATFORM>:NOT_FOUND").
-    public static string NotFoundHref(string platformCode) => $"/products?platform={platformCode.Trim().ToUpperInvariant()}:NOT_FOUND";
 }
 
 // The position of a connection's verification, kept as JSON in its LISTING_VERIFY_STATE cursor: the run in progress

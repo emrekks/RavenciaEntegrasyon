@@ -28,15 +28,6 @@ public static class DashboardMetricPolicy
     public static readonly ReturnClaimStatus[] PendingReturnStatuses =
         [ReturnClaimStatus.ActionRequired];
 
-    public static bool IsLateOrderStatus(string? status) =>
-        status is "NEW" or "PROCESSING" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED" or "MANUAL_REVIEW";
-
-    public static bool IsPendingOrderStatus(string? status) =>
-        status is "NEW" or "PROCESSING" or "READY_TO_SHIP" or "PARTIALLY_CANCELLED" or "MANUAL_REVIEW";
-
-    public static bool IsPendingReturn(ReturnClaimStatus status) =>
-        status is ReturnClaimStatus.ActionRequired;
-
     public static bool IsInvoiceEligiblePackage(ShipmentPackageStatus status) =>
         status is not ShipmentPackageStatus.Cancelled;
 
@@ -53,18 +44,6 @@ public static class DashboardMetricPolicy
 
     public static bool IsSaleInvoiceBlockedPackage(ShipmentPackageStatus status) =>
         status is ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Undelivered or ShipmentPackageStatus.PaymentPending;
-
-    public static bool IsInvoiceDueSoon(DateTimeOffset deliveredAt, DateTimeOffset now)
-    {
-        var age = now - deliveredAt;
-        return age >= TimeSpan.FromDays(InvoiceReminderStartDays) && age < TimeSpan.FromDays(InvoiceDueDays);
-    }
-
-    public static bool IsQueuedJobStatus(JobStatus status) =>
-        status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled;
-
-    public static bool IsRateLimitError(string? errorCode) =>
-        errorCode is "REMOTE_RATE_LIMITED" or "EFATURAM_RATE_LIMITED";
 }
 
 /// <summary>

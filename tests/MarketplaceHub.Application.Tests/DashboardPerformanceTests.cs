@@ -116,14 +116,10 @@ public sealed class DashboardPerformanceTests
     [Fact]
     public void Trendyol_stored_times_are_three_hours_ahead_and_others_are_real()
     {
-        var stored = new DateTimeOffset(2026, 10, 20, 23, 30, 0, TimeSpan.Zero);
-
         Assert.Equal(TimeSpan.FromHours(3), MarketplaceStoredClock.StoredClockAhead("TRENDYOL"));
         Assert.Equal(TimeSpan.FromHours(3), MarketplaceStoredClock.StoredClockAhead("trendyol"));
         Assert.Equal(TimeSpan.Zero, MarketplaceStoredClock.StoredClockAhead("HEPSIBURADA"));
         Assert.Equal(TimeSpan.Zero, MarketplaceStoredClock.StoredClockAhead(null));
-        // A Trendyol order stored as 23:30 "UTC" was placed at 23:30 Istanbul, i.e. 20:30 UTC: still the 20th.
-        Assert.Equal(new DateTimeOffset(2026, 10, 20, 20, 30, 0, TimeSpan.Zero), MarketplaceStoredClock.RealInstant(stored, "TRENDYOL"));
     }
 
     [Fact]

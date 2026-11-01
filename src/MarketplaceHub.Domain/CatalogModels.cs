@@ -401,10 +401,6 @@ public static class MarketplaceVariantLinkHealth
 
     public static bool IsBroken(string? healthStatus) => healthStatus is NotFound or Rejected;
 
-    // Only a code the marketplace refused twice as unknown is left out of bulk price/stock sends; a code a scan
-    // missed still gets them, so a listing the scan cannot see never stops receiving stock.
-    public static bool SkipsBulkPush(string? healthStatus) => healthStatus == Rejected;
-
     public const string NotFoundByLookupReason = "Pazaryeri tekil sorguda bu kodu bulamadı.";
     public const string MissedByScanReason = "Son tam ürün taramasında görülmedi.";
     public const string FirstLookupMissReason = "Pazaryeri tekil sorguda bu kodu bulamadı; ertesi gece yeniden sorulacak.";
@@ -439,15 +435,6 @@ public static class MarketplaceVariantLinkHealth
         link.HealthStatus = null;
         link.HealthReason = null;
         link.HealthChangedAt = seenAt;
-    }
-
-    public static void MarkRejected(MarketplaceVariantLink link, string reason, DateTimeOffset at)
-    {
-        var safeReason = reason.Length > 200 ? reason[..200] : reason;
-        if (link.HealthStatus == Rejected && link.HealthReason == safeReason) return;
-        link.HealthStatus = Rejected;
-        link.HealthReason = safeReason;
-        link.HealthChangedAt = at;
     }
 
     // A full scan that saw too few of the connection's healthy links is more likely a short or failed listing than
