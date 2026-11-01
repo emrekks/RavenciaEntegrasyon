@@ -25,25 +25,33 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 type: "timestamp with time zone",
                 nullable: true);
 
-            // Trendyol is the only marketplace whose stored package times are its cancellation times (the last change
-            // of a package that ends cancelled), so its cancelled lines take that time; every other line stays
-            // unknown until a read brings the marketplace's own time. Split parents (UnPacked) are not cancellations.
+            // Trendyol's stored time of a package that ends cancelled is its last change. It is the cancellation time
+            // only where the panel saw the cancellation as it happened (recorded within the hour); a package first
+            // read later (the 26 October re-import) may have changed after it was cancelled, so its time stays
+            // unknown. Other marketplaces' stored times are not cancellation times. Split parents are left out.
             migrationBuilder.Sql("""
                 UPDATE sales.order_lines AS line
                 SET "CancelledAt" = source.cancelled_at
                 FROM (
-                    SELECT allocation."OrderLineId" AS line_id, max(package."StatusOccurredAt") AS cancelled_at
+                    SELECT allocation."TenantId" AS tenant_id, allocation."OrderLineId" AS line_id, max(history."OccurredAt") AS cancelled_at
                     FROM sales.package_line_allocations AS allocation
                     JOIN sales.shipment_packages AS package
                       ON package."TenantId" = allocation."TenantId" AND package."Id" = allocation."PackageId"
                     JOIN integration.platform_connections AS connection
                       ON connection."TenantId" = package."TenantId" AND connection."Id" = package."ConnectionId"
+                    JOIN sales.order_status_history AS history
+                      ON history."TenantId" = package."TenantId" AND history."PackageId" = package."Id"
                     WHERE connection."PlatformCode" = 'TRENDYOL'
                       AND package."Status" = 'Cancelled'
                       AND upper(replace(package."RawStatus", '_', '')) IN ('CANCELLED', 'CANCELED', 'UNSUPPLIED')
-                    GROUP BY allocation."OrderLineId"
+                      AND history."CanonicalStatus" = 'CANCELLED'
+                      AND history."OccurredAt" = package."StatusOccurredAt"
+                      AND history."RecordedAt" >= history."OccurredAt"
+                      AND history."RecordedAt" <= history."OccurredAt" + interval '1 hour'
+                    GROUP BY allocation."TenantId", allocation."OrderLineId"
                 ) AS source
-                WHERE line."Id" = source.line_id
+                WHERE line."TenantId" = source.tenant_id
+                  AND line."Id" = source.line_id
                   AND line."CancelledQuantity" > 0
                   AND line."CancelledAt" IS NULL;
                 """);
