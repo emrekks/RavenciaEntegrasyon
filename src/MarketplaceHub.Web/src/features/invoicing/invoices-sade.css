@@ -34,12 +34,13 @@
 @media (min-width: 1025px) {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters { grid-template-columns: minmax(180px, 1fr) minmax(150px, .85fr) minmax(240px, 1.1fr) minmax(170px, .85fr) auto; align-items: end; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; }
   /* The window can be wide while the page is not (a pinned sidebar takes 232 px): below 940 px of filter area the
-     four filters share the row and Temizle moves under them, instead of running past the page. */
+     filters shrink, the sort the most, and Temizle stays beside the sort instead of dropping under it. */
   .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-shell { container-type: inline-size; }
   @container (max-width: 940px) {
-    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters { grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, .75fr) auto; }
     .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters > * { min-width: 0; }
-    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters > .invoice-reference-filter-reset { grid-column: 1 / -1; justify-self: end; }
+    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters .invoice-sort-sizer { display: none; }
+    .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters .invoice-sort-current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   }
 }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filters :is(.invoice-reference-search > span:first-child, .platform-multi-select-label, .date-range-picker-label, .invoice-sort-caption) { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; }
