@@ -484,3 +484,10 @@
 /* Label designer: a block with keyboard focus (Tab selects it, the arrow keys move it) carries a clear ring outside its
    selection outline. */
 .app-shell.stitch-shell main .ss-page .shipping-designer-block:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 3px; }
+
+/* The save bar reaches the card's left and right edges and sits on its bottom edge: it covers the pane's 20 px side
+   and bottom padding, so it is as wide as the card (the card's clip rounds its corners at the end). Phones keep the
+   plain end-of-section bar above. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .ss-page .ss-card > .ss-pane > .ss-bar.rv-action-bar.rv-action-bar { margin: auto -20px -20px; padding-inline: 20px; }
+}
