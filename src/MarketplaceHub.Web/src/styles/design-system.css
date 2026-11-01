@@ -381,28 +381,10 @@
   .workspace-modal > footer { display: flex; justify-content: flex-end; gap: var(--rv-space-2); padding: var(--rv-space-4) var(--rv-space-6); border-top: 1px solid var(--rv-color-border); }
   .shipping-label-modal { width: min(920px, 100%); max-height: min(960px, calc(100dvh - 32px)); }
   .shipping-label-preview-wrap { display: grid; min-height: 0; place-items: center; overflow: auto; padding: var(--rv-space-6); background: var(--rv-color-bg); }
-  .shipping-label-print-surface { position: relative; display: block; flex: 0 0 auto; width: var(--shipping-label-width, 100mm); height: var(--shipping-label-height, 150mm); max-width: 100%; overflow: hidden; color: #0a0e1a; background: #fff; border: 1px solid #cbd5e1; border-radius: 4px; box-shadow: var(--rv-shadow-md); }
-  .shipping-label-positioned-block { position: absolute; display: block; min-width: 0; overflow: hidden; padding: 2mm; color: #0a0e1a; line-height: 1.25; }
-  .shipping-label-print-surface :where(h1, h2, h3, h4, strong, b, th, label) { color: #0a0e1a; }
-  .shipping-label-positioned-block > :where(div) { display: grid; min-width: 0; align-content: start; gap: 1.5mm; height: 100%; }
-  .shipping-label-block-title { display: block; margin-bottom: 1mm; font-size: .9em; font-weight: 850; }
-  .shipping-label-block-content > span, .shipping-label-meta > span, .shipping-label-footer > span, .shipping-label-custom-content > span { display: grid; min-width: 0; gap: .5mm; overflow-wrap: anywhere; }
-  .shipping-label-block-content > span small, .shipping-label-meta > span small, .shipping-label-footer > span small, .shipping-label-custom-content > span small { color: #64748b; font-size: .72em; font-weight: 600; }
-  .shipping-label-block-content > span b, .shipping-label-meta > span b, .shipping-label-footer > span b, .shipping-label-custom-content > span b { font-weight: 800; }
-  .shipping-label-address-box > span { display: block; min-width: 0; overflow-wrap: anywhere; }
-  .shipping-label-address-box > span:first-of-type { font-weight: 400; }
-  .shipping-label-barcode { display: grid; min-width: 0; align-content: start; gap: 1.5mm; }
-  .shipping-label-barcode-bars { display: flex; width: 100%; min-width: 0; height: 10mm; min-height: 16px; align-items: stretch; background: #fff; }
-  .shipping-label-barcode-bars > i { display: block; flex: 1 1 0; min-width: 0; background: #fff; }
-  .shipping-label-barcode-bars > i.is-bar { background: #0a0e1a; }
-  .shipping-label-barcode strong { display: block; min-width: 0; overflow-wrap: anywhere; font-family: var(--rv-font-mono); font-size: .72em; font-weight: 800; line-height: 1.2; text-align: center; }
-  .shipping-label-barcode.compact { gap: 1mm; }
-  .shipping-label-barcode.compact .shipping-label-barcode-bars { height: 8mm; min-height: 12px; }
   .workspace-modal > footer.shipping-label-modal-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--rv-space-3); }
   .shipping-label-modal-actions > span { min-width: 0; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
   .shipping-label-batch-modal { width: min(1180px, 100%); }
   .shipping-label-batch-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); min-height: 0; gap: var(--rv-space-5); overflow: auto; padding: var(--rv-space-6); background: var(--rv-color-bg); }
-  .shipping-label-batch-preview > .shipping-label-print-surface { justify-self: center; width: min(var(--shipping-label-width, 100mm), 100%); height: auto; aspect-ratio: 2 / 3; }
   .modal-close { display: inline-grid; width: 36px; height: 36px; place-items: center; padding: 0; color: var(--rv-color-muted); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-md); }
   .modal-close:hover { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
 }
@@ -941,15 +923,6 @@
   .shipping-designer-block { position: absolute; display: grid; grid-template-columns: 18px minmax(0, 1fr); grid-template-rows: 18px minmax(0, 1fr); gap: 2px 5px; min-width: 28px; min-height: 24px; padding: var(--rv-space-1); overflow: hidden; color: #132038; background: rgb(255 255 255 / 92%); border: 1px solid #9eabc1; border-radius: var(--rv-radius-sm); text-align: left; }
   .shipping-designer-block.is-selected { border-color: var(--rv-color-primary); outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 62%, transparent); }
   .shipping-designer-block-preview { min-width: 0; overflow: hidden; }
-  .shipping-preview-content { display: grid; gap: 2px; color: #132038; line-height: 1.12; }
-  .shipping-preview-content span { display: grid; gap: 1px; overflow: hidden; }
-  .shipping-preview-content b { color: #63718b; font-size: .75em; }
-  .shipping-preview-content strong { overflow: hidden; color: #132038; text-overflow: ellipsis; white-space: nowrap; }
-  .shipping-preview-barcode { display: grid; gap: 2px; width: 100%; }
-  .shipping-preview-bars { display: flex; width: 100%; height: 18px; align-items: stretch; }
-  .shipping-preview-bars i { flex: 1; background: #fff; }
-  .shipping-preview-bars i.is-bar { background: #10131c; }
-  .shipping-preview-barcode strong { overflow: hidden; color: #132038; font-family: var(--rv-font-mono); font-size: .8em; text-overflow: ellipsis; white-space: nowrap; }
   /* Login: a single centered access surface with no split-screen geometry. */
   .rv-auth-page { --rv-auth-bg: var(--rv-color-bg); --rv-auth-surface: var(--rv-color-surface); --rv-auth-surface-raised: var(--rv-color-surface-raised); --rv-auth-surface-soft: var(--rv-color-surface-soft); --rv-auth-border: var(--rv-color-border); --rv-auth-border-strong: var(--rv-color-border-strong); --rv-auth-ink: var(--rv-color-ink); --rv-auth-muted: var(--rv-color-muted); --rv-auth-subtle: var(--rv-color-subtle); --rv-auth-primary: var(--rv-color-primary); --rv-auth-accent: var(--rv-color-accent); --rv-auth-danger: var(--rv-color-danger); position: relative; display: flex; min-height: 100dvh; flex-direction: column; overflow-x: hidden; overflow-y: auto; isolation: isolate; color: var(--rv-auth-ink); background: radial-gradient(circle at 50% 28%, color-mix(in srgb, var(--rv-auth-primary) 16%, transparent), transparent 34%), linear-gradient(180deg, var(--rv-auth-bg) 0%, var(--rv-auth-surface) 54%, var(--rv-auth-bg) 100%); }
   .rv-auth-page::before { position: absolute; inset: 0; z-index: -2; content: ''; pointer-events: none; background-image: linear-gradient(rgb(148 163 184 / 5%) 1px, transparent 1px), linear-gradient(90deg, rgb(148 163 184 / 5%) 1px, transparent 1px); background-size: 48px 48px; mask-image: radial-gradient(ellipse at 50% 38%, #000 0%, rgb(0 0 0 / 76%) 48%, transparent 84%); }
@@ -1543,10 +1516,6 @@
   .shipping-label-modal { display: block; width: auto; max-height: none; overflow: visible; border: 0; box-shadow: none; }
   .shipping-label-modal > header, .shipping-label-modal > footer { display: none; }
   .shipping-label-preview-wrap, .shipping-label-batch-preview { display: block; padding: 0; overflow: visible; background: transparent; }
-  .shipping-label-print-surface { margin: 0; border: 0; box-shadow: none; page-break-after: always; }
-  .shipping-label-print-surface:last-child { page-break-after: auto; }
-  /* The barcode bars are backgrounds: printed only when the browser is told to keep them (audit 2026-10-20 S2). */
-  .shipping-label-print-surface, .shipping-label-print-surface * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 @media (max-width: 480px) {
@@ -6414,12 +6383,6 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 /* Use full values on dashboard chart axes so large and small amounts match. */
 .app-shell.stitch-shell main .invoice-document-link { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border: 1px solid color-mix(in srgb, var(--rv-color-accent) 30%, transparent); border-radius: var(--rv-radius-sm); padding: 5px 8px; }
 
-/* Keep every shipping-label text line visually consistent in print previews. */
-.app-shell.stitch-shell main .shipping-label-print-surface :where(*) { color: #0a0e1a !important; font-weight: 400 !important; }
-.app-shell.stitch-shell main .shipping-label-print-surface :where(svg, svg *) { color: #0a0e1a !important; }
-/* Keep label section headings distinct from the regular print text. */
-.app-shell.stitch-shell main .shipping-label-print-surface :is(.shipping-label-block-title, .shipping-label-meta > strong, .shipping-label-footer > strong, .shipping-label-custom-content > strong) { font-size: 1.08em !important; font-weight: 850 !important; line-height: 1.15 !important; }
-.app-shell.stitch-shell main .shipping-label-print-surface :is(.shipping-label-meta, .shipping-label-footer, .shipping-label-block-content, .shipping-label-custom-content) > span > small { color: #334155 !important; font-size: .9em !important; font-weight: 800 !important; line-height: 1.1 !important; }
 
 /* Keep long marketplace references and their copy control inside the invoice column. */
 .app-shell.stitch-shell main .invoice-reference-order .invoice-order-number {

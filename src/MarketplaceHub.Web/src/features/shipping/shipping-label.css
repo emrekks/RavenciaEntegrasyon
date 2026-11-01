@@ -1,0 +1,64 @@
+/* The shipping label, the same on screen and on paper (ShippingLabelSurface.tsx). Sizes are in millimetres and in
+   pixels of 1/96 inch, which print true; one family; a value prints large and bold, its caption small and regular
+   above it. Selectors carry the sheet class twice so the panel's page rules cannot reach inside the label. */
+.lbl-sheet.lbl-sheet {
+  --lbl-caption: 10px;
+  position: relative;
+  box-sizing: border-box;
+  overflow: hidden;
+  color: #000;
+  background: #fff;
+  font-family: Arial, "Helvetica Neue", Helvetica, "Liberation Sans", sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.25;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.lbl-sheet.lbl-sheet .lbl-block { position: absolute; box-sizing: border-box; transform-origin: center; }
+.lbl-sheet.lbl-sheet .lbl-body {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2mm;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 1.5mm;
+  overflow: hidden;
+  color: #000;
+  font-size: var(--lbl-size, 14px);
+  line-height: 1.25;
+}
+.lbl-sheet.lbl-sheet .lbl-body > * { flex: none; min-width: 0; margin: 0; }
+.lbl-sheet.lbl-sheet :is(.lbl-title, .lbl-caption) { display: block; color: #000; font-size: var(--lbl-caption); line-height: 1.2; }
+.lbl-sheet.lbl-sheet .lbl-title { font-weight: 700; letter-spacing: .02em; }
+.lbl-sheet.lbl-sheet .lbl-caption { font-weight: 400; }
+.lbl-sheet.lbl-sheet .lbl-field { display: flex; flex-direction: column; gap: .3mm; }
+.lbl-sheet.lbl-sheet .lbl-value { display: block; color: #000; font-size: 1em; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; white-space: pre-line; }
+.lbl-sheet.lbl-sheet .lbl-lines { display: flex; flex-direction: column; line-height: 1.3; }
+.lbl-sheet.lbl-sheet .lbl-lines > span { display: block; }
+/* The barcode takes the height its block leaves; its number stays whole below the bars. */
+.lbl-sheet.lbl-sheet .lbl-body > .lbl-barcode { display: flex; flex: 1 1 0; flex-direction: column; gap: .8mm; min-height: 0; }
+.lbl-sheet.lbl-sheet .lbl-barcode > svg { display: block; flex: 1 1 0; width: 100%; min-height: 4mm; fill: #000; }
+.lbl-sheet.lbl-sheet .lbl-barcode-text { display: block; flex: none; color: #000; font-size: var(--lbl-caption); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: .08em; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+.lbl-sheet.lbl-sheet .lbl-barcode.is-empty { align-items: center; justify-content: center; border: .3mm dashed #000; }
+.lbl-sheet.lbl-sheet .lbl-barcode-missing { font-size: var(--lbl-caption); font-weight: 700; }
+
+/* the screen: the label as a sheet of paper, scaled to the space */
+.lbl-fit { display: grid; width: 100%; min-width: 0; justify-self: stretch; justify-items: center; }
+.lbl-fit-inner { width: max-content; }
+.shipping-label-print-surface.lbl-sheet { flex: none; margin: 0; box-shadow: 0 0 0 1px rgb(0 0 0 / 18%), 0 6px 18px rgb(0 0 0 / 14%); border-radius: 2px; }
+
+@media print {
+  .lbl-fit { display: block; }
+  .lbl-fit-inner { zoom: 1 !important; }
+  .shipping-label-print-surface.lbl-sheet { box-shadow: none; border-radius: 0; break-inside: avoid; page-break-inside: avoid; }
+  /* a batch prints page by page: one sticker a page, or the A4 labels that share a page side by side and down */
+  .shipping-label-page { display: grid; grid-template-columns: repeat(var(--labels-across, 1), max-content); align-content: start; break-after: page; page-break-after: always; }
+  .shipping-label-page:last-child { break-after: auto; page-break-after: auto; }
+}

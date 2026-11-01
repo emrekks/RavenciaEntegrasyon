@@ -69,8 +69,6 @@
   html body :is(.rv-overlay, .workspace-modal-backdrop) { grid-template-columns: minmax(0, 1fr); }
   html body .shipping-label-modal { grid-template-columns: minmax(0, 1fr); }
   html body .shipping-label-modal .shipping-label-preview-wrap { padding: 12px; overflow: hidden; justify-items: center; }
-  html body .shipping-label-modal.format-sticker .shipping-label-print-surface { zoom: 0.82; }
-  html body .shipping-label-modal.format-a4 .shipping-label-print-surface { zoom: 0.42; }
   html body .shipping-label-modal > footer.shipping-label-modal-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   html body .shipping-label-modal > footer.shipping-label-modal-actions > :first-child { grid-column: 1 / -1; }
 }

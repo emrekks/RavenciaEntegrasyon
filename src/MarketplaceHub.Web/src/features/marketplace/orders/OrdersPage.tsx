@@ -17,7 +17,7 @@ import { RrAnchor, RrBadge, RrError, RrFilterCard, RrIcon, RrImagePreview, RrLoa
 import { useScrollLock } from '../../../shared/hooks/useScrollLock'
 import { appendNotification, normalizeNotificationKind, notificationError, notificationLinks, type NotificationContext } from '../../../shared/notifications'
 import { orderLinkOnlyTabs, orderStatusMoreTabs, orderStatusTabs, resolveOrderStatusTab } from '../order-status-tabs'
-import { addressBlockFields, code128Bars, loadPrintedShippingLabels, shippingLabelPageCss, printedShippingLabelKey, shippingLabelFields, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelField, type ShippingLabelFormat, type ShippingLabelSettings } from '../../shipping'
+import { loadPrintedShippingLabels, shippingLabelBlockCatalog, shippingLabelPageCss, shippingLabelPages, shippingLabelSizeMm, printedShippingLabelKey, ShippingLabelFit, ShippingLabelSurface, useShippingLabelSettings, type ShippingLabelFormat, type ShippingLabelSettings, type ShippingLabelValues } from '../../shipping'
 import { isActiveMarketplaceConnection, isMarketplacePlatformSelected, marketplacePlatformLabel, marketplacePlatformOptions } from '../marketplace-platform-support'
 import { productImageFallbackUrls as createProductImageFallbackUrls } from '../product-image-lookups'
 import { visibleOrderLineVariantOptions } from '../order-line-variant-options'
@@ -379,70 +379,46 @@ function CourierChangeModal({ item, items, onClose, onConfirmed }: { item: Order
     {errorMsg && <div className="rr-callout rr-danger" role="alert"><RrIcon name="alert" /><span>{errorMsg}</span></div>}
   </RrModal>
 }
-function LabelBarcode({ value, compact = false }: { value: string; compact?: boolean }) {
-  const bars = code128Bars(value)
-  return <div className={`shipping-label-barcode${compact ? ' compact' : ''}`} aria-label={`Barkod: ${value || 'Takip numarası bekleniyor'}`}><div className="shipping-label-barcode-bars" style={{ '--barcode-module-count': bars.length } as CSSProperties}>{bars.map((isBar, index) => <i className={isBar ? 'is-bar' : undefined} key={index} />)}</div><strong>{value || 'Takip numarası bekleniyor'}</strong></div>
-}
 function ShippingLabelModal({ item, settings, format, onClose, onPrinted, inline = false, detail: suppliedDetail }: { item: Order; settings: ShippingLabelSettings; format?: ShippingLabelFormat; onClose: () => void; onPrinted?: () => void; inline?: boolean; detail?: OrderLabelDetail }) {
   format = format === 'sticker' ? 'sticker' : settings.defaultFormat
   const client = useQueryClient()
+  const [overflowing, setOverflowing] = useState<string[]>([])
   // The buyer's e-mail (and name and address) are read from the order detail when the label is printed.
   const detailQuery = useQuery({ queryKey: ['order-label-detail', item.id], queryFn: () => hubApi<OrderLabelDetail>(`/orders/${item.id}`), enabled: !inline && !suppliedDetail, staleTime: 30_000 })
   const detail = suppliedDetail ?? detailQuery.data
   const personal = labelPersonalData(item, detail)
   const shipment = orderDisplayShipment(item)
   const trackingNumber = shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? ''
-  const packageNumber = formatPackageLabel(shipment?.externalPackageId) ?? '—'
-  const address = listAddressText(personal.shipmentAddress, item.platformCode)
-  const addressLines = address.split(' · ').filter(Boolean)
-  const senderLines = settings.senderAddress.split(/\r?\n| · /).map(value => value.trim()).filter(Boolean)
-  const style = { '--shipping-label-width': `${settings.stickerWidthMm}mm`, '--shipping-label-height': `${settings.stickerHeightMm}mm`, '--shipping-label-gap': `${settings.sectionGapMm}mm` } as CSSProperties
-  const fieldValues: Record<ShippingLabelField, string> = {
+  const packageNumber = formatPackageLabel(shipment?.externalPackageId) ?? ''
+  const values: ShippingLabelValues = {
     trackingNumber,
-    packageNumber,
+    packageNumber: packageNumber || '—',
     orderNumber: displayOrderNumber(item.orderNumber),
     customerName: customerDisplayName({ ...item, customerName: personal.customerName, shipmentAddress: personal.shipmentAddress }),
-    address,
+    address: listAddressText(personal.shipmentAddress, item.platformCode).split(' · ').join('\n'),
     cargoProvider: cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName),
     senderName: settings.senderName,
-    senderAddress: settings.senderAddress,
+    senderAddress: settings.senderAddress.split(/\r?\n| · /).join('\n'),
     customerEmail: personal.customerEmail
   }
-  function fieldLabel(field: ShippingLabelField) { return shippingLabelFields.find(option => option.id === field)?.label ?? field }
-  function renderField(field: ShippingLabelField) {
-    if (field === 'address' || field === 'senderAddress') {
-      const lines = field === 'address' ? addressLines : senderLines
-      return lines.length ? lines.map((line, index) => <span key={`${field}-${line}-${index}`}>{line}</span>) : <span>—</span>
-    }
-    return <span key={field}><small>{fieldLabel(field)}</small><b>{fieldValues[field] || '—'}</b></span>
-  }
-  function renderLabelBlock(block: ShippingLabelBlock) {
-    const barcodeField = block.kind === 'trackingBarcode' ? 'trackingNumber' : block.kind === 'packageBarcode' ? 'packageNumber' : null
-    if (barcodeField && block.fields.includes(barcodeField)) {
-      const extraFields = block.fields.filter(field => field !== barcodeField)
-      return <div className="shipping-label-block-content" style={{ textAlign: block.align }}><LabelBarcode value={fieldValues[barcodeField] || (barcodeField === 'packageNumber' ? item.orderNumber : '')} compact={format === 'sticker'} />{extraFields.map(field => renderField(field))}</div>
-    }
-    const fields = block.fields.filter(field => settings.showCustomerPhone || field !== 'customerEmail')
-    // The address block prints its own fields, the recipient's name first (audit 2026-10-20 S1).
-    if (block.kind === 'address') return <div className="shipping-label-address-box" style={{ textAlign: block.align }}><strong className="shipping-label-block-title">Teslimat Adresi</strong>{addressBlockFields(fields).map(field => <Fragment key={field}>{renderField(field)}</Fragment>)}</div>
-    if (block.kind === 'orderInfo') return <div className="shipping-label-meta" style={{ textAlign: block.align }}>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
-    if (block.kind === 'sender') return <div className="shipping-label-footer" style={{ textAlign: block.align }}>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
-    return <div className="shipping-label-custom-content" style={{ textAlign: block.align }}><strong className="shipping-label-block-title">{block.title}</strong>{block.text && <strong>{block.text}</strong>}{fields.map(field => renderField(field))}</div>
-  }
-  const labelSurface = <article className={`shipping-label-print-surface shipping-label-${format} a4-count-${settings.a4LabelsPerPage}`} style={style}>
-    {settings.layout[format].map(block => <div key={block.id} className="shipping-label-positioned-block" style={block.position ? { left: `${block.position.x}%`, top: `${block.position.y}%`, width: `${block.position.width}%`, height: `${block.position.height}%`, fontSize: `${block.fontSize ?? 14}px`, color: '#000', transform: block.rotation ? `rotate(${block.rotation}deg)` : undefined, transformOrigin: 'center' } : { fontSize: `${block.fontSize ?? 14}px`, color: '#000' }}><Fragment>{renderLabelBlock(block)}</Fragment></div>)}
-  </article>
+  // A package without its own number scans as the order number, as before.
+  const barcodes = { trackingNumber, packageNumber: packageNumber || item.orderNumber }
+  const labelSurface = <ShippingLabelSurface settings={settings} format={format} values={values} barcodes={barcodes} onOverflow={inline ? undefined : setOverflowing} />
   if (inline) return labelSurface
   const detailReady = Boolean(detail)
-  return <RrModal crumb="Yazdırma Önizlemesi" title={format === 'a4' ? 'A4 Kargo Etiketi' : 'Sticker Kargo Etiketi'} desc={`${displayOrderNumber(item.orderNumber)} · ${cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)}`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">Etiket bilgileri sipariş ve paket kaydından dolduruldu.</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={!detailReady} onClick={() => { window.print(); void recordShippingLabelsPrinted([item.id], format, () => onPrinted?.(), client) }}><RrIcon name="print" />Yazdır</button></>}>
+  const size = shippingLabelSizeMm(format, settings)
+  const blockNames = overflowing.map(id => settings.layout[format].find(block => block.id === id)).filter(block => block != null).map(block => shippingLabelBlockCatalog.find(entry => entry.kind === block.kind && block.kind !== 'custom')?.label ?? block.title)
+  return <RrModal crumb="Yazdırma Önizlemesi" title={format === 'a4' ? 'A4 Kargo Etiketi' : 'Sticker Kargo Etiketi'} desc={`${displayOrderNumber(item.orderNumber)} · ${cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)} · ${size.width} × ${size.height} mm`} size="md" layerClass="shipping-label-backdrop" modalClass={`shipping-label-modal format-${format}`} onClose={onClose} foot={<><span className="rr-note">Önizleme, yazıcıya giden etiketin aynısıdır; ekrana sığması için küçültülür.</span><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" disabled={!detailReady} onClick={() => { window.print(); void recordShippingLabelsPrinted([item.id], format, () => onPrinted?.(), client) }}><RrIcon name="print" />Yazdır</button></>}>
     <style>{shippingLabelPageCss(format, settings)}</style>
-    {detailQuery.isError && !detailReady ? <RrError error={detailQuery.error} onRetry={() => void detailQuery.refetch()} /> : !detailReady ? <RrLoading text="Alıcı bilgileri yükleniyor…" /> : <div className="shipping-label-preview-wrap rr-label-wrap">{labelSurface}</div>}
+    {blockNames.length > 0 && <div className="rr-callout rr-screen-only" role="status"><RrIcon name="alert" /><span><b>Sığmayan Yazı:</b> {blockNames.join(', ')} bloğunda yazının bir kısmı kesiliyor. Sistem Ayarları › Etiket Tasarımı’ndan bloğu büyütün ya da yazı boyutunu küçültün.</span></div>}
+    {detailQuery.isError && !detailReady ? <RrError error={detailQuery.error} onRetry={() => void detailQuery.refetch()} /> : !detailReady ? <RrLoading text="Alıcı bilgileri yükleniyor…" /> : <div className="shipping-label-preview-wrap rr-label-wrap"><ShippingLabelFit widthMm={size.width} heightMm={size.height} maxHeight={Math.max(320, window.innerHeight - 280)}>{labelSurface}</ShippingLabelFit></div>}
   </RrModal>
 }
 function ShippingLabelBatchModal({ items, settings, format, onClose, onPrinted }: { items: Order[]; settings: ShippingLabelSettings; format: ShippingLabelFormat; onClose: () => void; onPrinted: () => void }) {
   const client = useQueryClient()
   // Each selected order's detail is read (a few at a time) for the personal fields the labels print.
   const ids = items.map(item => item.id)
+  const batchPages = shippingLabelPages(items, format, settings)
   const details = useQuery({ queryKey: ['order-label-details', ids], queryFn: () => loadOrderLabelDetails(ids, id => hubApi<OrderLabelDetail>(`/orders/${id}`)), staleTime: 30_000 })
   function printLabels() {
     if (!details.data) return
@@ -453,7 +429,7 @@ function ShippingLabelBatchModal({ items, settings, format, onClose, onPrinted }
     <style>{shippingLabelPageCss(format, settings)}</style>
     {details.isError && <RrError error={details.error} onRetry={() => void details.refetch()} />}
     <div className="rr-sum rr-screen-only">{items.map(item => { const shipment = orderDisplayShipment(item); return <div key={item.id}><RrLogo code={item.platformCode} /><span>{displayOrderNumber(item.orderNumber)} · {customerDisplayName(item)}<small>{cargoLabel(shipment?.cargoProviderName ?? item.cargoProviderName)} · {shipment?.cargoTrackingNumber ?? item.cargoTrackingNumber ?? '—'}</small></span><RrBadge label={(['a4', 'sticker'] as ShippingLabelFormat[]).some(value => loadPrintedShippingLabels().includes(printedShippingLabelKey(item.id, value))) ? 'Yazdırıldı' : 'Bekliyor'} glyph={undefined} /></div> })}</div>
-    {details.data && <div className="shipping-label-batch-preview rr-print-only">{items.map(item => <ShippingLabelModal key={item.id} item={item} settings={settings} format={format} onClose={onClose} inline detail={details.data.get(item.id)} />)}</div>}
+    {details.data && <div className="shipping-label-batch-preview rr-print-only">{batchPages.pages.map((page, index) => <div key={index} className="shipping-label-page" style={{ '--labels-across': batchPages.across } as CSSProperties}>{page.map(item => <ShippingLabelModal key={item.id} item={item} settings={settings} format={format} onClose={onClose} inline detail={details.data.get(item.id)} />)}</div>)}</div>}
   </RrModal>
 }
 function SingleOrderSyncModal({ activeConnection: activeConnections, onClose, onSuccess }: { activeConnection: Connection[]; onClose: () => void; onSuccess: (connectionCount: number, orderNumber: string) => void }) {

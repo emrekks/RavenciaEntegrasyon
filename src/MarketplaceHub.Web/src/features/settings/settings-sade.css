@@ -491,3 +491,13 @@
 @media (min-width: 761px) {
   .app-shell.stitch-shell main .ss-page .ss-card > .ss-pane > .ss-bar.rv-action-bar.rv-action-bar { margin: auto -20px -20px; padding-inline: 20px; }
 }
+/* label designer: the paper is the printed label (ShippingLabelSurface's lbl-sheet) at real size, scaled to the stage;
+   a block adds only its outline, so its text wraps exactly as it prints */
+.app-shell.stitch-shell main .ss-page .ss-dz-canvas .shipping-designer-paper.lbl-sheet { max-width: none; background-color: #fff; background-image: linear-gradient(rgb(181 193 213 / 34%) 1px, transparent 1px), linear-gradient(90deg, rgb(181 193 213 / 34%) 1px, transparent 1px); background-size: 2.5% 2.5%; }
+.app-shell.stitch-shell main .ss-page .shipping-designer-paper.lbl-sheet .shipping-designer-block { padding: 0; background: rgb(255 255 255 / 88%); border: 0; box-shadow: inset 0 0 0 1px #9eabc1; }
+.app-shell.stitch-shell main .ss-page .shipping-designer-paper.lbl-sheet .shipping-designer-block.is-selected { box-shadow: inset 0 0 0 1px var(--rv-color-primary); }
+.app-shell.stitch-shell main .ss-page .shipping-designer-paper.lbl-sheet .shipping-designer-block.is-warning { box-shadow: inset 0 0 0 2px var(--rv-color-danger); }
+.ss-page .ss-callout.is-warning { background: color-mix(in srgb, var(--rv-color-warning, #d97706) 9%, var(--rv-color-surface)); border-color: color-mix(in srgb, var(--rv-color-warning, #d97706) 40%, var(--rv-color-border-strong)); }
+.ss-page .ss-callout.is-warning > .ss-icon { color: var(--rv-color-warning, #d97706); }
+.ss-page .ss-dz-issues { margin-top: 12px; }
+.ss-page .ss-dz-issues > span { display: grid; gap: 2px; }

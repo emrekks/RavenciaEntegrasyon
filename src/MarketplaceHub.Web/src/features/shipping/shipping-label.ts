@@ -36,7 +36,7 @@ export const shippingLabelFields: Array<{ id: ShippingLabelField; label: string 
   { id: 'customerEmail', label: 'Müşteri e-postası' }
 ]
 
-// Code 128B patterns expressed as alternating bar/space widths. Keeping this
+// Code 128 patterns expressed as alternating bar/space widths. Keeping this
 // in one place makes the settings preview and the printed label use the same
 // scanner-readable symbol instead of a decorative repeating gradient.
 const code128BWidths = [
@@ -53,30 +53,55 @@ const code128BWidths = [
   '114131', '311141', '411131', '211412', '211214', '211232', '2331112'
 ]
 
-export function code128Bars(value: string): boolean[] {
+// Code 128 symbol values for a value: an all-digit value of four or more digits packs two digits a symbol (code set C,
+// a last odd digit in code set B), which makes a 17-digit tracking number a third narrower and its bars wider at the
+// same label width; anything else uses code set B.
+export function code128Symbols(value: string): number[] {
   const source = Array.from(value || 'NO-TRACKING').map(character => {
     const code = character.charCodeAt(0)
     return code >= 32 && code <= 127 ? character : '?'
   }).join('').slice(0, 80) || 'NO-TRACKING'
-  const symbols = Array.from(source, character => character.charCodeAt(0) - 32)
-  const checksum = (104 + symbols.reduce((total, symbol, index) => total + symbol * (index + 1), 0)) % 103
-  return [104, ...symbols, checksum, 106].flatMap(symbol => {
+  let symbols: number[]
+  if (/^\d{4,}$/.test(source)) {
+    const evenLength = source.length - source.length % 2
+    symbols = [105]
+    for (let index = 0; index < evenLength; index += 2) symbols.push(Number(source.slice(index, index + 2)))
+    if (evenLength < source.length) symbols.push(100, source.charCodeAt(evenLength) - 32)
+  } else {
+    symbols = [104, ...Array.from(source, character => character.charCodeAt(0) - 32)]
+  }
+  const checksum = symbols.reduce((total, symbol, index) => total + symbol * Math.max(1, index), 0) % 103
+  return [...symbols, checksum, 106]
+}
+
+// The barcode as modules, true for a bar, without its quiet zone.
+export function code128Modules(value: string): boolean[] {
+  return code128Symbols(value).flatMap(symbol => {
     let isBar = true
     return Array.from(code128BWidths[symbol], width => {
-      const modules = Number(width)
-      const result = Array.from({ length: modules }, () => isBar)
+      const result = Array.from({ length: Number(width) }, () => isBar)
       isBar = !isBar
       return result
     }).flat()
   })
 }
 
+export const code128Bars = code128Modules
+
+// The value sizes a label block can take (shippingLabelTextSizes); a saved size between the steps moves to the nearest.
+export function shippingLabelTextSize(fontSize: number | undefined): 12 | 14 | 17 {
+  const size = fontSize ?? 14
+  if (size <= 12) return 12
+  if (size >= 16) return 17
+  return 14
+}
+
 const defaultLayout: ShippingLabelBlock[] = [
-  { id: 'trackingBarcode', kind: 'trackingBarcode', title: 'Takip Barkodu', fields: ['trackingNumber'], align: 'center', text: '', position: { x: 8, y: 5, width: 84, height: 18 } },
-  { id: 'address', kind: 'address', title: 'Teslimat Adresi', fields: ['customerName', 'address'], align: 'left', text: '', position: { x: 8, y: 26, width: 84, height: 27 } },
-  { id: 'orderInfo', kind: 'orderInfo', title: 'Paket / Sipariş Bilgileri', fields: ['packageNumber', 'orderNumber', 'customerEmail'], align: 'left', text: '', position: { x: 8, y: 57, width: 84, height: 14 } },
-  { id: 'packageBarcode', kind: 'packageBarcode', title: 'Paket Barkodu', fields: ['packageNumber'], align: 'center', text: '', position: { x: 8, y: 74, width: 84, height: 13 } },
-  { id: 'sender', kind: 'sender', title: 'Gönderici ve Kargo Bilgileri', fields: ['cargoProvider', 'senderName', 'senderAddress'], align: 'left', text: '', position: { x: 8, y: 90, width: 84, height: 8 } }
+  { id: 'trackingBarcode', kind: 'trackingBarcode', title: 'Takip Barkodu', fields: ['trackingNumber'], align: 'center', text: '', position: { x: 4, y: 2, width: 92, height: 17 } },
+  { id: 'address', kind: 'address', title: 'Teslimat Adresi', fields: ['customerName', 'address'], align: 'left', text: '', position: { x: 4, y: 21, width: 92, height: 30 } },
+  { id: 'orderInfo', kind: 'orderInfo', title: 'Paket / Sipariş Bilgileri', fields: ['packageNumber', 'orderNumber', 'customerEmail'], align: 'left', text: '', position: { x: 4, y: 53, width: 45, height: 30 } },
+  { id: 'packageBarcode', kind: 'packageBarcode', title: 'Paket Barkodu', fields: ['packageNumber'], align: 'center', text: '', position: { x: 4, y: 85, width: 92, height: 13 } },
+  { id: 'sender', kind: 'sender', title: 'Gönderici ve Kargo Bilgileri', fields: ['cargoProvider', 'senderName', 'senderAddress'], align: 'left', text: '', position: { x: 51, y: 53, width: 45, height: 30 } }
 ]
 
 export type ShippingLabelSettings = {
@@ -102,11 +127,11 @@ function cloneLayout(layout: ShippingLabelBlock[]) {
 
 export function defaultShippingLabelBlockPosition(kind: ShippingLabelBlockKind, index: number): ShippingLabelBlockPosition {
   const positions: Partial<Record<ShippingLabelBlockKind, ShippingLabelBlockPosition>> = {
-    trackingBarcode: { x: 8, y: 5, width: 84, height: 18 },
-    address: { x: 8, y: 26, width: 84, height: 27 },
-    orderInfo: { x: 8, y: 57, width: 84, height: 14 },
-    packageBarcode: { x: 8, y: 74, width: 84, height: 13 },
-    sender: { x: 8, y: 90, width: 84, height: 8 },
+    trackingBarcode: { x: 4, y: 2, width: 92, height: 17 },
+    address: { x: 4, y: 21, width: 92, height: 30 },
+    orderInfo: { x: 4, y: 53, width: 45, height: 30 },
+    packageBarcode: { x: 4, y: 85, width: 92, height: 13 },
+    sender: { x: 51, y: 53, width: 45, height: 30 },
     custom: { x: 10, y: Math.min(84, 8 + index * 16), width: 80, height: 12 }
   }
   return { ...(positions[kind] ?? positions.custom)! }
@@ -165,7 +190,7 @@ function safeBlock(raw: unknown, index: number): ShippingLabelBlock | null {
   } : fallbackPosition
   position.width = Math.min(position.width, 100 - position.x)
   position.height = Math.min(position.height, 100 - position.y)
-  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', fontSize: boundedNumber(value.fontSize, 14, 8, 72), rotation: normalizedRotation(value.rotation), position }
+  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', fontSize: shippingLabelTextSize(boundedNumber(value.fontSize, 14, 8, 72)), rotation: normalizedRotation(value.rotation), position }
 }
 
 function normalizeLayout(value: unknown, fallback: ShippingLabelBlock[]) {

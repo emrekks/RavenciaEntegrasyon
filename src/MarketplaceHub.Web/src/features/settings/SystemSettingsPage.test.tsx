@@ -232,11 +232,11 @@ describe('SystemSettingsPage', () => {
     expect(description.textContent).toContain('ok tuşlarıyla')
   })
 
-  it('label designer preview shows the address block like the print: title, recipient name, then the address', async () => {
+  it('label designer draws the address block with the print component: title, recipient caption over the name, then the address lines', async () => {
     await renderPage('/settings?tab=designer')
-    const address = container.querySelector('.preview-content-address')!
-    const texts = Array.from(address.children).map(child => child.textContent)
-    expect(texts).toEqual(['Teslimat Adresi', 'Alıcı AdıFEHİME MAT', 'KARAKÖPRÜ / ŞANLIURFA'])
+    const address = container.querySelector('.shipping-designer-paper .lbl-body[data-block-id="address"]')!
+    const parts = Array.from(address.children).map(child => child.classList.contains('lbl-field') ? Array.from(child.children).map(part => `${part.className}:${part.textContent}`) : `${child.className}:${child.textContent}`)
+    expect(parts).toEqual(['lbl-title:Teslimat Adresi', ['lbl-caption:Alıcı Adı', 'lbl-value:Fehime Mat'], 'lbl-value lbl-lines:Gümüşsuyu Mah. Selime Hatun Cami Sok. No:3 D:5Fındıklı / Beyoğlu / İstanbul'])
   })
 
   it('label designer: Tab selects a block, the arrow keys move it 1% (Shift 5%), the drag handles stay out of the Tab order', async () => {
