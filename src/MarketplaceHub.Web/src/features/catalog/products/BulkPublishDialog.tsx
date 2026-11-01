@@ -12,6 +12,7 @@ import { bulkPublishPlan, useBulkPublicationReadiness, type BulkConnectionReadin
 import { bulkPublishModelTooltip, bulkPublishPlatformName, summarizeBulkPublishModels, summarizeBulkPublishStatus, type BulkPublishModelTooltip, type BulkPublishStatusSummary } from './bulk-publish-status'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { CategoryMappingDialog } from '../CategoryMappingDialog'
+import { PublishIssueBadge } from '../PublishIssueBadge'
 import { publishPopoverBounds } from '../publish-popover-placement'
 import type { PublicationValueMappingFix } from '../publication-attribute-readiness'
 import './bulk-publish-model-tip.css'
@@ -209,8 +210,15 @@ function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, sel
   const [fixScope, setFixScope] = useState<string | null>(null)
   const [categoryToMap, setCategoryToMap] = useState<{ id: string; name: string } | null>(null)
   const categories = unmappedCategories(readiness)
-  const checkFailed = (readiness?.entries ?? []).some(entry => entry.checkFailed)
   const groups = fixGroups(readiness)
+  const checkFailed = (readiness?.entries ?? []).some(entry => entry.checkFailed)
+  const valueFixCount = groups.reduce((count, group) => count + group.fixes.length, 0)
+  // What the red badge's popover offers: map each unmapped category, complete each category's value mappings, check again.
+  const fixActions = [
+    ...categories.map(category => ({ key: `category:${category.id}`, label: categories.length > 1 ? `${category.name} Kategorisini Eşle` : 'Kategori Eşle', onRun: () => setCategoryToMap(category) })),
+    ...groups.map(group => ({ key: `values:${group.categoryScope}`, label: group.fixes.length > 1 ? `Değerleri Eşle (${group.fixes.length})` : 'Değeri Eşle', onRun: () => setFixScope(group.categoryScope) })),
+    ...(checkFailed ? [{ key: 'retry', label: 'Yeniden Dene', onRun: onMappingsSaved }] : [])
+  ]
   const openGroup = groups.find(group => group.categoryScope === fixScope)
   const state = settling ? 'settling' : allBlocked ? 'error' : bulkPublishCardState(summary)
   const format = (value: number) => value.toLocaleString('tr-TR')
@@ -229,17 +237,9 @@ function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, sel
       <div className="publish-platform-fact-publication"><dt>Yayın Durumu</dt><dd id={statusId}>{settling
         ? <span className="publish-platform-status status-neutral"><i aria-hidden="true" />Kontrol ediliyor</span>
         : blocked.length
-          ? <span className={`publish-platform-status status-${allBlocked ? 'danger' : 'warning'}`}><i aria-hidden="true" />{`${format(blocked.length)}/${format(checkedCount)} üründe zorunlu eksik`}</span>
+          ? <PublishIssueBadge id={`${statusId}-issues`} label={`${format(blocked.length)}/${format(checkedCount)} üründe zorunlu eksik`} count={valueFixCount || undefined} heading="Zorunlu Eksiği Olan Ürünler" rows={blocked.slice(0, shownBlockedProducts).map(entry => ({ key: entry.productId, title: entry.title, href: `/products/${entry.productId}`, detail: `${entry.issues[0].attribute}: ${entry.issues[0].detail}${entry.issues.length > 1 ? ` (+${entry.issues.length - 1})` : ''}` }))} moreText={blocked.length > shownBlockedProducts ? `ve ${format(blocked.length - shownBlockedProducts)} ürün daha` : undefined} actions={fixActions} />
           : summary ? <BulkPublishStatusPill summary={summary} modelTip={modelTip} platformName={storeName} tipId={`${statusId}-models`} /> : '—'}</dd>{!settling && detail && <small>{detail}</small>}</div>
     </dl>
-    {blocked.length > 0 && <div className="bulk-publish-blocked" role="note">
-      <strong>Zorunlu Eksiği Olan Ürünler</strong>
-      <ul>{blocked.slice(0, shownBlockedProducts).map(entry => <li key={entry.productId}><a href={`/products/${entry.productId}`} target="_blank" rel="noreferrer">{entry.title}</a><small title={entry.issues.map(issue => `${issue.attribute}: ${issue.detail}`).join('\n')}>{entry.issues[0].attribute}: {entry.issues[0].detail}{entry.issues.length > 1 ? ` (+${entry.issues.length - 1})` : ''}</small></li>)}</ul>
-      {blocked.length > shownBlockedProducts && <small>ve {format(blocked.length - shownBlockedProducts)} ürün daha</small>}
-    </div>}
-    {categories.map(category => <button key={category.id} type="button" className="publish-platform-fix-mappings" disabled={locked} onClick={() => setCategoryToMap(category)}><UiIcon name="link" />{categories.length > 1 ? `${category.name} Kategorisini Eşle` : 'Kategori Eşle'}</button>)}
-    {checkFailed && <button type="button" className="publish-platform-fix-mappings" disabled={locked} onClick={onMappingsSaved}><UiIcon name="refresh" />Yeniden Dene</button>}
-    {groups.map(group => <button key={group.categoryScope} type="button" className="publish-platform-fix-mappings" disabled={locked} onClick={() => setFixScope(group.categoryScope)}><UiIcon name="link" />Eksik Değer Eşlemelerini Tamamla<span className="publish-platform-fix-count" aria-label={`${group.fixes.length} değer`}>{group.fixes.length}</span></button>)}
     {categoryToMap && <CategoryMappingDialog connectionId={connection.id} platformName={storeName} categoryId={categoryToMap.id} categoryName={categoryToMap.name} onClose={() => setCategoryToMap(null)} onSaved={() => onMappingsSaved()} />}
     {openGroup && <MissingValueMappingDialog connectionId={connection.id} platformName={storeName} categoryScope={openGroup.categoryScope} fixes={openGroup.fixes} onClose={() => setFixScope(null)} onSaved={() => onMappingsSaved()} />}
   </article>

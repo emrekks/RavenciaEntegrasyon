@@ -108,10 +108,17 @@ describe('BulkPublishDialog readiness', () => {
     expect(card().textContent).toContain('1/2 üründe zorunlu eksik')
     expect(card().textContent).toContain('1 hazır · 1 eksik')
     expect(card().textContent).toContain('Yalnız hazır olanlar gönderilir')
-    const link = card().querySelector<HTMLAnchorElement>('.bulk-publish-blocked a')!
+    // The gaps sit in the red badge's popover: pressing the badge pins it, Escape closes it.
+    const badge = card().querySelector<HTMLButtonElement>('.publish-issue-trigger')!
+    act(() => badge.click())
+    expect(card().querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
+    expect(badge.getAttribute('aria-expanded')).toBe('true')
+    const link = card().querySelector<HTMLAnchorElement>('.publish-issue-tooltip li a')!
     expect(link.textContent).toBe('Elbise RYP006')
     expect(link.getAttribute('href')).toBe('/products/p6')
-    expect(card().querySelector('.bulk-publish-blocked small')?.textContent).toContain('Temel Ürün Verileri')
+    expect(card().querySelector('.publish-issue-tooltip li')?.textContent).toContain('Temel Ürün Verileri')
+    act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    expect(card().querySelector('.publish-issue-tooltip.is-open')).toBeNull()
     act(() => cardButton().click())
     expect(document.body.textContent).toContain('yalnız hazır olanlar gönderilir')
     await act(async () => { button('Yayınla').click() })
@@ -144,7 +151,9 @@ describe('BulkPublishDialog readiness', () => {
     await settle()
     expect(card().textContent).toContain('Kazak kategorisinin Hepsiburada karşılığı seçilmemiş; kategoriyi eşleyin.')
     expect(card().textContent).not.toContain('alınamadı')
-    await act(async () => { button('Kategori Eşle').click() })
+    // One record and one fix: pressing the badge opens Kategori Eşle directly; the card has no fix rows of its own.
+    expect(card().querySelector('.publish-platform-fix-mappings')).toBeNull()
+    await act(async () => { card().querySelector<HTMLButtonElement>('.publish-issue-trigger')!.click() })
     await settle(2)
     expect(document.body.textContent).toContain('Kazak kategorisinin Hepsiburada karşılığını seçin')
     await act(async () => { document.querySelector<HTMLButtonElement>('.category-mapping-dialog .vp-trigger')!.click() })
@@ -153,7 +162,7 @@ describe('BulkPublishDialog readiness', () => {
     await settle()
     expect(api.categoryPuts).toEqual([{ path: '/mappings/categories/c1', body: { connectionId: 'hb', snapshotId: 's1', externalId: '411', status: 'VERIFIED' } }])
     // The check runs again: the record is ready on Hepsiburada now.
-    expect(card().querySelector('.bulk-publish-blocked')).toBeNull()
+    expect(card().querySelector('.publish-issue-trigger')).toBeNull()
     expect(cardButton().disabled).toBe(false)
   })
 })

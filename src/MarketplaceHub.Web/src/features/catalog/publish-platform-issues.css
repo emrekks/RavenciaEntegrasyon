@@ -32,3 +32,18 @@
 .publish-platform-card.publish-platform-card:hover, .publish-platform-card.publish-platform-card:focus-within { position: relative; z-index: 6; }
 .publish-platform-card.publish-platform-card > .publish-platform-card-head { border-radius: 11px 11px 0 0; }
 .publish-platform-card.publish-platform-card > :last-child { border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }
+
+/* The badge is a button: hover previews the gaps, a press pins them with their fixes (PublishIssueBadge). */
+.publish-issue-badge { display: inline-flex; }
+.publish-issue-trigger.publish-platform-status { gap: 6px; min-height: 0; cursor: pointer; font: inherit; }
+.publish-issue-trigger.publish-platform-status:hover { filter: brightness(1.08); }
+.publish-issue-trigger.publish-platform-status:focus-visible { outline: 2px solid var(--rv-color-danger); outline-offset: 2px; }
+.publish-issue-trigger svg { flex: none; opacity: .8; }
+.publish-issue-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+.publish-issue-count { display: inline-grid; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; color: #fff; background: var(--rv-color-danger); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 1; }
+.publish-issue-badge:hover .publish-issue-tooltip, .publish-issue-tooltip.is-open { display: block; }
+.publish-issue-tooltip li a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.publish-issue-more { margin: 8px 0 0; color: var(--rv-color-muted); font-size: 12px; }
+.publish-issue-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }
+.publish-issue-actions > button { box-sizing: border-box; height: 32px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong, var(--rv-color-border)); border-radius: 7px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.publish-issue-actions > button:hover { background: var(--rv-color-surface-soft); }
