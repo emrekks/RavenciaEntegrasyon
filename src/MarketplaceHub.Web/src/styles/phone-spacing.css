@@ -37,7 +37,7 @@
 
   /* Framed blocks whose content sits right inside */
   :root .app-shell.stitch-shell main :is(.invoice-reference-filters, .jobs-reference-toolbar, .qi-tools, .mapping-reference-card, .panel:not(.rr-panel):not(.job-detail-drawer):not(.cm-card)) { padding: var(--m-pad) !important; }
-  :root .app-shell.stitch-shell main .product-add-page :is(.attribute-variant-action, .variant-filter-panel) { padding: var(--m-pad) !important; }
+  :root .app-shell.stitch-shell main .product-add-page .attribute-variant-action { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .product-add-page .product-submit-sticky { padding: 10px var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .rv-questions-sync-item { min-width: 0; padding: 10px 8px !important; }
 

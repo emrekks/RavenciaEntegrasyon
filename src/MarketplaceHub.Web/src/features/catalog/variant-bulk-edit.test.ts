@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyVariantBulkEditValue, toggleVariantGroupRow, updateVariantGroupSelection, variantGroupRowMates, variantBulkEditIssue, variantGroupSelectionState, type VariantBulkEditRow } from './variant-bulk-edit'
+import { applyVariantBulkMode, applyVariantBulkModes, type VariantBulkInputs, toggleVariantGroupRow, updateVariantGroupSelection, variantGroupRowMates, variantBulkEditIssue, variantGroupSelectionState, type VariantBulkEditRow } from './variant-bulk-edit'
 
 const rows: VariantBulkEditRow[] = [
   { key: 'small', stock: 1, salePrice: 80, costPrice: 20, listPrice: 100 },
@@ -7,13 +7,6 @@ const rows: VariantBulkEditRow[] = [
 ]
 
 describe('variant bulk numeric editing', () => {
-  it('updates only the rows matching the active variant filters', () => {
-    expect(applyVariantBulkEditValue(rows, new Set(['small']), 'stock', 7)).toEqual([
-      { ...rows[0], stock: 7 },
-      rows[1],
-    ])
-  })
-
   it('requires whole-number stock and non-negative values', () => {
     expect(variantBulkEditIssue('stock', 2.5)).toBe('Stok değeri tam sayı olmalıdır.')
     expect(variantBulkEditIssue('costPrice', -1)).toBe('Sıfır veya daha büyük geçerli bir değer girin.')
@@ -24,6 +17,39 @@ describe('variant bulk numeric editing', () => {
     expect(variantBulkEditIssue('listPrice', 85)).toBeNull()
     expect(variantBulkEditIssue('salePrice', 95)).toBeNull()
     expect(variantBulkEditIssue('listPrice', 100)).toBeNull()
+  })
+})
+
+describe('variant bulk modes', () => {
+  const none: VariantBulkInputs = { stock: { mode: 'set', value: null }, salePrice: { mode: 'set', value: null }, costPrice: { mode: 'set', value: null }, listPrice: { mode: 'set', value: null } }
+  const keys = new Set(['small', 'large'])
+
+  it('Eşitle writes the typed value', () => {
+    const { rows: next } = applyVariantBulkModes(rows, keys, { ...none, stock: { mode: 'set', value: 5 } })
+    expect(next.map(row => row.stock)).toEqual([5, 5])
+  })
+
+  it('Arttır adds to each current value', () => {
+    const { rows: next } = applyVariantBulkModes(rows, keys, { ...none, stock: { mode: 'increase', value: 1 } })
+    expect(next.map(row => row.stock)).toEqual([2, 3])
+  })
+
+  it('Azalt subtracts and stops at 0, counting the limited variants', () => {
+    const result = applyVariantBulkModes(rows, keys, { ...none, stock: { mode: 'decrease', value: 2 } })
+    expect(result.rows.map(row => row.stock)).toEqual([0, 0])
+    expect(result.clamped).toBe(1)
+  })
+
+  it('handles decimals in prices without float drift', () => {
+    expect(applyVariantBulkMode(0.1, { mode: 'increase', value: 0.2 }, 'salePrice').value).toBe(0.3)
+    expect(applyVariantBulkMode(10, { mode: 'decrease', value: 10.5 }, 'salePrice')).toEqual({ value: 0, clamped: true })
+  })
+
+  it('leaves untouched fields, other rows and an empty cost alone', () => {
+    const withNull = [{ ...rows[0], costPrice: null }, rows[1]]
+    const result = applyVariantBulkModes(withNull, new Set(['small']), { ...none, costPrice: { mode: 'increase', value: 4 } })
+    expect(result.rows[0]).toEqual({ ...withNull[0], costPrice: 4 })
+    expect(result.rows[1]).toBe(rows[1])
   })
 })
 

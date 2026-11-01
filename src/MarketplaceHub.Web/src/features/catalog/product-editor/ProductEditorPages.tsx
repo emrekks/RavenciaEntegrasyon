@@ -1,5 +1,5 @@
 // Ürün ekleme ve düzenleme (/products/new, /products/:id).
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import './product-editor-design-system.css'
 import './product-editor-hydration.css'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
@@ -12,6 +12,7 @@ import { httpsUrlProblem } from '../../../shared/safe-url'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
+import { placePublishPopover } from '../publish-popover-placement'
 import { revealFieldError } from './field-error-reveal'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { appendNotification, notificationError, productNotificationSubject } from '../../../shared/notifications'
@@ -19,7 +20,7 @@ import { toggleProductAttributeValue } from '../attribute-selection'
 import { buildVariantAttributeAssignments } from '../variant-attribute-assignments'
 import { filterAttributeOptionValues } from '../attribute-value-search'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, reorderMediaUrls, uniqueMediaUrls } from '../product-media-editor'
-import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from '../variant-bulk-edit'
+import { applyVariantBulkModes, variantBulkEditIssue, variantBulkModeLabels, type VariantBulkEditField, type VariantBulkInputs, type VariantBulkMode } from '../variant-bulk-edit'
 import { applyVariantCodesByKey, buildSequentialVariantCodes, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
@@ -597,6 +598,8 @@ function VariantFilterDropdown({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | undefined>()
   const selected = group.values.filter(value => selectedValueIds.includes(value.id))
   const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR')
   const filteredValues = group.values.filter(value => !normalizedSearch || value.value.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
@@ -604,16 +607,32 @@ function VariantFilterDropdown({
 
   useDismissable(open, [rootRef], () => setOpen(false))
 
+  // The menu is fixed to the screen, not to the dialog body, so the body's overflow cannot clip it; it opens upward when
+  // there is no room below and is cut to the room left (the option list scrolls).
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const trigger = triggerRef.current
+      if (!trigger) return
+      const rect = trigger.getBoundingClientRect()
+      const { placement, maxHeight } = placePublishPopover(trigger, 360)
+      setMenuStyle({ position: 'fixed', left: rect.left, right: 'auto', width: rect.width, ...(placement === 'top' ? { top: 'auto', bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8, bottom: 'auto' }), ...(maxHeight != null ? { maxHeight } : {}) })
+    }
+    place()
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+  }, [open])
+
   return <div className="variant-filter-field" ref={rootRef}>
-    <button type="button" className={`variant-filter-select-trigger ${selected.length ? 'active' : ''}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+    <button ref={triggerRef} type="button" className={`variant-filter-select-trigger ${selected.length ? 'active' : ''}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
       <span><small>{selected.length ? `${selected.length} değer seçildi` : group.name}</small><strong>{summary}</strong></span>
       <UiIcon name="chevronDown" />
     </button>
-    {open && <div className="variant-filter-dropdown-menu" role="listbox" aria-label={`${group.name} filtre değerleri`}>
+    {open && <div className="variant-filter-dropdown-menu" style={menuStyle} role="listbox" aria-label={`${group.name} filtre değerleri`}>
       <div className="variant-filter-dropdown-tools">
         <input ref={touchScreen ? undefined : focusOnMount} value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${group.name} değerlerinde ara`} />
+        <button type="button" className="variant-filter-clear-selection" onClick={onClear} disabled={selected.length === 0} tabIndex={selected.length === 0 ? -1 : undefined} aria-hidden={selected.length === 0 ? true : undefined}>Seçimi Temizle</button>
       </div>
-      {selected.length > 0 && <button type="button" className="variant-filter-clear-selection" onClick={onClear}>Seçimi Temizle</button>}
       <div className="variant-filter-dropdown-options">
         {filteredValues.length ? filteredValues.map(value => {
           const isSelected = selectedValueIds.includes(value.id)
@@ -1133,7 +1152,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', deliveryDays: '1', listPrice: '0', salePrice: '0', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
-  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
+  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [bulkOptionSyncOpen, setBulkOptionSyncOpen] = useState(false)
   const [marketplaceCodesOpen, setMarketplaceCodesOpen] = useState(false)
@@ -1162,8 +1181,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const variantRowsRef = useRef(variantRows)
   variantRowsRef.current = variantRows
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
-  const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkCostPrice, setBulkCostPrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
-  const [variantBulkEdit, setVariantBulkEdit] = useState<{ field: VariantBulkEditField; value: string; error: string } | null>(null)
+  const [variantBulkEdit, setVariantBulkEdit] = useState<{ field: VariantBulkEditField; mode: VariantBulkMode; value: string; error: string } | null>(null)
   const [variantBulkEditFilterSelections, setVariantBulkEditFilterSelections] = useState<VariantFilterSelections>({})
   const [mediaFiles, setMediaFiles] = useState<PendingProductMediaFile[]>([])
   const [deletingProductMediaKey, setDeletingProductMediaKey] = useState<string | null>(null)
@@ -2102,20 +2120,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       setVariantPlatformPricingSaving(false)
     }
   }
-  function applyBulk() {
-    const stock = bulkStock === '' ? null : Number(bulkStock); const sale = bulkSalePrice === '' ? null : Number(bulkSalePrice); const cost = bulkCostPrice === '' ? null : Number(bulkCostPrice); const list = bulkListPrice === '' ? null : Number(bulkListPrice)
-    const matchingKeys = new Set(variantRows.filter(row => rowMatchesVariantFilters(row)).map(row => row.key))
-    if (hasVariantFilters && !matchingKeys.size) {
-      const message = 'Seçtiğiniz filtrelerle eşleşen varyant bulunamadı.'; setNotice(message); showFeedback('Eşleşen Varyant Yok', message, 'error')
-      return
-    }
-    setVariantRows(rows => rows.map(row => !matchingKeys.has(row.key) ? row : { ...row, stock: stock == null || !Number.isFinite(stock) ? row.stock : stock, salePrice: sale == null || !Number.isFinite(sale) ? row.salePrice : sale, costPrice: cost == null || !Number.isFinite(cost) ? row.costPrice : cost, listPrice: list == null || !Number.isFinite(list) ? row.listPrice : list }))
-    const message = hasVariantFilters ? `Toplu stok, fiyat ve maliyet değerleri ${matchingKeys.size} seçili varyanta uygulandı.` : 'Toplu stok, fiyat ve maliyet değerleri tüm varyantlara uygulandı.'; setNotice(message); showFeedback('Toplu Değerler Uygulandı', message, 'success')
-  }
-
   function openVariantBulkEdit(field: VariantBulkEditField) {
     setVariantBulkEditFilterSelections({})
-    setVariantBulkEdit({ field, value: '', error: '' })
+    setVariantBulkEdit({ field, mode: 'set', value: '', error: '' })
   }
 
   function applyVariantBulkEdit() {
@@ -2136,8 +2143,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       return
     }
     const rowKeys = new Set(targetRows.map(row => row.key))
-    setVariantRows(rows => applyVariantBulkEditValue(rows, rowKeys, variantBulkEdit.field, value))
-    showFeedback('Toplu Değer Uygulandı', `${variantBulkEditLabels[variantBulkEdit.field]} değeri ${hasVariantBulkEditFilters ? `${targetRows.length} filtre eşleşen varyanta` : `tüm ${targetRows.length} varyanta`} uygulandı.`, 'success')
+    const modeInputs = Object.fromEntries((['stock', 'salePrice', 'costPrice', 'listPrice'] as const).map(field => [field, { mode: variantBulkEdit.mode, value: field === variantBulkEdit.field ? value : null }])) as VariantBulkInputs
+    const applied = applyVariantBulkModes(variantRows, rowKeys, modeInputs)
+    setVariantRows(rows => applyVariantBulkModes(rows, rowKeys, modeInputs).rows)
+    showFeedback('Toplu Değer Uygulandı', `${variantBulkEditLabels[variantBulkEdit.field]} ${variantBulkEdit.mode === 'set' ? 'değeri' : variantBulkEdit.mode === 'increase' ? 'artışı' : 'azaltması'}${applied.clamped ? ` (${applied.clamped} varyant 0'da sınırlandı)` : ''} ${hasVariantBulkEditFilters ? `${targetRows.length} filtre eşleşen varyanta` : `tüm ${targetRows.length} varyanta`} uygulandı.`, 'success')
     setVariantBulkEdit(null)
   }
 
@@ -2302,16 +2311,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setNotice(message); showFeedback(`${title} Yapıştırıldı`, message, 'success'); closeMenus()
   }
 
-  function toggleVariantFilter(groupId: string, valueId: string) {
-    setVariantFilterSelections(current => {
-      const values = current[groupId] ?? []
-      const nextValues = values.includes(valueId) ? values.filter(item => item !== valueId) : [...values, valueId]
-      return { ...current, [groupId]: nextValues }
-    })
-  }
-
-  function clearVariantFilters() { setVariantFilterSelections({}) }
-
   function openVariantMediaPicker(rowKey: string) {
     const row = variantRows.find(item => item.key === rowKey)
     setVariantMediaModal({ mode: 'variant', rowKey, draftRefs: row?.mediaRefs ?? [] })
@@ -2331,9 +2330,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       return [variantMediaAssignmentKey(mediaGroup.id, value.id), mediaChoices.filter(option => assignedRefs.has(option.value)).map(option => option.value)]
     })))
     setVariantMediaModal({ mode: 'bulk', draftsBySelection, groupId: group.id, valueId: group.values[0]?.id ?? '' })
-  }
-  function rowMatchesVariantFilters(row: VariantDraft) {
-    return filterVariantsByOptions([row], variantFilterGroups, variantFilterSelections, rowMatchesVariantMediaValue).length > 0
   }
   // Image assignments made in the window are saved on their own right away on the edit page: only the variants'
   // pictures, never the rest of the form (unsaved prices or stock stay unsaved). The effect runs after variantRows has
@@ -3070,9 +3066,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const variantBulkEditFilterGroups = variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))
   const variantBulkEditMatchingRows = filterVariantsByOptions(variantRows, variantBulkEditFilterGroups, variantBulkEditFilterSelections, rowMatchesVariantMediaValue)
   const hasVariantBulkEditFilters = Object.values(variantBulkEditFilterSelections).some(valueIds => valueIds.length > 0)
-  const activeVariantFilterEntries = variantFilterGroups.map(group => ({ group, valueIds: variantFilterSelections[group.id] ?? [] })).filter(entry => entry.valueIds.length > 0)
-  const hasVariantFilters = activeVariantFilterEntries.length > 0
-  const matchingVariantCount = variantRows.filter(row => rowMatchesVariantFilters(row)).length
   const barcodeRowCount = variantRows.filter(row => row.barcode.trim()).length
   const emptySkuBarcodeRowCount = variantRows.filter(row => row.barcode.trim() && !row.sku.trim()).length
   const emptyBarcodeRowCount = variantRows.length - barcodeRowCount
@@ -3315,25 +3308,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="editor-section-title"><span>6</span><div><h2>Ürün Seçenek Grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div>
         {(fieldErrors.variants || fieldErrors.stock || fieldErrors.attributes) && <div className="product-field-error-list" role="alert">{[fieldErrors.variants, fieldErrors.stock, fieldErrors.attributes].filter(Boolean).map(message => <p key={message}>{message}</p>)}</div>}
         {variantRows.length > 0 && <>
-          <div className={`variant-filter-panel${variantFilterOpen ? ' is-open' : ''}`}>
-            <div className="variant-filter-panel-head">
-              <button type="button" className="variant-filter-panel-toggle" aria-expanded={variantFilterOpen} aria-label={variantFilterOpen ? 'Varyant filtrelerini kapat' : 'Varyant filtrelerini aç'} onClick={() => setVariantFilterOpen(current => !current)}>
-                <span><strong>Varyantları Filtrele</strong><span>Renk, beden gibi seçenekleri seçin; eşleşen satırlar aşağıda vurgulansın.</span></span>
-                <span className="variant-filter-panel-toggle-action"><small>{variantFilterOpen ? 'Kapat' : 'Aç'}</small><UiIcon name="chevronDown" /></span>
-              </button>
-              {hasVariantFilters && <div className="variant-filter-panel-summary"><b>{matchingVariantCount} varyant seçildi</b><button type="button" className="variant-filter-clear" onClick={clearVariantFilters}>Temizle</button></div>}
-            </div>
-            {variantFilterOpen && <div className="variant-filter-panel-body">
-              {variantFilterGroups.length ? <div className="variant-filter-grid">{variantFilterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={variantFilterSelections[group.id] ?? []} onToggle={valueId => toggleVariantFilter(group.id, valueId)} onClear={() => setVariantFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div> : <p className="variant-filter-empty">Filtrelemek için seçenek grubu bulunamadı.</p>}
-              <div className="variant-bulk-editor">
-                <label><span>Stok</span><input aria-label="Tüm varyantların stoku" value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /></label>
-                <label><span>Satış Fiyatı</span><input aria-label="Tüm varyantların satış fiyatı" value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /></label>
-                <label><span>Maliyet</span><input aria-label="Tüm varyantların maliyeti" value={bulkCostPrice} onChange={event => setBulkCostPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm maliyetler" /></label>
-                <label><span>Liste Fiyatı</span><input aria-label="Tüm varyantların liste fiyatı" value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /></label>
-                <div className="variant-bulk-action"><span>Toplu Uygulama</span><button type="button" className="secondary" onClick={applyBulk} disabled={hasVariantFilters && matchingVariantCount === 0}>{hasVariantFilters ? `${matchingVariantCount} Seçilene Uygula` : 'Tümüne Uygula'}</button></div>
-              </div>
-            </div>}
-          </div>
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary is-danger variant-clear-button" onClick={clearVariants}><UiIcon name="trash" /> Oluşan Varyantları Temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere Görsel Ata</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri Kodları</button>}</div></div>
         </>}
             {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok / Fiyat'], ['cost', 'Maliyet'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
@@ -3355,14 +3329,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 <span>İşlem</span>
               </div>
               {variantRows.length ? variantRows.map((row, index) => {
-                const matchesFilter = rowMatchesVariantFilters(row)
                 const rowPlatforms = row.platformStatuses?.length ? row.platformStatuses : !editProductId ? variantPricingPlatforms : []
                 const codeIssues = variantCodeIssues.get(row.key) ?? []
                 // An empty needed code says "… eksik"; a filled one names the rules it breaks. Every variant needs its
                 // own stock code, with or without an active marketplace.
                 const barcodeIssueText = variantCodeFieldIssueText(codeIssues, 'barcode', row.barcode, variantCodeConflicts[variantCodeKey('barcode', row.barcode)])
                 const skuIssueText = variantCodeFieldIssueText(codeIssues, 'sku', row.sku, variantCodeConflicts[variantCodeKey('sku', row.sku)])
-                return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
+                return <div data-variant-row-key={row.key} className={`variant-table-row ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
                   <div className="variant-option-cell"><span className="variant-option-text" aria-label={`${index + 1}. varyant seçenekleri`} title={displayVariantOptionSignature(row.optionSignature, row.options)}>{displayVariantOptionSignature(row.optionSignature, row.options)}</span><button type="button" className="variant-option-edit-button" onClick={() => setOptionEditRowKey(row.key)} aria-label={`${index + 1}. varyantın seçeneklerini düzenle`} title="Seçenekleri düzenle" disabled={!rowOptionEntries(row).length}><UiIcon name="edit" size={14} /></button></div>
                   <input aria-label={`${row.optionSignature} barkod`} className={`technical-field barcode-value${barcodeIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={barcodeIssueText ? true : undefined} title={barcodeIssueText || undefined} value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" />
@@ -3546,8 +3519,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="variant-bulk-edit-body">
           {variantBulkEditFilterGroups.length > 0 && <section className="variant-bulk-edit-filters" aria-label="Renk ve beden filtreleri"><strong>Renk ve beden seçin</strong><div>{variantBulkEditFilterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={variantBulkEditFilterSelections[group.id] ?? []} onToggle={valueId => setVariantBulkEditFilterSelections(current => ({ ...current, [group.id]: (current[group.id] ?? []).includes(valueId) ? current[group.id].filter(id => id !== valueId) : [...(current[group.id] ?? []), valueId] }))} onClear={() => setVariantBulkEditFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div></section>}
           <div className="variant-bulk-edit-target"><span>Uygulanacak Varyant</span><strong>{variantBulkEditMatchingRows.length.toLocaleString('tr-TR')} / {variantRows.length.toLocaleString('tr-TR')} satır</strong></div>
+          <div className="variant-bulk-modes" role="group" aria-label="İşlem türü">{(['set', 'increase', 'decrease'] as const).map(mode => <button key={mode} type="button" className={variantBulkEdit.mode === mode ? 'is-on' : undefined} aria-pressed={variantBulkEdit.mode === mode} onClick={() => setVariantBulkEdit(current => current ? { ...current, mode, error: '' } : current)}>{variantBulkModeLabels[mode]}</button>)}</div>
           <label htmlFor="variant-bulk-edit-value">Yeni {variantBulkEditLabels[variantBulkEdit.field]} Değeri<input id="variant-bulk-edit-value" data-autofocus={touchScreen ? undefined : true} type="number" min="0" step={variantBulkEdit.field === 'stock' ? '1' : '0.01'} value={variantBulkEdit.value} aria-describedby={variantBulkEdit.error ? 'variant-bulk-edit-help variant-bulk-edit-error' : 'variant-bulk-edit-help'} onChange={event => setVariantBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>
-          <small id="variant-bulk-edit-help">{variantBulkEdit.field === 'stock' ? 'Stok tam sayı ve sıfırdan büyük veya eşit olmalıdır.' : 'Tutar sıfır veya daha büyük olmalıdır.'}</small>
+          <small id="variant-bulk-edit-help">{variantBulkEdit.field === 'stock' ? 'Stok tam sayı ve sıfırdan büyük veya eşit olmalıdır.' : 'Tutar sıfır veya daha büyük olmalıdır.'}{variantBulkEdit.mode === 'increase' ? ' Girilen değer mevcut değere eklenir.' : variantBulkEdit.mode === 'decrease' ? ' Girilen değer mevcut değerden çıkarılır; sonuç 0\'ın altına inmez.' : ''}</small>
           {variantBulkEdit.error && <p id="variant-bulk-edit-error" className="variant-bulk-edit-error" role="alert">{variantBulkEdit.error}</p>}
         </div>
         <footer><button type="button" className="secondary" onClick={() => setVariantBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyVariantBulkEdit} disabled={!variantBulkEditMatchingRows.length}>Uygula</button></footer>

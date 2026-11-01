@@ -727,7 +727,7 @@
   .product-basics-grid .product-brand-field { grid-column: span 1; }
   .product-step-grid label, .product-step-grid .product-description-field { display: grid; min-width: 0; gap: var(--rv-space-2); color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 700; }
   .desi-inline-control button { min-width: 92px; }
-  .attribute-variant-action, .variant-filter-panel-head, .variant-table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); }
+  .attribute-variant-action, .variant-table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); }
   .attribute-variant-action > div:first-child { display: grid; gap: 3px; }
   .attribute-variant-action small, .variant-table-toolbar > span { color: var(--rv-color-muted); }
   .marketplace-pricing-bar-list { display: grid; gap: var(--rv-space-3); margin-top: var(--rv-space-4); }
@@ -810,24 +810,6 @@
   .category-attribute-dropdown-options > button span { min-width: 0; flex: 1 1 auto; overflow: visible; overflow-wrap: anywhere; white-space: normal; }
   .category-attribute-dropdown-options > button i { display: grid; width: 20px; height: 20px; flex: 0 0 auto; place-items: center; }
   .category-attribute-dropdown-empty { padding: var(--rv-space-3) var(--rv-space-2); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-  .variant-filter-panel { display: grid; gap: var(--rv-space-3); margin-bottom: var(--rv-space-4); padding: var(--rv-space-4); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
-  .variant-filter-panel-head > div:first-child { display: grid; gap: 3px; }
-  .variant-filter-panel-toggle { display: flex; width: auto; min-width: 0; flex: 1 1 auto; align-items: center; justify-content: space-between; gap: var(--rv-space-3); padding: var(--rv-space-2) 0; color: var(--rv-color-ink); background: transparent; border: 0; border-radius: 0; text-align: left; cursor: pointer; }
-  .variant-filter-panel-toggle:hover, .variant-filter-panel-toggle:focus-visible { background: transparent; border-color: transparent; outline: none; }
-  .variant-filter-panel-toggle:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 4px; }
-  .variant-filter-panel-toggle > span:first-child { display: grid; min-width: 0; gap: 3px; text-align: left; }
-  .variant-filter-panel-toggle strong { color: var(--rv-color-ink); }
-  .variant-filter-panel-toggle-action { display: inline-flex; min-width: auto; flex: 0 0 auto; align-items: center; justify-content: center; gap: var(--rv-space-1); padding: 0; color: var(--rv-color-primary); background: transparent; border: 0; border-radius: 0; font-size: var(--rv-font-size-xs); font-weight: 800; }
-  .variant-filter-panel-toggle-action small { color: inherit; font-size: inherit; font-weight: inherit; }
-  .variant-filter-panel-toggle-action > .ui-icon { flex: 0 0 auto; transition: transform 160ms ease; }
-  .variant-filter-panel-summary > b { max-width: 180px; overflow: hidden; font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
-  .variant-filter-panel-toggle > span:first-child > span, .variant-filter-empty { color: var(--rv-color-muted); }
-  .variant-filter-grid, .variant-bulk-editor { display: grid; gap: var(--rv-space-3); }
-  .variant-bulk-editor { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  .variant-bulk-editor { padding-top: var(--rv-space-3); border-top: 1px solid var(--rv-color-border); }
-  .variant-bulk-editor label, .variant-bulk-action { display: grid; min-width: 0; gap: 6px; }
-  .variant-bulk-editor label > span, .variant-bulk-action > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
-  .variant-bulk-action button { width: 100%; min-width: 0; white-space: nowrap; }
   .app-shell.stitch-shell main .variant-filter-select-trigger { display: flex; width: 100%; min-width: 0; min-height: var(--rv-control-height-lg); align-items: center; justify-content: space-between; gap: var(--rv-space-3); padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); text-align: left; }
   .variant-filter-select-trigger > span { display: grid; min-width: 0; flex: 1 1 auto; align-items: start; gap: 2px; text-align: left; }
   .variant-filter-select-trigger small { overflow: hidden; color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
@@ -835,13 +817,11 @@
   .variant-filter-select-trigger strong { overflow: hidden; font-size: var(--rv-font-size-sm); text-overflow: ellipsis; white-space: nowrap; }
   .variant-filter-dropdown-menu { position: absolute; top: calc(100% + var(--rv-space-2)); left: 0; right: 0; z-index: var(--rv-z-dropdown); display: grid; gap: var(--rv-space-2); max-height: min(360px, calc(100dvh - 128px)); padding: var(--rv-space-3); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); box-shadow: var(--rv-shadow-lg); }
   .variant-filter-dropdown-tools > span { color: var(--rv-color-muted); font-size: var(--rv-font-size-xs); font-weight: 750; }
-  .app-shell.stitch-shell main .variant-filter-dropdown-menu > button.variant-filter-clear-selection { min-height: 36px; justify-content: flex-start; padding: 0 var(--rv-space-2); color: var(--rv-color-primary); background: transparent; border: 0; font-size: var(--rv-font-size-xs); }
   .app-shell.stitch-shell main .variant-filter-dropdown-options > button { display: flex; width: 100%; min-height: 40px; align-items: center; justify-content: space-between; gap: var(--rv-space-2); padding: 0 var(--rv-space-2); color: var(--rv-color-ink); background: transparent; border: 1px solid transparent; border-radius: var(--rv-radius-sm); text-align: left; }
   .app-shell.stitch-shell main .variant-filter-dropdown-options > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, color-mix(in srgb, var(--rv-color-ink) 7%, transparent)); border-color: var(--rv-color-border); }
   .variant-filter-dropdown-options > button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .variant-filter-dropdown-options > button i { display: grid; width: 20px; height: 20px; flex: 0 0 auto; place-items: center; }
   .variant-filter-dropdown-empty { padding: var(--rv-space-3) var(--rv-space-2); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-  .variant-bulk-editor { margin: 0; }
   .variant-table-toolbar { margin-bottom: var(--rv-space-3); padding: var(--rv-space-3) 0; border-top: 1px solid var(--rv-color-border); border-bottom: 1px solid var(--rv-color-border); }
   .variant-table-editor { overflow-x: auto; padding: 0; }
   .variant-table-head, .variant-table-row { display: grid; grid-template-columns: 54px minmax(180px, 1.35fr) minmax(145px, 1fr) minmax(145px, 1fr) 90px 110px 110px 110px 184px; min-width: 1286px; align-items: center; }
@@ -1478,8 +1458,8 @@
   .rich-text-editor-head { align-items: flex-start; flex-direction: column; }
   .rich-text-editor-meta { width: 100%; justify-content: space-between; }
   .rich-text-editor-meta > span { text-align: left; }
-  .attribute-variant-action, .variant-filter-panel-head, .variant-table-toolbar, .product-submit-sticky { align-items: flex-start; flex-direction: column; }
-  .marketplace-pricing-bar, .variant-filter-grid, .variant-bulk-editor { grid-template-columns: 1fr; }
+  .attribute-variant-action, .variant-table-toolbar, .product-submit-sticky { align-items: flex-start; flex-direction: column; }
+  .marketplace-pricing-bar { grid-template-columns: 1fr; }
   .variant-platform-pricing-filter-grid, .variant-bulk-edit-filters > div { grid-template-columns: 1fr; }
   .panel-attribute-modal { padding: var(--rv-space-2); }
   .panel-attribute-modal-card > header, .panel-attribute-add-value, .panel-attribute-value-editor, .panel-attribute-category-search, .panel-attribute-category-list, .panel-attribute-category-modal-card > footer { padding-inline: var(--rv-space-4); }
@@ -6999,9 +6979,9 @@ html body .rr-opt-count:not(.is-loading) { display: inline-flex !important; }
 
 /* "Temizle" is the same framed button on every page, like the lists' Temizle (.rr-btn): surface fill, strong
    border, 36px, 7px corners. While there is nothing to clear it stays framed and only fades. */
-html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear) { display: inline-flex; align-items: center; justify-content: center; height: 36px; min-height: 0; padding: 0 12px; white-space: nowrap; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500; }
-html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-raised)); }
-html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear, .variant-filter-clear):disabled { background: var(--rv-color-surface); opacity: .5; cursor: default; }
+html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear) { display: inline-flex; align-items: center; justify-content: center; height: 36px; min-height: 0; padding: 0 12px; white-space: nowrap; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500; }
+html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear):hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-raised)); }
+html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .commission-filter-clear):is(.invoice-reference-filter-reset, .commission-filter-clear):disabled { background: var(--rv-color-surface); opacity: .5; cursor: default; }
 
 /* Bulk invoice status: its notes share one compact box instead of two full-size callouts. */
 .shopify-invoice-status-form > .invoice-status-notes {
