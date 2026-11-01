@@ -1,7 +1,7 @@
 ---
 name: marketplace-docs
-description: The marketplace API facts this project already knows - base URLs, auth, rate limits, order-query windows, page sizes, time zones, endpoints, status mappings, quirks and job types for Trendyol, Hepsiburada, N11, Pazarama, PttAVM and Shopify, each with its source in the code or official docs. Read before searching the web for a marketplace API detail, before changing an adapter, a sync window or a quota, and when explaining to the user why a marketplace behaves as it does.
-argument-hint: "[trendyol | hepsiburada | n11 | pazarama | pttavm | shopify]"
+description: The marketplace API facts this project already knows - base URLs, auth, rate limits, order-query windows, page sizes, time zones, endpoints, status mappings, quirks and job types for Trendyol, Hepsiburada, N11, Pazarama, PttAVM, Shopify and the Trendyol E-Faturam invoice provider, each with its source in the code or official docs. Read before searching the web for a marketplace API detail, before changing an adapter, a sync window or a quota, and when explaining to the user why a marketplace behaves as it does.
+argument-hint: "[trendyol | hepsiburada | n11 | pazarama | pttavm | shopify | efaturam]"
 ---
 
 # Marketplace API facts
@@ -16,6 +16,7 @@ One file per marketplace, next to this one. Read the one you need, not all of th
 | Pazarama | `pazarama.md` | REST, OAuth2 client credentials |
 | PttAVM | `pttavm.md` | SOAP (WCF), WS-Security |
 | Shopify | `shopify.md` | GraphQL Admin API |
+| Trendyol E-Faturam (invoices) | `efaturam.md` | REST, JWT sign-in |
 
 Shared across all of them:
 - Job type constants: `src/MarketplaceHub.Application/MarketplaceContracts.cs` (`ForPlatform()` maps the shared

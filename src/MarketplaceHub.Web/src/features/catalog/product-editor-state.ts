@@ -38,6 +38,7 @@ export function editorSnapshot(state: {
   familyMediaOrder: string[]
   pendingMediaFileCount: number
   removedVariantIds: string[]
+  pendingFamilyMediaRemovalUrls?: string[]
 }) {
   return JSON.stringify({
     form: state.form,
@@ -46,7 +47,8 @@ export function editorSnapshot(state: {
     attributeTextValues: state.attributeTextValues,
     familyMediaOrder: state.familyMediaOrder,
     pendingMediaFileCount: state.pendingMediaFileCount,
-    removedVariantIds: state.removedVariantIds
+    removedVariantIds: state.removedVariantIds,
+    pendingFamilyMediaRemovalUrls: state.pendingFamilyMediaRemovalUrls ?? []
   })
 }
 
