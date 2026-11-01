@@ -58,6 +58,14 @@ describe('DashboardPage', () => {
     expect(container.querySelector('.rr-callout.rr-warn')).toBeNull()
   })
 
+  it('places the pending products under the pending orders', async () => {
+    await render()
+    expect(Array.from(container.querySelectorAll('.rr-opcard small')).map(label => label.textContent)).toEqual([
+      'Bekleyen Siparişler', 'Geciken Siparişler', 'Bekleyen İadeler', 'Bekleyen Faturalar',
+      'Bekleyen Ürün Adedi', 'Düşük Stok', 'Yaklaşan Faturalar',
+    ])
+  })
+
   it('opens the performance panel on today', async () => {
     await render()
     expect(container.querySelector('.rr-seg [aria-checked="true"]')?.textContent).toBe('Bugün')
