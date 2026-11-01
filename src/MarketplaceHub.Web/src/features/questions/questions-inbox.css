@@ -330,3 +330,5 @@
 .qi-page .qi-glyph.is-running { color: var(--rv-color-primary); animation: qi-glyph-turn 900ms linear infinite; }
 @keyframes qi-glyph-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .qi-page .qi-glyph.is-running { animation: none; } }
+/* the subject line the customer gave the question (n11), shown apart from the question */
+.qi-page .qi-subject { align-self: flex-start; margin: 2px 0 6px; color: var(--rv-color-muted); }

@@ -14,6 +14,10 @@ public sealed class MarketplaceQuestion
     public string? ProductSku { get; set; }
     public string? ProductBarcode { get; set; }
     public string? ProductModelCode { get; set; }
+    // The marketplace's own product id (n11 productId): links the question to the panel product when it carries no codes.
+    public string? ProductExternalId { get; set; }
+    // The subject line the customer gave the question (n11 questionSubject), kept apart from the question itself.
+    public string? QuestionSubject { get; set; }
     public string? ProductUrl { get; set; }
     public string? CustomerName { get; set; }
     // The marketplace's own number for the customer who asked (Trendyol customerId), so a customer's earlier questions

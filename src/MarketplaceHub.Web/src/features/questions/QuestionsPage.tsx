@@ -25,7 +25,7 @@ import { insideSelector, useDismissable } from '../../shared/hooks/useDismissabl
 
 type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
-  questionText: string; productName?: string | null; productImageUrl?: string | null; productSku?: string | null; productBarcode?: string | null
+  questionText: string; subject?: string | null; productName?: string | null; productImageUrl?: string | null; productSku?: string | null; productBarcode?: string | null
   productModelCode?: string | null; productUrl?: string | null; customerName?: string | null; externalOrderNumber?: string | null; conversations: QuestionConversation[]
   createdAt: string; expiresAt?: string | null; lastRemoteModifiedAt: string; lastSyncedAt: string; version: number
   // NOT_DELIVERED: an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
@@ -283,7 +283,8 @@ export function QuestionsPage() {
   const activeFilterCount = (connectionId !== 'ALL' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sort !== 'NEWEST' ? 1 : 0)
   const presets = [{ key: 'ALL', label: 'Tümü', title: 'Tüm Tarihler', range: { from: '', to: '' } }, { key: 'TODAY', label: 'Bugün', title: 'Bugün', range: lastDays(1) }, { key: '7', label: '7 Gün', title: 'Son 7 Gün', range: lastDays(7) }, { key: '30', label: '30 Gün', title: 'Son 30 Gün', range: lastDays(30) }]
   const productHrefOf = (row: MarketplaceQuestion) => row.kind === 'PRODUCT' || row.platformCode === 'HEPSIBURADA' ? row.productUrl || marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
-  const codesOf = (row: MarketplaceQuestion) => [row.productSku && `Stok Kodu ${row.productSku}`, row.productModelCode && `Model ${row.productModelCode}`, row.productBarcode && `Barkod ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'
+  // As an order line shows its product: model code first, then the stock code and barcode.
+  const codesOf = (row: MarketplaceQuestion) => [row.productModelCode && `Model Kodu: ${row.productModelCode}`, row.productSku && `Stok Kodu: ${row.productSku}`, row.productBarcode && `Barkod: ${row.productBarcode}`].filter(Boolean).join(' · ') || 'Ürün kodu bilgisi yok'
   const isSeller = (author: string) => author.toLowerCase().includes('merchant') || author.toLowerCase().includes('seller')
   const openQuestion = (id: string) => { setSelectedId(id); setDetailOpen(true) }
   const nextWaiting = (id: string) => { const waiting = rows.filter(item => isAnswerable(item.status, item)); const index = waiting.findIndex(item => item.id === id); return waiting[index + 1] ?? waiting.find(item => item.id !== id) }
@@ -323,7 +324,7 @@ export function QuestionsPage() {
           </div> })}
           <p className="qi-history-divider"><span>Yeni Soru</span></p>
         </section>}
-        <div className="rv-question-thread-message is-customer is-question"><header><strong>{row.customerName || 'Müşteri Sorusu'}</strong><time dateTime={row.createdAt}>{formatDate(row.createdAt)}</time></header><p>{row.questionText}</p></div>
+        <div className="rv-question-thread-message is-customer is-question"><header><strong>{row.customerName || 'Müşteri Sorusu'}</strong><time dateTime={row.createdAt}>{formatDate(row.createdAt)}</time></header>{row.subject && <span className="qi-tag qi-subject" title="Müşterinin yazdığı konu">Konu: {row.subject}</span>}<p>{row.questionText}</p></div>
         {previousMessages.length > 0 && <div className="rv-question-conversation" aria-label="Konuşma geçmişi">{previousMessages.map((message, index) => thread(message, `${message.createdAt}-${index}`))}</div>}
         <p className="qi-note"><UiIcon name="info" size={14} />Cevabınız yalnızca soruyu soran müşteri tarafından görüntülenir.</p>
       </div>
