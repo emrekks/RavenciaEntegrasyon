@@ -778,7 +778,9 @@ function PublishPlatformCardSkeletons() {
   </article>)}</>
 }
 
-export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, categoryName = '', productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
+export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, categoryName = '', productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback, onEditProductData }: {
+  // A gap in the product's own data: back to the form (the publish popup has no form, its gap links to the product).
+  onEditProductData?: () => void
   familyProductIds?: string[] | null
   lookupKeys?: { modelCode: string; barcode: string; sku: string }
   // How many of the family's variants are present on this marketplace (matched or live), and how many it no longer knows.
@@ -946,7 +948,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     onCancelFailed: message => onFeedback({ title: 'Yayın İşi Durdurulamadı', message: `${platformName}: yayın işi durdurulamadı — ${message}`, kind: 'error', persistent: true })
   })
   const jobRunning = jobView.state === 'running'
-  const missingChecks = card.mode === 'PUBLISH' ? missingPublicationChecks(productChecks, isShopifyCard) : []
+  const missingChecks = card.mode === 'PUBLISH' ? missingPublicationChecks(productChecks, card.connection.platformCode) : []
   const mappingReadinessEnabled = card.mode === 'PUBLISH' && !isShopifyCard && (!productId || !publication.isPending)
     && (pttAvmRetry ? Boolean(categoryId) : shouldCheckPublicationAttributes(categoryId, selectionStatus, publication.data?.lastJobStatus))
   const mappingReadiness = useQuery({
@@ -965,7 +967,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const [valueFixOpen, setValueFixOpen] = useState(false)
   const [categoryFixOpen, setCategoryFixOpen] = useState(false)
   // The category fields window ("Kategori Alanları ve Değerleri") opened from a gap: the marketplace field it opens on.
-  const [fieldsFix, setFieldsFix] = useState<{ externalAttributeId?: string; fieldName?: string } | null>(null)
+  const [fieldsFix, setFieldsFix] = useState<{ externalAttributeId?: string; fieldName?: string; missing: { title: string; detail: string } } | null>(null)
   const fieldsWindowPlatform = attributeMappingPlatform(card.connection.platformCode)
   const mappingFocus = mappingFocusItems(requiredMappingIssues, optionalMappingWarnings)
   // On close (saved or not) the card reads its publish check again, so the badge counts follow what was mapped.
@@ -997,19 +999,25 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   // a yellow "N uyarı" badge stands beside the status.
   const issueFix = (issue: { attribute: string; detail: string }): { href?: string; onRun?: () => void } => {
     const mappingIssue = [...requiredMappingIssues, ...optionalMappingWarnings].find(item => item.attribute === issue.attribute && item.detail === issue.detail)
+    const productCheck = missingChecks.find(check => check.title === issue.attribute && check.detail === issue.detail)
     if (issue.attribute === 'Kategori eşlemesi' && categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
     if (mappingCheckFailed && issue.attribute === `${card.name} özellik kontrolü`) return { onRun: () => { void mappingReadiness.refetch() } }
     if (/^Shopify API izin/.test(issue.attribute)) return { href: '/integrations' }
-    // A store's category must be mapped before its fields: any gap opens that first.
-    if (categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
-    // Every other gap opens the category fields window: on its own field, on Web Color for a Web Color gap, or (a gap of
-    // the product's own data) on the product's first missing field.
-    if (fieldsWindowPlatform && categoryId) {
-      const fieldName = /Web Color/i.test(`${issue.attribute} ${issue.detail}`) ? 'Web Color' : undefined
-      return { onRun: () => setFieldsFix({ externalAttributeId: mappingIssue?.externalAttributeId, fieldName }) }
+    const missing = { title: issue.attribute, detail: issue.detail }
+    // A marketplace field's gap opens the category fields window on that field.
+    if (mappingIssue) {
+      if (fieldsWindowPlatform && categoryId && mappingIssue.externalAttributeId) { const externalAttributeId = mappingIssue.externalAttributeId; return { onRun: () => setFieldsFix({ externalAttributeId, missing }) } }
+      if (mappingIssue.fix && readinessCategoryScope) return { onRun: () => setValueFixOpen(true) }
+      return { href: '/mappings/attributes' }
     }
-    if (mappingIssue?.fix && readinessCategoryScope) return { onRun: () => setValueFixOpen(true) }
-    if (categoryId && card.mode === 'PUBLISH' && !isShopifyCard) return { onRun: () => setCategoryFixOpen(true) }
+    // Trendyol's Web Color (only Trendyol cards read it) opens the window on Web Color, the Renk ↔ Web Color card.
+    if (productCheck?.title === 'Web Color') {
+      if (fieldsWindowPlatform && categoryId && !categoryMappingGap) return { onRun: () => setFieldsFix({ fieldName: 'Web Color', missing }) }
+      return { href: '/mappings/attributes' }
+    }
+    // The product's own data (name, images, variants, the category's attributes and options) is fixed in its form.
+    if (productCheck) return onEditProductData ? { onRun: onEditProductData } : productId ? { href: `/products/${productId}` } : {}
+    if (categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
     return { href: categoryId ? '/mappings/attributes' : '/mappings/categories' }
   }
   const optionalBadgeProps = { optionalCount: optionalMappingWarnings.length || undefined, optionalHeading: optionalMappingWarnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${optionalMappingWarnings.length} isteğe bağlı özellik uyarısı`, optionalRows: optionalMappingWarnings.map((issue, index) => ({ key: `${issue.attribute}-${index}`, title: issue.attribute, detail: issue.detail, ...issueFix(issue) })) }
@@ -1031,6 +1039,11 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     : <i aria-hidden="true" />
   // A product that is not saved yet has no platform record: it shows what keeps it from publishing, or that it is not out yet.
   const displayedPublicationLabel = partialBlocked ? partialLabel : hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : noneFound ? 'Bulunamadı' : familyPartial ? partialLabel : allLinked ? 'Yayında' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? pttAvmRetryLabel : productId ? publicationLabel : 'Henüz yayınlanmadı'
+  // On a narrow card the pill keeps "21/42" and drops " yayında" (publish-platform-issues.css), so the refresh button
+  // never leaves its row.
+  const statusText = familyPartial
+    ? <><span className="publish-partial-count">{someLinked ? `${linkedCount}/${linkedTotal}` : `${familyLiveCount}/${familyTotal}`}</span><span className="publish-partial-suffix">{someLinked ? ' yayında' : ' renk yayında'}</span></>
+    : displayedPublicationLabel
   const missingVariantsTitle = noneFound ? 'Pazaryerinde Bulunamadı' : missingCount > 0 ? `${missingCount} varyant pazaryerinde bulunamadı` : undefined
   const displayedPublicationTone = partialBlocked ? 'info' : hasRequiredPublicationBlock ? 'danger' : noneFound ? 'danger' : familyPartial ? 'info' : allLinked ? 'success' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? 'warning' : productId ? publicationTone : 'neutral'
   const readOnlyIsN11 = card.connection.platformCode.trim().toUpperCase() === 'N11'
@@ -1047,15 +1060,15 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
       <div><dt>Mağaza</dt><dd title={card.connection.externalStoreId ? `Mağaza no: ${card.connection.externalStoreId}` : undefined}>{card.connection.displayName || card.connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{publishPlatformName(card.connection.platformCode)}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif Bağlantı</span></dd></div>
-      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : missingVariantsTitle ? `${missingVariantsTitle} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}>{statusMark}{displayedPublicationLabel}</button> : hasRequiredPublicationBlock && !partialBlocked
+      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : missingVariantsTitle ? `${missingVariantsTitle} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}>{statusMark}{statusText}</button> : hasRequiredPublicationBlock && !partialBlocked
         ? <PublishIssueBadge id={`${issueListId}-popover`} label={displayedPublicationLabel} requiredCount={blockedIssues.length} heading={issueBadgeHeading} rows={issueBadgeRows} moreText={issueBadgeMore} {...optionalBadgeProps} />
-        : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning ? jobView.message : missingVariantsTitle}>{statusMark}{displayedPublicationLabel}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{showWarningBadge && <PublishIssueBadge id={`${issueListId}-warnings`} label={`${optionalMappingWarnings.length} uyarı`} heading="" rows={[]} {...optionalBadgeProps} />}{(publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN') || pttAvmFamilySent
+        : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning ? jobView.message : missingVariantsTitle}>{statusMark}{statusText}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{showWarningBadge && <PublishIssueBadge id={`${issueListId}-warnings`} label={`${optionalMappingWarnings.length} uyarı`} heading="" rows={[]} {...optionalBadgeProps} />}{(publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN') || pttAvmFamilySent
         ? <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} yayın durumu sorgulanıyor` : `${card.name} yayın durumunu güncelle`} aria-busy={refreshBusy} title={refreshBusy ? 'Platformdaki durum sorgulanıyor…' : 'Platformdaki mevcut durumu yeniden sorgula'} disabled={refreshBusy || isPublicationStatusJobRunning(publication.data?.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>
         : productId && card.mode !== 'READ_ONLY' && <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} mağazasında ürün aranıyor` : `${card.name} mağazasında ürünü ara`} aria-busy={refreshBusy} title={refreshBusy ? `${card.name} mağazasında ${lookupKey} aranıyor…` : lookupKey ? `${card.name} mağazasında ${lookupKey} ara ve varyantları eşleştir` : `${card.name} tek ürünü kendi ürün numarasıyla arar; bu ürün için o numara bilinmiyor. Ürün Aktar'dan arayın.`} disabled={!lookupKey || refreshBusy || publication.isPending} onClick={() => lookupProduct.mutate()}><UiIcon name="refresh" /></button>}{refreshJob.running && !(jobRunning && publication.data?.lastJobId === refreshJobId) && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={refreshJob.cancel.isPending ? `${card.name} sorgusu durduruluyor` : `${card.name} sorgusunu durdur`} title="Sorguyu Durdur" disabled={refreshJob.cancel.isPending} onClick={() => refreshJob.cancel.mutate()}><i aria-hidden="true" /></button>}{jobRunning &&<button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{partialBlocked && partialRest > 0 && <PublishIssueBadge variant="note" id={`${issueListId}-partial`} label={`Kalan ${partialRest} ${partialUnit}${partialUnit === 'renk' ? 'te' : 'ta'} ${blockedIssues.length} eksik`} heading={issueBadgeHeading} rows={issueBadgeRows} moreText={issueBadgeMore} {...optionalBadgeProps} />}{partialReady && <small className="publish-partial-note is-ready" title="Seçip Yayınla'ya basınca yalnız yayında olmayanlar gönderilir."><UiIcon name="check" size={12} />Kalan {partialRest} {partialUnit} yayına hazır</small>}{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
     </dl>
     {categoryFixOpen && categoryId && <CategoryMappingDialog connectionId={card.connection.id} platformName={card.name} categoryId={categoryId} categoryName={categoryName || 'Ürün'} onClose={() => setCategoryFixOpen(false)} onSaved={message => { setValueFixNotice(message) }} />}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification({ title: 'Değer Eşlemeleri Kaydedildi', message, kind: 'success', operation: 'Özellik değeri eşleştirme', platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, target: { href: '/mappings/attributes', label: 'Eşleştirmelere Git' } }) }} />}
-    {fieldsFix && fieldsWindowPlatform && categoryId && <Suspense fallback={null}><ProductCategoryFieldsDialog platformCode={fieldsWindowPlatform} connectionId={card.connection.id} localCategoryId={categoryId} focus={{ items: mappingFocus, initialExternalAttributeId: fieldsFix.externalAttributeId, initialFieldName: fieldsFix.fieldName }} onClose={closeFieldsFix} /></Suspense>}
+    {fieldsFix && fieldsWindowPlatform && categoryId && <Suspense fallback={null}><ProductCategoryFieldsDialog platformCode={fieldsWindowPlatform} connectionId={card.connection.id} localCategoryId={categoryId} focus={{ items: mappingFocus, initialExternalAttributeId: fieldsFix.externalAttributeId, initialFieldName: fieldsFix.fieldName, missing: fieldsFix.missing }} onClose={closeFieldsFix} /></Suspense>}
     {jobDetailOpen && lastJobId && <PublicationJobDialog jobId={lastJobId} platformCode={card.connection.platformCode} platformName={card.name} storeName={card.connection.displayName} onClose={() => setJobDetailOpen(false)} />}
     {valueFixNotice && <NoticeToast kind="success" title="Değer Eşlemeleri Kaydedildi" message={valueFixNotice} onClose={() => setValueFixNotice('')} durationMs={5500} />}
     {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify Dış Yazması Kapalı</strong><p>Ürün yayınını açmak için Entegrasyonlar bölümünde Shopify dış yazma anahtarını etkinleştirin; bağlantı testinde write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.</p></div></div>}
@@ -3378,6 +3391,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               onSelect={() => updateChannel(card.connection.id)}
               onDeselect={() => setSelectedChannelIds(current => current.filter(id => id !== card.connection.id))}
               onFeedback={setFeedback}
+              onEditProductData={publishOnly ? undefined : () => setWizardStep(1)}
             />) : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Platformları yönet <UiIcon name="arrowRight" /></Link></div>}
           </div>
           <StickyActionBar label="Yayınlama" className="publish-selection-footer">

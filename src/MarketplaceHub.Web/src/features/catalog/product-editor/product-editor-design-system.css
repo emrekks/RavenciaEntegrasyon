@@ -652,7 +652,11 @@
 }
 
 @layer features {
-  .product-publish-step .publish-platform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  /* As many cards a row as fit at 400 px (3 on a 1920 px screen, 2 at 1200-1440, 1 on a phone); the cards of a row are
+     equally tall, their facts block filling the card down to its bottom. */
+  .product-publish-step .publish-platform-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); align-items: stretch; }
+  .product-publish-step .publish-platform-grid > .publish-platform-card { display: flex; flex-direction: column; }
+  .product-publish-step .publish-platform-grid > .publish-platform-card > .publish-platform-facts { flex: 1 0 auto; align-content: start; }
 }
 
 @layer features {

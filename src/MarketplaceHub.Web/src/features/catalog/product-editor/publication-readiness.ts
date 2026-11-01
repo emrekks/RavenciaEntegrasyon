@@ -112,7 +112,8 @@ export type PublicationReadinessDraft = {
 }
 // The category requirements query as the editor sees it.
 export type PublicationRequirementsState = { items: CategoryRequirement[]; isLoading: boolean; isError: boolean; isSuccess: boolean }
-export type PublicationProductCheck = { title: string; detail: string; ok: boolean; shopifyOk?: boolean; shopifyDetail?: string }
+// `platforms`: the marketplaces the check is about (Web Color: Trendyol only); without it every marketplace reads it.
+export type PublicationProductCheck = { title: string; detail: string; ok: boolean; shopifyOk?: boolean; shopifyDetail?: string; platforms?: readonly string[] }
 
 export function sortRequirements(requirements: CategoryRequirement[] | undefined) {
   return (requirements ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder)
@@ -150,8 +151,10 @@ export function publicationProductChecks(draft: PublicationReadinessDraft, requi
     : draft.webColorAutoEnabled
       ? (!colorOptionRequirement || (!variantAttributeIds.includes(colorOptionRequirement.attributeId) && !(attributeSelections[colorOptionRequirement.attributeId]?.length))) ? ['Web Color otomatik aktarımı için Renk seçeneğini eşitleyip değer seçin.'] : []
       : !draft.manualWebColorValueId ? ['Manuel Web Color için katalog rengi seçin.'] : webColorRequirement.attribute.values.some(value => value.id === draft.manualWebColorValueId) ? [] : ['Manuel Web Color değeri geçerli değil.']
-  const catalogValidationIssues = [...categoryValidationIssues, ...optionValidationIssues, ...webColorValidationIssues]
-  const catalogValidationDetail = catalogValidationIssues.length ? catalogValidationIssues.join(' ') : 'Kategori özellikleri, seçenekler ve Web Color yayınlamaya hazır.'
+  // Web Color is a Trendyol field (no other marketplace's API has it): its check is a check of its own that only the
+  // Trendyol cards read, so it never blocks Hepsiburada, n11, Pazarama or PTT AVM.
+  const catalogValidationIssues = [...categoryValidationIssues, ...optionValidationIssues]
+  const catalogValidationDetail = catalogValidationIssues.length ? catalogValidationIssues.join(' ') : 'Kategori özellikleri ve seçenekler yayınlamaya hazır.'
   const basicProductMissingParts = [
     !draft.title.trim() && 'ürün adı',
     !draft.description.trim() && 'açıklama',
@@ -163,7 +166,8 @@ export function publicationProductChecks(draft: PublicationReadinessDraft, requi
     { title: 'Temel Ürün Verileri', detail: hasBasicProductData ? 'İsim, açıklama, marka, model ve barkod bilgileri eksiksiz.' : `Eksik alanlar: ${basicProductMissingParts.join(', ')}.`, ok: hasBasicProductData, shopifyOk: Boolean(draft.title.trim() && draft.description.trim()), shopifyDetail: 'Shopify ürünü için ad ve açıklama gereklidir.' },
     { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.${mediaCount > 8 ? ' Trendyol için sıralamadaki ilk 8 görsel kullanılır.' : ''}` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia, shopifyOk: hasProductMedia, shopifyDetail: 'Shopify yayını için en az bir geçerli HTTPS görseli gerekir.' },
     { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData, shopifyOk: hasVariantData, shopifyDetail: 'Shopify yayını için en az bir stok kodlu varyant oluşturun.' },
-    { title: 'Kategori ve Web Color', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0, shopifyOk: true, shopifyDetail: 'Shopify yayını için pazaryeri kategori eşlemesi veya Web Color gerekmez.' }
+    { title: 'Kategori ve Seçenekler', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0, shopifyOk: true, shopifyDetail: 'Shopify yayını için pazaryeri kategori özellikleri gerekmez.' },
+    { title: 'Web Color', detail: webColorValidationIssues.length ? webColorValidationIssues.join(' ') : 'Web Color yayınlamaya hazır.', ok: webColorValidationIssues.length === 0, platforms: ['TRENDYOL'] }
   ]
 }
 
@@ -315,9 +319,12 @@ export async function loadPublicationAttributeIssues(connection: ReadinessConnec
   return { ...result, categoryScope }
 }
 
-// The card's product checks a marketplace needs (Shopify takes fewer).
-export function missingPublicationChecks(productChecks: PublicationProductCheck[], isShopify: boolean) {
+// The card's product checks a marketplace needs (Shopify takes fewer; a check naming its marketplaces only those).
+export function missingPublicationChecks(productChecks: PublicationProductCheck[], platformCode: string) {
+  const platform = platformCode.trim().toUpperCase()
+  const isShopify = platform === 'SHOPIFY'
   return productChecks
+    .filter(check => !check.platforms || check.platforms.includes(platform))
     .filter(check => !(isShopify ? check.shopifyOk ?? check.ok : check.ok))
     .map(check => ({ ...check, detail: isShopify ? check.shopifyDetail ?? check.detail : check.detail }))
 }
