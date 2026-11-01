@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Infrastructure.Files;

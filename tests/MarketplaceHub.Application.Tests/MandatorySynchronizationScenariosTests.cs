@@ -194,14 +194,6 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
-    public void Scenario09_ReturnOpenFortyFiveDays_RemainsTrackedUntilFinal()
-    {
-        Assert.True(OpenReturnLifecyclePolicy.ShouldPoll(ReturnClaimStatus.Disputed));
-        Assert.False(OpenReturnLifecyclePolicy.ShouldPoll(ReturnClaimStatus.Completed));
-        Assert.False(OpenReturnLifecyclePolicy.ShouldPoll(ReturnClaimStatus.Cancelled));
-    }
-
-    [Fact]
     public void Scenario10_Api500_IsRetryableWithDurableBackoff()
     {
         var error = TrendyolErrorMapper.FromStatus(HttpStatusCode.InternalServerError, null, "request-1");

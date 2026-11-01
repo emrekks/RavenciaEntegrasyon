@@ -3,7 +3,6 @@ using System.Text.RegularExpressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
 

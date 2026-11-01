@@ -1,4 +1,3 @@
-using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;

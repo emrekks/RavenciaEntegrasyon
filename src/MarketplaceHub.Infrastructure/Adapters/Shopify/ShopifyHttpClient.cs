@@ -1646,17 +1646,6 @@ public sealed partial class ShopifyHttpClient(
         }
     }
 
-    private static bool HasMutationErrors(JsonElement root, string field) =>
-        root.TryGetProperty(field, out var mutation)
-        && mutation.ValueKind == JsonValueKind.Object
-        && mutation.TryGetProperty("userErrors", out var errors)
-        && errors.ValueKind == JsonValueKind.Array
-        && errors.GetArrayLength() > 0;
-    private static string DeterministicIdempotencyKey(string value)
-    {
-        var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value));
-        return new Guid(bytes.AsSpan(0, 16)).ToString("D");
-    }
     private static string ShortId(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Split('/').Last();
     internal static string? BuildOrderQuery(OrderPollWindow window)
     {
@@ -1766,4 +1755,3 @@ public sealed partial class ShopifyHttpClient(
 }
 
 internal sealed record ShopifyPriceInventoryLine(string Barcode, int Quantity, decimal SalePrice, decimal ListPrice);
-internal sealed record ShopifyPriceInventoryTarget(ShopifyPriceInventoryLine Line, string VariantId, string ProductId, string InventoryItemId, string LocationId, int CurrentQuantity);

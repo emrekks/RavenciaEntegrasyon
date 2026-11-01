@@ -4,7 +4,6 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
-using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Security;

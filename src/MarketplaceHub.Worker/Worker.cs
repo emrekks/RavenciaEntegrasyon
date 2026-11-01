@@ -3,7 +3,6 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
 using Npgsql;
 
 namespace MarketplaceHub.Worker;

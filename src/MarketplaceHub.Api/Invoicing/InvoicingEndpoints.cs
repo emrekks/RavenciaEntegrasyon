@@ -6,10 +6,8 @@ using System.Text.Json;
 using MarketplaceHub.Api.Operations;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
-using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Api.Invoicing;
@@ -668,7 +666,6 @@ public static class InvoicingEndpoints
     private static IResult WithEtag<T>(HttpContext http, ServiceResult<T> result, Func<T, long> version) { if (!result.Succeeded) return Problem(http, result.Error!); http.Response.Headers.ETag = $"\"v{version(result.Value!)}\""; return Results.Ok(result.Value); }
     private static IResult Created<T>(ServiceResult<T> result, string collection) { if (!result.Succeeded) return MarketplaceHub.Api.Security.ApiProblems.Of(null, result.Error!); var id = typeof(T).GetProperty("Id")?.GetValue(result.Value); return Results.Created(id is Guid guid ? $"{collection}/{guid:D}" : collection, result.Value); }
     private static IResult Accepted(ServiceResult<Guid> result) => result.Succeeded ? Results.Accepted($"/api/v1/jobs/{result.Value:D}", new { jobId = result.Value }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, result.Error!);
-    private static IResult Result<T>(ServiceResult<T> result, Func<T, IResult> success) => result.Succeeded ? success(result.Value!) : MarketplaceHub.Api.Security.ApiProblems.Of(null, result.Error!);
     private static IResult Stream(ServiceResult<(Stream Content, string MimeType, string FileName)> result, HttpContext http) { if (!result.Succeeded) return Problem(http, result.Error!); http.Response.Headers.CacheControl = "private, no-store"; return Results.File(result.Value.Content, result.Value.MimeType, result.Value.FileName, enableRangeProcessing: false); }
     private static IResult Unauthorized(HttpContext http) => Problem(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
     private static IResult MissingContext(HttpContext http) => Tenant(http) is null ? Unauthorized(http) : RequireIdempotency(http) ?? Problem(http, new("REQUEST_INVALID", "İstek tamamlanamadı.", 400));

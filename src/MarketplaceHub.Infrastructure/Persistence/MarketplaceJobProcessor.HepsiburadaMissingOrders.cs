@@ -1,6 +1,5 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
-using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;

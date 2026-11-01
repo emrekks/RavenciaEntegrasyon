@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text.Json;
-using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using MarketplaceHub.Infrastructure.Security;
