@@ -10,6 +10,20 @@ public sealed class ListingVerificationPolicyTests
     private static readonly TimeSpan Istanbul = TimeSpan.FromHours(3);
     private static DateTimeOffset At(int day, int hour, int minute = 0) => new DateTimeOffset(2026, 10, day, hour, minute, 0, Istanbul).ToUniversalTime();
 
+    // K6 (2026-11-01): Pazarama approval checks waiting for their next try kept the verification out of the queue every night.
+    [Fact]
+    public void An_approval_check_waiting_for_its_next_try_does_not_keep_the_verification_out_of_the_queue_but_still_shares_its_lane()
+    {
+        Assert.False(ScheduledJobProducer.HoldsQueueLane(MarketplaceJobTypes.ProductApprovalReconcile, JobStatus.RetryScheduled));
+        // A running or due approval check, and every other product job, still hold the lane as before.
+        Assert.True(ScheduledJobProducer.HoldsQueueLane(MarketplaceJobTypes.ProductApprovalReconcile, JobStatus.Leased));
+        Assert.True(ScheduledJobProducer.HoldsQueueLane(MarketplaceJobTypes.ProductApprovalReconcile, JobStatus.Pending));
+        Assert.True(ScheduledJobProducer.HoldsQueueLane(MarketplaceJobTypes.ProductCreate, JobStatus.RetryScheduled));
+        Assert.True(ScheduledJobProducer.HoldsQueueLane(MarketplaceJobTypes.ListingVerify, JobStatus.RetryScheduled));
+        // The run-time lock is unchanged: both run in the products lane, one at a time per connection.
+        Assert.Equal(MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ListingVerify), MarketplaceSyncExecutionLock.GroupFor(MarketplaceJobTypes.ProductApprovalReconcile));
+    }
+
     [Fact]
     public void A_connection_never_verified_waits_for_the_night_window_and_runs_inside_it()
     {

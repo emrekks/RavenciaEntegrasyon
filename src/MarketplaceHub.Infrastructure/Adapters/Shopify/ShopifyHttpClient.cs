@@ -226,7 +226,8 @@ public sealed partial class ShopifyHttpClient(
         {
             return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_PAYLOAD_INVALID", "Shopify ürün yayını geçerli JSON içermiyor.", HttpStatusCode.BadRequest);
         }
-        var updateOnly = input.Remove(UpdateOnlyKey);
+        var publishOnly = input.Remove(PublishOnlyKey);
+        var updateOnly = input.Remove(UpdateOnlyKey) || publishOnly;
 
         var handle = input["handle"]?.GetValue<string>()?.Trim();
         var variants = input["variants"] as JsonArray;
@@ -268,8 +269,12 @@ public sealed partial class ShopifyHttpClient(
                 unchangedLines = MediaShortfall(existingProduct, requestedFileCount) is null
                     ? UnchangedPublicationLines(existingProduct, requestedPayloadHash, requestedSkus!)
                     : null;
+                // A publish-only resend never writes the product: it takes the variants the product already has.
+                if (publishOnly) unchangedLines = PublicationLines(existingProduct, requestedSkus!);
                 unchangedProductId = unchangedLines is null ? null : TextValue(existingProduct, "id");
                 if (string.IsNullOrWhiteSpace(unchangedProductId)) unchangedLines = null;
+                if (publishOnly && unchangedLines is null)
+                    return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, PublishOnlyMismatchCode, $"Shopify'daki {handle} ürünü bu yayının varyantlarını taşımıyor veya etkin değil; yalnız yayın adımı yapılamadı ve ürüne yazılmadı. Kartı Platformlarda Güncelle ile gönderin.", HttpStatusCode.UnprocessableEntity);
             }
         }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
@@ -404,7 +409,22 @@ public sealed partial class ShopifyHttpClient(
     }
 
     internal const string PublishRetryCode = "SHOPIFY_PRODUCT_PUBLISH_RETRY";
-    internal const string PublishFailedCode = "SHOPIFY_PRODUCT_PUBLISH_FAILED";
+    // "Yayına alınamadı": the product is written, its Online Store publication is not.
+    internal const string PublishFailedCode = "SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED";
+    internal const string PublishFailedLabel = "Yayına alınamadı";
+
+    // A job whose earlier attempt wrote the product and stopped at the publication is resent with this key set: the product
+    // is looked up under its handle and only published, never written or created (MarketplaceJobProcessor). The key is taken
+    // out before the request goes to Shopify.
+    internal const string PublishOnlyKey = "ravenciaPublishOnly";
+    internal const string PublishOnlyMismatchCode = "SHOPIFY_PUBLISH_ONLY_PRODUCT_MISMATCH";
+
+    internal static string MarkPublishOnly(string payloadJson)
+    {
+        var input = JsonNode.Parse(payloadJson)!.AsObject();
+        input[PublishOnlyKey] = true;
+        return input.ToJsonString();
+    }
 
     internal static AdapterError? PublishFailure(AdapterResult<JsonDocument> publish, string productId, string handle)
     {
@@ -415,7 +435,7 @@ public sealed partial class ShopifyHttpClient(
             var retry = error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.RateLimit;
             return new(retry ? AdapterErrorClass.TransientNetwork : AdapterErrorClass.Validation,
                 retry ? PublishRetryCode : PublishFailedCode,
-                $"{product} ancak Online Store yayını yapılamadı: {error.Code}: {error.SafeMessage}. {(retry ? "Yalnızca yayın adımı yeniden denenecek." : "Kartı yeniden yayınlayın; ürün yeniden oluşturulmaz, yalnızca yayın adımı tekrarlanır.")}",
+                $"{(retry ? "" : PublishFailedLabel + ": ")}{product} ancak Online Store yayını yapılamadı: {error.Code}: {error.SafeMessage}. {(retry ? "Yalnızca yayın adımı yeniden denenecek." : "İşi Yeniden Dene ile tekrarlayın; ürün yeniden oluşturulmaz ve yazılmaz, yalnızca yayın adımı tekrarlanır.")}",
                 error.HttpStatus, error.RetryAfter, error.RemoteRequestId);
         }
         try
@@ -423,7 +443,7 @@ public sealed partial class ShopifyHttpClient(
             var payload = publish.Value!.RootElement.GetProperty("publishablePublish");
             if (HasUserErrors(payload, out var publishError))
                 return new(AdapterErrorClass.Validation, PublishFailedCode,
-                    $"{product} ancak Shopify Online Store yayınını reddetti: {publishError ?? "Shopify neden bildirmedi"}. Sorunu Shopify'da giderip kartı yeniden yayınlayın; ürün yeniden oluşturulmaz.",
+                    $"{PublishFailedLabel}: {product} ancak Shopify Online Store yayınını reddetti: {publishError ?? "Shopify neden bildirmedi"}. Sorunu Shopify'da giderip işi Yeniden Dene ile tekrarlayın; ürün yeniden oluşturulmaz ve yazılmaz, yalnızca yayın adımı tekrarlanır.",
                     (int)HttpStatusCode.UnprocessableEntity, null, null);
             if (!string.Equals(TextValue(payload.GetProperty("publishable"), "id"), productId, StringComparison.Ordinal))
                 throw new JsonException("The published resource is not the product.");
@@ -1160,6 +1180,13 @@ public sealed partial class ShopifyHttpClient(
             || !string.Equals(TextValue(hash, "value"), requestedPayloadHash, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(TextValue(existingProduct, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase))
             return null;
+        return PublicationLines(existingProduct, requestedSkus);
+    }
+
+    // The lines of an active product that carries exactly the requested SKUs, one variant each; null otherwise.
+    internal static IReadOnlyList<RemoteOperationLine>? PublicationLines(JsonElement existingProduct, IReadOnlyList<string> requestedSkus)
+    {
+        if (!string.Equals(TextValue(existingProduct, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase)) return null;
         var remoteVariants = existingProduct.GetProperty("variants").GetProperty("nodes").EnumerateArray()
             .Select(variant => (Id: TextValue(variant, "id"), Sku: TextValue(variant, "sku")?.Trim()))
             .ToArray();

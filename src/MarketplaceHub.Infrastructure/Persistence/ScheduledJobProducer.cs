@@ -138,12 +138,16 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             // adds are not saved yet, the reservations below cover them.
             if (!activeJobTypesByConnection.TryGetValue(row.Connection.Id, out var activeJobTypes))
             {
-                activeJobTypes = await db.IntegrationJobs.AsNoTracking()
+                activeJobTypes = (await db.IntegrationJobs.AsNoTracking()
                     .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id
                         && (x.Status == JobStatus.Pending || x.Status == JobStatus.Leased || x.Status == JobStatus.RetryScheduled))
-                    .Select(x => x.JobType)
+                    .Select(x => new { x.JobType, x.Status })
                     .Distinct()
-                    .ToListAsync(cancellationToken);
+                    .ToListAsync(cancellationToken))
+                    .Where(x => HoldsQueueLane(x.JobType, x.Status))
+                    .Select(x => x.JobType)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
                 activeJobTypesByConnection[row.Connection.Id] = activeJobTypes;
             }
             var executionGroup = MarketplaceSyncExecutionLock.GroupFor(definition.Value.JobType);
@@ -268,6 +272,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 .ExecuteUpdateAsync(setters => setters.SetProperty(policy => policy.LastScheduledAt, now), cancellationToken);
         return added;
     }
+
+    // Whether a queued job keeps a scheduled job of its lock group out of the queue. A product approval check that only
+    // waits for its next try (they poll for up to eight days) does not: otherwise the nightly link verification, which
+    // shares the "products" lane, is never queued while any approval is pending. The lease still runs one job of a lane
+    // per connection at a time (JobLeaseService), so the two never run together.
+    internal static bool HoldsQueueLane(string jobType, JobStatus status) =>
+        !(status == JobStatus.RetryScheduled && jobType == MarketplaceJobTypes.ProductApprovalReconcile);
 
     // The cheap part of the due check, made before any lookup: the policy's own LastScheduledAt against the
     // shortest interval it can have this pass (question and webhook cadences only stretch it). A hot order

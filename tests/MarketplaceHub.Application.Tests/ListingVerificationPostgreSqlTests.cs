@@ -23,6 +23,7 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
         await using var db = fixture.CreateContext();
         await db.JobAttempts.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
         await db.IntegrationJobs.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
+        await db.ConnectionSyncPolicies.Where(x => tenantIds.Contains(x.TenantId)).ExecuteDeleteAsync();
     }
 
     [PostgreSqlFact]
@@ -394,6 +395,41 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
             var blocked = await new ScheduledJobProducer(db, fixture.TimeProvider, new ConfigurationBuilder().Build()).ListingVerifyCycleAttemptsAsync(blockedSeed.Tenant.Id, blockedSeed.Connection.Id, cycleStart, CancellationToken.None);
             Assert.False(ListingVerificationPolicy.MayQueueAgain(blocked.Queued, blocked.Blocked));
         }
+    }
+
+    // K6 (2026-11-01): Pazarama's approval checks, waiting days for their next try, kept the nightly verification out of
+    // the queue every night. It is queued now, and the lease still runs the two one at a time.
+    [PostgreSqlFact]
+    public async Task An_approval_check_waiting_for_its_next_try_lets_the_verification_queue_but_never_run_beside_it()
+    {
+        var seed = await Seed("PAZARAMA");
+        var now = ListingVerificationPolicy.CycleStart(DateTimeOffset.UtcNow).AddMinutes(10);
+        var approvalId = Guid.CreateVersion7();
+        await using (var db = fixture.CreateContext())
+        {
+            db.ConnectionSyncPolicies.Add(new ConnectionSyncPolicy { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, ResourceType = ListingVerificationPolicy.ResourceType, IntervalSeconds = ListingVerificationPolicy.DefaultIntervalSeconds, OverlapSeconds = 0, JitterSeconds = 0, Enabled = true, Version = 1 });
+            db.IntegrationJobs.Add(new IntegrationJob { Id = approvalId, TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, JobType = MarketplaceJobTypes.ProductApprovalReconcile, PayloadJson = "{}", PayloadVersion = 1, PayloadHash = "h", JobDedupKey = $"product-approval:{approvalId:N}", EffectIdempotencyKey = $"pa:{approvalId:N}", Status = JobStatus.RetryScheduled, AttemptCount = 3, MaxAttempts = 50, AvailableAt = now.AddHours(2), CorrelationId = "pa", CreatedAt = now.AddDays(-3), Version = 1 });
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+            await new ScheduledJobProducer(db, new FixedTimeProvider(now), new ConfigurationBuilder().Build()).EnqueueDueAsync(CancellationToken.None);
+
+        await using var check = fixture.CreateContext();
+        var verify = await check.IntegrationJobs.AsNoTracking().SingleAsync(x => x.TenantId == seed.Tenant.Id && x.ConnectionId == seed.Connection.Id && x.JobType == MarketplaceJobTypes.ListingVerify);
+        Assert.Equal(now, (await check.ConnectionSyncPolicies.AsNoTracking().SingleAsync(x => x.ConnectionId == seed.Connection.Id && x.ResourceType == ListingVerificationPolicy.ResourceType)).LastScheduledAt);
+
+        // Both due now: the verification runs, the approval check waits for the products lane.
+        var due = DateTimeOffset.UtcNow.AddMinutes(-1);
+        await check.IntegrationJobs.Where(x => x.Id == verify.Id || x.Id == approvalId).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.AvailableAt, due));
+        var leases = new JobLeaseService(check, fixture.TokenHasher, fixture.TimeProvider);
+        Assert.Equal(verify.Id, (await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: verify.Id))?.Id);
+        Assert.Null(await leases.TryLeaseAsync(TimeSpan.FromMinutes(2), null, null, CancellationToken.None, onlyJobId: approvalId));
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     [PostgreSqlFact]
