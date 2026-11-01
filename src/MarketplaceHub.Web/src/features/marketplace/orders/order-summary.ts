@@ -1,5 +1,5 @@
 // /orders/summary: each counter is the number of orders its tab lists for the same filters.
-export type OrderSummary = { all: number; new: number; processing: number; shipped: number; delivered: number; resent: number; onHold: number; cancelled: number; returned: number; returnInTransit: number; partiallyCancelled: number; manualReview: number; pending: number; unverified: number; paymentPending: number; undelivered?: number; late?: number }
+export type OrderSummary = { all: number; new: number; processing: number; shipped: number; delivered: number; resent: number; onHold: number; cancelled: number; returned: number; returnInTransit: number; partiallyCancelled: number; manualReview: number; pending: number; unverified: number; paymentPending: number; undelivered?: number; late?: number; microExport?: number; microExportCountries?: Record<string, number> | null }
 // /orders/facets: orders per platform code and per cargo provider under the other filters and the status tab.
 export type OrderFacets = { platforms: Record<string, number>; cargos: Record<string, number> }
 
