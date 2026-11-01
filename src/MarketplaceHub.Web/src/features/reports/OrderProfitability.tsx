@@ -63,10 +63,16 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
   const [descending, setDescending] = useState(true)
   const [page, setPage] = useState(0)
   const [open, setOpen] = useState<OrderProfit | null>(null)
-  const query = orderProfitQuery({ from, to, platforms, search: applied, sort, descending, page })
+  // Another period or platform choice is another list: it opens on its first page, as a new search or order does.
+  const scope = `${from}|${to}|${platforms?.join(',') ?? ''}`
+  const [pageScope, setPageScope] = useState(scope)
+  if (pageScope !== scope) { setPageScope(scope); setPage(0) }
+  const query = orderProfitQuery({ from, to, platforms, search: applied, sort, descending, page: pageScope === scope ? page : 0 })
   const result = useQuery({ queryKey: ['report-order-profit', query], queryFn: () => hubApi<OrderProfitPage>(`/reports/order-profitability?${query}`), staleTime: 60_000, placeholderData: previous => previous })
   const data = result.data
   const pageCount = data ? Math.max(1, Math.ceil(data.totalCount / data.pageSize)) : 1
+  // A page past the end (the list shrank since it was opened) moves to the last page there is.
+  if (data && !result.isPlaceholderData && page > pageCount - 1) setPage(pageCount - 1)
   // A header click orders by it, highest first; a second click turns the order round.
   const order = (key: Sort) => { if (sort === key) setDescending(value => !value); else { setSort(key); setDescending(true) } setPage(0) }
   const header = (key: Sort, label: string) => <th scope="col" aria-sort={sort === key ? descending ? 'descending' : 'ascending' : 'none'}>

@@ -7,6 +7,9 @@ export function automaticWritesBaselineMessage(externalWriteTo: string) {
   return `${automaticWritesBaselineWarning} Açıldığı andaki fiyat ve stoklar gönderilmiş sayılır; bundan sonraki değişiklikler ${externalWriteTo} otomatik gönderilir.`
 }
 
+/** The query of GET /price-stock-monitor (API Sağlık); a change to the master switch or a write flow reads it again. */
+export const priceStockMonitorQueryKey = ['price-stock-monitor'] as const
+
 /** One connection of GET /price-stock-monitor (PriceStockConnectionMonitorView). */
 export type PriceStockConnectionMonitor = {
   connectionId: string

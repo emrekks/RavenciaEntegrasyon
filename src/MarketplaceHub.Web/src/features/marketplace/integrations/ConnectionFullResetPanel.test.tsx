@@ -20,7 +20,7 @@ vi.mock('../../../shared/api', async importOriginal => {
   return { ...original, hubApi: vi.fn(respond) }
 })
 
-import { ConnectionFullResetPanel, fullResetStatusText } from './ConnectionFullResetPanel'
+import { ConnectionFullResetPanel, fullResetFinishedFeedback, fullResetStatusText } from './ConnectionFullResetPanel'
 import type { Connection } from '../shared'
 
 const connection: Connection = { id: 'c1', publicId: 'c1', platformCode: 'TRENDYOL', environment: 'STAGE', displayName: 'Trendyol Test', externalStoreId: '9999', status: 'ACTIVE', apiVersion: 'V2', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, externalWritesEnabled: false, invoiceCreationEnabled: true, version: 7 }
@@ -103,5 +103,24 @@ describe('ConnectionFullResetPanel', () => {
     expect(fullResetStatusText({ jobId: 'j', status: 'LEASED', progressLabel: 'Finans hareketleri siliniyor', progressPercent: 50, createdAt: '2026-10-30T09:00:00Z' })).toBe('Sıfırlama sürüyor · %50: Finans hareketleri siliniyor')
     expect(fullResetStatusText({ jobId: 'j', status: 'DEAD', progressLabel: 'Bağlantı bulunamadı.', progressPercent: null, createdAt: '2026-10-30T09:00:00Z' })).toBe('Son tam sıfırlama tamamlanamadı: Bağlantı bulunamadı.')
     expect(fullResetStatusText(null)).toBeNull()
+  })
+
+  it('hands the watched job to onFinished with its final state, and only SUCCEEDED reads as finished', async () => {
+    const finished = vi.fn()
+    apiState.view = { ...(apiState.view as ConnectionFullResetView), job: { jobId: 'job-9', status: 'LEASED', progressLabel: 'Siparişler siliniyor', progressPercent: 10, createdAt: '2026-10-30T09:00:00Z' } }
+    client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    root = createRoot(container)
+    await act(async () => { root.render(<QueryClientProvider client={client}><ConnectionFullResetPanel item={connection} onFeedback={feedback} onFinished={finished} onCancel={() => undefined} /></QueryClientProvider>) })
+    await settle()
+    apiState.view = { ...(apiState.view as ConnectionFullResetView), job: { jobId: 'job-9', status: 'DEAD', progressLabel: 'Bağlantı bulunamadı.', progressPercent: null, createdAt: '2026-10-30T09:00:00Z' } }
+    await act(async () => { await client.invalidateQueries() })
+    await settle()
+    expect(finished).toHaveBeenCalledTimes(1)
+    expect(finished.mock.calls[0][0]).toMatchObject({ jobId: 'job-9', status: 'DEAD' })
+
+    expect(fullResetFinishedFeedback('Trendyol Test', { status: 'SUCCEEDED', progressLabel: null })).toMatchObject({ kind: 'success', title: 'Tam Sıfırlama Bitti' })
+    expect(fullResetFinishedFeedback('Trendyol Test', { status: 'CANCELLED', progressLabel: null })).toMatchObject({ kind: 'info', title: 'Tam Sıfırlama İptal Edildi' })
+    expect(fullResetFinishedFeedback('Trendyol Test', { status: 'DEAD', progressLabel: 'Bağlantı bulunamadı.' })).toMatchObject({ kind: 'error', title: 'Tam Sıfırlama Tamamlanamadı' })
+    expect(fullResetFinishedFeedback('Trendyol Test', { status: 'FAILED', progressLabel: null }).kind).toBe('error')
   })
 })

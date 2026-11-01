@@ -15,6 +15,16 @@ describe('İşlem Takibi address state (W16)', () => {
     expect(readJobsViewState(new URLSearchParams('durum=hata')).chips).toEqual(['error'])
   })
 
+  it('opens the overview matrix link on its 7 days of failed jobs', () => {
+    const state = readJobsViewState(new URLSearchParams('durum=hata&aralik=7g&platform=trendyol'))
+    expect(state.chips).toEqual(['error'])
+    expect(state.timeRange).toBe('7d')
+  })
+
+  it('opens ?kategori=sistem on Tüm İşlemler, since Sistem & Test has no tab to show or leave', () => {
+    expect(readJobsViewState(new URLSearchParams('kategori=sistem')).category).toBe('ALL')
+  })
+
   it('ignores values it does not know', () => {
     const state = readJobsViewState(new URLSearchParams('kategori=x&durum=y&statu=Z&aralik=1y&sayfa=-2&adet=7'))
     expect(state).toEqual({ category: 'ALL', chips: [], status: '', timeRange: '24h', search: '', page: 1, pageSize: 20 })
