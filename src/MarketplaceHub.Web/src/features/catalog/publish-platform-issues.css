@@ -47,7 +47,7 @@
 .publish-issue-trigger.publish-platform-status:focus-visible { outline: 2px solid var(--rv-color-danger); outline-offset: 2px; }
 .publish-issue-trigger svg { flex: none; opacity: .8; }
 .publish-issue-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
-.publish-issue-count { display: inline-grid; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; color: #fff; background: var(--rv-color-danger); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 1; }
+.publish-issue-count { display: inline-grid; box-sizing: border-box; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; color: #fff; background: var(--rv-color-danger); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .publish-issue-badge:hover .publish-issue-tooltip, .publish-issue-tooltip.is-open { display: block; }
 .publish-issue-tooltip li a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .publish-issue-more { margin: 8px 0 0; color: var(--rv-color-muted); font-size: 12px; }
@@ -57,7 +57,7 @@
 .publish-issue-tooltip > section + section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }
 .publish-issue-tooltip .publish-issue-optional > strong { color: var(--rv-color-warning); }
 .publish-issue-tooltip .publish-issue-optional li b { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, transparent); }
-.publish-issue-count.is-optional { color: #1b1300; background: var(--rv-color-warning); }
+.publish-issue-count.is-optional { color: #3a2800; background: color-mix(in srgb, var(--rv-color-warning) 40%, #ffd27a); }
 .publish-issue-trigger.status-warning:focus-visible { outline-color: var(--rv-color-warning); }
 
 /* A gap row that opens its fix: the whole row is the control (pointer, a soft highlight, keyboard focus). */
