@@ -664,6 +664,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // Only a job that will still run counts. Blocked is terminal (a refused publication or bulk price/stock
     // sync stays there for good), so counting it refused the delete forever; such jobs are left as they are.
     private static readonly JobStatus[] PendingJobStatuses = [JobStatus.Pending, JobStatus.Leased, JobStatus.RetryScheduled];
+    // How long a delete waits for a job that is writing to a marketplace to finish before it refuses.
+    private const int RunningJobWaitSeconds = 15;
 
     // D3 (K19): a delete purges the variants' reservations and stock ledger. It is refused while a variant has
     // an active order reservation, has any order or return stock movement (the ledger is history, never purged),
@@ -691,18 +693,67 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             : null;
     }
 
-    public Task<ServiceResult<int>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken) =>
+    public Task<ServiceResult<ProductDeleteResult>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken) =>
         DeleteProductsAsync(tenantId, [id], expectedVersion, cancellationToken);
 
-    public async Task<ServiceResult<int>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken)
+    public async Task<ServiceResult<ProductDeleteResult>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken)
     {
         var ids = command.ProductIds.Distinct().ToArray();
-        if (ids.Length is 0 or > 500) return ServiceResult<int>.Fail("BULK_PRODUCT_LIMIT", "Toplu silme işleminde 1-500 ürün seçilebilir.", 422);
+        if (ids.Length is 0 or > 500) return ServiceResult<ProductDeleteResult>.Fail("BULK_PRODUCT_LIMIT", "Toplu silme işleminde 1-500 ürün seçilebilir.", 422);
         return await DeleteProductsAsync(tenantId, ids, null, cancellationToken);
     }
 
-    private async Task<ServiceResult<int>> DeleteProductsAsync(Guid tenantId, IReadOnlyList<Guid> ids, long? expectedVersion, CancellationToken cancellationToken)
+    // The jobs a delete confirmation names: those it will cancel.
+    public async Task<ServiceResult<ProductDeletePreview>> PreviewProductDeleteAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken)
     {
+        var ids = (command.ProductIds ?? []).Distinct().ToArray();
+        if (ids.Length is 0 or > 500) return ServiceResult<ProductDeletePreview>.Fail("BULK_PRODUCT_LIMIT", "Toplu silme işleminde 1-500 ürün seçilebilir.", 422);
+        var variantIds = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && ids.Contains(x.ProductId)).Select(x => x.Id).ToArrayAsync(cancellationToken);
+        var jobs = await PendingProductJobsAsync(tenantId, ids, variantIds, tracked: false, cancellationToken);
+        return ServiceResult<ProductDeletePreview>.Ok(new(jobs.Count));
+    }
+
+    // Product-scoped job types: the job is about one product (its id in the payload); a job only asks the marketplace
+    // (the approval check) writes nothing there, so it may be stopped even while it runs.
+    private static readonly string[] ReadOnlyProductJobTypes = [MarketplaceJobTypes.ProductApprovalReconcile];
+
+    // The publication and price/stock jobs still to run for these products or their variants (the product id in its N
+    // form in a publication's dedup key; ids in their D form in a payload).
+    private async Task<List<IntegrationJob>> PendingProductJobsAsync(Guid tenantId, Guid[] productIds, Guid[] variantIds, bool tracked, CancellationToken cancellationToken)
+    {
+        if (productIds.Length == 0 && variantIds.Length == 0) return [];
+        var query = db.IntegrationJobs.Where(x => x.TenantId == tenantId && PendingCatalogWriteJobTypes.Contains(x.JobType) && PendingJobStatuses.Contains(x.Status));
+        var jobs = await (tracked ? query : query.AsNoTracking()).ToListAsync(cancellationToken);
+        var markers = productIds.Select(productId => productId.ToString("N")).Concat(productIds.Concat(variantIds).Select(id => id.ToString("D"))).ToArray();
+        return jobs.Where(job => markers.Any(marker => job.JobDedupKey.Contains(marker, StringComparison.OrdinalIgnoreCase) || job.PayloadJson.Contains(marker, StringComparison.OrdinalIgnoreCase))).ToList();
+    }
+
+    // A price/stock send that also carries other products' lines is theirs too: it is not cancelled with these.
+    private static bool JobCoversOnly(IntegrationJob job, HashSet<Guid> variantIds)
+    {
+        if (job.JobType != MarketplaceJobTypes.PriceInventorySync) return true;
+        try
+        {
+            var lines = JsonSerializer.Deserialize<PriceInventoryJobPayload>(job.PayloadJson)?.Lines ?? [];
+            return lines.All(line => variantIds.Contains(line.VariantId));
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private async Task<ServiceResult<ProductDeleteResult>> DeleteProductsAsync(Guid tenantId, IReadOnlyList<Guid> ids, long? expectedVersion, CancellationToken cancellationToken)
+    {
+        // A job that is writing to a marketplace right now is let finish (a few seconds) rather than stopped halfway:
+        // its outcome would be lost while the marketplace already holds it. An approval check only reads and is stopped.
+        var idArray = ids.ToArray();
+        var waitVariantIds = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && idArray.Contains(x.ProductId)).Select(x => x.Id).ToArrayAsync(cancellationToken);
+        for (var wait = 0; wait < RunningJobWaitSeconds; wait++)
+        {
+            var running = (await PendingProductJobsAsync(tenantId, idArray, waitVariantIds, tracked: false, cancellationToken))
+                .Any(job => job.Status == JobStatus.Leased && !ReadOnlyProductJobTypes.Contains(job.JobType));
+            if (!running) break;
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+        }
+
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var products = await db.Products
             .Where(x => x.TenantId == tenantId && ids.Contains(x.Id))
@@ -710,12 +761,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (expectedVersion is not null)
         {
             var product = products.SingleOrDefault(x => x.Id == ids[0]);
-            if (product is null) return NotFound<int>();
-            if (product.Version != expectedVersion.Value) return Precondition<int>(product.Version);
+            if (product is null) return NotFound<ProductDeleteResult>();
+            if (product.Version != expectedVersion.Value) return Precondition<ProductDeleteResult>(product.Version);
         }
         else if (products.Count != ids.Count)
         {
-            return ServiceResult<int>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
+            return ServiceResult<ProductDeleteResult>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
         }
 
         var targetIds = products.Select(x => x.Id).ToArray();
@@ -725,11 +776,40 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .ToArrayAsync(cancellationToken);
         // A product is deleted with its whole stock history (the owner's decision, 26 Oct 2026): its order and return
         // stock movements, reservations and return stock dispositions go with it, while the orders and returns
-        // themselves stay and only lose their link to the variant. Only a publication or price/stock job still to
-        // run refuses it, as that job would write to the product being deleted.
-        var productDeleteBlock = await StockHistoryDeleteBlockAsync(tenantId, targetIds, variantIds, [], cancellationToken);
-        if (productDeleteBlock is not null)
-            return Conflict<int>("PRODUCT_DELETE_BLOCKED", $"Ürün {productDeleteBlock} bağlı olduğu için şu an silinemiyor; iş bittikten sonra tekrar deneyin.");
+        // themselves stay and only lose their link to the variant. A publication or price/stock job still waiting for the
+        // product has sent nothing yet and is cancelled with it; one still writing to a marketplace after the wait above,
+        // or a bulk send that carries other products too, refuses the delete for now.
+        var pendingJobs = await PendingProductJobsAsync(tenantId, targetIds, variantIds, tracked: true, cancellationToken);
+        if (pendingJobs.Any(job => job.Status == JobStatus.Leased && !ReadOnlyProductJobTypes.Contains(job.JobType)))
+            return Conflict<ProductDeleteResult>("PRODUCT_DELETE_JOB_RUNNING", "Ürünün bir işi şu an pazar yerine gönderiliyor; birkaç saniye sonra tekrar deneyin.");
+        var variantSet = variantIds.ToHashSet();
+        if (pendingJobs.Any(job => !JobCoversOnly(job, variantSet)))
+            return Conflict<ProductDeleteResult>("PRODUCT_DELETE_BLOCKED", "Ürün, başka ürünlerle birlikte bekleyen toplu bir fiyat-stok gönderimine bağlı; gönderim bitince tekrar deneyin.");
+        var cancelledAt = timeProvider.GetUtcNow();
+        foreach (var job in pendingJobs)
+        {
+            if (job.Status == JobStatus.Leased)
+            {
+                var attempt = await db.JobAttempts.SingleOrDefaultAsync(x => x.JobId == job.Id && x.AttemptNumber == job.AttemptCount && x.CompletedAt == null, cancellationToken);
+                if (attempt is not null)
+                {
+                    attempt.CompletedAt = cancelledAt;
+                    attempt.Succeeded = false;
+                    attempt.ErrorCode = "PRODUCT_DELETED";
+                    attempt.ErrorSummary = "Ürün katalogdan silindiği için iş durduruldu.";
+                }
+            }
+            // The lease goes too: a worker still holding it can no longer complete the job.
+            job.Status = JobStatus.Cancelled;
+            job.CompletedAt = cancelledAt;
+            job.LastErrorCode = "PRODUCT_DELETED";
+            job.LastErrorSummary = "Ürün katalogdan silindiği için iş iptal edildi; pazar yerine bir şey gönderilmedi.";
+            job.LeaseTokenHash = null;
+            job.LeaseExpiresAt = null;
+            job.HeartbeatAt = null;
+            job.Version++;
+        }
+        if (pendingJobs.Count > 0) await db.SaveChangesAsync(cancellationToken);
 
         await db.Database.ExecuteSqlInterpolatedAsync($$"""
             CREATE TEMP TABLE IF NOT EXISTS purge_product_ids ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
@@ -825,7 +905,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             WHERE x."TenantId"={{tenantId}} AND x."Id"=p."Id";
             """, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return ServiceResult<int>.Ok(products.Count);
+        return ServiceResult<ProductDeleteResult>.Ok(new(products.Count, pendingJobs.Count));
     }
 
     public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken)

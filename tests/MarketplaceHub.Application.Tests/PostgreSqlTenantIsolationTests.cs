@@ -1068,6 +1068,97 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await db.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
     }
 
+    // A delete the user confirmed goes through: the publication and price/stock jobs still waiting for the product (an
+    // approval check that keeps retrying, a running one included, and a price send of its own) are cancelled with it,
+    // a bulk send that also carries another product stays, and the order keeps its line without the variant.
+    [PostgreSqlFact]
+    public async Task BulkDeleteProductsAsync_WithPendingJobs_DeletesAndCancelsThem_KeepingOrders()
+    {
+        var tenant = NewTenant("product-delete-pending-jobs");
+        var connection = NewQuestionConnection(tenant);
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Silinecek ürün", Description = "", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var other = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Kalan ürün", Description = "", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var code = $"DEL-{Guid.NewGuid():N}";
+        var variant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, Sku = code, SkuNormalized = code, OptionSignature = "-", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var otherCode = $"KEEP-{Guid.NewGuid():N}";
+        var otherVariant = new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = other.Id, Sku = otherCode, SkuNormalized = otherCode, OptionSignature = "-", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        IntegrationJob Job(string type, JobStatus status, string payload, string? dedup = null)
+        {
+            var job = NewJob(tenant.Id);
+            job.ConnectionId = connection.Id;
+            job.JobType = type;
+            job.Status = status;
+            job.PayloadJson = payload;
+            if (dedup is not null) job.JobDedupKey = dedup;
+            if (status == JobStatus.Leased) { job.LeaseTokenHash = "lease"; job.LeaseExpiresAt = fixture.Now.AddMinutes(5); }
+            return job;
+        }
+        PriceInventoryPushLine Line(Guid variantId) => new(variantId, Guid.CreateVersion7(), "B", 1m, 100m, 90m, "TRY", 1, 1, "h");
+        var approval = Job(MarketplaceJobTypes.ProductApprovalReconcile, JobStatus.RetryScheduled, $$"""{"ProductId":"{{product.Id:D}}"}""", $"product-approval:{connection.Id:N}:{product.Id:N}");
+        var runningApproval = Job(MarketplaceJobTypes.ProductApprovalReconcile, JobStatus.Leased, $$"""{"ProductId":"{{product.Id:D}}","attempt":2}""");
+        var ownSend = Job(MarketplaceJobTypes.PriceInventorySync, JobStatus.Pending, JsonSerializer.Serialize(new PriceInventoryJobPayload(Guid.CreateVersion7(), connection.Id, "SUBMIT", "h", "{}", [Line(variant.Id)], null, null)));
+        var orderId = Guid.CreateVersion7();
+        var lineId = Guid.CreateVersion7();
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Products.AddRange(product, other);
+            seedDb.ProductVariants.AddRange(variant, otherVariant);
+            seedDb.IntegrationJobs.AddRange(approval, runningApproval, ownSend);
+            seedDb.Orders.Add(NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "delete-order-1", isReturnClaim: false, fixture.Now));
+            seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, VariantId = variant.Id, ExternalLineId = "line-1", Sku = code, TitleSnapshot = "Silinecek ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Created", Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+                var preview = await service.PreviewProductDeleteAsync(tenant.Id, new([product.Id]), CancellationToken.None);
+                Assert.Equal(3, preview.Value!.PendingJobCount);
+                var deleted = await service.BulkDeleteProductsAsync(tenant.Id, new([product.Id]), CancellationToken.None);
+                Assert.True(deleted.Succeeded, deleted.Error?.Message);
+                Assert.Equal(new ProductDeleteResult(1, 3), deleted.Value);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            Assert.False(await verificationDb.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == product.Id));
+            Assert.True(await verificationDb.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == other.Id));
+            var jobs = await verificationDb.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+            Assert.All(jobs, job => Assert.Equal(JobStatus.Cancelled, job.Status));
+            Assert.All(jobs, job => Assert.Equal("PRODUCT_DELETED", job.LastErrorCode));
+            Assert.All(jobs, job => Assert.Null(job.LeaseTokenHash));
+            var line = await verificationDb.OrderLines.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == lineId);
+            Assert.Null(line.VariantId);
+            Assert.True(await verificationDb.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenant.Id && x.Id == orderId));
+
+            // A bulk send that also carries another product's line belongs to that product too: it is not cancelled,
+            // and the delete waits for it.
+            var shared = Job(MarketplaceJobTypes.PriceInventorySync, JobStatus.Pending, JsonSerializer.Serialize(new PriceInventoryJobPayload(Guid.CreateVersion7(), connection.Id, "SUBMIT", "h", "{}", [Line(otherVariant.Id), Line(Guid.CreateVersion7())], null, null)));
+            verificationDb.IntegrationJobs.Add(shared);
+            await verificationDb.SaveChangesAsync();
+            var service2 = new CatalogService(verificationDb, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+            var refused = await service2.BulkDeleteProductsAsync(tenant.Id, new([other.Id]), CancellationToken.None);
+            Assert.Equal("PRODUCT_DELETE_BLOCKED", refused.Error?.Code);
+            Assert.Equal(JobStatus.Pending, (await verificationDb.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == shared.Id)).Status);
+        }
+        finally
+        {
+            await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.IntegrationJobs.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.OrderLines.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.Orders.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.ProductVariants.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.Products.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.PlatformConnections.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await cleanupDb.Tenants.Where(x => x.Id == tenant.Id).ExecuteDeleteAsync();
+        }
+    }
+
     [PostgreSqlFact]
     public async Task UpdateProductAsync_WhenDeletedVariantIsNamedOnlyByABlockedJob_DeletesItButAPendingJobStillRefuses()
     {

@@ -159,6 +159,10 @@ public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, st
 public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null);
 public sealed record BulkProductStatusCommand(IReadOnlyList<Guid> ProductIds, string Status);
 public sealed record BulkProductDeleteCommand(IReadOnlyList<Guid> ProductIds);
+// A catalog delete: the products removed and the publication or price/stock jobs still waiting for them, cancelled with
+// them (nothing was sent for those yet). PendingJobCount is the same count before the delete, for its confirmation.
+public sealed record ProductDeleteResult(int DeletedCount, int CancelledJobCount);
+public sealed record ProductDeletePreview(int PendingJobCount);
 // Toplu KDV Ata: the product cards' own VAT only; existing marketplace offers keep theirs.
 public sealed record BulkProductVatCommand(IReadOnlyList<Guid> ProductIds, decimal? VatRate, string? VatInclusion);
 public sealed record BulkProductVatResult(int UpdatedCount, int UnchangedCount);
@@ -221,8 +225,9 @@ public interface ICatalogService
     Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, CancellationToken cancellationToken);
     Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken);
-    Task<ServiceResult<int>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
-    Task<ServiceResult<int>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<ProductDeleteResult>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
+    Task<ServiceResult<ProductDeleteResult>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<ProductDeletePreview>> PreviewProductDeleteAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<BulkProductVatResult>> BulkSetVatAsync(Guid tenantId, BulkProductVatCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
