@@ -172,11 +172,11 @@
 }
 
 @layer features {
-  .app-shell.stitch-shell main .variant-auto-barcode-toggle { display: flex; align-items: flex-start; gap: var(--rv-space-2); margin-top: var(--rv-space-2); }
+  .app-shell.stitch-shell main .variant-auto-barcode-toggle { display: flex; align-items: center; gap: var(--rv-space-2); margin-top: var(--rv-space-2); }
 }
 
 @layer features {
-  .app-shell.stitch-shell main .variant-auto-barcode-toggle > input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; margin: 2px 0 0; }
+  .app-shell.stitch-shell main .variant-auto-barcode-toggle > input[type="checkbox"] { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; }
 }
 
 @layer features {
