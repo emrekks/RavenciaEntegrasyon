@@ -25,8 +25,7 @@ import { ShipmentDetailPage } from './orders/ShipmentPages'
 beforeEach(() => { api.calls = []; api.release = null; api.platformCode = 'TRENDYOL'; api.allowedActions = [] })
 afterEach(cleanup)
 
-function mount() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function mount(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/shipments/p1']}><Routes><Route path="/shipments/:id" element={<ShipmentDetailPage />} /></Routes></MemoryRouter></QueryClientProvider>)
 }
 
@@ -47,6 +46,20 @@ describe('shipment package requests', () => {
     await act(async () => { api.release?.() })
     await waitFor(() => !button.disabled)
     expect(posts()).toHaveLength(1)
+  })
+
+  it('refreshes the order and package lists after a package request went through', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { host } = mount(client)
+    const button = await waitFor(() => byText<HTMLButtonElement>(host, 'button', 'Etiket Oluştur'))
+    submit(button.closest('form')!)
+    await waitFor(() => posts().length === 1)
+    await act(async () => { api.release?.() })
+    await waitFor(() => invalidate.mock.calls.length > 0)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['orders'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shipments'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['shipment', 'p1'] })
   })
 
   it('asks in the panel before a Hepsiburada package is opened and sends nothing when cancelled', async () => {

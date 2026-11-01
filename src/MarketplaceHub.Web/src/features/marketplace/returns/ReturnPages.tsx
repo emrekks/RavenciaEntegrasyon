@@ -393,6 +393,11 @@ export function ReturnsPage() {
   const returnConnections = activeReturnSyncConnections(connections.data?.items ?? [])
   const sync = useMutation({ mutationFn: () => enqueueReturnSyncs(returnConnections, connection => hubApi(`/connections/${connection.id}/return-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } })), onSuccess: async result => { notifyReturn(handleNotice, result.failed ? `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı; ${result.failed} bağlantıda başlatılamadı.` : `${result.succeeded} bağlantıda iade eşitlemesi kuyruğa alındı. İş tamamlandığında tüm iadeler otomatik yenilenir.`, result.failed ? 'error' : 'info'); await client.invalidateQueries({ queryKey: ['returns'] }) }, onError: value => notifyReturn(handleNotice, value instanceof Error ? value.message : 'İade eşitlemesi başlatılamadı.', 'error') })
   const [bulkIds, setBulkIds] = useState<string[]>([])
+  // The bulk selection belongs to the cards on screen: another tab, filter, page or page size starts it empty, so a
+  // return that is no longer shown is never approved or rejected by mistake.
+  const selectionKey = `${listKey}|${pageNumber}`
+  const [bulkSelectionKey, setBulkSelectionKey] = useState(selectionKey)
+  if (bulkSelectionKey !== selectionKey) { setBulkSelectionKey(selectionKey); setBulkIds([]) }
   const [bulkMode, setBulkMode] = useState<'APPROVE' | 'REJECT' | null>(null)
   // On 1025-1240px screens the buyer column folds into the order cell so the remaining columns keep their room.
   const noBuyer = useMediaQuery('(min-width: 1025px) and (max-width: 1240px)')
@@ -412,7 +417,8 @@ export function ReturnsPage() {
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages)
   const firstPage = Math.max(1, Math.min(currentPage - 1, totalPages - 3)); const pageList = Array.from({ length: Math.min(4, totalPages) }, (_, index) => firstPage + index)
   function applyFilters() { setAppliedFilters(returnFilters); setPageNumber(1) }
-  function selectStatus(value: string) { const next = { ...returnFilters, status: value }; setStatus(value); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); if (value === 'ALL') params.delete('status'); else params.set('status', value); return params }, { replace: true }); setPageNumber(1) }
+  // A tab keeps the applied search and dates: text typed without Enter or Filtrele stays unapplied.
+  function selectStatus(value: string) { const next = { ...appliedFilters, status: value }; setStatus(value); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); if (value === 'ALL') params.delete('status'); else params.set('status', value); return params }, { replace: true }); setPageNumber(1) }
   function selectInvoiceStatus(value: string) { setInvoiceStatusFilter(value); setPageNumber(1) }
   function clearFilters() { const next: ReturnFilters = { status: 'ALL', search: '', from: '', to: '' }; setStatus(next.status); setSearch(next.search); setFrom(next.from); setTo(next.to); setSelectedPlatforms([]); setCargoFilter('ALL'); setReasonFilter('ALL'); setInvoiceStatusFilter('ALL'); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('status'); return params }, { replace: true }); setPageNumber(1) }
   const tabCount = (value: string) => summary.isLoading ? '…' : summary.isError || !summary.data ? '—' : summary.data.tabCounts[value] ?? 0

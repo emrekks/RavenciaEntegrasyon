@@ -2,7 +2,7 @@ import { act } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { byText, cleanup, render, waitFor } from '../../../test/render'
+import { byText, cleanup, render, type, waitFor } from '../../../test/render'
 
 const api = vi.hoisted(() => ({ paths: [] as string[] }))
 const claim = (id: string, extra: Record<string, unknown> = {}) => ({
@@ -121,5 +121,27 @@ describe('returns page', () => {
 
     act(() => { byText<HTMLButtonElement>(host, '.rr-pages button', '1').click() })
     await waitFor(() => !new URLSearchParams(host.querySelector('[data-testid="address"]')!.textContent!).has('page'))
+  })
+
+  it('drops the bulk selection when the page changes, so a hidden return is never decided by mistake', async () => {
+    const { host } = renderPage('/returns?status=ACTION_REQUIRED')
+    await waitFor(() => host.textContent?.includes('#2'))
+    act(() => { host.querySelector<HTMLInputElement>('input[aria-label="Tüm iadeleri seç"]')!.click() })
+    await waitFor(() => host.textContent?.includes('iade seçildi'))
+    act(() => { byText<HTMLButtonElement>(host, 'button[aria-label="Sonraki"]', '').click() })
+    await waitFor(() => host.textContent?.includes('#21'))
+    act(() => { byText<HTMLButtonElement>(host, '.rr-pages button', '1').click() })
+    await waitFor(() => host.textContent?.includes('#2'))
+    expect(Array.from(host.querySelectorAll<HTMLInputElement>('tbody input.rr-cb')).some(box => box.checked)).toBe(false)
+  })
+
+  it('does not apply search text that was typed but not submitted when a tab is chosen', async () => {
+    const { host } = renderPage()
+    await waitFor(() => host.textContent?.includes('#2'))
+    type(host.querySelector<HTMLInputElement>('input[aria-label="İadelerde ara"]')!, 'yarım')
+    act(() => { byText<HTMLButtonElement>(host, '.return-reference-tabs button', 'Onaylanan').click() })
+    await waitFor(() => api.paths.some(path => path.startsWith('/returns?') && path.includes('status=APPROVED')))
+    const listRequest = api.paths.filter(path => path.startsWith('/returns?')).at(-1)!
+    expect(new URLSearchParams(listRequest.split('?')[1]).get('search')).toBeNull()
   })
 })
