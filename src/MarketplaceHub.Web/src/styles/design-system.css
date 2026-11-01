@@ -7013,3 +7013,20 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
 .app-shell.stitch-shell main .variant-media-bulk-field .variant-media-value-check .ui-icon { width: 12px; height: 12px; stroke-width: 2.6; }
 /* Its footer actions are 34 px high, below the 44 px the global button rule gives. */
 .app-shell.stitch-shell main .variant-media-picker-modal > footer > button { min-height: 0; height: 34px; padding-block: 0; }
+
+/* One height for the bottom action bar (StickyActionBar: 10 px, a 36 px row, 10 px and its 1 px top rule) and for the
+   menu's profile row beside it. */
+:root { --rv-action-bar-height: 57px; }
+/* The menu's profile row is as tall as the action bar and sits on the window's bottom edge, so its top rule and the
+   bar's meet in one line (pinned, collapsed or hover-opened; with or without a bar on the page). One value sets both. */
+@media (min-width: 701px) {
+  .app-shell.stitch-shell.stitch-shell > aside { padding-bottom: 0; }
+  /* On a short window the item list gives way (it scrolls on its own) so the profile row keeps to the bottom edge. */
+  .app-shell.stitch-shell.stitch-shell > aside > nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .app-shell.stitch-shell.stitch-shell > aside .sidebar-side-bottom { flex: none; }
+  .app-shell.stitch-shell.stitch-shell > aside .sidebar-side-bottom { margin-bottom: 0; padding-bottom: 0; }
+  .app-shell.stitch-shell.stitch-shell > aside .sidebar-profile.sidebar-profile {
+    box-sizing: border-box; flex: none; height: var(--rv-action-bar-height); min-height: var(--rv-action-bar-height); max-height: var(--rv-action-bar-height);
+    margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; align-items: center;
+  }
+}

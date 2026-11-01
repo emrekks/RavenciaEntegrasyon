@@ -1,8 +1,9 @@
 /* StickyActionBar: one bottom action bar for every page (product, order, return and invoice selections, the product
    editor's save bar). Docked to the bottom with no gap and an opaque background, so the rows scrolling behind it never
-   show beneath or around it; a hairline and a soft shadow above it separate it from the page. A page bar spans the
-   whole content column (out to the page padding) and covers the page's bottom padding, so at the end of the page it
-   sits on the bottom edge right after the last row (also when it is the last part of a page form, as in the product
+   show beneath or around it; a hairline and a soft shadow above it separate it from the page. A page bar is as wide as
+   the cards above it (the same 24 px from the menu and from the window's edge, so both sides match whether or not the
+   page has a scrollbar), rises from the bottom edge with rounded top corners, and covers the page's bottom padding,
+   so at the end of the page it sits on the bottom edge right after the last row (also when it is the last part of a page form, as in the product
    editor). Every bar is one 56px row: 10px above and below 36px controls, its title and note on one line. Page rules keep
    their own inner layout (flex/grid, gap). */
 .app-shell.stitch-shell > main > .content { --rv-page-pad-x: 24px; --rv-page-pad-b: 28px; }
@@ -10,11 +11,11 @@
 
 .app-shell.stitch-shell main .rv-action-bar.rv-action-bar {
   position: sticky;
+  min-height: var(--rv-action-bar-height);
   bottom: 0;
   z-index: var(--rv-z-sticky, 30);
   box-sizing: border-box;
   margin: 16px 0 0;
-  min-height: 0;
   padding-top: 10px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   background: var(--rv-color-surface-raised, var(--rv-color-surface));
@@ -26,10 +27,14 @@
   animation: rv-action-bar-in .18s cubic-bezier(.2, .8, .2, 1) both;
 }
 .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
-.app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar {
-  margin: 16px calc(-1 * var(--rv-page-pad-x)) calc(-1 * var(--rv-page-pad-b));
+.app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar,
+.app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar {
+  margin: 16px 0 calc(-1 * var(--rv-page-pad-b));
   max-width: none;
-  padding-inline: var(--rv-page-pad-x);
+  padding-inline: 16px;
+  border: 1px solid var(--rv-color-border-strong, var(--rv-color-border));
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
 }
 .app-shell.stitch-shell main .rv-action-bar.rv-action-bar:has(.rr-menu) { z-index: 80; }
 .app-shell.stitch-shell main .rv-action-bar.rv-action-bar.is-leaving { animation: rv-action-bar-out .16s ease-in both; pointer-events: none; }
@@ -38,9 +43,5 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .rv-action-bar.rv-action-bar, .app-shell.stitch-shell main .rv-action-bar.rv-action-bar.is-leaving { animation: none; }
 }
-/* The product editor's publish step: its bar spans the content column like the save bar of step 1. */
-.app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.publish-selection-footer.rv-action-bar {
-  margin-inline: calc(-1 * var(--rv-page-pad-x));
-  max-width: none;
-  padding-inline: var(--rv-page-pad-x);
-}
+/* The publish step's bar sits inside the step's own layout, not at the end of the page. */
+.app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar { margin-bottom: 0; }
