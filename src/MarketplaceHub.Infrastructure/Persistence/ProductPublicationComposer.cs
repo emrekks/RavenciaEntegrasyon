@@ -29,6 +29,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound<ProductPublicationDraft>();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
+        if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);
 
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi bağlantıya ait listing profile oluşturulmalıdır.");

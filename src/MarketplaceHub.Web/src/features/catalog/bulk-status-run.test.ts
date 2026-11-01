@@ -31,8 +31,8 @@ describe('bulk status plan', () => {
   const statusOf = (id: string) => statuses[id]
 
   it('leaves out records already in the target status', () => {
-    expect(bulkStatusPlan(['a', 'b', 'c', 'd'], statusOf, 'ACTIVE')).toEqual({ targetIds: ['c', 'd'], alreadyIds: ['a', 'b'] })
-    expect(bulkStatusPlan(['a', 'b', 'c', 'd'], statusOf, 'ARCHIVED')).toEqual({ targetIds: ['a', 'b', 'c'], alreadyIds: ['d'] })
+    expect(bulkStatusPlan(['a', 'b', 'c', 'd'], statusOf, 'ACTIVE')).toEqual({ targetIds: ['d'], alreadyIds: ['a', 'b'], draftIds: ['c'] })
+    expect(bulkStatusPlan(['a', 'b', 'c', 'd'], statusOf, 'ARCHIVED')).toEqual({ targetIds: ['a', 'b'], alreadyIds: ['d'], draftIds: ['c'] })
   })
 
   it('has nothing to send when every selected record is already there', () => {
@@ -40,6 +40,10 @@ describe('bulk status plan', () => {
   })
 
   it('keeps a record whose status is unknown', () => {
-    expect(bulkStatusPlan(['a', 'x'], statusOf, 'ACTIVE')).toEqual({ targetIds: ['x'], alreadyIds: ['a'] })
+    expect(bulkStatusPlan(['a', 'x'], statusOf, 'ACTIVE')).toEqual({ targetIds: ['x'], alreadyIds: ['a'], draftIds: [] })
+  })
+
+  it('never sends a draft: it goes on sale only from its editor', () => {
+    expect(bulkStatusPlan(['c'], statusOf, 'ACTIVE')).toEqual({ targetIds: [], alreadyIds: [], draftIds: ['c'] })
   })
 })

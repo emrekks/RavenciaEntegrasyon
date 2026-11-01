@@ -377,6 +377,9 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     public async Task<ServiceResult<Guid>> EnqueueProductPriceInventorySyncAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, bool price = true, bool stock = true)
     {
         if (!price && !stock) return ServiceResult<Guid>.Fail("PRICE_INVENTORY_FIELDS_REQUIRED", "Fiyat veya stoktan en az biri seçilmelidir.", 422);
+        // A draft is never sent to a marketplace (ProductDraftPolicy).
+        if (await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId && x.Status == ProductStatus.Draft, cancellationToken))
+            return ServiceResult<Guid>.Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage, 422);
         if (await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM", cancellationToken)) return await EnqueuePttAvmProductPriceInventoryAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, price, stock, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && ((x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11") && x.Status == "ACTIVE" || x.PlatformCode == "PAZARAMA" && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
         if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Ürüne özel fiyat-stok gönderimi için ACTIVE Trendyol, Hepsiburada veya N11 ya da aktif/doğrulanmış Pazarama bağlantısı gerekir.", 422);

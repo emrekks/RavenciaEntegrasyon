@@ -1781,6 +1781,56 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal((1m, "INCLUDED"), (chosen.Value!.VatRate, chosen.Value.VatInclusion));
     }
 
+    // Taslak Olarak Kaydet: a draft is saved without its KDV, stays a draft without it, goes on sale only with every rule
+    // met, is never sent nor flipped by the bulk status change, and a card on sale never goes back to draft.
+    [PostgreSqlFact]
+    public async Task Draft_IsSavedIncompleteNeverSentAndCompletedOnlyFromItsEditor()
+    {
+        var tenant = NewTenant("product-draft");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            await seed.SaveChangesAsync();
+        }
+        await using var db = fixture.CreateContext();
+        var service = NewCatalogService(db);
+        var sku = $"DRF-{Guid.NewGuid():N}"[..16];
+
+        var draft = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Taslak Bluz", "", null, null, [new CreateVariantCommand(sku, null, null)], Status: "DRAFT"), CancellationToken.None);
+        Assert.True(draft.Succeeded, draft.Error?.Message);
+        Assert.Equal("DRAFT", draft.Value!.Status);
+        Assert.Null(draft.Value.VatRate);
+
+        // The stock codes stay unique on a draft too.
+        var clash = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Taslak Bluz 2", "", null, null, [new CreateVariantCommand(sku, null, null)], Status: "DRAFT"), CancellationToken.None);
+        Assert.Equal("SKU_CONFLICT_REVIEW_REQUIRED", clash.Error!.Code);
+
+        db.ChangeTracker.Clear();
+        var kept = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, draft.Value.Version, new UpdateProductCommand("Taslak Bluz", "", null, null, Status: "DRAFT"), CancellationToken.None);
+        Assert.True(kept.Succeeded, kept.Error?.Message);
+        Assert.Equal("DRAFT", kept.Value!.Status);
+
+        Assert.Equal(ProductDraftPolicy.SendBlockedCode, (await service.EnqueuePublicationAsync(tenant.Id, draft.Value.Id, Guid.NewGuid(), "draft-publish", "draft", CancellationToken.None)).Error!.Code);
+        Assert.Equal(ProductDraftPolicy.SendBlockedCode, (await service.EnqueueProductUpdateAsync(tenant.Id, draft.Value.Id, Guid.NewGuid(), "draft-update", "draft", CancellationToken.None)).Error!.Code);
+        db.ChangeTracker.Clear();
+        Assert.True((await service.BulkSetStatusAsync(tenant.Id, new BulkProductStatusCommand([draft.Value.Id], "ACTIVE"), CancellationToken.None)).Succeeded);
+        Assert.Equal(ProductStatus.Draft, (await db.Products.AsNoTracking().SingleAsync(x => x.Id == draft.Value.Id)).Status);
+        Assert.Equal(0, (await service.ProductSummaryAsync(tenant.Id, CancellationToken.None)).OutOfStockCount);
+
+        db.ChangeTracker.Clear();
+        var withoutVat = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, kept.Value.Version, new UpdateProductCommand("Taslak Bluz", "", null, null, Status: "ACTIVE"), CancellationToken.None);
+        Assert.Equal((422, "KDV oranı zorunludur."), (withoutVat.Error!.Status, withoutVat.Error.FieldErrors!["vatRate"][0]));
+        db.ChangeTracker.Clear();
+        var completed = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, kept.Value.Version, new UpdateProductCommand("Taslak Bluz", "Açıklama", null, null, Status: "ACTIVE", VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(completed.Succeeded, completed.Error?.Message);
+        Assert.Equal("ACTIVE", completed.Value!.Status);
+        Assert.All(await db.ProductVariants.AsNoTracking().Where(x => x.ProductId == draft.Value.Id).ToListAsync(), variant => Assert.Equal(ProductStatus.Active, variant.Status));
+
+        db.ChangeTracker.Clear();
+        var backToDraft = await service.UpdateProductAsync(tenant.Id, draft.Value.Id, completed.Value.Version, new UpdateProductCommand("Taslak Bluz", "Açıklama", null, null, Status: "DRAFT"), CancellationToken.None);
+        Assert.Equal((409, ProductDraftPolicy.DraftNotAllowedCode), (backToDraft.Error!.Status, backToDraft.Error.Code));
+    }
+
     // A colour card no marketplace has priced takes the VAT of its family's other card instead of asking for one, and a
     // card deleted since the list loaded it is reported on its own while the rest still goes out. The general price
     // matches the sibling's (PTT AVM sells a family's variants at one price).
