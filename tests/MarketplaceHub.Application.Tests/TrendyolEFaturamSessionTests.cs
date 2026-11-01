@@ -242,96 +242,6 @@ public sealed class TrendyolEFaturamSessionTests
         Assert.False(cache.TryGet(connection, "7330638410", out _));
     }
 
-    [Fact]
-    public async Task Remaining_credit_reads_the_partner_value()
-    {
-        var (client, _) = Client(CreditHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"taxId":"7330638410","remainingCredit":1240}""", Encoding.UTF8, "application/json") }));
-
-        var credit = await client.GetRemainingCredit(Context(), CancellationToken.None);
-
-        Assert.True(credit.Available);
-        Assert.Equal(1240, credit.RemainingCredit);
-        Assert.Null(credit.Reason);
-    }
-
-    [Fact]
-    public async Task Remaining_credit_for_a_non_partner_is_unavailable()
-    {
-        var (client, _) = Client(CreditHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)
-        {
-            Content = new StringContent("""{"type":"https://api.trendyol.com/etransformation/gateway/user-is-not-partner","title":"Signed in user is not a partner","status":404,"userId":7}""", Encoding.UTF8, "application/problem+json")
-        }));
-
-        var credit = await client.GetRemainingCredit(Context(), CancellationToken.None);
-
-        Assert.False(credit.Available);
-        Assert.Null(credit.RemainingCredit);
-        Assert.Equal(EFaturamRemainingCredit.NotPartnerReason, credit.Reason);
-    }
-
-    [Theory]
-    [InlineData(HttpStatusCode.Unauthorized, "unauthorized")]
-    [InlineData(HttpStatusCode.Forbidden, "forbidden")]
-    [InlineData(HttpStatusCode.NotFound, "error")]
-    [InlineData(HttpStatusCode.BadGateway, "error")]
-    public async Task Any_other_credit_answer_is_unavailable_without_throwing(HttpStatusCode status, string reason)
-    {
-        var (client, _) = Client(CreditHandler(_ => new HttpResponseMessage(status)));
-
-        var credit = await client.GetRemainingCredit(Context(), CancellationToken.None);
-
-        Assert.False(credit.Available);
-        Assert.Equal(reason, credit.Reason);
-    }
-
-    [Fact]
-    public async Task Remaining_credit_is_cached_per_connection_for_its_lifetime()
-    {
-        var calls = 0;
-        var handler = CreditHandler(_ =>
-        {
-            calls++;
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($$"""{"taxId":"7330638410","remainingCredit":{{calls * 10}}}""", Encoding.UTF8, "application/json") };
-        });
-        var (client, clock) = Client(handler);
-        var context = Context();
-        context.Connection.Id = Guid.NewGuid();
-
-        Assert.Equal(10, (await client.GetRemainingCredit(context, CancellationToken.None)).RemainingCredit);
-        Assert.Equal(10, (await client.GetRemainingCredit(context, CancellationToken.None)).RemainingCredit);
-        Assert.Equal(1, calls);
-
-        clock.Now = Start + TrendyolEFaturamCreditCache.AvailableLifetime;
-        Assert.Equal(20, (await client.GetRemainingCredit(context, CancellationToken.None)).RemainingCredit);
-        Assert.Equal(2, calls);
-    }
-
-    [Fact]
-    public void Credit_cache_keeps_not_partner_for_a_day_and_failures_briefly()
-    {
-        var clock = new MutableClock { Now = Start };
-        var cache = new TrendyolEFaturamCreditCache(clock);
-        var notPartner = Guid.NewGuid();
-        var failed = Guid.NewGuid();
-
-        cache.Set(notPartner, EFaturamRemainingCredit.None(EFaturamRemainingCredit.NotPartnerReason));
-        cache.Set(failed, EFaturamRemainingCredit.None("error"));
-
-        clock.Now = Start + TrendyolEFaturamCreditCache.FailureLifetime;
-        Assert.True(cache.TryGet(notPartner, out _));
-        Assert.False(cache.TryGet(failed, out _));
-        clock.Now = Start + TrendyolEFaturamCreditCache.NotPartnerLifetime;
-        Assert.False(cache.TryGet(notPartner, out _));
-    }
-
-    private static SessionHandler CreditHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) => new(request =>
-    {
-        if (request.RequestUri!.AbsolutePath.EndsWith("/signin", StringComparison.Ordinal)) return SignInResponse(Start.AddHours(2));
-        Assert.Equal(HttpMethod.Get, request.Method);
-        Assert.Equal("/api/invoice/partners/remaining-credit", request.RequestUri.AbsolutePath);
-        return respond(request);
-    });
-
     private static SessionHandler TaxpayerHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) => new(request =>
     {
         if (request.RequestUri!.AbsolutePath.EndsWith("/signin", StringComparison.Ordinal)) return SignInResponse(Start.AddMinutes(30));
@@ -352,8 +262,7 @@ public sealed class TrendyolEFaturamSessionTests
             clock,
             NullLogger<TrendyolEFaturamHttpClient>.Instance,
             new TrendyolEFaturamTokenCache(clock),
-            new TrendyolEFaturamTaxpayerCache(clock),
-            new TrendyolEFaturamCreditCache(clock));
+            new TrendyolEFaturamTaxpayerCache(clock));
         return (client, clock);
     }
 
