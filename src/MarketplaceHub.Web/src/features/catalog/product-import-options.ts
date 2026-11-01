@@ -41,3 +41,30 @@ export function productImportOptionVisibility(options: {
     showOptionsSection: hasVisibleOptions
   }
 }
+
+// Prices and stock are two separate choices; each one only decides whether the marketplace value overwrites
+// the value the panel already holds for an existing product.
+export function productImportPriceStockLabel(updatePrices: boolean, updateStock: boolean): string {
+  return ` · mevcut fiyatlar ${updatePrices ? 'güncellenecek' : 'korunacak'} · mevcut stoklar ${updateStock ? 'güncellenecek' : 'korunacak'}`
+}
+
+export function productImportOverwriteConfirmation(updatePrices: boolean, updateStock: boolean): { title: string; message: string } | null {
+  if (!updatePrices && !updateStock) return null
+  const stockNote = ' Değişen stoklar, otomatik gönderimi açık olan diğer pazaryerlerine de gönderilir.'
+  if (updatePrices && updateStock) {
+    return {
+      title: 'Panel Fiyat ve Stokları Değiştirilsin mi?',
+      message: `Mevcut ürünlerin panel fiyatı ve stoğu pazaryerindeki değerlerle değiştirilecek. Panel ana stoktur; bunu yalnız pazaryerindeki değerlerin doğru olduğundan eminseniz yapın.${stockNote}`
+    }
+  }
+  if (updatePrices) {
+    return {
+      title: 'Panel Fiyatları Değiştirilsin mi?',
+      message: 'Mevcut ürünlerin panel fiyatları pazaryerindeki fiyatlarla değiştirilecek. Bunu yalnız pazaryerindeki fiyatların doğru olduğundan eminseniz yapın.'
+    }
+  }
+  return {
+    title: 'Panel Stokları Değiştirilsin mi?',
+    message: `Mevcut ürünlerin panel stoğu pazaryerindeki stokla değiştirilecek. Panel ana stoktur; bunu yalnız pazaryerindeki stokların doğru olduğundan eminseniz yapın.${stockNote}`
+  }
+}
