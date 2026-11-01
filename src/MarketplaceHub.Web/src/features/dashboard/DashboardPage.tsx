@@ -71,6 +71,16 @@ export function matrixCellText(cell: MatrixCell) {
   if (cell.state === 'warn') return when ? `Gecikiyor · ${when}` : 'Gecikiyor'
   return when ?? 'Güncel'
 }
+// A count the page could not read (still loading, the request failed, the field is missing) is unknown and shows "—":
+// a wrong number on screen is worse than a missing one, so it never falls back to 0.
+export function knownCount(loading: boolean, value: number | null | undefined) {
+  return loading || value == null ? null : value
+}
+// The integration matrix covers the last 7 days of one store: its "İncele" opens İşlem Takibi's failed jobs over the
+// same 7 days on that store's platform (jobs-url-state.ts: durum, aralik; job-list-query.ts: platform).
+export function matrixJobsLink(platformCode: string) {
+  return `/jobs?${new URLSearchParams({ durum: 'hata', aralik: '7g', platform: platformCode.toLowerCase() })}`
+}
 // Series days are Istanbul calendar days (YYYY-MM-DD) and read as such; noon keeps the name of the day in any clock.
 const dayLong = (day: string) => formatIstanbul(`${day}T12:00:00Z`, { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
 const dayShort = (day: string) => { const dayOfMonth = Number(day.slice(8, 10)); return dayOfMonth === 1 ? formatIstanbul(`${day}T12:00:00Z`, { day: 'numeric', month: 'short' }).replace(/\.$/, '') : String(dayOfMonth) }
@@ -231,8 +241,8 @@ export function DashboardPage() {
     return { row, auth, webhook, attention }
   })
   const attention = health.filter(item => item.attention).length
-  const errors = [bootstrap.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
-  const loadingValue = (busy: boolean, value: number | undefined) => busy ? '—' : count(value ?? 0)
+  const errors = [bootstrap.error, invoiceSummary.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
+  const loadingValue = (busy: boolean, value: number | undefined) => { const known = knownCount(busy, value); return known === null ? '—' : count(known) }
   // The bar places the latest finished day (or hour) between the weakest and strongest ones. The day still running
   // is left out: just after midnight it is near zero, which pinned the low end to 0 and the dot to the left.
   const finished = data?.partialDay && series.length > 1 ? series.slice(0, -1) : series
@@ -243,13 +253,13 @@ export function DashboardPage() {
   const breakdown = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1])
     .map(([connectionId, value]) => { const store = channels.get(connectionId); return { key: connectionId, code: store?.platformCode ?? '', name: store?.displayName ?? 'Kaldırılmış mağaza', value: `${count(value)} adet` } })
   const ops: Array<[keyof typeof ICONS, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | undefined]> = [
-    ['cart', 'Bekleyen Siparişler', bootstrap.isLoading ? null : metrics?.pendingOrders ?? 0, 'warn', dashboardOperationalLinks.pendingOrders, metrics?.pendingByConnection],
-    ['late', 'Geciken Siparişler', bootstrap.isLoading ? null : metrics?.lateOrders ?? 0, 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
-    ['ret', 'Bekleyen İadeler', bootstrap.isLoading ? null : metrics?.pendingReturns ?? 0, 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
-    ['invoice', 'Bekleyen Faturalar', invoiceSummary.isLoading ? null : invoiceSummary.data?.uninvoicedCount ?? 0, '', dashboardOperationalLinks.pendingInvoices, undefined],
-    ['due', 'Yaklaşan Faturalar', invoiceSummary.isLoading ? null : invoiceSummary.data?.dueSoonCount ?? 0, '', dashboardOperationalLinks.dueInvoices, undefined],
+    ['cart', 'Bekleyen Siparişler', knownCount(bootstrap.isLoading, metrics?.pendingOrders), 'warn', dashboardOperationalLinks.pendingOrders, metrics?.pendingByConnection],
+    ['late', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
+    ['ret', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
+    ['invoice', 'Bekleyen Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined],
+    ['due', 'Yaklaşan Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount), '', dashboardOperationalLinks.dueInvoices, undefined],
     // The same count as the product list's low-stock filter it opens.
-    ['lowst', 'Düşük Stok', productSummary.isLoading ? null : products?.lowStockCount ?? 0, 'warn', dashboardOperationalLinks.lowStock, undefined],
+    ['lowst', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
   ]
   // The file is made from the data on screen only once it belongs to the chosen period and store.
   const reportReady = Boolean(data) && days !== null && !performance.isPlaceholderData && !performance.isFetching && data!.from === days.from && data!.to === days.to
@@ -289,7 +299,7 @@ export function DashboardPage() {
         <KpiCell loading={loading} label="Ciro" avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
         <KpiCell loading={loading} label="Toplam Sipariş" avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
         <KpiCell loading={loading} label="Ortalama Sepet" avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
-        <KpiCell loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={count(products?.outOfStockCount ?? 0)} min={`Düşük stok ${count(products?.lowStockCount ?? 0)}`} max={`Toplam ${count(products?.totalCount ?? 0)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
+        <KpiCell loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={loadingValue(productSummary.isLoading, products?.outOfStockCount)} min={`Düşük stok ${loadingValue(productSummary.isLoading, products?.lowStockCount)}`} max={`Toplam ${loadingValue(productSummary.isLoading, products?.totalCount)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>
       {!loading && foreign.length > 0 && <p className="rr-pf-note">
         {foreign.length > 0 && <span>Diğer para birimleri: {foreign.map(item => <b key={item.currency} className="rr-num">{money(item.amount, item.currency)} ({count(item.orders)} sipariş) </b>)}</span>}
@@ -314,7 +324,7 @@ export function DashboardPage() {
         {health.map(({ row, auth, webhook, attention: rowAttention }) => <tr key={row.connectionId} className={rowAttention ? 'rr-attn' : undefined}><td><span className="rr-mx-nm"><RrLogo code={row.platformCode} /><span><b>{row.displayName}</b><small className={auth || row.issue ? 'rr-attn' : undefined} title={auth?.action ?? row.issue ?? undefined}>{auth?.title ?? row.issue ?? storeLabel(row)}</small></span></span></td>
           {DATA_KEYS.map(([key, label]) => { const cell = row.cells[key] ?? { state: 'off', lastSuccessAt: null, lastProblemAt: null }; return <td key={key} data-l={label}><span className={`rr-mx rr-${cell.state}`} title={`${label} · ${CELL_STATE[cell.state]}`}><i />{matrixCellText(cell)}</span></td> })}
           <td data-l="Webhook"><span className={`rr-mx rr-${webhook.tone}`} title={webhook.title}><i />{webhook.text}</span></td>
-          <td className="rr-mx-act">{auth || (!row.issue && (webhook.tone === 'bad' || webhook.tone === 'warn')) ? <Link className="rr-btn rr-link" to={`/integrations/${row.connectionId}`}>İncele</Link> : row.issue && <Link className="rr-btn rr-link" to="/jobs?durum=hata">İncele</Link>}</td></tr>)}
+          <td className="rr-mx-act">{auth || (!row.issue && (webhook.tone === 'bad' || webhook.tone === 'warn')) ? <Link className="rr-btn rr-link" to={`/integrations/${row.connectionId}`}>İncele</Link> : row.issue && <Link className="rr-btn rr-link" to={matrixJobsLink(row.platformCode)}>İncele</Link>}</td></tr>)}
       </tbody></table></div>
       <div className="rr-mx-foot"><span>Son 24 saatte <b className="rr-num">{loadingValue(bootstrap.isLoading, metrics?.recentJobCount)}</b> istek · <b className="rr-num">{loadingValue(bootstrap.isLoading, metrics?.deadJobCount)}</b> tamamlanamayan iş · <b className="rr-num">{loadingValue(bootstrap.isLoading, metrics?.manualReviewJobCount)}</b> karar bekleyen iş</span><span className="rr-legend"><span><i className="rr-mx-l rr-ok" />Güncel</span><span><i className="rr-mx-l rr-warn" />Gecikiyor</span><span><i className="rr-mx-l rr-bad" />Hata Var</span><span><i className="rr-mx-l rr-off" />İşlem Yok</span></span></div>
     </section>

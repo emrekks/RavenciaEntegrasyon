@@ -5,7 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Me } from '../../shared/api'
 
-const apiState = vi.hoisted(() => ({ calls: [] as string[], failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }>, sendLog: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false } }))
+const apiState = vi.hoisted(() => ({ calls: [] as string[], retryGate: Promise.resolve() as Promise<void>, failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }>, sendLog: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false } }))
 
 // The page shows the last 24 hours by default, so the fixture's jobs are dated relative to the run.
 function hoursAgo(hours: number) {
@@ -45,6 +45,8 @@ vi.mock('../../shared/api', () => {
       notFoundLinks: 0, rejectedLinks: 0, latestFailure: null, invalidOfferSamples: [], orderSource: 'WEBHOOK', lastNotificationAt: hoursAgo(1), orderReadIntervalSeconds: 900
     }] }
     if (path === '/price-stock-monitor/emergency-stop') return { connectionsStopped: 1, policiesDisabled: 2, jobsCancelled: 3 }
+    if (path === '/jobs/job-1/retry') { await apiState.retryGate; return { job: job('job-1', 'TRENDYOL_ORDER_SYNC', 'PENDING', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] } }
+    if (path === '/jobs/job-1' || path === '/jobs/job-2') { const id = path.slice(6); return { job: job(id, 'TRENDYOL_ORDER_SYNC', 'DEAD', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] } }
     if (path === '/jobs/job-sent') return { job: job('job-sent', 'PRICE_INVENTORY_SYNC', 'SUCCEEDED', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] }
     if (path.startsWith('/jobs/page?')) {
       const params = new URLSearchParams(path.slice(path.indexOf('?') + 1))
@@ -118,6 +120,32 @@ afterEach(() => {
   client?.clear()
   container.remove()
   vi.restoreAllMocks()
+})
+
+describe('JobsPage detail actions', () => {
+  it('keeps another opened job in the drawer when a retry answers, and locks only the job it was for', async () => {
+    let release = () => undefined as void
+    apiState.retryGate = new Promise<void>(resolve => { release = resolve })
+    await renderPage()
+    // The list shows the newest first: job-1, then job-2.
+    const row = (id: 'job-1' | 'job-2') => container.querySelectorAll<HTMLElement>('.jobs-reference-row')[id === 'job-1' ? 0 : 1]
+    const correlation = () => container.querySelector('.job-detail-facts')?.textContent ?? ''
+    await act(async () => { row('job-1').click() })
+    await settle()
+    expect(correlation()).toContain('corr-job-1')
+    await act(async () => { button('Manuel Yeniden Dene')!.click() })
+    await settle()
+    expect(button('Manuel Yeniden Dene')!.disabled).toBe(true)
+
+    await act(async () => { row('job-2').click() })
+    await settle()
+    expect(correlation()).toContain('corr-job-2')
+    expect(button('Manuel Yeniden Dene')!.disabled).toBe(false)
+
+    await act(async () => { release() })
+    await settle()
+    expect(correlation()).toContain('corr-job-2')
+  })
 })
 
 describe('JobsPage cursor paging', () => {
@@ -309,7 +337,9 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(logRequests().at(-1)!.get('limit')).toBe('50')
     expect(pageRequests().length).toBe(jobReads)
     expect(container.textContent).toContain('Henüz gönderim kaydı yok.')
-    expect(container.textContent).toContain('Otomatik fiyat-stok yazması şu an kapalı')
+    // The empty log does not claim whether automatic writes are on: it cannot know, API Sağlık does.
+    expect(container.textContent).not.toContain('şu an kapalı')
+    expect(container.textContent).toContain('API Sağlık gösterir')
     expect(container.querySelector('.jobs-reference-status-summary')).toBeNull()
   })
 

@@ -7,7 +7,7 @@ import { UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { failureNotice } from '../../../shared/notifications'
 import { formatIstanbul } from '../../../shared/format-date'
-import { connectionFullResetItems, connectionFullResetRunning, type ConnectionFullResetView } from '../connection-data-reset'
+import { connectionFullResetItems, connectionFullResetRunning, type ConnectionFullResetJob, type ConnectionFullResetView } from '../connection-data-reset'
 import type { Connection, IntegrationFeedback } from '../shared'
 
 const number = (value: number) => value.toLocaleString('tr-TR')
@@ -24,7 +24,14 @@ export function fullResetStatusText(job: ConnectionFullResetView['job']) {
   return `Son tam sıfırlama tamamlanamadı${job.progressLabel ? `: ${job.progressLabel}` : '.'}`
 }
 
-export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCancel }: { item: Connection; onFeedback: (feedback: IntegrationFeedback) => void; onFinished: () => void; onCancel: () => void }) {
+// The notice for a watched reset that ended follows the job's final state: only SUCCEEDED is a finished reset.
+export function fullResetFinishedFeedback(displayName: string, job: Pick<ConnectionFullResetJob, 'status' | 'progressLabel'>): IntegrationFeedback {
+  if (job.status === 'SUCCEEDED') return { kind: 'success', title: 'Tam Sıfırlama Bitti', message: `${displayName} bağlantısının tam sıfırlaması sona erdi. Otomatik eşitleme açıksa kayıtlar yeniden çekilir.` }
+  if (job.status === 'CANCELLED') return { kind: 'info', title: 'Tam Sıfırlama İptal Edildi', message: `${displayName} bağlantısının tam sıfırlaması iptal edildi; o ana kadar silinen kayıtlar geri gelmez.` }
+  return { kind: 'error', title: 'Tam Sıfırlama Tamamlanamadı', message: `${displayName} bağlantısının tam sıfırlaması tamamlanamadı${job.progressLabel ? `: ${job.progressLabel}` : '.'} Ayrıntıyı İşlem Takibi’nde görebilirsiniz.` }
+}
+
+export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCancel }: { item: Connection; onFeedback: (feedback: IntegrationFeedback) => void; onFinished: (job: ConnectionFullResetJob) => void; onCancel: () => void }) {
   const client = useQueryClient()
   const [confirmation, setConfirmation] = useState('')
   const queryKey = connectionFullResetQueryKey(item.id)
@@ -37,7 +44,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   useEffect(() => {
     if (!job) return
     if (running) watched.current = job.jobId
-    else if (watched.current === job.jobId) { watched.current = null; finished() }
+    else if (watched.current === job.jobId) { watched.current = null; finished(job) }
   }, [job, running])
   const start = useMutation({
     mutationFn: () => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ confirmation }) }),

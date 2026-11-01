@@ -80,6 +80,39 @@ describe('SystemSettingsPage', () => {
     container.remove()
   })
 
+  it('keeps the picked dark theme highlighted when the theme event arrives late from a View Transition', async () => {
+    const pending: Array<() => Promise<void> | void> = []
+    const doc = document as unknown as { startViewTransition?: (callback: () => Promise<void> | void) => unknown }
+    const original = doc.startViewTransition
+    doc.startViewTransition = callback => { pending.push(callback); return {} }
+    // The test setup asks for reduced motion, which switches at once; the transition path needs motion allowed.
+    const motion = vi.spyOn(window, 'matchMedia').mockImplementation(query => ({ matches: false, media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined, addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false }))
+    try {
+      await renderPage('/settings?tab=themes')
+      const highlighted = () => container.querySelector('.ss-th.is-on b')?.textContent
+      click(button('Ravencia — Grafit'))
+      expect(highlighted()).toBe('Ravencia — Grafit')
+      await act(async () => { for (const run of pending.splice(0)) await run() })
+      expect(highlighted()).toBe('Ravencia — Grafit')
+    } finally {
+      doc.startViewTransition = original
+      motion.mockRestore()
+    }
+  })
+
+  it('opens without crashing when the browser blocks local storage', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new DOMException('blocked', 'SecurityError') })
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('blocked', 'SecurityError') })
+    try {
+      await renderPage('/settings?tab=themes')
+      click(button('Ravencia — Grafit'))
+      expect(container.querySelector('.ss-th.is-on b')?.textContent).toBe('Ravencia — Grafit')
+    } finally {
+      getItem.mockRestore()
+      setItem.mockRestore()
+    }
+  })
+
   it('opens on the Authenticator section with the group tabs on top and the sections of the group below', async () => {
     await renderPage()
     expect(paneTitle()).toBe('Authenticator')

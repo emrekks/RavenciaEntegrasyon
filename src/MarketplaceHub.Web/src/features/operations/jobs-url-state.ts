@@ -36,8 +36,11 @@ export function readJobsViewState(params: URLSearchParams): JobsViewState {
   const status = (params.get('statu') ?? '').toUpperCase()
   const page = Number(params.get('sayfa'))
   const pageSize = Number(params.get('adet'))
+  // Sistem & Test has no tab in the list, so ?kategori=sistem would filter by a category nobody can see or leave:
+  // it opens Tüm İşlemler.
+  const category = fromSlug<JobCategory>(categorySlugs, params.get('kategori'), 'ALL')
   return {
-    category: fromSlug(categorySlugs, params.get('kategori'), 'ALL'),
+    category: category === 'SYSTEM' ? 'ALL' : category,
     chips: [...new Set(chips)],
     status: (statusCodes as readonly string[]).includes(status) ? status as JobStatusCode : '',
     timeRange: fromSlug(rangeSlugs, params.get('aralik'), '24h'),
