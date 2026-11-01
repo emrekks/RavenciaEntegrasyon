@@ -5,6 +5,20 @@ import { mediaImageKey } from './product-media-editor'
 
 export type FamilyMediaItem = { url: string; mediaIds: string[]; sourceProductTitles: string[] }
 
+// The other colours' tiles exactly as the strip shows them: every visible picture the card itself does not hold, with
+// its media rows. The clear used to work from the family's default list (product-level pictures), while a custom
+// family order also shows the colours' variant pictures; those stayed on screen and came off one layer per save.
+export function familyItemsShownInStrip(visibleUrls: readonly string[], familyItems: readonly FamilyMediaItem[], ownKeys: ReadonlySet<string>): FamilyMediaItem[] {
+  const itemsByKey = new Map(familyItems.map(item => [mediaImageKey(item.url), item]))
+  const seen = new Set<string>()
+  return visibleUrls.flatMap(url => {
+    const key = mediaImageKey(url)
+    if (ownKeys.has(key) || seen.has(key)) return []
+    seen.add(key)
+    return [itemsByKey.get(key) ?? { url, mediaIds: [], sourceProductTitles: [] }]
+  })
+}
+
 export function familyMediaClearPlan(items: readonly FamilyMediaItem[]) {
   const removable = items.filter(item => item.mediaIds.length > 0)
   return { removable, keptCount: items.length - removable.length }
