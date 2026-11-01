@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandLimitHint, bandLimitText, bestTiers, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, shareRangeText, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitHint, bandLimitText, bestTiers, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, mostProfit, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -227,14 +227,13 @@ describe('commission tariff periods', () => {
   })
 })
 
-describe('shareRangeText', () => {
-  // Profit on cost, as a single price's badge gives it: 51,39 on a cost of 100 is %51,39.
-  const choice = (remaining: number | null, cost = 100) => ({ tier: 2, price: 500, rate: 20, commission: 100, remaining, costs: { cost, cargo: 0, serviceFee: 0, stoppage: 0, netVat: 0, vatRate: 10 } })
-  it('gives the lowest and highest share of the variants whose profit is known', () => {
-    expect(shareRangeText([choice(51.39), choice(60.1), choice(null)])).toBe('(%51,39 – %60,10)')
-    expect(shareRangeText([choice(51.39), choice(51.39)])).toBe('(%51,39)')
-    expect(shareRangeText([choice(-12.5), choice(40, 200)])).toBe('(%−12,50 – %20,00)')
-    expect(shareRangeText([choice(null)])).toBeNull()
+describe('mostProfit', () => {
+  const choice = (remaining: number | null) => ({ tier: 2, price: 563.83, rate: 20.8, commission: 117.28, remaining, costs: null })
+  it('takes the variant leaving the most at the band\'s price, never one whose profit is unknown', () => {
+    // A model whose sizes leave 150,75 and 170,75 ₺ at 563,83 ₺: the badge shows 170,75 ₺.
+    expect(mostProfit([choice(150.75), choice(170.75), choice(null)])?.remaining).toBe(170.75)
+    expect(mostProfit([choice(-20), choice(-5)])?.remaining).toBe(-5)
+    expect(mostProfit([choice(null)])).toBeNull()
   })
 })
 

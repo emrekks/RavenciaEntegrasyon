@@ -215,20 +215,10 @@ export function bestTiers(profits: Array<[number, number | null]>) {
   const most = Math.max(...known.map(([, value]) => value))
   return new Set(known.filter(([, value]) => value === most).map(([tier]) => tier))
 }
-// The profit on cost of the variants whose profit is known, as a single price's badge gives it: "(%51,39 – %60,10)",
-// one share when they agree; null when none is known.
-export function shareRangeText(choices: CommissionChoice[]) {
-  const shares = choices.flatMap(choice => { const value = share(choice); return value === null ? [] : [value] })
-  if (!shares.length) return null
-  const text = (value: number) => `%${value < 0 ? '−' : ''}${Math.abs(value).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  const low = Math.min(...shares), high = Math.max(...shares)
-  return low === high ? `(${text(low)})` : `(${text(low)} – ${text(high)})`
-}
-// A badge over several variants: their profit range ("123,50 – 143,50 ₺ Kâr") with their share range under it.
-function ProfitRange({ choices }: { choices: CommissionChoice[] }) {
-  const lefts = choices.flatMap(choice => choice.remaining === null ? [] : [choice.remaining])
-  const shares = shareRangeText(choices)
-  return <span className="unit-profit-range">{amountRange(lefts)} {Math.max(...lefts) < 0 ? 'Zarar' : 'Kâr'}{shares && <small>{shares}</small>}</span>
+// The variant leaving the most at a band's price (the card's headline limit): the one a model's badge shows, with its
+// own profit on cost, and the one the star compares; a variant whose profit is unknown never is. Null when none is known.
+export function mostProfit(choices: CommissionChoice[]) {
+  return choices.filter(choice => choice.remaining !== null).sort((a, b) => b.remaining! - a.remaining!)[0] ?? null
 }
 
 // A product's photo; a click opens it full size as the products page does (its preview, Escape or a click outside
@@ -697,15 +687,12 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
         const name = periodName(period)
         if (!choices.length) return <span key={period.id} className="commission-week-line"><em>{name}</em><small>{partnerRows.isPending ? 'Yükleniyor…' : 'Bu dönemde yok'}</small></span>
         const rates = [...new Set(choices.map(item => item.rate))]
-        const lefts = choices.flatMap(item => item.remaining === null ? [] : [item.remaining])
-        const least = choices.filter(item => item.remaining !== null).sort((a, b) => a.remaining! - b.remaining!)[0]
         return <span key={period.id} className="commission-week-line">
           <em>{name} · {rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`}</em>
-          <ProfitBadge price={least ?? choices[0]} label={lefts.length ? <ProfitRange choices={choices} /> : undefined}
-            title={title} tag={`${tier}. Fiyat Aralığı · ${name}`} missing="Maliyet girilmemiş" />
+          <ProfitBadge price={mostProfit(choices) ?? choices[0]} title={title} tag={`${tier}. Fiyat Aralığı · ${name}`} missing="Maliyet girilmemiş" />
         </span>
       })}
-      <small className="commission-week-average">{weekTabLabel([tariff, partner]).split(' (')[0]} ortalaması: {known.length === owners.length && known.length ? `${amountRange(known)} ${Math.max(...known) < 0 ? 'Zarar' : 'Kâr'}` : 'hesaplanamadı'}</small>
+      <small className="commission-week-average">{weekTabLabel([tariff, partner]).split(' (')[0]} ortalaması: {known.length ? `${amountRange([Math.max(...known)])} ${Math.max(...known) < 0 ? 'Zarar' : 'Kâr'}` : 'hesaplanamadı'}</small>
     </>
   }
   // The models whose variants are shown: a model starts folded, its row alone, so a page of 50 models (each colour with
@@ -847,19 +834,18 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
               const all = owners.every(row => pickedTier(row, picks.get(row.id), applied) === tier)
               const rates = [...new Set(choices.map(item => item.rate))]
               const lefts = choices.flatMap(item => item.remaining === null ? [] : [item.remaining])
-              // The variant leaving the least is the one the badge opens.
-              const least = choices.filter(item => item.remaining !== null).sort((a, b) => a.remaining! - b.remaining!)[0]
-              const leastRow = least && group.find(row => row.choices?.includes(least))
+              // The badge shows and opens the variant leaving the most; when the variants differ, its breakdown names it.
+              const most = mostProfit(choices)
+              const mostRow = most && group.find(row => row.choices?.includes(most))
               const ranged = lefts.length > 0 && Math.min(...lefts) !== Math.max(...lefts)
               return <td key={tier}>
-                <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!lefts.length ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
+                <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!most ? ' is-unknown' : most.remaining! < 0 ? ' is-loss' : ''}`}>
                   {best.has(tier) && <i className="commission-best" role="img" title="En kârlı aralık (bedenlerin en yüksek kârına göre)" aria-label="En kârlı aralık">★</i>}
                   <strong title={bandLimitHint(owners.map(row => row.bands.find(item => item.tier === tier)))}>{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier))) ?? priceRange(choices.map(item => item.price))}</strong>
                   {partner ? weekLines(owners, tier, first.productName ?? first.barcode) : <>
                     <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
-                    <ProfitBadge price={least ?? choices[0]} label={ranged ? <ProfitRange choices={choices} /> : undefined}
-                      title={first.productName ?? first.barcode} tag={`${tier}. Fiyat Aralığı`}
-                      aside={ranged ? `En az kâr bırakan beden: ${leastRow?.size ?? leastRow?.barcode ?? '—'}${shareRangeText(choices) ? ` · bedenlerin kâr oranı ${shareRangeText(choices)!.slice(1, -1)}` : ''}` : undefined} missing="Maliyet girilmemiş" />
+                    <ProfitBadge price={most ?? choices[0]} title={first.productName ?? first.barcode} tag={`${tier}. Fiyat Aralığı`}
+                      aside={ranged ? `En çok kâr bırakan beden: ${mostRow?.size ?? mostRow?.barcode ?? '—'} · bedenlerde ${amountRange(lefts)}` : undefined} missing="Maliyet girilmemiş" />
                   </>}
                   {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın kârı hesaplanamadı</small>}
                   <button type="button" className="commission-switch" aria-pressed={all} onClick={() => pickModel(owners, tier, all)}><span />{all ? 'Tümü Seçili' : 'Tüm Varyantlarını Seç'}</button>
