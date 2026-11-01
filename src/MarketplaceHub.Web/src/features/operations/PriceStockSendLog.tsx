@@ -157,7 +157,7 @@ export function PriceStockSendLog({ platformOptions, onOpenJob }: { platformOpti
           })}
           {rows.length === 0 && <tr><td className="psl-empty" colSpan={8}>{filtered
             ? 'Seçili filtrelerle eşleşen gönderim kaydı bulunamadı.'
-            : <><strong>Henüz gönderim kaydı yok.</strong><span>Pazaryerine fiyat veya stok gönderildiğinde her satır burada görünür. Otomatik fiyat-stok yazması şu an kapalı; panelden yapılan gönderimler ve yazma açıldıktan sonraki otomatik gönderimler burada listelenecek.</span></>}</td></tr>}
+            : <><strong>Henüz gönderim kaydı yok.</strong><span>Pazaryerine fiyat veya stok gönderildiğinde her satır burada görünür; panelden yapılan ve otomatik gönderimler burada listelenir. Otomatik yazmanın her bağlantıda açık olup olmadığını API Sağlık gösterir.</span></>}</td></tr>}
         </tbody>
       </table></div>
       {rows.length > 0 && <div className="jobs-reference-pagination">

@@ -4,11 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }>, version: 4 }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string }>, version: 4, writes: false }))
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
-  const connection = () => ({ id: 'c1', publicId: 'c1', platformCode: 'TRENDYOL', environment: 'STAGE', displayName: 'Trendyol Test', externalStoreId: '9999', status: 'ACTIVE', apiVersion: 'V2', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, externalWritesEnabled: false, invoiceCreationEnabled: false, version: apiState.version })
+  const connection = () => ({ id: 'c1', publicId: 'c1', platformCode: 'TRENDYOL', environment: 'STAGE', displayName: 'Trendyol Test', externalStoreId: '9999', status: 'ACTIVE', apiVersion: 'V2', lastTestedAt: null, lastSuccessAt: null, lastErrorCode: null, hasCredential: true, externalWritesEnabled: apiState.writes, invoiceCreationEnabled: false, version: apiState.version })
   const respond = async (path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     apiState.calls.push({ path, method, body: typeof init?.body === 'string' ? init.body : undefined })
@@ -42,6 +42,7 @@ beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   apiState.calls = []
   apiState.version = 4
+  apiState.writes = false
   Element.prototype.scrollIntoView = vi.fn()
   container = document.createElement('div')
   document.body.append(container)
@@ -112,6 +113,20 @@ describe('IntegrationDetailPage credentials (W10)', () => {
     expect(JSON.parse(save.body!)).toEqual({ displayName: 'Trendyol Yeni Ad' })
   })
 
+  it('reads API Sağlık again when the master switch changes', async () => {
+    apiState.writes = true
+    await renderPage()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    openSection('Pazaryerine Yazma')
+    const master = container.querySelector<HTMLInputElement>('.integration-write-toggle input[type="checkbox"]')!
+    expect(master.checked).toBe(true)
+    await act(async () => { master.click() })
+    await settle()
+    expect(apiState.calls.some(call => call.path === '/connections/c1' && call.method === 'PATCH')).toBe(true)
+    const keys = invalidate.mock.calls.map(([filters]) => JSON.stringify(filters?.queryKey))
+    expect(keys).toContain(JSON.stringify(['price-stock-monitor']))
+  })
+
   it('names the environment in Turkish and offers the test order without a fixed store number (W32)', async () => {
     await renderPage()
     expect(container.textContent).toContain('Test Ortamı · Mağaza 9999')
@@ -165,6 +180,22 @@ describe('IntegrationsPage filters (W16)', () => {
     await settle()
     expect(container.querySelector('.connection-full-reset')).not.toBeNull()
     expect(apiState.calls.some(call => call.path === '/connections/c1/full-reset' && call.method === 'GET')).toBe(true)
+  })
+
+  it('reads every screen again after a selective data reset, not only a few lists', async () => {
+    await renderList('/integrations')
+    act(() => { container.querySelector<HTMLButtonElement>('.reference-menu-trigger')!.click() })
+    const reset = Array.from(container.querySelectorAll<HTMLButtonElement>('.reference-menu-popover button')).find(button => button.textContent === 'Verileri Sıfırla')!
+    await act(async () => { reset.click() })
+    await settle()
+    const box = container.querySelector<HTMLInputElement>('.drl-list input[type="checkbox"]')!
+    act(() => { box.click() })
+    act(() => setValue(container.querySelector<HTMLInputElement>('#reset-data-c1-confirm')!, 'Trendyol Test'))
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    await act(async () => { container.querySelector<HTMLButtonElement>('.drl-go')!.click() })
+    await settle()
+    expect(apiState.calls.some(call => call.path === '/connections/c1/data-reset' && call.method === 'POST')).toBe(true)
+    expect(invalidate.mock.calls.some(([filters]) => filters === undefined)).toBe(true)
   })
 
   it('blocks a new Trendyol connection only for an identity that cannot be sent; another format is a warning', async () => {

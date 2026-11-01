@@ -92,6 +92,9 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
       setDrafts({})
       setCellErrors({})
       setStatus({ kind: 'success', message: `${changes.length.toLocaleString('tr-TR')} kod kaydedildi.` })
+      // A code links or unlinks a variant: the editor's cards and the products list read the links again.
+      void client.invalidateQueries({ queryKey: ['product', productId] })
+      void client.invalidateQueries({ queryKey: ['products'] })
     },
     onError: reason => {
       const fields = reason instanceof ApiRequestError ? reason.fieldErrors ?? {} : {}

@@ -26,3 +26,25 @@ export function publishCardVariantPresence(variantLinks?: { linked: number; tota
     noneFound: missing > 0 && linked === 0
   }
 }
+
+type LinkedRow = { key: string; platformStatuses?: VariantPlatformStatus[] | null }
+// The form's rows keep the platform statuses they were filled with, and a status check or a store lookup changes only
+// a variant's link (not its version, stock or offers), so the form is not filled again for it. The card and Yayınla read
+// the links from the latest product instead: each row takes its saved variant's link fields; offers stay the row's own.
+// A variant the latest product does not carry (a new row, or a product read without statuses) keeps what it has.
+export function withLatestVariantLinks<R extends LinkedRow>(rows: ReadonlyArray<R>, latestVariants: ReadonlyArray<{ id: string; platformStatuses?: VariantPlatformStatus[] | null }> | null | undefined): R[] {
+  const latestById = new Map((latestVariants ?? []).flatMap(variant => variant.platformStatuses ? [[variant.id, variant.platformStatuses] as const] : []))
+  return rows.map(row => {
+    const latest = latestById.get(row.key)
+    if (!latest) return row
+    const own = row.platformStatuses ?? []
+    const merged = own.map(status => {
+      const fresh = latest.find(item => item.connectionId === status.connectionId)
+      return fresh
+        ? { ...status, isLinked: fresh.isLinked, isMatched: fresh.isMatched, isMissing: fresh.isMissing, status: fresh.status }
+        : { ...status, isLinked: false, isMatched: false, isMissing: false }
+    })
+    const added = latest.filter(item => !own.some(status => status.connectionId === item.connectionId))
+    return { ...row, platformStatuses: [...merged, ...added] }
+  })
+}

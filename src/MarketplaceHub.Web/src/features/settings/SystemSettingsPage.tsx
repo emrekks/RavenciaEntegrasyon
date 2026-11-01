@@ -498,12 +498,17 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
   const reportStatus = useEffectEvent(() => onStatus({ dirty, themeCount }))
   useEffect(() => reportStatus(), [dirty, themeCount])
 
+  // The theme event arrives late when the switch runs inside a View Transition, after a theme button already chose its
+  // dark theme; it must not overwrite that choice. Coming from light (the top bar switch), the dark theme highlighted is
+  // the one whose palette the dark draft carries, not always the default.
+  const darkThemeIdFromDraft = useEffectEvent(() => matchingColorThemeId(appearance.draft))
   useEffect(() => {
     const syncVisualTheme = (event: Event) => {
       const nextTheme = (event as CustomEvent<VisualTheme>).detail
       if (nextTheme === 'light' || nextTheme === 'dark') {
         setVisualTheme(nextTheme)
-        setSelectedThemeId(nextTheme === 'light' ? 'default-light' : defaultAppearanceColorTheme.id)
+        const draftDarkThemeId = darkThemeIdFromDraft()
+        setSelectedThemeId(current => nextTheme === 'light' ? 'default-light' : current === 'default-light' ? draftDarkThemeId : current)
       }
     }
     window.addEventListener(visualThemeChangeEvent, syncVisualTheme)
@@ -527,7 +532,7 @@ function AppearanceSettingsForm({ section, onStatus }: { section: AppearanceSect
   useEffect(() => () => {
     const root = document.documentElement
     const saved = savedAppearance.current
-    const savedTheme: VisualTheme = localStorage.getItem('ravencia.visualTheme') === 'light' ? 'light' : 'dark'
+    const savedTheme: VisualTheme = readVisualThemePreference()
     root.dataset.theme = savedTheme
     root.dataset.themeMode = savedTheme
     root.style.setProperty('--rv-font-ui', appearanceFontFamilyCss[saved.fontFamily])

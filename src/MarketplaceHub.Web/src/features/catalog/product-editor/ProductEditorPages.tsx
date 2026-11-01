@@ -7,7 +7,7 @@ import { createPortal } from 'react-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
 import { UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard, StickyActionBar } from '../../../shared/components'
-import { newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
+import { failedWithHttpAnswer, newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { httpsUrlProblem } from '../../../shared/safe-url'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
@@ -26,13 +26,13 @@ import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinV
 import { classifyPublicationAttributeIssues, fixableValueMappings, type PublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
-import { mapWithConcurrency, mediaSaveProgressMessage, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog } from './PlatformUpdateDialog'
 import { isProductDeliveryDays, productDeliveryDays } from './product-delivery-days'
 import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, writePlatformUpdatePreferences, writePlatformUpdateStores, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
-import { publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
+import { publishCardVariantLinks, publishCardVariantPresence, withLatestVariantLinks } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
@@ -55,7 +55,7 @@ import { productPublicationTargets, productSaveFeedback,publicationCancelMessage
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
-import { channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, type ChannelPricingDraft } from './marketplace-channel-pricing'
+import { channelOfferPostKey, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, rowsWithSavedOffer, type ChannelPricingDraft, type SavedChannelOffer } from './marketplace-channel-pricing'
 import { AcceptedJob, Attribute, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
@@ -1250,6 +1250,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [seedSnapshot, setSeedSnapshot] = useState<string | null>(null)
   const [staleProductVersion, setStaleProductVersion] = useState<number | null>(null)
   const allowReseedUntil = useRef(0)
+  // New files a half-finished save did not upload: the refill after it keeps them queued instead of dropping them.
+  const mediaFilesKeptOnReseed = useRef<PendingProductMediaFile[] | null>(null)
+  // Idempotency-Keys of new channel offers in the variant price table, per (variant, marketplace).
+  const offerPostKeys = useRef(new Map<string, { key: string; body: string }>())
   // "Pazaryerlerine Özel Fiyat" as the product opened (the marketplaces with their own price) and each card's price when
   // it was filled or switched on: a card whose price was not changed leaves every variant's own offer price as it is.
   const initialCustomChannelIds = useRef<ReadonlySet<string>>(new Set())
@@ -1398,7 +1402,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       ? product.familyOrderedMediaUrls
       : [...savedMediaUrls, ...savedFamilyMediaUrls]), removedMediaKeys))
     setFamilyMediaOrderDirty(false)
-    setMediaFiles([])
+    setMediaFiles(mediaFilesKeptOnReseed.current ?? [])
+    mediaFilesKeptOnReseed.current = null
     const seededMediaRefs = seedVariantMediaRefs(product.variants).map(references => withoutCopyRemovedMediaRefs(references, removedMediaKeys))
     const mediaRefsByVariantId = new Map(product.variants.map((variant, index) => [variant.id, seededMediaRefs[index] ?? []]))
     initialEditVariantMediaRefs.current = Object.fromEntries(mediaRefsByVariantId)
@@ -2089,7 +2094,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     }
     setVariantPlatformPricingSaving(true)
     try {
-      const savedOffers: Array<{ rowKey: string; connectionId: string; saved: { id: string; version: number; listPrice: number; salePrice: number; currency: string } }> = []
+      let savedCount = 0
       for (const target of targets) {
         const listPrice = Number(target.draft.listPrice)
         const salePrice = Number(target.draft.salePrice)
@@ -2107,15 +2112,29 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           // never overwrites it; one equal to the panel price keeps the stored choice.
           followsPanelPrice: typedOfferPriceChoice({ listPrice, salePrice }, { listPrice: target.row.listPrice, salePrice: target.row.salePrice }, channelTakesListPrice(target.platform.platformCode))
         }
-        const saved = target.platform.offerId && target.platform.offerVersion != null
-          ? await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>(`/channel-offers/${target.platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${target.platform.offerVersion}"` }, body: JSON.stringify(body) })
-          : await hubApi<{ id: string; version: number; listPrice: number; salePrice: number; currency: string }>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId: target.platform.connectionId, variantId: target.row.key, ...body }) })
-        savedOffers.push({ rowKey: target.row.key, connectionId: target.platform.connectionId!, saved })
+        const connectionId = target.platform.connectionId!
+        const current = target.platform
+        let saved: SavedChannelOffer
+        if (current.offerId && current.offerVersion != null) {
+          saved = await hubApi<SavedChannelOffer>(`/channel-offers/${current.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${current.offerVersion}"` }, body: JSON.stringify(body) })
+        } else {
+          const slot = `${target.row.key}:${connectionId}`
+          const postBody = JSON.stringify({ connectionId, variantId: target.row.key, ...body })
+          try {
+            saved = await hubApi<SavedChannelOffer>('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': channelOfferPostKey(offerPostKeys.current, slot, postBody, newIdempotencyKey) }, body: postBody })
+            offerPostKeys.current.delete(slot)
+          } catch (reason) {
+            // A refusal the server answered is replayed for the same key: the next try takes a new one.
+            if (failedWithHttpAnswer(reason)) offerPostKeys.current.delete(slot)
+            throw reason
+          }
+        }
+        // Each written offer goes into the rows at once, so a later failure does not lose its new version.
+        setVariantRows(rows => rowsWithSavedOffer(rows, target.row.key, connectionId, saved))
+        savedCount++
       }
-      const savedByKey = new Map(savedOffers.map(item => [`${item.rowKey}:${item.connectionId}`, item]))
-      setVariantRows(currentRows => currentRows.map(targetRow => ({ ...targetRow, platformStatuses: targetRow.platformStatuses?.map(platform => { const saved = savedByKey.get(`${targetRow.key}:${platform.connectionId}`); return saved ? { ...platform, offerId: saved.saved.id, listPrice: saved.saved.listPrice, salePrice: saved.saved.salePrice, currency: saved.saved.currency, offerVersion: saved.saved.version } : platform }) })))
       setVariantPlatformPricing(null)
-      const message = `${savedOffers.length} varyant platform fiyatı kaydedildi.`
+      const message = `${savedCount} varyant platform fiyatı kaydedildi.`
       setNotice(message); showFeedback('Platform Fiyatları Kaydedildi', message, 'success')
       await client.invalidateQueries({ queryKey: ['products'] })
       if (editProductId) {
@@ -2124,6 +2143,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       }
     } catch (reason) {
       showFeedback('Platform Fiyatları Kaydedilemedi', reason instanceof Error ? reason.message : 'Pazaryeri varyant fiyatları kaydedilemedi.', 'error')
+      // The offers written before the failure changed the product's lists: they are read again.
+      await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['product', editProductId] })]).catch(() => undefined)
     } finally {
       setVariantPlatformPricingSaving(false)
     }
@@ -2492,6 +2513,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           : ['Ürün Oluşturuluyor', `Ürün oluşturuluyor ve ${storeCount} gönderiliyor…`]
         : editProductId ? ['Ürün Kaydediliyor', 'Ürün değişiklikleri kaydediliyor…'] : ['Ürün Oluşturuluyor', 'Ürün oluşturuluyor…']
     setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
+    const uploadedMediaFileIds = new Set<string>()
     try {
       let submitRequirements = requirements.data ?? []
       if (form.categoryId && !requirements.data) {
@@ -2611,6 +2633,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title)
         const uploaded = await hubApi<{ fileAssetId?: string }>('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data })
         if (uploaded?.fileAssetId) storedUrlByFileId.set(pendingMedia.id, storedProductMediaUrl(uploaded.fileAssetId))
+        uploadedMediaFileIds.add(pendingMedia.id)
       }
       const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
       const pendingFileIds = new Set(mediaFiles.map(item => item.id))
@@ -2690,6 +2713,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       if (editProductId ? stockResult.saved.length > 0 : rows.some(row => row.stock > 0)) completed.push('stok')
       if (!editProductId && targetConnectionIds.length) completed.push('kanal fiyatları')
       const publicationConnectionIds = productPublicationTargets(saveAndStay, targetConnectionIds)
+      // A card already matched there is not sent again: its links are read from the latest product (a status check or a
+      // store lookup since the form was filled), then from the saved product when it carries them.
+      const linkRowsBySku = new Map(withLatestVariantLinks(withLatestVariantLinks(rows, productToEdit.data?.variants), product.variants).map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
       const connectionPlatformName = (connectionId: string) => publishPlatformName(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? 'Pazaryeri')
       for (const [connectionIndex, connectionId] of publicationConnectionIds.entries()) {
         const platformName = connectionPlatformName(connectionId)
@@ -2729,7 +2755,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               // card with a matched variant is left as it is (its publication would send the whole card).
               const cardVariants = product.variants.filter(variant => (variant.productId ?? product.id) === familyProductId)
               // A card with a variant the marketplace no longer knows (Bulunamadı, Kısmen yayında) goes again.
-              const cardLinks = publishCardVariantLinks(cardVariants.map(variant => ({ platformStatuses: rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses })), connectionId)
+              const cardLinks = publishCardVariantLinks(cardVariants.map(variant => ({ platformStatuses: linkRowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses })), connectionId)
               const matchedCount = cardLinks.linked
               const hasMissingVariant = cardLinks.missing > 0
               const resendsRefused = platformCode === 'N11'
@@ -2807,6 +2833,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       setError(reason); setNotice(feedbackMessage)
       setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
       if (!productCreated) setFieldErrors(editorFieldErrors(reason))
+      // The product itself was saved before a later step (media, a channel offer, the panel price choice) failed: its
+      // new version is read again and the form may refill from it, so the next try does not take its own save for
+      // another operation's change. Only the files this try uploaded leave the queue.
+      if (productCreated && editProductId) {
+        mediaFilesKeptOnReseed.current = mediaFilesLeftAfterFailedSave(mediaFiles, uploadedMediaFileIds)
+        setMediaFiles(mediaFilesKeptOnReseed.current)
+        allowReseedUntil.current = Date.now() + 10_000
+        await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['product', editProductId] })]).catch(() => undefined)
+        await productToEdit.refetch().catch(() => undefined)
+      }
       if (productCreated && !editProductId) {
         leavingAfterSave.current = true
         navigate(`/products/${productCreated.id}`)
@@ -2816,7 +2852,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
 
   const [marketplacePricingOpen, setMarketplacePricingOpen] = useState(false)
   const publicationChannels = (connections.data?.items ?? []).filter(isProductPublicationChannel)
-  const platformCards = publicationChannels.map(connection => ({
+  // The cards read each variant's link from the latest product, not from the statuses the form was filled with.
+  const publishLinkRows = withLatestVariantLinks(variantRows, editProductId ? productToEdit.data?.variants : undefined)
+  const platformCards =publicationChannels.map(connection => ({
     code: connection.platformCode.trim().toLocaleLowerCase('tr-TR'),
     name: connection.displayName,
     initial: connection.displayName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R',
@@ -3304,7 +3342,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               productId={editProductId}
               familyProductIds={productToEdit.data?.familyProductIds}
               lookupKeys={{ modelCode: form.modelCode, barcode: variantRows[0]?.barcode || form.barcode, sku: variantRows[0]?.sku || form.baseSku }}
-              variantLinks={publishCardVariantLinks(variantRows, card.connection.id)}
+              variantLinks={publishCardVariantLinks(publishLinkRows, card.connection.id)}
               categoryId={form.categoryId}
               selected={selectedChannelIds.includes(card.connection.id)}
               settling={editorHydrating}
@@ -3467,5 +3505,7 @@ export function ProductPublishPopup({ productId, onClose }: { productId: string;
 export function ProductDetailPage() {
   const { id } = useParams()
   if (!id) return <p className="unknown">Ürün kimliği bulunamadı.</p>
-  return <NewProductPage editProductId={id} />
+  // Keyed by the product: going from one product's page to another's starts a fresh editor (selected stores, wizard
+  // step, open dialogs) instead of carrying the first product's state over.
+  return <NewProductPage key={id} editProductId={id} />
 }

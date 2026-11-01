@@ -540,7 +540,15 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
 // Keeps a tariff's picks saved on the server: a change is sent 600 ms after the last one, one save at a time and the
 // latest state winning; flush() sends what is waiting and resolves once the server holds it. Leaving the tariff sends
 // what is still waiting.
-function useSavedSelection(save: (body: string) => Promise<unknown>, serialized: string) {
+// The save still on its way per tariff (connection/tariff). Leaving a tab sends the waiting picks as the plan unmounts;
+// coming straight back reads the picks again, and that read waits for the save so it does not bring the older picks.
+const pendingSelectionSaves = new Map<string, Promise<void>>()
+export const selectionSaveKey = (connectionId: string, tariffId: string) => `${connectionId}/${tariffId}`
+export function selectionSaveSettled(key: string) {
+  return (pendingSelectionSaves.get(key) ?? Promise.resolve()).catch(() => undefined)
+}
+
+export function useSavedSelection(save: (body: string) => Promise<unknown>, serialized: string, key: string | null) {
   const latest = useRef(serialized)
   const saved = useRef(serialized)
   const queue = useRef<Promise<void>>(Promise.resolve())
@@ -562,8 +570,12 @@ function useSavedSelection(save: (body: string) => Promise<unknown>, serialized:
       }
     })
     queue.current = next
+    if (key) {
+      pendingSelectionSaves.set(key, next)
+      void next.catch(() => undefined).then(() => { if (pendingSelectionSaves.get(key) === next) pendingSelectionSaves.delete(key) })
+    }
     return next
-  }, [save])
+  }, [save, key])
   useEffect(() => {
     latest.current = serialized
     if (serialized === saved.current) return
@@ -579,13 +591,13 @@ function useSavedSelection(save: (body: string) => Promise<unknown>, serialized:
 function TariffPlan(props: TariffPlanProps) {
   const selection = useQuery({
     queryKey: ['commission-tariff-selection', props.connectionId, props.tariff.id],
-    queryFn: () => hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.tariff.id}/selection`),
+    queryFn: async () => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.tariff.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.tariff.id}/selection`) },
     gcTime: 0, refetchOnWindowFocus: false
   })
   // The 7-day view keeps the second period's picks too.
   const partnerSelection = useQuery({
     queryKey: ['commission-tariff-selection', props.connectionId, props.partner?.id],
-    queryFn: () => hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.partner!.id}/selection`),
+    queryFn: async () => { await selectionSaveSettled(selectionSaveKey(props.connectionId, props.partner!.id)); return hubApi<TariffSelection>(`/connections/${props.connectionId}/commission-tariffs/${props.partner!.id}/selection`) },
     gcTime: 0, refetchOnWindowFocus: false, enabled: props.partner != null
   })
   if (selection.isPending || (props.partner && partnerSelection.isPending)) return <Busy />
@@ -612,7 +624,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   const save = useCallback((body: string) => hubApi<TariffSelection>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/selection`, {
     method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-selection') }, body
   }), [connectionId, tariff.id])
-  const saving = useSavedSelection(save, useMemo(() => JSON.stringify(selectionBody(picks, bulk)), [picks, bulk]))
+  const saving = useSavedSelection(save, useMemo(() => JSON.stringify(selectionBody(picks, bulk)), [picks, bulk]), selectionSaveKey(connectionId, tariff.id))
   // The 7-day view: the second period's rows of the products on the page (by barcode; its rows have ids of their own)
   // and its picks, which every pick made here changes as it changes the first period's.
   const pageBarcodes = useMemo(() => [...new Set(rows?.items.map(row => row.barcode) ?? [])].sort(), [rows])
@@ -628,7 +640,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   const savePartner = useCallback((body: string) => hubApi<TariffSelection>(`/connections/${connectionId}/commission-tariffs/${partnerId}/selection`, {
     method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-selection') }, body
   }), [connectionId, partnerId])
-  const partnerSaving = useSavedSelection(savePartner, useMemo(() => JSON.stringify(selectionBody(partnerPicks, partnerBulk)), [partnerPicks, partnerBulk]))
+  const partnerSaving = useSavedSelection(savePartner, useMemo(() => JSON.stringify(selectionBody(partnerPicks, partnerBulk)), [partnerPicks, partnerBulk]), partnerId ? selectionSaveKey(connectionId, partnerId) : null)
   const savingStatus = saving.status === 'error' || partnerSaving.status === 'error' ? 'error' : saving.status === 'saving' || partnerSaving.status === 'saving' ? 'saving' : 'saved'
   const applyBulk = (next: TariffBulk) => { setBulk(next); if (partner) setPartnerBulk(next) }
   // A column's picks taken back: the pick for every row when it is that column, and the rows picked for that band.

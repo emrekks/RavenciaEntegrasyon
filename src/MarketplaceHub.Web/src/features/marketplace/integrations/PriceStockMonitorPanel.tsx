@@ -6,7 +6,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { appendNotification, failureNotice, notificationPlatformName } from '../../../shared/notifications'
 import { scopedStorageKey } from '../../../shared/storage-scope'
 import { DateText, type IntegrationFeedback } from '../shared'
-import { orderSourceState, priceStockProblemSignature, priceStockWriteState, type PriceStockConnectionMonitor, type PriceStockMonitor } from './integration-helpers'
+import { orderSourceState, priceStockMonitorQueryKey, priceStockProblemSignature, priceStockWriteState, type PriceStockConnectionMonitor, type PriceStockMonitor } from './integration-helpers'
 import './price-stock-monitor.css'
 
 const notifiedKey = 'price-stock-monitor-notified'
@@ -50,7 +50,7 @@ function notifyNewProblems(rows: PriceStockConnectionMonitor[]) {
 // queue, failed and partial pushes, offers held back as invalid, and the listing health counts; plus the emergency stop.
 export function PriceStockMonitorPanel({ onFeedback }: { onFeedback: (feedback: IntegrationFeedback) => void }) {
   const client = useQueryClient()
-  const monitor = useQuery({ queryKey: ['price-stock-monitor'], queryFn: () => hubPoll<PriceStockMonitor>('/price-stock-monitor'), refetchInterval: 60_000, refetchIntervalInBackground: false })
+  const monitor = useQuery({ queryKey: priceStockMonitorQueryKey, queryFn: () => hubPoll<PriceStockMonitor>('/price-stock-monitor'), refetchInterval: 60_000, refetchIntervalInBackground: false })
   const [confirm, confirmDialog] = useConfirmDialog()
   const rows = monitor.data?.connections
   useEffect(() => { if (rows) notifyNewProblems(rows) }, [rows])
@@ -58,7 +58,7 @@ export function PriceStockMonitorPanel({ onFeedback }: { onFeedback: (feedback: 
     mutationFn: () => hubApi<{ connectionsStopped: number; policiesDisabled: number; jobsCancelled: number }>('/price-stock-monitor/emergency-stop', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
     onSuccess: async result => {
       onFeedback({ kind: 'success', title: 'Otomatik Yazmalar Durduruldu', message: `${result.connectionsStopped} bağlantıda otomatik fiyat-stok gönderimi kapatıldı; ${result.jobsCancelled} gönderilmemiş otomatik iş iptal edildi. Panelden başlatılan gönderimler ve sonucu beklenen istekler sürer.` })
-      await Promise.all([client.invalidateQueries({ queryKey: ['price-stock-monitor'] }), client.invalidateQueries({ queryKey: ['sync-policies'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: priceStockMonitorQueryKey }), client.invalidateQueries({ queryKey: ['sync-policies'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: reason => onFeedback(failureNotice(reason, 'Otomatik yazmalar durdurulamadı.'))
   })

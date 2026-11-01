@@ -18,6 +18,7 @@ import { clearPersonalStorage, setStorageScope } from '../shared/storage-scope'
 import { clearQuerySnapshot, confirmQuerySnapshotScope, forgetPreviousSession } from '../shared/query-snapshot'
 import { questionWaitingSummaryPath } from './questionNavigationSummary'
 import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChangeEvent, type VisualTheme } from '../features/settings/visual-theme'
+import { readStoredItem, removeStoredItem, writeStoredItem } from '../shared/local-storage'
 import { focusOnMount } from '../shared/focus'
 import { ToastStackProvider } from '../shared/components/ToastStack'
 
@@ -79,7 +80,7 @@ function Shell({ me }: { me: Me }) {
   // them as the person using the panel (otherwise an open tab would never reach the idle sign-out).
   const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubPoll<OrderNavigationSummary>('/orders/summary?tabs=PENDING'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000 })
   const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
-  const [sidebarPinned, setSidebarPinned] = useState(() => localStorage.getItem('ravencia.sidebarPinned') !== 'false')
+  const [sidebarPinned, setSidebarPinned] = useState(() => readStoredItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [quickSearchOpen, setQuickSearchOpen] = useState(false)
@@ -164,7 +165,7 @@ function Shell({ me }: { me: Me }) {
     const nextPinned = !sidebarPinned
     setSidebarPinned(nextPinned)
     setSidebarHoverExpanded(false)
-    localStorage.setItem('ravencia.sidebarPinned', String(nextPinned))
+    writeStoredItem('ravencia.sidebarPinned', String(nextPinned))
   }
   function handleSidebarMouseEnter() { if (!sidebarPinned) setSidebarHoverExpanded(true) }
   function handleSidebarMouseLeave() { if (!sidebarPinned) setSidebarHoverExpanded(false) }
@@ -366,10 +367,10 @@ function Login({ notice }: { notice?: string }) {
   const navigate = useNavigate()
   const location = useLocation()
   const client = useQueryClient()
-  const rememberedEmail = localStorage.getItem('ravencia.rememberedEmail') ?? ''
+  const rememberedEmail = readStoredItem('ravencia.rememberedEmail') ?? ''
   const [email, setEmail] = useState(rememberedEmail)
   // "Beni Hatırla" is on unless it was switched off on this device: without it a session ends after 30 idle minutes.
-  const [rememberMe, setRememberMe] = useState(localStorage.getItem('ravencia.rememberMe') !== '0')
+  const [rememberMe, setRememberMe] = useState(readStoredItem('ravencia.rememberMe') !== '0')
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -386,8 +387,8 @@ function Login({ notice }: { notice?: string }) {
       await api<{ state: string }>('/login', { method: 'POST', body: JSON.stringify({ email: email.trim(), password: data.get('password'), tenantId: tenantId || null, rememberMe }) })
       offerToSavePassword(form)
       const currentUser = await api<Me>('/me')
-      if (rememberMe) { localStorage.setItem('ravencia.rememberedEmail', email.trim()); localStorage.removeItem('ravencia.rememberMe') }
-      else { localStorage.removeItem('ravencia.rememberedEmail'); localStorage.setItem('ravencia.rememberMe', '0') }
+      if (rememberMe) { writeStoredItem('ravencia.rememberedEmail', email.trim()); removeStoredItem('ravencia.rememberMe') }
+      else { removeStoredItem('ravencia.rememberedEmail'); writeStoredItem('ravencia.rememberMe', '0') }
       // Nothing read under the previous session (perhaps another account or workspace) is shown to this one.
       forgetPreviousSession(client)
       confirmQuerySnapshotScope(client, currentUser.tenantId, currentUser.id)
