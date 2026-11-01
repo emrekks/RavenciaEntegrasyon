@@ -38,11 +38,11 @@
 @media (max-width: 760px) {
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { right: 0; left: auto; }
 }
-/* A warning card with something to warn about (Geciken above 0): a faint red box and a dot beside its title, one soft
-   pulse when it appears and none after; at 0 the card is as plain as the others. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert { border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); background: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); animation: rr-alert-in 1.1s ease-out 1; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert small::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; vertical-align: middle; background: var(--rr-bad); border-radius: 50%; }
-@keyframes rr-alert-in { from { box-shadow: 0 0 0 4px color-mix(in srgb, var(--rr-bad) 24%, transparent); } to { box-shadow: 0 0 0 0 transparent; } }
+/* A warning card with something to warn about (Geciken above 0): a faint red box and a dot beside its title that fades
+   slowly in and out (the text and the number stay still); at 0 the card is as plain as the others. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert { border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); background: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert small::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; vertical-align: middle; background: var(--rr-bad); border-radius: 50%; animation: rr-alert-dot 2.2s ease-in-out infinite; }
+@keyframes rr-alert-dot { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
 @media (prefers-reduced-motion: reduce) {
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert { animation: none; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert small::before { animation: none; }
 }
