@@ -1,5 +1,5 @@
 // Ürün ekleme ve düzenleme (/products/new, /products/:id).
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import './product-editor-design-system.css'
 import './product-editor-hydration.css'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
@@ -28,6 +28,7 @@ import { fixableValueMappings, type PublicationAttributeSelection } from '../pub
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { CategoryMappingDialog } from '../CategoryMappingDialog'
 import { PublishIssueBadge } from '../PublishIssueBadge'
+import { attributeMappingPlatform, mappingFocusItems } from '../../marketplace/mappings/mapping-focus'
 import { LocalImagePreview, MediaAddTile, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
@@ -63,6 +64,9 @@ import { focusOnMount } from '../../../shared/focus'
 import { channelOfferPostKey, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, rowsWithSavedOffer, type ChannelPricingDraft, type SavedChannelOffer } from './marketplace-channel-pricing'
 import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
+
+// The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
+const ProductCategoryFieldsDialog = lazy(() => import('../../marketplace/mappings/MappingPages').then(module => ({ default: module.ProductCategoryFieldsDialog })))
 
 // The save's slot in the toast column: "Ürün Kaydediliyor" turns into its result in place instead of stacking.
 const productSaveToastKey = 'product-editor-save'
@@ -941,6 +945,15 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const readinessCategoryScope = mappingReadinessEnabled ? mappingReadiness.data?.categoryScope : undefined
   const [valueFixOpen, setValueFixOpen] = useState(false)
   const [categoryFixOpen, setCategoryFixOpen] = useState(false)
+  // The category fields window ("Kategori Alanları ve Değerleri") opened from a gap: the marketplace field it opens on.
+  const [fieldsFix, setFieldsFix] = useState<{ externalAttributeId: string } | null>(null)
+  const fieldsWindowPlatform = attributeMappingPlatform(card.connection.platformCode)
+  const mappingFocus = mappingFocusItems(requiredMappingIssues, optionalMappingWarnings)
+  // On close (saved or not) the card reads its publish check again, so the badge counts follow what was mapped.
+  const closeFieldsFix = () => {
+    setFieldsFix(null)
+    void client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
+  }
   const categoryMappingGap = mappingReadinessEnabled ? mappingReadiness.data?.categoryMapping : undefined
   // The status opens the API job behind it; a card whose required fields are missing keeps its issue tooltip instead.
   const [jobDetailOpen, setJobDetailOpen] = useState(false)
@@ -958,13 +971,16 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     optionalMappingWarnings.length ? `${issueListId}-optional` : ''
   ].filter(Boolean).join(' ') || undefined
   const hasRequiredPublicationBlock = blockedIssues.length > 0 && !alreadyPublished
-  // Each gap row of the badge's popover opens its own fix: the category, the value mappings, a new check, or the attribute
-  // mappings page for an attribute with no mapping; a product field gap is information (the form above fixes it). The
+  // Each gap chip of the badge's popover opens its own fix: the category, the category fields window on the gap's
+  // marketplace field (where the store has one), the value mappings, a new check, or the attribute mappings page; a
+  // product field gap is information (the form above fixes it). The
   // optional warnings (attributes the store would get without a value) sit below the required gaps; with no required gap
   // a yellow "N uyarı" badge stands beside the status.
   const issueFix = (issue: { attribute: string; detail: string }): { href?: string; onRun?: () => void } => {
     const mappingIssue = [...requiredMappingIssues, ...optionalMappingWarnings].find(item => item.attribute === issue.attribute && item.detail === issue.detail)
     if (issue.attribute === 'Kategori eşlemesi' && categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
+    const fieldId = mappingIssue?.externalAttributeId
+    if (fieldId && fieldsWindowPlatform && categoryId) return { onRun: () => setFieldsFix({ externalAttributeId: fieldId }) }
     if (mappingIssue?.fix && readinessCategoryScope) return { onRun: () => setValueFixOpen(true) }
     if (mappingCheckFailed && issue.attribute === `${card.name} özellik kontrolü`) return { onRun: () => { void mappingReadiness.refetch() } }
     return mappingIssue ? { href: '/mappings/attributes' } : {}
@@ -998,6 +1014,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     </dl>
     {categoryFixOpen && categoryId && <CategoryMappingDialog connectionId={card.connection.id} platformName={card.name} categoryId={categoryId} categoryName={categoryName || 'Ürün'} onClose={() => setCategoryFixOpen(false)} onSaved={message => { setValueFixNotice(message) }} />}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification({ title: 'Değer Eşlemeleri Kaydedildi', message, kind: 'success', operation: 'Özellik değeri eşleştirme', platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, target: { href: '/mappings/attributes', label: 'Eşleştirmelere Git' } }) }} />}
+    {fieldsFix && fieldsWindowPlatform && categoryId && <Suspense fallback={null}><ProductCategoryFieldsDialog key={fieldsFix.externalAttributeId} platformCode={fieldsWindowPlatform} connectionId={card.connection.id} localCategoryId={categoryId} focus={{ items: mappingFocus, initialExternalAttributeId: fieldsFix.externalAttributeId }} onClose={closeFieldsFix} /></Suspense>}
     {jobDetailOpen && lastJobId && <PublicationJobDialog jobId={lastJobId} platformCode={card.connection.platformCode} platformName={card.name} storeName={card.connection.displayName} onClose={() => setJobDetailOpen(false)} />}
     {valueFixNotice && <NoticeToast kind="success" title="Değer Eşlemeleri Kaydedildi" message={valueFixNotice} onClose={() => setValueFixNotice('')} durationMs={5500} />}
     {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify Dış Yazması Kapalı</strong><p>Ürün yayınını açmak için Entegrasyonlar bölümünde Shopify dış yazma anahtarını etkinleştirin; bağlantı testinde write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.</p></div></div>}

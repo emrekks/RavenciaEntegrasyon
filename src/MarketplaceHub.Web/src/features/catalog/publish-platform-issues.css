@@ -24,8 +24,14 @@
 .publish-issue-tooltip { overflow-y: auto; overscroll-behavior: contain; }
 .publish-platform-status:hover + .publish-issue-tooltip, .publish-platform-status:focus-visible + .publish-issue-tooltip, .publish-issue-tooltip:hover { display: block; }
 .publish-issue-tooltip > strong, .publish-issue-tooltip > section > strong { display: block; color: var(--rv-color-danger); font-size: 13px; font-weight: 600; }
-.publish-issue-tooltip > ul, .publish-issue-tooltip > section > ul { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; list-style: none; }
-.publish-issue-tooltip li b { display: inline-block; margin-right: 6px; padding: 1px 8px; color: var(--rv-color-danger); background: color-mix(in srgb, var(--rv-color-danger) 14%, transparent); border-radius: 6px; font-size: 12px; font-weight: 600; }
+/* Each gap is a chip with its title only (the detail is its hover text); the chips sit side by side and wrap. */
+.publish-issue-tooltip ul.publish-issue-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.publish-issue-chips > li { display: contents; }
+.publish-issue-chip { --publish-chip-tone: var(--rv-color-danger); display: inline-flex; box-sizing: border-box; max-width: 100%; min-height: 0; height: 26px; align-items: center; padding: 0 10px; overflow: hidden; color: var(--publish-chip-tone); background: color-mix(in srgb, var(--publish-chip-tone) 13%, transparent); border: 1px solid color-mix(in srgb, var(--publish-chip-tone) 30%, transparent); border-radius: 7px; font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.publish-issue-optional .publish-issue-chip { --publish-chip-tone: var(--rv-color-warning); }
+.publish-issue-chip.is-fixable { cursor: pointer; }
+.publish-issue-chip.is-fixable:hover { background: color-mix(in srgb, var(--publish-chip-tone) 22%, transparent); }
+.publish-issue-chip.is-fixable:focus-visible { outline: 2px solid var(--publish-chip-tone); outline-offset: 1px; }
 
 /* The explanation of a missing item may extend past the card, so the card no longer clips its content. */
 .publish-platform-card.publish-platform-card { overflow: visible; }
@@ -49,19 +55,13 @@
 .publish-issue-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
 .publish-issue-count { display: inline-grid; box-sizing: border-box; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; color: #fff; background: var(--rv-color-danger); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .publish-issue-badge:hover .publish-issue-tooltip, .publish-issue-tooltip.is-open { display: block; }
-.publish-issue-tooltip li a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .publish-issue-more { margin: 8px 0 0; color: var(--rv-color-muted); font-size: 12px; }
 
 /* Required gaps (red) first, then the optional ones (yellow): attributes the store would get without a value. */
 .publish-issue-tooltip.is-warning { border-color: color-mix(in srgb, var(--rv-color-warning) 45%, var(--rv-color-border-strong)); }
 .publish-issue-tooltip > section + section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }
 .publish-issue-tooltip .publish-issue-optional > strong { color: var(--rv-color-warning); }
-.publish-issue-tooltip .publish-issue-optional li b { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, transparent); }
 .publish-issue-count.is-optional { color: #3a2800; background: color-mix(in srgb, var(--rv-color-warning) 40%, #ffd27a); }
 .publish-issue-trigger.status-warning:focus-visible { outline-color: var(--rv-color-warning); }
 
-/* A gap row that opens its fix: the whole row is the control (pointer, a soft highlight, keyboard focus). */
-.publish-issue-row { display: block; width: 100%; margin: 0 -6px; padding: 4px 6px; color: inherit; background: none; border: 0; border-radius: 7px; font: inherit; line-height: inherit; text-align: left; text-decoration: none; cursor: pointer; }
-.publish-issue-row:hover { background: var(--rv-color-surface-soft); }
-.publish-issue-row:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
 .publish-issue-hint { margin: 10px 0 0; color: var(--rv-color-muted); font-size: 11.5px; }

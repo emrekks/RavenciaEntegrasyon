@@ -2,16 +2,15 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { UiIcon } from '../../shared/components'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { placePublishPopover } from './publish-popover-placement'
+import { publishIssueChips, type PublishIssueRow } from './publish-issue-chips'
 
-// One gap: pressing it opens its fix (`onRun`: a value, category or field mapping) or goes to the page that fixes it
-// (`href`); a gap with neither is only information.
-export type PublishIssueRow = { key: string; title: string; detail: string; href?: string; onRun?: () => void }
+export type { PublishIssueRow }
 
 // A publish card's gaps badge: red "Yayın için zorunlu eksik" when something blocks the publish, yellow "6 uyarı" when
 // only optional attributes would be left out. Hovering it previews the gaps, pressing it (or Enter/Space) pins them in a
-// popover, required ones first, then the optional ones; each gap row opens its own fix, so the card never grows a row
-// or a box per fix. With one gap that has a fix the press opens that fix directly. The popover keeps to the room above
-// the sticky Yayınla bar.
+// popover: the required gaps as red chips, then the optional ones as yellow chips, each only its title (the detail is the
+// chip's hover text and accessible name); each chip opens its own fix, so the card never grows a row or a box per fix.
+// With one gap that has a fix the press opens that fix directly. The popover keeps to the room above the sticky Yayınla bar.
 export function PublishIssueBadge({ id, label, heading, rows, requiredCount, optionalHeading, optionalRows = [], optionalCount, moreText }: {
   id: string
   label: string
@@ -29,9 +28,10 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   useDismissable(open, [wrapper], () => setOpen(false), { triggerRef: trigger })
-  const shortcut = rows.length === 1 && !optionalRows.length && rows[0].onRun ? rows[0].onRun : null
+  const chips = publishIssueChips(rows, optionalRows)
+  const shortcut = chips.required.length === 1 && !chips.optional.length && chips.required[0].onRun ? chips.required[0].onRun : null
   const tone = rows.length ? 'danger' : 'warning'
-  const fixable = [...rows, ...optionalRows].some(row => row.onRun || row.href)
+  const fixable = [...chips.required, ...chips.optional].some(row => row.onRun || row.href)
 
   // Measured while shown, then placed below, above, or cut to the room (it scrolls).
   const place = () => {
@@ -48,16 +48,18 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
   useLayoutEffect(() => {
     if (!open) return
     place()
-    panel.current?.querySelector<HTMLElement>('.publish-issue-row')?.focus()
+    panel.current?.querySelector<HTMLElement>('.publish-issue-chip.is-fixable')?.focus()
   }, [open])
 
   const run = (row: PublishIssueRow) => { setOpen(false); row.onRun?.() }
-  const content = (row: PublishIssueRow) => <><b>{row.title}</b> {row.detail}</>
-  const list = (items: PublishIssueRow[]) => <ul>{items.map(row => <li key={row.key}>
-    {row.onRun ? <button type="button" className="publish-issue-row" onClick={() => run(row)}>{content(row)}</button>
-      : row.href ? <a className="publish-issue-row" href={row.href} target="_blank" rel="noreferrer" onClick={() => setOpen(false)}>{content(row)}</a>
-        : content(row)}
-  </li>)}</ul>
+  const list = (items: PublishIssueRow[]) => <ul className="publish-issue-chips">{items.map(row => {
+    const described = row.detail ? `${row.title}: ${row.detail}` : row.title
+    return <li key={row.key}>
+      {row.onRun ? <button type="button" className="publish-issue-chip is-fixable" title={row.detail || undefined} aria-label={described} onClick={() => run(row)}>{row.title}</button>
+        : row.href ? <a className="publish-issue-chip is-fixable" href={row.href} target="_blank" rel="noreferrer" title={row.detail || undefined} aria-label={described} onClick={() => setOpen(false)}>{row.title}</a>
+          : <span className="publish-issue-chip" title={row.detail || undefined} aria-label={described} role="note">{row.title}</span>}
+    </li>
+  })}</ul>
   return <span ref={wrapper} className={`publish-issue-badge is-${tone}`}>
     <button ref={trigger} type="button" className={`publish-platform-status status-${tone} publish-issue-trigger`} aria-haspopup={shortcut ? 'dialog' : 'true'} aria-expanded={shortcut ? undefined : open} aria-controls={id} title={label} onMouseEnter={place} onFocus={place} onClick={() => { if (shortcut) shortcut(); else setOpen(value => !value) }}>
       <i aria-hidden="true" /><span className="publish-issue-label">{label}</span>
@@ -66,9 +68,9 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
       <UiIcon name="chevronDown" size={12} />
     </button>
     <div ref={panel} id={id} className={`publish-issue-tooltip is-${tone}${open ? ' is-open' : ''}`} role={open ? 'dialog' : 'tooltip'} aria-label={rows.length ? heading : optionalHeading}>
-      {rows.length > 0 && <section className="publish-issue-required"><strong>{heading}</strong>{list(rows)}{moreText && <p className="publish-issue-more">{moreText}</p>}</section>}
-      {optionalRows.length > 0 && <section className="publish-issue-optional"><strong>{optionalHeading}</strong>{list(optionalRows)}</section>}
-      {fixable && <p className="publish-issue-hint">Düzeltmek için bir satıra tıklayın.</p>}
+      {chips.required.length > 0 && <section className="publish-issue-required"><strong>{heading}</strong>{list(chips.required)}{moreText && <p className="publish-issue-more">{moreText}</p>}</section>}
+      {chips.optional.length > 0 && <section className="publish-issue-optional"><strong>{optionalHeading}</strong>{list(chips.optional)}</section>}
+      {fixable && <p className="publish-issue-hint">Düzeltmek için bir eksiğe tıklayın.</p>}
     </div>
   </span>
 }

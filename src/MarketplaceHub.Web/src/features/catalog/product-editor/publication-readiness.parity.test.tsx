@@ -62,20 +62,21 @@ describe('publish readiness parity', () => {
     const editorClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => { root.render(<QueryClientProvider client={editorClient}><MemoryRouter><main><NewProductPage editProductId="p1" publishOnly /></main></MemoryRouter></QueryClientProvider>) })
     await settle()
-    const editorIssues = [...document.querySelectorAll('.publish-issue-required li')].map(item => item.textContent?.replace(/\s+/g, ' ').trim())
+    // A chip shows the gap's title; its accessible name carries the title and the detail.
+    const editorIssues = [...document.querySelectorAll('.publish-issue-required .publish-issue-chip')].map(item => item.getAttribute('aria-label')?.replace(/\s+/g, ' ').trim())
     expect(editorIssues.length).toBeGreaterThan(0)
 
     const bulkClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const bulk = await checkProductReadiness(bulkClient, 'p1', null, [fixture.connection])
-    const bulkIssues = bulk.get('ty')!.issues.map(issue => `${issue.attribute} ${issue.detail}`.replace(/\s+/g, ' ').trim())
+    const bulkIssues = bulk.get('ty')!.issues.map(issue => `${issue.attribute}: ${issue.detail}`.replace(/\s+/g, ' ').trim())
 
     expect(bulkIssues).toEqual(editorIssues)
     // The gaps themselves, so a change on either side shows here too.
     expect(bulkIssues).toEqual([
-      'Temel Ürün Verileri Eksik alanlar: açıklama.',
-      'Görsel Kalitesi En az bir yüksek çözünürlüklü görsel ekleyin.',
-      'Kategori ve Web Color Web Color için kategori özelliği eşleştirilmemiş.',
-      'Kategori eşlemesi Elbise kategorisinin Trendyol Mağaza karşılığı seçilmemiş; kategoriyi eşleyin.'
+      'Temel Ürün Verileri: Eksik alanlar: açıklama.',
+      'Görsel Kalitesi: En az bir yüksek çözünürlüklü görsel ekleyin.',
+      'Kategori ve Web Color: Web Color için kategori özelliği eşleştirilmemiş.',
+      'Kategori eşlemesi: Elbise kategorisinin Trendyol Mağaza karşılığı seçilmemiş; kategoriyi eşleyin.'
     ])
   })
 })
