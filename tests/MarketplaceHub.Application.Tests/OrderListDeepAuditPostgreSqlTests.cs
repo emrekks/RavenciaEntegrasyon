@@ -54,6 +54,37 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // The column filters show, next to each platform and cargo choice, the orders that choice would list under
+    // the other filters and the status tab; a column's own choice does not narrow its counts.
+    [PostgreSqlFact]
+    public async Task FacetCountsEqualTheListTotalOfEachChoice()
+    {
+        var tenantId = await SeedAsync("ol-fac");
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            foreach (var tab in new[] { "ALL", "NEW" })
+            {
+                var query = new OrderListQuery(Status: tab);
+                var facets = await service.OrderFacetsAsync(tenantId, query, CancellationToken.None);
+                var total = (await service.OrdersAsync(tenantId, 50, 1, null, query, CancellationToken.None)).TotalCount;
+                Assert.NotEmpty(facets.Platforms);
+                Assert.Equal(total, facets.Platforms.Values.Sum());
+                foreach (var (platform, count) in facets.Platforms)
+                    Assert.Equal(count, (await service.OrdersAsync(tenantId, 50, 1, null, query with { Platforms = [platform] }, CancellationToken.None)).TotalCount);
+                foreach (var (cargo, count) in facets.Cargos)
+                    Assert.Equal(count, (await service.OrdersAsync(tenantId, 50, 1, null, query with { Cargo = cargo }, CancellationToken.None)).TotalCount);
+                var platformPicked = await service.OrderFacetsAsync(tenantId, query with { Platforms = [facets.Platforms.Keys.First()] }, CancellationToken.None);
+                Assert.Equal(facets.Platforms, platformPicked.Platforms);
+            }
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     // The dashboard's "Geciken Siparişler" card links to /orders?status=LATE; the list had no such view and opened
     // empty. It lists exactly the orders the card counts.
     [PostgreSqlFact]

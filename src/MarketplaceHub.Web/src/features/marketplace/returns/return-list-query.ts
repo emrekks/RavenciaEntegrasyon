@@ -13,6 +13,11 @@ export type ReturnSummary = {
   invoiceStatuses: string[]
   // Cards of the current tab before the platform, cargo, reason and invoice filters.
   unfilteredCount: number
+  // Cards of the current tab per choice under the other filters: platform code, cargo, reason key, invoice label.
+  platformCounts?: Record<string, number>
+  cargoCounts?: Record<string, number>
+  reasonCounts?: Record<string, number>
+  invoiceStatusCounts?: Record<string, number>
 }
 
 export function returnSummaryParams(filters: ReturnFilters, refinements: ReturnRefinements) {

@@ -33,6 +33,16 @@ public sealed class ReturnListPostgreSqlTests(PostgreSqlTenantIsolationFixture f
             Assert.Equal(["SIZE", "Beğenmedim"], all.Reasons.Select(x => x.Value));
             Assert.Equal(["FATURA_BILINMIYOR", "FATURA_KONTROLDE"], all.InvoiceStatuses);
             Assert.Equal(4, all.UnfilteredCount);
+            // Each choice's count is the cards that choice lists under the other filters.
+            Assert.Equal(4, all.PlatformCounts!.Values.Sum());
+            foreach (var (platform, count) in all.PlatformCounts)
+                Assert.Equal(count, (await service.ReturnSummaryAsync(seed.TenantId, new ReturnListQuery(Platforms: [platform]), CancellationToken.None)).TabCounts["ALL"]);
+            foreach (var (cargo, count) in all.CargoCounts!)
+                Assert.Equal(count, (await service.ReturnSummaryAsync(seed.TenantId, new ReturnListQuery(Cargo: cargo), CancellationToken.None)).TabCounts["ALL"]);
+            foreach (var (reason, count) in all.ReasonCounts!)
+                Assert.Equal(count, (await service.ReturnSummaryAsync(seed.TenantId, new ReturnListQuery(ReasonKey: reason), CancellationToken.None)).TabCounts["ALL"]);
+            foreach (var (label, count) in all.InvoiceStatusCounts!)
+                Assert.Equal(count, (await service.ReturnSummaryAsync(seed.TenantId, new ReturnListQuery(InvoiceStatus: label), CancellationToken.None)).TabCounts["ALL"]);
 
             var n11 = await service.ReturnSummaryAsync(seed.TenantId, new ReturnListQuery(Platforms: ["N11"]), CancellationToken.None);
             Assert.Equal((1, 1), (n11.TabCounts["ALL"], n11.TabCounts["APPROVED"]));

@@ -20,11 +20,11 @@ function unconditional() {
   return out
 }
 
-describe('return product facts on phones', () => {
-  it('never keeps a long barcode or stock code on one line outside the desktop table', () => {
-    // Live 1 Nov 2026: "MZ035DYD-B24MZ035DYD-B26" ran 8 px past a 375 px card because a rule for every width kept the
-    // facts on one line.
-    expect(unconditional()).not.toMatch(/\.rr-pline > div > small:not\(\.rr-card-only\) \{[^}]*white-space: nowrap/)
-    expect(css).toMatch(/@media \(max-width: 1024px\) \{\n:is\(main \.rr\.rr, \.rr-layer\.rr-layer\) \.rr-pline > div > small:not\(\.rr-card-only\) \{[^}]*white-space: normal; overflow-wrap: anywhere;/)
+describe('return product facts', () => {
+  it('never keeps a long barcode or stock code on one line, on phones or in the desktop table', () => {
+    // Live 1 Nov 2026: "MZ035DYD-B24MZ035DYD-B26" ran 8 px past a 375 px card, and in the desktop table over the
+    // price column beside it, because a rule kept the facts on one line.
+    expect(css).not.toMatch(/\.rr-pline > div > small:not\(\.rr-card-only\) \{[^}]*white-space: nowrap/)
+    expect(unconditional()).toMatch(/:is\(main \.rr\.rr, \.rr-layer\.rr-layer\) \.rr-pline > div > small:not\(\.rr-card-only\) \{[^}]*white-space: normal; overflow-wrap: anywhere;/)
   })
 })

@@ -108,6 +108,11 @@ public static class MarketplaceEndpoints
                     string.IsNullOrWhiteSpace(tabs) ? null : tabs.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
                     allowCached: true))
                 : Unauthorized(http));
+        // Orders per platform and cargo choice for the same filters as GET /orders, status tab included.
+        api.MapGet("/orders/facets", async (HttpContext http, IMarketplaceSalesService service, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, bool? labelPrinted, DateTimeOffset? cancelFrom, DateTimeOffset? cancelTo) =>
+            Tenant(http) is { } tenant
+                ? Results.Ok(await service.OrderFacetsAsync(tenant.TenantId, OrderQuery(status, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, null, labelPrinted, cancelFrom, cancelTo), http.RequestAborted))
+                : Unauthorized(http));
         api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery();
         api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(value)) : Unauthorized(http)).RequireSameOriginFetch();
         api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
