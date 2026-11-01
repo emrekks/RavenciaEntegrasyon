@@ -9849,7 +9849,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (knownLineGross > 0)
             {
                 order.GrossAmount = knownLineGross;
-                if (remote.DiscountAmount > 0 || order.DiscountAmount == 0) order.DiscountAmount = Math.Min(knownLineGross, remote.DiscountAmount);
+                // The read's discount belongs to the lines it names; their cancelled share is taken off with it.
+                var readLines = remote.Lines
+                    .Select(remoteLine => lines.GetValueOrDefault(remoteLine.ExternalLineId))
+                    .OfType<OrderLine>()
+                    .Distinct()
+                    .Select(line => (line.UnitPrice, line.OrderedQuantity, line.CancelledQuantity));
+                var remainingDiscount = HepsiburadaOrderDiscountPolicy.RemainingDiscount(remote.DiscountAmount, readLines);
+                if (remote.DiscountAmount > 0 || order.DiscountAmount == 0) order.DiscountAmount = Math.Min(knownLineGross, remainingDiscount);
                 order.NetAmount = Math.Max(0m, knownLineGross - order.DiscountAmount);
             }
         }
