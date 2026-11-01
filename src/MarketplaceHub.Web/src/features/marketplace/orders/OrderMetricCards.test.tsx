@@ -66,6 +66,26 @@ describe('order summary cards', () => {
     ])
   })
 
+  // Geciken warns only above 0: a faint box and a dot (rr-alert) and a red number; at 0 it is as plain as the other cards.
+  // İptal keeps just its red number above 0 and is plain at 0. Yeni Sipariş keeps its amber tone either way.
+  it('warns with Geciken and İptal only above zero', () => {
+    const classes = (host: HTMLElement) => Object.fromEntries(Array.from(host.querySelectorAll('article')).map(card => [card.querySelector('small')?.textContent, card.className]))
+    const warning = render(<OrderMetricCards {...props({ late: metric(3), cancelled: metric(68) })} />).host
+    expect(classes(warning)['Geciken']).toBe('rr-bad rr-alert')
+    expect(classes(warning)['İptal']).toBe('rr-bad rr-metric-link')
+    expect(classes(warning)['Yeni Sipariş']).toBe('rr-warn')
+    cleanup()
+    const quiet = render(<OrderMetricCards {...props({ late: metric(0), cancelled: metric(0) })} />).host
+    expect(classes(quiet)['Geciken']).toBe('')
+    expect(classes(quiet)['İptal']).toBe('rr-metric-link')
+    expect(classes(quiet)['Yeni Sipariş']).toBe('rr-warn')
+    cleanup()
+    // While the summary loads nothing warns.
+    const loading = render(<OrderMetricCards {...props({ late: metric(undefined, true), cancelled: metric(undefined, true) })} />).host
+    expect(classes(loading)['Geciken']).toBe('')
+    expect(classes(loading)['İptal']).toBe('rr-metric-link')
+  })
+
   it('puts the orders of no known country last and draws no panel without countries', () => {
     expect(microCountryRows({ '': 4, SA: 2, BG: 2, RO: 0 })).toEqual([['BG', 2], ['SA', 2], ['', 4]])
     expect(microCountryRows(undefined)).toEqual([])

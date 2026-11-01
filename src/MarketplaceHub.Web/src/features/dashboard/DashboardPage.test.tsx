@@ -62,6 +62,14 @@ describe('DashboardPage', () => {
     expect(container.querySelector('.rr-callout.rr-warn')).toBeNull()
   })
 
+  // Geciken Siparişler is bad-toned only with something late; the mock has 1 late and 0 of nothing else bad.
+  it('tones the late orders card only when there are late orders', async () => {
+    await render()
+    const toned = (label: string) => Array.from(container.querySelectorAll('.rr-opcard')).find(item => item.querySelector('small')?.textContent === label)?.classList.contains('rr-bad')
+    expect(toned('Geciken Siparişler')).toBe(true)
+    expect(toned('Bekleyen İadeler')).toBe(false)
+  })
+
   it('places the pending products under the pending orders', async () => {
     await render()
     expect(Array.from(container.querySelectorAll('.rr-opcard small')).map(label => label.textContent)).toEqual([
