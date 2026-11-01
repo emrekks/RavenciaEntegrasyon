@@ -779,13 +779,23 @@ export function publishCardState({ tone, jobRunning, requiredBlock, retryable }:
   return 'unpublished'
 }
 
-function PublishPlatformCard({ card, selected, productId, familyProductIds, variantLinks, lookupKeys, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
+// The connections are not in yet: blank card frames instead of "Aktif Bağlantı Bulunamadı" or a guessed set of cards.
+function PublishPlatformCardSkeletons() {
+  return <>{[0, 1, 2].map(index => <article key={index} className="publish-platform-card is-state-settling is-settling is-skeleton" aria-busy="true" aria-label="Bağlantı yükleniyor">
+    <div className="publish-platform-card-head"><span className="publish-platform-mark" /><span><strong>Platform</strong><small>Yayın durumu yükleniyor</small></span><i className="publish-platform-toggle" aria-hidden="true"><b /></i></div>
+    <dl className="publish-platform-facts"><div><dt>Mağaza</dt><dd>—</dd></div><div><dt>Platform</dt><dd>—</dd></div><div><dt>Bağlantı</dt><dd>—</dd></div><div className="publish-platform-fact-publication"><dt>Yayın Durumu</dt><dd>—</dd></div></dl>
+  </article>)}</>
+}
+
+export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
   familyProductIds?: string[] | null
   lookupKeys?: { modelCode: string; barcode: string; sku: string }
   // How many of the family's variants are present on this marketplace (matched or live), and how many it no longer knows.
   variantLinks?: { linked: number; total: number; missing?: number }
   card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection; mode: 'PUBLISH' | 'READ_ONLY' }
   selected: boolean
+  /** The product (its variants and colour family) is still loading: the card's state is not known yet. */
+  settling?: boolean
   productId?: string
   categoryId: string
   productChecks: Array<{ title: string; detail: string; ok: boolean; shopifyOk?: boolean; shopifyDetail?: string }>
@@ -915,6 +925,10 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   // selectable: Yayınla sends the family again.
   const pttAvmRetry = isPttAvmFamily && Boolean(productId) && isPttAvmFamilyRetryable(card.connection.platformCode, publication.data?.actualStatus, publication.data?.lastJobStatus)
   const publicationCheckPending = Boolean(card.mode === 'PUBLISH' && productId && publication.isPending)
+  // Until the product is in and this open has read the card's own and its colour family's statuses, the card is masked:
+  // a status cached from an earlier open, or a family not read yet, would show "Zaten yayında" or "Kısmen yayında · 1/8"
+  // for a moment and then change ("değer flaşı yok").
+  const settling = pageSettling || (card.mode === 'PUBLISH' && Boolean(productId) && (!publication.isFetchedAfterMount || familyStatuses.some(status => !status.isFetchedAfterMount)))
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
   // card.code is lower case (it also names the logo tone); the platform code decides the Shopify-only checks.
   const isShopifyCard = card.connection.platformCode.trim().toUpperCase() === 'SHOPIFY'
@@ -931,8 +945,8 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
     ? requiredShopifyCapabilities.filter(code => !shopifyWriteCapabilities.data?.some(capability => capability.code === code && capability.supportLevel.toUpperCase() === 'SUPPORTED' && capability.verifiedForConnection))
     : []
   useEffect(() => {
-    if (alreadyPublished && selected) onDeselect()
-  }, [alreadyPublished, onDeselect, selected])
+    if (!settling && alreadyPublished && selected) onDeselect()
+  }, [alreadyPublished, onDeselect, selected, settling])
   const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
   const { view: jobView, cancel: cancelJob } = usePublicationJobInline(publication.data?.lastJobId, productId, card.connection.id, {
     onCancelled: status => onFeedback({ title: status?.trim().toUpperCase() === 'CANCELLED' ? 'Yayın İşi Durduruldu' : 'Durdurma İstendi', message: publicationCancelMessage(platformName, status), kind: 'info' }),
@@ -1039,11 +1053,11 @@ function PublishPlatformCard({ card, selected, productId, familyProductIds, vari
   const readOnlyTitle = readOnlyIsN11 ? 'N11 ürün açma için Entegrasyonlar bölümünde N11 bağlantısının dış yazma anahtarını açın.' : 'Shopify ürün yayını için Entegrasyonlar bölümünde dış yazma anahtarını açın ve gerekli API izinlerini doğrulayın.'
   // The card's frame and place in the grid: not yet published first, then refused, in progress, and live last.
   const cardState = publishCardState({ tone: displayedPublicationTone, jobRunning, requiredBlock: hasRequiredPublicationBlock, retryable: Boolean(pttAvmRetry) })
-  return <article className={`publish-platform-card is-state-${cardState}${selected ? ' selected' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`}>
-    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? readOnlyTitle : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(selectionStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
+  return <article className={`publish-platform-card is-state-${settling ? 'settling' : cardState}${selected && !settling ? ' selected' : ''}${settling ? ' is-settling' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`} aria-busy={settling || undefined}>
+    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? readOnlyTitle : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={settling || card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(selectionStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.webp'} alt="" aria-hidden="true" /></span>
-      <span><strong>{card.name}</strong><small>{card.mode === 'READ_ONLY' ? 'Dış yazma kapalı · yayın kuyruğu devre dışı' : alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : shopifyCapabilityCheckPending ? 'Shopify yazma izinleri kontrol ediliyor…' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : pttAvmRetry ? "Tekrar denemek için seçip Yayınla'ya basın" : 'Yayın için seçilmedi'}</small></span>
-      <i className={`publish-platform-toggle ${selected ? 'on' : ''}`} aria-hidden="true"><b /></i>
+      <span><strong>{card.name}</strong><small>{settling ? 'Yayın durumu yükleniyor' : card.mode === 'READ_ONLY' ? 'Dış yazma kapalı · yayın kuyruğu devre dışı' : alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : shopifyCapabilityCheckPending ? 'Shopify yazma izinleri kontrol ediliyor…' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : pttAvmRetry ? "Tekrar denemek için seçip Yayınla'ya basın" : 'Yayın için seçilmedi'}</small></span>
+      <i className={`publish-platform-toggle ${selected && !settling ? 'on' : ''}`} aria-hidden="true"><b /></i>
     </button>
     <dl className="publish-platform-facts">
       <div><dt>Mağaza</dt><dd title={card.connection.externalStoreId ? `Mağaza no: ${card.connection.externalStoreId}` : undefined}>{card.connection.displayName || card.connection.externalStoreId || '—'}</dd></div>
@@ -3284,7 +3298,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       <div className="product-publish-layout">
         <div className="product-publish-main">
           <div className="publish-platform-grid">
-            {platformCards.length ? platformCards.map(card => <PublishPlatformCard
+            {connections.isPending ? <PublishPlatformCardSkeletons /> : platformCards.length ? platformCards.map(card => <PublishPlatformCard
               card={card}
               key={card.connection.id}
               productId={editProductId}
@@ -3293,6 +3307,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               variantLinks={publishCardVariantLinks(variantRows, card.connection.id)}
               categoryId={form.categoryId}
               selected={selectedChannelIds.includes(card.connection.id)}
+              settling={editorHydrating}
               productChecks={productChecks}
               selectedAttributes={publicationAttributeSelections}
               variantMediaWarning={variantsWithoutMediaCount > 0 ? `${variantRows.length} varyanttan ${variantsWithoutMediaCount} tanesine görsel seçilmedi. Varyant tablosundan veya “Seçeneklere görsel ata” ile görsel atayın.` : undefined}
