@@ -48,13 +48,16 @@
 /* The status and its refresh button keep to one row: the status shrinks, the button never drops below it. */
 .publish-platform-fact-publication > dd { flex-wrap: nowrap; }
 .publish-platform-fact-publication > dd > .publish-tracking-action { flex: none; }
-/* Partly live: one pill "21/42 yayında" led by a 48 × 4 px bar of the live share. */
+/* Partly live: one pill "21/42 yayında" led by a bar (up to 48 × 4 px) of the live share. It stays in its column beside
+   Bağlantı: on a narrow card the bar narrows and the pill keeps "21/42", so the refresh button keeps its row. */
+.publish-platform-fact-publication > dd { container-type: inline-size; }
 .publish-partial-progress { position: relative; display: inline-block; flex: none; width: 48px; height: 4px; overflow: hidden; background: color-mix(in srgb, currentColor 22%, transparent); border-radius: 2px; }
 .publish-partial-progress > b { position: absolute; inset: 0 auto 0 0; background: currentColor; border-radius: 2px; }
-.app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-platform-status:has(> .publish-partial-progress), .publish-platform-status:has(> .publish-partial-progress) { gap: 7px; white-space: nowrap; }
-/* The partly live status takes the facts' whole row, so the pill, its refresh button and the line under it fit on a
-   narrow (tablet) card without wrapping. */
-.publish-platform-facts > .publish-platform-fact-publication:has(.publish-partial-progress) { grid-column: 1 / -1; }
+.app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-platform-status:has(> .publish-partial-progress), .publish-platform-status:has(> .publish-partial-progress) { flex: none; width: auto; gap: 7px; white-space: nowrap; }
+.publish-partial-count, .publish-partial-suffix { flex: none; white-space: pre; }
+@container (max-width: 215px) { .publish-partial-progress { width: 28px; } }
+@container (max-width: 194px) { .publish-partial-suffix { display: none; } }
+@container (max-width: 130px) { .publish-partial-progress { width: 22px; } }
 /* Under it one quiet 12 px line on the rest: green when it is ready, red (and pressable: the gap chips) when not. */
 .publish-platform-fact-publication > .publish-partial-note, .publish-partial-note { position: relative; display: flex; min-width: 0; max-width: 100%; align-items: center; gap: 5px; margin-top: 5px; font-size: 12px; font-weight: 500; line-height: 1.3; }
 .publish-platform-fact-publication > .publish-partial-note.is-ready { color: var(--rv-color-success); }

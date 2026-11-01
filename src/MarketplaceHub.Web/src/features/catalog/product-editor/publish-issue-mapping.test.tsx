@@ -21,6 +21,7 @@ const fixture = vi.hoisted(() => {
   const state = {
     attributeMappings: [{ id: 'am-kal', connectionId: 'hb', snapshotId: 'a1', localId: 'kal', scopeExternalId: 'hb-cat', externalId: 'k4', status: 'VERIFIED', verifiedAt: null, version: 1 }] as Array<Record<string, unknown>>,
     readinessReads: 0,
+    hideWebColor: false,
     puts: [] as Array<{ path: string; body: unknown }>
   }
   return { product, connection, attributes, requirements, remote, categoryMapping, state }
@@ -46,7 +47,7 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path.startsWith('/reference-data/categories/hb-cat/attributes/k4/values')) return { snapshotId: 'v1', resourceType: 'ATTRIBUTE_VALUES', fetchedAt: '2026-11-01T10:00:00Z', items: [fixture.remote('x-orta', 'Orta', false), fixture.remote('x-ince', 'İnce', false)] }
     if (path.startsWith('/reference-data/categories/hb-cat/attributes?')) {
       state.readinessReads++
-      return { snapshotId: 'a1', resourceType: 'CATEGORY_ATTRIBUTES', fetchedAt: '2026-11-01T10:00:00Z', items: [fixture.remote('k1', 'Kumaş Tipi', true), fixture.remote('k2', 'Kesim Kalıbı', true), fixture.remote('k3', 'Boy', false), fixture.remote('k4', 'Kalınlık', false), ...(fixture.connection.platformCode === 'TRENDYOL' ? [fixture.remote('k5', 'Web Color', false)] : [])] }
+      return { snapshotId: 'a1', resourceType: 'CATEGORY_ATTRIBUTES', fetchedAt: '2026-11-01T10:00:00Z', items: [fixture.remote('k1', 'Kumaş Tipi', true), fixture.remote('k2', 'Kesim Kalıbı', true), fixture.remote('k3', 'Boy', false), fixture.remote('k4', 'Kalınlık', false), ...(fixture.connection.platformCode === 'TRENDYOL' && !state.hideWebColor ? [fixture.remote('k5', 'Web Color', false)] : [])] }
     }
     if (path.startsWith('/mappings/attributes?')) return state.attributeMappings
     if (path.startsWith('/mappings/attribute-values?')) return path.includes(encodeURIComponent('hb-cat/k4')) ? [{ id: 'vm-ince', connectionId: 'hb', snapshotId: 'v1', localId: 'ince', scopeExternalId: 'hb-cat/k4', externalId: 'x-ince', status: 'VERIFIED', verifiedAt: null, version: 1 }] : []
@@ -85,6 +86,7 @@ afterEach(() => {
   act(() => root.unmount())
   container.remove()
   fixture.connection.platformCode = 'HEPSIBURADA'
+  fixture.state.hideWebColor = false
 })
 
 async function settle(rounds = 10) {
@@ -170,27 +172,41 @@ describe('publish gap chips open the category fields window', () => {
     expect(fixture.state.readinessReads).toBeGreaterThan(before)
   })
 
-  it('gives every chip a fix; a gap of the product’s own data opens the window on its first missing field', async () => {
+  it('gives every chip a fix; Web Color, a Trendyol field, is not a gap on Hepsiburada', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><main><NewProductPage editProductId="p1" publishOnly /></main></MemoryRouter></QueryClientProvider>) })
     await waitFor(() => chips('optional').length === 2)
     // No chip is a dead end: each is a button or a link.
     const all = [...chips('required'), ...chips('optional')]
     expect(all.map(item => item.textContent)).toEqual(expect.arrayContaining(['Temel Ürün Verileri', 'Görsel Kalitesi']))
+    expect(all.map(item => item.textContent)).not.toContain('Web Color')
     expect(all.filter(item => !item.matches('button, a[href]')).map(item => item.textContent)).toEqual([])
-    await openFromChip('required', 'Temel Ürün Verileri')
-    expect(selectedField()).toBe('Kumaş Tipi')
+    // The product's own data is fixed in its form: from the publish popup that is the product's page.
+    expect(chip('required', 'Temel Ürün Verileri').getAttribute('href')).toBe('/products/p1')
   })
 
-  it('opens Web Color on Trendyol for the "Kategori ve Web Color" gap', async () => {
+  it('opens Web Color on Trendyol for the Web Color gap', async () => {
     fixture.connection.platformCode = 'TRENDYOL'
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><main><NewProductPage editProductId="p1" publishOnly /></main></MemoryRouter></QueryClientProvider>) })
-    await waitFor(() => chips('required').some(item => item.textContent === 'Kategori ve Web Color'))
-    expect(chip('required', 'Kategori ve Web Color').matches('button')).toBe(true)
-    await openFromChip('required', 'Kategori ve Web Color')
+    await waitFor(() => chips('required').some(item => item.textContent === 'Web Color'))
+    expect(chip('required', 'Web Color').matches('button')).toBe(true)
+    await openFromChip('required', 'Web Color')
     expect(selectedField()).toBe('Web Color')
     // The Renk ↔ Web Color card is the field's detail.
     expect(document.querySelector('.mapping-advanced-modal .cm-detail .cm-legacy-card')).not.toBeNull()
+    expect(document.querySelector('.mapping-advanced-modal .cm-target-missing')).toBeNull()
+  })
+
+  it('says so, instead of opening another field, when the gap’s field is not in the list', async () => {
+    fixture.connection.platformCode = 'TRENDYOL'
+    fixture.state.hideWebColor = true
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><main><NewProductPage editProductId="p1" publishOnly /></main></MemoryRouter></QueryClientProvider>) })
+    await waitFor(() => chips('required').some(item => item.textContent === 'Web Color'))
+    await openFromChip('required', 'Web Color')
+    const banner = document.querySelector('.mapping-advanced-modal .cm-target-missing')
+    expect(banner?.textContent).toContain('“Web Color” alanı bu Trendyol kategorisinin alanları arasında yok')
+    expect(banner?.textContent).toContain('Web Color için kategori özelliği eşleştirilmemiş.')
   })
 })

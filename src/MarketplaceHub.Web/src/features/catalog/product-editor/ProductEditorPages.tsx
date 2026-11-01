@@ -1,5 +1,5 @@
 // Ürün ekleme ve düzenleme (/products/new, /products/:id).
-import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import './product-editor-design-system.css'
 import './product-editor-hydration.css'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
@@ -12,6 +12,7 @@ import { httpsUrlProblem } from '../../../shared/safe-url'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { sanitizeRichText } from '../../../shared/security/sanitizeHtml'
+import { placePublishPopover } from '../publish-popover-placement'
 import { revealFieldError } from './field-error-reveal'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { appendNotification, notificationError, productNotificationSubject } from '../../../shared/notifications'
@@ -19,7 +20,7 @@ import { toggleProductAttributeValue } from '../attribute-selection'
 import { buildVariantAttributeAssignments } from '../variant-attribute-assignments'
 import { filterAttributeOptionValues } from '../attribute-value-search'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, reorderMediaUrls, uniqueMediaUrls } from '../product-media-editor'
-import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from '../variant-bulk-edit'
+import { applyVariantBulkModes, variantBulkEditIssue, variantBulkModeLabels, type VariantBulkEditField, type VariantBulkInputs, type VariantBulkMode } from '../variant-bulk-edit'
 import { applyVariantCodesByKey, buildSequentialVariantCodes, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
@@ -597,6 +598,8 @@ function VariantFilterDropdown({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | undefined>()
   const selected = group.values.filter(value => selectedValueIds.includes(value.id))
   const normalizedSearch = search.trim().toLocaleLowerCase('tr-TR')
   const filteredValues = group.values.filter(value => !normalizedSearch || value.value.toLocaleLowerCase('tr-TR').includes(normalizedSearch))
@@ -604,16 +607,32 @@ function VariantFilterDropdown({
 
   useDismissable(open, [rootRef], () => setOpen(false))
 
+  // The menu is fixed to the screen, not to the dialog body, so the body's overflow cannot clip it; it opens upward when
+  // there is no room below and is cut to the room left (the option list scrolls).
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = () => {
+      const trigger = triggerRef.current
+      if (!trigger) return
+      const rect = trigger.getBoundingClientRect()
+      const { placement, maxHeight } = placePublishPopover(trigger, 360)
+      setMenuStyle({ position: 'fixed', left: rect.left, right: 'auto', width: rect.width, ...(placement === 'top' ? { top: 'auto', bottom: window.innerHeight - rect.top + 8 } : { top: rect.bottom + 8, bottom: 'auto' }), ...(maxHeight != null ? { maxHeight } : {}) })
+    }
+    place()
+    window.addEventListener('resize', place); window.addEventListener('scroll', place, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', place, true) }
+  }, [open])
+
   return <div className="variant-filter-field" ref={rootRef}>
-    <button type="button" className={`variant-filter-select-trigger ${selected.length ? 'active' : ''}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+    <button ref={triggerRef} type="button" className={`variant-filter-select-trigger ${selected.length ? 'active' : ''}`} aria-haspopup="listbox" aria-expanded={open} onClick={() => setOpen(current => !current)}>
       <span><small>{selected.length ? `${selected.length} değer seçildi` : group.name}</small><strong>{summary}</strong></span>
       <UiIcon name="chevronDown" />
     </button>
-    {open && <div className="variant-filter-dropdown-menu" role="listbox" aria-label={`${group.name} filtre değerleri`}>
+    {open && <div className="variant-filter-dropdown-menu" style={menuStyle} role="listbox" aria-label={`${group.name} filtre değerleri`}>
       <div className="variant-filter-dropdown-tools">
         <input ref={touchScreen ? undefined : focusOnMount} value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${group.name} değerlerinde ara`} />
+        <button type="button" className="variant-filter-clear-selection" onClick={onClear} disabled={selected.length === 0} tabIndex={selected.length === 0 ? -1 : undefined} aria-hidden={selected.length === 0 ? true : undefined}>Seçimi Temizle</button>
       </div>
-      {selected.length > 0 && <button type="button" className="variant-filter-clear-selection" onClick={onClear}>Seçimi Temizle</button>}
       <div className="variant-filter-dropdown-options">
         {filteredValues.length ? filteredValues.map(value => {
           const isSelected = selectedValueIds.includes(value.id)
@@ -759,7 +778,9 @@ function PublishPlatformCardSkeletons() {
   </article>)}</>
 }
 
-export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, categoryName = '', productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback }: {
+export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, categoryName = '', productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback, onEditProductData }: {
+  // A gap in the product's own data: back to the form (the publish popup has no form, its gap links to the product).
+  onEditProductData?: () => void
   familyProductIds?: string[] | null
   lookupKeys?: { modelCode: string; barcode: string; sku: string }
   // How many of the family's variants are present on this marketplace (matched or live), and how many it no longer knows.
@@ -927,7 +948,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     onCancelFailed: message => onFeedback({ title: 'Yayın İşi Durdurulamadı', message: `${platformName}: yayın işi durdurulamadı — ${message}`, kind: 'error', persistent: true })
   })
   const jobRunning = jobView.state === 'running'
-  const missingChecks = card.mode === 'PUBLISH' ? missingPublicationChecks(productChecks, isShopifyCard) : []
+  const missingChecks = card.mode === 'PUBLISH' ? missingPublicationChecks(productChecks, card.connection.platformCode) : []
   const mappingReadinessEnabled = card.mode === 'PUBLISH' && !isShopifyCard && (!productId || !publication.isPending)
     && (pttAvmRetry ? Boolean(categoryId) : shouldCheckPublicationAttributes(categoryId, selectionStatus, publication.data?.lastJobStatus))
   const mappingReadiness = useQuery({
@@ -946,7 +967,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const [valueFixOpen, setValueFixOpen] = useState(false)
   const [categoryFixOpen, setCategoryFixOpen] = useState(false)
   // The category fields window ("Kategori Alanları ve Değerleri") opened from a gap: the marketplace field it opens on.
-  const [fieldsFix, setFieldsFix] = useState<{ externalAttributeId?: string; fieldName?: string } | null>(null)
+  const [fieldsFix, setFieldsFix] = useState<{ externalAttributeId?: string; fieldName?: string; missing: { title: string; detail: string } } | null>(null)
   const fieldsWindowPlatform = attributeMappingPlatform(card.connection.platformCode)
   const mappingFocus = mappingFocusItems(requiredMappingIssues, optionalMappingWarnings)
   // On close (saved or not) the card reads its publish check again, so the badge counts follow what was mapped.
@@ -978,19 +999,25 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   // a yellow "N uyarı" badge stands beside the status.
   const issueFix = (issue: { attribute: string; detail: string }): { href?: string; onRun?: () => void } => {
     const mappingIssue = [...requiredMappingIssues, ...optionalMappingWarnings].find(item => item.attribute === issue.attribute && item.detail === issue.detail)
+    const productCheck = missingChecks.find(check => check.title === issue.attribute && check.detail === issue.detail)
     if (issue.attribute === 'Kategori eşlemesi' && categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
     if (mappingCheckFailed && issue.attribute === `${card.name} özellik kontrolü`) return { onRun: () => { void mappingReadiness.refetch() } }
     if (/^Shopify API izin/.test(issue.attribute)) return { href: '/integrations' }
-    // A store's category must be mapped before its fields: any gap opens that first.
-    if (categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
-    // Every other gap opens the category fields window: on its own field, on Web Color for a Web Color gap, or (a gap of
-    // the product's own data) on the product's first missing field.
-    if (fieldsWindowPlatform && categoryId) {
-      const fieldName = /Web Color/i.test(`${issue.attribute} ${issue.detail}`) ? 'Web Color' : undefined
-      return { onRun: () => setFieldsFix({ externalAttributeId: mappingIssue?.externalAttributeId, fieldName }) }
+    const missing = { title: issue.attribute, detail: issue.detail }
+    // A marketplace field's gap opens the category fields window on that field.
+    if (mappingIssue) {
+      if (fieldsWindowPlatform && categoryId && mappingIssue.externalAttributeId) { const externalAttributeId = mappingIssue.externalAttributeId; return { onRun: () => setFieldsFix({ externalAttributeId, missing }) } }
+      if (mappingIssue.fix && readinessCategoryScope) return { onRun: () => setValueFixOpen(true) }
+      return { href: '/mappings/attributes' }
     }
-    if (mappingIssue?.fix && readinessCategoryScope) return { onRun: () => setValueFixOpen(true) }
-    if (categoryId && card.mode === 'PUBLISH' && !isShopifyCard) return { onRun: () => setCategoryFixOpen(true) }
+    // Trendyol's Web Color (only Trendyol cards read it) opens the window on Web Color, the Renk ↔ Web Color card.
+    if (productCheck?.title === 'Web Color') {
+      if (fieldsWindowPlatform && categoryId && !categoryMappingGap) return { onRun: () => setFieldsFix({ fieldName: 'Web Color', missing }) }
+      return { href: '/mappings/attributes' }
+    }
+    // The product's own data (name, images, variants, the category's attributes and options) is fixed in its form.
+    if (productCheck) return onEditProductData ? { onRun: onEditProductData } : productId ? { href: `/products/${productId}` } : {}
+    if (categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
     return { href: categoryId ? '/mappings/attributes' : '/mappings/categories' }
   }
   const optionalBadgeProps = { optionalCount: optionalMappingWarnings.length || undefined, optionalHeading: optionalMappingWarnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${optionalMappingWarnings.length} isteğe bağlı özellik uyarısı`, optionalRows: optionalMappingWarnings.map((issue, index) => ({ key: `${issue.attribute}-${index}`, title: issue.attribute, detail: issue.detail, ...issueFix(issue) })) }
@@ -1012,6 +1039,11 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     : <i aria-hidden="true" />
   // A product that is not saved yet has no platform record: it shows what keeps it from publishing, or that it is not out yet.
   const displayedPublicationLabel = partialBlocked ? partialLabel : hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : noneFound ? 'Bulunamadı' : familyPartial ? partialLabel : allLinked ? 'Yayında' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? pttAvmRetryLabel : productId ? publicationLabel : 'Henüz yayınlanmadı'
+  // On a narrow card the pill keeps "21/42" and drops " yayında" (publish-platform-issues.css), so the refresh button
+  // never leaves its row.
+  const statusText = familyPartial
+    ? <><span className="publish-partial-count">{someLinked ? `${linkedCount}/${linkedTotal}` : `${familyLiveCount}/${familyTotal}`}</span><span className="publish-partial-suffix">{someLinked ? ' yayında' : ' renk yayında'}</span></>
+    : displayedPublicationLabel
   const missingVariantsTitle = noneFound ? 'Pazaryerinde Bulunamadı' : missingCount > 0 ? `${missingCount} varyant pazaryerinde bulunamadı` : undefined
   const displayedPublicationTone = partialBlocked ? 'info' : hasRequiredPublicationBlock ? 'danger' : noneFound ? 'danger' : familyPartial ? 'info' : allLinked ? 'success' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? 'warning' : productId ? publicationTone : 'neutral'
   const readOnlyIsN11 = card.connection.platformCode.trim().toUpperCase() === 'N11'
@@ -1028,15 +1060,15 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
       <div><dt>Mağaza</dt><dd title={card.connection.externalStoreId ? `Mağaza no: ${card.connection.externalStoreId}` : undefined}>{card.connection.displayName || card.connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{publishPlatformName(card.connection.platformCode)}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif Bağlantı</span></dd></div>
-      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : missingVariantsTitle ? `${missingVariantsTitle} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}>{statusMark}{displayedPublicationLabel}</button> : hasRequiredPublicationBlock && !partialBlocked
+      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd>{lastJobId ? <button type="button" className={`publish-platform-status publish-platform-status-button status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={`${jobRunning ? `${jobView.message} · ` : missingVariantsTitle ? `${missingVariantsTitle} · ` : ''}İş ayrıntısını aç`} aria-haspopup="dialog" onClick={() => setJobDetailOpen(true)}>{statusMark}{statusText}</button> : hasRequiredPublicationBlock && !partialBlocked
         ? <PublishIssueBadge id={`${issueListId}-popover`} label={displayedPublicationLabel} requiredCount={blockedIssues.length} heading={issueBadgeHeading} rows={issueBadgeRows} moreText={issueBadgeMore} {...optionalBadgeProps} />
-        : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning ? jobView.message : missingVariantsTitle}>{statusMark}{displayedPublicationLabel}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{showWarningBadge && <PublishIssueBadge id={`${issueListId}-warnings`} label={`${optionalMappingWarnings.length} uyarı`} heading="" rows={[]} {...optionalBadgeProps} />}{(publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN') || pttAvmFamilySent
+        : <span className={`publish-platform-status status-${displayedPublicationTone}${jobRunning ? ' is-working' : ''}`} title={jobRunning ? jobView.message : missingVariantsTitle}>{statusMark}{statusText}</span>}{jobRunning && <span className="sr-only">{jobView.message}</span>}{showWarningBadge && <PublishIssueBadge id={`${issueListId}-warnings`} label={`${optionalMappingWarnings.length} uyarı`} heading="" rows={[]} {...optionalBadgeProps} />}{(publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN') || pttAvmFamilySent
         ? <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} yayın durumu sorgulanıyor` : `${card.name} yayın durumunu güncelle`} aria-busy={refreshBusy} title={refreshBusy ? 'Platformdaki durum sorgulanıyor…' : 'Platformdaki mevcut durumu yeniden sorgula'} disabled={refreshBusy || isPublicationStatusJobRunning(publication.data?.lastJobStatus)} onClick={() => refreshPublication.mutate()}><UiIcon name="refresh" /></button>
         : productId && card.mode !== 'READ_ONLY' && <button type="button" className={`publish-tracking-action${refreshBusy ? ' is-spinning' : ''}`} aria-label={refreshBusy ? `${card.name} mağazasında ürün aranıyor` : `${card.name} mağazasında ürünü ara`} aria-busy={refreshBusy} title={refreshBusy ? `${card.name} mağazasında ${lookupKey} aranıyor…` : lookupKey ? `${card.name} mağazasında ${lookupKey} ara ve varyantları eşleştir` : `${card.name} tek ürünü kendi ürün numarasıyla arar; bu ürün için o numara bilinmiyor. Ürün Aktar'dan arayın.`} disabled={!lookupKey || refreshBusy || publication.isPending} onClick={() => lookupProduct.mutate()}><UiIcon name="refresh" /></button>}{refreshJob.running && !(jobRunning && publication.data?.lastJobId === refreshJobId) && <button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={refreshJob.cancel.isPending ? `${card.name} sorgusu durduruluyor` : `${card.name} sorgusunu durdur`} title="Sorguyu Durdur" disabled={refreshJob.cancel.isPending} onClick={() => refreshJob.cancel.mutate()}><i aria-hidden="true" /></button>}{jobRunning &&<button type="button" className="publish-tracking-action publish-tracking-stop" aria-label={cancelJob.isPending ? `${card.name} yayın işlemi durduruluyor` : `${card.name} yayın işlemini durdur`} title="Durdur — platforma gönderilmiş bir isteği geri alamayabilir." disabled={cancelJob.isPending} onClick={() => cancelJob.mutate()}><i aria-hidden="true" /></button>}</dd>{partialBlocked && partialRest > 0 && <PublishIssueBadge variant="note" id={`${issueListId}-partial`} label={`Kalan ${partialRest} ${partialUnit}${partialUnit === 'renk' ? 'te' : 'ta'} ${blockedIssues.length} eksik`} heading={issueBadgeHeading} rows={issueBadgeRows} moreText={issueBadgeMore} {...optionalBadgeProps} />}{partialReady && <small className="publish-partial-note is-ready" title="Seçip Yayınla'ya basınca yalnız yayında olmayanlar gönderilir."><UiIcon name="check" size={12} />Kalan {partialRest} {partialUnit} yayına hazır</small>}{publicationNote && <small>{publicationNote}</small>}{jobView.state === 'settled' && <small className={`publish-platform-job-note is-${jobView.tone}`} title={jobView.message}>{jobView.message}</small>}</div>}
     </dl>
     {categoryFixOpen && categoryId && <CategoryMappingDialog connectionId={card.connection.id} platformName={card.name} categoryId={categoryId} categoryName={categoryName || 'Ürün'} onClose={() => setCategoryFixOpen(false)} onSaved={message => { setValueFixNotice(message) }} />}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification({ title: 'Değer Eşlemeleri Kaydedildi', message, kind: 'success', operation: 'Özellik değeri eşleştirme', platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, target: { href: '/mappings/attributes', label: 'Eşleştirmelere Git' } }) }} />}
-    {fieldsFix && fieldsWindowPlatform && categoryId && <Suspense fallback={null}><ProductCategoryFieldsDialog platformCode={fieldsWindowPlatform} connectionId={card.connection.id} localCategoryId={categoryId} focus={{ items: mappingFocus, initialExternalAttributeId: fieldsFix.externalAttributeId, initialFieldName: fieldsFix.fieldName }} onClose={closeFieldsFix} /></Suspense>}
+    {fieldsFix && fieldsWindowPlatform && categoryId && <Suspense fallback={null}><ProductCategoryFieldsDialog platformCode={fieldsWindowPlatform} connectionId={card.connection.id} localCategoryId={categoryId} focus={{ items: mappingFocus, initialExternalAttributeId: fieldsFix.externalAttributeId, initialFieldName: fieldsFix.fieldName, missing: fieldsFix.missing }} onClose={closeFieldsFix} /></Suspense>}
     {jobDetailOpen && lastJobId && <PublicationJobDialog jobId={lastJobId} platformCode={card.connection.platformCode} platformName={card.name} storeName={card.connection.displayName} onClose={() => setJobDetailOpen(false)} />}
     {valueFixNotice && <NoticeToast kind="success" title="Değer Eşlemeleri Kaydedildi" message={valueFixNotice} onClose={() => setValueFixNotice('')} durationMs={5500} />}
     {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify Dış Yazması Kapalı</strong><p>Ürün yayınını açmak için Entegrasyonlar bölümünde Shopify dış yazma anahtarını etkinleştirin; bağlantı testinde write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.</p></div></div>}
@@ -1133,7 +1165,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', deliveryDays: '1', listPrice: '0', salePrice: '0', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
-  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [variantFilterSelections, setVariantFilterSelections] = useState<VariantFilterSelections>({}); const [variantFilterOpen, setVariantFilterOpen] = useState(false); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
+  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [bulkOptionSyncOpen, setBulkOptionSyncOpen] = useState(false)
   const [marketplaceCodesOpen, setMarketplaceCodesOpen] = useState(false)
@@ -1162,8 +1194,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const variantRowsRef = useRef(variantRows)
   variantRowsRef.current = variantRows
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
-  const [bulkStock, setBulkStock] = useState(''); const [bulkSalePrice, setBulkSalePrice] = useState(''); const [bulkCostPrice, setBulkCostPrice] = useState(''); const [bulkListPrice, setBulkListPrice] = useState('')
-  const [variantBulkEdit, setVariantBulkEdit] = useState<{ field: VariantBulkEditField; value: string; error: string } | null>(null)
+  const [variantBulkEdit, setVariantBulkEdit] = useState<{ field: VariantBulkEditField; mode: VariantBulkMode; value: string; error: string } | null>(null)
   const [variantBulkEditFilterSelections, setVariantBulkEditFilterSelections] = useState<VariantFilterSelections>({})
   const [mediaFiles, setMediaFiles] = useState<PendingProductMediaFile[]>([])
   const [deletingProductMediaKey, setDeletingProductMediaKey] = useState<string | null>(null)
@@ -2102,20 +2133,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       setVariantPlatformPricingSaving(false)
     }
   }
-  function applyBulk() {
-    const stock = bulkStock === '' ? null : Number(bulkStock); const sale = bulkSalePrice === '' ? null : Number(bulkSalePrice); const cost = bulkCostPrice === '' ? null : Number(bulkCostPrice); const list = bulkListPrice === '' ? null : Number(bulkListPrice)
-    const matchingKeys = new Set(variantRows.filter(row => rowMatchesVariantFilters(row)).map(row => row.key))
-    if (hasVariantFilters && !matchingKeys.size) {
-      const message = 'Seçtiğiniz filtrelerle eşleşen varyant bulunamadı.'; setNotice(message); showFeedback('Eşleşen Varyant Yok', message, 'error')
-      return
-    }
-    setVariantRows(rows => rows.map(row => !matchingKeys.has(row.key) ? row : { ...row, stock: stock == null || !Number.isFinite(stock) ? row.stock : stock, salePrice: sale == null || !Number.isFinite(sale) ? row.salePrice : sale, costPrice: cost == null || !Number.isFinite(cost) ? row.costPrice : cost, listPrice: list == null || !Number.isFinite(list) ? row.listPrice : list }))
-    const message = hasVariantFilters ? `Toplu stok, fiyat ve maliyet değerleri ${matchingKeys.size} seçili varyanta uygulandı.` : 'Toplu stok, fiyat ve maliyet değerleri tüm varyantlara uygulandı.'; setNotice(message); showFeedback('Toplu Değerler Uygulandı', message, 'success')
-  }
-
   function openVariantBulkEdit(field: VariantBulkEditField) {
     setVariantBulkEditFilterSelections({})
-    setVariantBulkEdit({ field, value: '', error: '' })
+    setVariantBulkEdit({ field, mode: 'set', value: '', error: '' })
   }
 
   function applyVariantBulkEdit() {
@@ -2136,8 +2156,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       return
     }
     const rowKeys = new Set(targetRows.map(row => row.key))
-    setVariantRows(rows => applyVariantBulkEditValue(rows, rowKeys, variantBulkEdit.field, value))
-    showFeedback('Toplu Değer Uygulandı', `${variantBulkEditLabels[variantBulkEdit.field]} değeri ${hasVariantBulkEditFilters ? `${targetRows.length} filtre eşleşen varyanta` : `tüm ${targetRows.length} varyanta`} uygulandı.`, 'success')
+    const modeInputs = Object.fromEntries((['stock', 'salePrice', 'costPrice', 'listPrice'] as const).map(field => [field, { mode: variantBulkEdit.mode, value: field === variantBulkEdit.field ? value : null }])) as VariantBulkInputs
+    const applied = applyVariantBulkModes(variantRows, rowKeys, modeInputs)
+    setVariantRows(rows => applyVariantBulkModes(rows, rowKeys, modeInputs).rows)
+    showFeedback('Toplu Değer Uygulandı', `${variantBulkEditLabels[variantBulkEdit.field]} ${variantBulkEdit.mode === 'set' ? 'değeri' : variantBulkEdit.mode === 'increase' ? 'artışı' : 'azaltması'}${applied.clamped ? ` (${applied.clamped} varyant 0'da sınırlandı)` : ''} ${hasVariantBulkEditFilters ? `${targetRows.length} filtre eşleşen varyanta` : `tüm ${targetRows.length} varyanta`} uygulandı.`, 'success')
     setVariantBulkEdit(null)
   }
 
@@ -2302,16 +2324,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setNotice(message); showFeedback(`${title} Yapıştırıldı`, message, 'success'); closeMenus()
   }
 
-  function toggleVariantFilter(groupId: string, valueId: string) {
-    setVariantFilterSelections(current => {
-      const values = current[groupId] ?? []
-      const nextValues = values.includes(valueId) ? values.filter(item => item !== valueId) : [...values, valueId]
-      return { ...current, [groupId]: nextValues }
-    })
-  }
-
-  function clearVariantFilters() { setVariantFilterSelections({}) }
-
   function openVariantMediaPicker(rowKey: string) {
     const row = variantRows.find(item => item.key === rowKey)
     setVariantMediaModal({ mode: 'variant', rowKey, draftRefs: row?.mediaRefs ?? [] })
@@ -2331,9 +2343,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       return [variantMediaAssignmentKey(mediaGroup.id, value.id), mediaChoices.filter(option => assignedRefs.has(option.value)).map(option => option.value)]
     })))
     setVariantMediaModal({ mode: 'bulk', draftsBySelection, groupId: group.id, valueId: group.values[0]?.id ?? '' })
-  }
-  function rowMatchesVariantFilters(row: VariantDraft) {
-    return filterVariantsByOptions([row], variantFilterGroups, variantFilterSelections, rowMatchesVariantMediaValue).length > 0
   }
   // Image assignments made in the window are saved on their own right away on the edit page: only the variants'
   // pictures, never the rest of the form (unsaved prices or stock stay unsaved). The effect runs after variantRows has
@@ -3070,9 +3079,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const variantBulkEditFilterGroups = variantFilterGroups.filter(group => isColorOptionName(group.name) || isSizeOptionName(group.name))
   const variantBulkEditMatchingRows = filterVariantsByOptions(variantRows, variantBulkEditFilterGroups, variantBulkEditFilterSelections, rowMatchesVariantMediaValue)
   const hasVariantBulkEditFilters = Object.values(variantBulkEditFilterSelections).some(valueIds => valueIds.length > 0)
-  const activeVariantFilterEntries = variantFilterGroups.map(group => ({ group, valueIds: variantFilterSelections[group.id] ?? [] })).filter(entry => entry.valueIds.length > 0)
-  const hasVariantFilters = activeVariantFilterEntries.length > 0
-  const matchingVariantCount = variantRows.filter(row => rowMatchesVariantFilters(row)).length
   const barcodeRowCount = variantRows.filter(row => row.barcode.trim()).length
   const emptySkuBarcodeRowCount = variantRows.filter(row => row.barcode.trim() && !row.sku.trim()).length
   const emptyBarcodeRowCount = variantRows.length - barcodeRowCount
@@ -3315,25 +3321,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="editor-section-title"><span>6</span><div><h2>Ürün Seçenek Grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div>
         {(fieldErrors.variants || fieldErrors.stock || fieldErrors.attributes) && <div className="product-field-error-list" role="alert">{[fieldErrors.variants, fieldErrors.stock, fieldErrors.attributes].filter(Boolean).map(message => <p key={message}>{message}</p>)}</div>}
         {variantRows.length > 0 && <>
-          <div className={`variant-filter-panel${variantFilterOpen ? ' is-open' : ''}`}>
-            <div className="variant-filter-panel-head">
-              <button type="button" className="variant-filter-panel-toggle" aria-expanded={variantFilterOpen} aria-label={variantFilterOpen ? 'Varyant filtrelerini kapat' : 'Varyant filtrelerini aç'} onClick={() => setVariantFilterOpen(current => !current)}>
-                <span><strong>Varyantları Filtrele</strong><span>Renk, beden gibi seçenekleri seçin; eşleşen satırlar aşağıda vurgulansın.</span></span>
-                <span className="variant-filter-panel-toggle-action"><small>{variantFilterOpen ? 'Kapat' : 'Aç'}</small><UiIcon name="chevronDown" /></span>
-              </button>
-              {hasVariantFilters && <div className="variant-filter-panel-summary"><b>{matchingVariantCount} varyant seçildi</b><button type="button" className="variant-filter-clear" onClick={clearVariantFilters}>Temizle</button></div>}
-            </div>
-            {variantFilterOpen && <div className="variant-filter-panel-body">
-              {variantFilterGroups.length ? <div className="variant-filter-grid">{variantFilterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={variantFilterSelections[group.id] ?? []} onToggle={valueId => toggleVariantFilter(group.id, valueId)} onClear={() => setVariantFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div> : <p className="variant-filter-empty">Filtrelemek için seçenek grubu bulunamadı.</p>}
-              <div className="variant-bulk-editor">
-                <label><span>Stok</span><input aria-label="Tüm varyantların stoku" value={bulkStock} onChange={event => setBulkStock(event.target.value)} type="number" min="0" placeholder="Tüm stoklar" /></label>
-                <label><span>Satış Fiyatı</span><input aria-label="Tüm varyantların satış fiyatı" value={bulkSalePrice} onChange={event => setBulkSalePrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm satış fiyatları" /></label>
-                <label><span>Maliyet</span><input aria-label="Tüm varyantların maliyeti" value={bulkCostPrice} onChange={event => setBulkCostPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm maliyetler" /></label>
-                <label><span>Liste Fiyatı</span><input aria-label="Tüm varyantların liste fiyatı" value={bulkListPrice} onChange={event => setBulkListPrice(event.target.value)} type="number" min="0" step="0.01" placeholder="Tüm liste fiyatları" /></label>
-                <div className="variant-bulk-action"><span>Toplu Uygulama</span><button type="button" className="secondary" onClick={applyBulk} disabled={hasVariantFilters && matchingVariantCount === 0}>{hasVariantFilters ? `${matchingVariantCount} Seçilene Uygula` : 'Tümüne Uygula'}</button></div>
-              </div>
-            </div>}
-          </div>
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary is-danger variant-clear-button" onClick={clearVariants}><UiIcon name="trash" /> Oluşan Varyantları Temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere Görsel Ata</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri Kodları</button>}</div></div>
         </>}
             {variantRows.length > 0 && <div className="variant-mobile-groups" role="tablist" aria-label="Görünen varyant alanları">{([['codes', 'Kodlar'], ['stock', 'Stok / Fiyat'], ['cost', 'Maliyet'], ['actions', 'İşlemler']] as const).map(([group, label]) => <button key={group} type="button" role="tab" aria-selected={variantMobileGroup === group} className={variantMobileGroup === group ? 'is-on' : undefined} onClick={() => setVariantMobileGroup(group)}>{label}</button>)}</div>}
@@ -3355,14 +3342,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 <span>İşlem</span>
               </div>
               {variantRows.length ? variantRows.map((row, index) => {
-                const matchesFilter = rowMatchesVariantFilters(row)
                 const rowPlatforms = row.platformStatuses?.length ? row.platformStatuses : !editProductId ? variantPricingPlatforms : []
                 const codeIssues = variantCodeIssues.get(row.key) ?? []
                 // An empty needed code says "… eksik"; a filled one names the rules it breaks. Every variant needs its
                 // own stock code, with or without an active marketplace.
                 const barcodeIssueText = variantCodeFieldIssueText(codeIssues, 'barcode', row.barcode, variantCodeConflicts[variantCodeKey('barcode', row.barcode)])
                 const skuIssueText = variantCodeFieldIssueText(codeIssues, 'sku', row.sku, variantCodeConflicts[variantCodeKey('sku', row.sku)])
-                return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
+                return <div data-variant-row-key={row.key} className={`variant-table-row ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
                   <div className="variant-option-cell"><span className="variant-option-text" aria-label={`${index + 1}. varyant seçenekleri`} title={displayVariantOptionSignature(row.optionSignature, row.options)}>{displayVariantOptionSignature(row.optionSignature, row.options)}</span><button type="button" className="variant-option-edit-button" onClick={() => setOptionEditRowKey(row.key)} aria-label={`${index + 1}. varyantın seçeneklerini düzenle`} title="Seçenekleri düzenle" disabled={!rowOptionEntries(row).length}><UiIcon name="edit" size={14} /></button></div>
                   <input aria-label={`${row.optionSignature} barkod`} className={`technical-field barcode-value${barcodeIssueText ? ' has-platform-code-issue' : ''}`} aria-invalid={barcodeIssueText ? true : undefined} title={barcodeIssueText || undefined} value={row.barcode} onChange={event => updateVariantRow(row.key, 'barcode', event.target.value)} placeholder="EAN / barkod" />
@@ -3405,6 +3391,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               onSelect={() => updateChannel(card.connection.id)}
               onDeselect={() => setSelectedChannelIds(current => current.filter(id => id !== card.connection.id))}
               onFeedback={setFeedback}
+              onEditProductData={publishOnly ? undefined : () => setWizardStep(1)}
             />) : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Platformları yönet <UiIcon name="arrowRight" /></Link></div>}
           </div>
           <StickyActionBar label="Yayınlama" className="publish-selection-footer">
@@ -3546,8 +3533,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="variant-bulk-edit-body">
           {variantBulkEditFilterGroups.length > 0 && <section className="variant-bulk-edit-filters" aria-label="Renk ve beden filtreleri"><strong>Renk ve beden seçin</strong><div>{variantBulkEditFilterGroups.map(group => <VariantFilterDropdown key={group.id} group={group} selectedValueIds={variantBulkEditFilterSelections[group.id] ?? []} onToggle={valueId => setVariantBulkEditFilterSelections(current => ({ ...current, [group.id]: (current[group.id] ?? []).includes(valueId) ? current[group.id].filter(id => id !== valueId) : [...(current[group.id] ?? []), valueId] }))} onClear={() => setVariantBulkEditFilterSelections(current => ({ ...current, [group.id]: [] }))} />)}</div></section>}
           <div className="variant-bulk-edit-target"><span>Uygulanacak Varyant</span><strong>{variantBulkEditMatchingRows.length.toLocaleString('tr-TR')} / {variantRows.length.toLocaleString('tr-TR')} satır</strong></div>
+          <div className="variant-bulk-modes" role="group" aria-label="İşlem türü">{(['set', 'increase', 'decrease'] as const).map(mode => <button key={mode} type="button" className={variantBulkEdit.mode === mode ? 'is-on' : undefined} aria-pressed={variantBulkEdit.mode === mode} onClick={() => setVariantBulkEdit(current => current ? { ...current, mode, error: '' } : current)}>{variantBulkModeLabels[mode]}</button>)}</div>
           <label htmlFor="variant-bulk-edit-value">Yeni {variantBulkEditLabels[variantBulkEdit.field]} Değeri<input id="variant-bulk-edit-value" data-autofocus={touchScreen ? undefined : true} type="number" min="0" step={variantBulkEdit.field === 'stock' ? '1' : '0.01'} value={variantBulkEdit.value} aria-describedby={variantBulkEdit.error ? 'variant-bulk-edit-help variant-bulk-edit-error' : 'variant-bulk-edit-help'} onChange={event => setVariantBulkEdit(current => current ? { ...current, value: event.target.value, error: '' } : current)} /></label>
-          <small id="variant-bulk-edit-help">{variantBulkEdit.field === 'stock' ? 'Stok tam sayı ve sıfırdan büyük veya eşit olmalıdır.' : 'Tutar sıfır veya daha büyük olmalıdır.'}</small>
+          <small id="variant-bulk-edit-help">{variantBulkEdit.field === 'stock' ? 'Stok tam sayı ve sıfırdan büyük veya eşit olmalıdır.' : 'Tutar sıfır veya daha büyük olmalıdır.'}{variantBulkEdit.mode === 'increase' ? ' Girilen değer mevcut değere eklenir.' : variantBulkEdit.mode === 'decrease' ? ' Girilen değer mevcut değerden çıkarılır; sonuç 0\'ın altına inmez.' : ''}</small>
           {variantBulkEdit.error && <p id="variant-bulk-edit-error" className="variant-bulk-edit-error" role="alert">{variantBulkEdit.error}</p>}
         </div>
         <footer><button type="button" className="secondary" onClick={() => setVariantBulkEdit(null)}>Vazgeç</button><button type="button" onClick={applyVariantBulkEdit} disabled={!variantBulkEditMatchingRows.length}>Uygula</button></footer>
