@@ -7022,8 +7022,10 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
 @media (min-width: 701px) {
   .app-shell.stitch-shell.stitch-shell > aside { padding-bottom: 0; }
   /* On a short window the item list gives way (it scrolls on its own) so the profile row keeps to the bottom edge. */
-  .app-shell.stitch-shell.stitch-shell > aside > nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
-  .app-shell.stitch-shell.stitch-shell > aside .sidebar-side-bottom { flex: none; }
+  /* It never grows to fill the menu (its rows keep their own rhythm from the top; the room left stays below them). */
+  .app-shell.stitch-shell.stitch-shell > aside > nav { flex: 0 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .app-shell.stitch-shell.stitch-shell > aside > nav :is(.nav-group, ul) { align-content: start; row-gap: 4px; }
+  .app-shell.stitch-shell.stitch-shell > aside .sidebar-side-bottom { flex: none; margin-top: auto; }
   .app-shell.stitch-shell.stitch-shell > aside .sidebar-side-bottom { margin-bottom: 0; padding-bottom: 0; }
   .app-shell.stitch-shell.stitch-shell > aside .sidebar-profile.sidebar-profile {
     box-sizing: border-box; flex: none; height: var(--rv-action-bar-height); min-height: var(--rv-action-bar-height); max-height: var(--rv-action-bar-height);
