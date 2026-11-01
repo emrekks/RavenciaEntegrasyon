@@ -27,5 +27,6 @@ describe('sync cadence', () => {
     expect(cadenceNote(cadence({ idleActive: true }))).toBe('Bildirimler sağlıklı; seyrek okunuyor')
     expect(cadenceNote(cadence({ idleActive: true, idleKind: 'QUIET' }))).toBe('Yeni soru yok; seyrek okunuyor')
     expect(cadenceNote(cadence({ stageFloor: true }))).toBe('Test ortamı en çok 10 dakikada bir okunur')
+    expect(cadenceNote(cadence({ idleActive: true, idleKind: 'RETURNS' }))).toBe('İadeler sakin; seyrek okunuyor')
   })
 })

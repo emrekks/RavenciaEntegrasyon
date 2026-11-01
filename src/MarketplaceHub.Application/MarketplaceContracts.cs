@@ -1026,7 +1026,9 @@ public sealed record SyncCadenceView(
     int? IdleIntervalSeconds,
     int? DefaultIdleIntervalSeconds,
     bool IdleActive,
-    bool StageFloor);
+    bool StageFloor,
+    // Why the scheduler does not queue the flow right now (no open return, price/stock writes off); null when it runs.
+    string? HeldReason = null);
 // ResetToDefault puts the application default cadence back (the given cadence is ignored) and lets later
 // default changes reach the policy again. Null idle fields keep what the policy has; an idle interval of 0 puts the
 // application's back.

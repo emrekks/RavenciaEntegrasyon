@@ -1235,21 +1235,30 @@ public static class ReturnCadencePolicy
     public static bool NotificationsCarryClaims(string? platformCode) =>
         string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
 
-    public static int IntervalSeconds(int policySeconds, string? platformCode, bool notificationsHealthy, bool hasOpenReturns, DateTimeOffset? lastNewReturnAt, DateTimeOffset now)
+    // The longest step of the platform: Hepsiburada's notified quiet hour, else the week-quiet half hour.
+    public static int DefaultCeilingSeconds(string? platformCode) =>
+        NotificationsCarryClaims(platformCode) ? NotifiedQuietSeconds : LongQuietSeconds;
+
+    // The ceiling is the policy's idle interval when the user set one (SyncCadencePolicy): the longest step becomes
+    // it and no step goes past it; without one the steps above apply as they are.
+    public static int IntervalSeconds(int policySeconds, string? platformCode, bool notificationsHealthy, bool hasOpenReturns, DateTimeOffset? lastNewReturnAt, DateTimeOffset now, int? ceilingSeconds = null)
     {
         var floor = Math.Max(policySeconds, BaseSeconds);
-        if (notificationsHealthy && NotificationsCarryClaims(platformCode))
-            return Math.Max(floor, hasOpenReturns ? NotifiedOpenSeconds : NotifiedQuietSeconds);
+        var ceiling = ceilingSeconds ?? DefaultCeilingSeconds(platformCode);
+        int Step(int seconds) => Math.Max(floor, Math.Min(seconds, ceiling));
+        var notified = NotificationsCarryClaims(platformCode);
+        if (notificationsHealthy && notified)
+            return hasOpenReturns ? Step(NotifiedOpenSeconds) : Math.Max(floor, ceiling);
         if (hasOpenReturns) return floor;
         var quiet = lastNewReturnAt is { } last ? now - last : TimeSpan.MaxValue;
-        if (quiet >= LongQuietAfter) return Math.Max(floor, LongQuietSeconds);
-        if (quiet >= QuietAfter) return Math.Max(floor, QuietSeconds);
+        if (quiet >= LongQuietAfter) return notified ? Step(LongQuietSeconds) : Math.Max(floor, ceiling);
+        if (quiet >= QuietAfter) return Step(QuietSeconds);
         return floor;
     }
 
     // The longest cadence the read can have, by which the panel judges whether it is late.
-    public static int MaximumSeconds(string? platformCode, int policySeconds) =>
-        Math.Max(policySeconds, NotificationsCarryClaims(platformCode) ? NotifiedQuietSeconds : LongQuietSeconds);
+    public static int MaximumSeconds(string? platformCode, int policySeconds, int? ceilingSeconds = null) =>
+        Math.Max(Math.Max(policySeconds, BaseSeconds), ceilingSeconds ?? DefaultCeilingSeconds(platformCode));
 }
 
 // PTT AVM has no return service: a return is an order line in "iade" status, read through the order date windows. A
@@ -1384,6 +1393,9 @@ public static class SyncCadencePolicy
     public const string IdleWebhook = "WEBHOOK";
     // Thins out for every half hour without a new question (QuestionCadencePolicy).
     public const string IdleQuiet = "QUIET";
+    // Thins out while no return is open, no new return came for a day or a week, or Hepsiburada's notifications bring
+    // the claims (ReturnCadencePolicy).
+    public const string IdleReturns = "RETURNS";
     // A test (stage) connection is read every ten minutes at most (ScheduledOrderPollingCadencePolicy).
     public const int StageMinimumIntervalSeconds = 600;
 
@@ -1401,21 +1413,21 @@ public static class SyncCadencePolicy
             ("TRENDYOL", "ORDER_RECOVERY") => new(900, 21_600, "Sipariş kotasının arka plan payını (18/dk) kullanır."),
             ("TRENDYOL", "ORDER_INVOICE_RECONCILIATION") => new(900, 21_600, "Bir tur sipariş kotasını dakikalarca kullanır; daha sık çalışırsa yeni sipariş okumalarını geciktirir."),
             ("TRENDYOL", "ORDER_RECONCILE_SHORT" or "RETURN_RECONCILE_SHORT") => new(1800, 21_600, "Son günü baştan okur; sipariş kotasının arka plan payını kullanır."),
-            ("TRENDYOL", "RETURNS") => new(60, 3600, "Trendyol iade servisi dakikada 1.000 istek kabul eder."),
             ("TRENDYOL", "QUESTIONS") => new(60, 3600, "Trendyol soru servisi dakikada 1.000 okuma kabul eder."),
             ("HEPSIBURADA", "ORDERS") => new(60, 3600, "Hepsiburada sipariş servisleri saniyede 1.000 istek kabul eder; yeni sipariş turu yaklaşık 2 istek."),
             ("HEPSIBURADA", "ORDER_LIFECYCLE") => new(60, 21_600, "Hepsiburada sipariş servisleri saniyede 1.000 istek kabul eder; açık sipariş turu yaklaşık 22 istek."),
             ("HEPSIBURADA", "ORDER_INVOICE_RECONCILIATION") => new(300, 21_600, "Eksik fatura listesi ve teslim edilen siparişler 1-2 istekle okunur."),
             ("N11", "ORDERS") => new(60, 3600, "n11 sipariş servisi dakikada 1.000 istek kabul eder."),
             ("N11", "QUESTIONS") => new(120, 3600, "n11 soru listesi dakikada yalnız 1 kez okunabilir."),
-            ("N11", "RETURNS") => new(120, 3600, "n11 iadeleri SOAP servisinden okunur; servis dakikada 60 istekle sınırlıdır."),
             ("PAZARAMA", "ORDERS") => new(60, 3600, "Pazarama sipariş okuması dakikada 60 istekle sınırlı tutulur."),
             ("PAZARAMA", "ORDER_LIFECYCLE") => new(120, 21_600, "Pazarama açık siparişleri tek tek okunur; sipariş dışı okumalar dakikada 30 istekle sınırlı tutulur."),
-            ("PAZARAMA", "RETURNS" or "QUESTIONS") => new(120, 3600, "Pazarama sipariş dışı okumaları dakikada 30 istekle sınırlı tutulur."),
+            ("PAZARAMA", "QUESTIONS") => new(120, 3600, "Pazarama sipariş dışı okumaları dakikada 30 istekle sınırlı tutulur."),
             ("PTTAVM", "ORDERS") => new(60, 3600, "PTT AVM okuma kotası belgelemiyor; bir istek tüm sipariş tarihi penceresini döndürür."),
             ("PTTAVM", "ORDER_LIFECYCLE") => new(300, 21_600, "PTT AVM açık siparişleri 40 günlük pencerelerle tümden okunur."),
             ("SHOPIFY", "ORDERS") => new(60, 3600, "Shopify saniyede 2 istek kabul eder; yeni sipariş turu 1 istek."),
-            (_, "ORDERS" or "RETURNS" or "QUESTIONS") => new(60, 3600, "Yeni kayıtlar en geç bir saatte okunur."),
+            // The worker reads returns every ten minutes at most (ReturnCadencePolicy.BaseSeconds) on every marketplace.
+            (_, "RETURNS") => new(ReturnCadencePolicy.BaseSeconds, 3600, "İade talepleri en sık 10 dakikada bir okunur; seyrek gelirler ve açık iade yokken okuma ayrıca seyrekleşir."),
+            (_, "ORDERS" or "QUESTIONS") => new(60, 3600, "Yeni kayıtlar en geç bir saatte okunur."),
             (_, "ORDER_LIFECYCLE" or "RETURN_LIFECYCLE" or "ORDER_CARGO_INFO" or "ORDER_INVOICE_RECONCILIATION") => new(300, 21_600, "Açık kayıtlar en geç altı saatte bir taranır."),
             (_, "ORDER_RECOVERY") => new(900, 21_600, "Kaçan siparişler en geç altı saatte bir aranır."),
             (_, "ORDER_RECONCILE_SHORT" or "RETURN_RECONCILE_SHORT" or "STOCK_RECONCILE_SHORT") => new(900, 21_600, "Kısa uzlaştırma son günü baştan okur."),
@@ -1429,12 +1441,14 @@ public static class SyncCadencePolicy
 
     public static string? IdleKind(string? platformCode, string resourceType) =>
         resourceType == "QUESTIONS" ? IdleQuiet
+        : resourceType == "RETURNS" ? IdleReturns
         : platformCode?.Trim().ToUpperInvariant() is "TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" && WebhookPollingPolicy.StretchedIntervalSeconds(platformCode, resourceType) is not null ? IdleWebhook
         : null;
 
     public static int? DefaultIdleSeconds(string? platformCode, string resourceType) => IdleKind(platformCode, resourceType) switch
     {
         IdleQuiet => QuestionCadencePolicy.MaximumSeconds,
+        IdleReturns => ReturnCadencePolicy.DefaultCeilingSeconds(platformCode),
         IdleWebhook => WebhookPollingPolicy.StretchedIntervalSeconds(platformCode, resourceType),
         _ => null
     };
@@ -1443,16 +1457,18 @@ public static class SyncCadencePolicy
     public static int IdleSeconds(string? platformCode, string resourceType, int baseSeconds, int? configuredSeconds) =>
         Math.Max(baseSeconds, configuredSeconds ?? DefaultIdleSeconds(platformCode, resourceType) ?? baseSeconds);
 
-    // The interval the scheduler keeps this pass: the base, thinned out while the idle rule applies, and never below
-    // the test-environment floor.
-    public static int EffectiveSeconds(string? platformCode, string resourceType, string? environment, int baseSeconds, bool idleEnabled, int? idleSeconds, bool webhookHealthy, DateTimeOffset? lastQuestionAt, DateTimeOffset now)
+    // The interval the scheduler keeps this pass: the base (a return read never below its ten-minute floor), thinned
+    // out while the idle rule applies, and never below the test-environment floor. The return inputs only matter to
+    // RETURNS; webhookHealthy there means Hepsiburada's notifications carry the claims and are healthy.
+    public static int EffectiveSeconds(string? platformCode, string resourceType, string? environment, int baseSeconds, bool idleEnabled, int? idleSeconds, bool webhookHealthy, DateTimeOffset? lastQuestionAt, DateTimeOffset now, bool hasOpenReturns = true, DateTimeOffset? lastNewReturnAt = null)
     {
-        var interval = baseSeconds;
+        var interval = resourceType == "RETURNS" ? Math.Max(baseSeconds, ReturnCadencePolicy.BaseSeconds) : baseSeconds;
         if (idleEnabled)
         {
             var kind = IdleKind(platformCode, resourceType);
-            var ceiling = IdleSeconds(platformCode, resourceType, baseSeconds, idleSeconds);
+            var ceiling = IdleSeconds(platformCode, resourceType, interval, idleSeconds);
             if (kind == IdleQuiet) interval = QuestionCadencePolicy.IntervalSeconds(interval, lastQuestionAt, now, ceiling);
+            else if (kind == IdleReturns) interval = ReturnCadencePolicy.IntervalSeconds(interval, platformCode, webhookHealthy, hasOpenReturns, lastNewReturnAt, now, ceiling);
             else if (kind == IdleWebhook && webhookHealthy) interval = ceiling;
         }
         return string.Equals(environment, "STAGE", StringComparison.OrdinalIgnoreCase) ? Math.Max(interval, StageMinimumIntervalSeconds) : interval;

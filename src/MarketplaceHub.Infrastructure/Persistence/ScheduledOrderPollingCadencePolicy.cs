@@ -107,6 +107,10 @@ public static class ScheduledOrderPollingCadencePolicy
             return (ShopifyInvoiceReconciliationIntervalSeconds, jitterSeconds);
         }
 
+        // The worker reads returns every ten minutes at most (ReturnCadencePolicy); the default says so, so the panel
+        // shows the interval that runs.
+        if (resourceType == "RETURNS") return (Math.Max(intervalSeconds, MarketplaceHub.Application.ReturnCadencePolicy.BaseSeconds), jitterSeconds);
+
         return (intervalSeconds, jitterSeconds);
     }
 

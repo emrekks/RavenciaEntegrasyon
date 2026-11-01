@@ -622,31 +622,20 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var recoveryGapCritical = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapCriticalDays", 80), (int)recoveryGapWarning.TotalDays + 1, 120));
         // With healthy notifications the scheduler polls orders less often; health is judged by that cadence.
         var webhookHealthy = await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, id, now, cancellationToken);
-        // The scheduler queues a stock reconciliation only while the automatic price/stock writes are open
-        // (ScheduledJobProducer.EnqueueDueAsync, decision A); otherwise the flow is held, not late.
-        var stockReconcileHeld = policies.Any(x => ScheduledJobProducer.IsStockReconcilePolicy(x.ResourceType))
-            && !(externalWritesEnabled && await AutomaticPriceStockWrites.IsOpenAsync(db, tenantId, id, cancellationToken));
-        var lastQuestionAt = policies.Any(x => x.ResourceType == "QUESTIONS")
-            ? await db.MarketplaceQuestions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
-            : null;
-        // The open-return scan is not queued while no claim is open (ScheduledJobProducer), so its age then says nothing.
-        var openReturnsToFollow = await ScheduledJobProducer.OpenReturnClaimsExistAsync(db, tenantId, id, connection.PlatformCode, cancellationToken);
+        var inputs = await CadenceInputsAsync(tenantId, id, connection.PlatformCode, connection.SettingsJson, policies.Select(x => x.ResourceType).ToArray(), webhookHealthy, cancellationToken);
         var rows = policies.Select(x =>
         {
             var cursorResourceType = MarketplaceSyncPolicyRules.CursorResourceType(x.ResourceType);
             var cursor = cursors.FirstOrDefault(candidate => candidate.ResourceType == cursorResourceType)
                 ?? cursors.FirstOrDefault(candidate => candidate.ResourceType == x.ResourceType);
             // The interval the scheduler keeps this pass, worked out as ScheduledJobProducer does.
-            var cadence = CadenceView(x, connection.PlatformCode, connection.Environment, webhookHealthy, lastQuestionAt, now);
+            var cadence = CadenceView(x, connection.PlatformCode, connection.Environment, inputs, now);
             // Health keeps judging by the interval without the test-environment floor, as it did before.
             var intervalSeconds = cadence is null ? x.IntervalSeconds
-                : SyncCadencePolicy.EffectiveSeconds(connection.PlatformCode, x.ResourceType, null, x.IntervalSeconds, x.IdleBackoffEnabled, x.IdleIntervalSeconds, webhookHealthy, lastQuestionAt, now);
-            // Health allows for the longest interval a question read can stretch to, not this pass's step.
-            if (string.Equals(x.ResourceType, "QUESTIONS", StringComparison.OrdinalIgnoreCase) && x.IdleBackoffEnabled)
-                intervalSeconds = Math.Max(intervalSeconds, SyncCadencePolicy.IdleSeconds(connection.PlatformCode, x.ResourceType, x.IntervalSeconds, x.IdleIntervalSeconds));
-            // Returns are read on a stretching interval too (ReturnCadencePolicy): health allows for its longest step.
-            if (string.Equals(x.ResourceType, "RETURNS", StringComparison.OrdinalIgnoreCase))
-                intervalSeconds = ReturnCadencePolicy.MaximumSeconds(connection.PlatformCode, intervalSeconds);
+                : SyncCadencePolicy.EffectiveSeconds(connection.PlatformCode, x.ResourceType, null, x.IntervalSeconds, x.IdleBackoffEnabled, x.IdleIntervalSeconds, inputs.WebhookHealthy, inputs.LastQuestionAt, now, inputs.HasOpenReturns, inputs.LastNewReturnAt);
+            // Health allows for the longest interval a question or return read can stretch to, not this pass's step.
+            if (x.IdleBackoffEnabled && x.ResourceType is "QUESTIONS" or "RETURNS")
+                intervalSeconds = Math.Max(intervalSeconds, SyncCadencePolicy.IdleSeconds(connection.PlatformCode, x.ResourceType, intervalSeconds, x.IdleIntervalSeconds));
             var expectedCadence = TimeSpan.FromSeconds(Math.Max(0, intervalSeconds) + Math.Max(0, x.JitterSeconds));
             var health = MarketplaceSyncHealthPolicy.Classify(
                 cursor?.LastSuccessAt,
@@ -659,8 +648,9 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 expectedCadence).ToString().ToUpperInvariant();
             // A write policy is a permission switch, not a scheduled read: it has no cursor to judge.
             if (MarketplaceExternalWritePolicies.IsPermissionPolicy(x.ResourceType)) health = "PERMISSION";
-            else if (stockReconcileHeld && ScheduledJobProducer.IsStockReconcilePolicy(x.ResourceType)) health = "PAUSED_WRITES_OFF";
-            else if (string.Equals(x.ResourceType, "RETURN_LIFECYCLE", StringComparison.OrdinalIgnoreCase) && x.Enabled && !openReturnsToFollow && (cursor?.ConsecutiveFailureCount ?? 0) == 0) health = "HEALTHY";
+            else if (inputs.StockReconcileHeld && ScheduledJobProducer.IsStockReconcilePolicy(x.ResourceType)) health = "PAUSED_WRITES_OFF";
+            // The open-return scan is not queued while no claim is open (ScheduledJobProducer): held, not late.
+            else if (x.ResourceType == "RETURN_LIFECYCLE" && x.Enabled && !inputs.HasOpenReturns && (cursor?.ConsecutiveFailureCount ?? 0) == 0) health = "PAUSED_NO_OPEN_RETURNS";
             var cursorProgress = MarketplaceCursorProgressPolicy.Classify(
                 cursor?.LastSuccessAt,
                 cursor?.LastCursorAdvancedAt,
@@ -737,21 +727,45 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             await AutomaticPriceStockWrites.MarkCurrentValuesSentAsync(db, tenantId, id, connection.PlatformCode, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
-        var webhookHealthy = idleKind == SyncCadencePolicy.IdleWebhook && await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, id, now, cancellationToken);
-        var lastQuestionAt = idleKind == SyncCadencePolicy.IdleQuiet
-            ? await db.MarketplaceQuestions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+        var webhookHealthy = idleKind is SyncCadencePolicy.IdleWebhook or SyncCadencePolicy.IdleReturns && await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, id, now, cancellationToken);
+        var inputs = await CadenceInputsAsync(tenantId, id, connection.PlatformCode, connection.SettingsJson, [normalized], webhookHealthy, cancellationToken);
+        return ServiceResult<SyncPolicyView>.Ok(Map(policy) with { Cadence = CadenceView(policy, connection.PlatformCode, connection.Environment, inputs, now) });
+    }
+
+    // What the scheduler looks at besides the policy: notification health, the last question, open returns and the
+    // last new return; each is read only when one of the given policies needs it.
+    private sealed record CadenceInputs(bool WebhookHealthy, DateTimeOffset? LastQuestionAt, bool HasOpenReturns, DateTimeOffset? LastNewReturnAt, bool StockReconcileHeld);
+
+    private async Task<CadenceInputs> CadenceInputsAsync(Guid tenantId, Guid connectionId, string platformCode, string settingsJson, IReadOnlyCollection<string> resourceTypes, bool webhookHealthy, CancellationToken cancellationToken)
+    {
+        // The scheduler queues a stock reconciliation only while the automatic price/stock writes are open
+        // (ScheduledJobProducer.EnqueueDueAsync, decision A); otherwise the flow is held, not late.
+        var stockReconcileHeld = resourceTypes.Any(ScheduledJobProducer.IsStockReconcilePolicy)
+            && !(WritesEnabled(settingsJson) && await AutomaticPriceStockWrites.IsOpenAsync(db, tenantId, connectionId, cancellationToken));
+        var lastQuestionAt = resourceTypes.Contains("QUESTIONS")
+            ? await db.MarketplaceQuestions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
             : null;
-        return ServiceResult<SyncPolicyView>.Ok(Map(policy) with { Cadence = CadenceView(policy, connection.PlatformCode, connection.Environment, webhookHealthy, lastQuestionAt, now) });
+        var returns = resourceTypes.Contains("RETURNS") || resourceTypes.Contains("RETURN_LIFECYCLE");
+        var hasOpenReturns = !returns || await ScheduledJobProducer.OpenReturnClaimsExistAsync(db, tenantId, connectionId, platformCode, cancellationToken);
+        var lastNewReturnAt = resourceTypes.Contains("RETURNS")
+            ? await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+            : null;
+        return new CadenceInputs(webhookHealthy, lastQuestionAt, hasOpenReturns, lastNewReturnAt, stockReconcileHeld);
     }
 
     // The cadence of one policy as the scheduler keeps it (ScheduledJobProducer.EnqueueDueAsync), its bounds and idle rule.
-    private SyncCadenceView? CadenceView(ConnectionSyncPolicy policy, string platformCode, string? environment, bool webhookHealthy, DateTimeOffset? lastQuestionAt, DateTimeOffset now)
+    private SyncCadenceView? CadenceView(ConnectionSyncPolicy policy, string platformCode, string? environment, CadenceInputs inputs, DateTimeOffset now)
     {
         if (SyncCadencePolicy.For(platformCode, policy.ResourceType) is not { } bounds) return null;
         var baseSeconds = Math.Clamp(policy.IntervalSeconds, 30, ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds);
         var idleKind = SyncCadencePolicy.IdleKind(platformCode, policy.ResourceType);
-        var effective = SyncCadencePolicy.EffectiveSeconds(platformCode, policy.ResourceType, environment, baseSeconds, policy.IdleBackoffEnabled, policy.IdleIntervalSeconds, webhookHealthy, lastQuestionAt, now);
+        var effective = SyncCadencePolicy.EffectiveSeconds(platformCode, policy.ResourceType, environment, baseSeconds, policy.IdleBackoffEnabled, policy.IdleIntervalSeconds, inputs.WebhookHealthy, inputs.LastQuestionAt, now, inputs.HasOpenReturns, inputs.LastNewReturnAt);
         var withoutIdle = SyncCadencePolicy.EffectiveSeconds(platformCode, policy.ResourceType, environment, baseSeconds, false, null, false, null, now);
+        var withoutStage = SyncCadencePolicy.EffectiveSeconds(platformCode, policy.ResourceType, null, baseSeconds, false, null, false, null, now);
+        // A scan the scheduler does not queue at all right now says why instead of an interval.
+        var heldReason = policy.ResourceType == "RETURN_LIFECYCLE" && !inputs.HasOpenReturns ? "Açık iade yok"
+            : inputs.StockReconcileHeld && ScheduledJobProducer.IsStockReconcilePolicy(policy.ResourceType) ? "Otomatik fiyat/stok yazma kapalı"
+            : null;
         return new SyncCadenceView(
             effective,
             ScheduledJobProducer.DefaultPolicyValues(configuration, platformCode, policy.ResourceType)?.IntervalSeconds ?? policy.IntervalSeconds,
@@ -763,7 +777,8 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             idleKind is null ? null : SyncCadencePolicy.IdleSeconds(platformCode, policy.ResourceType, baseSeconds, policy.IdleIntervalSeconds),
             SyncCadencePolicy.DefaultIdleSeconds(platformCode, policy.ResourceType),
             effective > withoutIdle,
-            withoutIdle > baseSeconds);
+            withoutIdle > withoutStage,
+            heldReason);
     }
 
     private static string CadenceText(int seconds) =>

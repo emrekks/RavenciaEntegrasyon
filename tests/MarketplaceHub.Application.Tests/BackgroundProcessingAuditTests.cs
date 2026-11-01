@@ -292,10 +292,10 @@ public sealed class BackgroundProcessingAuditTests
     {
         var defaults = ScheduledJobProducer.DefaultPolicyValues(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TRENDYOL", "RETURNS");
 
-        Assert.Equal((180, 900, 10), defaults);
-        Assert.False(ScheduledJobProducer.MarksUserDefined(false, (180, 900, 10), (180, 900, 10)));
-        Assert.True(ScheduledJobProducer.MarksUserDefined(false, (180, 900, 10), (300, 900, 10)));
-        Assert.True(ScheduledJobProducer.MarksUserDefined(true, (180, 900, 10), (180, 900, 10)));
+        Assert.Equal((600, 900, 10), defaults);
+        Assert.False(ScheduledJobProducer.MarksUserDefined(false, (600, 900, 10), (600, 900, 10)));
+        Assert.True(ScheduledJobProducer.MarksUserDefined(false, (600, 900, 10), (900, 900, 10)));
+        Assert.True(ScheduledJobProducer.MarksUserDefined(true, (600, 900, 10), (600, 900, 10)));
         Assert.Null(ScheduledJobProducer.DefaultPolicyValues(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TRENDYOL", "UNKNOWN"));
     }
 
