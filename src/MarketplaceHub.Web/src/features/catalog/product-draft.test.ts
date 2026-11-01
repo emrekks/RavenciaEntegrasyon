@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductTitle, draftRowSkus, editorStatusFor, isDraftStatus } from './product-draft'
+import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductTitle, editorStatusFor, isDraftStatus } from './product-draft'
 
 describe('product drafts', () => {
   it('offers Taslak Olarak Kaydet on a new card and on a draft, never on a card on sale or closed', () => {
@@ -24,10 +24,11 @@ describe('product drafts', () => {
     expect(draftProductTitle('', '', now)).toBe('Taslak Ürün 01.11.2026 14:05')
   })
 
-  it('gives an empty stock code the base code with its row number, clear of the codes already in the form', () => {
-    const rows = draftRowSkus([{ sku: '' }, { sku: 'mz-1-1' }, { sku: '  ' }], 'mz 1')
-    expect(rows.map(row => row.sku)).toEqual(['MZ-1-2', 'mz-1-1', 'MZ-1-3'])
-    expect(draftRowSkus([{ sku: '' }], '').map(row => row.sku)).toEqual(['TASLAK-1'])
+  it('never makes up a stock code: a row without one stops the draft with what to do', () => {
+    const row = { sku: '', barcode: '', optionSignature: 'Renk:Mavi', salePrice: 0, listPrice: 0 }
+    const issues = draftBlockingIssues([row, { ...row, sku: '  ', optionSignature: 'Renk:Kırmızı' }, { ...row, sku: 'A', optionSignature: 'Renk:Yeşil' }], { listPrice: '0', salePrice: '0' })
+    expect(issues).toHaveLength(1)
+    expect(issues[0]).toContain('Stok kodu boş 2 varyant satırı var')
   })
 
   it('stops a draft only on clashing or malformed values, never on a missing one', () => {

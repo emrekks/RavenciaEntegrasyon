@@ -42,7 +42,7 @@ import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } fro
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
-import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductTitle, draftRowSkus, editorStatusFor, isDraftStatus } from '../product-draft'
+import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductTitle, editorStatusFor, isDraftStatus } from '../product-draft'
 import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemovedMedia, withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
 import { clearAllMediaConfirmationText, clearAllMediaFeedbackText, familyMediaClearPlan, removePendingFamilyMedia, withPendingFamilyMediaRemovals } from '../family-media-clear'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
@@ -2419,7 +2419,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       if (saveDraft) {
         try { validate(rowsForSubmit(true), true, true) } catch (reason) { draftMissing = reason instanceof Error ? reason.message : '' }
         if (vatRateIssue) draftMissing = `${vatRateIssue} ${draftMissing}`.trim()
-        rows = draftRowSkus(rowsForSubmit(false), form.modelCode || form.baseSku || form.title)
+        rows = rowsForSubmit(false)
         const blocking = draftBlockingIssues(rows, form)
         const invalidMediaUrl = publicProductMediaUrls([...mediaUrls, ...rows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4)))]).map(productMediaUrlIssue).find((issue): issue is string => issue !== null)
         if (invalidMediaUrl) blocking.push(`Görsel bağlantısı geçersiz: ${invalidMediaUrl} Ürün kaydedilmeden önce düzeltin veya kaldırın.`)

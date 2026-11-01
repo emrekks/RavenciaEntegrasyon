@@ -25,34 +25,20 @@ export function draftProductTitle(title: string, modelCode: string, now: Date) {
   return `Taslak Ürün ${stamp}`
 }
 
-function codeBase(text: string) {
-  return text.trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR').slice(0, 60) || 'TASLAK'
-}
-
-// Every sale row keeps a stock code (the server stores one per variant and keeps them unique): a row left empty in a
-// draft gets the card's base code with its row number, never a code another row of the form already has.
-export function draftRowSkus<T extends { sku: string }>(rows: readonly T[], base: string): T[] {
-  const prefix = codeBase(base)
-  const taken = new Set(rows.map(row => row.sku.trim().toLocaleUpperCase('tr-TR')).filter(Boolean))
-  return rows.map((row, index) => {
-    if (row.sku.trim()) return row
-    let counter = index + 1
-    let sku = `${prefix}-${counter}`
-    while (taken.has(sku.toLocaleUpperCase('tr-TR'))) sku = `${prefix}-${++counter}`
-    taken.add(sku.toLocaleUpperCase('tr-TR'))
-    return { ...row, sku }
-  })
-}
-
 // What still stops a draft (malformed or clashing values the server refuses too). A missing field never does: the
-// checks of the normal save come back as the list of what to complete before the card goes on sale.
+// checks of the normal save come back as the list of what to complete before the card goes on sale. The one exception
+// is the stock code: every variant row is stored with one (a NOT NULL, unique column), and the panel never makes one
+// up, so a row without it stops the draft with what to do instead of being saved under an invented code or dropped.
 export function draftBlockingIssues(rows: ReadonlyArray<{ sku: string; barcode: string; optionSignature: string; salePrice: number; listPrice: number }>, prices: { listPrice: string; salePrice: string }) {
   const issues: string[] = []
   const listPrice = Number(prices.listPrice || 0); const salePrice = Number(prices.salePrice || 0)
   if (!Number.isFinite(listPrice) || !Number.isFinite(salePrice) || listPrice < 0 || salePrice < 0 || listPrice < salePrice) issues.push('Liste fiyatı satış fiyatından küçük olamaz ve fiyatlar negatif olamaz.')
   if (rows.some(row => row.salePrice < 0 || row.listPrice < row.salePrice)) issues.push('Her varyantta liste fiyatı satış fiyatından küçük olamaz.')
   const skus = rows.map(row => row.sku.trim().toLocaleUpperCase('tr-TR'))
-  if (new Set(skus).size !== skus.length) issues.push('Stok kodları benzersiz olmalıdır.')
+  const missingSkus = skus.filter(sku => !sku).length
+  if (missingSkus) issues.push(`Stok kodu boş ${missingSkus} varyant satırı var. Her varyant stok koduyla saklanır ve panel stok kodu üretmez; bu satırlara stok kodu girin veya satırları silin. Diğer alanlar taslakta boş kalabilir.`)
+  const filledSkus = skus.filter(Boolean)
+  if (new Set(filledSkus).size !== filledSkus.length) issues.push('Stok kodları benzersiz olmalıdır.')
   const barcodes = rows.map(row => row.barcode.trim().toLocaleUpperCase('tr-TR')).filter(Boolean)
   if (new Set(barcodes).size !== barcodes.length) issues.push('Barkodlar benzersiz olmalıdır.')
   const signatures = rows.map(row => row.optionSignature)
