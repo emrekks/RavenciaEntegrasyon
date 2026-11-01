@@ -1364,7 +1364,18 @@ public sealed partial class ShopifyHttpClient(
         var discount = order.GetProperty("totalDiscountsSet").GetProperty("shopMoney");
         var currency = money.GetProperty("currencyCode").GetString() ?? "TRY";
         var financialStatus = order.GetProperty("displayFinancialStatus").GetString() ?? "OPEN";
-        var lines = order.GetProperty("lineItems").GetProperty("nodes").EnumerateArray().Select(line => MapOrderLine(line, financialStatus)).ToList();
+        // The order's cancelledAt is the only cancellation time this read carries: a cancelled order dates every
+        // cancelled line with it. A line cut while the order stays open (an order edit) has no time of its own here,
+        // so it stays unknown rather than taking updatedAt.
+        var orderCancelledAt = order.TryGetProperty("cancelledAt", out var cancelledAtElement)
+            && cancelledAtElement.ValueKind == JsonValueKind.String
+            && cancelledAtElement.TryGetDateTimeOffset(out var cancelledAtValue)
+                ? cancelledAtValue
+                : (DateTimeOffset?)null;
+        var lines = order.GetProperty("lineItems").GetProperty("nodes").EnumerateArray()
+            .Select(line => MapOrderLine(line, financialStatus))
+            .Select(line => line.CancelledQuantity > 0 && orderCancelledAt is not null ? line with { CancelledAt = orderCancelledAt } : line)
+            .ToList();
         // Since the 2026-07 Admin API, Order.fulfillments is returned as a
         // direct list. Its nested fulfillmentLineItems field remains a
         // connection and is mapped from nodes below.
@@ -1411,6 +1422,9 @@ public sealed partial class ShopifyHttpClient(
         if (remainderAllocations.Count > 0)
         {
             var allCancelled = remainderAllocations.All(allocation => allocation.AllocatedQuantity == 0);
+            // Only the remainder holds the lines' own cancelled quantity; a cancelled fulfillment returns its items
+            // to the order and is not a line cancellation, so it carries no cancellation time.
+            var remainderCancelledAt = remainderAllocations.Any(allocation => allocation.CancelledQuantity > 0) ? orderCancelledAt : null;
             packages.Add(new(
                 $"order:{ShortId(order.GetProperty("id").GetString())}:remainder",
                 null,
@@ -1421,7 +1435,8 @@ public sealed partial class ShopifyHttpClient(
                 remainderAllocations,
                 DecimalOrNull(money, "amount") ?? 0,
                 DecimalOrNull(discount, "amount") ?? 0,
-                DecimalOrNull(money, "amount") ?? 0));
+                DecimalOrNull(money, "amount") ?? 0,
+                CancelledAt: remainderCancelledAt));
         }
 
         packages = SplitOrderAmounts(packages, lines, DecimalOrNull(money, "amount") ?? 0, DecimalOrNull(discount, "amount") ?? 0);
