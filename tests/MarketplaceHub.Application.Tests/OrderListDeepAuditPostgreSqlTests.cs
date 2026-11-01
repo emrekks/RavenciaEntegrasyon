@@ -142,6 +142,50 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // The micro-export card counts the orders the row's flag marks (Trendyol micro = true), under the list's filters
+    // and in any tab, per country; its filter lists exactly those orders.
+    [PostgreSqlFact]
+    public async Task MicroExportFilterListsTheFlaggedOrdersAndTheSummaryCountsThemPerCountry()
+    {
+        var tenantId = await SeedAsync("ol-mic");
+        try
+        {
+            await using (var seedDb = fixture.CreateContext())
+            {
+                var connectionId = await seedDb.PlatformConnections.Where(x => x.TenantId == tenantId).Select(x => x.Id).SingleAsync();
+                var now = DateTimeOffset.UtcNow;
+                void Add(string suffix, string derived, string customerJson, string invoiceJson, string? storefront)
+                    => seedDb.Orders.Add(new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = $"mic-{suffix}", OrderNumber = $"mic-{suffix}", Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now.AddMinutes(-20), LastRemoteModifiedAt = now, CustomerSnapshotJson = customerJson, ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = invoiceJson, StoreFrontCode = storefront, DerivedStatus = derived, CreatedAt = now, UpdatedAt = now, Version = 1 });
+                Add("sa1", "NEW", "{\"micro\":true}", "{\"countryCode\":\"SA\"}", null);
+                Add("sa2", "CANCELLED", "{\"micro\": true}", "{\"countryCode\":\"SA\"}", "SA");
+                Add("bg", "DELIVERED", "{\"micro\":true}", "{}", "BG");
+                // micro = false (a 3P export) and a foreign address alone are no micro export.
+                Add("no1", "NEW", "{\"micro\":false}", "{\"countryCode\":\"DE\"}", "DE");
+                Add("no2", "NEW", "{}", "{\"countryCode\":\"SA\"}", "SA");
+                await seedDb.SaveChangesAsync();
+            }
+
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            var listed = (await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(MicroExport: true), CancellationToken.None)).Items.Select(x => x.OrderNumber).OrderBy(x => x).ToList();
+            Assert.Equal(["mic-bg", "mic-sa1", "mic-sa2"], listed);
+
+            var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None);
+            Assert.Equal(3, summary.MicroExport);
+            Assert.Equal(2, summary.MicroExportCountries!["SA"]);
+            Assert.Equal(1, summary.MicroExportCountries["BG"]);
+            // The count follows the list's filters but not its tab.
+            Assert.Equal(1, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Search: "mic-bg"), CancellationToken.None)).MicroExport);
+            Assert.Equal(3, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Status: "NEW"), CancellationToken.None)).MicroExport);
+            // A menu counter that asks for one tab leaves the micro-export count out.
+            Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None, ["PENDING"])).MicroExport);
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     // The dashboard's "Geciken Siparişler" card links to /orders?status=LATE; the list had no such view and opened
     // empty. It lists exactly the orders the card counts.
     [PostgreSqlFact]

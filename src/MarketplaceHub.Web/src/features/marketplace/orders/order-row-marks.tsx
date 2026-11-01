@@ -52,7 +52,7 @@ const flags: Record<string, ReactNode> = {
   CZ: <><rect width="16" height="5.5" fill="#fff" /><rect y="5.5" width="16" height="5.5" fill="#d7141a" /><path d="M0 0l7 5.5L0 11z" fill="#11457e" /></>,
 }
 
-function Flag({ code }: { code: string }) {
+export function Flag({ code }: { code: string }) {
   const drawing = flags[code.toUpperCase()]
   if (!drawing) return <svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true"><circle cx="8" cy="8" r="6" /><path d="M2 8h12M8 2c-2.2 2.4-2.2 9.6 0 12M8 2c2.2 2.4 2.2 9.6 0 12" /></svg>
   return <svg className="rr-omark-flag" width="16" height="11" viewBox="0 0 16 11" aria-hidden="true">{drawing}</svg>
