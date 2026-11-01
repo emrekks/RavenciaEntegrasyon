@@ -154,12 +154,14 @@ export type SyncCadence = {
   minimumIntervalSeconds: number
   maximumIntervalSeconds: number
   basis: string
-  idleKind: 'WEBHOOK' | 'QUIET' | null
+  idleKind: 'WEBHOOK' | 'QUIET' | 'RETURNS' | null
   idleBackoffEnabled: boolean
   idleIntervalSeconds: number | null
   defaultIdleIntervalSeconds: number | null
   idleActive: boolean
   stageFloor: boolean
+  /** Why the scheduler does not queue the flow right now; null while it runs. */
+  heldReason?: string | null
 }
 
 /** A short interval for the flow table: "2 dk", "1 sa", "1 gün". */
@@ -178,13 +180,16 @@ export function cadenceChoices(intervals: Array<[number, string]>, minimum: numb
 
 /** Why the flow runs at a different interval than its own this pass, or null. */
 export function cadenceNote(cadence: SyncCadence) {
-  if (cadence.idleActive) return cadence.idleKind === 'WEBHOOK' ? 'Bildirimler sağlıklı; seyrek okunuyor' : 'Yeni soru yok; seyrek okunuyor'
+  if (cadence.idleActive) return cadence.idleKind === 'WEBHOOK' ? 'Bildirimler sağlıklı; seyrek okunuyor' : cadence.idleKind === 'RETURNS' ? 'İadeler sakin; seyrek okunuyor' : 'Yeni soru yok; seyrek okunuyor'
   if (cadence.stageFloor) return 'Test ortamı en çok 10 dakikada bir okunur'
   return null
 }
 
 /** What the idle rule of a flow does, for the editor. */
-export function idleRuleText(kind: SyncCadence['idleKind']) {
+export function idleRuleText(kind: SyncCadence['idleKind'], platformCode?: string) {
+  if (kind === 'RETURNS') return platformCode === 'HEPSIBURADA'
+    ? 'Bildirimler sağlıklıyken açık iade varsa en çok 30 dakikada, yoksa seyrek sıklıkta okunur; bildirimler aksarsa açık iade yokken bir gün sessizlikten sonra 20 dakikaya, bir hafta sonra 30 dakikaya uzar. Açık iade varken kendi sıklığında okunur.'
+    : 'Açık iade varken kendi sıklığında okunur. Açık iade yokken bir gün yeni iade gelmezse 20 dakikaya, bir hafta gelmezse seyrek sıklığa uzar; yeni iade gelince kendi sıklığına döner.'
   return kind === 'WEBHOOK'
     ? 'Pazaryeri bildirimleri sağlıklı geldikçe bu okuma yalnız güvenlik ağıdır ve seyrek sıklıkta çalışır; bildirim aksarsa hemen kendi sıklığına döner.'
     : 'Yeni soru gelmedikçe aralık her yarım saatte ikiye katlanır ve seyrek sıklıkta durur; yeni soru gelince kendi sıklığına döner.'

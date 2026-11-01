@@ -119,20 +119,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                     .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
                     .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
                 : null;
-            var healthy = idleKind == SyncCadencePolicy.IdleWebhook
+            // Returns are read every ten minutes at most and thin out while none is open, none came for a day or a week,
+            // or Hepsiburada's notifications bring them (ReturnCadencePolicy, through the same idle rule).
+            var isReturns = idleKind == SyncCadencePolicy.IdleReturns;
+            var healthy = (idleKind == SyncCadencePolicy.IdleWebhook || isReturns && ReturnCadencePolicy.NotificationsCarryClaims(row.Connection.PlatformCode))
                 && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id);
-            interval = SyncCadencePolicy.EffectiveSeconds(row.Connection.PlatformCode, row.Policy.ResourceType, row.Connection.Environment, interval, idleKind is not null, row.Policy.IdleIntervalSeconds, healthy, lastQuestionAt, now);
-            // Returns are read every ten minutes at most, less often while none is open or Hepsiburada's notifications bring them.
-            if (row.Policy.ResourceType == "RETURNS")
-            {
-                var hasOpenReturns = await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken);
-                var lastNewReturnAt = await db.ReturnClaims.AsNoTracking()
+            var hasOpenReturns = !isReturns || await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken);
+            var lastNewReturnAt = isReturns
+                ? await db.ReturnClaims.AsNoTracking()
                     .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
-                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken);
-                var notificationsHealthy = ReturnCadencePolicy.NotificationsCarryClaims(row.Connection.PlatformCode)
-                    && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id);
-                interval = ReturnCadencePolicy.IntervalSeconds(interval, row.Connection.PlatformCode, notificationsHealthy, hasOpenReturns, lastNewReturnAt, now);
-            }
+                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
+                : null;
+            interval = SyncCadencePolicy.EffectiveSeconds(row.Connection.PlatformCode, row.Policy.ResourceType, row.Connection.Environment, interval, idleKind is not null, row.Policy.IdleIntervalSeconds, healthy, lastQuestionAt, now, hasOpenReturns, lastNewReturnAt);
             // Different scheduled job types can share one provider execution
             // lane (for example order sync and order reconciliation). Checking
             // the execution group keeps the queue coalesced before it reaches
@@ -733,7 +731,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             "ORDER_RECOVERY" => (current.IntervalSeconds == 900 || current.IntervalSeconds == 2700 || current.IntervalSeconds == 3600) && current.OverlapSeconds == 600 && (current.JitterSeconds == 0 || current.JitterSeconds == 30),
             "QUESTIONS" => (current.IntervalSeconds == 60 || current.IntervalSeconds == 120) && current.OverlapSeconds == 0 && current.JitterSeconds == 0,
             "RETURNS" => current.IntervalSeconds == 60 && current.OverlapSeconds == 900 && current.JitterSeconds == 5
-                || current.IntervalSeconds == 180 && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
+                || (current.IntervalSeconds == 180 || current.IntervalSeconds == 600) && current.OverlapSeconds == 900 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_LIFECYCLE" => (current.IntervalSeconds == 120 || current.IntervalSeconds == 180) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10)
                 || (current.IntervalSeconds == 480 || current.IntervalSeconds == 540 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 10),
             "ORDER_CARGO_INFO" => (current.IntervalSeconds == 300 || current.IntervalSeconds == 1800) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 15),

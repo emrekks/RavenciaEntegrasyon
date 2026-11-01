@@ -46,7 +46,7 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
     [InlineData("HEPSIBURADA", "ORDER_INVOICE_RECONCILIATION", 300, 10, 1800, 10)]
     [InlineData("HEPSIBURADA", "ORDER_INVOICE_RECONCILIATION", 1800, 30, 1800, 30)]
     [InlineData("HEPSIBURADA", "ORDERS", 60, 5, 60, 5)]
-    [InlineData("HEPSIBURADA", "RETURNS", 180, 10, 180, 10)]
+    [InlineData("HEPSIBURADA", "RETURNS", 180, 10, 600, 10)]
     public void ForPlatform_UsesRequestedOrderCadence(
         string platformCode,
         string resourceType,
@@ -65,7 +65,7 @@ public sealed class ScheduledOrderPollingCadencePolicyTests
     }
 
     [Theory]
-    [InlineData("SHOPIFY", "RETURNS", 180, 10)]
+    [InlineData("SHOPIFY", "RETURN_RECONCILE_DAILY", 86400, 900)]
     [InlineData("OTHER", "ORDERS", 60, 5)]
     public void ForPlatform_LeavesOtherSchedulesUnchanged(
         string platformCode,

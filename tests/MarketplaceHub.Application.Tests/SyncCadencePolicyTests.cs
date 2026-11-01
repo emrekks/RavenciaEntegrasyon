@@ -16,13 +16,13 @@ public sealed class SyncCadencePolicyTests
     [InlineData("TRENDYOL", "ORDER_RECONCILE_MEDIUM", 21_600)]
     [InlineData("TRENDYOL", "ORDER_RECONCILE_DAILY", 86_400)]
     [InlineData("TRENDYOL", "RETURN_LIFECYCLE", 1800)]
-    [InlineData("TRENDYOL", "RETURNS", 180)]
+    [InlineData("TRENDYOL", "RETURNS", 600)]
     [InlineData("TRENDYOL", "QUESTIONS", 120)]
     [InlineData("TRENDYOL", "FINANCE", 86_400)]
     [InlineData("HEPSIBURADA", "ORDER_LIFECYCLE", 120)]
     [InlineData("HEPSIBURADA", "ORDER_INVOICE_RECONCILIATION", 1800)]
     [InlineData("N11", "QUESTIONS", 120)]
-    [InlineData("N11", "RETURNS", 180)]
+    [InlineData("N11", "RETURNS", 600)]
     [InlineData("PAZARAMA", "ORDER_LIFECYCLE", 120)]
     [InlineData("PTTAVM", "ORDER_LIFECYCLE", 900)]
     [InlineData("SHOPIFY", "ORDER_RECONCILE_DAILY", 259_200)]
@@ -90,4 +90,32 @@ public sealed class SyncCadencePolicyTests
     [Fact]
     public void Test_connections_keep_their_ten_minute_floor() =>
         Assert.Equal(600, SyncCadencePolicy.EffectiveSeconds("TRENDYOL", "ORDERS", "STAGE", 120, true, null, false, null, Now));
+
+    // Returns: the panel's lower bound is the worker's ten-minute floor, and the idle rule is the return cadence.
+    [Fact]
+    public void Return_reads_never_run_below_the_ten_minute_floor()
+    {
+        Assert.Equal(ReturnCadencePolicy.BaseSeconds, SyncCadencePolicy.For("TRENDYOL", "RETURNS")!.MinimumSeconds);
+        Assert.Equal(600, SyncCadencePolicy.EffectiveSeconds("TRENDYOL", "RETURNS", "PRODUCTION", 180, false, null, false, null, Now, hasOpenReturns: false));
+        Assert.Equal(600, SyncCadencePolicy.EffectiveSeconds("TRENDYOL", "RETURNS", "PRODUCTION", 180, true, null, false, null, Now, hasOpenReturns: true));
+    }
+
+    [Fact]
+    public void Return_reads_thin_out_as_the_worker_does_by_default()
+    {
+        Assert.Equal(SyncCadencePolicy.IdleReturns, SyncCadencePolicy.IdleKind("N11", "RETURNS"));
+        Assert.Equal(1200, SyncCadencePolicy.EffectiveSeconds("N11", "RETURNS", "PRODUCTION", 600, true, null, false, null, Now, false, Now.AddDays(-2)));
+        Assert.Equal(1800, SyncCadencePolicy.EffectiveSeconds("N11", "RETURNS", "PRODUCTION", 600, true, null, false, null, Now, false, Now.AddDays(-8)));
+        Assert.Equal(1800, SyncCadencePolicy.EffectiveSeconds("HEPSIBURADA", "RETURNS", "PRODUCTION", 600, true, null, true, null, Now, true, Now));
+        Assert.Equal(3600, SyncCadencePolicy.EffectiveSeconds("HEPSIBURADA", "RETURNS", "PRODUCTION", 600, true, null, true, null, Now, false, Now));
+    }
+
+    [Fact]
+    public void A_chosen_idle_interval_becomes_the_longest_return_step()
+    {
+        Assert.Equal(3600, SyncCadencePolicy.EffectiveSeconds("N11", "RETURNS", "PRODUCTION", 600, true, 3600, false, null, Now, false, Now.AddDays(-8)));
+        Assert.Equal(900, SyncCadencePolicy.EffectiveSeconds("N11", "RETURNS", "PRODUCTION", 600, true, 900, false, null, Now, false, Now.AddDays(-2)));
+        Assert.Equal(900, SyncCadencePolicy.EffectiveSeconds("HEPSIBURADA", "RETURNS", "PRODUCTION", 600, true, 900, true, null, Now, true, Now));
+        Assert.Equal(600, SyncCadencePolicy.EffectiveSeconds("N11", "RETURNS", "PRODUCTION", 600, false, 3600, false, null, Now, false, Now.AddDays(-8)));
+    }
 }
