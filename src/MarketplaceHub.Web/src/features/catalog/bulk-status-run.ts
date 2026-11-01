@@ -26,12 +26,20 @@ export function bulkStatusResultMessage(statusLabel: string, result: ChunkRunRes
 }
 
 // Which selected records a Satışa Aç / Satışa Kapat would change: those already in the target status are left out, so
-// no no-op update is sent. A record whose status the list does not hold stays in: unknown is never read as "already".
-export type BulkStatusPlan = { targetIds: string[]; alreadyIds: string[] }
+// no no-op update is sent. A draft is left out too: it goes on sale only from its editor, with every rule met (the
+// server leaves it as it is as well). A record whose status the list does not hold stays in: unknown is never read as
+// "already".
+export type BulkStatusPlan = { targetIds: string[]; alreadyIds: string[]; draftIds: string[] }
 
 export function bulkStatusPlan(ids: readonly string[], statusOf: (id: string) => string | null | undefined, target: 'ACTIVE' | 'ARCHIVED'): BulkStatusPlan {
   const targetIds: string[] = []
   const alreadyIds: string[] = []
-  for (const id of ids) (statusOf(id)?.trim().toUpperCase() === target ? alreadyIds : targetIds).push(id)
-  return { targetIds, alreadyIds }
+  const draftIds: string[] = []
+  for (const id of ids) {
+    const status = statusOf(id)?.trim().toUpperCase()
+    if (status === target) alreadyIds.push(id)
+    else if (status === 'DRAFT') draftIds.push(id)
+    else targetIds.push(id)
+  }
+  return { targetIds, alreadyIds, draftIds }
 }

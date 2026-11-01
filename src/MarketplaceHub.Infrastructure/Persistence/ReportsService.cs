@@ -680,8 +680,9 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
             .ToDictionary(x => x.Id);
         var allowedIds = allowed.Keys.ToArray();
 
-        // The products the product list shows (VisibleProducts there): not only linked to removed stores.
-        var products = db.Products.AsNoTracking().Where(product => product.TenantId == tenantId
+        // The products the product list shows (VisibleProducts there): not only linked to removed stores. A draft is not
+        // counted in the stock figures (ProductDraftPolicy).
+        var products = db.Products.AsNoTracking().Where(product => product.TenantId == tenantId && product.Status != ProductStatus.Draft
             && (!db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id)
                 || db.MarketplaceProductLinks.Any(link => link.TenantId == tenantId && link.ProductId == product.Id
                     && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == link.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))));

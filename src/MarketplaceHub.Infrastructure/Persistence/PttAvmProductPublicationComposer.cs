@@ -26,6 +26,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
+        if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM", cancellationToken);
         if (connection is null) return NotFound();
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
@@ -56,7 +57,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         if (!familyIds.Contains(productId)) familyIds.Add(productId);
         // Card order is creation order (the id breaks a tie), so the family keeps one order on every publication.
         var members = await db.Products.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status != ProductStatus.Archived)
+            .Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status == ProductStatus.Active) // never an archived card or a draft
             .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
         var memberIds = members.Select(x => x.Id).ToArray();

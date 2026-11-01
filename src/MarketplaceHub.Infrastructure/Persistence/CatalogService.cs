@@ -443,7 +443,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .GroupBy(x => x.ProductId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
             var stockByProduct = variantsByProductForFilter.ToDictionary(x => x.Key, x => ProductStockPolicy.TotalStock(x.Value, inventoryByVariant));
-            allProducts = allProducts.Where(product => stock.Trim().ToUpperInvariant() switch
+            // A stock filter shows the cards the stock counts count (ProductSummaryAsync): never a draft.
+            allProducts = allProducts.Where(product => !ProductDraftPolicy.IsDraft(product.Status) && stock.Trim().ToUpperInvariant() switch
             {
                 "OUT" => stockByProduct.GetValueOrDefault(product.Id) <= 0,
                 "LOW" => stockByProduct.GetValueOrDefault(product.Id) > 0
@@ -582,15 +583,17 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Distinct()
             .OrderBy(x => x)
             .ToListAsync(cancellationToken);
+        // A draft is listed (Tüm Ürünler, Taslak) but not counted in the stock figures (ProductDraftPolicy).
+        var stocked = products.Where(x => !ProductDraftPolicy.IsDraft(x.Status)).ToList();
 
         return new(
             products.Count,
             products.Count(x => x.Status == ProductStatus.Active),
-            products.Count(x => stockByProduct.GetValueOrDefault(x.Id) <= 0),
-            products.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0
+            stocked.Count(x => stockByProduct.GetValueOrDefault(x.Id) <= 0),
+            stocked.Count(x => stockByProduct.GetValueOrDefault(x.Id) > 0
                 && ProductStockPolicy.IsLowStock(variantsByProduct.GetValueOrDefault(x.Id) ?? [], inventoryByVariant)),
             platforms,
-            products.Sum(x => Math.Max(0, stockByProduct.GetValueOrDefault(x.Id))));
+            stocked.Sum(x => Math.Max(0, stockByProduct.GetValueOrDefault(x.Id))));
     }
 
     public async Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken)
@@ -602,6 +605,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
         var products = await db.Products.Where(x => x.TenantId == tenantId && ids.Contains(x.Id)).ToListAsync(cancellationToken);
         if (products.Count != ids.Length) return ServiceResult<int>.Fail("BULK_PRODUCT_NOT_FOUND", "Seçilen ürünlerden biri bulunamadı veya bu çalışma alanına ait değil.", 404);
+        // A draft goes on sale only from its editor, with every rule met (ProductDraftPolicy): the bulk change leaves it as it is.
+        products.RemoveAll(product => ProductDraftPolicy.IsDraft(product.Status));
         var now = timeProvider.GetUtcNow();
         // D4 (K8): the bulk change moves the same rows as the editor's status change: the product, its sale
         // rows and its marketplace links (a local edit). Archive and activate are both status flips only, so an
@@ -913,9 +918,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
         if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
         if (command.DeliveryDays is { } deliveryDays && !ProductDeliveryDays.IsValid(deliveryDays)) return Invalid<ProductView>("deliveryDays", ProductDeliveryDays.InvalidMessage);
+        // Taslak Olarak Kaydet: the card is kept before it is complete, so what a marketplace needs (KDV, the category's
+        // required attributes) may still be missing. Malformed values, the stock codes and their uniqueness are checked as always.
+        var draft = ProductDraftPolicy.IsDraftRequest(command.Status);
         // KDV Oranı and KDV Dahil mi are required on a new card: a marketplace offer starts from them, never from a guess.
-        if (command.VatRate is null) return Invalid<ProductView>("vatRate", VatRateRequired);
-        if (string.IsNullOrWhiteSpace(command.VatInclusion)) return Invalid<ProductView>("vatInclusion", VatInclusionRequired);
+        if (command.VatRate is null && !draft) return Invalid<ProductView>("vatRate", VatRateRequired);
+        if (command.VatRate is not null && string.IsNullOrWhiteSpace(command.VatInclusion)) return Invalid<ProductView>("vatInclusion", VatInclusionRequired);
         if (ValidateProductVat(command.VatRate, command.VatInclusion) is { } vatError) return Invalid<ProductView>(vatError.Field, vatError.Message);
         if (command.TrendyolWebColorValueId is Guid webColorValueId && webColorValueId != Guid.Empty && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == webColorValueId && x.IsActive, cancellationToken)) return Invalid<ProductView>("trendyolWebColorValueId", "Trendyol Web Color değeri bulunamadı.");
         if (command.DefaultListPrice is decimal listPrice && command.DefaultSalePrice is decimal salePrice && listPrice < salePrice) return Invalid<ProductView>("prices", "Liste fiyatı satış fiyatından küçük olamaz.");
@@ -936,7 +944,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
         var optionValidation = await ValidateVariantOptionsAsync(tenantId, command.CategoryId, command.Variants, cancellationToken);
         if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
-        if (command.CategoryId is Guid categoryId)
+        if (command.CategoryId is Guid categoryId && !draft)
         {
             var requiredAttributeIds = await db.CategoryAttributeRequirements.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.CategoryId == categoryId && (x.IsPanelScoped || x.Role == "OPTION") && x.IsRequired)
@@ -1165,8 +1173,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
         if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
         if (command.DeliveryDays is { } deliveryDays && !ProductDeliveryDays.IsValid(deliveryDays)) return Invalid<ProductView>("deliveryDays", ProductDeliveryDays.InvalidMessage);
+        // A card stays a draft only while it is one (ProductDraftPolicy); a draft may still lack its KDV and the category's
+        // required attributes. Only an explicit "DRAFT" (Taslak Olarak Kaydet) relaxes the checks; a save that leaves out
+        // the status is checked in full.
+        var keepsDraft = ProductDraftPolicy.IsDraftRequest(command.Status);
+        if (keepsDraft && !ProductDraftPolicy.MayBecomeDraft(product.Status)) return Conflict<ProductView>(ProductDraftPolicy.DraftNotAllowedCode, ProductDraftPolicy.DraftNotAllowedMessage);
         // A card with no VAT yet must get one on this save; a card that has one keeps it when the rate is left out.
-        if (command.VatRate is null && product.VatRate is null) return Invalid<ProductView>("vatRate", VatRateRequired);
+        if (command.VatRate is null && product.VatRate is null && !keepsDraft) return Invalid<ProductView>("vatRate", VatRateRequired);
         if (command.VatRate is not null && string.IsNullOrWhiteSpace(command.VatInclusion) && string.IsNullOrWhiteSpace(product.VatInclusion)) return Invalid<ProductView>("vatInclusion", VatInclusionRequired);
         if (ValidateProductVat(command.VatRate, command.VatInclusion) is { } vatError) return Invalid<ProductView>(vatError.Field, vatError.Message);
         if (command.TrendyolWebColorValueId is Guid webColorValueId && webColorValueId != Guid.Empty && !await db.AttributeValues.AnyAsync(x => x.TenantId == tenantId && x.Id == webColorValueId && x.IsActive, cancellationToken)) return Invalid<ProductView>("trendyolWebColorValueId", "Trendyol Web Color değeri bulunamadı.");
@@ -1174,7 +1187,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var validation = await ValidateProductReferencesAsync(tenantId, command.Title, command.CategoryId, command.BrandId, cancellationToken); if (validation is not null) return ServiceResult<ProductView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         if (command.Attributes is not null)
         {
-            var attributeValidation = await ValidateAttributesAsync(tenantId, command.CategoryId, command.Attributes, cancellationToken); if (attributeValidation is not null) return ServiceResult<ProductView>.Fail(attributeValidation.Code, attributeValidation.Message, attributeValidation.Status, attributeValidation.FieldErrors);
+            var attributeValidation = await ValidateAttributesAsync(tenantId, command.CategoryId, command.Attributes, cancellationToken, requireAll: !keepsDraft); if (attributeValidation is not null) return ServiceResult<ProductView>.Fail(attributeValidation.Code, attributeValidation.Message, attributeValidation.Status, attributeValidation.FieldErrors);
         }
         var variantsToCreate = command.VariantsToCreate ?? [];
         var variantUpdates = command.VariantUpdates ?? [];
@@ -1543,7 +1556,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 familyIds.UnionWith(await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken));
         familyIds.ExceptWith(selectedIds);
         var products = familyIds.Count == 0 ? selected
-            : [.. selected, .. await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status != ProductStatus.Archived).ToListAsync(cancellationToken)];
+            : [.. selected, .. await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status == ProductStatus.Active).ToListAsync(cancellationToken)];
+        // A selected draft is refused on its own (no price, profile or job is written for it); the other cards go on.
+        foreach (var draftCard in products.Where(x => ProductDraftPolicy.IsDraft(x.Status)))
+            foreach (var connectionId in connectionIds)
+                failed.Add(new(draftCard.Id, draftCard.Title, connectionId, ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage));
+        products = [.. products.Where(x => !ProductDraftPolicy.IsDraft(x.Status))];
         var cardIds = products.Select(x => x.Id).ToList();
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var variantIds = variants.Select(x => x.Id).ToList();
@@ -1659,6 +1677,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return ProductListingHealth.CountsAsMissing(brokenHealth, productArchived: false, profileStatus);
     }
 
+    // A draft is never sent to a marketplace (ProductDraftPolicy): no publication, product update or price/stock send.
+    private Task<bool> IsDraftProductAsync(Guid tenantId, Guid productId, CancellationToken cancellationToken) =>
+        db.Products.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == productId && x.Status == ProductStatus.Draft, cancellationToken);
+
+    private static ServiceResult<T> DraftSendBlocked<T>() => ServiceResult<T>.Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage, 422);
+
     // The marketplaces where one product carries a model family's every colour card (one request sends them all).
     private static bool SendsModelFamily(string platformCode) => platformCode is "PTTAVM" or "SHOPIFY";
 
@@ -1669,6 +1693,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // already there (ShopifyHttpClient.UpdateOnlyKey).
     private async Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, bool shopifyUpdateOnly, CancellationToken cancellationToken)
     {
+        if (await IsDraftProductAsync(tenantId, productId, cancellationToken)) return DraftSendBlocked<Guid>();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
         if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
@@ -1795,6 +1820,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // Shopify takes the product whole (ShopifyProductPublicationComposer): an update is the publication's productSet again
         // under the handle the panel gave the product, which Shopify applies to that product in place. The picked fields do
         // not narrow it (price and stock ride along), and the send never creates a product.
+        if (await IsDraftProductAsync(tenantId, productId, cancellationToken)) return DraftSendBlocked<Guid>();
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (platformCode == "SHOPIFY") return await EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: true, cancellationToken);
         if (platformCode == "PTTAVM") return await EnqueuePttAvmProductUpdateAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, fields, cancellationToken);
@@ -2505,11 +2531,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (brandId is Guid brand && !await db.Brands.AnyAsync(x => x.TenantId == tenantId && x.Id == brand && x.IsActive, cancellationToken)) return new("BRAND_ACTIVE_REQUIRED", "Seçilen marka etkin değildir.", 422, new Dictionary<string, string[]> { ["brandId"] = ["Etkin marka seçin."] }); return null;
     }
 
-    private async Task<ServiceError?> ValidateAttributesAsync(Guid tenantId, Guid? categoryId, IReadOnlyList<ProductAttributeCommand> assignments, CancellationToken cancellationToken)
+    // requireAll: false for a draft, which may still lack the category's required attributes (the values sent are checked).
+    private async Task<ServiceError?> ValidateAttributesAsync(Guid tenantId, Guid? categoryId, IReadOnlyList<ProductAttributeCommand> assignments, CancellationToken cancellationToken, bool requireAll = true)
     {
         var valueValidation = await ValidateAttributeValuesAsync(tenantId, assignments, cancellationToken);
         if (valueValidation is not null) return valueValidation;
-        if (categoryId is Guid category)
+        if (categoryId is Guid category && requireAll)
         {
             var required = await db.CategoryAttributeRequirements.AsNoTracking().Where(x => x.TenantId == tenantId && x.CategoryId == category && x.IsPanelScoped && x.Role != "OPTION" && x.IsRequired).Select(x => x.AttributeId).ToListAsync(cancellationToken);
             var supplied = assignments.Select(x => x.AttributeId).ToHashSet();

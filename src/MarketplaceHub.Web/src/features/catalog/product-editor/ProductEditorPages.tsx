@@ -42,6 +42,7 @@ import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } fro
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
+import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductTitle, editorStatusFor, isDraftStatus, variantCodeRulesStopSave } from '../product-draft'
 import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemovedMedia, withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
 import { clearAllMediaConfirmationText, clearAllMediaFeedbackText, familyItemsShownInStrip, familyMediaClearPlan, removePendingFamilyMedia, withPendingFamilyMediaRemovals } from '../family-media-clear'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
@@ -54,7 +55,7 @@ import { publicationJobPollInterval } from '../publication-job-poll'
 import { isRefreshJobRunning, publicationJobInline } from '../publication-job-inline'
 import { statusLabel } from '../../../shared/status-labels'
 import { familyCardsInPanelOrder } from '../family-card-order'
-import { productPublicationTargets, productSaveFeedback,publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome } from '../product-publication-submit'
+import { productPublicationTargets, productSaveFeedback,publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, variantOwnerProductId, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
@@ -1277,7 +1278,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const initialSalePrice = product.defaultSalePrice ?? primary?.salePrice ?? 0
     initialEditModelCode.current = initialModelCode.trim()
     initialEditDesi.current = Number(primary?.desi ?? 1)
-    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), warrantyMonths: String(product.warrantyMonths ?? 0), deliveryDays: String(product.deliveryDays ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: product.status || 'ACTIVE' })
+    setForm({ title: product.title, description: product.description ?? '', brandId: product.brandId ?? '', categoryId: product.categoryId ?? '', baseSku: mode === 'copy' ? '' : primary?.sku ?? '', barcode: mode === 'copy' ? '' : primary?.barcode ?? '', modelCode: initialModelCode, weight: String(primary?.weight ?? ''), width: String(primary?.width ?? ''), length: String(primary?.length ?? ''), height: String(primary?.height ?? ''), desi: String(primary?.desi ?? 1), warrantyMonths: String(product.warrantyMonths ?? 0), deliveryDays: String(product.deliveryDays ?? 1), listPrice: String(initialListPrice), salePrice: String(initialSalePrice), costPrice: primary?.costPrice == null ? '' : String(primary.costPrice), currency: primary?.currency ?? 'TRY', ...editorVat(product, primary), initialStock: String(primary?.onHand ?? 0), safetyStock: String(primary?.safetyStock ?? 0), mediaUrls: savedMediaUrls.join('\n'), status: editorStatusFor(product.status) })
     // An existing product opens with each marketplace's stored choice (else what its offer prices say): a marketplace
     // with its own price has its switch on and shows that price; a card with variants is on as soon as one variant's
     // offer there keeps its own price, and shows the first such variant's price.
@@ -2392,19 +2393,22 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     pendingPlatformUpdate.current = null
     const submitter = (event.nativeEvent as SubmitEvent).submitter
     const submitData = new FormData(event.currentTarget)
-    const saveAndStay = submitter?.getAttribute('data-submit-intent') === 'save'
+    // Taslak Olarak Kaydet (product-draft.ts): saves the card as it is, on a new card or a draft only, and sends nothing.
+    const saveDraft = !platformUpdate && submitter?.getAttribute('data-submit-intent') === 'draft' && canSaveAsDraft(Boolean(editProductId), productToEdit.data?.status)
+    const editingDraft = Boolean(editProductId) && isDraftStatus(productToEdit.data?.status)
+    const saveAndStay = saveDraft || submitter?.getAttribute('data-submit-intent') === 'save'
       || (submitter?.getAttribute('name') === 'intent' && submitter?.getAttribute('value') === 'save')
       || submitData.get('intent') === 'save'
-    const createOnly = !editProductId && (submitter?.getAttribute('data-submit-intent') === 'create'
+    const createOnly = !editProductId && !saveDraft && (submitter?.getAttribute('data-submit-intent') === 'create'
       || (submitter?.getAttribute('name') === 'intent' && submitter?.getAttribute('value') === 'create'))
-    const requireCompleteCatalog = !editProductId || !saveAndStay
+    // A draft's normal Kaydet puts it on sale, so it is checked as a new card is.
+    const requireCompleteCatalog = !saveDraft && (!editProductId || !saveAndStay || editingDraft)
     // A draft may keep red codes; every other save waits until they are fixed.
-    const draftSave = submitter?.getAttribute('data-submit-intent') === 'draft' || submitData.get('intent') === 'draft'
-    if (!draftSave && blockedByVariantCodeRules()) return
+    if (variantCodeRulesStopSave(saveDraft, codeRuleSaveBlock) && blockedByVariantCodeRules()) return
     // KDV Oranı is required on every card (the server refuses a card without one): stop here, on the first step where
-    // the field is, with its message under it.
+    // the field is, with its message under it. A draft may be saved without it.
     const vatRateIssue = editorVatRateIssue(form.vatRate)
-    if (vatRateIssue) {
+    if (vatRateIssue && !saveDraft) {
       setFieldErrors(current => ({ ...current, vatRate: vatRateIssue }))
       if (!publishOnly) setWizardStep(1)
       setError(new Error(vatRateIssue)); setNotice(vatRateIssue)
@@ -2420,7 +2424,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     // The pending toast names what this press does: publishing (Yayınla), updating the stores, or only saving.
     const publishing = !saveAndStay && !createOnly && !platformUpdate && selectedChannelIds.length > 0
     const storeCount = `${selectedChannelIds.length} platforma`
-    const [pendingTitle, pendingMessage] = platformUpdate
+    const [pendingTitle, pendingMessage] = saveDraft
+      ? ['Taslak Kaydediliyor', 'Ürün taslak olarak kaydediliyor…']
+      : platformUpdate
       ? ['Platformlar Güncelleniyor', 'Ürün kaydediliyor ve seçili mağazalarda güncelleniyor…']
       : publishing
         ? editProductId
@@ -2438,7 +2444,27 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       }
       const optionRequirementsForSubmit = submitRequirements.filter(isOptionRequirement).map(item => ({ attributeId: item.attributeId, name: item.attribute.name, values: item.attribute.values }))
       if (requireCompleteCatalog && form.categoryId && requirements.isError && !requirements.data) throw new Error('Kategori özellikleri alınamadı. Önce kategori eşleştirmesini kontrol edin.')
-      const requirementList = mappedRequirements; const rows = rowsForSubmit(requireCompleteCatalog); validate(rows, requireCompleteCatalog, !createOnly)
+      const requirementList = mappedRequirements
+      // A draft is stopped only by values the server refuses (clashing codes, malformed prices or image links); what
+      // the normal save would ask for comes back as the list of what to complete before the card goes on sale.
+      let draftMissing = ''
+      let rows: VariantDraft[]
+      if (saveDraft) {
+        try { validate(rowsForSubmit(true), true, true) } catch (reason) { draftMissing = reason instanceof Error ? reason.message : '' }
+        if (vatRateIssue) draftMissing = `${vatRateIssue} ${draftMissing}`.trim()
+        rows = rowsForSubmit(false)
+        const blocking = draftBlockingIssues(rows, form)
+        const invalidMediaUrl = publicProductMediaUrls([...mediaUrls, ...rows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4)))]).map(productMediaUrlIssue).find((issue): issue is string => issue !== null)
+        if (invalidMediaUrl) blocking.push(`Görsel bağlantısı geçersiz: ${invalidMediaUrl} Ürün kaydedilmeden önce düzeltin veya kaldırın.`)
+        if (form.warrantyMonths.trim() && (!Number.isInteger(Number(form.warrantyMonths)) || Number(form.warrantyMonths) < 0 || Number(form.warrantyMonths) > 240)) blocking.push('Garanti süresi 0-240 ay arasında tam sayı olmalıdır.')
+        if (blocking.length) throw new Error(blocking.join(' '))
+      } else {
+        rows = rowsForSubmit(requireCompleteCatalog); validate(rows, requireCompleteCatalog, !createOnly)
+      }
+      const savedTitle = saveDraft ? draftProductTitle(form.title, form.modelCode, new Date()) : form.title
+      const savedStatus = saveDraft ? 'DRAFT' : form.status
+      const savedVatRate = saveDraft && vatRateIssue ? null : Number(form.vatRate || 0)
+      const savedVatInclusion = saveDraft && vatRateIssue ? null : form.vatIncluded || 'INCLUDED'
       const regularGlobalAttributes = requirementList
         .filter(item => !isOptionRequirement(item) && item.attributeId !== webColorRequirement?.attributeId && !variantAttributeIds.includes(item.attributeId))
         .flatMap((item, index) => productAttributePayload(item, attributeSelections[item.attributeId] ?? [], attributeTextValues[item.attributeId] ?? '', index))
@@ -2470,8 +2496,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       if (productToEdit.data) {
         const editProduct = productToEdit.data
         const updatePayload = {
-          title: form.title,
-          status: form.status,
+          title: savedTitle,
+          status: savedStatus,
           description: safeDescription,
           brandId: form.brandId || null,
           categoryId: form.categoryId || null,
@@ -2479,8 +2505,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           defaultSalePrice: Number(form.salePrice || 0),
           warrantyMonths: Number(form.warrantyMonths || 0),
           deliveryDays: productDeliveryDays(form.deliveryDays),
-          vatRate: Number(form.vatRate || 0),
-          vatInclusion: form.vatIncluded || 'INCLUDED',
+          vatRate: savedVatRate,
+          vatInclusion: savedVatInclusion,
           trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : '00000000-0000-0000-0000-000000000000',
           ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}),
           variantIdsToDelete: removedVariantIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id)),
@@ -2525,7 +2551,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           }
         }
       } else {
-        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: form.title, status: form.status, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, deliveryDays: productDeliveryDays(form.deliveryDays), vatRate: Number(form.vatRate || 0), vatInclusion: form.vatIncluded || 'INCLUDED', trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
+        product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: savedTitle, status: savedStatus, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, deliveryDays: productDeliveryDays(form.deliveryDays), vatRate: savedVatRate, vatInclusion: savedVatInclusion, trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
       productCreated = product; const completed: string[] = []; const warnings: string[] = []
       const publications: MarketplacePublishOutcome[] = []
@@ -2591,7 +2617,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       if (editProductId ? productMediaChanged || mediaFiles.length > 0 : mediaUrls.length || mediaFiles.length) completed.push('görseller')
       if (removedFamilyMediaCount) completed.push(`diğer renklerden kaldırılan ${removedFamilyMediaCount} görsel`)
       if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
-      const targetConnectionIds = createOnly ? [] : platformUpdate?.connectionIds ?? selectedChannelIds
+      // A draft is never sent: no channel price is written for it and nothing is published.
+      const targetConnectionIds = createOnly || saveDraft ? [] : platformUpdate?.connectionIds ?? selectedChannelIds
       // Only rows whose stock the user changed are sent, as absolute values against the stock loaded into the form;
       // a stock changed meanwhile (order, return, another tab) is refused for that row instead of being overwritten.
       const stockResult = await applyVariantStockSets(editorStockUpdates(rows, product.variants), update => setVariantOnHand(update, productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu'))
@@ -2719,17 +2746,29 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           else publicationErrors.push({ platformName, message: failure })
         }
       }
-      const result = productSaveFeedback({
-        created: !editProductId,
-        productChanged: productChangedAtSubmit,
-        savedParts: completed,
-        versionRetried: productVersionRetryUsed,
-        saveWarnings: warnings,
-        publishRequested: !saveAndStay && !createOnly,
-        publications,
-        publicationErrors,
-        updates: platformUpdate ? updates : undefined
-      })
+      const draftMissingItems = draftMissingSummary(draftMissing)
+      const result: ProductSaveFeedback = saveDraft
+        ? {
+            title: 'Taslak Kaydedildi',
+            kind: warnings.length ? 'error' : 'success',
+            persistent: draftMissingItems.count > 0 || warnings.length > 0,
+            lines: [
+              'Ürün taslak olarak kaydedildi; pazaryerlerine gönderilmez ve stok sayımlarına girmez.',
+              ...warnings,
+              ...(draftMissingItems.count ? [`Satışa açmadan önce tamamlanacak ${draftMissingItems.count} eksik: ${draftMissingItems.lines.join(' ')}`] : [])
+            ]
+          }
+        : productSaveFeedback({
+            created: !editProductId,
+            productChanged: productChangedAtSubmit,
+            savedParts: completed,
+            versionRetried: productVersionRetryUsed,
+            saveWarnings: warnings,
+            publishRequested: !saveAndStay && !createOnly,
+            publications,
+            publicationErrors,
+            updates: platformUpdate ? updates : undefined
+          })
       const message = result.lines.join(' ')
       setRemovedVariantIds([])
       // The uploaded files are on the product now: they leave the queue here, not only when the refetch below refills
@@ -2755,7 +2794,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         // The save toast of a publish already went to the history; a bare create (its toast closed) is recorded here.
         if (createOnly) appendNotification({ title: 'Ürün Oluşturuldu', message: 'Ürün kataloğa eklendi.', kind: 'success', subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) })
         leavingAfterSave.current = true
-        navigate(`/products/${productCreated.id}`, { replace: true, state: createOnly ? null : { wizardStep: 2 } })
+        navigate(`/products/${productCreated.id}`, { replace: true, state: createOnly || saveDraft ? null : { wizardStep: 2 } })
       }
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
@@ -2780,6 +2819,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     } finally { setSubmitting(false) }
   }
 
+  // Taslak Olarak Kaydet shows on a new card and on a draft; a draft has no store to update yet.
+  const draftSaveAvailable = canSaveAsDraft(Boolean(editProductId), productToEdit.data?.status)
+  const editingDraftProduct = Boolean(editProductId) && isDraftStatus(productToEdit.data?.status)
   const [marketplacePricingOpen, setMarketplacePricingOpen] = useState(false)
   const publicationChannels = (connections.data?.items ?? []).filter(isProductPublicationChannel)
   // The cards read each variant's link from the latest product, not from the statuses the form was filled with.
@@ -2972,7 +3014,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div>
         <div className="product-step-grid product-basics-grid">
           <label className="product-title-field">Ürün Adı<input value={form.title} aria-invalid={fieldErrors.title ? true : undefined} onChange={event => updateField('title', event.target.value)} required maxLength={320} /><EditorFieldError message={fieldErrors.title} /></label>
-          <label>Satış Durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option><option value="DRAFT">Taslak</option></select></label>
+          <label>Satış Durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option></select></label>
           <label className="product-brand-field">Marka<select value={form.brandId} onChange={event => updateField('brandId', event.target.value)}><option value="">Marka Seçin</option>{activeBrands.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select><EditorFieldError message={fieldErrors.brandId} /></label>
           <label className="product-category-field">Panel Kategorisi<select aria-label="Panel kategorisi" value={form.categoryId} onChange={event => { updateField('categoryId', event.target.value); setAttributeSelections({}); setAttributeTextValues({}); setVariantAttributeIds([]); setWebColorAutoEnabled(true); setManualWebColorValueId(''); if (!editProductId) setVariantRows([]) }}><option value="">Kategori Seçin</option>{leafCategories.map(item => <option key={item.id} value={item.id}>{item.path}</option>)}</select><EditorFieldError message={fieldErrors.categoryId} /></label>
           <label>Model Kodu<input className="technical-field model-code-value" value={form.modelCode} onChange={event => updateField('modelCode', event.target.value)} /></label>
@@ -3266,7 +3308,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       </div>
     </section>
 
-    <StickyActionBar label="Ürün kaydetme" className="product-submit-sticky"><div><strong>{editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p>{codeRuleSaveBlock && <button type="button" className="product-submit-code-block" onClick={goToFirstVariantCodeIssue}><UiIcon name="alert" size={14} /><span>{codeRuleSaveBlock}</span></button>}{pendingFamilyMediaRemovals.length > 0 && <p className="product-submit-family-media-note" role="status"><span>{pendingFamilyMediaRemovals.length} renk ailesi görseli Kaydet’te diğer renklerden de kaldırılacak</span><button type="button" className="product-submit-undo-button" onClick={undoPendingFamilyMediaRemovals} disabled={submitting}>Geri Al</button></p>}</div><div className={`product-submit-actions${codeRuleSaveBlock ? ' is-code-blocked' : ''}`}>{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Oluşturuluyor…' : 'Ürünü Oluştur'}</button>}{editProductId && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={() => { if (!blockedByVariantCodeRules()) startQuickPlatformUpdate() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || 'Seçili aktif platformlarda yalnız fiyat ve stoku güncelle'}><span>Hızlı Güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={() => { if (!blockedByVariantCodeRules()) openPlatformUpdateDialog() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} aria-label="Platform güncelleme ayarları" title={codeRuleSaveBlock || 'Platform güncelleme ayarları'} aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => { if (!blockedByVariantCodeRules()) setWizardStep(2) }} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined}><span className="submit-label-long">Yayınlamaya Devam Et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></StickyActionBar>
+    <StickyActionBar label="Ürün kaydetme" className="product-submit-sticky"><div><strong>{editingDraftProduct ? 'Taslak ürün · Kaydet ile satışa açılır' : editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p>{codeRuleSaveBlock && <button type="button" className="product-submit-code-block" onClick={goToFirstVariantCodeIssue}><UiIcon name="alert" size={14} /><span>{codeRuleSaveBlock}</span></button>}{pendingFamilyMediaRemovals.length > 0 && <p className="product-submit-family-media-note" role="status"><span>{pendingFamilyMediaRemovals.length} renk ailesi görseli Kaydet’te diğer renklerden de kaldırılacak</span><button type="button" className="product-submit-undo-button" onClick={undoPendingFamilyMediaRemovals} disabled={submitting}>Geri Al</button></p>}</div><div className={`product-submit-actions${codeRuleSaveBlock ? ' is-code-blocked' : ''}`}>{draftSaveAvailable && <button type="submit" name="intent" value="draft" className="secondary product-submit-draft" data-submit-intent="draft" form="product-creation-form" disabled={submitting} title="Zorunlu alanlar eksik olsa da kaydeder; taslak pazaryerlerine gönderilmez ve stok sayımlarına girmez"><span className="submit-label-long">Taslak Olarak Kaydet</span><span className="submit-label-short">Taslak</span></button>}{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Oluşturuluyor…' : 'Ürünü Oluştur'}</button>}{editProductId && !editingDraftProduct && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={() => { if (!blockedByVariantCodeRules()) startQuickPlatformUpdate() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || 'Seçili aktif platformlarda yalnız fiyat ve stoku güncelle'}><span>Hızlı Güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={() => { if (!blockedByVariantCodeRules()) openPlatformUpdateDialog() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} aria-label="Platform güncelleme ayarları" title={codeRuleSaveBlock || 'Platform güncelleme ayarları'} aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => { if (!blockedByVariantCodeRules()) setWizardStep(2) }} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined}><span className="submit-label-long">Yayınlamaya Devam Et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></StickyActionBar>
     {/* A save or validation error is already a feedback toast in the column; this one is only for what failed to load. */}
     {!error && <ErrorToast title="Ürün Bilgileri Yüklenemedi" error={categories.error ?? brands.error ?? connections.error} />}
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>

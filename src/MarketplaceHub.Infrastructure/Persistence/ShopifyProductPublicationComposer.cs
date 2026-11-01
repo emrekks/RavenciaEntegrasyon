@@ -35,6 +35,7 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return Fail("PRODUCT_NOT_FOUND", "Ürün kaydı bulunamadı.", 404);
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
+        if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);
 
         var profile = await db.ChannelListingProfiles.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
@@ -51,7 +52,7 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         if (!familyIds.Contains(productId)) familyIds.Add(productId);
         // Card order is creation order (the id breaks a tie), so the colours keep one order on every publication.
         var members = await db.Products.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status != ProductStatus.Archived)
+            .Where(x => x.TenantId == tenantId && familyIds.Contains(x.Id) && x.Status == ProductStatus.Active) // never an archived card or a draft
             .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
         var lead = members[0];
