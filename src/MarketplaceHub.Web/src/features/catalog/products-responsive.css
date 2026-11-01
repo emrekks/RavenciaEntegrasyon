@@ -303,13 +303,17 @@
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > * { --media-tile-button: clamp(18px, 25cqi, 24px); }
 }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn) { top: 5px; width: var(--media-tile-button); min-width: 0; height: var(--media-tile-button); min-height: 0; padding: 0; border-radius: 6px; background: rgb(9 20 39 / 72%); box-shadow: none; transition: opacity .15s ease, background-color .15s ease; }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-remove-btn { right: 5px; opacity: .55; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-remove-btn { right: 5px; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn) { opacity: .55; }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-zoom-btn { left: 5px; }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn, .media-move-buttons > button)::after { content: ""; position: absolute; inset: min(-7px, calc((var(--media-tile-button) - 32px) / 2)); }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .media-move-buttons > button { position: relative; width: calc(var(--media-tile-button) * 1.3); min-width: 0; height: var(--media-tile-button); min-height: 0; border-radius: 6px; }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn, .media-move-buttons > button) .ui-icon { width: calc(var(--media-tile-button) * .65); height: calc(var(--media-tile-button) * .65); }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card:is(:hover, :focus-within) .image-remove-btn, .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-remove-btn:focus-visible { opacity: 1; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card:is(:hover, :focus-within) :is(.image-remove-btn, .image-zoom-btn), .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn):focus-visible { opacity: 1; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-zoom-btn:hover { background: var(--rv-color-primary); }
+/* Clicking the picture does nothing (only the zoom button zooms): no zoom cursor or hover frame on it. */
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .media-tile-image { cursor: inherit; }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-remove-btn:hover:not(:disabled) { background: rgb(190 38 54 / 92%); }
 @media (pointer: coarse) {
-  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-remove-btn { opacity: 1; }
+  .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn) { opacity: 1; }
 }
