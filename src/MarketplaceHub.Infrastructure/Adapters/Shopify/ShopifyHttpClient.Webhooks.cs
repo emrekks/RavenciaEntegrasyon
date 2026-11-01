@@ -10,6 +10,9 @@ namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
 public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
 {
     // FULFILLMENTS_* would need read_fulfillments; order topics already report fulfilment changes.
+    // PRODUCTS_DELETE is received (ShopifyWebhookVerifier, MarketplaceWebhookService) but not subscribed: creating the
+    // subscription is a write to the store the user approves first, so it stays out of WebhookTopics until then.
+    internal const string ProductDeleteTopic = "PRODUCTS_DELETE";
     internal static readonly string[] WebhookTopics = ["ORDERS_CREATE", "ORDERS_UPDATED", "ORDERS_CANCELLED", "ORDERS_FULFILLED", "ORDERS_PARTIALLY_FULFILLED", "REFUNDS_CREATE"];
     internal const char WebhookIdSeparator = ',';
     private const string WebhookGidPrefix = "gid://shopify/WebhookSubscription/";

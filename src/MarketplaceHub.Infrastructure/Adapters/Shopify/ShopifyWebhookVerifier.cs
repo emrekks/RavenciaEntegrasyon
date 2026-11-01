@@ -20,7 +20,9 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
     internal const string StaleCode = "SHOPIFY_WEBHOOK_STALE";
     // The topics the panel subscribes to (ShopifyHttpClient.WebhookTopics). The header is not signed, so any other
     // value counts as one topic and cannot be varied to slip a replayed body past the deduplication.
-    private static readonly string[] KnownTopics = ["orders/create", "orders/updated", "orders/cancelled", "orders/fulfilled", "orders/partially_fulfilled", "refunds/create"];
+    private static readonly string[] KnownTopics = ["orders/create", "orders/updated", "orders/cancelled", "orders/fulfilled", "orders/partially_fulfilled", "refunds/create", "products/delete"];
+    // A product deleted in Shopify (ShopifyHttpClient.ProductDeleteTopic): MarketplaceWebhookService starts the link check.
+    internal const string ProductDeleteResourceType = "PRODUCTS_DELETE";
     private readonly IDataProtector protector = dataProtection.CreateProtector("MarketplaceHub.WebhookVerifier.v1");
     private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
 
@@ -67,10 +69,13 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         }
 
         var payloadHash = Convert.ToHexString(SHA256.HashData(rawBody.Span));
-        // A refund's id is the refund's; it names its order in order_id.
-        var resourceType = topic.StartsWith("refunds/", StringComparison.OrdinalIgnoreCase) ? "REFUNDS" : "ORDERS";
-        return AdapterResult<VerifiedWebhookEnvelope>.Success(new(externalMessageId, payloadHash, resourceType, Encoding.UTF8.GetString(rawBody.Span)));
+        return AdapterResult<VerifiedWebhookEnvelope>.Success(new(externalMessageId, payloadHash, ResourceType(topic), Encoding.UTF8.GetString(rawBody.Span)));
     }
+
+    // A refund's id is the refund's; it names its order in order_id. A deleted product starts the link check.
+    internal static string ResourceType(string topic) =>
+        string.Equals(topic.Trim(), "products/delete", StringComparison.OrdinalIgnoreCase) ? ProductDeleteResourceType
+        : topic.StartsWith("refunds/", StringComparison.OrdinalIgnoreCase) ? "REFUNDS" : "ORDERS";
 
     internal static string MessageId(string? topic, ReadOnlySpan<byte> rawBody)
     {
