@@ -307,7 +307,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-shell.stitch-shell main .reports-page :is(.reports-column, .reports-stacked span, .reports-progress i, .reports-gauge-value, .reports-bar-track > span) { transition: none; }
+  .app-shell.stitch-shell main .reports-page :is(.reports-column, .reports-stacked span, .reports-progress i, .reports-bar-track > span) { transition: none; }
   .app-shell.stitch-shell main .reports-page .reports-more .ui-icon { transition: none; }
   .app-shell.stitch-shell main .reports-page .reports-more:hover .ui-icon { transform: none; }
   .app-shell.stitch-shell main .reports-page .reports-map-regions path { transition: none; }
