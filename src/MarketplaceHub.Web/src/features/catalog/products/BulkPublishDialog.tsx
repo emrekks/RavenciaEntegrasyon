@@ -7,15 +7,17 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import type { NotificationDetail } from '../../../shared/notifications'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import type { MarketplaceConnection, Product } from '../shared'
-import { addBulkPublicationResult, bulkPublishChunks, bulkPublishFailureDetails, bulkPublishMissingVat, bulkPublishRequestBody, bulkPublishResultMessage, type BulkPublicationResult } from './bulk-publish-run'
+import { addBulkPublicationResult, bulkPublishFailureDetails, bulkPublishMissingVat, bulkPublishRequestBody, bulkPublishResultMessage, type BulkPublicationResult } from './bulk-publish-run'
+import { bulkPublishPlan, useBulkPublicationReadiness, type BulkConnectionReadiness } from './bulk-publish-readiness'
 import { bulkPublishModelTooltip, bulkPublishPlatformName, summarizeBulkPublishModels, summarizeBulkPublishStatus, type BulkPublishModelTooltip, type BulkPublishStatusSummary } from './bulk-publish-status'
+import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
+import type { PublicationValueMappingFix } from '../publication-attribute-readiness'
 import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
+import '../product-editor/product-editor-hydration.css'
 
 export type BulkPublishNotice = { title: string; message: string; kind: 'success' | 'error' | 'info'; details?: NotificationDetail[] }
 
-// The server takes the cards in slices so a long selection never runs into one request's time limit.
-const CHUNK_SIZE = 50
 const emptyResult: BulkPublicationResult = { queued: 0, skipped: 0, failed: [] }
 
 // The card's frame and place, as on a product's own publish popup: not yet published first, then refused, in
@@ -49,8 +51,9 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   const [progress, setProgress] = useState(0)
   const [result, setResult] = useState<BulkPublicationResult | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // The slices of the run and the first one not sent yet: a run cut short (network, server) goes on from there.
-  const planRef = useRef<{ chunks: string[][] } | null>(null)
+  // The slices of the run and the first one not sent yet: a run cut short (network, server) goes on from there. Each
+  // slice names its stores: a store with records that have required gaps gets only its ready records.
+  const planRef = useRef<{ chunks: Array<{ productIds: string[]; connectionIds: string[] }>; total: number } | null>(null)
   const [resumeAt, setResumeAt] = useState<number | null>(null)
   // A selected id the list no longer holds counts as unknown in the summary instead of being dropped from the total.
   const selectedRecords = useMemo(() => {
@@ -58,11 +61,20 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     const byId = new Map(products.map(product => [product.id, product]))
     return productIds.map(id => byId.get(id) ?? null)
   }, [productIds, products])
-  const summaries = useMemo(() => new Map(connections.map(connection => [connection.id, selectedRecords ? summarizeBulkPublishStatus(selectedRecords, connection) : null])), [connections, selectedRecords])
   const modelTips = useMemo(() => new Map(connections.map(connection => [connection.id, selectedRecords?.length ? bulkPublishModelTooltip(summarizeBulkPublishModels(selectedRecords, connection)) : null])), [connections, selectedRecords])
   // Records with no KDV Oranı on the card and no offer to take one from: the server refuses them, so the popup says so.
   const missingVat = useMemo(() => bulkPublishMissingVat(selectedRecords), [selectedRecords])
   const knownRecords = useMemo(() => (selectedRecords ?? []).filter((record): record is Product => record !== null), [selectedRecords])
+  // The editor's publish checks on every selected record; the cards stay masked until all are checked.
+  const readiness = useBulkPublicationReadiness(productIds, connections, selectedRecords)
+  const checking = !readiness.done
+  // A record the list has no status for, and whose publication status says it is not out there, counts as not published.
+  const summaries = useMemo(() => new Map(connections.map(connection => {
+    if (!selectedRecords) return [connection.id, null]
+    const notPublished = new Set((readiness.byConnection.get(connection.id)?.entries ?? []).filter(entry => entry.notPublished).map(entry => entry.productId))
+    const records = selectedRecords.map((record, index) => notPublished.has(productIds[index]) ? { platformStatuses: [{ platform: connection.displayName, platformCode: connection.platformCode, status: 'UNLINKED' }] } as Pick<Product, 'platformStatuses'> : record)
+    return [connection.id, summarizeBulkPublishStatus(records, connection)]
+  })), [connections, productIds, readiness.byConnection, selectedRecords])
   const resumable = resumeAt !== null
   const locked = running || Boolean(result) || resumable
   const close = () => { if (!running) onClose() }
@@ -72,7 +84,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   }
 
   async function publish(resume: boolean) {
-    const plan = resume && planRef.current ? planRef.current : { chunks: bulkPublishChunks(productIds, knownRecords, CHUNK_SIZE) }
+    const plan = resume && planRef.current ? planRef.current : bulkPublishPlan(productIds, knownRecords, connectionIds, readiness.byConnection)
     planRef.current = plan
     const first = resume ? resumeAt ?? 0 : 0
     let index = first
@@ -83,10 +95,11 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     if (!resume) { setResult(null); setProgress(0) }
     try {
       for (; index < plan.chunks.length; index++) {
-        const part = await hubApi<BulkPublicationResult>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: bulkPublishRequestBody(plan.chunks[index], connectionIds) })
+        const chunk = plan.chunks[index]
+        const part = await hubApi<BulkPublicationResult>('/products/bulk-publication-jobs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('bulk-publication') }, body: bulkPublishRequestBody(chunk.productIds, chunk.connectionIds) })
         total = addBulkPublicationResult(total, part); sent = addBulkPublicationResult(sent, part)
         setResult(total)
-        setProgress(plan.chunks.slice(0, index + 1).reduce((count, chunk) => count + chunk.length, 0))
+        setProgress(plan.chunks.slice(0, index + 1).reduce((count, item) => count + item.productIds.length, 0))
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Yayın işleri oluşturulamadı.')
@@ -109,8 +122,10 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
   }
 
   const selectedCount = connectionIds.length
-  // "Tümünü Seç" picks every platform a card can be selected on: one where the selected records are not all live yet.
-  const selectableIds = connections.filter(connection => !summaries.get(connection.id)?.allLive).map(connection => connection.id)
+  // "Tümünü Seç" picks every platform a card can be selected on: one where the selected records are not all live yet and
+  // not all held back by required gaps.
+  const selectableIds = connections.filter(connection => !summaries.get(connection.id)?.allLive && !allRecordsBlocked(readiness.byConnection.get(connection.id))).map(connection => connection.id)
+  const partlyHeldBack = connectionIds.some(id => (readiness.byConnection.get(id)?.blocked.length ?? 0) > 0)
   const allSelectableSelected = selectableIds.length > 0 && selectableIds.every(id => connectionIds.includes(id))
   const toggleAll = () => setConnectionIds(allSelectableSelected ? [] : selectableIds)
   return createPortal(
@@ -119,7 +134,7 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
         <header><div><p className="eyebrow">Toplu İşlem</p><h2 id="bulk-publish-title">Platformlarda Yayınla</h2><p>Seçili {cardCount.toLocaleString('tr-TR')} ürün kartı ({productIds.length.toLocaleString('tr-TR')} katalog kaydı) seçtiğiniz pazar yerlerine gönderilir. Zaten yayında ya da işlemde olanlar atlanır.</p></div><button type="button" className="modal-close" onClick={close} disabled={running} aria-label="Yayın penceresini kapat"><UiIcon name="close" /></button></header>
         <div className="product-publish-popup-body"><div className="product-add-page product-publish-popup"><section className="product-publish-step" aria-label="Toplu ürün yayınlama"><div className="product-publish-layout"><div className="product-publish-main">
           {connections.length
-            ? <div className="publish-platform-grid" role="group" aria-label="Yayın platformları">{connections.map(connection => <BulkPublishPlatformCard key={connection.id} connection={connection} summary={summaries.get(connection.id) ?? null} modelTip={modelTips.get(connection.id) ?? null} selected={connectionIds.includes(connection.id)} locked={locked} onToggle={() => toggle(connection.id)} />)}</div>
+            ? <div className="publish-platform-grid" role="group" aria-label="Yayın platformları">{connections.map(connection => <BulkPublishPlatformCard key={connection.id} connection={connection} summary={summaries.get(connection.id) ?? null} modelTip={modelTips.get(connection.id) ?? null} readiness={checking ? null : readiness.byConnection.get(connection.id) ?? null} selected={connectionIds.includes(connection.id)} locked={locked} onToggle={() => toggle(connection.id)} onMappingsSaved={readiness.recheck} />)}</div>
             : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p></div>}
           {error && <div className="publish-platform-warning" role="alert"><UiIcon name="alert" /><div><strong>Yayın İşleri Oluşturulamadı</strong><p>{error}</p></div></div>}
           {missingVat > 0 && !result && <div className="bulk-publish-vat" role="note">
@@ -127,12 +142,12 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
             <small>{missingVat.toLocaleString('tr-TR')} kaydın ürün kartında KDV oranı yok; mağazanın varsayılan KDV oranı yoksa gönderilmez. Ürünü açıp KDV Oranı seçip kaydedin.</small>
           </div>}
           <div className="publish-selection-footer">
-            <div><strong>{result ? `${result.queued} kuyruğa alındı · ${result.skipped} atlandı · ${result.failed.length} gönderilemedi` : selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{running ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt işlendi` : resumable ? `${progress.toLocaleString('tr-TR')} / ${productIds.length.toLocaleString('tr-TR')} kayıt gönderildi; kalanları yeniden gönderebilirsiniz.` : result ? (result.failed.length ? 'Gönderilemeyenler ve nedenleri bildirimlerde.' : 'Sonuçlar ürün listesinde güncellenir.') : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
+            <div><strong>{result ? `${result.queued} kuyruğa alındı · ${result.skipped} atlandı · ${result.failed.length} gönderilemedi` : selectedCount ? `${selectedCount} platform seçildi` : 'Yayın platformu seçilmedi'}</strong><small>{running ? `${progress.toLocaleString('tr-TR')} / ${(planRef.current?.total ?? productIds.length).toLocaleString('tr-TR')} kayıt işlendi` : resumable ? `${progress.toLocaleString('tr-TR')} / ${(planRef.current?.total ?? productIds.length).toLocaleString('tr-TR')} kayıt gönderildi; kalanları yeniden gönderebilirsiniz.` : result ? (result.failed.length ? 'Gönderilemeyenler ve nedenleri bildirimlerde.' : 'Sonuçlar ürün listesinde güncellenir.') : checking ? `Yayın hazırlığı kontrol ediliyor: ${readiness.checked.toLocaleString('tr-TR')} / ${readiness.total.toLocaleString('tr-TR')} ürün kontrol edildi` : partlyHeldBack ? 'Zorunlu eksiği olan ürünler gönderilmez; yalnız hazır olanlar gönderilir.' : selectedCount ? 'Seçilen her mağazada ayrı yayın kuyruğu ve kontrol listesi bulunur.' : 'Yayınlanacak mağazaları kartların üstünden seçin.'}</small></div>
             {!selectedCount && !result && <span className="publish-selection-warning"><UiIcon name="alert" /> En az bir platform seçin</span>}
-            {!result && selectableIds.length > 0 && <button type="button" className="secondary publish-select-all" disabled={locked} onClick={toggleAll}>{allSelectableSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>}
+            {!result && (checking || selectableIds.length > 0) && <button type="button" className="secondary publish-select-all" disabled={locked || checking} onClick={toggleAll}>{allSelectableSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>}
             {resumable
               ? <button type="button" disabled={running} onClick={() => void publish(true)}>{running ? 'Kuyruğa Alınıyor…' : 'Kalanları Gönder'}</button>
-              : result && !running ? <button type="button" onClick={onClose}>Kapat</button> : <button type="button" disabled={running || !selectedCount} onClick={() => void publish(false)}>{running ? 'Kuyruğa Alınıyor…' : 'Yayınla'}</button>}
+              : result && !running ? <button type="button" onClick={onClose}>Kapat</button> : <button type="button" disabled={running || checking || !selectedCount} onClick={() => void publish(false)}>{running ? 'Kuyruğa Alınıyor…' : 'Yayınla'}</button>}
           </div>
         </div></div></section></div></div>
       </DialogSurface>
@@ -140,32 +155,78 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     document.querySelector('main') ?? document.body)
 }
 
-function BulkPublishPlatformCard({ connection, summary, modelTip, selected, locked, onToggle }: {
+// Every record that is not already out there has required gaps: nothing would go, so the card cannot be selected.
+function allRecordsBlocked(readiness: BulkConnectionReadiness | null | undefined) {
+  return Boolean(readiness && readiness.blocked.length > 0 && readiness.readyCount === 0)
+}
+
+// The value mappings the store's records lack, one group per marketplace category (the fix window maps one category's
+// values and shares them with the connection's other categories).
+function fixGroups(readiness: BulkConnectionReadiness | null) {
+  const groups = new Map<string, Map<string, PublicationValueMappingFix>>()
+  for (const entry of readiness?.entries ?? []) {
+    if (entry.skipped || !entry.categoryScope || !entry.fixes.length) continue
+    const fixes = groups.get(entry.categoryScope) ?? new Map<string, PublicationValueMappingFix>()
+    for (const fix of entry.fixes) fixes.set(`${fix.externalAttributeId}:${fix.localValueId}`, fix)
+    groups.set(entry.categoryScope, fixes)
+  }
+  return [...groups.entries()].map(([categoryScope, fixes]) => ({ categoryScope, fixes: [...fixes.values()] }))
+}
+
+const shownBlockedProducts = 6
+
+function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, selected, locked, onToggle, onMappingsSaved }: {
   connection: MarketplaceConnection
   summary: BulkPublishStatusSummary | null
   modelTip: BulkPublishModelTooltip | null
+  // The editor's checks on the selected records; null while they run (the card is masked until then).
+  readiness: BulkConnectionReadiness | null
   selected: boolean
   locked: boolean
   onToggle: () => void
+  onMappingsSaved: () => void
 }) {
   const logo = platformLogoSource(connection.platformCode)
   const platformName = bulkPublishPlatformName(connection.platformCode)
   const storeName = connection.displayName || connection.externalStoreId || platformName
+  const settling = readiness === null
+  const blocked = readiness?.blocked ?? []
+  const checkedCount = (readiness?.entries.length ?? 0) - (readiness?.skippedCount ?? 0)
+  const allBlocked = allRecordsBlocked(readiness)
+  const someBlocked = blocked.length > 0 && !allBlocked
   const allLive = Boolean(summary?.allLive) && !selected
-  const subtitle = allLive ? 'Seçili kayıtların tümü zaten yayında' : selected ? 'Yayın için seçildi' : 'Yayın için seçilmedi'
+  const subtitle = settling ? 'Yayın hazırlığı kontrol ediliyor' : allLive ? 'Seçili kayıtların tümü zaten yayında' : allBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : someBlocked ? (selected ? 'Yayın için seçildi · yalnız hazır olanlar gönderilir' : 'Yalnız hazır olanlar gönderilir') : selected ? 'Yayın için seçildi' : 'Yayın için seçilmedi'
   const statusId = `bulk-publish-status-${connection.id}`
-  return <article className={`publish-platform-card is-state-${bulkPublishCardState(summary)}${selected ? ' selected' : ''}`}>
-    <button type="button" className="publish-platform-card-head" onClick={onToggle} aria-pressed={selected} aria-describedby={statusId} disabled={locked || allLive} title={allLive ? 'Seçili kayıtlar bu platformda zaten yayında.' : undefined}>
+  const [fixScope, setFixScope] = useState<string | null>(null)
+  const groups = fixGroups(readiness)
+  const openGroup = groups.find(group => group.categoryScope === fixScope)
+  const state = settling ? 'settling' : allBlocked ? 'error' : bulkPublishCardState(summary)
+  const format = (value: number) => value.toLocaleString('tr-TR')
+  const readinessDetail = blocked.length ? [`${format(readiness?.readyCount ?? 0)} hazır`, `${format(blocked.length)} eksik`, ...(readiness?.skippedCount ? [`${format(readiness.skippedCount)} zaten yayında`] : [])].join(' · ') : null
+  const detail = readinessDetail ?? summary?.detail
+  return <article className={`publish-platform-card is-state-${state}${selected && !settling ? ' selected' : ''}${settling ? ' is-settling' : ''}`} aria-busy={settling || undefined}>
+    <button type="button" className="publish-platform-card-head" onClick={onToggle} aria-pressed={selected} aria-describedby={statusId} disabled={locked || settling || allLive || allBlocked} title={allLive ? 'Seçili kayıtlar bu platformda zaten yayında.' : allBlocked ? 'Seçili ürünlerin hepsinde zorunlu eksik var.' : undefined}>
       <span className={`publish-platform-mark ${connection.platformCode.trim().toLocaleLowerCase('tr-TR')}`}>{logo ? <img className={`publish-platform-logo ${platformLogoClass(connection.platformCode)}`} src={logo} alt="" aria-hidden="true" /> : <b aria-hidden="true">{storeName.trim().charAt(0).toLocaleUpperCase('tr-TR') || 'R'}</b>}</span>
       <span><strong>{storeName}</strong><small>{subtitle}</small></span>
-      <i className={`publish-platform-toggle${selected ? ' on' : ''}`} aria-hidden="true"><b /></i>
+      <i className={`publish-platform-toggle${selected && !settling ? ' on' : ''}`} aria-hidden="true"><b /></i>
     </button>
     <dl className="publish-platform-facts">
       <div><dt>Mağaza</dt><dd title={connection.externalStoreId ? `Mağaza no: ${connection.externalStoreId}` : undefined}>{connection.displayName || connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{platformName}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif Bağlantı</span></dd></div>
-      <div className="publish-platform-fact-publication"><dt>Yayın Durumu</dt><dd id={statusId}>{summary ? <BulkPublishStatusPill summary={summary} modelTip={modelTip} platformName={storeName} tipId={`${statusId}-models`} /> : '—'}</dd>{summary?.detail && <small>{summary.detail}</small>}</div>
+      <div className="publish-platform-fact-publication"><dt>Yayın Durumu</dt><dd id={statusId}>{settling
+        ? <span className="publish-platform-status status-neutral"><i aria-hidden="true" />Kontrol ediliyor</span>
+        : blocked.length
+          ? <span className={`publish-platform-status status-${allBlocked ? 'danger' : 'warning'}`}><i aria-hidden="true" />{`${format(blocked.length)}/${format(checkedCount)} üründe zorunlu eksik`}</span>
+          : summary ? <BulkPublishStatusPill summary={summary} modelTip={modelTip} platformName={storeName} tipId={`${statusId}-models`} /> : '—'}</dd>{!settling && detail && <small>{detail}</small>}</div>
     </dl>
+    {blocked.length > 0 && <div className="bulk-publish-blocked" role="note">
+      <strong>Zorunlu Eksiği Olan Ürünler</strong>
+      <ul>{blocked.slice(0, shownBlockedProducts).map(entry => <li key={entry.productId}><a href={`/products/${entry.productId}`} target="_blank" rel="noreferrer">{entry.title}</a><small title={entry.issues.map(issue => `${issue.attribute}: ${issue.detail}`).join('\n')}>{entry.issues[0].attribute}: {entry.issues[0].detail}{entry.issues.length > 1 ? ` (+${entry.issues.length - 1})` : ''}</small></li>)}</ul>
+      {blocked.length > shownBlockedProducts && <small>ve {format(blocked.length - shownBlockedProducts)} ürün daha</small>}
+    </div>}
+    {groups.map(group => <button key={group.categoryScope} type="button" className="publish-platform-fix-mappings" disabled={locked} onClick={() => setFixScope(group.categoryScope)}><UiIcon name="link" />Eksik Değer Eşlemelerini Tamamla<span className="publish-platform-fix-count" aria-label={`${group.fixes.length} değer`}>{group.fixes.length}</span></button>)}
+    {openGroup && <MissingValueMappingDialog connectionId={connection.id} platformName={storeName} categoryScope={openGroup.categoryScope} fixes={openGroup.fixes} onClose={() => setFixScope(null)} onSaved={() => onMappingsSaved()} />}
   </article>
 }
 

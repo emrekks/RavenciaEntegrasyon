@@ -23,7 +23,8 @@ import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditFi
 import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from '../variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
-import { classifyPublicationAttributeIssues, fixableValueMappings, type PublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from '../publication-attribute-readiness'
+import { isOptionRequirement, loadPublicationAttributeIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
+import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
@@ -36,7 +37,6 @@ import { publishCardVariantLinks, publishCardVariantPresence, withLatestVariantL
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
-import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
@@ -57,7 +57,7 @@ import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, var
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { focusOnMount } from '../../../shared/focus'
 import { channelOfferPostKey, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, rowsWithSavedOffer, type ChannelPricingDraft, type SavedChannelOffer } from './marketplace-channel-pricing'
-import { AcceptedJob, Attribute, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
+import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
 // The save's slot in the toast column: "Ürün Kaydediliyor" turns into its result in place instead of stacking.
@@ -65,37 +65,6 @@ const productSaveToastKey = 'product-editor-save'
 // Channel prices are separate rows per variant and store; this many are written at once.
 const channelOfferWriteConcurrency = 6
 
-function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null, hasCustomMediaOrder = false) {
-  if (hasCustomMediaOrder) return [...productMediaUrls]
-  const ordered: string[] = []
-  const seen = new Set<string>()
-  const seenColors = new Set<string>()
-  const add = (url: string | null | undefined) => {
-    const normalized = url?.trim()
-    if (!normalized) return
-    const key = normalized.toLocaleLowerCase('tr-TR')
-    if (seen.has(key)) return
-    seen.add(key)
-    ordered.push(normalized)
-  }
-
-  const colorVariants = variants.some(variant => variantColorKey(variant) !== null)
-  if (colorVariants) {
-    for (const variant of variants) {
-      const color = variantColorKey(variant)
-      const group = color ?? `variant:${variant.id}`
-      if (seenColors.has(group)) continue
-      seenColors.add(group)
-      for (const url of variant.mediaUrls ?? []) add(url)
-    }
-    if (!ordered.length) add(productMediaUrls[0])
-  } else {
-    for (const variant of variants) for (const url of variant.mediaUrls ?? []) add(url)
-    for (const url of productMediaUrls) add(url)
-  }
-  add(primaryImageUrl)
-  return ordered
-}
 function seedVariantMediaRefs(variants: Variant[]) {
   const mediaByColor = new Map<string, string[]>()
   for (const variant of variants) {
@@ -174,12 +143,6 @@ function displayVariantOptionSignature(signature: string, savedOptions: Record<s
   if (!options.length) return signature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' ? signature : '—'
   return joinVariantOptionLabels(options.map(({ name, value }) => `${formatCatalogOptionLabel(name)}: ${isSizeOptionName(name) ? value.toLocaleUpperCase('tr-TR') : formatCatalogOptionLabel(value)}`))
 }
-function optionSignatureFromOptions(options: Record<string, string>) {
-  return Object.entries(options)
-    .filter(([, value]) => value.trim())
-    .map(([name, value]) => `${name}:${cleanOptionValue(value)}`)
-    .join('_')
-}
 function sortOptionValues<T extends { id: string; value: string }>(attributeName: string, values: T[]) {
   return values
     .map((value, index) => ({ value, index, rank: optionValueSortRank(attributeName, value.value) }))
@@ -195,12 +158,6 @@ function variantSignatureKey(signature: string) {
     .map(option => `${option.name.replace(/\s+/g, '').toLocaleLowerCase('tr-TR')}:${cleanOptionValue(option.value).toLocaleLowerCase('tr-TR')}`)
     .sort()
     .join('|')
-}
-function isOptionAttribute(attribute: Pick<Attribute, 'code' | 'name' | 'roles'>) {
-  const normalizedName = normalizeVariantOptionName(attribute.name)
-  return attribute.code.trim().toLocaleLowerCase('tr-TR').startsWith('option-')
-    || attribute.roles?.some(role => role.toLocaleUpperCase('tr-TR') === 'OPTION') === true
-    || isVariantOptionName(normalizedName)
 }
 function VariantImageIcon() {
   return <svg className="variant-media-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3 3 2-2 6 6" /></svg>
@@ -292,10 +249,6 @@ function scrollingParent(node: Element) {
     if ((overflow === 'auto' || overflow === 'scroll') && current.scrollHeight > current.clientHeight) return current
   }
   return document.scrollingElement ?? document.documentElement
-}
-type CategoryRequirement = { attributeId: string; isRequired: boolean; allowsCustomValue: boolean; displayOrder: number; role: 'ATTRIBUTE' | 'OPTION'; isWebColor?: boolean; attribute: Attribute }
-function isOptionRequirement(requirement: CategoryRequirement) {
-  return requirement.role === 'OPTION' || isOptionAttribute(requirement.attribute)
 }
 type VariantDraft = {
   key: string
@@ -954,67 +907,12 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     onCancelFailed: message => onFeedback({ title: 'Yayın İşi Durdurulamadı', message: `${platformName}: yayın işi durdurulamadı — ${message}`, kind: 'error', persistent: true })
   })
   const jobRunning = jobView.state === 'running'
-  const missingChecks = card.mode === 'PUBLISH' ? productChecks
-    .filter(check => !(isShopifyCard ? check.shopifyOk ?? check.ok : check.ok))
-    .map(check => ({ ...check, detail: isShopifyCard ? check.shopifyDetail ?? check.detail : check.detail })) : []
+  const missingChecks = card.mode === 'PUBLISH' ? missingPublicationChecks(productChecks, isShopifyCard) : []
   const mappingReadinessEnabled = card.mode === 'PUBLISH' && !isShopifyCard && (!productId || !publication.isPending)
     && (pttAvmRetry ? Boolean(categoryId) : shouldCheckPublicationAttributes(categoryId, selectionStatus, publication.data?.lastJobStatus))
   const mappingReadiness = useQuery({
-    queryKey: ['publication-attribute-readiness', card.connection.id, categoryId, selectedAttributes],
-    queryFn: async (): Promise<PublicationAttributeIssues> => {
-      const connectionId = encodeURIComponent(card.connection.id)
-      const categoryMapping = await readPublicationReadinessSource('Kategori eşlemesi', () => hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`))
-      if (!categoryMapping || categoryMapping.status !== 'VERIFIED') {
-        return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `Yayın öncesi güncel ${card.name} kategori eşlemesi gerekir.` }], optionalWarnings: [] }
-      }
-
-      const categoryReferences = await readPublicationReadinessSource(`${card.name} kategori listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}`))
-      const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryMapping.externalId && item.isActive && item.isLeaf)
-      if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
-        return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${card.name} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [] }
-      }
-      if (card.connection.platformCode.trim().toUpperCase() === 'PTTAVM') return { requiredIssues: [], optionalWarnings: [], categoryScope: categoryMapping.externalId }
-
-      const categoryScope = categoryMapping.externalId
-      const [attributeReferences, attributeMappings] = await Promise.all([
-        readPublicationReadinessSource(`${card.name} kategori özellik listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`)),
-        readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))
-      ])
-      const selectedIds = new Set(selectedAttributes.map(item => item.attributeId))
-      const currentMappings = attributeMappings.filter(mapping => mapping.status === 'VERIFIED' && mapping.snapshotId === attributeReferences.snapshotId)
-      const selectedExternalIds = [...new Set(currentMappings.filter(mapping => selectedIds.has(mapping.localId)).map(mapping => mapping.externalId))]
-      const valueEntries = await Promise.all(selectedExternalIds.map(async externalAttributeId => {
-        const valueScope = `${categoryScope}/${externalAttributeId}`
-        const selectedAttribute = selectedAttributes.find(item => item.attributeId === currentMappings.find(mapping => mapping.externalId === externalAttributeId)?.localId)
-        const attributeLabel = selectedAttribute?.name ?? externalAttributeId
-        const mappings = await readPublicationReadinessSource(`“${attributeLabel}” yerel değer eşlemeleri`, () => hubApi<PublicationMappingReference[]>(`/mappings/attribute-values?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(valueScope)}`))
-        let references: { snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }
-        try {
-          references = await readPublicationReadinessSource(`${card.name} “${attributeLabel}” özellik değer listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${connectionId}`))
-        } catch (reason) {
-          if (!(reason instanceof ApiRequestError && reason.code === 'REFERENCE_SNAPSHOT_UNAVAILABLE') && !(reason instanceof PublicationReadinessSourceError && reason.apiCode === 'REFERENCE_SNAPSHOT_UNAVAILABLE')) throw reason
-          references = { snapshotId: '', items: [] }
-        }
-        return [externalAttributeId, { snapshotId: references.snapshotId, items: references.items, mappings }] as const
-      }))
-      const valueReferencesByAttribute: Record<string, PublicationValueReferenceSet> = Object.fromEntries(valueEntries)
-      // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
-      const attributeDefaults = await hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`).catch(() => [])
-      // n11 fills its brand attribute (id 1) from the product brand, so it needs no mapping.
-      const brandAttributeIds = card.connection.platformCode.trim().toUpperCase() === 'N11' ? ['1'] : []
-      const result = classifyPublicationAttributeIssues({
-        defaultedAttributeIds: [...attributeDefaults.map(item => item.externalAttributeId), ...brandAttributeIds],
-        // n11 sends an unmapped value of a free-text field (Boy: Regular) as its own text (N11ProductPublicationComposer).
-        sendsUnmappedValuesAsFreeText: card.connection.platformCode.trim().toUpperCase() === 'N11',
-        selectedAttributes,
-        remoteAttributes: attributeReferences.items,
-        attributeSnapshotId: attributeReferences.snapshotId,
-        attributeMappings,
-        platformName: card.name,
-        valueReferencesByAttribute
-      })
-      return { ...result, categoryScope }
-    },
+    queryKey: publicationReadinessQueryKey(card.connection.id, categoryId, selectedAttributes),
+    queryFn: () => loadPublicationAttributeIssues(card.connection, card.name, categoryId, selectedAttributes),
     enabled: mappingReadinessEnabled,
     retry: false,
     staleTime: 15_000
@@ -1029,13 +927,10 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   // The status opens the API job behind it; a card whose required fields are missing keeps its issue tooltip instead.
   const [jobDetailOpen, setJobDetailOpen] = useState(false)
   const [valueFixNotice, setValueFixNotice] = useState('')
-  const blockedIssues = [
-    ...missingChecks.map(check => ({ attribute: check.title, detail: check.detail })),
+  const blockedIssues = publicationBlockingIssues(missingChecks, [
     ...(missingShopifyCapabilities.length ? [{ attribute: 'Shopify API izinleri', detail: `Ürün göndermeden önce Entegrasyonlar bölümünde Shopify erişimini yeniden yetkilendirin ve ${missingShopifyCapabilities.join(', ')} izinlerini doğrulayın.` }] : []),
-    ...(isShopifyCard && shopifyWriteCapabilities.isError ? [{ attribute: 'Shopify API izin kontrolü', detail: 'Shopify bağlantı izinleri okunamadı. Entegrasyonlar bölümünde bağlantıyı test edip izin kanıtlarını yenileyin.' }] : []),
-    ...requiredMappingIssues,
-    ...(mappingCheckFailed ? [{ attribute: `${card.name} özellik kontrolü`, detail: publicationReadinessFailureDetail(card.name, mappingReadiness.error) }] : [])
-  ]
+    ...(isShopifyCard && shopifyWriteCapabilities.isError ? [{ attribute: 'Shopify API izin kontrolü', detail: 'Shopify bağlantı izinleri okunamadı. Entegrasyonlar bölümünde bağlantıyı test edip izin kanıtlarını yenileyin.' }] : [])
+  ], requiredMappingIssues, mappingCheckFailed ? mappingReadiness.error : null, card.name)
   const selectionBlocked = blockedIssues.length > 0 || mappingCheckPending || shopifyCapabilityCheckPending
   const issueListId = `publish-issues-${card.connection.id}`
   const issueDescriptionIds = [
@@ -1146,23 +1041,6 @@ function useCardRefreshJob(jobId: string | null, onSettled: (job: PublicationJob
   return { running, cancel }
 }
 // Variant option helpers: pure functions of a draft row, shared by the variant media and filter memos.
-function rowOptionValue(row: VariantDraft, group: Pick<VariantMediaGroup, 'name'>) {
-  const groupName = normalizeVariantOptionName(group.name)
-  const optionRank = (name: string) => {
-    const normalized = normalizeVariantOptionName(name)
-    if (normalized === groupName) return 3
-    if (!isColorOptionName(name) || !isColorOptionName(group.name)) return -1
-    return isWebColorOptionName(name) ? 1 : 2
-  }
-  const options = [
-    ...Object.entries(row.options).map(([name, value]) => ({ name, value })),
-    ...parseVariantOptionSignature(row.optionSignature)
-  ]
-  return options
-    .filter(option => option.value.trim())
-    .sort((left, right) => optionRank(right.name) - optionRank(left.name))
-    .find(option => optionRank(option.name) >= 0)?.value ?? ''
-}
 function rowMatchesVariantMediaValue(row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) {
   return Boolean((group.attributeId && row.attributeValueIds[group.attributeId] === value.id) || normalizeVariantOptionValue(rowOptionValue(row, group)) === normalizeVariantOptionValue(value.value))
 }
@@ -1347,14 +1225,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // local attribute has active values or the marketplace accepts a custom
   // value. The latter keeps required text fields (for example a free-form
   // color field) available for entry from the product form.
-  const mappedRequirements = useMemo(() => allRequirements.filter(item => item.attribute.values.length > 0 || item.allowsCustomValue), [allRequirements])
-  const colorOptionRequirement = useMemo(() => mappedRequirements.find(item => !isWebColorOptionName(item.attribute.name) && isColorOptionName(item.attribute.name) && isOptionRequirement(item)), [mappedRequirements])
+  const requirementSets = useMemo(() => publicationRequirementSets(allRequirements), [allRequirements])
+  const { mappedRequirements, colorOptionRequirement, webColorRequirement, optionRequirements } = requirementSets
   // Web Color is backed by the local Renk option. Prefer the explicit
   // category mapping marker, but keep the editor usable when a category has
   // Renk configured before its Web Color mapping is saved.
-  const webColorRequirement = useMemo(() => mappedRequirements.find(item => (item.isWebColor === true || isWebColorOptionName(item.attribute.name)) && item.attribute.values.length > 0) ?? colorOptionRequirement, [colorOptionRequirement, mappedRequirements])
   const webColorValues = webColorRequirement?.attribute.values ?? colorOptionRequirement?.attribute.values ?? []
-  const optionRequirements = useMemo(() => mappedRequirements.filter(item => !isWebColorOptionName(item.attribute.name) && isOptionRequirement(item)).slice(0, 2), [mappedRequirements])
   const bulkSyncOptionRequirements = useMemo(() => optionRequirements.filter(item => isColorOptionName(item.attribute.name) || isSizeOptionName(item.attribute.name)), [optionRequirements])
   const [webColorAutoEnabled, setWebColorAutoEnabled] = useState(true)
   const [manualWebColorValueId, setManualWebColorValueId] = useState('')
@@ -2988,76 +2864,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const selectedVariantMediaRefs = variantMediaModal?.mode === 'bulk'
     ? readVariantMediaAssignmentDraft(variantMediaModal.draftsBySelection, selectedBulkMediaAssignmentKey)
     : variantMediaModal?.draftRefs ?? []
-  const hasBarcodeData = variantRows.length ? variantRows.every(row => row.barcode.trim()) : automaticBarcodeGeneration ? Boolean(form.modelCode.trim()) : Boolean(form.barcode.trim())
-  const hasBasicProductData = Boolean(form.title.trim() && form.description.trim() && form.brandId && form.modelCode.trim() && hasBarcodeData)
-  const mediaCount = mediaUrls.length + mediaFiles.length
-  const hasProductMedia = mediaCount > 0
-  const hasVariantData = variantAttributeIds.length === 0 || variantRows.length > 0
-  const rowHasRequirementValue = (row: VariantDraft, requirement: CategoryRequirement) => Boolean(row.attributeValueIds[requirement.attributeId]) || Boolean(rowOptionValue(row, { name: requirement.attribute.name }).trim())
-  const categoryValidationIssues = !form.categoryId
-    ? ['Kategori seçilmedi.']
-    : requirements.isLoading
-      ? ['Kategori özellikleri kontrol ediliyor.']
-      : requirements.isError
-        ? ['Kategori özellikleri alınamadı.']
-        : allRequirements.filter(requirement => !isOptionRequirement(requirement) && requirement.isRequired && !mappedRequirements.some(item => item.attributeId === requirement.attributeId)).map(requirement => `${requirement.attribute.name} kategori özelliği eşleştirilmemiş.`).concat(mappedRequirements.filter(requirement => !isOptionRequirement(requirement) && requirement.isRequired && requirement.attributeId !== webColorRequirement?.attributeId).flatMap(requirement => {
-          if (variantAttributeIds.includes(requirement.attributeId)) return variantRows.length && variantRows.every(row => rowHasRequirementValue(row, requirement)) ? [] : [`${requirement.attribute.name} tüm varyantlarda seçilmelidir.`]
-          return (attributeSelections[requirement.attributeId]?.length ?? 0) || Boolean((attributeTextValues[requirement.attributeId] ?? '').trim()) ? [] : [`${requirement.attribute.name} zorunludur.`]
-        }))
-  const optionValidationIssues = !form.categoryId || !requirements.isSuccess ? [] : allRequirements.filter(requirement => isOptionRequirement(requirement) && !isWebColorOptionName(requirement.attribute.name) && !mappedRequirements.some(item => item.attributeId === requirement.attributeId)).map(requirement => `${requirement.attribute.name} seçenek eşleştirmesi eksik.`).concat(optionRequirements.flatMap(requirement => {
-    const selected = attributeSelections[requirement.attributeId]?.length ?? 0
-    const represented = variantRows.some(row => rowHasRequirementValue(row, requirement))
-    if (!selected && !represented) return [`${requirement.attribute.name} için seçenek değeri seçilmemiş.`]
-    if (variantAttributeIds.includes(requirement.attributeId) && (!variantRows.length || variantRows.some(row => !rowHasRequirementValue(row, requirement)))) return [`${requirement.attribute.name} seçenekleri varyant satırlarına aktarılmamış.`]
-    return []
-  }))
-  const webColorValidationIssues = !form.categoryId || !requirements.isSuccess ? [] : !webColorRequirement
-    ? ['Web Color için kategori özelliği eşleştirilmemiş.']
-    : webColorAutoEnabled
-      ? (!colorOptionRequirement || (!variantAttributeIds.includes(colorOptionRequirement.attributeId) && !(attributeSelections[colorOptionRequirement.attributeId]?.length))) ? ['Web Color otomatik aktarımı için Renk seçeneğini eşitleyip değer seçin.'] : []
-      : !manualWebColorValueId ? ['Manuel Web Color için katalog rengi seçin.'] : webColorRequirement.attribute.values.some(value => value.id === manualWebColorValueId) ? [] : ['Manuel Web Color değeri geçerli değil.']
-  const catalogValidationIssues = [...categoryValidationIssues, ...optionValidationIssues, ...webColorValidationIssues]
-  const catalogValidationDetail = catalogValidationIssues.length ? catalogValidationIssues.join(' ') : 'Kategori özellikleri, seçenekler ve Web Color yayınlamaya hazır.'
-  const basicProductMissingParts = [
-    !form.title.trim() && 'ürün adı',
-    !form.description.trim() && 'açıklama',
-    !form.brandId && 'marka',
-    !form.modelCode.trim() && 'model kodu',
-    !hasBarcodeData && 'barkod'
-  ].filter((part): part is string => Boolean(part))
+  const publicationDraft: PublicationReadinessDraft = { title: form.title, description: form.description, brandId: form.brandId, modelCode: form.modelCode, barcode: form.barcode, categoryId: form.categoryId, automaticBarcodeGeneration, mediaCount: mediaUrls.length + mediaFiles.length, variantAttributeIds, variantRows, attributeSelections, attributeTextValues, webColorAutoEnabled, manualWebColorValueId }
   const variantsWithoutMediaCount = variantRows.filter(row => !row.mediaRefs.length).length
-  const productChecks = [
-    { title: 'Temel Ürün Verileri', detail: hasBasicProductData ? 'İsim, açıklama, marka, model ve barkod bilgileri eksiksiz.' : `Eksik alanlar: ${basicProductMissingParts.join(', ')}.`, ok: hasBasicProductData, shopifyOk: Boolean(form.title.trim() && form.description.trim()), shopifyDetail: 'Shopify ürünü için ad ve açıklama gereklidir.' },
-    { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.${mediaCount > 8 ? ' Trendyol için sıralamadaki ilk 8 görsel kullanılır.' : ''}` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia, shopifyOk: hasProductMedia, shopifyDetail: 'Shopify yayını için en az bir geçerli HTTPS görseli gerekir.' },
-    { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData, shopifyOk: hasVariantData, shopifyDetail: 'Shopify yayını için en az bir stok kodlu varyant oluşturun.' },
-    { title: 'Kategori ve Web Color', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0, shopifyOk: true, shopifyDetail: 'Shopify yayını için pazaryeri kategori eşlemesi veya Web Color gerekmez.' }
-  ]
-  const publicationAttributeSelections = useMemo<PublicationAttributeSelection[]>(() => allRequirements.map(requirement => {
-    const valueIds = new Set(attributeSelections[requirement.attributeId] ?? [])
-    let hasCustomValue = Boolean((attributeTextValues[requirement.attributeId] ?? '').trim())
-    for (const row of variantRows) {
-      const optionValue = rowOptionValue(row, { name: requirement.attribute.name }).trim()
-      const matchedValue = optionValue
-        ? requirement.attribute.values.find(value => normalizeVariantOptionValue(value.value) === normalizeVariantOptionValue(optionValue))
-        : undefined
-      const rowValueId = row.attributeValueIds[requirement.attributeId] ?? matchedValue?.id
-      if (rowValueId) valueIds.add(rowValueId)
-      else if (optionValue && isOptionRequirement(requirement)) hasCustomValue = true
-    }
-    const usesManualWebColor = requirement.attributeId === webColorRequirement?.attributeId && !webColorAutoEnabled
-    if (usesManualWebColor) {
-      valueIds.clear()
-      if (manualWebColorValueId) valueIds.add(manualWebColorValueId)
-      hasCustomValue = false
-    }
-    return {
-      attributeId: requirement.attributeId,
-      name: requirement.attribute.name,
-      isRequired: requirement.isRequired,
-      values: [...valueIds].map(id => ({ id, label: requirement.attribute.values.find(value => value.id === id)?.value ?? '' })),
-      hasCustomValue
-    }
-  }), [allRequirements, attributeSelections, attributeTextValues, manualWebColorValueId, variantRows, webColorAutoEnabled, webColorRequirement])
+  const productChecks = publicationProductChecks(publicationDraft, { items: allRequirements, isLoading: requirements.isLoading, isError: requirements.isError, isSuccess: requirements.isSuccess })
+  const publicationAttributeSelections = useMemo(() => publicationAttributeSelectionsFor({ title: '', description: '', brandId: '', modelCode: '', barcode: '', categoryId: '', automaticBarcodeGeneration: false, mediaCount: 0, variantAttributeIds: [], variantRows, attributeSelections, attributeTextValues, webColorAutoEnabled, manualWebColorValueId }, allRequirements), [allRequirements, attributeSelections, attributeTextValues, manualWebColorValueId, variantRows, webColorAutoEnabled])
   const canAddVariantCombinations = useMemo(() => {
     if (!variantAttributeIds.length || (automaticBarcodeGeneration && !form.modelCode.trim())) return false
     try {
