@@ -252,6 +252,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         // placeholder) neither match a tab nor count as invoice targets.
         var currentPackages = CurrentShipmentPackages();
         var resendCreators = new[] { "transfer", "resend", "replacement" };
+        var resentNotShipped = options.ResentNotShipped == true;
         var invoice = options.Invoice?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(invoice) && invoice != "ALL")
         {
@@ -440,7 +441,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 {
                     // originPackageIds is also present for split/cancel packages;
                     // only Trendyol's explicit creator marker identifies a resend.
-                    "RESENT" => x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy)),
+                    "RESENT" => x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy)
+                        && (!resentNotShipped || ResentNotShippedStatuses.Contains(package.Status))),
                     // UNVERIFIED (a Hepsiburada order known only from a claim) and any other order status.
                     _ => x => x.DerivedStatus == status
                 };
@@ -493,8 +495,18 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (!string.IsNullOrWhiteSpace(cargo) && cargo != "ALL")
             query = query.Where(x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.CargoProviderExternalId == cargo));
 
-        if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => x.OrderedAt >= dateFrom);
-        if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => x.OrderedAt <= dateTo);
+        // Sipariş Tarihi is the real order time: Trendyol stores its order times three hours ahead of the real instant
+        // (MarketplaceStoredClock), so its stored time is brought back before it meets the day the user picked, as the
+        // dashboard and the reports do. Without it the evening orders of one day counted for the next.
+        if (options.DateFrom is not null || options.DateTo is not null)
+        {
+            var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
+            var ahead = MarketplaceStoredClock.TurkeyWallClockAhead;
+            if (options.DateFrom?.ToUniversalTime() is { } dateFrom)
+                query = query.Where(x => (db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)) ? x.OrderedAt - ahead : x.OrderedAt) >= dateFrom);
+            if (options.DateTo?.ToUniversalTime() is { } dateTo)
+                query = query.Where(x => (db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)) ? x.OrderedAt - ahead : x.OrderedAt) <= dateTo);
+        }
         // A line cancelled in the range: at the marketplace's time, or when the panel saw it if that time is unknown.
         if (options.CancelFrom is not null || options.CancelTo is not null)
         {
@@ -510,6 +522,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     // Status counters are package-based because a marketplace order may be
     // split. Use the same rule for each tab so a cancelled split package can
     // never increase the "İptal" counter while hiding its parent order.
+    // A resent package the carrier has not taken yet: created, being picked, or ready to ship.
+    internal static readonly ShipmentPackageStatus[] ResentNotShippedStatuses = [ShipmentPackageStatus.New, ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip];
+
     internal static ShipmentPackageStatus[]? PackageStatusesForOrderTab(string status) => status switch
     {
         "NEW" => [ShipmentPackageStatus.New],
@@ -651,7 +666,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     {
         var requested = tabs is null ? OrderSummaryTabs : OrderSummaryTabs.Where(tab => tabs.Contains(tab, StringComparer.OrdinalIgnoreCase)).ToArray();
         if (requested.Length == 0) requested = OrderSummaryTabs;
-        if (!allowCached) return await CountOrderSummaryAsync(tenantId, options, requested, cancellationToken);
+        // The micro-export count is read only by the card that asks for the ALL tab by name; the tab counters skip it.
+        var includeMicro = tabs is not null && tabs.Contains("ALL", StringComparer.OrdinalIgnoreCase);
+        if (!allowCached) return await CountOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
 
         var key = $"{tenantId:N}|{string.Join(',', requested)}|{JsonSerializer.Serialize(options)}";
         var stamp = await OrderSummaryStampAsync(tenantId, cancellationToken);
@@ -662,7 +679,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         {
             // A request that waited behind an identical one takes its answer.
             if (OrderSummaryCache.TryGetValue(key, out cached) && cached.Stamp == stamp && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
-            var view = await CountOrderSummaryAsync(tenantId, options, requested, cancellationToken);
+            var view = await CountOrderSummaryAsync(tenantId, options, requested, includeMicro, cancellationToken);
             if (OrderSummaryCache.Count > 1000) OrderSummaryCache.Clear();
             OrderSummaryCache[key] = (DateTimeOffset.UtcNow, stamp, view);
             return view;
@@ -682,7 +699,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         return $"{orders?.Count}|{orders?.Changed:O}|{packages?.Count}|{packages?.Changed:O}|{claims:O}|{connections}|{timeProvider.GetUtcNow():yyyyMMddHH}";
     }
 
-    private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, CancellationToken cancellationToken)
+    private async Task<OrderSummaryView> CountOrderSummaryAsync(Guid tenantId, OrderListQuery options, string[] requested, bool includeMicro, CancellationToken cancellationToken)
     {
         IQueryable<string>? tagged = null;
         foreach (var tab in requested)
@@ -694,8 +711,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var counts = await tagged!.GroupBy(tab => tab).Select(group => new { Tab = group.Key, Count = group.Count() })
             .ToDictionaryAsync(row => row.Tab, row => row.Count, cancellationToken);
         int Count(string tab) => counts.GetValueOrDefault(tab);
-        // The micro-export card counts them under the same filters in any tab; the menu asks for one tab only and skips it.
-        var (micro, microCountries) = requested.Length == OrderSummaryTabs.Length ? await MicroExportCountsAsync(tenantId, options, cancellationToken) : (0, null);
+        // The micro-export card counts them under the same filters in any tab (it asks for the ALL tab under a day filter).
+        var (micro, microCountries) = includeMicro ? await MicroExportCountsAsync(tenantId, options, cancellationToken) : (0, null);
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
             Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries);
     }
