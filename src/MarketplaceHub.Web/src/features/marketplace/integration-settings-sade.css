@@ -83,7 +83,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 
 /* Flow table */
 .cs-workspace .cs-ftable { overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.cs-workspace .cs-frow { display: grid; grid-template-columns: minmax(0, 1.5fr) 110px minmax(0, 1fr) 150px 44px; align-items: center; gap: 14px; min-height: 46px; padding: 6px 16px; border-top: 1px solid var(--rv-color-border); }
+.cs-workspace .cs-frow { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px 44px; align-items: center; gap: 14px; min-height: 46px; padding: 6px 16px; border-top: 1px solid var(--rv-color-border); }
 .cs-workspace .cs-frow.is-head { min-height: 34px; color: var(--rv-color-subtle); font-size: 12px; background: var(--rv-color-surface-raised); border-top: 0; border-bottom: 1px solid var(--rv-color-border); }
 .cs-workspace .cs-frow.is-head + .cs-fgroup { border-top: 0; }
 .cs-workspace .cs-fgroup { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 16px; background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); }
@@ -97,10 +97,6 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-fstate .cm-glyph { width: 15px; height: 15px; color: var(--rv-color-subtle); }
 .cs-workspace .cs-fstate .cm-glyph.is-done { color: var(--rv-color-ink); }
 .cs-workspace .cs-ftime { color: var(--rv-color-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
-.cs-workspace .cs-fcadence { display: grid; gap: 1px; min-width: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
-.cs-workspace .cs-fcadence b { color: var(--rv-color-ink); font-weight: 500; }
-.cs-workspace .cs-fcadence small { overflow: hidden; color: var(--rv-color-subtle); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.cs-workspace .cs-fcadence.is-none { color: var(--rv-color-subtle); }
 .cs-workspace .cs-ftable > .cs-empty { margin: 0; padding: 24px; text-align: center; }
 
 /* Switches */
@@ -148,7 +144,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
   .cs-workspace .cs-stats > div { border-left: 0; border-top: 1px solid var(--rv-color-border); }
   .cs-workspace .cs-stats > div:first-child { border-top: 0; }
   .cs-workspace .cs-frow { grid-template-columns: minmax(0, 1fr) 44px; }
-  .cs-workspace .cs-frow > :is(.cs-fcadence, .cs-fstate, .cs-ftime) { grid-column: 1; }
+  .cs-workspace .cs-frow > :is(.cs-fstate, .cs-ftime) { grid-column: 1; }
   .cs-workspace .cs-frow.is-head { display: none; }
 }
 
@@ -217,7 +213,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main :is(.cs-workspace, .sp-sade) :is(.cs-switch-field, .integration-write-toggle, .cs-switch-row):has(input:checked) .cs-switch-state,
 .app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch:has(> input:checked) > span { color: var(--rv-color-ink) !important; }
 .app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch { align-items: center; gap: 8px; min-height: 20px; }
-.cs-workspace .cs-frow { grid-template-columns: minmax(0, 1.5fr) 110px minmax(0, 1fr) 150px 92px; }
+.cs-workspace .cs-frow { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px 92px; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle { align-items: center; gap: 8px; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > span { order: 0; margin-right: 6px; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > .cs-switch-state { order: 1; }
@@ -235,7 +231,9 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main .sp-sade > header p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
 .app-shell.stitch-shell main .sp-sade .modal-close { display: grid; width: 32px; min-width: 32px; height: 32px; min-height: 32px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
 .app-shell.stitch-shell main .sp-sade .modal-close:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
-.app-shell.stitch-shell main .sp-sade .sync-policy-modal-body { gap: 14px; padding: 20px 24px; }
+/* Every block keeps its content height and the body scrolls: a card with overflow hidden has no minimum height in a grid,
+   so a taller body squeezed the measurement cards down to their heading. */
+.app-shell.stitch-shell main .sp-sade .sync-policy-modal-body { grid-auto-rows: max-content; gap: 14px; padding: 20px 24px; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-state { display: flex; align-items: center; gap: 8px; padding: 14px 16px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; cursor: pointer; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-state > span:first-child { flex: 1; display: grid; gap: 2px; min-width: 0; margin-right: 6px; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-state strong { font-size: 14px; font-weight: 600; }
@@ -255,6 +253,8 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dl > div:nth-last-child(-n + 2):nth-child(odd), .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dl > div:last-child { border-bottom: 0; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dt { color: var(--rv-color-muted); font-size: 12px; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dd { color: var(--rv-color-ink); font-size: 13px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dd.is-empty { color: var(--rv-color-subtle); font-weight: 400; }
+.app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry > .cs-empty { margin: 0; padding: 16px; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-form > footer { gap: 8px; padding: 14px 24px; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-form > footer > button { height: 36px; min-height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
 @media (max-width: 560px) {

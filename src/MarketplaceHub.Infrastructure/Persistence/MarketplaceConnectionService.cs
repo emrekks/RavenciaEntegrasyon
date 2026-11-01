@@ -622,6 +622,10 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         var recoveryGapCritical = TimeSpan.FromDays(Math.Clamp(configuration.GetValue("MarketplaceSync:Health:RecoveryGapCriticalDays", 80), (int)recoveryGapWarning.TotalDays + 1, 120));
         // With healthy notifications the scheduler polls orders less often; health is judged by that cadence.
         var webhookHealthy = await ScheduledJobProducer.WebhookHealthyAsync(db, tenantId, id, now, cancellationToken);
+        // The scheduler queues a stock reconciliation only while the automatic price/stock writes are open
+        // (ScheduledJobProducer.EnqueueDueAsync, decision A); otherwise the flow is held, not late.
+        var stockReconcileHeld = policies.Any(x => ScheduledJobProducer.IsStockReconcilePolicy(x.ResourceType))
+            && !(externalWritesEnabled && await AutomaticPriceStockWrites.IsOpenAsync(db, tenantId, id, cancellationToken));
         var lastQuestionAt = policies.Any(x => x.ResourceType == "QUESTIONS")
             ? await db.MarketplaceQuestions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken)
             : null;
@@ -655,6 +659,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
                 expectedCadence).ToString().ToUpperInvariant();
             // A write policy is a permission switch, not a scheduled read: it has no cursor to judge.
             if (MarketplaceExternalWritePolicies.IsPermissionPolicy(x.ResourceType)) health = "PERMISSION";
+            else if (stockReconcileHeld && ScheduledJobProducer.IsStockReconcilePolicy(x.ResourceType)) health = "PAUSED_WRITES_OFF";
             else if (string.Equals(x.ResourceType, "RETURN_LIFECYCLE", StringComparison.OrdinalIgnoreCase) && x.Enabled && !openReturnsToFollow && (cursor?.ConsecutiveFailureCount ?? 0) == 0) health = "HEALTHY";
             var cursorProgress = MarketplaceCursorProgressPolicy.Classify(
                 cursor?.LastSuccessAt,
