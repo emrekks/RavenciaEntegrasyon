@@ -4052,6 +4052,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             configuration.GetValue("MarketplaceSync:OrderLifecycle:TrendyolBatchSize", 1));
         var cursor = await Cursor(tenantId, connectionId, "ORDER_LIFECYCLE", cancellationToken);
         List<string> externalOrderIds;
+        var hepsiburadaListedCancellations = new List<RemoteCancelledOrderLine>();
         if (isHepsiburada)
         {
             var includeUnpackagedNewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "NEW");
@@ -4100,7 +4101,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ? HepsiburadaLifecycleCursor(externalOrderIds[^1])
                 : null;
             // Orders Hepsiburada lists as cancelled but the panel does not are read again now.
-            foreach (var cancelled in await HepsiburadaCancelledOrdersToRead(tenantId, connectionId, correlationId, cancellationToken))
+            foreach (var cancelled in await HepsiburadaCancelledOrdersToRead(tenantId, connectionId, correlationId, hepsiburadaListedCancellations, cancellationToken))
                 if (!externalOrderIds.Contains(cancelled, StringComparer.Ordinal)) externalOrderIds.Add(cancelled);
         }
         else if (platformCode == "PAZARAMA" && await SyncPazaramaOpenOrdersByWindow(tenantId, connectionId, correlationId, lifecycleBatchSize, cancellationToken)
@@ -4143,7 +4144,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 continue;
             }
             TrackReceived();
-            recoveredOrders.Add(result.Value!);
+            recoveredOrders.Add(WithHepsiburadaListedCancelTimes(result.Value!, hepsiburadaListedCancellations));
             await ResolveIssue(tenantId, $"order-lifecycle:{connectionId}:{externalOrderId}", cancellationToken);
         }
         if (recoveredOrders.Count > 0) await UpsertOrders(tenantId, connectionId, recoveredOrders, cancellationToken);

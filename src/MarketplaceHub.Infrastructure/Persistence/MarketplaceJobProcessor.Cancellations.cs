@@ -9,7 +9,8 @@ public sealed partial class MarketplaceJobProcessor
     // A listed order that the panel does not show as cancelled is read again by the open-order scan, unless every
     // line the list names is already cancelled in the panel: a partly cancelled order stays open for good, and
     // reading it again each run filled the per-run reads so that real full cancellations were never reached.
-    private async Task<IReadOnlyList<string>> HepsiburadaCancelledOrdersToRead(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    // The listed lines (with their cancelDate) are added to listedLines, so the orders read again carry the time.
+    private async Task<IReadOnlyList<string>> HepsiburadaCancelledOrdersToRead(Guid tenantId, Guid connectionId, string correlationId, List<RemoteCancelledOrderLine> listedLines, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
         var cursor = await Cursor(tenantId, connectionId, HepsiburadaCancellationPolicy.CursorResource, cancellationToken);
@@ -44,6 +45,8 @@ public sealed partial class MarketplaceJobProcessor
             wideCursor.Version++;
         }
         if (cancelledLines.Count == 0) return [];
+        listedLines.AddRange(cancelledLines);
+        await FillHepsiburadaCancelTimes(tenantId, connectionId, cancelledLines, cancellationToken);
 
         var listed = cancelledLines.Select(line => line.OrderNumber).Distinct(StringComparer.Ordinal).ToArray();
         var open = await db.Orders.AsNoTracking()
@@ -74,4 +77,47 @@ public sealed partial class MarketplaceJobProcessor
             .Select(group => group.Key)
             .Take(maximum)
             .ToArray();
+
+    // A line the panel already shows cancelled but without a time takes the cancelDate the list gives it; a time the
+    // line already has is never replaced (as in OrderLineCancelTime.Apply). Saved with the open-order scan.
+    private async Task FillHepsiburadaCancelTimes(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCancelledOrderLine> listed, CancellationToken cancellationToken)
+    {
+        var times = HepsiburadaListedCancelTimes(listed);
+        if (times.Count == 0) return;
+        var orderNumbers = times.Keys.Select(key => key.OrderNumber).Distinct(StringComparer.Ordinal).ToArray();
+        var lineIds = times.Keys.Select(key => key.LineItemId).Distinct(StringComparer.Ordinal).ToArray();
+        var lines = await (from line in db.OrderLines
+                           join order in db.Orders on new { line.TenantId, line.OrderId } equals new { order.TenantId, OrderId = order.Id }
+                           where order.TenantId == tenantId && order.ConnectionId == connectionId && orderNumbers.Contains(order.ExternalOrderId)
+                               && lineIds.Contains(line.ExternalLineId) && line.CancelledQuantity > 0 && line.CancelledAt == null
+                           select new { Line = line, order.ExternalOrderId })
+            .ToListAsync(cancellationToken);
+        foreach (var found in lines)
+        {
+            if (!times.TryGetValue((found.ExternalOrderId, found.Line.ExternalLineId), out var cancelledAt)) continue;
+            found.Line.CancelledAt = cancelledAt;
+            found.Line.Version++;
+        }
+    }
+
+    // The latest cancelDate the list gives each (order, line), in UTC; a line without an id or a time is left out.
+    internal static IReadOnlyDictionary<(string OrderNumber, string LineItemId), DateTimeOffset> HepsiburadaListedCancelTimes(IEnumerable<RemoteCancelledOrderLine> listed) =>
+        listed
+            .Where(line => !string.IsNullOrWhiteSpace(line.LineItemId) && line.CancelledAt is not null)
+            .GroupBy(line => (line.OrderNumber, LineItemId: line.LineItemId!.Trim()))
+            .ToDictionary(group => group.Key, group => group.Max(line => line.CancelledAt!.Value).ToUniversalTime());
+
+    // The order read again, each line the list names carrying the list's cancelDate as its cancellation time. A line
+    // the list does not name, or names without a time, keeps what the read says: null, as Hepsiburada's order detail
+    // gives no cancellation time.
+    internal static RemoteOrder WithHepsiburadaListedCancelTimes(RemoteOrder remote, IEnumerable<RemoteCancelledOrderLine> listed)
+    {
+        var times = HepsiburadaListedCancelTimes(listed.Where(line => line.OrderNumber == remote.ExternalOrderId || line.OrderNumber == remote.OrderNumber));
+        if (times.Count == 0) return remote;
+        var byLine = times.ToDictionary(pair => pair.Key.LineItemId, pair => pair.Value, StringComparer.Ordinal);
+        return remote with
+        {
+            Lines = [.. remote.Lines.Select(line => byLine.TryGetValue(line.ExternalLineId.Trim(), out var cancelledAt) ? line with { CancelledAt = cancelledAt } : line)]
+        };
+    }
 }
