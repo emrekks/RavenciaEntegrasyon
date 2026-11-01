@@ -21,7 +21,8 @@ public sealed class TrendyolEFaturamHttpClient(
     TimeProvider timeProvider,
     ILogger<TrendyolEFaturamHttpClient> logger,
     TrendyolEFaturamTokenCache tokens,
-    TrendyolEFaturamTaxpayerCache taxpayers) : IInvoiceProviderPort
+    TrendyolEFaturamTaxpayerCache taxpayers,
+    TrendyolEFaturamCreditCache credits) : IInvoiceProviderPort
 {
     private const string ConnectionProbeInvoiceUuid = "00000000-0000-0000-0000-000000000000";
     private readonly TrendyolEFaturamOptions _options = options.Value;
@@ -190,6 +191,77 @@ public sealed class TrendyolEFaturamHttpClient(
             lookup.ErrorCode,
             response.IsSuccess ? response.Value!.RemoteRequestId : response.Error!.RemoteRequestId);
         return lookup;
+    }
+
+    // The connection's remaining credit (kontör) for the integrations card. Read-only and never throws: only a partner
+    // account has the documented endpoint, so every other answer is "none" with a reason and the panel shows nothing.
+    public async Task<EFaturamRemainingCredit> GetRemainingCreditAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (credits.TryGet(connectionId, out var cached)) return cached;
+        try
+        {
+            var configured = await authentication.LoadAsync(tenantId, connectionId, cancellationToken);
+            if (configured is null) return EFaturamRemainingCredit.None("not-configured");
+            return await GetRemainingCredit(configured, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogWarning(exception, "E-Faturam remaining credit lookup failed.");
+            return EFaturamRemainingCredit.None("error");
+        }
+    }
+
+    internal async Task<EFaturamRemainingCredit> GetRemainingCredit(TrendyolEFaturamRequestContext configured, CancellationToken cancellationToken)
+    {
+        var connectionId = configured.Connection.Id;
+        if (credits.TryGet(connectionId, out var cached)) return cached;
+        var gate = credits.Gate(connectionId);
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (credits.TryGet(connectionId, out var again)) return again;
+            var (credit, retryAfter, errorCode, remoteRequestId) = await ProbeRemainingCredit(configured, cancellationToken);
+            if (credit.Available)
+                logger.LogInformation("E-Faturam remaining credit. Available=True RemainingCredit={RemainingCredit} RemoteRequestId={RemoteRequestId}", credit.RemainingCredit, remoteRequestId);
+            else
+                // Logged once per cache period: the next request reads the cached answer.
+                logger.LogWarning("E-Faturam remaining credit unavailable. Reason={Reason} ErrorCode={ErrorCode} RemoteRequestId={RemoteRequestId}", credit.Reason, errorCode, remoteRequestId);
+            credits.Set(connectionId, credit, retryAfter);
+            return credit;
+        }
+        finally { gate.Release(); }
+    }
+
+    private async Task<(EFaturamRemainingCredit Credit, TimeSpan? RetryAfter, string? ErrorCode, string? RemoteRequestId)> ProbeRemainingCredit(TrendyolEFaturamRequestContext configured, CancellationToken cancellationToken)
+    {
+        var access = await AcquireAccess(configured, cancellationToken);
+        if (!access.IsSuccess) return (EFaturamRemainingCredit.None("sign-in-failed"), access.Error!.RetryAfter, access.Error.Code, access.Error.RemoteRequestId);
+        var response = await SendAuthorized(configured, access.Value!.AccessToken, HttpMethod.Get, TrendyolEFaturamEndpoints.PartnerRemainingCredit, null, cancellationToken);
+        if (!response.IsSuccess)
+        {
+            var error = response.Error!;
+            var reason = error switch
+            {
+                { HttpStatus: 404, RemoteRequestId: TrendyolEFaturamProblemDetails.UserIsNotPartnerReference } => EFaturamRemainingCredit.NotPartnerReason,
+                { HttpStatus: 401 } => "unauthorized",
+                { HttpStatus: 403 } => "forbidden",
+                { HttpStatus: 429 } => "rate-limited",
+                _ => "error"
+            };
+            return (EFaturamRemainingCredit.None(reason), error.RetryAfter ?? response.RateLimit?.RetryAfter, error.Code, error.RemoteRequestId);
+        }
+        try
+        {
+            using var document = JsonDocument.Parse(response.Value!.Body);
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("remainingCredit", out var value)
+                && value.ValueKind == JsonValueKind.Number
+                && value.TryGetInt64(out var remaining)
+                && remaining >= 0)
+                return (EFaturamRemainingCredit.Of(remaining), null, null, response.Value.RemoteRequestId);
+        }
+        catch (JsonException) { }
+        return (EFaturamRemainingCredit.None("unreadable"), null, TrendyolEFaturamErrorMapper.Contract().Code, response.Value!.RemoteRequestId);
     }
 
     internal Task<AdapterResult<TrendyolEFaturamAccessContext>> AcquireAccess(TrendyolEFaturamRequestContext context, CancellationToken cancellationToken, bool reuseCachedToken = true)

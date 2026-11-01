@@ -60,6 +60,11 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { border-color: var(--rv-color-border); border-radius: 7px; }
 .app-shell.stitch-shell main .integrations-reference-page :is(button, [role="tab"]) { text-transform: none; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand h2 { font-size: 16px; }
+/* The name with the E-Faturam remaining-credit badge beside it; the title row keeps the name's gap to the status tag. */
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-title { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; margin-bottom: 4px; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-integration-title h2 { margin: 0; }
+.app-shell.stitch-shell main .integrations-reference-page .efaturam-credit-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; color: var(--rv-color-muted); font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+.app-shell.stitch-shell main .integrations-reference-page .efaturam-credit-badge.is-low { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: transparent; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-footer .reference-action .ui-icon { color: currentColor; }
 .app-shell.stitch-shell main .integrations-reference-page :is(.integration-filter-button, .integration-add-button, .reference-action, .reference-menu-trigger, [role="tab"]):focus-visible { outline: none; border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
 
