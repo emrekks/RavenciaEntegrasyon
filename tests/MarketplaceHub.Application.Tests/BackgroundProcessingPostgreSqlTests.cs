@@ -521,6 +521,43 @@ public sealed class BackgroundProcessingPostgreSqlTests(PostgreSqlTenantIsolatio
         }
     }
 
+    // A retry of a Shopify create only publishes when an earlier attempt of that job proves the product was written: the
+    // publish codes, or the old ambiguous outcome that carried the adapter's SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED.
+    [PostgreSqlFact]
+    public async Task OnlyAnAttemptThatProvesTheShopifyProductWasWrittenAllowsAPublishOnlyResend()
+    {
+        var tenant = NewTenant("bg-publish-only");
+        var legacy = NewJob(tenant.Id, MarketplaceJobTypes.ProductCreate);
+        var unproven = NewJob(tenant.Id, MarketplaceJobTypes.ProductCreate);
+        var refused = NewJob(tenant.Id, MarketplaceJobTypes.ProductCreate);
+        var fresh = NewJob(tenant.Id, MarketplaceJobTypes.ProductCreate);
+        JobAttempt Attempt(IntegrationJob job, string code, string summary) => new() { Id = Guid.NewGuid(), TenantId = tenant.Id, JobId = job.Id, AttemptNumber = 1, StartedAt = DateTimeOffset.UtcNow.AddDays(-4), CompletedAt = DateTimeOffset.UtcNow.AddDays(-4), Succeeded = false, ErrorCode = code, ErrorSummary = summary };
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.Tenants.Add(tenant);
+            setup.IntegrationJobs.AddRange(legacy, unproven, refused, fresh);
+            await setup.SaveChangesAsync();
+            setup.JobAttempts.AddRange(
+                Attempt(legacy, "EXTERNAL_EFFECT_AMBIGUOUS", "Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi. Pazaryeri yanıtı: SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED: Shopify ürünü oluşturdu ancak Online Store yayını doğrulanamadı."),
+                Attempt(unproven, "EXTERNAL_EFFECT_AMBIGUOUS", "Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi."),
+                Attempt(refused, MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.PublishFailedCode, "Yayına alınamadı: ..."));
+            await setup.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            Assert.True(await ShopifyPublishOnlyFailure.EarlierAttemptWroteProductAsync(db, tenant.Id, legacy.Id, CancellationToken.None));
+            Assert.True(await ShopifyPublishOnlyFailure.EarlierAttemptWroteProductAsync(db, tenant.Id, refused.Id, CancellationToken.None));
+            Assert.False(await ShopifyPublishOnlyFailure.EarlierAttemptWroteProductAsync(db, tenant.Id, unproven.Id, CancellationToken.None));
+            Assert.False(await ShopifyPublishOnlyFailure.EarlierAttemptWroteProductAsync(db, tenant.Id, fresh.Id, CancellationToken.None));
+        }
+        finally
+        {
+            await CleanupAsync(tenant.Id);
+        }
+    }
+
     private async Task CleanupAsync(Guid tenantId)
     {
         await using var cleanup = fixture.CreateContext();

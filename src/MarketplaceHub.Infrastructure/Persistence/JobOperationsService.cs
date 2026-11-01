@@ -915,9 +915,12 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .ToDictionaryAsync(connection => connection.Id, connection => connection.PlatformCode, cancellationToken);
     }
 
-    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null, string? platformCode = null) => new(
+    // A Shopify create stopped at its publication before the publish fix reads with the publish code ("Yayına alınamadı").
+    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null, string? platformCode = null) => Summary(x, ShopifyPublishOnlyFailure.Display(x.JobType, x.LastErrorCode, x.LastErrorSummary), failure, batchCount, lastAttemptStartedAt, platformCode);
+
+    private static JobSummaryView Summary(IntegrationJob x, (string? Code, string? Summary) error, FailureTime? failure, int batchCount, DateTimeOffset? lastAttemptStartedAt, string? platformCode) => new(
         x.Id, x.ConnectionId, x.JobType, Wire(x.Status), x.AttemptCount, x.MaxAttempts,
-        x.AvailableAt, x.LastErrorCode, x.LastErrorSummary, x.CorrelationId,
+        x.AvailableAt, error.Code, error.Summary, x.CorrelationId,
         x.CreatedAt, x.StartedAt, x.CompletedAt, Marketplace(x.JobType, platformCode), ExternalId(x.PayloadJson),
         failure?.FirstFailedAt, failure?.LastFailedAt,
         x.Status is JobStatus.Pending or JobStatus.RetryScheduled ? x.AvailableAt : null,

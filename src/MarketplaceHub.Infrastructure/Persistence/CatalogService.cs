@@ -1781,6 +1781,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             JobDedupKey = dedup,
             EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}",
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductCreate, userInitiated: true),
+            TriggerType = "user",
             Status = JobStatus.Pending,
             AvailableAt = now,
             MaxAttempts = 10,
@@ -1845,7 +1846,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var now = timeProvider.GetUtcNow();
         var phase = draft.Publication.Mode == "APPROVED" ? "SUBMIT_CONTENT" : "SUBMIT_UNAPPROVED";
         var payload = JsonSerializer.Serialize(new ProductUpdateJobPayload(jobId, productId, profile.Id, phase, draft.Publication.Mode, draft.Publication.PayloadHash, draft.Publication.UnapprovedPayloadJson, draft.Publication.ApprovedContentPayloadJson, draft.Publication.ApprovedVariantPayloadJson, draft.Publication.ApprovedDeliveryPayloadJson, null, null));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductUpdate, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductUpdate, userInitiated: true), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         return await SavePublicationJobAsync(transaction, tenantId, MarketplaceJobTypes.ProductUpdate, dedup, jobId, cancellationToken);
     }
 
@@ -1869,7 +1870,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
         var jobId = Guid.CreateVersion7(); var now = timeProvider.GetUtcNow();
         var payload = JsonSerializer.Serialize(new PazaramaSaleStatusJobPayload(jobId, normalized, close, now));
-        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup + ":" + jobId.ToString("N"), EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductArchive, userInitiated: true), Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 3, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
+        db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductArchive, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup + ":" + jobId.ToString("N"), EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductArchive, userInitiated: true), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 3, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<Guid>.Ok(jobId);
     }
@@ -2005,6 +2006,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             JobDedupKey = dedup,
             EffectIdempotencyKey = dedup,
             Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductApprovalReconcile, userInitiated: true),
+            TriggerType = "user",
             Status = JobStatus.Pending,
             AvailableAt = now,
             MaxAttempts = (7 * 24 * 12) + 1,

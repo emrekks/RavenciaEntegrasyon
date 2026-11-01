@@ -1803,6 +1803,10 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var failure = Assert.Single(result.Value!.Failed);
         Assert.Equal((deletedId, "PRODUCT_NOT_FOUND"), (failure.ProductId, failure.Code));
         Assert.Equal(2, result.Value.Queued);
+        // A publication the user started says so on its job (it read "scheduled" before).
+        var publishJobs = await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.JobType == MarketplaceJobTypes.ProductCreate).ToListAsync();
+        Assert.Equal(2, publishJobs.Count);
+        Assert.All(publishJobs, job => Assert.Equal("user", job.TriggerType));
         var blackOffers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == pttAvm.Id && blackVariantIds.Contains(x.VariantId)).ToListAsync();
         Assert.Equal(2, blackOffers.Count);
         Assert.All(blackOffers, offer => Assert.Equal((120m, 150m, 20m), (offer.SalePrice, offer.ListPrice, offer.VatRate)));

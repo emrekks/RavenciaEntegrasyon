@@ -288,6 +288,54 @@ public sealed class ShopifyFamilyPublicationTests
         Assert.True(ShopifyProductPublicationComposer.SameVariantSkus(payload, marked));
     }
 
+    // Live 2026-11-01: 16 Shopify creates of 28 Oct wrote the product, stopped at the publication and read
+    // EXTERNAL_EFFECT_AMBIGUOUS. They read "Yayına alınamadı" now; a summary without the adapter's code stays ambiguous.
+    [Fact]
+    public void ACreateStoppedAtThePublicationReadsAsNotPublishedAndAnUnprovenOneStaysAmbiguous()
+    {
+        const string legacy = "Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi. Pazaryeri yanıtı: SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED: Shopify ürünü oluşturdu ancak Online Store yayını doğrulanamadı. Ürünü Shopify yönetim panelinde kontrol edin.";
+        Assert.Equal("SHOPIFY_PRODUCT_CREATED_BUT_PUBLISH_FAILED", ShopifyHttpClient.PublishFailedCode);
+
+        var shown = ShopifyPublishOnlyFailure.Display(MarketplaceJobTypes.ProductCreate, "EXTERNAL_EFFECT_AMBIGUOUS", legacy);
+        Assert.Equal(ShopifyHttpClient.PublishFailedCode, shown.Code);
+        Assert.StartsWith("Yayına alınamadı:", shown.Summary, StringComparison.Ordinal);
+        Assert.Contains("yeniden oluşturulmaz", shown.Summary, StringComparison.Ordinal);
+
+        const string unproven = "Create çağrısının uzak tarafta uygulanıp uygulanmadığı kesinleştirilemedi.";
+        Assert.Equal(("EXTERNAL_EFFECT_AMBIGUOUS", unproven), ShopifyPublishOnlyFailure.Display(MarketplaceJobTypes.ProductCreate, "EXTERNAL_EFFECT_AMBIGUOUS", unproven));
+        Assert.Equal(("EXTERNAL_EFFECT_AMBIGUOUS", legacy), ShopifyPublishOnlyFailure.Display(MarketplaceJobTypes.ProductUpdate, "EXTERNAL_EFFECT_AMBIGUOUS", legacy));
+        Assert.Equal(((string?)null, (string?)null), ShopifyPublishOnlyFailure.Display(MarketplaceJobTypes.ProductCreate, null, null));
+
+        // A publish refused today carries the same code and says what happened in the panel's words.
+        using var refused = JsonDocument.Parse("""{ "publishablePublish": { "publishable": null, "userErrors": [ { "field": ["input"], "message": "Publication does not exist" } ] } }""");
+        var rejected = ShopifyHttpClient.PublishFailure(AdapterResult<JsonDocument>.Success(refused), "gid://shopify/Product/77", "ravencia-model-x")!;
+        Assert.StartsWith("Yayına alınamadı:", rejected.SafeMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void APublishOnlyResendTakesTheProductsOwnVariantsAndNeverItsPayloadHash()
+    {
+        using var existing = JsonDocument.Parse("""
+        { "id": "gid://shopify/Product/1", "status": "ACTIVE", "payloadHash": { "value": "OLD" },
+          "variants": { "nodes": [ { "id": "gid://shopify/ProductVariant/1", "sku": "MZ-S-L" }, { "id": "gid://shopify/ProductVariant/2", "sku": "MZ-K-L" } ] } }
+        """);
+        using var draft = JsonDocument.Parse("""
+        { "id": "gid://shopify/Product/1", "status": "DRAFT",
+          "variants": { "nodes": [ { "id": "gid://shopify/ProductVariant/1", "sku": "MZ-S-L" } ] } }
+        """);
+
+        var lines = ShopifyHttpClient.PublicationLines(existing.RootElement, ["MZ-S-L", "MZ-K-L"]);
+        Assert.Equal(["gid://shopify/ProductVariant/1", "gid://shopify/ProductVariant/2"], lines!.Select(line => line.ExternalId));
+        // Another variant list or a product that is not active is not published blindly.
+        Assert.Null(ShopifyHttpClient.PublicationLines(existing.RootElement, ["MZ-S-L", "MZ-K-L", "MZ-B-L"]));
+        Assert.Null(ShopifyHttpClient.PublicationLines(draft.RootElement, ["MZ-S-L"]));
+
+        const string payload = """{"handle":"ravencia-model-a","variants":[{"sku":"A-1"}],"metafields":[{"key":"payload_hash","value":"H"}]}""";
+        var marked = JsonNode.Parse(ShopifyHttpClient.MarkPublishOnly(payload))!.AsObject();
+        Assert.True(marked.Remove(ShopifyHttpClient.PublishOnlyKey));
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse(payload), marked));
+    }
+
     [Fact]
     public void AnUncertainCreateKeepsTheMarketplacesOwnCodeAndMessage()
     {

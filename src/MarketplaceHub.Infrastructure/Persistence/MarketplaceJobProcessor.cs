@@ -476,15 +476,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", "Model ailesi PTT AVM'ye tek istekle gönderildi; bu kartın sonucu aynı gönderimden okunuyor.", TimeSpan.FromSeconds(15), familySend.ExternalOperationId);
                 }
             }
+            // A Shopify job whose earlier attempt wrote the product and stopped at its Online Store publication only
+            // publishes it now: the product is never written or created again (ShopifyPublishOnlyFailure).
+            var shopifyPublishOnlyResend = string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+                && await ShopifyPublishOnlyFailure.EarlierAttemptWroteProductAsync(db, tenantId, job.Id, cancellationToken);
             var existingEffect = await db.ExternalEffectRecords.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == MarketplaceJobTypes.ProductCreate && x.IdempotencyKey == job.EffectIdempotencyKey, cancellationToken);
-            if (existingEffect is not null) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken, payload.PayloadHash);
+            if (existingEffect is not null && !(shopifyPublishOnlyResend && existingEffect.CompletedAt is null)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", "Önceki dış yazmanın sonucu kesinleştirilemedi; tekrar gönderim engellendi."), cancellationToken, payload.PayloadHash);
 
-            var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ProductCreate, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
-            db.ExternalEffectRecords.Add(effect);
-            await db.SaveChangesAsync(cancellationToken);
+            var effect = existingEffect ?? new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = MarketplaceJobTypes.ProductCreate, IdempotencyKey = job.EffectIdempotencyKey, CreatedAt = timeProvider.GetUtcNow() };
+            if (existingEffect is null)
+            {
+                db.ExternalEffectRecords.Add(effect);
+                await db.SaveChangesAsync(cancellationToken);
+            }
 
             TrackRequest();
-            var submit = await products.CreateAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new ProductPublication(payload.ProductId, payload.PayloadHash, payload.PayloadJson), cancellationToken);
+            var submitPayloadJson = shopifyPublishOnlyResend ? MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyHttpClient.MarkPublishOnly(payload.PayloadJson) : payload.PayloadJson;
+            var submit = await products.CreateAsync(Context(tenantId, connectionId, correlationId, job.EffectIdempotencyKey), new ProductPublication(payload.ProductId, payload.PayloadHash, submitPayloadJson), cancellationToken);
             if (!submit.IsSuccess)
             {
                 TrackResultFailure(submit.Error);

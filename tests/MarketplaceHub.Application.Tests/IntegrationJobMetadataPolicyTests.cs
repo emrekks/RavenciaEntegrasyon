@@ -13,6 +13,9 @@ public sealed class IntegrationJobMetadataPolicyTests
     [InlineData("INVOICE_RECONCILE", "invoices")]
     [InlineData("PRODUCT_UPDATE", "products")]
     [InlineData("HEPSIBURADA_REFERENCE_SYNC", "connections")]
+    [InlineData(MarketplaceJobTypes.N11ReferenceSync, "connections")]
+    [InlineData(MarketplaceJobTypes.PazaramaReferenceSync, "connections")]
+    [InlineData(MarketplaceJobTypes.PttAvmReferenceSync, "connections")]
     [InlineData("EFATURAM_CONNECTION_TEST", "connections")]
     public void Known_job_types_have_explicit_resource(string jobType, string resource)
     {
