@@ -11,6 +11,7 @@ import { addBulkPublicationResult, bulkPublishFailureDetails, bulkPublishMissing
 import { bulkPublishPlan, useBulkPublicationReadiness, type BulkConnectionReadiness } from './bulk-publish-readiness'
 import { bulkPublishModelTooltip, bulkPublishPlatformName, summarizeBulkPublishModels, summarizeBulkPublishStatus, type BulkPublishModelTooltip, type BulkPublishStatusSummary } from './bulk-publish-status'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
+import { CategoryMappingDialog } from '../CategoryMappingDialog'
 import type { PublicationValueMappingFix } from '../publication-attribute-readiness'
 import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
@@ -173,6 +174,13 @@ function fixGroups(readiness: BulkConnectionReadiness | null) {
   return [...groups.entries()].map(([categoryScope, fixes]) => ({ categoryScope, fixes: [...fixes.values()] }))
 }
 
+// The panel categories the store has no current mapping of, each once.
+function unmappedCategories(readiness: BulkConnectionReadiness | null) {
+  const categories = new Map<string, string>()
+  for (const entry of readiness?.entries ?? []) if (!entry.skipped && entry.categoryMapping && entry.categoryId) categories.set(entry.categoryId, entry.categoryName || 'Ürün')
+  return [...categories.entries()].map(([id, name]) => ({ id, name }))
+}
+
 const shownBlockedProducts = 6
 
 function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, selected, locked, onToggle, onMappingsSaved }: {
@@ -198,6 +206,9 @@ function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, sel
   const subtitle = settling ? 'Yayın hazırlığı kontrol ediliyor' : allLive ? 'Seçili kayıtların tümü zaten yayında' : allBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : someBlocked ? (selected ? 'Yayın için seçildi · yalnız hazır olanlar gönderilir' : 'Yalnız hazır olanlar gönderilir') : selected ? 'Yayın için seçildi' : 'Yayın için seçilmedi'
   const statusId = `bulk-publish-status-${connection.id}`
   const [fixScope, setFixScope] = useState<string | null>(null)
+  const [categoryToMap, setCategoryToMap] = useState<{ id: string; name: string } | null>(null)
+  const categories = unmappedCategories(readiness)
+  const checkFailed = (readiness?.entries ?? []).some(entry => entry.checkFailed)
   const groups = fixGroups(readiness)
   const openGroup = groups.find(group => group.categoryScope === fixScope)
   const state = settling ? 'settling' : allBlocked ? 'error' : bulkPublishCardState(summary)
@@ -225,7 +236,10 @@ function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, sel
       <ul>{blocked.slice(0, shownBlockedProducts).map(entry => <li key={entry.productId}><a href={`/products/${entry.productId}`} target="_blank" rel="noreferrer">{entry.title}</a><small title={entry.issues.map(issue => `${issue.attribute}: ${issue.detail}`).join('\n')}>{entry.issues[0].attribute}: {entry.issues[0].detail}{entry.issues.length > 1 ? ` (+${entry.issues.length - 1})` : ''}</small></li>)}</ul>
       {blocked.length > shownBlockedProducts && <small>ve {format(blocked.length - shownBlockedProducts)} ürün daha</small>}
     </div>}
+    {categories.map(category => <button key={category.id} type="button" className="publish-platform-fix-mappings" disabled={locked} onClick={() => setCategoryToMap(category)}><UiIcon name="link" />{categories.length > 1 ? `${category.name} Kategorisini Eşle` : 'Kategori Eşle'}</button>)}
+    {checkFailed && <button type="button" className="publish-platform-fix-mappings" disabled={locked} onClick={onMappingsSaved}><UiIcon name="refresh" />Yeniden Dene</button>}
     {groups.map(group => <button key={group.categoryScope} type="button" className="publish-platform-fix-mappings" disabled={locked} onClick={() => setFixScope(group.categoryScope)}><UiIcon name="link" />Eksik Değer Eşlemelerini Tamamla<span className="publish-platform-fix-count" aria-label={`${group.fixes.length} değer`}>{group.fixes.length}</span></button>)}
+    {categoryToMap && <CategoryMappingDialog connectionId={connection.id} platformName={storeName} categoryId={categoryToMap.id} categoryName={categoryToMap.name} onClose={() => setCategoryToMap(null)} onSaved={() => onMappingsSaved()} />}
     {openGroup && <MissingValueMappingDialog connectionId={connection.id} platformName={storeName} categoryScope={openGroup.categoryScope} fixes={openGroup.fixes} onClose={() => setFixScope(null)} onSaved={() => onMappingsSaved()} />}
   </article>
 }
