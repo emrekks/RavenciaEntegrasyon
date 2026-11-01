@@ -13,3 +13,20 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .product-add-page.is-hydrating * { animation: none; }
 }
+/* A publish card whose state is not known yet (the product, its own or its family's publication status is still being
+   read): the same frame with the subtitle, the status and the switch masked, so no cached or guessed "Zaten yayında",
+   "Kısmen yayında · 1/8" or switched-on toggle shows before the real one. A skeleton card masks its names too. */
+.app-shell.stitch-shell main .publish-platform-card.is-settling :is(.publish-platform-card-head small, .publish-platform-fact-publication dd),
+.app-shell.stitch-shell main .publish-platform-card.is-skeleton :is(.publish-platform-card-head strong, .publish-platform-facts dd, .publish-platform-mark) {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)) 0 0 / 220% 100%;
+  border-radius: 7px;
+  animation: rv-splash-shimmer 1.8s linear infinite;
+}
+.app-shell.stitch-shell main .publish-platform-card.is-settling .publish-platform-fact-publication dd > * { visibility: hidden; }
+.app-shell.stitch-shell main .publish-platform-card.is-settling .publish-platform-toggle { visibility: hidden; }
+.app-shell.stitch-shell main .publish-platform-card.is-settling .publish-platform-card-head { cursor: progress; }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell main .publish-platform-card.is-settling * { animation: none; }
+}
