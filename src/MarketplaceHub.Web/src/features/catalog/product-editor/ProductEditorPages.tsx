@@ -386,9 +386,10 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms: unorderedPlatfo
 // The product workspace intentionally does not display an arbitrary UI quota.
 const MAX_VARIANTS = 1000
 const MAX_PRODUCT_MEDIA_BYTES = 6 * 1024 * 1024
-function RichTextTool({ icon, label, onClick, disabled = false }: { icon: UiIconName; label: string; onClick: () => void; disabled?: boolean }) {
-  return <button type="button" className="rich-text-tool" title={label} aria-label={label} onClick={onClick} disabled={disabled}><span className="rich-text-tool-icon" aria-hidden="true"><UiIcon name={icon} /></span><span className="rich-text-tool-label">{label}</span></button>
+function RichTextTool({ icon, label, onClick, disabled = false, active = false }: { icon: UiIconName; label: string; onClick: () => void; disabled?: boolean; active?: boolean }) {
+  return <button type="button" className={active ? 'rich-text-tool active' : 'rich-text-tool'} title={label} aria-label={label} aria-pressed={active || undefined} onClick={onClick} disabled={disabled}><span className="rich-text-tool-icon" aria-hidden="true"><UiIcon name={icon} /></span></button>
 }
+const RICH_TEXT_STATE_COMMANDS = ['bold', 'italic', 'underline', 'justifyLeft', 'justifyCenter', 'justifyRight', 'insertUnorderedList'] as const
 function RichTextEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const [promptAddress, addressDialog] = usePromptDialog()
   const visualEditor = useRef<HTMLDivElement>(null)
@@ -398,6 +399,20 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
   const [initialVisualHtml] = useState(() => sanitizeRichText(value))
   const [htmlMode, setHtmlMode] = useState(false)
   const plainTextLength = value.replace(/<[^>]*>/g, '').trim().length
+  const [activeCommands, setActiveCommands] = useState<ReadonlySet<string>>(() => new Set())
+  // Reflects the format at the caret (Kalın açık gibi); only reads state, never changes the content.
+  useEffect(() => {
+    function refresh() {
+      const selection = window.getSelection()
+      const inside = !htmlMode && !!selection?.anchorNode && !!visualEditor.current?.contains(selection.anchorNode)
+      const next = new Set<string>()
+      if (inside) for (const command of RICH_TEXT_STATE_COMMANDS) { try { if (document.queryCommandState(command)) next.add(command) } catch { /* unsupported command */ } }
+      setActiveCommands(previous => previous.size === next.size && [...next].every(command => previous.has(command)) ? previous : next)
+    }
+    document.addEventListener('selectionchange', refresh)
+    refresh()
+    return () => document.removeEventListener('selectionchange', refresh)
+  }, [htmlMode])
 
   useEffect(() => {
     if (!htmlMode && visualEditor.current && lastValue.current !== value) visualEditor.current.innerHTML = sanitizeRichText(value)
@@ -452,11 +467,14 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
       <div><strong>Ürün Açıklaması</strong><span className="rich-text-mode-note">{htmlMode ? 'HTML kodu düzenleniyor' : 'Görsel düzenleyici'}</span></div>
       <div className="rich-text-editor-meta"><span>{plainTextLength} karakter</span><div className="rich-text-mode-switch" role="group" aria-label="Açıklama görünümü"><button type="button" className={!htmlMode ? 'active' : ''} aria-pressed={!htmlMode} onClick={() => setHtmlMode(false)}><UiIcon name="sparkle" /> Görsel</button><button type="button" className={htmlMode ? 'active' : ''} aria-pressed={htmlMode} onClick={() => setHtmlMode(true)}><UiIcon name="code" /> HTML</button></div></div>
     </div>
-    <div className="rich-text-toolbar" aria-label="Açıklama biçimlendirme araçları">
-      <div className="rich-text-tool-group" aria-label="Metin biçimi"><RichTextTool icon="bold" label="Kalın" onClick={() => runCommand('bold')} disabled={htmlMode} /><RichTextTool icon="italic" label="İtalik" onClick={() => runCommand('italic')} disabled={htmlMode} /><RichTextTool icon="underline" label="Altı Çizili" onClick={() => runCommand('underline')} disabled={htmlMode} /></div>
-      <div className="rich-text-tool-group rich-text-alignment-group" aria-label="Paragraf hizası"><RichTextTool icon="alignLeft" label="Sola Hizala" onClick={() => runCommand('justifyLeft')} disabled={htmlMode} /><RichTextTool icon="alignCenter" label="Ortala" onClick={() => runCommand('justifyCenter')} disabled={htmlMode} /><RichTextTool icon="alignRight" label="Sağa Hizala" onClick={() => runCommand('justifyRight')} disabled={htmlMode} /></div>
-      <div className="rich-text-tool-group" aria-label="İçerik ekle"><select aria-label="Yazı Boyutu" defaultValue="" disabled={htmlMode} onChange={event => { const map: Record<string, string> = { '12': '2', '15': '3', '19': '5' }; runCommand('fontSize', map[event.target.value] ?? '3'); event.currentTarget.value = '' }}><option value="" disabled>Yazı Boyutu</option><option value="12">Küçük</option><option value="15">Normal</option><option value="19">Büyük</option></select><RichTextTool icon="list" label="Madde Listesi" onClick={() => runCommand('insertUnorderedList')} disabled={htmlMode} /><RichTextTool icon="paragraph" label="Paragraf" onClick={() => runCommand('formatBlock', 'p')} disabled={htmlMode} /><RichTextTool icon="textColor" label="Metin Rengi" onClick={() => runCommand('foreColor', '#7652e8')} disabled={htmlMode} /><RichTextTool icon="link" label="Bağlantı Ekle" onClick={insertLink} disabled={htmlMode} /><RichTextTool icon="image" label="Görsel Ekle" onClick={insertImage} disabled={htmlMode} /></div>
-      <div className="rich-text-tool-group" aria-label="Düzenleme"><RichTextTool icon="undo" label="Geri Al" onClick={() => runCommand('undo')} disabled={htmlMode} /><RichTextTool icon="redo" label="Yinele" onClick={() => runCommand('redo')} disabled={htmlMode} /><RichTextTool icon="clearFormatting" label="Biçimi Temizle" onClick={clearFormatting} disabled={htmlMode} /></div>
+    <div className="rich-text-toolbar" role="toolbar" aria-label="Açıklama biçimlendirme araçları">
+      <div className="rich-text-tool-group" role="group" aria-label="Düzenleme"><RichTextTool icon="undo" label="Geri Al" onClick={() => runCommand('undo')} disabled={htmlMode} /><RichTextTool icon="redo" label="Yinele" onClick={() => runCommand('redo')} disabled={htmlMode} /></div>
+      <div className="rich-text-tool-group" role="group" aria-label="Yazı boyutu"><select aria-label="Yazı Boyutu" title="Yazı Boyutu" defaultValue="" disabled={htmlMode} onChange={event => { const map: Record<string, string> = { '12': '2', '15': '3', '19': '5' }; runCommand('fontSize', map[event.target.value] ?? '3'); event.currentTarget.value = '' }}><option value="" disabled>Boyut</option><option value="12">Küçük</option><option value="15">Normal</option><option value="19">Büyük</option></select></div>
+      <div className="rich-text-tool-group" role="group" aria-label="Metin biçimi"><RichTextTool icon="bold" label="Kalın" onClick={() => runCommand('bold')} disabled={htmlMode} active={activeCommands.has('bold')} /><RichTextTool icon="italic" label="İtalik" onClick={() => runCommand('italic')} disabled={htmlMode} active={activeCommands.has('italic')} /><RichTextTool icon="underline" label="Altı Çizili" onClick={() => runCommand('underline')} disabled={htmlMode} active={activeCommands.has('underline')} /><RichTextTool icon="textColor" label="Metin Rengi" onClick={() => runCommand('foreColor', '#7652e8')} disabled={htmlMode} /></div>
+      <div className="rich-text-tool-group rich-text-alignment-group" role="group" aria-label="Paragraf hizası"><RichTextTool icon="alignLeft" label="Sola Hizala" onClick={() => runCommand('justifyLeft')} disabled={htmlMode} active={activeCommands.has('justifyLeft')} /><RichTextTool icon="alignCenter" label="Ortala" onClick={() => runCommand('justifyCenter')} disabled={htmlMode} active={activeCommands.has('justifyCenter')} /><RichTextTool icon="alignRight" label="Sağa Hizala" onClick={() => runCommand('justifyRight')} disabled={htmlMode} active={activeCommands.has('justifyRight')} /></div>
+      <div className="rich-text-tool-group" role="group" aria-label="Liste ve paragraf"><RichTextTool icon="list" label="Madde Listesi" onClick={() => runCommand('insertUnorderedList')} disabled={htmlMode} active={activeCommands.has('insertUnorderedList')} /><RichTextTool icon="paragraph" label="Paragraf" onClick={() => runCommand('formatBlock', 'p')} disabled={htmlMode} /></div>
+      <div className="rich-text-tool-group" role="group" aria-label="İçerik ekle"><RichTextTool icon="link" label="Bağlantı Ekle" onClick={insertLink} disabled={htmlMode} /><RichTextTool icon="image" label="Görsel Ekle" onClick={insertImage} disabled={htmlMode} /></div>
+      <div className="rich-text-tool-group" role="group" aria-label="Temizle"><RichTextTool icon="clearFormatting" label="Biçimi Temizle" onClick={clearFormatting} disabled={htmlMode} /></div>
     </div>
     {htmlMode ? <textarea className="rich-text-html-editor" value={value} onChange={event => { lastValue.current = event.target.value; onChange(event.target.value) }} aria-label="Açıklama HTML kodu" placeholder="<p>Ürünün öne çıkan özelliklerini anlatın…</p>" spellCheck={false} /> : <div ref={visualEditor} className="rich-text-canvas" contentEditable role="textbox" aria-multiline="true" aria-label="Açıklama" data-placeholder="Ürünün öne çıkan özelliklerini anlatın…" suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: initialVisualHtml }} onFocus={() => document.execCommand("defaultParagraphSeparator", false, "p")} onInput={() => syncVisualValue()} />}
   </div>
