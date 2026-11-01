@@ -172,6 +172,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell { align-items: center; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 8px; min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-wordmark, :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-wordmark-text { grid-row: 1; grid-column: 1; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-wordmark-row { grid-row: 1; grid-column: 1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-on-no { grid-row: 1; grid-column: 2; min-width: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > small:first-of-type { grid-column: 1 / -1; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > small:not(:first-of-type) { display: none; }
@@ -225,3 +226,5 @@
 /* The rest of a partly cancelled order, under its number and date in the İptal tab (and on the phone card). */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-order-part { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 6px; font-size: 12px; color: var(--rr-muted); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-order-part a { color: var(--rr-ink); text-decoration: underline; }
+/* In the İptal tab an order says İptal (or Kısmi İptal) once, beside its platform. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-wordmark-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
