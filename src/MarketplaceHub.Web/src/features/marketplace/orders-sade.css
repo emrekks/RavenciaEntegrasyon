@@ -213,3 +213,13 @@
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell.rr-cargocell { flex-wrap: wrap; }
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small.rr-shipdate { order: 9; flex-basis: 100%; display: flex; gap: 6px; margin-top: 0; }
 }
+/* A product cancelled whole stays on the order, struck through and marked İptal, so the warehouse does not pack it;
+   in the İptal tab every product shown is a cancelled one. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline-off > div > b { text-decoration: line-through; color: var(--rr-muted); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline-off .rr-thumb { opacity: .55; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline .rr-badge { margin: 3px 0 2px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pr-off > b { text-decoration: line-through; color: var(--rr-muted); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline .rr-pline-cut { color: var(--rr-bad); }
+/* The rest of a partly cancelled order, under its cancelled products in the İptal tab. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline-rest { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; font-size: 12px; color: var(--rr-muted); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline-rest a { color: var(--rr-ink); text-decoration: underline; }

@@ -85,6 +85,63 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // An order with some products cancelled stays open with the rest: it is in its own tab and in Kısmi İptal while
+    // open, its cancelled products are in İptal, every line goes to the list (the panel strikes the cancelled ones),
+    // and a delivered one is found under Tümü with the partial-cancel filter.
+    [PostgreSqlFact]
+    public async Task APartlyCancelledOrderIsInItsOwnTabInKismiIptalAndItsCancelledProductsInIptal()
+    {
+        var tenantId = await SeedAsync("ol-part");
+        Guid open, delivered;
+        try
+        {
+            await using (var seedDb = fixture.CreateContext())
+            {
+                var connectionId = await seedDb.PlatformConnections.Where(x => x.TenantId == tenantId).Select(x => x.Id).SingleAsync();
+                var now = DateTimeOffset.UtcNow;
+                Guid Add(string suffix, string derived, ShipmentPackageStatus packageStatus, params (decimal Ordered, decimal Cancelled)[] lines)
+                {
+                    var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = $"part-{suffix}", OrderNumber = $"part-{suffix}", Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now.AddMinutes(-30), LastRemoteModifiedAt = now, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = derived, CreatedAt = now, UpdatedAt = now, Version = 1 };
+                    seedDb.Orders.Add(order);
+                    var index = 0;
+                    foreach (var (ordered, cancelled) in lines)
+                        seedDb.OrderLines.Add(new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, ExternalLineId = $"{++index}", Sku = $"SKU-{suffix}-{index}", TitleSnapshot = "Ürün", OrderedQuantity = ordered, CancelledQuantity = cancelled, UnitPrice = 10m, VatRate = 20m, RawStatus = "Created" });
+                    seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = $"part-{suffix}", Status = packageStatus, RawStatus = packageStatus.ToString(), StatusOccurredAt = now, MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
+                    return order.Id;
+                }
+                // Two of one product with one cancelled, and a second product cancelled whole.
+                open = Add("open", "NEW", ShipmentPackageStatus.New, (2, 1), (1, 1));
+                delivered = Add("done", "DELIVERED", ShipmentPackageStatus.Delivered, (1, 0), (1, 1));
+                await seedDb.SaveChangesAsync();
+            }
+
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            async Task<List<Guid>> Ids(OrderListQuery query) => (await service.OrdersAsync(tenantId, 50, 1, null, query, CancellationToken.None)).Items.Select(x => x.Id).ToList();
+
+            Assert.Equal([open], await Ids(new OrderListQuery(Status: "PARTIALLY_CANCELLED")));
+            Assert.Contains(open, await Ids(new OrderListQuery(Status: "NEW")));
+            var cancelledTab = await Ids(new OrderListQuery(Status: "CANCELLED"));
+            Assert.Contains(open, cancelledTab);
+            Assert.Contains(delivered, cancelledTab);
+            Assert.Equal(new[] { open, delivered }.OrderBy(x => x), (await Ids(new OrderListQuery(PartialCancel: true))).OrderBy(x => x));
+
+            var summary = await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None);
+            Assert.Equal(1, summary.PartiallyCancelled);
+            Assert.Equal(summary.Cancelled, (await Ids(new OrderListQuery(Status: "CANCELLED"))).Count);
+
+            var row = (await service.OrdersAsync(tenantId, 50, 1, null, new OrderListQuery(Status: "PARTIALLY_CANCELLED"), CancellationToken.None)).Items.Single();
+            Assert.Equal(2, row.Lines!.Count);
+            Assert.Contains(row.Lines!, line => line.OrderedQuantity == 1 && line.CancelledQuantity == 1);
+            Assert.Equal(1, row.ProductQuantity);
+            Assert.Equal(1, row.LineCount);
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     // The dashboard's "Geciken Siparişler" card links to /orders?status=LATE; the list had no such view and opened
     // empty. It lists exactly the orders the card counts.
     [PostgreSqlFact]

@@ -1278,7 +1278,9 @@ public sealed record OrderListQuery(
     bool? LabelPrinted = null,
     // When a line of the order was cancelled: the marketplace's time, or when the panel saw it when that time is unknown.
     DateTimeOffset? CancelFrom = null,
-    DateTimeOffset? CancelTo = null);
+    DateTimeOffset? CancelTo = null,
+    // Orders with some products cancelled but not cancelled whole.
+    bool? PartialCancel = null);
 // Orders per column filter choice for the same filters as GET /orders, status tab included; a column's
 // own choice is left out of its counts. Platforms by platform code, cargos by cargo provider name.
 public sealed record OrderFacetsView(IReadOnlyDictionary<string, int> Platforms, IReadOnlyDictionary<string, int> Cargos);

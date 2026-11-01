@@ -145,7 +145,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var now = timeProvider.GetUtcNow();
         var rows = orders.Select(order =>
         {
-            var orderLines = (linesByOrder.GetValueOrDefault(order.Id) ?? [])
+            // Every line goes to the list, cancelled ones too: the panel strikes them through, and the İptal tab shows
+            // only those. Counts, the card image and the product total stay with the lines still ordered.
+            var allLines = linesByOrder.GetValueOrDefault(order.Id) ?? [];
+            var orderLines = allLines
                 .Where(line => OrderLinePresentationPolicy.ShouldShowInOrderList(order.DerivedStatus, line.OrderedQuantity, line.CancelledQuantity))
                 .ToList();
             var connection = connections.GetValueOrDefault(order.ConnectionId);
@@ -176,7 +179,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 order.OrderedAt,
                 now);
             var displayStatus = unverifiedWithoutPackage ? "UNVERIFIED" : order.DerivedStatus;
-            var lineViews = orderLines.Select(x =>
+            var lineViews = allLines.Select(x =>
             {
                 var variant = catalog.Variant(x);
                 var source = SourceLine(x.SourceSnapshotJson);
@@ -389,9 +392,18 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             var unpackagedOnHold = HepsiburadaUnpackagedOnHoldOrders(tenantId);
             var unpackagedDelivered = HepsiburadaUnpackagedDeliveredOrders(tenantId);
             Expression<Func<Order, bool>> marketplaceRule = status == "CANCELLED"
+                // Orders cancelled whole, and the cancelled products of orders that stay open (a cancelled split
+                // package, or a line with a cancelled quantity): the list shows only their cancelled lines here.
                 ? order => order.DerivedStatus == "CANCELLED"
                     || (!db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && connection.PlatformCode == "SHOPIFY")
                         && currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Cancelled))
+                    || db.OrderLines.Any(line => line.TenantId == order.TenantId && line.OrderId == order.Id && line.CancelledQuantity > 0)
+                // Orders still open with some products cancelled; they stay in their own status tab too. A delivered or
+                // returned one is found under Tümü with the partial-cancel filter.
+                : status == "PARTIALLY_CANCELLED"
+                ? order => order.DerivedStatus != "DELIVERED" && order.DerivedStatus != "CANCELLED" && order.DerivedStatus != "RETURNED"
+                    && (currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.PartiallyCancelled)
+                        || db.OrderLines.Any(line => line.TenantId == order.TenantId && line.OrderId == order.Id && line.CancelledQuantity > 0))
                 : derivedStatuses is not null
                 ? order => derivedStatuses.Contains(order.DerivedStatus)
                 : packageStatuses is not null
@@ -468,6 +480,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
         var listing = options.Listing?.Trim().ToUpperInvariant();
         if (listing == "OPEN") query = query.Where(x => x.DerivedStatus != "DELIVERED" && x.DerivedStatus != "CANCELLED" && x.DerivedStatus != "RETURNED");
+        // Orders with some products cancelled that were not cancelled whole, open or closed.
+        if (options.PartialCancel == true)
+            query = query.Where(x => x.DerivedStatus != "CANCELLED" && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id && line.CancelledQuantity > 0));
         if (listing == "CLOSED") query = query.Where(x => x.DerivedStatus == "DELIVERED" || x.DerivedStatus == "CANCELLED" || x.DerivedStatus == "RETURNED");
 
         var cargo = options.Cargo?.Trim();
