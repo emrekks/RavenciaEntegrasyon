@@ -34,7 +34,7 @@ public sealed partial class ShopifyHttpClient(
     private const string OrderRichCustomerFields = " email phone customer { id displayName firstName lastName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone }";
     private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
     private const string OrderAddressOnlyFields = " shippingAddress { firstName lastName name } billingAddress { firstName lastName name }";
-    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcodes(first:1) { nodes { value } } } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt updatedAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
+    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } currentTotalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcodes(first:1) { nodes { value } } } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt updatedAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
     // The store's own product types are the categories mapped for Shopify (productTypes, 2026-10, read_products).
     private const string ProductTypesQuery = "query($first:Int!, $after:String) { productTypes(first:$first, after:$after) { nodes pageInfo { hasNextPage endCursor } } }";
 
@@ -1361,7 +1361,6 @@ public sealed partial class ShopifyHttpClient(
     internal static RemoteOrder MapOrder(JsonElement order)
     {
         var money = order.GetProperty("currentTotalPriceSet").GetProperty("shopMoney");
-        var discount = order.GetProperty("totalDiscountsSet").GetProperty("shopMoney");
         var currency = money.GetProperty("currencyCode").GetString() ?? "TRY";
         var financialStatus = order.GetProperty("displayFinancialStatus").GetString() ?? "OPEN";
         // The order's cancelledAt is the only cancellation time this read carries: a cancelled order dates every
@@ -1372,15 +1371,25 @@ public sealed partial class ShopifyHttpClient(
             && cancelledAtElement.TryGetDateTimeOffset(out var cancelledAtValue)
                 ? cancelledAtValue
                 : (DateTimeOffset?)null;
-        var lines = order.GetProperty("lineItems").GetProperty("nodes").EnumerateArray()
-            .Select(line => MapOrderLine(line, financialStatus))
-            .Select(line => line.CancelledQuantity > 0 && orderCancelledAt is not null ? line with { CancelledAt = orderCancelledAt } : line)
-            .ToList();
         // Since the 2026-07 Admin API, Order.fulfillments is returned as a
         // direct list. Its nested fulfillmentLineItems field remains a
         // connection and is mapped from nodes below.
         var fulfillments = order.GetProperty("fulfillments").EnumerateArray().ToList();
-        var fulfilledByLine = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        var fulfilledByLine = FulfilledQuantities(fulfillments);
+        var lineNodes = order.GetProperty("lineItems").GetProperty("nodes").EnumerateArray().ToList();
+        var lines = lineNodes
+            .Select(line => MapOrderLine(line, financialStatus, fulfilledByLine))
+            .Select(line => line.CancelledQuantity > 0 && orderCancelledAt is not null ? line with { CancelledAt = orderCancelledAt } : line)
+            .ToList();
+        // currentQuantity also leaves out refunded units. A removed unit that had been fulfilled is a return (or a
+        // refund after shipping), not a cancellation: it stays in the sale and is written as returned on the
+        // delivered fulfillments of its line.
+        var returnedLines = lines.Zip(lineNodes, (line, node) => (Line: line, Quantity: RemovedQuantity(node) - line.CancelledQuantity))
+            .Where(item => item.Quantity > 0)
+            .ToList();
+        var returnedLeft = returnedLines
+            .GroupBy(item => item.Line.ExternalLineId, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), StringComparer.Ordinal);
         var packages = new List<RemotePackage>();
         foreach (var fulfillment in fulfillments)
         {
@@ -1392,10 +1401,12 @@ public sealed partial class ShopifyHttpClient(
                 var quantity = DecimalOrNull(item, "quantity") ?? 0m;
                 var cancelled = rawStatus == "CANCELLED" ? quantity : 0m;
                 var active = rawStatus == "CANCELLED" ? 0m : quantity;
-                if (active > 0) fulfilledByLine[lineId] = fulfilledByLine.GetValueOrDefault(lineId) + active;
                 var shipped = rawStatus is "SHIPPED" or "DELIVERED" ? active : 0m;
                 var delivered = rawStatus == "DELIVERED" ? active : 0m;
-                return new RemotePackageAllocation(lineId, active, cancelled, shipped, delivered, 0);
+                // Only a delivered unit is returned; a refunded unit still on its way stays active here.
+                var returned = Math.Min(delivered, returnedLeft.GetValueOrDefault(lineId));
+                if (returned > 0) returnedLeft[lineId] -= returned;
+                return new RemotePackageAllocation(lineId, active, cancelled, shipped, delivered, returned);
             }).ToList();
             packages.Add(new(
                 ShortId(fulfillment.GetProperty("id").GetString()),
@@ -1404,10 +1415,7 @@ public sealed partial class ShopifyHttpClient(
                 FulfillmentStatusOccurredAt(fulfillment, rawStatus),
                 tracking.ValueKind == JsonValueKind.Object && tracking.TryGetProperty("company", out var company) ? company.GetString() : null,
                 tracking.ValueKind == JsonValueKind.Object && tracking.TryGetProperty("number", out var number) ? number.GetString() : null,
-                allocations,
-                DecimalOrNull(money, "amount") ?? 0,
-                DecimalOrNull(discount, "amount") ?? 0,
-                DecimalOrNull(money, "amount") ?? 0));
+                allocations));
         }
 
         // Shopify exposes the original line quantity and the current quantity
@@ -1433,13 +1441,11 @@ public sealed partial class ShopifyHttpClient(
                 null,
                 null,
                 remainderAllocations,
-                DecimalOrNull(money, "amount") ?? 0,
-                DecimalOrNull(discount, "amount") ?? 0,
-                DecimalOrNull(money, "amount") ?? 0,
                 CancelledAt: remainderCancelledAt));
         }
 
-        packages = SplitOrderAmounts(packages, lines, DecimalOrNull(money, "amount") ?? 0, DecimalOrNull(discount, "amount") ?? 0);
+        var (grossAmount, discountAmount, netAmount) = OrderAmounts(order, lines, returnedLines.Select(item => (item.Line, item.Quantity)).ToList());
+        packages = SplitOrderAmounts(packages, lines, grossAmount, discountAmount);
 
         var refunds = order.TryGetProperty("refunds", out var refundsElement) && refundsElement.ValueKind == JsonValueKind.Array
             ? refundsElement.EnumerateArray().Select(refund => new RemoteOrderRefund(
@@ -1489,12 +1495,9 @@ public sealed partial class ShopifyHttpClient(
             order.GetProperty("createdAt").GetDateTimeOffset(),
             order.GetProperty("updatedAt").GetDateTimeOffset(),
             currency,
-            // Gross is the amount before the discount: the current total is what the buyer pays
-            // (net), so gross = net + discount (audit 2026-10-20 S11: it was net, and the panel
-            // subtracted the discount a second time).
-            (DecimalOrNull(money, "amount") ?? 0) + (DecimalOrNull(discount, "amount") ?? 0),
-            DecimalOrNull(discount, "amount") ?? 0,
-            DecimalOrNull(money, "amount") ?? 0,
+            grossAmount,
+            discountAmount,
+            netAmount,
             customerJson,
             AddressJson(order, "shippingAddress"),
             AddressJson(order, "billingAddress"),
@@ -1551,18 +1554,74 @@ public sealed partial class ShopifyHttpClient(
             return nodes.EnumerateArray().Select(node => TextValue(node, "value")).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
         return variant.TryGetProperty("barcode", out var barcode) && barcode.ValueKind == JsonValueKind.String ? barcode.GetString() : null;
     }
-    private static RemoteOrderLine MapOrderLine(JsonElement line, string financialStatus)
+    // The units of each line held by a fulfillment that is not cancelled.
+    internal static Dictionary<string, decimal> FulfilledQuantities(IReadOnlyList<JsonElement> fulfillments)
+    {
+        var fulfilled = new Dictionary<string, decimal>(StringComparer.Ordinal);
+        foreach (var fulfillment in fulfillments)
+        {
+            if (FulfillmentStatus(fulfillment) == "CANCELLED") continue;
+            foreach (var item in fulfillment.GetProperty("fulfillmentLineItems").GetProperty("nodes").EnumerateArray())
+            {
+                var quantity = DecimalOrNull(item, "quantity") ?? 0m;
+                if (quantity <= 0) continue;
+                var lineId = ShortId(item.GetProperty("lineItem").GetProperty("id").GetString());
+                fulfilled[lineId] = fulfilled.GetValueOrDefault(lineId) + quantity;
+            }
+        }
+        return fulfilled;
+    }
+
+    // LineItem.quantity counts every unit ordered; currentQuantity leaves out the refunded and removed ones
+    // (cancellations, order edits and returns alike).
+    private static decimal RemovedQuantity(JsonElement line)
+    {
+        var ordered = DecimalOrNull(line, "quantity") ?? DecimalOrNull(line, "currentQuantity") ?? 0m;
+        var current = DecimalOrNull(line, "currentQuantity") ?? ordered;
+        return Math.Clamp(ordered - current, 0m, ordered);
+    }
+
+    // The order's sale after cancellations and before returns. currentTotalPriceSet and currentTotalDiscountsSet
+    // are after cancellations, edits and returns alike; the original totalDiscountsSet still holds the discount of
+    // a cancelled line, so pairing it with the current total overstated the gross (gross = net + discount). A
+    // returned unit stays in the sale, so its value is added back with its share of the original discount.
+    internal static (decimal Gross, decimal Discount, decimal Net) OrderAmounts(JsonElement order, IReadOnlyList<RemoteOrderLine> lines, IReadOnlyList<(RemoteOrderLine Line, decimal Quantity)> returned)
+    {
+        var currentTotal = MoneyAmount(order, "currentTotalPriceSet") ?? 0m;
+        var originalDiscount = MoneyAmount(order, "totalDiscountsSet");
+        var currentDiscount = MoneyAmount(order, "currentTotalDiscountsSet") ?? originalDiscount ?? 0m;
+        var returnedValue = returned.Sum(item => item.Line.UnitPrice * item.Quantity);
+        var originalValue = lines.Sum(line => line.UnitPrice * line.Quantity);
+        var returnedDiscount = returnedValue > 0 && originalValue > 0
+            ? Math.Min(returnedValue, Math.Round((originalDiscount ?? currentDiscount) * returnedValue / originalValue, 2, MidpointRounding.AwayFromZero))
+            : 0m;
+        var discount = currentDiscount + returnedDiscount;
+        var gross = currentTotal + currentDiscount + returnedValue;
+        return (gross, discount, gross - discount);
+    }
+
+    private static decimal? MoneyAmount(JsonElement order, string field) =>
+        order.TryGetProperty(field, out var set) && set.ValueKind == JsonValueKind.Object
+        && set.TryGetProperty("shopMoney", out var money) && money.ValueKind == JsonValueKind.Object
+            ? DecimalOrNull(money, "amount")
+            : null;
+
+    // A fulfilled unit is never cancelled: an order edit changes only unfulfilled units and a CANCEL restock is
+    // for unfulfilled ones (RETURN is for fulfilled ones). Of the removed units, only those no fulfillment holds
+    // are cancelled; the rest were refunded or returned after fulfillment.
+    private static RemoteOrderLine MapOrderLine(JsonElement line, string financialStatus, IReadOnlyDictionary<string, decimal> fulfilledByLine)
     {
         var variant = line.TryGetProperty("variant", out var variantElement) && variantElement.ValueKind == JsonValueKind.Object ? variantElement : default;
         var lineSku = line.TryGetProperty("sku", out var skuElement) && skuElement.ValueKind == JsonValueKind.String ? skuElement.GetString() : null;
         var variantSku = variant.ValueKind == JsonValueKind.Object && variant.TryGetProperty("sku", out var variantSkuElement) && variantSkuElement.ValueKind == JsonValueKind.String ? variantSkuElement.GetString() : null;
         var barcode = variant.ValueKind == JsonValueKind.Object ? VariantBarcode(variant) : null;
         var sku = string.IsNullOrWhiteSpace(lineSku) ? variantSku : lineSku;
+        var lineId = ShortId(line.GetProperty("id").GetString());
         var orderedQuantity = DecimalOrNull(line, "quantity") ?? DecimalOrNull(line, "currentQuantity") ?? 0m;
-        var currentQuantity = DecimalOrNull(line, "currentQuantity") ?? orderedQuantity;
-        var cancelledQuantity = Math.Clamp(orderedQuantity - currentQuantity, 0m, orderedQuantity);
+        var unfulfilled = Math.Max(0m, orderedQuantity - fulfilledByLine.GetValueOrDefault(lineId));
+        var cancelledQuantity = Math.Min(RemovedQuantity(line), unfulfilled);
         var unitPrice = DecimalOrNull(line.GetProperty("originalUnitPriceSet").GetProperty("shopMoney"), "amount") ?? 0m;
-        return new(ShortId(line.GetProperty("id").GetString()), string.IsNullOrWhiteSpace(sku) ? "SHOPIFY-LINE" : sku!, barcode, line.GetProperty("name").GetString() ?? "Shopify ürünü", orderedQuantity, unitPrice, 0m, financialStatus, line.GetRawText(), cancelledQuantity);
+        return new(lineId, string.IsNullOrWhiteSpace(sku) ? "SHOPIFY-LINE" : sku!, barcode, line.GetProperty("name").GetString() ?? "Shopify ürünü", orderedQuantity, unitPrice, 0m, financialStatus, line.GetRawText(), cancelledQuantity);
     }
 
     internal static string FulfillmentStatus(JsonElement fulfillment)
@@ -1711,10 +1770,12 @@ public sealed partial class ShopifyHttpClient(
     internal const string QueryCostExceededCode = "SHOPIFY_QUERY_COST_EXCEEDED";
 
     // Shopify gives the order's totals only. Each package used to carry the whole order total, so an order
-    // with two fulfillments counted twice. The totals are shared by the value of each package's lines
-    // (allocated quantity x unit price); the last package takes the rounding rest, so the packages add up
-    // to the order. A single package keeps the order totals exactly as before.
-    internal static List<RemotePackage> SplitOrderAmounts(List<RemotePackage> packages, IReadOnlyList<RemoteOrderLine> lines, decimal total, decimal discount)
+    // with two fulfillments counted twice. The gross and the discount are shared by the value of each package's
+    // lines (allocated quantity x unit price) and the net is gross - discount, so a package's gross is its line
+    // value and its own amounts agree (the invoice refuses a package whose gross, discount and payable disagree;
+    // the gross used to be the net). The last package takes the rounding rest, so the packages add up to the
+    // order to the kuruş. A single package keeps the order totals.
+    internal static List<RemotePackage> SplitOrderAmounts(List<RemotePackage> packages, IReadOnlyList<RemoteOrderLine> lines, decimal gross, decimal discount)
     {
         if (packages.Count == 0) return packages;
         var prices = lines.GroupBy(line => line.ExternalLineId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First().UnitPrice, StringComparer.Ordinal);
@@ -1727,21 +1788,21 @@ public sealed partial class ShopifyHttpClient(
         }
         var lastWeighted = Array.FindLastIndex(weights, weight => weight > 0);
         var result = new List<RemotePackage>(packages.Count);
-        decimal totalLeft = total, discountLeft = discount;
+        decimal grossLeft = gross, discountLeft = discount;
         for (var index = 0; index < packages.Count; index++)
         {
-            decimal packageTotal, packageDiscount;
-            if (weights[index] <= 0) packageTotal = packageDiscount = 0m;
-            else if (index == lastWeighted) (packageTotal, packageDiscount) = (totalLeft, discountLeft);
+            decimal packageGross, packageDiscount;
+            if (weights[index] <= 0) packageGross = packageDiscount = 0m;
+            else if (index == lastWeighted) (packageGross, packageDiscount) = (grossLeft, discountLeft);
             else
             {
                 var share = weights[index] / weightTotal;
-                packageTotal = Math.Round(total * share, 2, MidpointRounding.AwayFromZero);
-                packageDiscount = Math.Round(discount * share, 2, MidpointRounding.AwayFromZero);
+                packageGross = Math.Round(gross * share, 2, MidpointRounding.AwayFromZero);
+                packageDiscount = Math.Min(packageGross, Math.Round(discount * share, 2, MidpointRounding.AwayFromZero));
             }
-            totalLeft -= packageTotal;
+            grossLeft -= packageGross;
             discountLeft -= packageDiscount;
-            result.Add(packages[index] with { GrossAmount = packageTotal, DiscountAmount = packageDiscount, NetAmount = packageTotal });
+            result.Add(packages[index] with { GrossAmount = packageGross, DiscountAmount = packageDiscount, NetAmount = packageGross - packageDiscount });
         }
         return result;
     }
