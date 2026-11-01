@@ -23,7 +23,8 @@ const optional = [{ key: 'materyal', title: 'Materyal', detail: 'Hepsiburada öz
 
 describe('PublishIssueBadge', () => {
   it('lists the required gaps first and the optional warnings below them, with a counter each', () => {
-    act(() => root.render(<PublishIssueBadge id="b" label="Yayın için zorunlu eksik" heading="Yayın için 1 eksik var" rows={[{ key: 'k', title: 'Kategori eşlemesi', detail: 'Kazak kategorisinin Hepsiburada karşılığı seçilmemiş.' }]} requiredCount={1} optionalHeading="2 isteğe bağlı özellik uyarısı" optionalRows={optional} optionalCount={2} actions={[{ key: 'category', label: 'Kategori Eşle', onRun: vi.fn() }]} />))
+    const mapCategory = vi.fn()
+    act(() => root.render(<PublishIssueBadge id="b" label="Yayın için zorunlu eksik" heading="Yayın için 1 eksik var" rows={[{ key: 'k', title: 'Kategori eşlemesi', detail: 'Kazak kategorisinin Hepsiburada karşılığı seçilmemiş.', onRun: mapCategory }]} requiredCount={1} optionalHeading="2 isteğe bağlı özellik uyarısı" optionalRows={optional} optionalCount={2} />))
     const trigger = container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!
     expect(trigger.classList.contains('status-danger')).toBe(true)
     expect([...container.querySelectorAll('.publish-issue-count')].map(item => [item.textContent, item.classList.contains('is-optional')])).toEqual([['1', false], ['2', true]])
@@ -31,16 +32,32 @@ describe('PublishIssueBadge', () => {
     act(() => trigger.click())
     const sections = [...container.querySelectorAll('.publish-issue-tooltip.is-open > section')]
     expect(sections.map(section => section.className)).toEqual(['publish-issue-required', 'publish-issue-optional'])
-    expect(sections[1].querySelector('a')?.getAttribute('href')).toBe('/mappings/attributes')
+    expect(sections[1].querySelector('a.publish-issue-row')?.getAttribute('href')).toBe('/mappings/attributes')
+    // No row of buttons: the gap row opens its fix, and a hint says so.
+    expect(container.querySelector('.publish-issue-actions')).toBeNull()
+    expect(container.querySelector('.publish-issue-hint')?.textContent).toBe('Düzeltmek için bir satıra tıklayın.')
+    act(() => sections[0].querySelector<HTMLButtonElement>('button.publish-issue-row')!.click())
+    expect(mapCategory).toHaveBeenCalledOnce()
+    expect(container.querySelector('.publish-issue-tooltip.is-open')).toBeNull()
   })
 
   it('stands as a yellow warning badge when nothing blocks', () => {
-    act(() => root.render(<PublishIssueBadge id="w" label="2 uyarı" heading="" rows={[]} optionalHeading="2 isteğe bağlı özellik uyarısı" optionalRows={optional} optionalCount={2} actions={[]} />))
+    act(() => root.render(<PublishIssueBadge id="w" label="2 uyarı" heading="" rows={[]} optionalHeading="2 isteğe bağlı özellik uyarısı" optionalRows={optional} optionalCount={2} />))
     const trigger = container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!
     expect(trigger.classList.contains('status-warning')).toBe(true)
     expect(trigger.title).toBe('2 uyarı')
     act(() => trigger.click())
     expect(container.querySelector('.publish-issue-required')).toBeNull()
     expect(container.querySelectorAll('.publish-issue-optional li')).toHaveLength(2)
+  })
+})
+
+describe('PublishIssueBadge shortcut', () => {
+  it('opens the one fix directly when there is one gap with a fix', () => {
+    const fix = vi.fn()
+    act(() => root.render(<PublishIssueBadge id='s' label='Yayın için zorunlu eksik' heading='Yayın için 1 eksik var' rows={[{ key: 'k', title: 'Kategori eşlemesi', detail: 'Eşlenmemiş.', onRun: fix }]} requiredCount={1} />))
+    act(() => container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!.click())
+    expect(fix).toHaveBeenCalledOnce()
+    expect(container.querySelector('.publish-issue-tooltip.is-open')).toBeNull()
   })
 })
