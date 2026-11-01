@@ -83,7 +83,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 
 /* Flow table */
 .cs-workspace .cs-ftable { overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.cs-workspace .cs-frow { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px 44px; align-items: center; gap: 14px; min-height: 46px; padding: 6px 16px; border-top: 1px solid var(--rv-color-border); }
+.cs-workspace .cs-frow { display: grid; grid-template-columns: minmax(0, 1.5fr) 110px minmax(0, 1fr) 150px 44px; align-items: center; gap: 14px; min-height: 46px; padding: 6px 16px; border-top: 1px solid var(--rv-color-border); }
 .cs-workspace .cs-frow.is-head { min-height: 34px; color: var(--rv-color-subtle); font-size: 12px; background: var(--rv-color-surface-raised); border-top: 0; border-bottom: 1px solid var(--rv-color-border); }
 .cs-workspace .cs-frow.is-head + .cs-fgroup { border-top: 0; }
 .cs-workspace .cs-fgroup { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 16px; background: var(--rv-color-surface-raised); border-top: 1px solid var(--rv-color-border); }
@@ -97,6 +97,10 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-fstate .cm-glyph { width: 15px; height: 15px; color: var(--rv-color-subtle); }
 .cs-workspace .cs-fstate .cm-glyph.is-done { color: var(--rv-color-ink); }
 .cs-workspace .cs-ftime { color: var(--rv-color-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.cs-workspace .cs-fcadence { display: grid; gap: 1px; min-width: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.cs-workspace .cs-fcadence b { color: var(--rv-color-ink); font-weight: 500; }
+.cs-workspace .cs-fcadence small { overflow: hidden; color: var(--rv-color-subtle); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.cs-workspace .cs-fcadence.is-none { color: var(--rv-color-subtle); }
 .cs-workspace .cs-ftable > .cs-empty { margin: 0; padding: 24px; text-align: center; }
 
 /* Switches */
@@ -144,7 +148,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
   .cs-workspace .cs-stats > div { border-left: 0; border-top: 1px solid var(--rv-color-border); }
   .cs-workspace .cs-stats > div:first-child { border-top: 0; }
   .cs-workspace .cs-frow { grid-template-columns: minmax(0, 1fr) 44px; }
-  .cs-workspace .cs-frow > :is(.cs-fstate, .cs-ftime) { grid-column: 1; }
+  .cs-workspace .cs-frow > :is(.cs-fcadence, .cs-fstate, .cs-ftime) { grid-column: 1; }
   .cs-workspace .cs-frow.is-head { display: none; }
 }
 
@@ -211,7 +215,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main :is(.cs-workspace, .sp-sade) :is(.cs-switch-field, .integration-write-toggle, .cs-switch-row):has(input:checked) .cs-switch-state,
 .app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch:has(> input:checked) > span { color: var(--rv-color-ink) !important; }
 .app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch { align-items: center; gap: 8px; min-height: 20px; }
-.cs-workspace .cs-frow { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px 92px; }
+.cs-workspace .cs-frow { grid-template-columns: minmax(0, 1.5fr) 110px minmax(0, 1fr) 150px 92px; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle { align-items: center; gap: 8px; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > span { order: 0; margin-right: 6px; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > .cs-switch-state { order: 1; }
@@ -237,6 +241,10 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-fields { gap: 12px; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-fields label { gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-fields select { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
+.app-shell.stitch-shell main .sp-sade .sync-policy-modal-cadence { display: grid; gap: 4px; margin: 0; padding: 12px 14px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; font-size: 12px; line-height: 1.5; }
+.app-shell.stitch-shell main .sp-sade .sync-policy-modal-cadence strong { color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
+.app-shell.stitch-shell main .sp-sade .sync-policy-modal-idle { display: grid; gap: 12px; }
+.app-shell.stitch-shell main .sp-sade .sync-policy-modal-idle .sync-policy-modal-cadence { padding: 0; background: none; border: 0; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry { gap: 0; padding: 0; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry h3 { margin: 0; padding: 12px 16px; font-size: 14px; font-weight: 600; background: var(--rv-color-surface-raised); border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .sp-sade .sync-policy-modal-telemetry dl { gap: 0; }

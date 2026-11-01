@@ -1412,6 +1412,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<bool>("Enabled")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IdleBackoffEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("IdleIntervalSeconds")
+                        .HasColumnType("integer");
+
                     b.Property<int>("IntervalSeconds")
                         .HasColumnType("integer");
 
