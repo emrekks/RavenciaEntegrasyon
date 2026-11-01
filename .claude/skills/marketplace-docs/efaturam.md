@@ -43,3 +43,8 @@ insufficient balance surfaces only as 409 `…/gateway/insufficient-credit` on i
 - Logs: `E-Faturam remaining credit. Available=True RemainingCredit=…` or the Warning
   `E-Faturam remaining credit unavailable. Reason=…`, once per cache period.
 - The Integrations card shows `1.240 Kontör` beside the E-Faturam name only when available (warning colour under 50).
+- Live answer for our production account (connection `01a13546-…-69d543113b52`), 1 Nov 2026 12:56 UTC, deploy
+  `6c105ca9`: 404 `problem:/etransformation/gateway/user-is-not-partner` (api log, Warning
+  `Reason="user-is-not-partner" ErrorCode="EFATURAM_RESOURCE_NOT_FOUND"`; the panel endpoint returned
+  `{"available":false,"remainingCredit":null,"reason":"user-is-not-partner"}`). Our account is not a partner, so the
+  badge does not appear; a credit display needs a direct-account endpoint from E-Faturam.
