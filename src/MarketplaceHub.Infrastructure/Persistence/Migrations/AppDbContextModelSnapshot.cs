@@ -4194,6 +4194,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<DateTimeOffset?>("CancelSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<decimal>("CancelledQuantity")
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");

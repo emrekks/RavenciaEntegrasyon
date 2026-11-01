@@ -85,7 +85,7 @@ public static class TrendyolJsonMapper
                     FlexibleInstant(package, "invoiceUpdatedAt") ?? modified,
                     ReferencesAreAuthoritative: HasAnyProperty(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber")
                         && HasAnyProperty(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"));
-                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, OrderCargoProvider(package), ScalarText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber", "trackingInfoCode"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")));
+                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, OrderCargoProvider(package), ScalarText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber", "trackingInfoCode"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")), CancelledAt: CancelledAt(package, rawStatusPackage));
                 // The shipping deadline is the agreed hand-over date (extended when the seller extended it).
                 // The estimated delivery dates are the customer's delivery window, not a deadline for the seller.
                 var dueAt = FlexibleInstant(package, "extendedAgreedDeliveryDate", "agreedDeliveryDate");
@@ -119,6 +119,21 @@ public static class TrendyolJsonMapper
     // The package's sale, discount and net as Trendyol states them on the package; a total the package leaves out is
     // the sum of its lines (each line's amount, discount and price are per unit), and a net still unknown is the sale
     // less the discount. Only fields Trendyol sent are summed: a line without them leaves that total at the package's.
+    // When Trendyol cancelled a package that ends cancelled (or unsupplied): the time of that step in its history, which
+    // is real UTC (unlike orderDate), else its last change, since nothing changes a cancelled package after. A split
+    // parent (UnPacked) is not a cancellation and has none.
+    internal static DateTimeOffset? CancelledAt(JsonElement package, string rawStatus)
+    {
+        static bool Cancelled(string? status) => status?.Trim().Replace("_", "", StringComparison.Ordinal).ToUpperInvariant() is "CANCELLED" or "CANCELED" or "UNSUPPLIED";
+        if (!Cancelled(rawStatus)) return null;
+        DateTimeOffset? fromHistory = null;
+        if (package.TryGetProperty("packageHistories", out var histories) && histories.ValueKind == JsonValueKind.Array)
+            foreach (var entry in histories.EnumerateArray())
+                if (entry.ValueKind == JsonValueKind.Object && Cancelled(NullText(entry, "status")) && Instant(entry, "createdDate") is { } at && (fromHistory is null || at > fromHistory))
+                    fromHistory = at;
+        return fromHistory ?? Instant(package, "lastModifiedDate");
+    }
+
     internal static (decimal Gross, decimal Discount, decimal Net) PackageAmounts(JsonElement package, IReadOnlyList<RemoteOrderLine> lines)
     {
         decimal? LineSum(params string[] names)

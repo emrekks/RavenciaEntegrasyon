@@ -459,6 +459,7 @@ public sealed class PostgreSqlConnectionFullResetTests(PostgreSqlTenantIsolation
     {
         public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<DashboardCancellationsView>> CancellationsAsync(Guid tenantId, DateOnly? day, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

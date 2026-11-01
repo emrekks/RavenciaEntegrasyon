@@ -1275,7 +1275,10 @@ public sealed record OrderListQuery(
     DateTimeOffset? DateTo = null,
     string? Sort = null,
     IReadOnlyList<string>? Platforms = null,
-    bool? LabelPrinted = null);
+    bool? LabelPrinted = null,
+    // When a line of the order was cancelled: the marketplace's time, or when the panel saw it when that time is unknown.
+    DateTimeOffset? CancelFrom = null,
+    DateTimeOffset? CancelTo = null);
 public sealed record OrderSummaryView(
     int All,
     int New,

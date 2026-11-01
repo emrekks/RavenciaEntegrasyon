@@ -476,6 +476,16 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
         if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => x.OrderedAt >= dateFrom);
         if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => x.OrderedAt <= dateTo);
+        // A line cancelled in the range: at the marketplace's time, or when the panel saw it if that time is unknown.
+        if (options.CancelFrom is not null || options.CancelTo is not null)
+        {
+            var cancelFrom = options.CancelFrom?.ToUniversalTime();
+            var cancelTo = options.CancelTo?.ToUniversalTime();
+            query = query.Where(x => db.OrderLines.Any(line => line.TenantId == x.TenantId && line.OrderId == x.Id && line.CancelledQuantity > 0
+                && (line.CancelledAt ?? line.CancelSeenAt) != null
+                && (cancelFrom == null || (line.CancelledAt ?? line.CancelSeenAt) >= cancelFrom)
+                && (cancelTo == null || (line.CancelledAt ?? line.CancelSeenAt) <= cancelTo)));
+        }
     }
 
     // Status counters are package-based because a marketplace order may be

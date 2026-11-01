@@ -31,11 +31,11 @@ public static class OrderLineCancelTime
         if (line.CancelledQuantity > (previousCancelled ?? 0m))
         {
             // A new cancellation: its own time, or unknown. It was seen happening only on a line already held.
-            line.CancelledAt = reported;
+            line.CancelledAt = reported?.ToUniversalTime();
             if (previousCancelled is not null) line.CancelSeenAt = now.ToUniversalTime();
             return;
         }
         // The same cancellation read again: a time the marketplace reports later fills an unknown one, never replaces it.
-        line.CancelledAt ??= reported;
+        line.CancelledAt ??= reported?.ToUniversalTime();
     }
 }

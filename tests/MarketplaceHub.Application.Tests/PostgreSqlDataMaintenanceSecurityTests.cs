@@ -697,6 +697,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
     {
         public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<DashboardCancellationsView>> CancellationsAsync(Guid tenantId, DateOnly? day, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
@@ -706,6 +707,7 @@ public sealed class PostgreSqlDataMaintenanceSecurityTests(PostgreSqlTenantIsola
         public int Calls { get; private set; }
         public Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ServiceResult<DashboardCancellationsView>> CancellationsAsync(Guid tenantId, DateOnly? day, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken) =>
             ++Calls <= failures ? throw new DbUpdateConcurrencyException("The snapshot row changed.") : Task.CompletedTask;
     }

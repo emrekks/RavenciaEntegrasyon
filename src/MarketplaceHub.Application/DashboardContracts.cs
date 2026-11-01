@@ -70,5 +70,20 @@ public interface IDashboardReadService
 {
     Task<DashboardBootstrapView> BootstrapAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<DashboardPerformanceView>> PerformanceAsync(Guid tenantId, DateOnly? from, DateOnly? to, CancellationToken cancellationToken);
+    Task<ServiceResult<DashboardCancellationsView>> CancellationsAsync(Guid tenantId, DateOnly? day, CancellationToken cancellationToken);
     Task RebuildTenantAsync(Guid tenantId, CancellationToken cancellationToken);
 }
+
+// Orders cancelled on one tenant calendar day, per store. A line counts on the day the marketplace says it was
+// cancelled; a line whose time the marketplace does not give counts apart (UnknownTime…) on the day the panel saw the
+// cancellation. CancelledOrders are orders cancelled whole, PartialOrders orders that stay open with fewer products;
+// the units are the cancelled quantities of the lines that count.
+public sealed record DashboardCancellationRowView(
+    Guid ConnectionId,
+    int CancelledOrders,
+    int PartialOrders,
+    decimal CancelledUnits,
+    int UnknownTimeOrders,
+    decimal UnknownTimeUnits);
+
+public sealed record DashboardCancellationsView(DateOnly Day, DateTimeOffset Start, DateTimeOffset End, IReadOnlyList<DashboardCancellationRowView> Stores);

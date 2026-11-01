@@ -104,6 +104,47 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             period.CurrentStart, period.CurrentEnd, period.PreviousStart, period.PreviousEnd, period.PartialDay, channels, current, previous, currentHours, previousHours));
     }
 
+    // The day's cancellations (DashboardCancellationRowView) over the stores the revenue report counts.
+    public async Task<ServiceResult<DashboardCancellationsView>> CancellationsAsync(Guid tenantId, DateOnly? day, CancellationToken cancellationToken)
+    {
+        var timezoneId = await db.Tenants.AsNoTracking().Where(x => x.Id == tenantId).Select(x => x.Timezone).SingleOrDefaultAsync(cancellationToken);
+        var resolved = DashboardPerformancePeriod.Resolve(day, day, timeProvider.GetUtcNow(), ResolveTimezone(timezoneId));
+        if (!resolved.Succeeded) return ServiceResult<DashboardCancellationsView>.Fail(resolved.Error!.Code, resolved.Error.Message, resolved.Error.Status);
+        var period = resolved.Value!;
+        var start = period.CurrentStart;
+        // Today runs to now, a past day to its end.
+        var end = period.CurrentEnd;
+        var excluded = DashboardRevenuePolicy.ExcludedConnectionStatuses;
+        var lines = await (
+            from line in db.OrderLines.AsNoTracking()
+            join order in db.Orders.AsNoTracking() on new { line.TenantId, Id = line.OrderId } equals new { order.TenantId, order.Id }
+            join connection in db.PlatformConnections.AsNoTracking() on new { order.TenantId, Id = order.ConnectionId } equals new { connection.TenantId, connection.Id }
+            where line.TenantId == tenantId && line.CancelledQuantity > 0
+                && !excluded.Contains(connection.Status) && connection.Environment.ToUpper() == "PRODUCTION"
+                && ((line.CancelledAt >= start && line.CancelledAt < end)
+                    || (line.CancelledAt == null && line.CancelSeenAt >= start && line.CancelSeenAt < end))
+            select new CancelledLine(order.Id, order.ConnectionId, order.DerivedStatus, line.CancelledQuantity, line.CancelledAt != null))
+            .ToListAsync(cancellationToken);
+        return ServiceResult<DashboardCancellationsView>.Ok(new(period.From, start, end, CancellationRows(lines)));
+    }
+
+    internal sealed record CancelledLine(Guid OrderId, Guid ConnectionId, string DerivedStatus, decimal Quantity, bool TimeKnown);
+
+    // An order counts once: with a known time when any of its lines has one, whole when nothing of it is left open.
+    internal static List<DashboardCancellationRowView> CancellationRows(IReadOnlyList<CancelledLine> lines) => lines
+        .GroupBy(line => line.ConnectionId)
+        .Select(store =>
+        {
+            var orders = store.GroupBy(line => line.OrderId).ToList();
+            var known = orders.Where(order => order.Any(line => line.TimeKnown)).ToList();
+            var whole = known.Count(order => DashboardRevenuePolicy.CancelledStatuses.Contains(order.First().DerivedStatus.ToUpperInvariant()));
+            return new DashboardCancellationRowView(store.Key, whole, known.Count - whole,
+                store.Where(line => line.TimeKnown).Sum(line => line.Quantity),
+                orders.Count - known.Count, store.Where(line => !line.TimeKnown).Sum(line => line.Quantity));
+        })
+        .OrderBy(row => row.ConnectionId)
+        .ToList();
+
     // Both periods in three grouped queries (revenue, product units, packages), one row per day × store × currency.
     // A day is the tenant's calendar day of the real order time (Trendyol's stored time minus its offset).
     internal async Task<List<DashboardPerformanceRowView>> PerformanceRowsAsync(Guid tenantId, DashboardPerformancePeriod period, string timezone, CancellationToken cancellationToken)
