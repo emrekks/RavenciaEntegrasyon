@@ -7,7 +7,7 @@ import { formatMoney } from '../../shared/format-money'
 import { formatPackageLabel } from '../../shared/package-label'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { notificationError, notificationLinks, type NotificationContext } from '../../shared/notifications'
-import { invoiceConfirmResultLabel, invoiceEnvironmentLabel, invoiceTypeLabel, taxpayerStatusLabel } from './invoice-copy'
+import { invoiceEnvironmentLabel, invoiceTypeLabel, taxpayerStatusLabel } from './invoice-copy'
 
 export type InvoicePreviewTarget = { orderId: string; packageId: string; providerConnectionId: string }
 type PreviewLine = { description: string; sku: string | null; quantity: number; unit: string; vatRate: number; unitPrice: number; discountAmount: number; vatAmount: number; total: number }
@@ -63,16 +63,14 @@ function actionLabel(action: string | null) {
 
 export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onNotice }: { targets: InvoicePreviewTarget[]; onClose: () => void; onComplete: () => void; onNotice: (message: string, kind: 'success' | 'error' | 'info' | 'pending', context?: NotificationContext) => void }) {
   const [previews, setPreviews] = useState<PreviewItem[]>([])
-  const [results, setResults] = useState<ConfirmResult | null>(null)
   const [loading, setLoading] = useState(false)
-  const submitting = false
   const [error, setError] = useState<unknown>(null)
   const [includeInternetSalesInfo, setIncludeInternetSalesInfo] = useState(false)
   const targetPayload = useMemo(() => JSON.stringify(targets), [targets])
 
   useEffect(() => {
     let active = true
-    setLoading(true); setError(null); setResults(null); setPreviews([])
+    setLoading(true); setError(null); setPreviews([])
     void hubApi<PreviewItem[]>('/invoice-workspace/preview', { method: 'POST', body: JSON.stringify({ items: JSON.parse(targetPayload) as InvoicePreviewTarget[], includeInternetSalesInfo }) })
       .then(items => { if (active) setPreviews(items) })
       .catch(reason => { if (active) setError(reason) })
@@ -142,10 +140,9 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
               {item.blockedReason && <p className="invoice-workspace-preview-blocked" role="status">{item.blockedReason}</p>}
             </article>
           })}
-          {results && <section className="invoice-workspace-preview-results" aria-live="polite"><h3>İşlem Sonuçları</h3>{results.items.map(result => <p key={result.packageId}><strong>{invoiceConfirmResultLabel(result.status)} · {actionLabel(result.action)}</strong><span>{result.message}</span></p>)}</section>}
         </>}
       </div>
-      <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.'}><input type="checkbox" checked={includeInternetSalesInfo} disabled={loading || submitting || Boolean(results) || internetSalesInfoLocked} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label><button type="button" className="secondary" onClick={onClose}>{results ? 'Kapat' : 'Vazgeç'}</button>{!results && <button type="button" disabled={loading || submitting || eligibleCount === 0} onClick={confirm}>{submitting ? 'İşlem Kuyruğa Alınıyor…' : eligibleCount > 1 ? `Onayla ve Faturayı Kes (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma İletimi Başlat' : 'Onayla ve Faturayı Kes'}</button>}</footer>
+      <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.'}><input type="checkbox" checked={includeInternetSalesInfo} disabled={loading || internetSalesInfoLocked} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled={loading || eligibleCount === 0} onClick={confirm}>{eligibleCount > 1 ? `Onayla ve Faturayı Kes (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma İletimi Başlat' : 'Onayla ve Faturayı Kes'}</button></footer>
     </DialogSurface>
   </div>
 }
