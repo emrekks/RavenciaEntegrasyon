@@ -31,6 +31,10 @@ const NotificationPanel = lazyPage(() => loadNotificationPanel().then(module => 
 const Dashboard = lazyPage(() => import('../features/dashboard/DashboardPage').then(module => ({ default: module.DashboardPage })))
 const SystemSettingsPage = lazyPage(() => import('../features/settings/SystemSettingsPage').then(module => ({ default: module.SystemSettingsPage })))
 
+// How long after a page appears its blocks may still play their entry (styles/motion.css): the longest staggered entry
+// and the row light have finished by then.
+const pageEntryWindowMs = 1400
+
 function Shell({ me }: { me: Me }) {
   const appearanceSettings = useAppearanceSettings()
   const queryClient = useQueryClient()
@@ -59,11 +63,16 @@ function Shell({ me }: { me: Me }) {
   }, [])
   const location = useLocation()
   const navigate = useNavigate()
-  // The page opening (styles/motion.css) plays once a load: on the first page shown after the panel is opened or
-  // reloaded, not again when moving to another page.
-  const [opening, setOpening] = useState(true)
-  const firstPath = useRef(location.pathname)
-  useEffect(() => { if (location.pathname !== firstPath.current) setOpening(false) }, [location.pathname])
+  // The page opening (styles/motion.css) plays on every page as it appears: the shell is `.is-entering` for a short
+  // window after each move to another page (and on load), so a block that mounts later, or data that arrives later,
+  // does not play it a second time.
+  const [entering, setEntering] = useState<string | null>(location.pathname)
+  useLayoutEffect(() => { setEntering(location.pathname) }, [location.pathname])
+  useEffect(() => {
+    if (!entering) return undefined
+    const timer = window.setTimeout(() => setEntering(null), pageEntryWindowMs)
+    return () => window.clearTimeout(timer)
+  }, [entering])
   // Every overlay holds the one counted page lock (shared/hooks/useScrollLock). After a page change, or when the browser
   // brings the tab back from its cache (iPhone browsers kept a stale lock until a reload), a lock style that no overlay
   // holds any more is cleared.
@@ -192,7 +201,7 @@ function Shell({ me }: { me: Me }) {
     { to: '/mappings/categories', label: 'Eşleştirmeler', description: 'Kategori ve özellik eşlemeleri', icon: 'layers' },
     { to: '/settings', label: 'Sistem Ayarları', description: 'Güvenlik ve görünüm ayarları', icon: 'settings' },
   ]
-  return <div className={`app-shell stitch-shell${opening ? ' is-opening' : ''} ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
+  return <div className={`app-shell stitch-shell${entering ? ' is-entering' : ''} ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
     <aside aria-label="Ravencia ana menüsü" onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave}>
       <div className="sidebar-brand-row"><Link className="sidebar-brand-home" to="/dashboard" aria-label="Genel bakışa git"><span className="stitch-brand-mark" aria-hidden="true"><img src="/pack/brand/ravencia-symbol-128.webp" alt="" /></span><span className="brand wordmark"><strong>Ravencia</strong></span></Link><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
       <nav aria-label="Ana menü">{navigation}</nav>
