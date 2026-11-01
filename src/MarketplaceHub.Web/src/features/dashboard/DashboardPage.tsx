@@ -262,10 +262,11 @@ export function DashboardPage() {
     ['late', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
     ['ret', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
     ['invoice', 'Bekleyen Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined],
-    ['due', 'Yaklaşan Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount), '', dashboardOperationalLinks.dueInvoices, undefined],
+    // Under Bekleyen Siparişler: the products of the same orders.
+    ['units', 'Bekleyen Ürün Adedi', knownCount(bootstrap.isLoading, pendingUnitTotal), '', dashboardOperationalLinks.pendingOrders, pendingUnits ?? undefined],
     // The same count as the product list's low-stock filter it opens.
     ['lowst', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
-    ['units', 'Bekleyen Ürün Adedi', knownCount(bootstrap.isLoading, pendingUnitTotal), '', dashboardOperationalLinks.pendingOrders, pendingUnits ?? undefined],
+    ['due', 'Yaklaşan Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount), '', dashboardOperationalLinks.dueInvoices, undefined],
   ]
   // The file is made from the data on screen only once it belongs to the chosen period and store.
   const reportReady = Boolean(data) && days !== null && !performance.isPlaceholderData && !performance.isFetching && data!.from === days.from && data!.to === days.to
