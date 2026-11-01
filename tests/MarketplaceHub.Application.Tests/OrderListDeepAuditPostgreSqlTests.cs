@@ -200,6 +200,48 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // The Yeniden Gönderim card counts the resent orders whose new package the carrier has not taken: created, being
+    // picked or ready to ship. A shipped, delivered or held package, or one of unknown standing, is not counted.
+    [PostgreSqlFact]
+    public async Task ResentNotShippedListsOnlyTheResendsWhosePackageIsStillWithTheSeller()
+    {
+        var tenantId = await SeedAsync("ol-rsn");
+        try
+        {
+            await using (var seedDb = fixture.CreateContext())
+            {
+                var connectionId = await seedDb.PlatformConnections.Where(x => x.TenantId == tenantId).Select(x => x.Id).SingleAsync();
+                var now = DateTimeOffset.UtcNow;
+                void Add(string suffix, ShipmentPackageStatus status)
+                {
+                    var order = new Order { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalOrderId = $"rsn-{suffix}", OrderNumber = $"rsn-{suffix}", Currency = "TRY", GrossAmount = 10m, NetAmount = 10m, OrderedAt = now.AddMinutes(-30), LastRemoteModifiedAt = now, CustomerSnapshotJson = "{}", ShipmentAddressSnapshotJson = "{}", InvoiceAddressSnapshotJson = "{}", DerivedStatus = status.ToString().ToUpperInvariant(), CreatedAt = now, UpdatedAt = now, Version = 1 };
+                    seedDb.Orders.Add(order);
+                    seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = $"rsn-{suffix}", OriginExternalPackageId = $"origin-{suffix}", CreatedBy = "resend", Status = status, RawStatus = status.ToString(), StatusOccurredAt = now, MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, CreatedAt = now, UpdatedAt = now, Version = 1 });
+                }
+                Add("new", ShipmentPackageStatus.New);
+                Add("picking", ShipmentPackageStatus.Processing);
+                Add("ready", ShipmentPackageStatus.ReadyToShip);
+                Add("shipped", ShipmentPackageStatus.Shipped);
+                Add("hold", ShipmentPackageStatus.OnHold);
+                Add("delivered", ShipmentPackageStatus.Delivered);
+                await seedDb.SaveChangesAsync();
+            }
+
+            await using var db = fixture.CreateContext();
+            var service = NewService(db);
+            async Task<List<string>> Numbers(OrderListQuery query) => (await service.OrdersAsync(tenantId, 50, 1, null, query, CancellationToken.None)).Items.Select(x => x.OrderNumber).OrderBy(x => x).ToList();
+
+            Assert.Equal(6, (await Numbers(new OrderListQuery(Status: "RESENT"))).Count);
+            Assert.Equal(["rsn-new", "rsn-picking", "rsn-ready"], await Numbers(new OrderListQuery(Status: "RESENT", ResentNotShipped: true)));
+            // The filter belongs to the Yeniden Gönderimler tab; it does not narrow another tab.
+            Assert.Equal(1, (await Numbers(new OrderListQuery(Status: "DELIVERED", ResentNotShipped: true))).Count(number => number.StartsWith("rsn-")));
+        }
+        finally
+        {
+            await CleanupAsync(tenantId);
+        }
+    }
+
     // The dashboard's "Geciken Siparişler" card links to /orders?status=LATE; the list had no such view and opened
     // empty. It lists exactly the orders the card counts.
     [PostgreSqlFact]

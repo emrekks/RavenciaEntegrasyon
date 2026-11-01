@@ -252,6 +252,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         // placeholder) neither match a tab nor count as invoice targets.
         var currentPackages = CurrentShipmentPackages();
         var resendCreators = new[] { "transfer", "resend", "replacement" };
+        var resentNotShipped = options.ResentNotShipped == true;
         var invoice = options.Invoice?.Trim().ToUpperInvariant();
         if (!string.IsNullOrWhiteSpace(invoice) && invoice != "ALL")
         {
@@ -440,7 +441,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 {
                     // originPackageIds is also present for split/cancel packages;
                     // only Trendyol's explicit creator marker identifies a resend.
-                    "RESENT" => x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy)),
+                    "RESENT" => x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.OriginExternalPackageId != null && package.Status != ShipmentPackageStatus.Cancelled && package.CreatedBy != null && resendCreators.Contains(package.CreatedBy)
+                        && (!resentNotShipped || ResentNotShippedStatuses.Contains(package.Status))),
                     // UNVERIFIED (a Hepsiburada order known only from a claim) and any other order status.
                     _ => x => x.DerivedStatus == status
                 };
@@ -520,6 +522,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     // Status counters are package-based because a marketplace order may be
     // split. Use the same rule for each tab so a cancelled split package can
     // never increase the "İptal" counter while hiding its parent order.
+    // A resent package the carrier has not taken yet: created, being picked, or ready to ship.
+    internal static readonly ShipmentPackageStatus[] ResentNotShippedStatuses = [ShipmentPackageStatus.New, ShipmentPackageStatus.Processing, ShipmentPackageStatus.ReadyToShip];
+
     internal static ShipmentPackageStatus[]? PackageStatusesForOrderTab(string status) => status switch
     {
         "NEW" => [ShipmentPackageStatus.New],

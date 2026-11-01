@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dailyCancellationCounts, dayCardFilters, microTodayParams } from './daily-cards'
+import { dailyCancellationCounts, dayCardFilters, microTodayParams, pendingShipments } from './daily-cards'
 import { tabDateFilters } from './order-date-filters'
 import { istanbulDayBoundary } from '../../../shared/format-date'
 
@@ -21,15 +21,31 @@ describe('daily order cards', () => {
   })
 
   it('opens the micro-export list of the day in every tab, and İptal or Kısmi İptal on the day of the cancellation', () => {
-    expect(dayCardFilters('micro', '2026-11-02')).toEqual({ micro: 'MICRO', status: 'ALL', dateFrom: '2026-11-02', dateTo: '2026-11-02', cancelFrom: '', cancelTo: '' })
-    expect(dayCardFilters('cancelled', '2026-11-02')).toEqual({ micro: 'ALL', status: 'CANCELLED', dateFrom: '', dateTo: '', cancelFrom: '2026-11-02', cancelTo: '2026-11-02' })
+    expect(dayCardFilters('micro', '2026-11-02')).toEqual({ kind: 'MICRO', status: 'ALL', dateFrom: '2026-11-02', dateTo: '2026-11-02', cancelFrom: '', cancelTo: '' })
+    expect(dayCardFilters('cancelled', '2026-11-02')).toEqual({ kind: 'ALL', status: 'CANCELLED', dateFrom: '', dateTo: '', cancelFrom: '2026-11-02', cancelTo: '2026-11-02' })
     expect(dayCardFilters('partial', '2026-11-02')).toMatchObject({ status: 'PARTIALLY_CANCELLED', cancelFrom: '2026-11-02', cancelTo: '2026-11-02' })
+    // The resends not yet shipped and the orders to ship are about no day: both date filters are cleared.
+    expect(dayCardFilters('resent', '2026-11-02')).toEqual({ kind: 'RESENT_UNSHIPPED', status: 'RESENT', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' })
+    expect(dayCardFilters('ship', '2026-11-02')).toEqual({ kind: 'ALL', status: 'PENDING', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' })
   })
 
   it('sets exactly the date filter its tab offers, so the date filters keep them as they are', () => {
-    for (const card of ['micro', 'cancelled', 'partial'] as const) {
+    for (const card of ['micro', 'cancelled', 'partial', 'resent', 'ship'] as const) {
       const filters = dayCardFilters(card, '2026-11-02')
       expect(tabDateFilters(filters.status, filters)).toEqual({ dateFrom: filters.dateFrom, dateTo: filters.dateTo, cancelFrom: filters.cancelFrom, cancelTo: filters.cancelTo })
     }
+  })
+
+  // Kargolanacak Ürün Adedi is the overview's Bekleyen Ürün Adedi: the bootstrap's pending products per store.
+  it('reads the products to ship, their orders and a row per store from the overview bootstrap', () => {
+    const bootstrap = {
+      metrics: { lateOrders: 0, uninvoicedInvoices: 0, pendingOrders: 30, pendingByConnection: { ty: 29, pz: 1 }, pendingUnitsByConnection: { pz: 1, ty: 36, gone: 0 } },
+      channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol' }, { connectionId: 'pz', platformCode: 'PAZARAMA', displayName: 'Pazarama' }]
+    }
+    expect(pendingShipments(bootstrap)).toEqual({ units: 37, orders: 30, rows: [{ key: 'ty', code: 'TRENDYOL', name: 'Trendyol', units: 36 }, { key: 'pz', code: 'PAZARAMA', name: 'Pazarama', units: 1 }] })
+    // A store that is no longer listed keeps its products and is named so; unread or older answers give nothing.
+    expect(pendingShipments({ metrics: { lateOrders: 0, uninvoicedInvoices: 0, pendingByConnection: { x: 2 }, pendingUnitsByConnection: { x: 3 } } })?.rows).toEqual([{ key: 'x', code: '', name: 'Kaldırılmış mağaza', units: 3 }])
+    expect(pendingShipments({ metrics: { lateOrders: 0, uninvoicedInvoices: 0 } })).toBeUndefined()
+    expect(pendingShipments(undefined)).toBeUndefined()
   })
 })
