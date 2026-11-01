@@ -6874,6 +6874,8 @@ html body :is(.nav-count, .rv-tab-count, .ss-count, .cs-count, .cm-count, .qi-co
 @media (min-width: 701px) {
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside { max-width: var(--rv-sidebar-width); overflow-x: hidden; transition: width 200ms cubic-bezier(.4, 0, .6, 1), box-shadow 200ms ease, z-index 0s linear 200ms; }
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside { transition: width 280ms cubic-bezier(.2, .9, .25, 1), box-shadow 280ms ease, z-index 0s; }
+  /* Over the page the open panel ends in a soft edge, rounded corners and its shadow, not a hard full-height line. */
+  .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded:not(.sidebar-pinned) > aside { border-right-color: transparent; border-radius: 0 14px 14px 0; }
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link, .sidebar-brand-home, .sidebar-profile) { overflow: hidden; }
   .app-shell.stitch-shell.sidebar-collapsed:not(.sidebar-pinned) > aside :is(.brand.wordmark, .sidebar-profile-copy, .nav-label, .logout-label) {
     display: block; flex: none; width: auto; max-width: 190px; overflow: visible; visibility: visible; opacity: 0; transform: none;
