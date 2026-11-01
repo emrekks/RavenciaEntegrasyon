@@ -78,7 +78,7 @@ describe('PublishPlatformCard first frames', () => {
     expect(container.textContent).not.toContain('Zaten yayında')
     await answer('p2', { actualStatus: 'UNKNOWN' })
     expect(article().classList.contains('is-settling')).toBe(false)
-    expect(container.textContent).toContain('Kısmen yayında · 1/2 renk')
+    expect(container.textContent).toContain('1/2 renk yayında')
   })
 
   it('stays masked while the product itself is loading', async () => {
@@ -92,28 +92,35 @@ describe('PublishPlatformCard first frames', () => {
 })
 
 describe('PublishPlatformCard partly live', () => {
-  const status = () => container.querySelector('.publish-platform-fact-publication dd')!
+  const fact = () => container.querySelector('.publish-platform-fact-publication')!
+  const status = () => fact().querySelector('dd')!
+  const pill = () => status().querySelector<HTMLElement>('.publish-platform-status')!
 
-  it('says the rest is ready to send when the publish check finds nothing missing', async () => {
+  it('shows one pill with the live share and a line saying the rest is ready', async () => {
     await render({ familyProductIds: ['p1', 'p2'], productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksiksiz.', ok: true }] })
     await answer('p1', { actualStatus: 'LIVE' })
     await answer('p2', { actualStatus: 'UNKNOWN' })
-    expect(status().textContent).toContain('Kısmen yayında · 1/2 renk')
-    expect(status().querySelector('.publish-partial-ready')?.textContent).toBe('1 hazır')
+    expect(pill().textContent).toBe('1/2 renk yayında')
+    expect(pill().querySelector<HTMLElement>('.publish-partial-progress > b')?.style.width).toBe('50%')
+    // One pill only: no second status and no separate "hazır" chip in the status row.
+    expect(status().querySelectorAll('.publish-platform-status')).toHaveLength(1)
     expect(status().querySelector('.publish-issue-trigger')).toBeNull()
+    const note = fact().querySelector('.publish-partial-note.is-ready')!
+    expect(note.textContent).toBe('Kalan 1 renk yayına hazır')
+    expect(note.querySelector('svg')).not.toBeNull()
   })
 
-  it('keeps the partial status and shows the gaps badge for the rest, opening the same gap list', async () => {
+  it('says how many gaps the rest has in a line that opens the same gap chips', async () => {
     await render({ familyProductIds: ['p1', 'p2'], productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }] })
     await answer('p1', { actualStatus: 'LIVE' })
     await answer('p2', { actualStatus: 'UNKNOWN' })
-    expect(status().textContent).toContain('Kısmen yayında · 1/2 renk')
-    expect(status().querySelector('.publish-partial-ready')).toBeNull()
-    const badge = status().querySelector<HTMLButtonElement>('.publish-issue-trigger')!
-    expect(badge.title).toBe('1 renkte 1 eksik')
-    expect(badge.querySelector('.publish-issue-count')?.textContent).toBe('1')
-    await act(async () => { badge.click() })
-    expect(status().querySelector('.publish-issue-required .publish-issue-chip')?.textContent).toBe('Temel Ürün Verileri')
+    expect(pill().textContent).toBe('1/2 renk yayında')
+    expect(status().querySelectorAll('.publish-platform-status')).toHaveLength(1)
+    expect(fact().querySelector('.publish-partial-note.is-ready')).toBeNull()
+    const line = fact().querySelector<HTMLButtonElement>('.publish-partial-note.is-blocked .publish-issue-note-trigger')!
+    expect(line.textContent).toBe('Kalan 1 renkte 1 eksik')
+    await act(async () => { line.click() })
+    expect(fact().querySelector('.publish-partial-note .publish-issue-tooltip.is-open .publish-issue-required .publish-issue-chip')?.textContent).toBe('Temel Ürün Verileri')
   })
 
   it('leaves a card with nothing live as it was', async () => {
@@ -121,6 +128,14 @@ describe('PublishPlatformCard partly live', () => {
     await answer('p1', { actualStatus: 'UNKNOWN' })
     await answer('p2', { actualStatus: 'UNKNOWN' })
     expect(status().querySelector('.publish-issue-trigger')?.getAttribute('title')).toBe('Yayın için zorunlu eksik')
-    expect(status().querySelector('.publish-partial-ready')).toBeNull()
+    expect(fact().querySelector('.publish-partial-note, .publish-partial-progress')).toBeNull()
+  })
+
+  it('leaves a fully live card as it was', async () => {
+    await render({ familyProductIds: ['p1', 'p2'] })
+    await answer('p1', { actualStatus: 'LIVE' })
+    await answer('p2', { actualStatus: 'LIVE' })
+    expect(subtitle()).toBe('Zaten yayında · yeniden seçilemez')
+    expect(fact().querySelector('.publish-partial-note, .publish-partial-progress')).toBeNull()
   })
 })

@@ -436,7 +436,7 @@
    gap, yellow for an optional warning, with a halo so it never reads as the unsaved dot), and the list can be narrowed
    to them. A value gap's row in the value table carries a "Bu Üründe" tag. */
 .cm-card .cm-product-filter { padding: 10px 14px 4px; }
-.cm-card .cm-product-filter > button.cm-toggle { box-sizing: border-box; width: 100%; height: 32px; min-height: 0; justify-content: center; border-radius: 7px; font-size: 13px; }
+.app-shell.stitch-shell main .cm-card .cm-product-filter > button.cm-toggle, .cm-card .cm-product-filter > button.cm-toggle { box-sizing: border-box; width: 100%; height: 32px; min-height: 0; justify-content: center; border-radius: 7px; font-size: 13px; }
 .cm-card .cm-item.is-product-required { --cm-product-tone: var(--rv-color-danger); }
 .cm-card .cm-item.is-product-optional { --cm-product-tone: var(--rv-color-warning); }
 .app-shell .panel.mapping-step.cm-card .cm-item.has-product-issue, .cm-card .cm-item.has-product-issue { box-shadow: inset 3px 0 0 var(--cm-product-tone); }

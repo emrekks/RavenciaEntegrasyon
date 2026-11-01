@@ -11,7 +11,10 @@ export type { PublishIssueRow }
 // popover: the required gaps as red chips, then the optional ones as yellow chips, each only its title (the detail is the
 // chip's hover text and accessible name); each chip opens its own fix, so the card never grows a row or a box per fix.
 // With one gap that has a fix the press opens that fix directly. The popover keeps to the room above the sticky Yayınla bar.
-export function PublishIssueBadge({ id, label, heading, rows, requiredCount, optionalHeading, optionalRows = [], optionalCount, moreText }: {
+// `variant="note"`: the same gaps behind a small line of text under a status (a partly live card's "Kalan 21 varyantta 2
+// eksik") instead of a status pill.
+export function PublishIssueBadge({ id, label, heading, rows, requiredCount, optionalHeading, optionalRows = [], optionalCount, moreText, variant = 'pill' }: {
+  variant?: 'pill' | 'note'
   id: string
   label: string
   heading: string
@@ -60,11 +63,12 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
           : <span className="publish-issue-chip" title={row.detail || undefined} aria-label={described} role="note">{row.title}</span>}
     </li>
   })}</ul>
-  return <span ref={wrapper} className={`publish-issue-badge is-${tone}`}>
-    <button ref={trigger} type="button" className={`publish-platform-status status-${tone} publish-issue-trigger`} aria-haspopup={shortcut ? 'dialog' : 'true'} aria-expanded={shortcut ? undefined : open} aria-controls={id} title={label} onMouseEnter={place} onFocus={place} onClick={() => { if (shortcut) shortcut(); else setOpen(value => !value) }}>
-      <i aria-hidden="true" /><span className="publish-issue-label">{label}</span>
-      {requiredCount ? <span className="publish-issue-count" aria-label={`${requiredCount} zorunlu eksik`}>{requiredCount}</span> : null}
-      {optionalCount ? <span className="publish-issue-count is-optional" aria-label={`${optionalCount} isteğe bağlı uyarı`}>{optionalCount}</span> : null}
+  const note = variant === 'note'
+  return <span ref={wrapper} className={`publish-issue-badge is-${tone}${note ? ' publish-partial-note is-blocked' : ''}`}>
+    <button ref={trigger} type="button" className={note ? 'publish-issue-trigger publish-issue-note-trigger' : `publish-platform-status status-${tone} publish-issue-trigger`} aria-haspopup={shortcut ? 'dialog' : 'true'} aria-expanded={shortcut ? undefined : open} aria-controls={id} title={label} onMouseEnter={place} onFocus={place} onClick={() => { if (shortcut) shortcut(); else setOpen(value => !value) }}>
+      {note ? <UiIcon name="alert" size={12} /> : <i aria-hidden="true" />}<span className="publish-issue-label">{label}</span>
+      {!note && requiredCount ? <span className="publish-issue-count" aria-label={`${requiredCount} zorunlu eksik`}>{requiredCount}</span> : null}
+      {!note && optionalCount ? <span className="publish-issue-count is-optional" aria-label={`${optionalCount} isteğe bağlı uyarı`}>{optionalCount}</span> : null}
       <UiIcon name="chevronDown" size={12} />
     </button>
     <div ref={panel} id={id} className={`publish-issue-tooltip is-${tone}${open ? ' is-open' : ''}`} role={open ? 'dialog' : 'tooltip'} aria-label={rows.length ? heading : optionalHeading}>
