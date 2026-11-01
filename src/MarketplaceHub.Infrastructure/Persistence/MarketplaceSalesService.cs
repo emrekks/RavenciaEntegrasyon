@@ -398,10 +398,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                     || (!db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && connection.PlatformCode == "SHOPIFY")
                         && currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Cancelled))
                     || db.OrderLines.Any(line => line.TenantId == order.TenantId && line.OrderId == order.Id && line.CancelledQuantity > 0)
-                // Orders still open with some products cancelled; they stay in their own status tab too. A delivered or
-                // returned one is found under Tümü with the partial-cancel filter.
+                // Every order with some products cancelled but not cancelled whole, delivered ones too (owner's call,
+                // 1 Nov 2026); an open one stays in its own status tab as well.
                 : status == "PARTIALLY_CANCELLED"
-                ? order => order.DerivedStatus != "DELIVERED" && order.DerivedStatus != "CANCELLED" && order.DerivedStatus != "RETURNED"
+                ? order => order.DerivedStatus != "CANCELLED"
                     && (currentPackages.Any(package => package.TenantId == order.TenantId && package.OrderId == order.Id && package.Status == ShipmentPackageStatus.PartiallyCancelled)
                         || db.OrderLines.Any(line => line.TenantId == order.TenantId && line.OrderId == order.Id && line.CancelledQuantity > 0))
                 : derivedStatuses is not null
