@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { dailyCancellationCounts, dayCardFilters, microTodayParams, pendingShipments } from './daily-cards'
+import { dailyCancellationCounts, dayCardFilters, microPendingParams, pendingShipments } from './daily-cards'
 import { tabDateFilters } from './order-date-filters'
-import { istanbulDayBoundary } from '../../../shared/format-date'
 
 const row = (cancelledOrders: number, partialOrders: number, unknownTimeOrders = 0) => ({ connectionId: 'c', cancelledOrders, partialOrders, cancelledUnits: 0, unknownTimeOrders, unknownTimeUnits: 0 })
 
@@ -12,16 +11,16 @@ describe('daily order cards', () => {
     expect(dailyCancellationCounts(undefined)).toBeUndefined()
   })
 
-  it('asks the summary for the ALL tab alone under the order-date filter of the day', () => {
-    const params = new URLSearchParams(microTodayParams('2026-11-02', istanbulDayBoundary))
-    expect(params.get('tabs')).toBe('ALL')
-    expect(params.get('dateFrom')).toBe('2026-11-02T00:00:00.000+03:00')
-    expect(params.get('dateTo')).toBe('2026-11-02T23:59:59.999+03:00')
-    expect([...params.keys()]).toEqual(['tabs', 'dateFrom', 'dateTo'])
+  it('asks the summary for the PENDING tab alone over the micro-export orders, with no date', () => {
+    const params = new URLSearchParams(microPendingParams())
+    expect(params.get('tabs')).toBe('PENDING')
+    expect(params.get('micro')).toBe('true')
+    expect([...params.keys()]).toEqual(['tabs', 'micro'])
   })
 
-  it('opens the micro-export list of the day in every tab, and İptal or Kısmi İptal on the day of the cancellation', () => {
-    expect(dayCardFilters('micro', '2026-11-02')).toEqual({ kind: 'MICRO', status: 'ALL', dateFrom: '2026-11-02', dateTo: '2026-11-02', cancelFrom: '', cancelTo: '' })
+  it('opens the pending micro-export orders, and İptal or Kısmi İptal on the day of the cancellation', () => {
+    // The same set the card counts: the micro-export orders in the pending tab, any day.
+    expect(dayCardFilters('micro', '2026-11-02')).toEqual({ kind: 'MICRO', status: 'PENDING', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' })
     expect(dayCardFilters('cancelled', '2026-11-02')).toEqual({ kind: 'ALL', status: 'CANCELLED', dateFrom: '', dateTo: '', cancelFrom: '2026-11-02', cancelTo: '2026-11-02' })
     expect(dayCardFilters('partial', '2026-11-02')).toMatchObject({ status: 'PARTIALLY_CANCELLED', cancelFrom: '2026-11-02', cancelTo: '2026-11-02' })
     // The resends not yet shipped and the orders to ship are about no day: both date filters are cleared.

@@ -65,14 +65,15 @@ describe('order summary cards', () => {
     expect(plain.querySelectorAll('.rr-metric-open')).toHaveLength(4)
   })
 
-  it('says it is today on hover, lists the countries of the micro-export orders, the biggest first, and opens their list', () => {
+  it('lists the countries of the pending micro-export orders on hover, the biggest first, and opens their list', () => {
     const openDay = vi.fn()
     const { host } = render(<OrderMetricCards {...props({ onOpenDay: openDay })} />)
 
     open(host, 'Mikro İhracat Sipariş')
     expect(openDay.mock.calls).toEqual([['micro']])
     const micro = card(host, 'Mikro İhracat Sipariş')
-    expect(micro.querySelector('.rr-metric-tip-h')?.textContent).toBe('Bugün')
+    // No day heading: the card counts the pending orders, whatever day they were placed.
+    expect(micro.querySelector('.rr-metric-tip-h')).toBeNull()
     // The panel says it; a native title would open over it.
     expect(micro.querySelector('.rr-metric-open')!.getAttribute('title')).toBeNull()
     const rows = Array.from(micro.querySelectorAll('.rr-metric-tip-r')).map(row => [row.querySelector('span')?.textContent, row.querySelector('b')?.textContent, row.querySelector('svg.rr-omark-flag') !== null])
@@ -121,5 +122,7 @@ describe('order summary cards', () => {
     expect(microCountryRows(undefined)).toEqual([])
     const { host } = render(<OrderMetricCards {...props({ microExport: metric(0), microCountries: {} })} />)
     expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-tip')).toBeNull()
+    // Without the panel a native title says what it counts.
+    expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Kargoya verilmemiş mikro ihracat siparişleri')
   })
 })
