@@ -101,7 +101,7 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
       title: product.title,
       skipped: false,
       notPublished: standing === 'notPublished',
-      issues: publicationBlockingIssues(missingPublicationChecks(productChecks, isShopify), [], mapping?.requiredIssues ?? [], mappingError, cardName),
+      issues: publicationBlockingIssues(missingPublicationChecks(productChecks, connection.platformCode), [], mapping?.requiredIssues ?? [], mappingError, cardName),
       warnings: (mapping?.optionalWarnings ?? []).map(issue => ({ attribute: issue.attribute, detail: issue.detail, fixable: Boolean(issue.fix) })),
       fixes: fixableValueMappings(mapping),
       categoryScope: mapping?.categoryScope,
