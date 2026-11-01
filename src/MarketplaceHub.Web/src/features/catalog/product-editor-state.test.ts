@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, VAT_RATE_REQUIRED_MESSAGE } from './product-editor-state'
+import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
+
+describe('saved variant rows and code conflicts', () => {
+  it('gives rows still under a temporary key the id of the saved variant with their stock code', () => {
+    // Live 2026-11-02: 21 new rows kept their temporary keys after the save and the next Kaydet created them again.
+    const rows = [{ key: 'v1', sku: 'MZ021Y-CD13' }, { key: 'tmp-1', sku: 'mz021y-cd-01' }, { key: 'tmp-2', sku: 'NEW-9' }, { key: 'tmp-3', sku: '' }]
+    const saved = [{ id: 'v1', sku: 'MZ021Y-CD13' }, { id: 'v2', sku: 'MZ021Y-CD-01' }]
+    expect(rekeySavedVariantRows(rows, saved).map(row => row.key)).toEqual(['v1', 'v2', 'tmp-2', 'tmp-3'])
+    const unchanged = [{ key: 'v1', sku: 'MZ021Y-CD13' }]
+    expect(rekeySavedVariantRows(unchanged, saved)).toBe(unchanged)
+  })
+
+  it('reads the codes a refused save names, with the card holding each', () => {
+    const error = new ApiRequestError('Stok kodu başka bir üründe kullanılıyor', 409, 'SKU_CONFLICT_REVIEW_REQUIRED', { variantCodeConflicts: ['sku\tMZ021Y-CD-01\tİndigo Bluz', 'barcode\tMZ021Y-CD-02\t', 'junk'] })
+    expect(variantCodeConflictsFrom(error)).toEqual({ [variantCodeKey('sku', 'MZ021Y-CD-01')]: 'İndigo Bluz', [variantCodeKey('barcode', 'mz021y-cd-02')]: 'başka bir ürün' })
+    expect(variantCodeConflictsFrom(new Error('x'))).toEqual({})
+  })
+})
 
 describe('product editor state', () => {
   it('builds one seed key for the seed and for a version bump made by the editor itself', () => {

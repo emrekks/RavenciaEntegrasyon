@@ -45,21 +45,41 @@ export function applyGeneratedVariantCodes<T extends { barcode: string; sku: str
   return rows.map((row, index) => ({ ...row, [target]: codes[index] }))
 }
 
-// Model-code codes for the rows whose chosen column is empty, keyed by row: a row takes the code of its own position
-// ("MODEL-05" for the fifth row) when no other row holds it, otherwise the next free number after the last row.
-export function buildMissingVariantCodes<T extends { key: string; barcode: string; sku: string }>(rows: readonly T[], target: VariantCodeTarget, modelCode: string): Record<string, string> {
-  if (!modelCode.trim() || rows.length > 1000) return {}
-  const used = new Set(rows.map(row => row[target].trim().toLocaleUpperCase('tr-TR')).filter(Boolean))
-  const codes: Record<string, string> = {}
-  let next = rows.length + 1
-  rows.forEach((row, index) => {
-    if (row[target].trim()) return
-    let code = buildSequentialVariantCode(modelCode, index + 1)
-    while (used.has(code.toLocaleUpperCase('tr-TR'))) code = buildSequentialVariantCode(modelCode, next++)
-    used.add(code.toLocaleUpperCase('tr-TR'))
-    codes[row.key] = code
-  })
-  return codes
+export type VariantCodePlan = { codesByKey: Record<string, string>; skipped: number; highest: number }
+
+// Model-code codes for every row ('all') or the rows whose column is empty ('missing'), keyed by row. Each row first
+// takes the number of its own position (the fifth row "MODEL-05"), but never one at or below the number the row before
+// it took. A number another row of the form holds, or the catalog holds (`isTaken`, the codes the server reported),
+// moves it on by one until a free one is found. Returns null when a row would need a number above `scannedUpTo`: the
+// caller asks the server about the next numbers and plans again.
+export function planVariantCodes<T extends { key: string; barcode: string; sku: string }>(rows: readonly T[], target: VariantCodeTarget, mode: 'all' | 'missing', modelCode: string, isTaken: (code: string) => boolean = () => false, scannedUpTo = Number.POSITIVE_INFINITY): VariantCodePlan | null {
+  if (!modelCode.trim() || rows.length > 1000) return { codesByKey: {}, skipped: 0, highest: 0 }
+  const key = (code: string) => code.toLocaleUpperCase('tr-TR')
+  const used = new Set(mode === 'all' ? [] : rows.map(row => key(row[target].trim())).filter(Boolean))
+  const codesByKey: Record<string, string> = {}
+  let skipped = 0
+  let last = 0
+  for (const [index, row] of rows.entries()) {
+    if (mode === 'missing' && row[target].trim()) continue
+    let number = Math.max(index + 1, last + 1)
+    while (true) {
+      if (number > scannedUpTo) return null
+      const code = buildSequentialVariantCode(modelCode, number)
+      if (!used.has(key(code)) && !isTaken(code)) break
+      if (isTaken(code)) skipped++
+      number++
+    }
+    const code = buildSequentialVariantCode(modelCode, number)
+    used.add(key(code))
+    codesByKey[row.key] = code
+    last = number
+  }
+  return { codesByKey, skipped, highest: last }
+}
+
+// The candidate codes for the numbers first..last, to ask the server about in one request.
+export function variantCodeCandidates(modelCode: string, first: number, last: number) {
+  return Array.from({ length: Math.max(0, last - first + 1) }, (_, index) => buildSequentialVariantCode(modelCode, first + index))
 }
 
 // Writes the given codes into one column of the keyed rows; the other column and every other row stay as they are.

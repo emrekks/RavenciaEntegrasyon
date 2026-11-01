@@ -20,7 +20,7 @@ import { buildVariantAttributeAssignments } from '../variant-attribute-assignmen
 import { filterAttributeOptionValues } from '../attribute-value-search'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, reorderMediaUrls, uniqueMediaUrls } from '../product-media-editor'
 import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from '../variant-bulk-edit'
-import { applyVariantCodesByKey, buildMissingVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
+import { applyVariantCodesByKey, buildSequentialVariantCodes, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
 import { isOptionRequirement, loadPublicationAttributeIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
@@ -38,7 +38,7 @@ import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdateP
 import { publishCardVariantLinks, publishCardVariantPresence, withLatestVariantLinks } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
-import { describePlatformCodeIssues, platformCodeIssues, platformCodeNames } from '../platform-code-rules'
+import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeFieldIssueText } from '../platform-code-rules'
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
 import { productCopyIdentifierConflicts } from '../product-copy-identifiers'
@@ -47,7 +47,7 @@ import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemoved
 import { clearAllMediaConfirmationText, clearAllMediaFeedbackText, familyItemsShownInStrip, familyMediaClearPlan, removePendingFamilyMedia, withPendingFamilyMediaRemovals } from '../family-media-clear'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
-import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, TURKISH_VAT_RATES, type EditorFieldErrors } from '../product-editor-state'
+import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, TURKISH_VAT_RATES, variantCodeConflictsFrom, variantCodeKey, type EditorFieldErrors } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
@@ -462,7 +462,7 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
 }
 // A column-menu code change waiting for the user's confirmation: model-code codes for every row or only the empty
 // ones, or emptying the column. Nothing is written to the rows before the user confirms, nor saved before Kaydet.
-type PendingVariantCodeChange = VariantCodeChange & { rowCount: number }
+type PendingVariantCodeChange = VariantCodeChange & { rowCount: number; skipped?: number }
 function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number | null, initialStock: number, automaticBarcodes = false, modelCode = '') {
   const axes = variantAttributeIds.map(attributeId => {
     const requirement = requirements.find(item => item.attributeId === attributeId)
@@ -1143,6 +1143,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [seedSnapshot, setSeedSnapshot] = useState<string | null>(null)
   const [staleProductVersion, setStaleProductVersion] = useState<number | null>(null)
   const allowReseedUntil = useRef(0)
+  // True while the editor's own save runs: a refetch landing then does not refill the form or flag a newer version.
+  const editorSaveInFlight = useRef(false)
+  // Codes a refused save named as held by another card, keyed by field and code, with that card's title.
+  const [variantCodeConflicts, setVariantCodeConflicts] = useState<Record<string, string>>({})
   // New files a half-finished save did not upload: the refill after it keeps them queued instead of dropping them.
   const mediaFilesKeptOnReseed = useRef<PendingProductMediaFile[] | null>(null)
   const mediaFileInputRef = useRef<HTMLInputElement>(null)
@@ -1264,6 +1268,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     // A newer version (another tab, an order, the importer) must not wipe edits that are not saved yet: the form is
     // kept and a banner offers to reload it. The editor's own saves allow the next reseed.
     const alreadySeededThisProduct = initializedEditProductKey.current?.startsWith(`${mode}:${product.id}:`) ?? false
+    // A refetch that lands while this editor is saving carries the editor's own save: it is neither another change
+    // nor a reason to refill half way. The save asks for the reseed when it is done (live 2026-11-02: a refetch during
+    // the media step took the new version, so the refetch after the save matched it, the form was never refilled, its
+    // 21 new rows kept their temporary keys and the next Kaydet sent them as new variants again: SKU conflict).
+    if (editProductId && alreadySeededThisProduct && editorSaveInFlight.current) return
     if (editProductId && alreadySeededThisProduct && editorDirty && Date.now() > allowReseedUntil.current) { setStaleProductVersion(product.version); return }
     allowReseedUntil.current = 0
     setStaleProductVersion(null)
@@ -2109,18 +2118,47 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   }
 
   // Opens the confirmation for a column-menu choice; the rows change only after the user confirms it.
-  function requestVariantCodeChange(target: VariantCodeTarget, mode: PendingVariantCodeChange['mode']) {
+  // Generated codes are checked against the catalog first, so Kaydet does not refuse them: one request asks which
+  // candidate numbers other variants already hold (the editor's own saved variants excluded), and a taken number moves
+  // the row on to the next free one. Only a very crowded range asks again for the following numbers.
+  async function planScannedVariantCodes(rows: VariantDraft[], target: VariantCodeTarget, mode: 'all' | 'missing') {
+    const modelCode = form.modelCode
+    const savedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+    const excludeVariantIds = rows.map(row => row.key).filter(key => savedIds.has(key))
+    const taken = new Set<string>()
+    let scannedUpTo = 0
+    for (let round = 0; round < 6; round++) {
+      const nextUpTo = scannedUpTo + (round === 0 ? Math.min(1000, rows.length * 2 + 50) : 1000)
+      const candidates = variantCodeCandidates(modelCode, scannedUpTo + 1, nextUpTo)
+      const answer = await hubApi<{ items?: Array<{ code: string }> }>('/catalog/variant-codes/taken', { method: 'POST', body: JSON.stringify({ codes: candidates, excludeVariantIds }) })
+      for (const item of answer?.items ?? []) taken.add(item.code.trim().toLocaleUpperCase('tr-TR'))
+      scannedUpTo = nextUpTo
+      const plan = planVariantCodes(rows, target, mode, modelCode, code => taken.has(code.toLocaleUpperCase('tr-TR')), scannedUpTo)
+      if (plan) return plan
+    }
+    throw new Error('Model kodunun numaralarının çoğu kullanılıyor; boş numara bulunamadı.')
+  }
+
+  async function requestVariantCodeChange(target: VariantCodeTarget, mode: PendingVariantCodeChange['mode']) {
     setBarcodePasteMenuOpen(false)
     setBarcodeSkuMenuOpen(false)
     const rows = variantRowsRef.current
-    let codesByKey: Record<string, string>
+    let codesByKey: Record<string, string> = {}
+    let skipped = 0
     if (mode === 'clear') {
       codesByKey = Object.fromEntries(rows.filter(row => row[target].trim()).map(row => [row.key, '']))
-    } else if (mode === 'missing') {
-      codesByKey = form.modelCode.trim() ? buildMissingVariantCodes(rows, target, form.modelCode) : {}
-    } else {
-      const codes = buildSequentialVariantCodes(form.modelCode, rows.length)
-      codesByKey = Object.fromEntries(codes.map((code, index) => [rows[index].key, code]))
+    } else if (form.modelCode.trim() && rows.length && rows.length <= 1000 && (mode === 'all' || rows.some(row => !row[target].trim()))) {
+      showFeedback('Kodlar Taranıyor', 'Panelde kullanılan kodlar kontrol ediliyor…', 'info', { persistent: true, key: 'variant-code-scan' })
+      try {
+        const plan = await planScannedVariantCodes(rows, target, mode)
+        codesByKey = plan.codesByKey
+        skipped = plan.skipped
+        operationToasts.dismiss('variant-code-scan')
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : 'Kodlar kontrol edilemedi.'
+        setNotice(message); showFeedback('Kodlar Kontrol Edilemedi', `${message} Kod üretilmedi.`, 'error', { key: 'variant-code-scan' })
+        return
+      }
     }
     if (!Object.keys(codesByKey).length) {
       const label = target === 'barcode' ? 'barkod' : 'stok kodu'
@@ -2131,7 +2169,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       setNotice(message); showFeedback('Kod Değiştirilmedi', message, 'info')
       return
     }
-    setPendingVariantCodeGeneration({ target, mode, codesByKey, rowCount: rows.length })
+    setPendingVariantCodeGeneration({ target, mode, codesByKey, rowCount: rows.length, skipped })
   }
 
   function confirmVariantCodeGeneration() {
@@ -2433,7 +2471,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           ? ['Ürün Yayınlanıyor', productChangedAtSubmit ? `Ürün kaydediliyor ve ${storeCount} gönderiliyor…` : `Ürün ${storeCount} gönderiliyor…`]
           : ['Ürün Oluşturuluyor', `Ürün oluşturuluyor ve ${storeCount} gönderiliyor…`]
         : editProductId ? ['Ürün Kaydediliyor', 'Ürün değişiklikleri kaydediliyor…'] : ['Ürün Oluşturuluyor', 'Ürün oluşturuluyor…']
-    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); let productCreated: Product | undefined; let familyMediaChanged = false
+    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); editorSaveInFlight.current = true; let productCreated: Product | undefined; let familyMediaChanged = false
     const uploadedMediaFileIds = new Set<string>()
     try {
       let submitRequirements = requirements.data ?? []
@@ -2771,6 +2809,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           })
       const message = result.lines.join(' ')
       setRemovedVariantIds([])
+      if (editProductId) setVariantRows(current => rekeySavedVariantRows(current, product.variants))
+      setVariantCodeConflicts({})
       // The uploaded files are on the product now: they leave the queue here, not only when the refetch below refills
       // the form, so the strip never shows a stored copy beside its local preview and the next Kaydet does not send it again.
       mediaFilesKeptOnReseed.current = null
@@ -2783,6 +2823,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       if (editProductId) {
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
         await productToEdit.refetch()
+        editorSaveInFlight.current = false
+        setReseedRequest(value => value + 1)
       }
       // One line per marketplace; a refused marketplace stays on screen until it is closed, so it is not lost among
       // later toasts.
@@ -2801,7 +2843,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
       setError(reason); setNotice(feedbackMessage)
       setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
-      if (!productCreated) setFieldErrors(editorFieldErrors(reason))
+      if (!productCreated) { setFieldErrors(editorFieldErrors(reason)); setVariantCodeConflicts(variantCodeConflictsFrom(reason)) }
       // The product itself was saved before a later step (media, a channel offer, the panel price choice) failed: its
       // new version is read again and the form may refill from it, so the next try does not take its own save for
       // another operation's change. Only the files this try uploaded leave the queue.
@@ -2811,12 +2853,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         allowReseedUntil.current = Date.now() + 10_000
         await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['product', editProductId] })]).catch(() => undefined)
         await productToEdit.refetch().catch(() => undefined)
+        editorSaveInFlight.current = false
+        setReseedRequest(value => value + 1)
       }
       if (productCreated && !editProductId) {
         leavingAfterSave.current = true
         navigate(`/products/${productCreated.id}`)
       }
-    } finally { setSubmitting(false) }
+    } finally { editorSaveInFlight.current = false; setSubmitting(false) }
   }
 
   // Taslak Olarak Kaydet shows on a new card and on a draft; a draft has no store to update yet.
@@ -2837,12 +2881,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // Every active connection's barcode and stock code rules: a product goes to all of them with one pair of codes.
   const codeRulePlatforms = useMemo(() => [...new Set((connections.data?.items ?? []).filter(connection => connection.status === 'ACTIVE' || connection.status === 'VERIFIED').map(connection => connection.platformCode))], [connections.data])
   const variantCodeIssues = useMemo(() => new Map(variantRows.map(row => [row.key, platformCodeIssues(codeRulePlatforms, row.barcode, row.sku)])), [codeRulePlatforms, variantRows])
-  // Rows with a red code field: a platform rule broken, or no stock code at all (every variant needs one to be saved).
-  const variantCodeIssueSummary = useMemo(() => {
-    const rowsWithIssues = variantRows.filter(row => (variantCodeIssues.get(row.key)?.length ?? 0) > 0 || !row.sku.trim())
-    const platforms = [...new Set(rowsWithIssues.flatMap(row => variantCodeIssues.get(row.key) ?? []).map(issue => platformCodeNames[issue.platformCode] ?? issue.platformCode))]
-    return rowsWithIssues.length ? { rows: rowsWithIssues.length, platforms, title: `${rowsWithIssues.length.toLocaleString('tr-TR')} varyantın kodu platform kurallarına uymuyor` } : null
-  }, [variantCodeIssues, variantRows])
+  // Rows with a red code field, missing codes and broken platform rules counted apart.
+  const variantCodeIssueSummary = useMemo(() => summarizeVariantCodeIssues(variantRows, variantCodeIssues, (field, code) => Boolean(variantCodeConflicts[variantCodeKey(field, code)])), [variantCodeConflicts, variantCodeIssues, variantRows])
   // Kaydet, Hızlı Güncelle and Yayınlamaya Devam Et wait while a code field is red; they say why and lead to it.
   const codeRuleSaveBlock = variantCodeIssueSummary?.title ?? ''
   function goToFirstVariantCodeIssue() {
@@ -3233,8 +3273,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               <span className="variant-code-rule-notice-icon" aria-hidden="true"><UiIcon name="alert" size={16} /></span>
               <div className="variant-code-rule-notice-text">
                 <strong>{variantCodeIssueSummary.title}</strong>
-                {variantCodeIssueSummary.platforms.length > 0 && <ul className="variant-code-rule-notice-platforms" aria-label="Kuralı ihlal edilen platformlar">{variantCodeIssueSummary.platforms.map(platform => <li key={platform}>{platform}</li>)}</ul>}
-                <small>Kırmızı alanların üzerine gelince ayrıntı görünür. Düzeltilene kadar Kaydet pasif kalır.</small>
+                {variantCodeIssueSummary.rulePlatforms.length > 0 && <ul className="variant-code-rule-notice-platforms" aria-label="Kuralı ihlal edilen platformlar">{variantCodeIssueSummary.rulePlatforms.map(platform => <li key={platform}>{platform}</li>)}</ul>}
+                <small>{variantCodeIssueSummary.ruleRows ? 'Kırmızı alanların üzerine gelince ayrıntı görünür.' : 'Eksik kodları kırmızı alanlara girin.'} Düzeltilene kadar Kaydet pasif kalır.</small>
               </div>
               <button type="button" className="secondary variant-code-rule-notice-action" onClick={goToFirstVariantCodeIssue}>İlk Hataya Git</button>
             </div>}
@@ -3250,10 +3290,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 const matchesFilter = rowMatchesVariantFilters(row)
                 const rowPlatforms = row.platformStatuses?.length ? row.platformStatuses : !editProductId ? variantPricingPlatforms : []
                 const codeIssues = variantCodeIssues.get(row.key) ?? []
-                const barcodeIssueText = describePlatformCodeIssues(codeIssues, 'barcode')
-                // Every variant needs its own stock code to be saved, with or without an active marketplace, so an
-                // empty one is red here too.
-                const skuIssueText = describePlatformCodeIssues(codeIssues, 'sku') || (row.sku.trim() ? '' : 'Stok kodu zorunlu')
+                // An empty needed code says "… eksik"; a filled one names the rules it breaks. Every variant needs its
+                // own stock code, with or without an active marketplace.
+                const barcodeIssueText = variantCodeFieldIssueText(codeIssues, 'barcode', row.barcode, variantCodeConflicts[variantCodeKey('barcode', row.barcode)])
+                const skuIssueText = variantCodeFieldIssueText(codeIssues, 'sku', row.sku, variantCodeConflicts[variantCodeKey('sku', row.sku)])
                 return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
                   <div className="variant-option-cell"><span className="variant-option-text" aria-label={`${index + 1}. varyant seçenekleri`} title={displayVariantOptionSignature(row.optionSignature, row.options)}>{displayVariantOptionSignature(row.optionSignature, row.options)}</span><button type="button" className="variant-option-edit-button" onClick={() => setOptionEditRowKey(row.key)} aria-label={`${index + 1}. varyantın seçeneklerini düzenle`} title="Seçenekleri düzenle" disabled={!rowOptionEntries(row).length}><UiIcon name="edit" size={14} /></button></div>
@@ -3314,8 +3354,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Barkod üret">
         <p className="variant-header-action-menu-title">Model Kodundan Barkod Üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} aria-disabled={!variantRows.length || !form.modelCode.trim() || undefined} onClick={() => requestVariantCodeChange('barcode', 'all')}><span><strong>Tüm Varyantlara Üret</strong><small className="variant-code-generation-preview"><span>Barkod: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
-        <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount || !form.modelCode.trim()} aria-disabled={!emptyBarcodeRowCount || !form.modelCode.trim() || undefined} onClick={() => requestVariantCodeChange('barcode', 'missing')}><span><strong>Yalnız Eksik Olanlara Üret</strong><small className="variant-code-generation-preview"><span>Dolu barkodlar korunur</span><span>{emptyBarcodeRowCount.toLocaleString('tr-TR')} eksik varyant</span></small></span><UiIcon name="arrowRight" /></button>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} aria-disabled={!variantRows.length || !form.modelCode.trim() || undefined} onClick={() => void requestVariantCodeChange('barcode', 'all')}><span><strong>Tüm Varyantlara Üret</strong><small className="variant-code-generation-preview"><span>Barkod: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
+        <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount || !form.modelCode.trim()} aria-disabled={!emptyBarcodeRowCount || !form.modelCode.trim() || undefined} onClick={() => void requestVariantCodeChange('barcode', 'missing')}><span><strong>Yalnız Eksik Olanlara Üret</strong><small className="variant-code-generation-preview"><span>Dolu barkodlar korunur</span><span>{emptyBarcodeRowCount.toLocaleString('tr-TR')} eksik varyant</span></small></span><UiIcon name="arrowRight" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Panodan barkod yapıştır">
         <p className="variant-header-action-menu-title">Panodan Barkod Yapıştır</p>
@@ -3323,14 +3363,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <button type="button" role="menuitem" disabled={!variantRows.length} aria-disabled={!variantRows.length || undefined} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm Barkodları Değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Barkodları temizle">
-        <button type="button" role="menuitem" disabled={!barcodeRowCount} aria-disabled={!barcodeRowCount || undefined} onClick={() => requestVariantCodeChange('barcode', 'clear')}><span><strong>Tüm Barkodları Temizle</strong><small>{barcodeRowCount.toLocaleString('tr-TR')} dolu barkod boşaltılır</small></span><UiIcon name="trash" /></button>
+        <button type="button" role="menuitem" disabled={!barcodeRowCount} aria-disabled={!barcodeRowCount || undefined} onClick={() => void requestVariantCodeChange('barcode', 'clear')}><span><strong>Tüm Barkodları Temizle</strong><small>{barcodeRowCount.toLocaleString('tr-TR')} dolu barkod boşaltılır</small></span><UiIcon name="trash" /></button>
       </section>
     </VariantHeaderActionMenu>}
     {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Model kodundan stok kodu üret">
         <p className="variant-header-action-menu-title">Model Kodundan Stok Kodu Üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} aria-disabled={!variantRows.length || !form.modelCode.trim() || undefined} onClick={() => requestVariantCodeChange('sku', 'all')}><span><strong>Tüm Varyantlara Üret</strong><small className="variant-code-generation-preview"><span>Stok Kodu: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
-        <button type="button" role="menuitem" disabled={!emptySkuRowCount || !form.modelCode.trim()} aria-disabled={!emptySkuRowCount || !form.modelCode.trim() || undefined} onClick={() => requestVariantCodeChange('sku', 'missing')}><span><strong>Yalnız Eksik Olanlara Üret</strong><small className="variant-code-generation-preview"><span>Dolu stok kodları korunur</span><span>{emptySkuRowCount.toLocaleString('tr-TR')} eksik varyant</span></small></span><UiIcon name="arrowRight" /></button>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} aria-disabled={!variantRows.length || !form.modelCode.trim() || undefined} onClick={() => void requestVariantCodeChange('sku', 'all')}><span><strong>Tüm Varyantlara Üret</strong><small className="variant-code-generation-preview"><span>Stok Kodu: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
+        <button type="button" role="menuitem" disabled={!emptySkuRowCount || !form.modelCode.trim()} aria-disabled={!emptySkuRowCount || !form.modelCode.trim() || undefined} onClick={() => void requestVariantCodeChange('sku', 'missing')}><span><strong>Yalnız Eksik Olanlara Üret</strong><small className="variant-code-generation-preview"><span>Dolu stok kodları korunur</span><span>{emptySkuRowCount.toLocaleString('tr-TR')} eksik varyant</span></small></span><UiIcon name="arrowRight" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Panodan stok kodu yapıştır">
         <p className="variant-header-action-menu-title">Panodan Stok Kodu Yapıştır</p>
@@ -3343,7 +3383,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları Stok Koduna Uygula</strong><small>Stok kodu sütunu · {barcodeRowCount.toLocaleString('tr-TR')} barkodlu satır</small></span><UiIcon name="alert" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Stok kodlarını temizle">
-        <button type="button" role="menuitem" disabled={!skuRowCount} aria-disabled={!skuRowCount || undefined} onClick={() => requestVariantCodeChange('sku', 'clear')}><span><strong>Tüm Stok Kodlarını Temizle</strong><small>{skuRowCount.toLocaleString('tr-TR')} dolu stok kodu boşaltılır</small></span><UiIcon name="trash" /></button>
+        <button type="button" role="menuitem" disabled={!skuRowCount} aria-disabled={!skuRowCount || undefined} onClick={() => void requestVariantCodeChange('sku', 'clear')}><span><strong>Tüm Stok Kodlarını Temizle</strong><small>{skuRowCount.toLocaleString('tr-TR')} dolu stok kodu boşaltılır</small></span><UiIcon name="trash" /></button>
       </section>
     </VariantHeaderActionMenu>}
     {mediaRemovalConfirmation && createPortal(
@@ -3384,6 +3424,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           </header>
           <div className="variant-code-confirm-body">
             {pendingVariantCodeConfirm.range && <><p>Üretilecek kod aralığı</p><code>{pendingVariantCodeConfirm.range}</code></>}
+            {pendingVariantCodeGeneration.mode !== 'clear' && <p className="variant-code-confirm-scan">{pendingVariantCodeGeneration.skipped ? `Panelde başka ürünlerde kullanılan ${pendingVariantCodeGeneration.skipped.toLocaleString('tr-TR')} numara atlandı; üretilen kodların hiçbiri kullanılmıyor.` : 'Üretilen kodların hiçbiri panelde kullanılmıyor.'}</p>}
             <small>{pendingVariantCodeGeneration.mode === 'clear' ? 'Onaylayınca alan, Kaydet’e basmadan bu formdaki varyantlarda boşaltılır; Kaydet’e basmadan sayfadan çıkarsanız kayıtlı kodlar değişmez. Diğer kod sütunu korunur.' : 'Onaylayınca kodlar, Kaydet’e basmadan bu formdaki varyantlara uygulanır. Diğer kod sütunu korunur; başka üründe kullanılan kodlar Kaydet sırasında reddedilebilir.'}</small>
           </div>
           <footer>

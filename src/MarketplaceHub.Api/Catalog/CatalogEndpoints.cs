@@ -81,6 +81,16 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Result(await service.PreviewProductDeleteAsync(tenant.TenantId, command, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/products/{id:guid}", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? WithEtag(http, await service.GetProductAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+        // Read only: which of the given codes the tenant's catalog already holds as a stock code or a barcode, with the
+        // holding card. The editor asks once for a range of candidates before it generates codes from a model code.
+        api.MapPost("/catalog/variant-codes/taken", async (TakenVariantCodesRequest request, HttpContext http, AppDbContext db) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var codes = VariantCodeAvailability.RequestedCodes(request.Codes);
+            var excluded = VariantCodeAvailability.ExcludedVariantIds(request.ExcludeVariantIds);
+            var taken = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(variant => variant.TenantId == tenant.TenantId && !excluded.Contains(variant.Id)), codes, codes, http.RequestAborted);
+            return Results.Ok(new { items = taken });
+        });
         api.MapGet("/products/{id:guid}/marketplace-codes", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetProductMarketplaceCodesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPut("/products/{id:guid}/marketplace-codes", async (Guid id, UpdateMarketplaceCodesCommand command, HttpContext http, ICatalogService service) =>
@@ -1006,6 +1016,7 @@ public static class CatalogEndpoints
     private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
     // Fields: "Platformlarda Güncelle" picks (ProductUpdateFields codes); omitted on a publication and by older clients.
     public sealed record PublicationRequest(Guid ConnectionId, IReadOnlyList<string>? Fields = null);
+    public sealed record TakenVariantCodesRequest(IReadOnlyList<string?>? Codes, IReadOnlyList<Guid>? ExcludeVariantIds = null);
     public sealed record PriceInventoryFieldsRequest(bool? Price = null, bool? Stock = null);
     public sealed record PazaramaSaleStatusRequest(IReadOnlyList<string>? Barcodes, bool Close);
     public sealed record RegisterProductMediaUrl(Guid ProductId, Guid? VariantId, string Url, string? MediaRole, int SortOrder, string? AltText);
