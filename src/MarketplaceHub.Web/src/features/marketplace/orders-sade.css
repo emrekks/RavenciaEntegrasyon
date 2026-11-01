@@ -228,3 +228,5 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-order-part a { color: var(--rr-ink); text-decoration: underline; }
 /* In the İptal tab an order says İptal (or Kısmi İptal) once, beside its platform. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-wordmark-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* A long name breaks inside its cell instead of running over the next column (last rule: it wins the table's own). */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: anywhere !important; min-width: 0; }
