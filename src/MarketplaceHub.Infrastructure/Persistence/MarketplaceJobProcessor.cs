@@ -9818,6 +9818,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (db.Entry(linked).State != EntityState.Added) linked.Version++;
             }
         var projectedLineQuantities = PackageLineProjectionPolicy.Recalculate(packagesByExternalId.Values.ToList(), allocationsByKey.Values.ToList(), remote.Packages);
+        var cancelledBefore = lines.Values.Distinct().ToDictionary(line => line.Id, line => db.Entry(line).State == EntityState.Added ? (decimal?)null : line.CancelledQuantity);
         foreach (var line in lines.Values)
         {
             if (!projectedLineQuantities.TryGetValue(line.Id, out var projection)) continue;
@@ -9838,6 +9839,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 line.CancelledQuantity = cancelled;
                 if (db.Entry(line).State != EntityState.Added) { line.Version++; telemetryUpdatedCount++; }
             }
+        foreach (var line in lines.Values.Distinct())
+            OrderLineCancelTime.Apply(line, cancelledBefore.GetValueOrDefault(line.Id), OrderLineCancelTime.Reported(line.ExternalLineId, remote), now);
         if (isHepsiburada)
         {
             // Cancelled quantities are not part of the order value.

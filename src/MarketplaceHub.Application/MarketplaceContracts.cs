@@ -633,7 +633,8 @@ public sealed record PriceInventoryPushLine(Guid VariantId, Guid OfferId, string
 public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, string Phase, string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines, string? ExternalOperationId, DateTimeOffset? SubmittedAt, Guid? VariantId = null, Guid? ProductId = null, bool Manual = false, bool Automatic = false, string? Trigger = null, bool HoldPrice = false, bool HoldStock = false);
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
-public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0);
+// CancelledAt: when the marketplace says the line's cancelled quantity was cancelled; null when it does not say.
+public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0, DateTimeOffset? CancelledAt = null);
 public sealed record RemotePackageAllocation(string ExternalLineId, decimal AllocatedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity);
 public sealed record RemotePackageInvoiceObservation(
     string? RawStatus,
@@ -692,8 +693,10 @@ public static class TrendyolInvoiceReconciliationPolicy
         || now - lastSweepCompletedAt.Value >= SweepInterval;
 }
 // StatusTimeUnknown: the marketplace gives no time for the status, so OccurredAt only names and orders the event; the
-// package keeps the time the status was first seen instead (PTT AVM).
-public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false, bool StatusTimeUnknown = false);
+// package keeps the time the status was first seen instead (PTT AVM). CancelledAt: when the marketplace says the
+// package's cancelled quantities were cancelled; null when it does not say (a last-modified time is one only where
+// nothing else can change the package after it, as on a Trendyol package that ends cancelled).
+public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false, bool StatusTimeUnknown = false, DateTimeOffset? CancelledAt = null);
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
 public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null, string? LifecycleStatus = null, string? StoreFrontCode = null);
 // The order as the panel last saw it: when it was placed, last changed and which storefront it belongs to.

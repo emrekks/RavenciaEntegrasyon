@@ -507,6 +507,12 @@ public sealed class OrderLine
     public decimal ShippedQuantity { get; set; }
     public decimal DeliveredQuantity { get; set; }
     public decimal ReturnedQuantity { get; set; }
+    // When the line's last cancellation happened, as the marketplace reports it; null when it does not say (the time
+    // stays unknown, it is never taken from a nearby date).
+    public DateTimeOffset? CancelledAt { get; set; }
+    // When the panel first saw the cancelled quantity grow on a line it already held; null for a line that came in
+    // already cancelled. Not a cancellation time: it only places cancellations whose time is unknown (PTT AVM).
+    public DateTimeOffset? CancelSeenAt { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal VatRate { get; set; }
     public required string RawStatus { get; set; }
