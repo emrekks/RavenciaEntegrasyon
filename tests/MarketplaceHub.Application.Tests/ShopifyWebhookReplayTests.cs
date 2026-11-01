@@ -1,4 +1,5 @@
 using System.Text;
+using MarketplaceHub.Application;
 using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using Xunit;
 
@@ -58,8 +59,34 @@ public sealed class ShopifyWebhookReplayTests
     }
 
     [Fact]
-    public void TheProductDeleteTopicIsNotSubscribedUntilTheUserApprovesIt()
+    public void TheUpkeepAddsOnlyTheMissingProductDeleteTopicAtThePanelsAddress()
     {
-        Assert.DoesNotContain(ShopifyHttpClient.ProductDeleteTopic, ShopifyHttpClient.WebhookTopics);
+        const string url = "https://panel.example.com/webhooks/shopify/route";
+        string[] orderTopics = ["ORDERS_CREATE", "ORDERS_UPDATED", "ORDERS_CANCELLED", "ORDERS_FULFILLED", "ORDERS_PARTIALLY_FULFILLED", "REFUNDS_CREATE"];
+        var listed = orderTopics.Select((topic, index) => new RemoteWebhook((index + 1).ToString(), url, "ACTIVE", null, topic))
+            .Append(new RemoteWebhook("99", "https://other.example.com/hook", "ACTIVE", null, "PRODUCTS_DELETE"))
+            .ToList();
+
+        var plan = ShopifyHttpClient.PlanWebhookRestore("1,2,3,4,5,6", listed);
+
+        Assert.True(plan.Changed);
+        Assert.Equal(url, plan.Url);
+        Assert.Equal(["1", "2", "3", "4", "5", "6"], plan.KeptIds);
+        Assert.Equal([ShopifyHttpClient.ProductDeleteTopic], plan.MissingTopics);
+    }
+
+    [Fact]
+    public void ASubscriptionAlreadyAtTheAddressIsAdoptedNotMadeTwiceAndACompleteSetChangesNothing()
+    {
+        const string url = "https://panel.example.com/webhooks/shopify/route";
+        var listed = ShopifyHttpClient.WebhookTopics.Select((topic, index) => new RemoteWebhook((index + 1).ToString(), url, "ACTIVE", null, topic)).ToList();
+
+        var adopting = ShopifyHttpClient.PlanWebhookRestore("1,2,3,4,5,6", listed);
+        var complete = ShopifyHttpClient.PlanWebhookRestore("1,2,3,4,5,6,7", listed);
+
+        Assert.True(adopting.Changed);
+        Assert.Equal(["1", "2", "3", "4", "5", "6", "7"], adopting.KeptIds);
+        Assert.Empty(adopting.MissingTopics);
+        Assert.False(complete.Changed);
     }
 }

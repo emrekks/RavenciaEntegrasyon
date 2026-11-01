@@ -10,10 +10,10 @@ namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
 public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
 {
     // FULFILLMENTS_* would need read_fulfillments; order topics already report fulfilment changes.
-    // PRODUCTS_DELETE is received (ShopifyWebhookVerifier, MarketplaceWebhookService) but not subscribed: creating the
-    // subscription is a write to the store the user approves first, so it stays out of WebhookTopics until then.
+    // PRODUCTS_DELETE (approved by the user 2026-11-01) starts the link check of a product deleted in the store
+    // (MarketplaceWebhookService); a connection subscribed before it gets it from the hourly upkeep.
     internal const string ProductDeleteTopic = "PRODUCTS_DELETE";
-    internal static readonly string[] WebhookTopics = ["ORDERS_CREATE", "ORDERS_UPDATED", "ORDERS_CANCELLED", "ORDERS_FULFILLED", "ORDERS_PARTIALLY_FULFILLED", "REFUNDS_CREATE"];
+    internal static readonly string[] WebhookTopics = ["ORDERS_CREATE", "ORDERS_UPDATED", "ORDERS_CANCELLED", "ORDERS_FULFILLED", "ORDERS_PARTIALLY_FULFILLED", "REFUNDS_CREATE", ProductDeleteTopic];
     internal const char WebhookIdSeparator = ',';
     private const string WebhookGidPrefix = "gid://shopify/WebhookSubscription/";
 
@@ -100,27 +100,42 @@ public sealed partial class ShopifyHttpClient : IWebhookRegistrationPort
     }
 
     // Shopify removes a subscription after repeated failed deliveries. The topics of the panel's
-    // subscriptions that are no longer listed are created again at the address the remaining ones
-    // use (the panel keeps only a hash of its secret route). Returns the new id list, or null when
-    // nothing was missing; fails when none is left, since the address is then unknown.
+    // subscriptions that are no longer listed, and a topic added to WebhookTopics since the connection
+    // subscribed, are created at the address the remaining ones use (the panel keeps only a hash of its
+    // secret route); a subscription of one of the topics already at that address is adopted, not made
+    // twice. No other subscription is changed. Returns the new id list, or null when nothing was
+    // missing; fails when none is left, since the address is then unknown.
     public async Task<AdapterResult<string?>> RestoreMissingWebhooksAsync(AdapterContext context, string externalId, CancellationToken cancellationToken)
     {
         var listed = await ListWebhooksAsync(context, cancellationToken);
         if (!listed.IsSuccess) return AdapterResult<string?>.Failure(listed.Error!, listed.RateLimit);
-        var ids = externalId.Split(WebhookIdSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
-        var ours = listed.Value!.Where(webhook => ids.Contains(webhook.Id)).ToList();
-        if (ours.Count == ids.Count) return AdapterResult<string?>.Success(null);
-        if (ours.FirstOrDefault(webhook => !string.IsNullOrWhiteSpace(webhook.Url))?.Url is not { } url)
+        var plan = PlanWebhookRestore(externalId, listed.Value!);
+        if (plan.Url is null)
             return Fail<string?>(AdapterErrorClass.NotFound, "SHOPIFY_WEBHOOKS_REMOVED", "Shopify panelin bütün bildirim aboneliklerini kaldırmış; bildirimleri kapatıp yeniden açın.", HttpStatusCode.NotFound);
+        if (!plan.Changed) return AdapterResult<string?>.Success(null);
         var shop = await authentication.LoadAsync(context.TenantId, context.ConnectionId, settings.ApiVersion, cancellationToken);
         if (shop is null) return CredentialFailure(Fail<string?>(AdapterErrorClass.Authentication, "SHOPIFY_CREDENTIAL_INVALID", "Shopify yetkilendirmesi bulunamadı.", HttpStatusCode.Unauthorized));
-        var restored = ours.Select(webhook => webhook.Id).ToList();
-        foreach (var topic in WebhookTopics.Where(topic => ours.All(webhook => webhook.Topic != topic)))
+        var restored = plan.KeptIds.ToList();
+        foreach (var topic in plan.MissingTopics)
         {
-            var created = await CreateSubscriptionAsync(shop, topic, url, cancellationToken);
+            var created = await CreateSubscriptionAsync(shop, topic, plan.Url, cancellationToken);
             if (!created.IsSuccess) return AdapterResult<string?>.Failure(created.Error!, created.RateLimit);
             restored.Add(created.Value!);
         }
         return AdapterResult<string?>.Success(string.Join(WebhookIdSeparator, restored));
+    }
+
+    // What the upkeep does for the panel's subscription ids: the address they use (null when none is listed), the ids kept
+    // (the listed own ones and, per topic still missing, one already at that address), and the topics to create there.
+    internal static (string? Url, IReadOnlyList<string> KeptIds, IReadOnlyList<string> MissingTopics, bool Changed) PlanWebhookRestore(string externalId, IReadOnlyList<RemoteWebhook> listed)
+    {
+        var ids = externalId.Split(WebhookIdSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet(StringComparer.Ordinal);
+        var ours = listed.Where(webhook => ids.Contains(webhook.Id)).ToList();
+        if (ours.FirstOrDefault(webhook => !string.IsNullOrWhiteSpace(webhook.Url))?.Url is not { } url) return (null, [], [], false);
+        var adopted = listed.Where(webhook => !ids.Contains(webhook.Id) && webhook.Url == url && WebhookTopics.Contains(webhook.Topic) && ours.All(own => own.Topic != webhook.Topic))
+            .GroupBy(webhook => webhook.Topic).Select(group => group.First()).ToList();
+        var kept = ours.Concat(adopted).ToList();
+        var missingTopics = WebhookTopics.Where(topic => kept.All(webhook => webhook.Topic != topic)).ToList();
+        return (url, kept.Select(webhook => webhook.Id).ToList(), missingTopics, adopted.Count > 0 || missingTopics.Count > 0 || ours.Count != ids.Count);
     }
 }
