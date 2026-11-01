@@ -20,7 +20,7 @@ import { buildVariantAttributeAssignments } from '../variant-attribute-assignmen
 import { filterAttributeOptionValues } from '../attribute-value-search'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, reorderMediaUrls, uniqueMediaUrls } from '../product-media-editor'
 import { applyVariantBulkEditValue, variantBulkEditIssue, type VariantBulkEditField } from '../variant-bulk-edit'
-import { applyGeneratedVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds } from '../variant-generation'
+import { applyVariantCodesByKey, buildMissingVariantCodes, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
 import { isOptionRequirement, loadPublicationAttributeIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
@@ -459,7 +459,10 @@ function RichTextEditor({ value, onChange }: { value: string; onChange: (value: 
     {htmlMode ? <textarea className="rich-text-html-editor" value={value} onChange={event => { lastValue.current = event.target.value; onChange(event.target.value) }} aria-label="Açıklama HTML kodu" placeholder="<p>Ürünün öne çıkan özelliklerini anlatın…</p>" spellCheck={false} /> : <div ref={visualEditor} className="rich-text-canvas" contentEditable role="textbox" aria-multiline="true" aria-label="Açıklama" data-placeholder="Ürünün öne çıkan özelliklerini anlatın…" suppressContentEditableWarning dangerouslySetInnerHTML={{ __html: initialVisualHtml }} onFocus={() => document.execCommand("defaultParagraphSeparator", false, "p")} onInput={() => syncVisualValue()} />}
   </div>
 }
-function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, baseSku: string, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number | null, initialStock: number, automaticBarcodes = false, modelCode = '') {
+// A column-menu code change waiting for the user's confirmation: model-code codes for every row or only the empty
+// ones, or emptying the column. Nothing is written to the rows before the user confirms, nor saved before Kaydet.
+type PendingVariantCodeChange = VariantCodeChange & { rowCount: number }
+function buildVariantMatrix(requirements: CategoryRequirement[], variantAttributeIds: string[], selectedValueIds: Record<string, string[]>, fallbackListPrice: number, fallbackSalePrice: number, fallbackCostPrice: number | null, initialStock: number, automaticBarcodes = false, modelCode = '') {
   const axes = variantAttributeIds.map(attributeId => {
     const requirement = requirements.find(item => item.attributeId === attributeId)
     const selected = new Set(selectedValueIds[attributeId] ?? [])
@@ -477,7 +480,7 @@ function buildVariantMatrix(requirements: CategoryRequirement[], variantAttribut
     optionSignature: Object.entries(entry.options).map(([name, value]) => `${name}:${cleanOptionValue(value)}`).join('_'),
     options: entry.options,
     attributeValueIds: entry.attributeValueIds,
-    ...buildVariantGenerationDefaults({ baseSku, modelCode, sequence: index + 1, automaticBarcodes, fallbackSalePrice, fallbackListPrice }),
+    ...buildVariantGenerationDefaults({ modelCode, sequence: index + 1, automaticBarcodes, fallbackSalePrice, fallbackListPrice }),
     stock: initialStock,
     costPrice: fallbackCostPrice,
     mediaRefs: []
@@ -1096,7 +1099,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // Phones show the option column beside one group of fields at a time; the other columns stay in the grid, hidden.
   const [variantMobileGroup, setVariantMobileGroup] = useState<'codes' | 'stock' | 'cost' | 'actions'>('stock')
   const barcodePasteActionRef = useRef<HTMLDivElement>(null)
-  const [pendingVariantCodeGeneration, setPendingVariantCodeGeneration] = useState<{ target: 'barcode' | 'sku'; codes: string[] } | null>(null)
+  const [pendingVariantCodeGeneration, setPendingVariantCodeGeneration] = useState<PendingVariantCodeChange | null>(null)
   const variantRowsRef = useRef(variantRows)
   variantRowsRef.current = variantRows
   const [expandedOptionGroupIds, setExpandedOptionGroupIds] = useState<Record<string, boolean>>({})
@@ -1449,7 +1452,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         const message = 'Otomatik barkod oluşturmak için önce model kodunu girin.'; setNotice(message); showFeedback('Model Kodu Gerekli', message, 'error')
         return false
       }
-      const generated = buildVariantMatrix(mappedRequirements, attributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
+      const generated = buildVariantMatrix(mappedRequirements, attributeIds, attributeSelections, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
       if (!generated.length) {
         const message = 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.'; setNotice(message); showFeedback('Varyant Özelliği Seçilmedi', message, 'error')
         return false
@@ -1471,8 +1474,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             return automaticBarcodeGeneration && !preserveExistingDetails ? { ...match, sku: gen.sku, barcode: gen.barcode, salePrice: gen.salePrice, listPrice: gen.listPrice } : match
           }
           if (automaticBarcodeGeneration && preserveExistingDetails) {
-            let defaults = buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: nextBarcodeSequence++, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
-            while (knownBarcodes.has(defaults.barcode)) defaults = buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: nextBarcodeSequence++, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
+            let defaults = buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: nextBarcodeSequence++, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
+            while (knownBarcodes.has(defaults.barcode)) defaults = buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: nextBarcodeSequence++, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
             knownBarcodes.add(defaults.barcode)
             return { ...gen, ...defaults }
           }
@@ -1480,7 +1483,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         })
         const sortedRows = sortVariantsAlphabetically([...merged, ...Array.from(existingMap.values())])
         return automaticBarcodeGeneration && !preserveExistingDetails
-          ? sortedRows.map((row, index) => ({ ...row, ...buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) }))
+          ? sortedRows.map((row, index) => ({ ...row, ...buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) }))
           : sortedRows
       })
       const message = `${generated.length} varyant satırı hazırlandı.`; setNotice(message); showFeedback('Varyantlar Hazırlandı', message, 'success')
@@ -2103,40 +2106,70 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setNotice(message); showFeedback('Stok Kodları Güncellendi', message, skippedCount ? 'info' : 'success'); setBarcodeSkuMenuOpen(false)
   }
 
-  function regenerateVariantCodes(target: 'barcode' | 'sku') {
-    const codes = buildSequentialVariantCodes(form.modelCode, variantRows.length)
-    if (!codes.length) {
-      const message = !form.modelCode.trim() ? 'Otomatik kod üretmek için önce model kodunu girin.' : 'Kod üretimi için varyant sayısı 1-1000 arasında olmalıdır.'
-      setNotice(message); showFeedback('Kod Üretilemedi', message, 'error'); setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(false)
-      return
-    }
-    setPendingVariantCodeGeneration({ target, codes })
+  // Opens the confirmation for a column-menu choice; the rows change only after the user confirms it.
+  function requestVariantCodeChange(target: VariantCodeTarget, mode: PendingVariantCodeChange['mode']) {
     setBarcodePasteMenuOpen(false)
     setBarcodeSkuMenuOpen(false)
+    const rows = variantRowsRef.current
+    let codesByKey: Record<string, string>
+    if (mode === 'clear') {
+      codesByKey = Object.fromEntries(rows.filter(row => row[target].trim()).map(row => [row.key, '']))
+    } else if (mode === 'missing') {
+      codesByKey = form.modelCode.trim() ? buildMissingVariantCodes(rows, target, form.modelCode) : {}
+    } else {
+      const codes = buildSequentialVariantCodes(form.modelCode, rows.length)
+      codesByKey = Object.fromEntries(codes.map((code, index) => [rows[index].key, code]))
+    }
+    if (!Object.keys(codesByKey).length) {
+      const label = target === 'barcode' ? 'barkod' : 'stok kodu'
+      const message = mode === 'clear' ? `Temizlenecek ${label} yok.`
+        : !form.modelCode.trim() ? 'Kod üretmek için önce model kodunu girin.'
+        : mode === 'missing' ? `Boş ${label} olan varyant yok.`
+        : 'Kod üretimi için varyant sayısı 1-1000 arasında olmalıdır.'
+      setNotice(message); showFeedback('Kod Değiştirilmedi', message, 'info')
+      return
+    }
+    setPendingVariantCodeGeneration({ target, mode, codesByKey, rowCount: rows.length })
   }
 
   function confirmVariantCodeGeneration() {
     const request = pendingVariantCodeGeneration
     if (!request) return
-    if (variantRowsRef.current.length !== request.codes.length) {
-      const message = 'Varyant sayısı değiştiği için kodlar üretilmedi. Menüyü yeniden açıp tekrar deneyin.'
-      setNotice(message); showFeedback('Kod Üretilemedi', message, 'error'); setPendingVariantCodeGeneration(null)
+    const rows = variantRowsRef.current
+    const keys = Object.keys(request.codesByKey)
+    const rowKeys = new Set(rows.map(row => row.key))
+    const stale = rows.length !== request.rowCount || keys.some(key => !rowKeys.has(key))
+      || (request.mode === 'missing' && rows.some(row => keys.includes(row.key) && row[request.target].trim()))
+    if (stale) {
+      const message = 'Varyantlar değiştiği için kodlara dokunulmadı. Menüyü yeniden açıp tekrar deneyin.'
+      setNotice(message); showFeedback('Kod Değiştirilmedi', message, 'error'); setPendingVariantCodeGeneration(null)
       return
     }
 
-    setVariantRows(rows => applyGeneratedVariantCodes(rows, request.target, request.codes))
-    if (request.target === 'barcode') setForm(current => ({ ...current, barcode: request.codes[0] }))
+    setVariantRows(current => applyVariantCodesByKey(current, request.target, request.codesByKey))
+    const label = request.target === 'barcode' ? 'barkodu' : 'stok kodu'
+    if (request.mode === 'clear') {
+      const message = `${keys.length} varyantın ${label} temizlendi. Kalıcı olması için Kaydet’e basın.`
+      setNotice(message); showFeedback('Kodlar Temizlendi', message, 'success'); setPendingVariantCodeGeneration(null)
+      return
+    }
+    const firstRowKey = rows[0]?.key
+    if (request.target === 'barcode' && firstRowKey && request.codesByKey[firstRowKey]) setForm(current => ({ ...current, barcode: request.codesByKey[firstRowKey] }))
+    const firstCode = request.codesByKey[keys[0]]
     // A generated code that some active marketplace refuses is named.
-    const ruleIssues = platformCodeIssues(codeRulePlatforms, request.target === 'barcode' ? request.codes[0] : '', request.target === 'sku' ? request.codes[0] : '')
+    const ruleIssues = platformCodeIssues(codeRulePlatforms, request.target === 'barcode' ? firstCode : '', request.target === 'sku' ? firstCode : '')
     const ruleText = describePlatformCodeIssues(ruleIssues, request.target)
-    const message = `${request.codes.length} varyantın ${request.target === 'barcode' ? 'barkodu' : 'stok kodu'} model kodundan oluşturuldu; diğer kod alanı korundu.${request.target === 'barcode' ? ' Üst barkod alanı ilk varyantla eşitlendi.' : ''} Kalıcı olması için Kaydet’e basın.${ruleText ? ` Uyarı: ${ruleText}.` : ''}`
+    const message = `${keys.length} varyantın ${label} model kodundan oluşturuldu; diğer kod alanı korundu.${request.mode === 'missing' ? ' Dolu kodlara dokunulmadı.' : ''} Kalıcı olması için Kaydet’e basın.${ruleText ? ` Uyarı: ${ruleText}.` : ''}`
     setNotice(message); showFeedback('Kodlar Oluşturuldu', message, ruleText ? 'info' : 'success'); setPendingVariantCodeGeneration(null)
   }
 
-  async function pasteBarcodesFromClipboard(mode: 'missing' | 'all') {
+  async function pasteBarcodesFromClipboard(mode: 'missing' | 'all', target: VariantCodeTarget = 'barcode') {
+    const label = target === 'barcode' ? 'barkod' : 'stok kodu'
+    const title = target === 'barcode' ? 'Barkodlar' : 'Stok Kodları'
+    const closeMenus = () => { setBarcodePasteMenuOpen(false); setBarcodeSkuMenuOpen(false) }
     if (typeof navigator.clipboard?.readText !== 'function') {
-      const message = 'Pano okuma bu tarayıcıda kullanılamıyor; barkodları satırlara elle yapıştırın.'
-      setNotice(message); showFeedback('Pano Kullanılamıyor', message, 'error'); setBarcodePasteMenuOpen(false)
+      const message = `Pano okuma bu tarayıcıda kullanılamıyor; ${target === 'barcode' ? 'barkodları' : 'stok kodlarını'} satırlara elle yapıştırın.`
+      setNotice(message); showFeedback('Pano Kullanılamıyor', message, 'error'); closeMenus()
       return
     }
 
@@ -2145,33 +2178,30 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       clipboardText = await navigator.clipboard.readText()
     } catch {
       const message = 'Panoya erişilemedi. Tarayıcı pano iznini verip tekrar deneyin.'
-      setNotice(message); showFeedback('Panoya Erişilemedi', message, 'error'); setBarcodePasteMenuOpen(false)
+      setNotice(message); showFeedback('Panoya Erişilemedi', message, 'error'); closeMenus()
       return
     }
 
     const rows = variantRowsRef.current
-    const rowsToUpdate = mode === 'missing' ? rows.filter(row => !row.barcode.trim()) : rows
+    const rowsToUpdate = mode === 'missing' ? rows.filter(row => !row[target].trim()) : rows
     if (!rowsToUpdate.length) {
-      const message = mode === 'missing' ? 'Boş barkod satırı bulunamadı.' : 'Önce varyant satırlarını oluşturun.'
-      setNotice(message); showFeedback('Barkod Satırı Yok', message, 'info'); setBarcodePasteMenuOpen(false)
+      const message = mode === 'missing' ? `Boş ${label} satırı bulunamadı.` : 'Önce varyant satırlarını oluşturun.'
+      setNotice(message); showFeedback(target === 'barcode' ? 'Barkod Satırı Yok' : 'Stok Kodu Satırı Yok', message, 'info'); closeMenus()
       return
     }
     const values = parseBarcodeClipboardValues(clipboardText)
     const targetKeys = new Set(rowsToUpdate.map(row => row.key))
-    const reservedValues = rows.filter(row => !targetKeys.has(row.key)).map(row => row.barcode.trim())
-    const issue = barcodeClipboardIssue(values, rowsToUpdate.length, reservedValues)
+    const reservedValues = rows.filter(row => !targetKeys.has(row.key)).map(row => row[target].trim())
+    const issue = barcodeClipboardIssue(values, rowsToUpdate.length, reservedValues, label)
     if (issue) {
-      setNotice(issue); showFeedback('Barkodlar Yapıştırılamadı', issue, 'error'); setBarcodePasteMenuOpen(false)
+      setNotice(issue); showFeedback(`${title} Yapıştırılamadı`, issue, 'error'); closeMenus()
       return
     }
 
-    const valuesByKey = new Map(rowsToUpdate.map((row, index) => [row.key, values[index].trim()]))
-    setVariantRows(currentRows => currentRows.map(row => {
-      const barcode = valuesByKey.get(row.key)
-      return barcode === undefined ? row : { ...row, barcode }
-    }))
-    const message = `${rowsToUpdate.length} varyantın barkodu panodan yapıştırıldı.`
-    setNotice(message); showFeedback('Barkodlar Yapıştırıldı', message, 'success'); setBarcodePasteMenuOpen(false)
+    const valuesByKey = Object.fromEntries(rowsToUpdate.map((row, index) => [row.key, values[index].trim()]))
+    setVariantRows(currentRows => applyVariantCodesByKey(currentRows, target, valuesByKey))
+    const message = `${rowsToUpdate.length} varyantın ${target === 'barcode' ? 'barkodu' : 'stok kodu'} panodan yapıştırıldı.`
+    setNotice(message); showFeedback(`${title} Yapıştırıldı`, message, 'success'); closeMenus()
   }
 
   function toggleVariantFilter(groupId: string, valueId: string) {
@@ -2279,8 +2309,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       return []
     }
     if (variantRows.length) return variantRows
-    const generatedDefaults = automaticBarcodeGeneration ? buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) : null
-    return [{ key: crypto.randomUUID(), optionSignature: 'Tek Ürün', options: {}, attributeValueIds: {}, sku: generatedDefaults?.sku ?? (form.baseSku || form.modelCode || form.title || 'URUN').trim().replace(/\s+/g, '-').toLocaleUpperCase('tr-TR'), barcode: generatedDefaults?.barcode ?? form.barcode, stock: initialStock, salePrice: generatedDefaults?.salePrice ?? fallbackSalePrice, listPrice: generatedDefaults?.listPrice ?? fallbackListPrice, costPrice: fallbackCostPrice, mediaRefs: [] }]
+    const generatedDefaults = automaticBarcodeGeneration ? buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) : null
+    return [{ key: crypto.randomUUID(), optionSignature: 'Tek Ürün', options: {}, attributeValueIds: {}, sku: generatedDefaults?.sku ?? form.baseSku.trim(), barcode: generatedDefaults?.barcode ?? form.barcode, stock: initialStock, salePrice: generatedDefaults?.salePrice ?? fallbackSalePrice, listPrice: generatedDefaults?.listPrice ?? fallbackListPrice, costPrice: fallbackCostPrice, mediaRefs: [] }]
   }
   function validate(rows: VariantDraft[], requireCompleteCatalog = true, requirePublicationReadiness = true) {
     const issues: string[] = []; const requirementList = mappedRequirements
@@ -2863,6 +2893,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const barcodeRowCount = variantRows.filter(row => row.barcode.trim()).length
   const emptySkuBarcodeRowCount = variantRows.filter(row => row.barcode.trim() && !row.sku.trim()).length
   const emptyBarcodeRowCount = variantRows.length - barcodeRowCount
+  const skuRowCount = variantRows.filter(row => row.sku.trim()).length
+  const emptySkuRowCount = variantRows.length - skuRowCount
+  const pendingVariantCodeConfirm = pendingVariantCodeGeneration ? variantCodeChangeConfirmText(pendingVariantCodeGeneration) : null
   const generatedCodePreview = buildSequentialVariantCodes(form.modelCode, 1)[0] ?? 'MODEL-01'
   const selectedBulkMediaGroup = variantMediaModal?.mode === 'bulk' ? bulkMediaGroups.find(group => group.id === variantMediaModal.groupId) : undefined
   const selectedBulkMediaValueId = variantMediaModal?.mode === 'bulk' ? variantMediaModal.valueId : undefined
@@ -2880,16 +2913,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const canAddVariantCombinations = useMemo(() => {
     if (!variantAttributeIds.length || (automaticBarcodeGeneration && !form.modelCode.trim())) return false
     try {
-      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, form.baseSku || form.modelCode || form.title, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
+      const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
       const existing = new Map(variantRows.map(row => [variantSignatureKey(row.optionSignature), row]))
       const missingCombinations = generated.some(row => !existing.has(variantSignatureKey(row.optionSignature)))
       const automaticDefaultsOutOfDate = automaticBarcodeGeneration && sortVariantsAlphabetically(variantRows).some((row, index) => {
-        const expected = buildVariantGenerationDefaults({ baseSku: form.baseSku || form.modelCode || form.title, modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
+        const expected = buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
         return row.sku !== expected.sku || row.barcode !== expected.barcode || row.salePrice !== expected.salePrice || row.listPrice !== expected.listPrice
       })
       return missingCombinations || automaticDefaultsOutOfDate
     } catch { return false }
-  }, [attributeSelections, automaticBarcodeGeneration, fallbackCostPrice, fallbackListPrice, fallbackSalePrice, form.baseSku, form.modelCode, form.title, initialStock, mappedRequirements, variantAttributeIds, variantRows])
+  }, [attributeSelections, automaticBarcodeGeneration, fallbackCostPrice, fallbackListPrice, fallbackSalePrice, form.modelCode, initialStock, mappedRequirements, variantAttributeIds, variantRows])
   const selectedVariantPlatformRow = variantPlatformPricing ? variantRows.find(row => row.key === variantPlatformPricing.rowKey) : undefined
   const showVariantStockTotal = Boolean(editProductId || (duplicateProductId && variantRows.length))
 
@@ -3132,7 +3165,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 const rowPlatforms = row.platformStatuses?.length ? row.platformStatuses : !editProductId ? variantPricingPlatforms : []
                 const codeIssues = variantCodeIssues.get(row.key) ?? []
                 const barcodeIssueText = describePlatformCodeIssues(codeIssues, 'barcode')
-                const skuIssueText = describePlatformCodeIssues(codeIssues, 'sku')
+                // Every variant needs its own stock code to be saved, with or without an active marketplace, so an
+                // empty one is red here too.
+                const skuIssueText = describePlatformCodeIssues(codeIssues, 'sku') || (row.sku.trim() ? '' : 'Stok kodu zorunlu')
                 return <div data-variant-row-key={row.key} className={`variant-table-row ${hasVariantFilters && matchesFilter ? 'is-filter-match' : ''} ${hasVariantFilters && !matchesFilter ? 'is-filter-dimmed' : ''} ${draggedVariantKey === row.key ? 'is-dragging' : ''} ${dragOverVariantKey === row.key ? 'is-drag-target' : ''}`} key={row.key}>
                   <div className="variant-row-lead" title="Sıralamak için tutup sürükleyin" aria-label={`${row.optionSignature} varyantını sıralamak için sürükleyin`} onPointerDown={event => beginVariantPointerDrag(event, row.key)}><span className="variant-row-number">{index + 1}</span><span className="variant-drag-handle"><VariantDragHandleIcon /></span></div>
                   <div className="variant-option-cell"><span className="variant-option-text" aria-label={`${index + 1}. varyant seçenekleri`} title={displayVariantOptionSignature(row.optionSignature, row.options)}>{displayVariantOptionSignature(row.optionSignature, row.options)}</span><button type="button" className="variant-option-edit-button" onClick={() => setOptionEditRowKey(row.key)} aria-label={`${index + 1}. varyantın seçeneklerini düzenle`} title="Seçenekleri düzenle" disabled={!rowOptionEntries(row).length}><UiIcon name="edit" size={14} /></button></div>
@@ -3192,24 +3227,37 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     {!error && <ErrorToast title="Ürün Bilgileri Yüklenemedi" error={categories.error ?? brands.error ?? connections.error} />}
     {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Barkod üret">
-        <p className="variant-header-action-menu-title">Model Koduyla Üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('barcode')}><span><strong>Model Kodundan Barkod Üret</strong><small className="variant-code-generation-preview"><span>Barkod: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small>{codeRulePlatforms.includes('HEPSIBURADA') && <small className="variant-code-generation-warning">Hepsiburada EAN-13 ister; model kodundan üretilen barkodla gönderilemez.</small>}</span><UiIcon name="refresh" /></button>
+        <p className="variant-header-action-menu-title">Model Kodundan Barkod Üret</p>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} aria-disabled={!variantRows.length || !form.modelCode.trim() || undefined} onClick={() => requestVariantCodeChange('barcode', 'all')}><span><strong>Tüm Varyantlara Üret</strong><small className="variant-code-generation-preview"><span>Barkod: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small>{codeRulePlatforms.includes('HEPSIBURADA') && <small className="variant-code-generation-warning">Hepsiburada EAN-13 ister; model kodundan üretilen barkodla gönderilemez.</small>}</span><UiIcon name="refresh" /></button>
+        <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount || !form.modelCode.trim()} aria-disabled={!emptyBarcodeRowCount || !form.modelCode.trim() || undefined} onClick={() => requestVariantCodeChange('barcode', 'missing')}><span><strong>Yalnız Boş Olanlara Üret</strong><small className="variant-code-generation-preview"><span>Dolu barkodlar korunur</span><span>{emptyBarcodeRowCount.toLocaleString('tr-TR')} boş varyant</span></small>{codeRulePlatforms.includes('HEPSIBURADA') && <small className="variant-code-generation-warning">Hepsiburada EAN-13 ister; model kodundan üretilen barkodla gönderilemez.</small>}</span><UiIcon name="arrowRight" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Panodan barkod yapıştır">
         <p className="variant-header-action-menu-title">Panodan Barkod Yapıştır</p>
-        <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş Barkodları Doldur</strong><small>{emptyBarcodeRowCount.toLocaleString('tr-TR')} boş varyant</small></span><UiIcon name="arrowRight" /></button>
-        <button type="button" role="menuitem" disabled={!variantRows.length} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm Barkodları Değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
+        <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} aria-disabled={!emptyBarcodeRowCount || undefined} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Boş Barkodları Doldur</strong><small>{emptyBarcodeRowCount.toLocaleString('tr-TR')} boş varyant</small></span><UiIcon name="arrowRight" /></button>
+        <button type="button" role="menuitem" disabled={!variantRows.length} aria-disabled={!variantRows.length || undefined} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm Barkodları Değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
+      </section>
+      <section className="variant-header-action-menu-group" role="group" aria-label="Barkodları temizle">
+        <button type="button" role="menuitem" disabled={!barcodeRowCount} aria-disabled={!barcodeRowCount || undefined} onClick={() => requestVariantCodeChange('barcode', 'clear')}><span><strong>Tüm Barkodları Temizle</strong><small>{barcodeRowCount.toLocaleString('tr-TR')} dolu barkod boşaltılır</small></span><UiIcon name="trash" /></button>
       </section>
     </VariantHeaderActionMenu>}
     {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef}>
       <section className="variant-header-action-menu-group" role="group" aria-label="Model kodundan stok kodu üret">
-        <p className="variant-header-action-menu-title">Model Koduyla Üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} onClick={() => regenerateVariantCodes('sku')}><span><strong>Model Kodundan Stok Kodu Üret</strong><small className="variant-code-generation-preview"><span>Stok Kodu: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
+        <p className="variant-header-action-menu-title">Model Kodundan Stok Kodu Üret</p>
+        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} aria-disabled={!variantRows.length || !form.modelCode.trim() || undefined} onClick={() => requestVariantCodeChange('sku', 'all')}><span><strong>Tüm Varyantlara Üret</strong><small className="variant-code-generation-preview"><span>Stok Kodu: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
+        <button type="button" role="menuitem" disabled={!emptySkuRowCount || !form.modelCode.trim()} aria-disabled={!emptySkuRowCount || !form.modelCode.trim() || undefined} onClick={() => requestVariantCodeChange('sku', 'missing')}><span><strong>Yalnız Boş Olanlara Üret</strong><small className="variant-code-generation-preview"><span>Dolu stok kodları korunur</span><span>{emptySkuRowCount.toLocaleString('tr-TR')} boş varyant</span></small></span><UiIcon name="arrowRight" /></button>
+      </section>
+      <section className="variant-header-action-menu-group" role="group" aria-label="Panodan stok kodu yapıştır">
+        <p className="variant-header-action-menu-title">Panodan Stok Kodu Yapıştır</p>
+        <button type="button" role="menuitem" disabled={!emptySkuRowCount} aria-disabled={!emptySkuRowCount || undefined} onClick={() => void pasteBarcodesFromClipboard('missing', 'sku')}><span><strong>Boş Stok Kodlarını Doldur</strong><small>{emptySkuRowCount.toLocaleString('tr-TR')} boş varyant</small></span><UiIcon name="arrowRight" /></button>
+        <button type="button" role="menuitem" disabled={!variantRows.length} aria-disabled={!variantRows.length || undefined} onClick={() => void pasteBarcodesFromClipboard('all', 'sku')}><span><strong>Tüm Stok Kodlarını Değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
       </section>
       <section className="variant-header-action-menu-group" role="group" aria-label="Stok kodlarını barkodlardan düzenle">
         <p className="variant-header-action-menu-title">Stok Kodlarını Barkodlardan Düzenle</p>
         <button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik Stok Kodlarını Doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount.toLocaleString('tr-TR')} satır</small></span><UiIcon name="arrowRight" /></button>
         <button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları Stok Koduna Uygula</strong><small>Stok kodu sütunu · {barcodeRowCount.toLocaleString('tr-TR')} barkodlu satır</small></span><UiIcon name="alert" /></button>
+      </section>
+      <section className="variant-header-action-menu-group" role="group" aria-label="Stok kodlarını temizle">
+        <button type="button" role="menuitem" disabled={!skuRowCount} aria-disabled={!skuRowCount || undefined} onClick={() => requestVariantCodeChange('sku', 'clear')}><span><strong>Tüm Stok Kodlarını Temizle</strong><small>{skuRowCount.toLocaleString('tr-TR')} dolu stok kodu boşaltılır</small></span><UiIcon name="trash" /></button>
       </section>
     </VariantHeaderActionMenu>}
     {mediaRemovalConfirmation && createPortal(
@@ -3237,25 +3285,24 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     )}
     {/* The editor's dialogs portal into main: the panel's button and field styles are scoped to main, so one portaled
         into body showed bare browser buttons (live 2026-10-30, Stok Kodlarını Model Kodundan Üret). */}
-    {pendingVariantCodeGeneration && createPortal(
+    {pendingVariantCodeGeneration && pendingVariantCodeConfirm && createPortal(
       <div className="workspace-modal-backdrop variant-code-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setPendingVariantCodeGeneration(null) }}>
         <DialogSurface as="section" onClose={() => { setPendingVariantCodeGeneration(null) }} className="workspace-modal variant-code-confirm-modal" role="alertdialog" aria-labelledby="variant-code-confirm-title" aria-describedby="variant-code-confirm-description" onMouseDown={event => event.stopPropagation()}>
           <header>
             <div>
               <p className="eyebrow">Varyant Kodları</p>
-              <h2 id="variant-code-confirm-title">{pendingVariantCodeGeneration.target === 'barcode' ? 'Barkodları Model Kodundan Üret' : 'Stok Kodlarını Model Kodundan Üret'}</h2>
-              <p id="variant-code-confirm-description">Mevcut {pendingVariantCodeGeneration.target === 'barcode' ? 'barkod' : 'stok kodu'} alanı {pendingVariantCodeGeneration.codes.length.toLocaleString('tr-TR')} varyant için değiştirilecek.</p>
+              <h2 id="variant-code-confirm-title">{pendingVariantCodeConfirm.title}</h2>
+              <p id="variant-code-confirm-description">{pendingVariantCodeConfirm.description}</p>
             </div>
-            <button type="button" className="modal-close" onClick={() => setPendingVariantCodeGeneration(null)} aria-label="Kod üretme onayını kapat"><UiIcon name="close" /></button>
+            <button type="button" className="modal-close" onClick={() => setPendingVariantCodeGeneration(null)} aria-label="Kod değiştirme onayını kapat"><UiIcon name="close" /></button>
           </header>
           <div className="variant-code-confirm-body">
-            <p>Üretilecek kod aralığı</p>
-            <code>{pendingVariantCodeGeneration.codes[0]}{pendingVariantCodeGeneration.codes.length > 1 ? ` – ${pendingVariantCodeGeneration.codes.at(-1)}` : ''}</code>
-            <small>Onaylayınca kodlar, Kaydet’e basmadan bu formdaki varyantlara uygulanır. Diğer kod sütunu korunur; başka üründe kullanılan kodlar Kaydet sırasında reddedilebilir.</small>
+            {pendingVariantCodeConfirm.range && <><p>Üretilecek kod aralığı</p><code>{pendingVariantCodeConfirm.range}</code></>}
+            <small>{pendingVariantCodeGeneration.mode === 'clear' ? 'Onaylayınca alan, Kaydet’e basmadan bu formdaki varyantlarda boşaltılır; Kaydet’e basmadan sayfadan çıkarsanız kayıtlı kodlar değişmez. Diğer kod sütunu korunur.' : 'Onaylayınca kodlar, Kaydet’e basmadan bu formdaki varyantlara uygulanır. Diğer kod sütunu korunur; başka üründe kullanılan kodlar Kaydet sırasında reddedilebilir.'}</small>
           </div>
           <footer>
             <button type="button" className="secondary" data-autofocus={touchScreen ? undefined : true} onClick={() => setPendingVariantCodeGeneration(null)}>Vazgeç</button>
-            <button type="button" onClick={confirmVariantCodeGeneration}>{pendingVariantCodeGeneration.target === 'barcode' ? 'Barkodları Üret' : 'Stok Kodlarını Üret'}</button>
+            <button type="button" className={pendingVariantCodeGeneration.mode === 'clear' ? 'destructive' : undefined} onClick={confirmVariantCodeGeneration}>{pendingVariantCodeConfirm.action}</button>
           </footer>
         </DialogSurface>
       </div>,
