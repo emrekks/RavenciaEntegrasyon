@@ -1602,61 +1602,7 @@ public sealed partial class ShopifyHttpClient(
         return true;
     }
     private static string EscapeSearch(string value) => value.Trim().Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
-    internal static AdapterResult<IReadOnlyList<ShopifyPriceInventoryLine>> ParsePriceInventoryPayload(string payloadJson)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(payloadJson);
-            if (!document.RootElement.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array || items.GetArrayLength() is 0 or > 1000)
-                return Failure<IReadOnlyList<ShopifyPriceInventoryLine>>(new(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Shopify fiyat-stok payload'ı 1-1000 satır içermelidir.", (int)HttpStatusCode.UnprocessableEntity, null, null));
-            var lines = new List<ShopifyPriceInventoryLine>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var item in items.EnumerateArray())
-            {
-                var barcode = item.TryGetProperty("barcode", out var barcodeElement) ? barcodeElement.GetString()?.Trim() : null;
-                if (string.IsNullOrWhiteSpace(barcode) || !seen.Add(barcode)
-                    || !item.TryGetProperty("quantity", out var quantityElement) || !quantityElement.TryGetInt32(out var quantity) || quantity < 0
-                    || !item.TryGetProperty("salePrice", out var saleElement) || !saleElement.TryGetDecimal(out var salePrice) || salePrice <= 0
-                    || !item.TryGetProperty("listPrice", out var listElement) || !listElement.TryGetDecimal(out var listPrice) || listPrice < salePrice)
-                    return Failure<IReadOnlyList<ShopifyPriceInventoryLine>>(new(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Shopify satırlarında benzersiz barkod, quantity >= 0 ve listPrice >= salePrice > 0 gerekir.", (int)HttpStatusCode.UnprocessableEntity, null, null));
-                lines.Add(new(barcode, quantity, salePrice, listPrice));
-            }
-            return AdapterResult<IReadOnlyList<ShopifyPriceInventoryLine>>.Success(lines);
-        }
-        catch (Exception exception) when (exception is JsonException or InvalidOperationException)
-        {
-            return Failure<IReadOnlyList<ShopifyPriceInventoryLine>>(new(AdapterErrorClass.Validation, "SHOPIFY_PRICE_INVENTORY_PAYLOAD_INVALID", "Shopify fiyat-stok payload'ı geçerli JSON değil.", (int)HttpStatusCode.UnprocessableEntity, null, null));
-        }
-    }
 
-    internal static AdapterResult<RemoteOperationStatus> ParseImmediateOperation(string externalOperationId)
-    {
-        try
-        {
-            var encoded = externalOperationId["SHOPIFY_IMMEDIATE:".Length..].Replace('-', '+').Replace('_', '/');
-            encoded = encoded.PadRight(encoded.Length + (4 - encoded.Length % 4) % 4, '=');
-            var lines = JsonSerializer.Deserialize<string[]>(Convert.FromBase64String(encoded));
-            if (lines is null || lines.Length is 0 or > 1000 || lines.Any(string.IsNullOrWhiteSpace) || lines.Distinct(StringComparer.OrdinalIgnoreCase).Count() != lines.Length)
-                throw new JsonException("Shopify operation key list is invalid.");
-            return AdapterResult<RemoteOperationStatus>.Success(new(externalOperationId, "COMPLETED", lines.Select(barcode => new RemoteOperationLine(barcode, true, null, null, false)).ToArray()));
-        }
-        catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException)
-        {
-            return Failure<RemoteOperationStatus>(new(AdapterErrorClass.ContractViolation, "SHOPIFY_OPERATION_REFERENCE_INVALID", "Shopify işleminin doğrulama referansı geçersiz.", (int)HttpStatusCode.BadGateway, null, null));
-        }
-    }
-
-    private static bool HasMutationErrors(JsonElement root, string field) =>
-        root.TryGetProperty(field, out var mutation)
-        && mutation.ValueKind == JsonValueKind.Object
-        && mutation.TryGetProperty("userErrors", out var errors)
-        && errors.ValueKind == JsonValueKind.Array
-        && errors.GetArrayLength() > 0;
-    private static string DeterministicIdempotencyKey(string value)
-    {
-        var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value));
-        return new Guid(bytes.AsSpan(0, 16)).ToString("D");
-    }
     private static string ShortId(string? value) => string.IsNullOrWhiteSpace(value) ? "" : value.Split('/').Last();
     internal static string? BuildOrderQuery(OrderPollWindow window)
     {
@@ -1765,5 +1711,3 @@ public sealed partial class ShopifyHttpClient(
     private static AdapterResult<T> Failure<T>(AdapterError error, RateLimitMetadata? rate = null) => AdapterResult<T>.Failure(error, rate);
 }
 
-internal sealed record ShopifyPriceInventoryLine(string Barcode, int Quantity, decimal SalePrice, decimal ListPrice);
-internal sealed record ShopifyPriceInventoryTarget(ShopifyPriceInventoryLine Line, string VariantId, string ProductId, string InventoryItemId, string LocationId, int CurrentQuantity);

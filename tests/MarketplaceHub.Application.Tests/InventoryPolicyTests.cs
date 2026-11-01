@@ -131,14 +131,6 @@ public sealed class InventoryPolicyTests
     }
 
     [Fact]
-    public void OrderConsumptionDoesNotCreateNegativeStockAndCanUseItsOwnReservation()
-    {
-        Assert.Equal(-1m, OrderInventoryStockPolicy.LimitToAvailableStock(1m, 0m, 2m, -2m, false));
-        Assert.Equal(0m, OrderInventoryStockPolicy.LimitToAvailableStock(0m, 0m, 0m, -1m, false));
-        Assert.Equal(-1m, OrderInventoryStockPolicy.LimitToAvailableStock(0m, 0m, 0m, -1m, true));
-    }
-
-    [Fact]
     public void MissingOrUnknownAuthorityNeverOverwritesLocalPhysicalStock()
     {
         Assert.False(InventoryAuthorityPolicy.ShouldApplyRemoteQuantityToOnHand(null));

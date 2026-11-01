@@ -6,7 +6,7 @@ import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues, ImageLightboxModal } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
-import { kurus, onCost, profitText, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
+import { kurus, onCost, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
 import { useDismissable } from '../../../shared/hooks/useDismissable'
 import '../commission-tariffs.css'
 
@@ -246,30 +246,10 @@ export function ProductImage({ url, title, initial }: { url: string | null | und
 const productImage = (row: CommissionTariffRow) =>
   <ProductImage url={row.imageUrl} title={`${row.productName ?? row.barcode}${row.color ? ` · ${row.color}` : ''}`} initial={(row.productName ?? row.barcode).slice(0, 1)} />
 
-// A price's profit with its share of the cost: "100,85 ₺ Kâr (%63,03)".
-export function remainingText(choice: CommissionChoice) {
-  return choice.remaining === null ? 'Maliyet girilmemiş' : profitText(choice.remaining, choice.costs)
-}
 type UploadResult = { tariffs: CommissionTariff[]; importedRows: number; skippedRows: number; alreadyUploaded: boolean; warnings: string[] }
 
 const money = (value: number) => `${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
 export const rateText = (rate: number) => `%${rate.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`
-
-// "≥ 470,64 ₺", "435,98 – 470,63 ₺" or "≤ 388,63 ₺": the price range a band covers.
-export function bandRange(band: CommissionBand) {
-  if (band.min !== null && band.max !== null) return `${band.min.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} – ${money(band.max)}`
-  if (band.min !== null) return `≥ ${money(band.min)}`
-  if (band.max !== null) return `≤ ${money(band.max)}`
-  return '—'
-}
-
-// The price that earns the next lower commission, or why there is none.
-export function nextBandHint(row: Pick<CommissionTariffRow, 'nextLowerBand' | 'currentTier' | 'basisPrice'>) {
-  if (row.basisPrice === null) return 'Komisyona esas fiyat yok'
-  if (row.currentTier === null) return 'Fiyat hiçbir banda düşmüyor'
-  if (!row.nextLowerBand?.max) return 'En düşük komisyon bandında'
-  return `${rateText(row.nextLowerBand.rate)} için ≤ ${money(row.nextLowerBand.max)}`
-}
 
 // The marketplace's own "Güncel Komisyon" is shown beside the band the panel computes; a difference is flagged, never hidden.
 export function rateDisagrees(row: Pick<CommissionTariffRow, 'currentRate' | 'currentBandRate'>) {

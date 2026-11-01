@@ -36,27 +36,6 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         return ServiceResult<OperationalDataResetView>.Ok(counts);
     }
 
-    public async Task<ServiceResult<bool>> SetDataVisibilityAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, bool hidden, string correlationId, CancellationToken cancellationToken)
-    {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status != "DELETED", cancellationToken);
-        if (connection is null) return ServiceResult<bool>.Fail("RESOURCE_NOT_FOUND", "Bağlantı bulunamadı.", 404);
-        if (connection.Version != expectedVersion) return ServiceResult<bool>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{connection.Version}.", 412);
-        if (hidden)
-        {
-            connection.Status = "HIDDEN";
-            connection.DisabledAt = timeProvider.GetUtcNow();
-        }
-        else if (connection.Status == "HIDDEN")
-        {
-            connection.Status = "DISABLED";
-        }
-        connection.Version++;
-        db.AuditLogs.Add(Audit(tenantId, actorUserId, hidden ? "CONNECTION_DATA_HIDDEN" : "CONNECTION_DATA_SHOWN", "PlatformConnection", connectionId.ToString("D"), hidden ? "platform-data-hidden" : "platform-data-shown", correlationId));
-        await db.SaveChangesAsync(cancellationToken);
-        await RefreshDashboardBestEffortAsync(tenantId);
-        return ServiceResult<bool>.Ok(hidden);
-    }
-
     public async Task<ServiceResult<OperationalDataResetView>> DeleteConnectionAsync(Guid tenantId, Guid actorUserId, Guid connectionId, long expectedVersion, DeleteConnectionCommand command, string correlationId, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.Status != "DELETED", cancellationToken);

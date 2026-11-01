@@ -329,47 +329,6 @@ internal static class HepsiburadaJsonMapper
         _ => null
     };
 
-    public static AdapterPageResult<RemoteProductMatch> PendingProductMatches(JsonElement root, int page, int limit)
-    {
-        var (items, totalCount) = ListingPage(root);
-        var matches = new List<RemoteProductMatch>(items.Count);
-        foreach (var item in items)
-        {
-            var merchantSku = Text(item, "merchantSku", "MerchantSku", "sellerSku", "SellerSku");
-            if (string.IsNullOrWhiteSpace(merchantSku)) throw new JsonException("Hepsiburada eşleşme satırında merchantSku yok.");
-            var matchedProduct = Find(item, "matchedProduct", "catalogProduct", "product");
-            if (matchedProduct.ValueKind != JsonValueKind.Object) matchedProduct = item;
-            var imageUrls = Strings(matchedProduct, "imageUrls", "images", "productImages");
-            if (imageUrls.Count == 0)
-                imageUrls = Enumerable.Range(1, 10).Select(index => Text(matchedProduct, $"image{index}", $"Image{index}"))
-                    .Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).ToArray();
-            var status = Text(item, "productStatus", "status", "Status") ?? "PRE_MATCHED";
-            matches.Add(new(
-                merchantSku.Trim(),
-                NormalizeProductStatus(status),
-                Text(matchedProduct, "hbSku", "HBSku", "hepsiburadaSku", "productCode"),
-                Text(matchedProduct, "productName", "productTitle", "title", "name"),
-                Text(matchedProduct, "brandName", "brand", "marka", "brandTitle"),
-                imageUrls,
-                Text(matchedProduct, "barcode", "Barcode", "productBarcode", "gtin"),
-                item.GetRawText()));
-        }
-
-        var hasMore = totalCount is { } total
-            ? (long)(page + 1) * limit < total
-            : matches.Count >= limit;
-        return new(matches, hasMore ? checked(page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore, totalCount);
-    }
-
-    public static bool ProductMatchDecisionAccepted(JsonElement root)
-    {
-        var data = Unwrap(root);
-        if (Boolean(root, "success", "isSuccess") == false || Boolean(data, "success", "isSuccess") == false) return false;
-        if (Integer(root, "code") is { } rootCode && rootCode != 0) return false;
-        if (Integer(data, "code") is { } dataCode && dataCode != 0) return false;
-        return true;
-    }
-
     public static string ProductImportTrackingId(JsonElement root)
     {
         var data = Unwrap(root);

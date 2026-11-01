@@ -1,5 +1,4 @@
 using MarketplaceHub.Application;
-using MarketplaceHub.Infrastructure.Identity;
 using MarketplaceHub.Infrastructure.Persistence;
 
 namespace MarketplaceHub.Api.Dashboard;

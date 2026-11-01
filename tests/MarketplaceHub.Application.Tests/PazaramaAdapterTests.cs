@@ -268,8 +268,6 @@ public sealed class PazaramaAdapterTests
         Assert.Equal(MarketplaceJobTypes.PazaramaConnectionTest, MarketplaceJobTypes.ForPlatform("PAZARAMA", MarketplaceJobTypes.ConnectionTest));
         Assert.Equal(MarketplaceJobTypes.PazaramaOrderSync, MarketplaceJobTypes.ForPlatform("PAZARAMA", MarketplaceJobTypes.OrderSync));
         Assert.Equal(MarketplaceJobTypes.PriceInventorySync, MarketplaceJobTypes.ForPlatform("PAZARAMA", MarketplaceJobTypes.PriceInventorySync));
-        Assert.True(MarketplaceInvoiceCreationPolicy.IsEnabled("PAZARAMA", """{"ExternalWritesEnabled":false,"InvoiceCreationEnabled":true}"""));
-        Assert.False(MarketplaceInvoiceCreationPolicy.IsEnabled("PAZARAMA", """{"ExternalWritesEnabled":false,"InvoiceCreationEnabled":false}"""));
         Assert.Equal("isortagim.pazarama.com", CapabilityEvidencePolicy.OfficialDocumentationHost("PAZARAMA"));
         Assert.Equal("Pazarama", JobOperationsService.Marketplace("PAZARAMA_CONNECTION_TEST"));
         Assert.Equal("Pazarama", JobOperationsService.Marketplace("PRICE_INVENTORY_SYNC", "PAZARAMA"));

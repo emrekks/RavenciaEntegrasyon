@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { invoiceProviderForEnvironment, invoiceSubmissionAction, isInvoiceCreationActionVisible, isInvoiceCreationAvailable, isValidatedInvoiceReadyToSubmit, matchesInvoiceActionFilter } from './invoice-creation-availability'
+import { invoiceProviderForEnvironment, isInvoiceCreationActionVisible, isInvoiceCreationAvailable } from './invoice-creation-availability'
 
 describe('invoice creation availability', () => {
   it('selects only a credentialed provider from the marketplace environment', () => {
@@ -24,8 +24,6 @@ describe('invoice creation availability', () => {
     expect(isInvoiceCreationAvailable(eligible, false)).toBe(false)
     expect(isInvoiceCreationAvailable(eligible, true)).toBe(false)
     expect(isInvoiceCreationAvailable({ ...eligible, invoiceCreationEnabled: false }, true)).toBe(false)
-    expect(matchesInvoiceActionFilter(eligible, 'NOT_CREATABLE', false)).toBe(true)
-    expect(matchesInvoiceActionFilter(eligible, 'CREATABLE', false)).toBe(false)
     expect(isInvoiceCreationActionVisible(eligible)).toBe(false)
     expect(isInvoiceCreationActionVisible({ ...eligible, invoiceCreationEnabled: false })).toBe(false)
   })
@@ -47,14 +45,6 @@ describe('invoice creation availability', () => {
   it('shows a delivery-only retry for an issued invoice that was not confirmed at the marketplace', () => {
     const issuedButNotDelivered = { platformCode: 'TRENDYOL', invoiceId: 'invoice-1', invoiceStatus: 'FATURA_PLATFORMA_AKTARILMADI', canCreateInvoice: false, invoiceCreationEnabled: true }
     expect(isInvoiceCreationAvailable(issuedButNotDelivered, true)).toBe(true)
-    expect(matchesInvoiceActionFilter(issuedButNotDelivered, 'CREATABLE', true)).toBe(true)
     expect(isInvoiceCreationAvailable({ ...issuedButNotDelivered, invoiceCreationEnabled: false }, false)).toBe(true)
-  })
-
-  it('revalidates a failed invoice and never queues it while validation still fails', () => {
-    expect(invoiceSubmissionAction('VALIDATION_FAILED', ['VALIDATE'])).toBe('VALIDATE')
-    expect(invoiceSubmissionAction('REJECTED', ['SUBMIT'])).toBe('SUBMIT')
-    expect(isValidatedInvoiceReadyToSubmit('VALIDATION_FAILED', ['VALIDATE'])).toBe(false)
-    expect(isValidatedInvoiceReadyToSubmit('READY', ['SUBMIT'])).toBe(true)
   })
 })

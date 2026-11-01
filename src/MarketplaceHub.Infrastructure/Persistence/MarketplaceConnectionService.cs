@@ -4,7 +4,6 @@ using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
-using MarketplaceHub.Infrastructure.Adapters.Shopify;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Security;
@@ -592,47 +591,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         return ServiceResult<IReadOnlyList<CapabilityView>>.Ok(rows);
     }
 
-    public async Task<ServiceResult<CapabilityView>> RecordCapabilityEvidenceAsync(Guid tenantId, Guid actorUserId, Guid id, string code, long expectedVersion, RecordCapabilityEvidenceCommand command, string correlationId, CancellationToken cancellationToken)
-    {
-        var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "TRENDYOL_EFATURAM" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken);
-        if (connection is null) return NotFound<CapabilityView>();
-        await EnsureCapabilityRowsAsync(connection, cancellationToken);
-        var normalizedCode = code.Trim().ToUpperInvariant();
-        var expectedCodes = CapabilityCodesFor(connection.PlatformCode);
-        if (!expectedCodes.Contains(normalizedCode, StringComparer.Ordinal)) return Invalid<CapabilityView>("code", "Bu bağlantı türü için tanımlı capability değildir.");
-        var capability = await db.PlatformCapabilities.SingleAsync(x => x.TenantId == tenantId && x.ConnectionId == id && x.Code == normalizedCode, cancellationToken);
-        if (capability.Version != expectedVersion) return Precondition<CapabilityView>(capability.Version);
-
-        var support = command.SupportLevel.Trim().ToUpperInvariant();
-        if (support is not ("SUPPORTED" or "UNKNOWN" or "NOT_SUPPORTED")) return Invalid<CapabilityView>("supportLevel", "Support level SUPPORTED, UNKNOWN veya NOT_SUPPORTED olmalıdır.");
-        if (!string.Equals(command.Environment.Trim(), connection.Environment, StringComparison.OrdinalIgnoreCase) || !string.Equals(command.StoreScope.Trim(), connection.ExternalStoreId, StringComparison.Ordinal))
-            return Invalid<CapabilityView>("scope", "Evidence environment ve store scope bağlantıyla bire bir eşleşmelidir.");
-        var officialEvidenceHost = CapabilityEvidencePolicy.OfficialDocumentationHost(connection.PlatformCode);
-        if (!Uri.TryCreate(command.SourceUrl.Trim(), UriKind.Absolute, out var sourceUri) || sourceUri.Scheme != Uri.UriSchemeHttps || !sourceUri.Host.Equals(officialEvidenceHost, StringComparison.OrdinalIgnoreCase))
-            return Invalid<CapabilityView>("sourceUrl", $"Capability evidence yalnız resmî HTTPS {officialEvidenceHost} kaynağına dayanabilir.");
-        if (string.IsNullOrWhiteSpace(command.SourceVersion) || string.IsNullOrWhiteSpace(command.EvidenceNote) || command.EvidenceNote.Trim().Length > 1000)
-            return Invalid<CapabilityView>("evidenceNote", "Kaynak sürümü ve en fazla 1000 karakterlik evidence note zorunludur.");
-        var now = timeProvider.GetUtcNow();
-        if (command.VerifiedAt > now.AddMinutes(5) || command.VerifiedAt < now.AddYears(-2)) return Invalid<CapabilityView>("verifiedAt", "Doğrulama zamanı gelecekte veya iki yıldan eski olamaz.");
-        if (command.ConstraintsJson is not null)
-        {
-            try { using var constraints = JsonDocument.Parse(command.ConstraintsJson); if (constraints.RootElement.ValueKind != JsonValueKind.Object) return Invalid<CapabilityView>("constraintsJson", "Capability constraints JSON nesnesi olmalıdır."); }
-            catch (JsonException) { return Invalid<CapabilityView>("constraintsJson", "Capability constraints geçerli JSON olmalıdır."); }
-        }
-        var writeCapability = CapabilityEvidencePolicy.RequiresStageFixtureChecksum(normalizedCode) && connection.PlatformCode != "SHOPIFY";
-        var checksum = command.FixtureChecksum?.Trim().ToUpperInvariant();
-        if (support == "SUPPORTED" && writeCapability && (checksum is null || checksum.Length != 64 || checksum.Any(x => !Uri.IsHexDigit(x))))
-            return Invalid<CapabilityView>("fixtureChecksum", "Write capability SUPPORTED yapılırken 64 haneli SHA-256 Stage/SIT fixture checksum zorunludur.");
-
-        capability.SupportLevel = support switch { "SUPPORTED" => CapabilitySupportLevel.Supported, "NOT_SUPPORTED" => CapabilitySupportLevel.NotSupported, _ => CapabilitySupportLevel.Unknown };
-        capability.SourceUrl = sourceUri.ToString(); capability.SourceVersion = command.SourceVersion.Trim(); capability.Environment = connection.Environment; capability.StoreScope = connection.ExternalStoreId;
-        capability.EvidenceNote = command.EvidenceNote.Trim(); capability.FixtureChecksum = checksum; capability.ConstraintsJson = command.ConstraintsJson; capability.VerifiedAt = command.VerifiedAt; capability.Version++;
-        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = actorUserId, Action = "CAPABILITY_EVIDENCE_RECORDED", TargetType = "PlatformCapability", TargetId = capability.Id.ToString("D"), Reason = $"{normalizedCode}:{support}", CorrelationId = correlationId, CreatedAt = now });
-        await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<CapabilityView>.Ok(new(capability.Code, capability.SupportLevel.ToString().ToUpperInvariant(), capability.ApiVersion, capability.Environment, capability.StoreScope, capability.SourceUrl, capability.VerifiedAt, capability.ConstraintsJson, capability.EvidenceNote, capability.Version,
-            CapabilityEvidencePolicy.IsVerifiedWriteCapability(capability, connection, capability.Code)));
-    }
-
     public async Task<ServiceResult<IReadOnlyList<SyncPolicyView>>> SyncPoliciesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken);
@@ -744,13 +702,6 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         if (switchedOn && (normalized is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock))
             await AutomaticPriceStockWrites.MarkCurrentValuesSentAsync(db, tenantId, id, connection.PlatformCode, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<SyncPolicyView>.Ok(Map(policy));
-    }
-
-    public async Task<ServiceResult<IReadOnlyList<WebhookSubscriptionView>>> WebhooksAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
-    {
-        if (!await db.PlatformConnections.AnyAsync(x => x.TenantId == tenantId && x.Id == id && x.Status != "DELETED" && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken)) return NotFound<IReadOnlyList<WebhookSubscriptionView>>();
-        var rows = await db.WebhookSubscriptions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == id).OrderBy(x => x.Id).Select(x => new WebhookSubscriptionView(x.Id, x.AuthenticationType, x.Status, x.ExternalSubscriptionId, x.VerifiedAt, x.LastReceivedAt, x.Version)).ToListAsync(cancellationToken);
-        return ServiceResult<IReadOnlyList<WebhookSubscriptionView>>.Ok(rows);
     }
 
     public async Task<ServiceResult<CreatedWebhookSubscription>> CreateWebhookAsync(Guid tenantId, Guid id, CreateWebhookSubscriptionCommand command, CancellationToken cancellationToken)

@@ -28,20 +28,11 @@ public static class JobWaitingPolicy
         "DELIVERY_REMOTE_PENDING"
     };
 
-    // The approval codes: the marketplace still reviews the product.
-    private static readonly HashSet<string> ApprovalCodes = new(StringComparer.Ordinal)
-    {
-        ApprovalPendingCode,
-        "HEPSIBURADA_PRODUCT_APPROVAL_PENDING"
-    };
-
     public const string ApprovalPendingCode = "PRODUCT_APPROVAL_PENDING";
 
     public static IReadOnlyCollection<string> Codes => WaitingCodes;
 
     public static bool IsWaitingCode(string? code) => code is not null && WaitingCodes.Contains(code);
-
-    public static bool IsApprovalCode(string? code) => code is not null && ApprovalCodes.Contains(code);
 
     public static bool IsWaiting(JobExecutionResult result) =>
         result.Kind == JobCompletionKind.Retry && !result.RefundAttempt && IsWaitingCode(result.ErrorCode);

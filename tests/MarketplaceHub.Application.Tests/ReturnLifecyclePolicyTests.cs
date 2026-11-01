@@ -35,18 +35,6 @@ public sealed class ReturnLifecyclePolicyTests
 
     [Theory]
     [InlineData(ReturnClaimStatus.Requested, true)]
-    [InlineData(ReturnClaimStatus.InTransit, true)]
-    [InlineData(ReturnClaimStatus.ActionRequired, true)]
-    [InlineData(ReturnClaimStatus.Disputed, true)]
-    [InlineData(ReturnClaimStatus.Completed, false)]
-    [InlineData(ReturnClaimStatus.Cancelled, false)]
-    public void OpenLifecyclePolicy_PollsOnlyNonTerminalReturns(ReturnClaimStatus status, bool expected)
-    {
-        Assert.Equal(expected, OpenReturnLifecyclePolicy.ShouldPoll(status));
-    }
-
-    [Theory]
-    [InlineData(ReturnClaimStatus.Requested, true)]
     [InlineData(ReturnClaimStatus.Approved, true)]
     [InlineData(ReturnClaimStatus.Rejected, true)]
     [InlineData(ReturnClaimStatus.Cancelled, false)]

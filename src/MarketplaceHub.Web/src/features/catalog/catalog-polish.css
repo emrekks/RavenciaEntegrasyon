@@ -53,7 +53,6 @@
 .app-shell.stitch-shell main .marketplace-pricing-open-title .ui-icon { flex: none; color: var(--rv-color-muted); transition: transform .15s ease; }
 .app-shell.stitch-shell main .marketplace-pricing-open.is-open .marketplace-pricing-open-title .ui-icon { transform: rotate(180deg); }
 .app-shell.stitch-shell main .marketplace-pricing-open > small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; line-height: 1.45; }
-.app-shell.stitch-shell main .marketplace-pricing-open-count { display: inline-flex; margin-top: 4px; padding: 2px 8px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 6px; font-size: 12px; font-weight: 600; }
 /* The marketplaces with their own price, named under the title. */
 .app-shell.stitch-shell main .marketplace-pricing-open-states { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .app-shell.stitch-shell main .marketplace-pricing-state { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 11.5px; font-weight: 500; }

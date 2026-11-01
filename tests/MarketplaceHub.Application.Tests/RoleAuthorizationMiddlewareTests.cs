@@ -103,10 +103,8 @@ public sealed class RoleAuthorizationMiddlewareTests
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/deep-delete/")]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/data-reset")]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/full-reset/")]
-    [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111/data-visibility/")]
     [InlineData("POST", "/api/v1/connections")]
     [InlineData("POST", "/api/v1/connections/")]
-    [InlineData("PUT", "/api/v1/connections/11111111-1111-1111-1111-111111111111/capabilities/ORDER_READ/evidence/")]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications/")]
     [InlineData("POST", "//api/v1/jobs/11111111-1111-1111-1111-111111111111/retry")]
     [InlineData("POST", "/api/v1/settings/data-reset")]
@@ -152,13 +150,6 @@ public sealed class RoleAuthorizationMiddlewareTests
     [InlineData("ACCOUNTING", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/label-printed", true)]
     [InlineData("OPERATIONS", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/label-printed", true)]
     [InlineData("READONLY", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/label-printed", false)]
-    // Webhook subscriptions hold the verifier secret (A22).
-    [InlineData("OPERATIONS", "POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", false)]
-    [InlineData("ADMINISTRATOR", "POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", true)]
-    // Revoking one is as elevated as creating it, whatever the trailing subscription id.
-    [InlineData("OPERATIONS", "DELETE", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks/22222222-2222-2222-2222-222222222222", false)]
-    [InlineData("OPERATIONS", "DELETE", "/api/v1/connections/11111111-1111-1111-1111-111111111111/Webhooks/22222222-2222-2222-2222-222222222222/", false)]
-    [InlineData("OWNER", "DELETE", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks/22222222-2222-2222-2222-222222222222", true)]
     public async Task OrderAndInvoiceWorkspaceWrites_FollowTheirWorkingRoles(string role, string method, string path, bool reachable)
     {
         var (called, status) = await Invoke(role, method, path);

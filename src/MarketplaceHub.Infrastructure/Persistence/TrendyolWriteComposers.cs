@@ -15,7 +15,6 @@ using Microsoft.Extensions.Configuration;
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 internal sealed record ProductUpdateDraft(Guid ProfileId, ProductUpdatePublication Publication, IReadOnlyList<PublicationVariantDraft> Variants);
-internal sealed record ProductArchiveDraft(Guid ProfileId, string PayloadHash, string PayloadJson, IReadOnlyList<PublicationVariantDraft> Variants);
 internal sealed record PriceInventoryDraft(string PayloadHash, string PayloadJson, IReadOnlyList<PriceInventoryPushLine> Lines)
 {
     // Active offers left out because their variant has no MAIN stock row.
@@ -135,26 +134,6 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
     private static object? Clone(JsonElement source, string name) => source.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) ? value.Clone() : null;
     private static string Text(JsonElement source, string name) => source.TryGetProperty(name, out var value) ? value.ToString() : "";
-    private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-}
-
-internal sealed class ProductArchiveComposer(AppDbContext db)
-{
-    public async Task<ServiceResult<ProductArchiveDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, bool archived, CancellationToken cancellationToken)
-    {
-        var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is null) return ServiceResult<ProductArchiveDraft>.Fail("LISTING_PROFILE_REQUIRED", "Trendyol arşiv işlemi için listing profile gerekir.", 422);
-        var variants = await (from listing in db.ChannelListingVariants.AsNoTracking()
-                              join variant in db.ProductVariants.AsNoTracking() on new { listing.TenantId, listing.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
-                              where listing.TenantId == tenantId && listing.ProfileId == profile.Id && listing.ExternalBarcode != null
-                              orderby variant.Id
-                              select new PublicationVariantDraft(variant.Id, variant.Sku, listing.ExternalBarcode!)).ToListAsync(cancellationToken);
-        if (variants.Count == 0) return ServiceResult<ProductArchiveDraft>.Fail("REMOTE_BARCODE_REQUIRED", "Arşiv işlemi için en az bir eşlenmiş Trendyol barkodu gerekir.", 422);
-        if (variants.Count > 1000) return ServiceResult<ProductArchiveDraft>.Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", "Tek arşiv isteğinde en fazla 1000 barkod gönderilebilir.", 422);
-        var payload = JsonSerializer.Serialize(new { items = variants.Select(x => new { barcode = x.Barcode, archived }).ToArray() });
-        return ServiceResult<ProductArchiveDraft>.Ok(new(profile.Id, Hash(payload), payload, variants));
-    }
-
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }
 

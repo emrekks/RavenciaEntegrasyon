@@ -2,7 +2,7 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastStackProvider } from '../../shared/components/ToastStack'
-import { OPERATION_FEEDBACK_TOAST_DURATION_MS, OperationFeedbackToast, useOperationFeedbackToasts, type OperationFeedback } from './operation-feedback-toast'
+import { OPERATION_FEEDBACK_TOAST_DURATION_MS, useOperationFeedbackToasts } from './operation-feedback-toast'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -15,73 +15,6 @@ afterEach(() => {
   root = undefined
   host = undefined
   vi.useRealTimers()
-})
-
-describe('operation feedback toast lifecycle', () => {
-  it('stays visible while the operation is pending and starts its dismissal countdown at completion', () => {
-    vi.useFakeTimers()
-    const onClose = vi.fn()
-    host = document.createElement('div')
-    document.body.append(host)
-    root = createRoot(host)
-
-    const pending: OperationFeedback = { message: 'Ürün değişiklikleri kaydediliyor…', kind: 'info', persistent: true }
-    act(() => root?.render(<OperationFeedbackToast feedback={pending} onClose={onClose} />))
-
-    expect(host.querySelector('.app-toast-pending')?.getAttribute('aria-busy')).toBe('true')
-    act(() => { vi.advanceTimersByTime(OPERATION_FEEDBACK_TOAST_DURATION_MS * 3) })
-    expect(onClose).not.toHaveBeenCalled()
-    expect(host.querySelector('.app-toast-pending')).not.toBeNull()
-
-    const completed: OperationFeedback = { message: 'Ürün güncellendi.', kind: 'success' }
-    act(() => root?.render(<OperationFeedbackToast feedback={completed} onClose={onClose} />))
-    expect(host.querySelector('.app-toast-pending')).toBeNull()
-
-    act(() => { vi.advanceTimersByTime(OPERATION_FEEDBACK_TOAST_DURATION_MS - 1) })
-    expect(onClose).not.toHaveBeenCalled()
-    act(() => { vi.advanceTimersByTime(1) })
-    expect(onClose).toHaveBeenCalledTimes(1)
-  })
-
-  it('keeps a refused publication on screen as an error until it is closed', () => {
-    vi.useFakeTimers()
-    const onClose = vi.fn()
-    host = document.createElement('div')
-    document.body.append(host)
-    root = createRoot(host)
-
-    const refused: OperationFeedback = { message: 'Ürün güncellendi. Uyarı: Shopify için yayın işi açılamadı.', kind: 'error', persistent: true }
-    act(() => root?.render(<OperationFeedbackToast feedback={refused} onClose={onClose} />))
-
-    expect(host.querySelector('.app-toast-pending')).toBeNull()
-    act(() => { vi.advanceTimersByTime(OPERATION_FEEDBACK_TOAST_DURATION_MS * 3) })
-    expect(onClose).not.toHaveBeenCalled()
-    expect(host.textContent).toContain('Shopify için yayın işi açılamadı.')
-  })
-
-  it('shows a structured result with its own title, one list item per line and its own reading time', () => {
-    vi.useFakeTimers()
-    const onClose = vi.fn()
-    host = document.createElement('div')
-    document.body.append(host)
-    root = createRoot(host)
-
-    const started: OperationFeedback = {
-      title: 'Yayın Başlatıldı',
-      message: 'Ürün bilgileri kaydedildi. Trendyol: ürün (3 varyant) gönderim kuyruğuna alındı.',
-      lines: ['Ürün bilgileri kaydedildi.', 'Trendyol: ürün (3 varyant) gönderim kuyruğuna alındı.'],
-      kind: 'success',
-      durationMs: 6000
-    }
-    act(() => root?.render(<OperationFeedbackToast feedback={started} onClose={onClose} />))
-
-    expect(host.querySelector('.app-toast-success strong')?.textContent).toBe('Yayın Başlatıldı')
-    expect([...host.querySelectorAll('.app-toast-lines li')].map(item => item.textContent)).toEqual(started.lines)
-    act(() => { vi.advanceTimersByTime(5999) })
-    expect(onClose).not.toHaveBeenCalled()
-    act(() => { vi.advanceTimersByTime(1) })
-    expect(onClose).toHaveBeenCalledTimes(1)
-  })
 })
 
 describe('operation feedback in the toast column', () => {

@@ -36,7 +36,7 @@ public sealed class MarketplaceVariantLinkHealthTests
         Assert.False(MarketplaceVariantLinkHealth.MeansUnknownCode(code, message));
 
     [Fact]
-    public void ASeenLinkIsHealthyAgainAndARefusalBreaksItOnce()
+    public void ASeenLinkIsHealthyAgain()
     {
         var at = new DateTimeOffset(2026, 10, 22, 10, 0, 0, TimeSpan.Zero);
         var link = new MarketplaceVariantLink { ExternalId = "HBCV1", HealthStatus = MarketplaceVariantLinkHealth.NotFound, HealthReason = "x" };
@@ -45,21 +45,13 @@ public sealed class MarketplaceVariantLinkHealthTests
         Assert.Null(link.HealthReason);
         Assert.Equal(at, link.LastSeenAt);
         Assert.Equal(at, link.HealthChangedAt);
-
-        MarketplaceVariantLinkHealth.MarkRejected(link, "Listing bulunamadı", at.AddHours(1));
-        MarketplaceVariantLinkHealth.MarkRejected(link, "Listing bulunamadı", at.AddHours(2));
-        Assert.Equal(MarketplaceVariantLinkHealth.Rejected, link.HealthStatus);
-        Assert.Equal(at.AddHours(1), link.HealthChangedAt);
-        Assert.True(MarketplaceVariantLinkHealth.IsBroken(link.HealthStatus));
     }
 
     [Fact]
-    public void OnlyATwiceRefusedCodeIsLeftOutOfBulkSendsAndASuspectOrUnverifiedOneIsNotBroken()
+    public void ANotFoundOrRejectedLinkIsBrokenAndASuspectOrUnverifiedOneIsNot()
     {
-        Assert.True(MarketplaceVariantLinkHealth.SkipsBulkPush(MarketplaceVariantLinkHealth.Rejected));
-        Assert.False(MarketplaceVariantLinkHealth.SkipsBulkPush(MarketplaceVariantLinkHealth.NotFound));
-        Assert.False(MarketplaceVariantLinkHealth.SkipsBulkPush(MarketplaceVariantLinkHealth.Suspect));
-        Assert.False(MarketplaceVariantLinkHealth.SkipsBulkPush(null));
+        Assert.True(MarketplaceVariantLinkHealth.IsBroken(MarketplaceVariantLinkHealth.NotFound));
+        Assert.True(MarketplaceVariantLinkHealth.IsBroken(MarketplaceVariantLinkHealth.Rejected));
         Assert.False(MarketplaceVariantLinkHealth.IsBroken(MarketplaceVariantLinkHealth.Suspect));
         Assert.False(MarketplaceVariantLinkHealth.IsBroken(MarketplaceVariantLinkHealth.Unverified));
     }

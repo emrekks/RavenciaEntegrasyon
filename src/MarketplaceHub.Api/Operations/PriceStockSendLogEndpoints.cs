@@ -1,5 +1,4 @@
 using MarketplaceHub.Application;
-using MarketplaceHub.Infrastructure.Identity;
 
 namespace MarketplaceHub.Api.Operations;
 

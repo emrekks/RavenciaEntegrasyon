@@ -61,7 +61,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             "shipments" when last == "content" => OperationalRoles,
             "imports" when last == "errors.csv" => OperationalRoles,
             // Reads answered by a live marketplace call.
-            "connections" when last is "n11-shipment-templates" or "instant-notifications" or "product-matches" => WorkingRoles,
+            "connections" when last is "n11-shipment-templates" or "instant-notifications" => WorkingRoles,
             "orders" when last is "finance" or "product-image" => WorkingRoles,
             "shipments" when last == "changeable-cargo-companies" => WorkingRoles,
             "returns" when last is "rejection-reasons" or "audits" => WorkingRoles,
@@ -93,15 +93,11 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             case "connections":
                 // Creating a connection stores the store's credentials, as rotating them does.
                 if (segments.Length == 3) return ElevatedRoles;
-                if (last == "evidence" && segments.Any(segment => segment.Equals("capabilities", StringComparison.OrdinalIgnoreCase))) return ElevatedRoles;
-                // Revoking a webhook subscription (/webhooks/{subscriptionId}) is as elevated as creating one.
-                if (segments.Length > 5 && segments[4].Equals("webhooks", StringComparison.OrdinalIgnoreCase)) return ElevatedRoles;
                 // PATCH /connections/{id} stays operational; the endpoint refuses its external write and invoice creation
                 // changes to other roles (IsElevated), and environment and store changes to everyone.
-                // Credentials, stage test orders, deleting, emptying or hiding a connection's data, and registering
-                // the marketplace's notifications (a setting on the store's side) and webhook subscriptions (they hold
-                // the verifier secret and hand out the route token) are for administrators.
-                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "full-reset" or "data-visibility" or "instant-notifications" or "webhooks"
+                // Credentials, stage test orders, deleting or emptying a connection's data, and registering the
+                // marketplace's notifications (a setting on the store's side) are for administrators.
+                return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "full-reset" or "instant-notifications"
                     ? ElevatedRoles
                     : OperationalRoles;
             case "shipments":

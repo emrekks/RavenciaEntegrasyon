@@ -26,7 +26,7 @@ public static class IdempotencyRequestDigest
     }
 }
 
-// Successful answers that hand out a secret once (a webhook route token, a generated webhook password).
+// Successful answers that hand out a secret once (an instant-notification route token and its generated password).
 // Their bodies are not stored for replay; a repeat of the same key is told the work is done instead.
 public static class SecretResponseRoutes
 {
@@ -37,6 +37,6 @@ public static class SecretResponseRoutes
         return segments.Length == 5
             && segments[0].Equals("api", StringComparison.OrdinalIgnoreCase) && segments[1].Equals("v1", StringComparison.OrdinalIgnoreCase)
             && segments[2].Equals("connections", StringComparison.OrdinalIgnoreCase)
-            && (segments[4].Equals("webhooks", StringComparison.OrdinalIgnoreCase) || segments[4].Equals("instant-notifications", StringComparison.OrdinalIgnoreCase));
+            && segments[4].Equals("instant-notifications", StringComparison.OrdinalIgnoreCase);
     }
 }

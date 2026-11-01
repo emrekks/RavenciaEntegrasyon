@@ -246,12 +246,6 @@ export function quickPriceChoiceHelp(choice: string, channelName?: string | null
   return 'Fiyatın nereye yazılacağını seçin: Panel Ana Fiyatı ya da tek bir pazaryeri kanalı.'
 }
 
-// The group label of the per-variant price fields.
-export function quickPriceChoiceLabel(choice: string, channelName?: string | null): string {
-  if (choice === PANEL_PRICE_CHOICE) return 'Panel Fiyatı'
-  return choice ? channelName || 'Kanal Fiyatı' : 'Fiyat'
-}
-
 // Where a panel price change goes: the variant, at the version the list loaded.
 export type PanelPriceTarget = { kind: 'panel'; variantId: string; version: number } | { kind: 'blocked'; reason: string }
 export function panelPriceTarget(variant: { id: string; version?: number | null }): PanelPriceTarget {

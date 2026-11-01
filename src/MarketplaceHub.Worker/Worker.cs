@@ -3,7 +3,6 @@ using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
 using Npgsql;
 
 namespace MarketplaceHub.Worker;
@@ -12,7 +11,6 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 {
     // The lanes (and the job types each takes) are defined in WorkerLanes, shared with the queue metrics.
     internal static readonly string[] OrderStatusLaneJobTypes = [.. MarketplaceHub.Infrastructure.Jobs.WorkerLanes.OrderStatusJobTypes];
-    internal static readonly string[] HotLaneExcludedJobTypes = [.. MarketplaceHub.Infrastructure.Jobs.WorkerLanes.HotLaneExcludedJobTypes];
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
     private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 5), 1, 30));
     private readonly int hotPriorityCeiling = Math.Clamp(configuration.GetValue("Worker:HotPriorityCeiling", 2), 0, 5);

@@ -141,7 +141,6 @@ public static class DependencyInjection
         services.AddScoped<IConnectionPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IReferenceDataPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IProductPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
-        services.AddScoped<IHepsiburadaProductMatchPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IProductVisualLookupPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IReturnAuditPort>(provider => provider.GetRequiredService<MarketplacePortRouter>());
         services.AddScoped<IReturnAuditReader, ReturnAuditReader>();
@@ -169,7 +168,6 @@ public static class DependencyInjection
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.PazaramaFinanceSyncJobHandler>();
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.ConnectionFullResetJobHandler>();
         services.AddScoped<IMarketplaceJobProcessor, MarketplaceJobProcessor>();
-        services.AddScoped<IMarketplaceReconciliationService, MarketplaceReconciliationService>();
         services.Configure<TrendyolEFaturamOptions>(configuration.GetSection(TrendyolEFaturamOptions.SectionName));
         services.AddHttpClient("TrendyolEFaturam", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AutomaticDecompression = System.Net.DecompressionMethods.All, PooledConnectionLifetime = TimeSpan.FromMinutes(10) });
         services.AddHttpClient("TrendyolEFaturamDocument", client => client.Timeout = Timeout.InfiniteTimeSpan).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
@@ -190,7 +188,6 @@ public static class DependencyInjection
         services.AddScoped<IInvoicingBillingService, InvoicingBillingService>();
         services.AddScoped<IInvoicingJobProcessor, InvoicingJobProcessor>();
         services.AddScoped<IInvoiceInlineRunner, InvoiceInlineRunner>();
-        services.AddScoped<IInvoicingReconciliationService, InvoicingReconciliationService>();
         services.AddSingleton<IPrivateFileStorage>(new PrivateFileStorage(filesRoot));
         services.Configure<BootstrapOptions>(configuration.GetSection("Bootstrap"));
         services.AddScoped<BootstrapService>();

@@ -419,7 +419,7 @@ public sealed class TrendyolCatalogMapperTests
     }
 
     [Fact]
-    public void CatalogImportOrdering_CompletesEachModelBeforeMovingToTheNextOne()
+    public void CatalogImportOrdering_KeysVariantsOfOneModelTogether()
     {
         static RemoteCatalogProduct Product(string externalId, string modelId, string sku) => new(
             externalId,
@@ -434,16 +434,9 @@ public sealed class TrendyolCatalogMapperTests
             [new RemoteCatalogVariant(sku, sku, null, modelId, new Dictionary<string, string>(), false, null, null, null, null, null, "{}")],
             "{}");
 
-        var groups = CatalogImportOrdering.GroupByModel(new[]
-        {
-            Product("content-2", "model-a", "model-a-red"),
-            Product("content-9", "model-b", "model-b-small"),
-            Product("content-3", "model-a", "model-a-blue")
-        }).ToList();
-
-        Assert.Equal(2, groups.Count);
-        Assert.Equal(new[] { "content-2", "content-3" }, groups[0].Select(x => x.ExternalProductId));
-        Assert.Equal(new[] { "content-9" }, groups[1].Select(x => x.ExternalProductId));
+        Assert.Equal("model-a", CatalogImportOrdering.ModelKey(Product("content-2", "model-a", "model-a-red")));
+        Assert.Equal("model-a", CatalogImportOrdering.ModelKey(Product("content-3", "model-a", "model-a-blue")));
+        Assert.Equal("model-b", CatalogImportOrdering.ModelKey(Product("content-9", "model-b", "model-b-small")));
     }
 
     // 26 Oct 2026: a new panel product takes the date Trendyol created it, so the catalog lists the last added first.

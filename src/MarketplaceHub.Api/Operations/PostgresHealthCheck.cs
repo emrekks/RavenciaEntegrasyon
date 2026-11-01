@@ -1,5 +1,4 @@
 using MarketplaceHub.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace MarketplaceHub.Api.Operations;

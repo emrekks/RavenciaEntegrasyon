@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobsLogsTabOpen, jobsMainTab, readJobsViewState, withJobsLogsTab, withJobsMainTab, writeJobsViewState } from './jobs-url-state'
+import { jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState } from './jobs-url-state'
 
 describe('İşlem Takibi address state (W16)', () => {
   it('reads the defaults from an empty address', () => {
@@ -28,14 +28,13 @@ describe('İşlem Takibi address state (W16)', () => {
   })
 
   it('opens and closes the Loglar tab without touching the job filters', () => {
-    const opened = withJobsLogsTab(new URLSearchParams('kategori=fatura&platform=n11'), true)
+    const opened = withJobsMainTab(new URLSearchParams('kategori=fatura&platform=n11'), 'logs')
     expect(opened.toString()).toBe('kategori=fatura&platform=n11&sekme=loglar')
-    expect(jobsLogsTabOpen(opened)).toBe(true)
+    expect(jobsMainTab(opened)).toBe('logs')
     expect(readJobsViewState(opened).category).toBe('INVOICES')
-    const closed = withJobsLogsTab(opened, false)
+    const closed = withJobsMainTab(opened, 'jobs')
     expect(closed.toString()).toBe('kategori=fatura&platform=n11')
-    expect(jobsLogsTabOpen(closed)).toBe(false)
-    expect(jobsLogsTabOpen(new URLSearchParams('sekme=x'))).toBe(false)
+    expect(jobsMainTab(closed)).toBe('jobs')
   })
 
   it('reads and writes the three main tabs, an unknown one opening the job list', () => {

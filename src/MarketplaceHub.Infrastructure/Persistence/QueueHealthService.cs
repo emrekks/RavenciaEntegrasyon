@@ -1,5 +1,4 @@
 using MarketplaceHub.Application;
-using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Jobs;
 using Microsoft.EntityFrameworkCore;

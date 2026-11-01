@@ -1686,9 +1686,9 @@ public sealed class PttAvmAdapterTests
         var family = PttAvmProductPayloadRules.Payload(ProductDraft() with { Barcode = "MZ059YNC", ProductCode = "MZ059YNC", Variants = [new("MZ059YNC-01", "Siyah", "S", 1)] });
         string Job(Guid product, string hash, string payloadJson) => System.Text.Json.JsonSerializer.Serialize(new ProductPublicationJobPayload(Guid.NewGuid(), product, Guid.NewGuid(), "POLL", hash, payloadJson, "t:1", Now));
 
-        Assert.Equal("MZ059YNC", PttAvmProductPayloadRules.PublicationParentBarcode([Job(Guid.NewGuid(), "H1", family)], productId, "H1"));
-        Assert.Null(PttAvmProductPayloadRules.PublicationParentBarcode([Job(productId, "H2", family)], productId, "H1"));
-        Assert.Null(PttAvmProductPayloadRules.PublicationParentBarcode([Job(productId, "H1", PttAvmProductPayloadRules.Payload(ProductDraft())), "not json"], productId, "H1"));
+        Assert.Equal("MZ059YNC", PttAvmProductPayloadRules.PublicationFamily([Job(Guid.NewGuid(), "H1", family)], productId, "H1")?.Barcode);
+        Assert.Null(PttAvmProductPayloadRules.PublicationFamily([Job(productId, "H2", family)], productId, "H1"));
+        Assert.Null(PttAvmProductPayloadRules.PublicationFamily([Job(productId, "H1", PttAvmProductPayloadRules.Payload(ProductDraft())), "not json"], productId, "H1"));
     }
 
     [Fact]

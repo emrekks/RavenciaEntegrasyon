@@ -20,14 +20,6 @@ public sealed class HepsiburadaStageCertificationPolicyTests
     }
 
     [Fact]
-    public void StageHepsiburadaPublicationDoesNotRequireProductWriteEvidence()
-    {
-        var required = HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(Connection("STAGE"));
-
-        Assert.Equal(new[] { MarketplaceCapabilities.PriceWrite, MarketplaceCapabilities.InventoryWrite }, required);
-    }
-
-    [Fact]
     public void ProductionHepsiburadaPublicationRestsOnThePriceAndStockEvidenceTheConnectionCheckRecords()
     {
         var required = HepsiburadaStageCertificationPolicy.PublicationEvidenceCapabilities(Connection("PRODUCTION"));

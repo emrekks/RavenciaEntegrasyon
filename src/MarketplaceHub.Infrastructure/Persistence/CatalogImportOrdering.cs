@@ -4,17 +4,6 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 internal static class CatalogImportOrdering
 {
-    public static IEnumerable<IReadOnlyList<RemoteCatalogProduct>> GroupByModel(IEnumerable<RemoteCatalogProduct> source)
-    {
-        return source
-            .Where(snapshot => !string.IsNullOrWhiteSpace(snapshot.ExternalProductId))
-            // GroupBy keeps the first-seen model order while making every
-            // snapshot belonging to that model contiguous. This avoids
-            // interleaving variants from unrelated models during import.
-            .GroupBy(ModelKey, StringComparer.OrdinalIgnoreCase)
-            .Select(group => (IReadOnlyList<RemoteCatalogProduct>)group.ToList());
-    }
-
     // When the marketplace created the product (Trendyol's creationDate, epoch milliseconds). A new panel product takes
     // it as its CreatedAt, so the catalog lists the products last added to the marketplace first, whatever order and
     // however many runs the import took (26 Oct 2026: each finalizing run stamped its own time, older products on top).

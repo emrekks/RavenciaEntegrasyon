@@ -171,10 +171,10 @@ public sealed class JobQueueAuditTests
     [Fact]
     public void TheLongTrendyolOpenPackageScanHasItsOwnLane()
     {
-        Assert.Contains(MarketplaceJobTypes.OrderStatusSync, MarketplaceHub.Worker.Worker.HotLaneExcludedJobTypes);
+        Assert.Contains(MarketplaceJobTypes.OrderStatusSync, MarketplaceHub.Infrastructure.Jobs.WorkerLanes.HotLaneExcludedJobTypes);
         Assert.Contains(MarketplaceJobTypes.OrderStatusSync, MarketplaceHub.Worker.Worker.OrderStatusLaneJobTypes);
-        Assert.DoesNotContain(MarketplaceJobTypes.WebhookIngest, MarketplaceHub.Worker.Worker.HotLaneExcludedJobTypes);
-        Assert.DoesNotContain(MarketplaceJobTypes.OrderSync, MarketplaceHub.Worker.Worker.HotLaneExcludedJobTypes);
+        Assert.DoesNotContain(MarketplaceJobTypes.WebhookIngest, MarketplaceHub.Infrastructure.Jobs.WorkerLanes.HotLaneExcludedJobTypes);
+        Assert.DoesNotContain(MarketplaceJobTypes.OrderSync, MarketplaceHub.Infrastructure.Jobs.WorkerLanes.HotLaneExcludedJobTypes);
     }
 
     [Fact]

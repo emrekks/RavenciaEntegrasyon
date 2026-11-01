@@ -132,12 +132,6 @@ public static class ReturnClaimDecisionPolicy
     }
 }
 
-public static class OpenReturnLifecyclePolicy
-{
-    public static bool ShouldPoll(ReturnClaimStatus status) =>
-        status is not ReturnClaimStatus.Completed and not ReturnClaimStatus.Cancelled;
-}
-
 public static class ReturnClaimStoragePolicy
 {
     public static bool ShouldPersist(ReturnClaimStatus status) => status != ReturnClaimStatus.Cancelled;

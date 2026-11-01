@@ -6,8 +6,6 @@ export type InvoiceCreationCandidate = {
   invoiceCreationEnabled: boolean
 }
 
-export type InvoiceActionFilter = 'ALL' | 'CREATABLE' | 'NOT_CREATABLE'
-export type InvoiceSubmissionAction = 'VALIDATE' | 'SUBMIT' | 'BLOCK'
 export type InvoiceProviderConnection = { id: string; platformCode: string; environment: string; status: string; hasCredential: boolean }
 
 const retryableInvoiceStatuses = new Set(['FATURA_REDDEDILDI', 'FATURA_PLATFORMA_AKTARILMADI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW', 'MARKETPLACE_FAILED'])
@@ -48,23 +46,4 @@ export function isInvoiceCreationActionVisible(item: InvoiceCreationCandidate) {
     && item.platformCode.trim().toUpperCase() !== 'TRENDYOL'
     && item.invoiceCreationEnabled
     && item.canCreateInvoice
-}
-
-export function matchesInvoiceActionFilter(item: InvoiceCreationCandidate, filter: InvoiceActionFilter, providerHasCredential: boolean) {
-  const available = isInvoiceCreationAvailable(item, providerHasCredential)
-  return filter === 'ALL' || (filter === 'CREATABLE' ? available : !available)
-}
-
-/** Validation failures must be retried through validation before a submit job can be queued. */
-export function invoiceSubmissionAction(status: string, allowedActions: string[]): InvoiceSubmissionAction {
-  const normalizedStatus = status.trim().toUpperCase()
-  const actions = new Set(allowedActions.map(action => action.trim().toUpperCase()))
-  if (['DRAFT', 'VALIDATION_FAILED'].includes(normalizedStatus) && actions.has('VALIDATE')) return 'VALIDATE'
-  if (actions.has('SUBMIT')) return 'SUBMIT'
-  return 'BLOCK'
-}
-
-export function isValidatedInvoiceReadyToSubmit(status: string, allowedActions: string[]) {
-  return status.trim().toUpperCase() === 'READY'
-    && allowedActions.some(action => action.trim().toUpperCase() === 'SUBMIT')
 }

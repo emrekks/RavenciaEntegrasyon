@@ -22,7 +22,6 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
 {
     public const int BatchSize = 2_000;
     public static readonly TimeSpan DefaultGuardRetention = TimeSpan.FromDays(90);
-    public static readonly TimeSpan DefaultInboxRetention = TimeSpan.FromDays(90);
     public static readonly TimeSpan RateLimitUsageRetention = TimeSpan.FromDays(2);
 
     private static readonly string[] KeptJobTypes =
@@ -102,9 +101,6 @@ public sealed class JobRetentionService(AppDbContext db, TimeProvider timeProvid
     }
 
     // Every webhook delivery leaves an inbox row; once processed and older than the retention it only takes room.
-    public async Task<int> PurgeProcessedInboxAsync(TimeSpan retention, int maximumBatches, CancellationToken cancellationToken) =>
-        await PurgeInboxAsync(retention, DefaultInboxRetention, maximumBatches, cancellationToken);
-
     // Processed rows go after the processed retention. A row whose ingest job ended blocked or dead is never
     // marked processed; every row goes once it was received longer ago than the receipt retention (90 days).
     public async Task<int> PurgeInboxAsync(TimeSpan processedRetention, TimeSpan receivedRetention, int maximumBatches, CancellationToken cancellationToken)

@@ -5,11 +5,6 @@ export function normalizeReferenceValueLabel(value: string) {
   return value.trim().toLocaleLowerCase('tr-TR').replace(/\s*([/-])\s*/g, '$1').replace(/\s+/g, ' ')
 }
 
-export function hasDirectReferenceValue(localValue: string, remoteValues: readonly string[]) {
-  const normalizedLocalValue = normalizeReferenceValueLabel(localValue)
-  return remoteValues.some(value => normalizeReferenceValueLabel(value) === normalizedLocalValue)
-}
-
 export function planDirectReferenceValues(
   localValues: readonly { id: string; value: string }[],
   remoteValues: readonly { externalId: string; name: string }[]

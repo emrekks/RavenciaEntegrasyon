@@ -124,10 +124,6 @@ export function publicationStatusLabel(actualStatus?: string | null, lastJobStat
   return publicationLabels.UNKNOWN
 }
 
-export function missingPublicationChecks<T extends { ok: boolean }>(checks: readonly T[]) {
-  return checks.filter(check => !check.ok)
-}
-
 export function publicationStatusTone(actualStatus?: string | null, lastJobStatus?: string | null) {
   const status = actualStatus?.trim().toUpperCase() ?? ''
   if (['LIVE', 'PARTIAL_LIVE', 'APPROVED'].includes(status)) return 'success' as const

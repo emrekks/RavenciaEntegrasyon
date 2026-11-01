@@ -6,52 +6,6 @@ using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Application;
 
-public static class SynchronizationCadence
-{
-    public static readonly TimeSpan HotOrders = TimeSpan.FromSeconds(60);
-    public static readonly TimeSpan HotReturns = TimeSpan.FromMinutes(3);
-}
-
-public static class SynchronizationWindowPolicy
-{
-    public static (DateTimeOffset Start, DateTimeOffset End) Incremental(
-        DateTimeOffset? lastSuccessfulSync,
-        DateTimeOffset now,
-        TimeSpan overlap,
-        TimeSpan? maximumHistory = null)
-    {
-        if (overlap < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(overlap));
-        var start = (lastSuccessfulSync ?? now).Subtract(overlap);
-        if (maximumHistory is { } history)
-        {
-            if (history <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maximumHistory));
-            var oldest = now.Subtract(history);
-            if (start < oldest) start = oldest;
-        }
-        if (start > now) start = now.Subtract(overlap);
-        return (start, now);
-    }
-
-    public static IReadOnlyList<(DateTimeOffset Start, DateTimeOffset End)> ForwardChunks(
-        DateTimeOffset start,
-        DateTimeOffset end,
-        TimeSpan maximumSpan)
-    {
-        if (end < start) throw new ArgumentOutOfRangeException(nameof(end));
-        if (maximumSpan <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(maximumSpan));
-        var result = new List<(DateTimeOffset, DateTimeOffset)>();
-        var cursor = start;
-        while (cursor < end)
-        {
-            var next = cursor.Add(maximumSpan);
-            if (next > end) next = end;
-            result.Add((cursor, next));
-            cursor = next;
-        }
-        return result;
-    }
-}
-
 public static class TrendyolOrderHistoryPolicy
 {
     public const int StreamInitialLookbackMonths = 3;
@@ -452,15 +406,6 @@ public static class OrderInventoryStockPolicy
 
     public static string ResetCarryKey(Guid connectionId, string externalOrderId, string externalLineId) =>
         $"{ResetCarryPrefix}{connectionId:D}:{externalOrderId}:{externalLineId}";
-
-    public static decimal LimitToAvailableStock(decimal onHand, decimal available, decimal sourceReservation, decimal requestedDelta, bool negativeStockAllowed)
-    {
-        if (available < 0 || sourceReservation < 0)
-            throw new ArgumentOutOfRangeException(nameof(available));
-        if (requestedDelta >= 0 || negativeStockAllowed) return requestedDelta;
-        var consumable = Math.Max(0m, Math.Min(onHand, available + sourceReservation));
-        return Math.Max(requestedDelta, -consumable);
-    }
 }
 
 public static class InventoryAuthorityPolicy
@@ -943,8 +888,6 @@ public static class MarketplaceStoredClock
         platformCode is not null && WallClockPlatforms.Contains(platformCode.Trim().ToUpperInvariant(), StringComparer.Ordinal)
             ? TurkeyWallClockAhead
             : TimeSpan.Zero;
-
-    public static DateTimeOffset RealInstant(DateTimeOffset stored, string? platformCode) => stored - StoredClockAhead(platformCode);
 }
 
 // While a marketplace's order notifications arrive, polling is only the safety net and runs every

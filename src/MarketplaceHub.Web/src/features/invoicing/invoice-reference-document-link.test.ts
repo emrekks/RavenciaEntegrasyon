@@ -1,80 +1,45 @@
 import { describe, expect, it } from 'vitest'
-import { invoiceReferenceDocumentHref, invoiceReferenceDocumentLabel, invoiceReferenceMarketplaceHref, platformInvoiceLinkUnavailable } from './invoice-reference-document-link'
+import { invoiceReferenceMarketplaceHref, platformInvoiceLinkUnavailable, safeInvoiceReferenceUrl } from './invoice-reference-document-link'
 
-describe('invoiceReferenceDocumentHref', () => {
+describe('invoiceReferenceMarketplaceHref', () => {
   it('opens the current marketplace invoice link when it is a safe HTTPS URL', () => {
-    expect(invoiceReferenceDocumentHref({
-      invoiceId: 'invoice-1',
-      invoiceDocumentAvailable: true,
+    expect(invoiceReferenceMarketplaceHref({
       marketplaceInvoiceUrl: 'https://documents.example.test/current.pdf',
       platformInvoiceStatus: 'INVOICED',
     })).toBe('https://documents.example.test/current.pdf')
   })
 
-  it('uses a manual invoice document when no current marketplace link exists', () => {
-    expect(invoiceReferenceDocumentHref({
-      invoiceId: null,
-      invoiceDocumentAvailable: false,
-      manualInvoiceDocumentUrl: 'https://documents.example.test/manual.pdf',
-    })).toBe('https://documents.example.test/manual.pdf')
-  })
-
-  it('prefers the current marketplace invoice link over a stored manual document', () => {
-    expect(invoiceReferenceDocumentHref({
-      invoiceId: 'invoice-1',
-      invoiceDocumentAvailable: true,
-      marketplaceInvoiceUrl: 'https://marketplace.example.test/current.pdf',
-      manualInvoiceDocumentUrl: 'https://documents.example.test/manual.pdf',
+  it('prefers the current platform invoice link over the stored marketplace link', () => {
+    expect(invoiceReferenceMarketplaceHref({
+      marketplaceInvoiceUrl: 'https://marketplace.example.test/old.pdf',
+      currentPlatformInvoiceUrl: 'https://marketplace.example.test/current.pdf',
       platformInvoiceStatus: 'INVOICED',
     })).toBe('https://marketplace.example.test/current.pdf')
   })
 
-  it('falls back to the local PDF when the marketplace link is missing or unsafe', () => {
-    const item = { invoiceId: 'invoice/1', invoiceDocumentAvailable: true }
-    expect(invoiceReferenceDocumentHref(item)).toBe('/api/v1/invoices/invoice%2F1/documents/latest/content')
-    expect(invoiceReferenceDocumentHref({ ...item, marketplaceInvoiceUrl: 'javascript:alert(1)' }))
-      .toBe('/api/v1/invoices/invoice%2F1/documents/latest/content')
-    expect(invoiceReferenceDocumentHref({ ...item, marketplaceInvoiceUrl: 'https://localhost/invoice.pdf' }))
-      .toBe('/api/v1/invoices/invoice%2F1/documents/latest/content')
-    expect(invoiceReferenceDocumentHref({ ...item, marketplaceInvoiceUrl: 'https://localhost/invoice.pdf', manualInvoiceDocumentUrl: 'https://documents.example.test/manual.pdf' }))
-      .toBe('https://documents.example.test/manual.pdf')
-  })
-
-  it('does not render a document action when no usable document exists', () => {
-    expect(invoiceReferenceDocumentHref({ invoiceId: 'invoice-1', invoiceDocumentAvailable: false })).toBeNull()
-  })
-
   it('does not treat a stale marketplace URL as an invoice link when platform status is pending', () => {
-    const item = {
-      invoiceId: null,
-      invoiceDocumentAvailable: false,
-      marketplaceInvoiceUrl: 'https://marketplace.example.test/old.pdf',
-      platformInvoiceStatus: 'NOT_INVOICED',
-    }
+    const item = { marketplaceInvoiceUrl: 'https://marketplace.example.test/old.pdf', platformInvoiceStatus: 'NOT_INVOICED' }
     expect(invoiceReferenceMarketplaceHref(item)).toBeNull()
-    expect(invoiceReferenceDocumentHref(item)).toBeNull()
-    expect(invoiceReferenceDocumentLabel(item)).toBeNull()
-  })
-
-  it('opens the platform link first and labels stored documents by their actual source', () => {
-    const item = {
-      invoiceId: 'invoice-1',
-      invoiceDocumentAvailable: true,
-      currentPlatformInvoiceUrl: 'https://marketplace.example.test/current.pdf',
-      manualInvoiceDocumentUrl: 'https://documents.example.test/manual.pdf',
-      platformInvoiceStatus: 'INVOICED',
-    }
-    expect(invoiceReferenceDocumentHref(item)).toBe('https://marketplace.example.test/current.pdf')
-    expect(invoiceReferenceDocumentLabel(item)).toBe('Fatura linki')
-    expect(invoiceReferenceMarketplaceHref(item)).toBe('https://marketplace.example.test/current.pdf')
     expect(platformInvoiceLinkUnavailable(item)).toBe(false)
   })
 
-  it('labels local fallback as a local PDF when marketplace says invoiced but exposes no link', () => {
-    const item = { invoiceId: 'invoice-1', invoiceDocumentAvailable: true, platformInvoiceStatus: 'INVOICED' }
-    expect(invoiceReferenceDocumentHref(item)).toBe('/api/v1/invoices/invoice-1/documents/latest/content')
-    expect(invoiceReferenceDocumentLabel(item)).toBe('Yerel PDF')
-    expect(invoiceReferenceMarketplaceHref(item)).toBeNull()
-    expect(platformInvoiceLinkUnavailable(item)).toBe(true)
+  it('reports an invoiced order whose marketplace exposes no usable link', () => {
+    expect(invoiceReferenceMarketplaceHref({ platformInvoiceStatus: 'INVOICED' })).toBeNull()
+    expect(platformInvoiceLinkUnavailable({ platformInvoiceStatus: 'INVOICED' })).toBe(true)
+    expect(platformInvoiceLinkUnavailable({ platformInvoiceStatus: 'INVOICED', marketplaceInvoiceUrl: 'javascript:alert(1)' })).toBe(true)
+    expect(platformInvoiceLinkUnavailable({ platformInvoiceStatus: 'INVOICED', currentPlatformInvoiceUrl: 'https://marketplace.example.test/current.pdf' })).toBe(false)
+  })
+})
+
+describe('safeInvoiceReferenceUrl', () => {
+  it('accepts a public HTTPS URL and rejects unsafe or private ones', () => {
+    expect(safeInvoiceReferenceUrl(' https://documents.example.test/manual.pdf ')).toBe('https://documents.example.test/manual.pdf')
+    expect(safeInvoiceReferenceUrl('javascript:alert(1)')).toBeNull()
+    expect(safeInvoiceReferenceUrl('http://documents.example.test/manual.pdf')).toBeNull()
+    expect(safeInvoiceReferenceUrl('https://localhost/invoice.pdf')).toBeNull()
+    expect(safeInvoiceReferenceUrl('https://192.168.1.10/invoice.pdf')).toBeNull()
+    expect(safeInvoiceReferenceUrl('https://user:pass@documents.example.test/manual.pdf')).toBeNull()
+    expect(safeInvoiceReferenceUrl('')).toBeNull()
+    expect(safeInvoiceReferenceUrl(null)).toBeNull()
   })
 })

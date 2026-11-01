@@ -361,9 +361,7 @@ public sealed class IdempotencyKeyTests
     }
 
     [Theory]
-    [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", true)]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/instant-notifications", true)]
-    [InlineData("GET", "/api/v1/connections/11111111-1111-1111-1111-111111111111/webhooks", false)]
     [InlineData("POST", "/api/v1/connections/11111111-1111-1111-1111-111111111111/test-jobs", false)]
     public void SecretAnswersAreNotKeptForReplay(string method, string path, bool secret)
     {

@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Http;
-
 namespace MarketplaceHub.Api.Catalog;
 
 public static class ApiIdempotencyHeaderPolicy

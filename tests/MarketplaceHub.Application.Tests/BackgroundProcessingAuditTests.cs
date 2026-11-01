@@ -228,8 +228,8 @@ public sealed class BackgroundProcessingAuditTests
     [Fact]
     public void StatusScansOfEveryMarketplaceStayOutOfTheHotLane()
     {
-        Assert.Contains(MarketplaceJobTypes.HepsiburadaOrderStatusSync, WorkerService.HotLaneExcludedJobTypes);
-        Assert.Contains(MarketplaceJobTypes.ShopifyOrderStatusSync, WorkerService.HotLaneExcludedJobTypes);
+        Assert.Contains(MarketplaceJobTypes.HepsiburadaOrderStatusSync, MarketplaceHub.Infrastructure.Jobs.WorkerLanes.HotLaneExcludedJobTypes);
+        Assert.Contains(MarketplaceJobTypes.ShopifyOrderStatusSync, MarketplaceHub.Infrastructure.Jobs.WorkerLanes.HotLaneExcludedJobTypes);
         Assert.Equal("order-status", WorkerLanes.LaneFor(MarketplaceJobTypes.ShopifyOrderStatusSync, JobPriorityPolicy.Realtime));
         Assert.Equal("order-status", WorkerLanes.LaneFor(MarketplaceJobTypes.OrderStatusSync, JobPriorityPolicy.Realtime));
         Assert.Equal("hepsiburada-status", WorkerLanes.LaneFor(MarketplaceJobTypes.HepsiburadaOrderStatusSync, JobPriorityPolicy.Realtime));

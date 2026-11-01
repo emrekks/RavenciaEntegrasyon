@@ -7,7 +7,6 @@ public static class ChannelOfferPricePolicy
 {
     public const string VatIncluded = "INCLUDED";
     public const string VatExcluded = "EXCLUDED";
-    public const string DefaultRoundingMode = "HALF_EVEN";
     public const int OutboundDecimals = 2;
 
     private static readonly IReadOnlyDictionary<string, MidpointRounding> RoundingModes = new Dictionary<string, MidpointRounding>(StringComparer.OrdinalIgnoreCase)

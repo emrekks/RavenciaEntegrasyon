@@ -206,9 +206,6 @@ public static class OpenOrderLifecyclePolicy
             || status == "NEW" && orderedAt < HepsiburadaUnpackagedOrderVerificationCutoff(now);
     }
 
-    public static bool ShouldPoll(ShipmentPackageStatus status) =>
-        status is not ShipmentPackageStatus.Delivered and not ShipmentPackageStatus.Cancelled and not ShipmentPackageStatus.Returned;
-
     public static bool ShouldShowShipmentDeadlineWarning(
         string? platformCode,
         string? derivedStatus,

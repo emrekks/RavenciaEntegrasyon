@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceChoiceLabel, quickPriceTarget } from './quick-price-edit'
+import { channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceTarget } from './quick-price-edit'
 
 describe('panel price choice', () => {
   const product = { defaultListPrice: 300, defaultSalePrice: 250 }
@@ -50,8 +50,6 @@ describe('panel price choice', () => {
     // With marketplaces following the panel price, the help names them and says their price changes too.
     expect(quickPriceChoiceHelp(PANEL_PRICE_CHOICE, null, ['Trendyol', 'N11'])).toContain('Özel Fiyat işaretli olmayan pazaryerleri (Trendyol, N11) ana fiyatla satılır')
     expect(quickPriceChoiceHelp('conn-1', 'Trendyol')).toBe('Yalnız Trendyol fiyatı değişir; panel ana fiyatı ve diğer kanalların fiyatı değişmez. Bu kanalda fiyatı olmayan varyantın ilk fiyatı oluşturulur.')
-    expect(quickPriceChoiceLabel(PANEL_PRICE_CHOICE)).toBe('Panel Fiyatı')
-    expect(quickPriceChoiceLabel('conn-1', 'Hepsiburada')).toBe('Hepsiburada')
   })
 
   it('writes the panel price at the loaded variant version, and refuses without one', () => {

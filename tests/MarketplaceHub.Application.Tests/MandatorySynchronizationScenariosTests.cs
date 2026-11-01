@@ -10,9 +10,8 @@ namespace MarketplaceHub.Application.Tests;
 public sealed class MandatorySynchronizationScenariosTests
 {
     [Fact]
-    public void Scenario01_NormalOrder_UsesOneMinuteHotCadenceAndImmediateReservation()
+    public void Scenario01_NormalOrder_ReservesImmediately()
     {
-        Assert.Equal(TimeSpan.FromSeconds(60), SynchronizationCadence.HotOrders);
         Assert.Equal(2m, OrderInventoryReservationPolicy.DesiredQuantity(2m, 0m));
     }
 
@@ -24,22 +23,8 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
-    public void Scenario03_WorkerOfflineFourHours_RecoversFromTenMinuteOverlap()
+    public void Scenario04_WorkerOfflineFortyFiveDays_RecoveryLaneRemainsSeparateFromHotLane()
     {
-        var last = DateTimeOffset.Parse("2026-08-26T14:00:00Z");
-        var now = DateTimeOffset.Parse("2026-08-26T18:00:00Z");
-        var window = SynchronizationWindowPolicy.Incremental(last, now, TimeSpan.FromMinutes(10));
-        Assert.Equal(DateTimeOffset.Parse("2026-08-26T13:50:00Z"), window.Start);
-        Assert.Equal(now, window.End);
-    }
-
-    [Fact]
-    public void Scenario04_WorkerOfflineFortyFiveDays_IsCoveredByChunksWhileHotLaneRemainsSeparate()
-    {
-        var start = DateTimeOffset.Parse("2026-07-12T00:00:00Z");
-        var chunks = SynchronizationWindowPolicy.ForwardChunks(start, start.AddDays(45), TimeSpan.FromDays(14));
-        Assert.Equal(4, chunks.Count);
-        Assert.All(chunks, chunk => Assert.True(chunk.End - chunk.Start <= TimeSpan.FromDays(14)));
         Assert.NotEqual(MarketplaceJobTypes.OrderSync, MarketplaceJobTypes.OrderRecoverySync);
     }
 
@@ -62,10 +47,9 @@ public sealed class MandatorySynchronizationScenariosTests
     }
 
     [Fact]
-    public void Scenario07_ShippedToDelivered_IsAcceptedAndTerminal()
+    public void Scenario07_ShippedToDelivered_IsAccepted()
     {
         Assert.True(ShipmentPackageStateMachine.CanTransition(ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Delivered));
-        Assert.False(OpenOrderLifecyclePolicy.ShouldPoll(ShipmentPackageStatus.Delivered));
     }
 
     [Fact]
@@ -184,21 +168,6 @@ public sealed class MandatorySynchronizationScenariosTests
         Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("SHIPPED", "Open"));
         Assert.Equal(ShipmentPackageStatus.Cancelled, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("READY_TO_SHIP", "CancelledByMerchant"));
         Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.Reconcile("DELIVERED", "CancelledByMerchant"));
-    }
-
-    [Fact]
-    public void Scenario08_NewReturnAfterFortyFiveDays_UsesThreeMinuteHotReturnCadence()
-    {
-        Assert.Equal(TimeSpan.FromMinutes(3), SynchronizationCadence.HotReturns);
-        Assert.True(OpenReturnLifecyclePolicy.ShouldPoll(ReturnClaimStatus.Requested));
-    }
-
-    [Fact]
-    public void Scenario09_ReturnOpenFortyFiveDays_RemainsTrackedUntilFinal()
-    {
-        Assert.True(OpenReturnLifecyclePolicy.ShouldPoll(ReturnClaimStatus.Disputed));
-        Assert.False(OpenReturnLifecyclePolicy.ShouldPoll(ReturnClaimStatus.Completed));
-        Assert.False(OpenReturnLifecyclePolicy.ShouldPoll(ReturnClaimStatus.Cancelled));
     }
 
     [Fact]

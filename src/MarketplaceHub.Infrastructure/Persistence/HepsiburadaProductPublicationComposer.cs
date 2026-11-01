@@ -351,14 +351,6 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         return !string.IsNullOrEmpty(barcode) && barcode.Length <= 40 && barcode.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-' or '_');
     }
 
-    internal static bool IsValidEan13(string? value)
-    {
-        if (value is null || value.Length != 13 || value.Any(character => !char.IsAsciiDigit(character))) return false;
-        var sum = 0;
-        for (var index = 0; index < 12; index++) sum += (value[index] - '0') * (index % 2 == 0 ? 1 : 3);
-        return (10 - sum % 10) % 10 == value[12] - '0';
-    }
-
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
 
     // The title must open with the brand as a whole word. Compared on the shared catalog key, so case,

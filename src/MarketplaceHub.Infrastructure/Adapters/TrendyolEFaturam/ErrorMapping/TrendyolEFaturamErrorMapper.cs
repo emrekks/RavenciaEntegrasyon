@@ -1,6 +1,5 @@
 using System.Net;
 using MarketplaceHub.Application;
-using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.ErrorMapping;
 
