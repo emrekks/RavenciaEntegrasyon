@@ -19,6 +19,8 @@ const api = vi.hoisted(() => {
     maxInFlight: 0,
     // Hepsiburada has no mapping of the panel category until the card's "Kategori Eşle" saves one.
     hbMapped: false,
+    // The store's Renk (20) is mapped to the panel Renk, but "Kırmızı" has no value mapping: an optional warning.
+    withWarnings: false,
     categoryPuts: [] as Array<{ path: string; body: Record<string, unknown> }>
   }
 })
@@ -46,7 +48,11 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path.startsWith('/mappings/categories/') && path.includes('connectionId=hb')) return api.hbMapped ? { externalId: '411', snapshotId: 's1', status: 'VERIFIED', version: 1 } : null
     if (path.startsWith('/mappings/categories/')) return { externalId: '411', snapshotId: 's1', status: 'VERIFIED', version: 1 }
     if (path.startsWith('/reference-data/categories?')) return { snapshotId: 's1', items: [{ externalId: '411', name: 'Elbise', path: 'Giyim > Elbise', isActive: true, isLeaf: true }] }
-    if (path.includes('/attributes?')) return path.startsWith('/reference-data') ? { snapshotId: 'a1', items: [] } : []
+    if (api.withWarnings && path.startsWith('/reference-data/categories/411/attributes/20/values')) return { snapshotId: 'v1', items: [{ externalId: '301', isActive: true }] }
+    if (api.withWarnings && path.startsWith('/mappings/attribute-values')) return []
+    if (path.includes('/attributes?')) return path.startsWith('/reference-data')
+      ? { snapshotId: 'a1', items: api.withWarnings ? [{ externalId: '20', name: 'Renk Tonu', isActive: true, isRequired: false }] : [] }
+      : api.withWarnings ? [{ localId: 'a-renk', externalId: '20', snapshotId: 'a1', status: 'VERIFIED' }] : []
     if (path.includes('/attribute-defaults')) return []
     return null
   }
@@ -67,7 +73,7 @@ beforeEach(() => {
   container = document.createElement('main')
   document.body.append(container)
   root = createRoot(container)
-  api.gate = null; api.posts = []; api.inFlight = 0; api.maxInFlight = 0; api.hbMapped = false; api.categoryPuts = []
+  api.gate = null; api.posts = []; api.inFlight = 0; api.maxInFlight = 0; api.hbMapped = false; api.categoryPuts = []; api.withWarnings = false
 })
 
 afterEach(() => {
@@ -114,7 +120,7 @@ describe('BulkPublishDialog readiness', () => {
     expect(card().querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
     expect(badge.getAttribute('aria-expanded')).toBe('true')
     const link = card().querySelector<HTMLAnchorElement>('.publish-issue-tooltip li a')!
-    expect(link.textContent).toBe('Elbise RYP006')
+    expect(link.querySelector('b')?.textContent).toBe('Elbise RYP006')
     expect(link.getAttribute('href')).toBe('/products/p6')
     expect(card().querySelector('.publish-issue-tooltip li')?.textContent).toContain('Temel Ürün Verileri')
     act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
@@ -163,6 +169,22 @@ describe('BulkPublishDialog readiness', () => {
     expect(api.categoryPuts).toEqual([{ path: '/mappings/categories/c1', body: { connectionId: 'hb', snapshotId: 's1', externalId: '411', status: 'VERIFIED' } }])
     // The check runs again: the record is ready on Hepsiburada now.
     expect(card().querySelector('.publish-issue-trigger')).toBeNull()
+    expect(cardButton().disabled).toBe(false)
+  })
+
+  it('shows optional warnings in a yellow badge beside the status, not as a box under the card', async () => {
+    api.withWarnings = true
+    await render(['p7'])
+    await settle()
+    expect(card().querySelector('.publish-platform-warning')).toBeNull()
+    const badge = card().querySelector<HTMLButtonElement>('.publish-issue-trigger.status-warning')!
+    expect(badge.textContent).toContain('1 uyarı')
+    expect(card().textContent).toContain('Yayın için seçilmedi')
+    act(() => badge.click())
+    expect(card().querySelector('.publish-issue-optional li')?.textContent).toContain('Renk')
+    // The warning row itself opens its value mappings; there is no row of fix buttons.
+    expect(card().querySelector('.publish-issue-actions')).toBeNull()
+    expect(card().querySelector('.publish-issue-optional button.publish-issue-row')?.textContent).toContain('Renk')
     expect(cardButton().disabled).toBe(false)
   })
 })

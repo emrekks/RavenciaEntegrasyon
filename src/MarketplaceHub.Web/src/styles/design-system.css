@@ -7011,6 +7011,9 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
     --rv-page-max: var(--rv-content-max-width);
     width: 100%; max-width: none; margin-inline: 0;
     padding-inline: max(24px, calc((100% - var(--rv-page-max)) / 2 + 24px)) !important;
+    /* The 12 px scrollbar gutter sits inside the scroller on the right, so the right padding gives it back: the page's
+       right edge lines up with the top bar's last button (24 px from the window), as the left edge does with the menu. */
+    padding-inline-end: max(12px, calc((100% - var(--rv-page-max)) / 2 + 12px)) !important;
   }
   .app-shell.stitch-shell.stitch-shell > main > :is(.content.f3, .rv-page-wide) { --rv-page-max: var(--rv-content-wide-max-width); }
   /* A sticky bar keeps to the scroller's padding box, so it is pulled down over the page's bottom padding to sit on the
