@@ -16,7 +16,10 @@ const api = vi.hoisted(() => {
     gate: null as null | Promise<void>,
     posts: [] as Array<{ productIds: string[]; connectionIds: string[] }>,
     inFlight: 0,
-    maxInFlight: 0
+    maxInFlight: 0,
+    // Hepsiburada has no mapping of the panel category until the card's "Kategori Eşle" saves one.
+    hbMapped: false,
+    categoryPuts: [] as Array<{ path: string; body: Record<string, unknown> }>
   }
 })
 
@@ -35,13 +38,20 @@ vi.mock('../../../shared/api', async importOriginal => {
     }
     if (path.includes('/attribute-requirements')) return api.requirements
     if (path.includes('/publication-status/')) return { actualStatus: 'UNKNOWN', lastJobStatus: null }
-    if (path.startsWith('/mappings/categories/')) return { externalId: '411', snapshotId: 's1', status: 'VERIFIED' }
-    if (path.startsWith('/reference-data/categories?')) return { snapshotId: 's1', items: [{ externalId: '411', name: 'Elbise', isActive: true, isLeaf: true }] }
+    if (path === '/mappings/categories/c1' && init?.method === 'PUT') {
+      api.categoryPuts.push({ path, body: JSON.parse(String(init.body)) })
+      api.hbMapped = true
+      return { externalId: '411', snapshotId: 's1', status: 'VERIFIED', version: 1 }
+    }
+    if (path.startsWith('/mappings/categories/') && path.includes('connectionId=hb')) return api.hbMapped ? { externalId: '411', snapshotId: 's1', status: 'VERIFIED', version: 1 } : null
+    if (path.startsWith('/mappings/categories/')) return { externalId: '411', snapshotId: 's1', status: 'VERIFIED', version: 1 }
+    if (path.startsWith('/reference-data/categories?')) return { snapshotId: 's1', items: [{ externalId: '411', name: 'Elbise', path: 'Giyim > Elbise', isActive: true, isLeaf: true }] }
     if (path.includes('/attributes?')) return path.startsWith('/reference-data') ? { snapshotId: 'a1', items: [] } : []
     if (path.includes('/attribute-defaults')) return []
     return null
   }
-  return { ...original, hubApi: vi.fn(respond), hubPoll: vi.fn(respond) }
+  const pages = async (path: string) => ({ items: path.startsWith('/catalog/categories') ? [{ id: 'c1', name: 'Kazak', isLeaf: true, isActive: true, path: 'Kazak' }] : [], nextCursor: null, hasMore: false })
+  return { ...original, hubApi: vi.fn(respond), hubPoll: vi.fn(respond), loadAllPages: vi.fn(pages) }
 })
 
 import { BulkPublishDialog } from './BulkPublishDialog'
@@ -57,7 +67,7 @@ beforeEach(() => {
   container = document.createElement('main')
   document.body.append(container)
   root = createRoot(container)
-  api.gate = null; api.posts = []; api.inFlight = 0; api.maxInFlight = 0
+  api.gate = null; api.posts = []; api.inFlight = 0; api.maxInFlight = 0; api.hbMapped = false; api.categoryPuts = []
 })
 
 afterEach(() => {
@@ -69,9 +79,9 @@ async function settle(rounds = 8) {
   for (let index = 0; index < rounds; index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)) })
 }
 
-async function render(productIds: string[]) {
+async function render(productIds: string[], connections = [connection]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  await act(async () => { root.render(<QueryClientProvider client={client}><BulkPublishDialog productIds={productIds} cardCount={productIds.length} connections={[connection]} products={[]} onClose={vi.fn()} onDone={vi.fn()} /></QueryClientProvider>) })
+  await act(async () => { root.render(<QueryClientProvider client={client}><BulkPublishDialog productIds={productIds} cardCount={productIds.length} connections={connections} products={[]} onClose={vi.fn()} onDone={vi.fn()} /></QueryClientProvider>) })
 }
 
 const card = () => document.querySelector('article.publish-platform-card')!
@@ -126,5 +136,24 @@ describe('BulkPublishDialog readiness', () => {
       running--
     }, () => false)
     expect(most).toBe(6)
+  })
+
+  it('says the category is not mapped on Hepsiburada and maps it from the card', async () => {
+    const hepsiburada = { id: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', externalStoreId: 'hb-1', status: 'ACTIVE', externalWritesEnabled: true }
+    await render(['p7'], [hepsiburada])
+    await settle()
+    expect(card().textContent).toContain('Kazak kategorisinin Hepsiburada karşılığı seçilmemiş; kategoriyi eşleyin.')
+    expect(card().textContent).not.toContain('alınamadı')
+    await act(async () => { button('Kategori Eşle').click() })
+    await settle(2)
+    expect(document.body.textContent).toContain('Kazak kategorisinin Hepsiburada karşılığını seçin')
+    await act(async () => { document.querySelector<HTMLButtonElement>('.category-mapping-dialog .vp-trigger')!.click() })
+    await act(async () => { [...document.querySelectorAll<HTMLButtonElement>('.vp-list [role="option"]')].find(option => option.textContent === 'Giyim > Elbise')!.click() })
+    await act(async () => { button('Eşlemeyi Kaydet').click() })
+    await settle()
+    expect(api.categoryPuts).toEqual([{ path: '/mappings/categories/c1', body: { connectionId: 'hb', snapshotId: 's1', externalId: '411', status: 'VERIFIED' } }])
+    // The check runs again: the record is ready on Hepsiburada now.
+    expect(card().querySelector('.bulk-publish-blocked')).toBeNull()
+    expect(cardButton().disabled).toBe(false)
   })
 })
