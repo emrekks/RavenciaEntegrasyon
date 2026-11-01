@@ -346,7 +346,18 @@ public sealed partial class MarketplaceSalesService
             ? new Dictionary<Guid, string>()
             : await ReturnInvoiceLabelsAsync(tenantId, listed.Cards.Select(card => listed.Claims[card.ClaimId]).Distinct().ToList(), cancellationToken);
         var invoiceStatuses = listed.Cards.Select(card => labels.GetValueOrDefault(card.ClaimId)).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
+        // Each choice's count: the cards of the tab under every other filter, the filter itself left out.
+        var invoice = options.InvoiceStatus?.Trim().ToUpperInvariant();
+        bool InvoiceMatches(ReturnCard card) => string.IsNullOrEmpty(invoice) || invoice == "ALL" || labels.GetValueOrDefault(card.ClaimId) == invoice;
+        bool Matches(ReturnCard card, ReturnListQuery refinements) => MatchesReturnRefinements(card.PlatformCode, card.CargoProviderName, card.ReasonCode, card.ReasonText, refinements);
+        Dictionary<string, int> CountBy(Func<ReturnCard, bool> keep, Func<ReturnCard, string?> key) => listed.Cards.Where(keep)
+            .Select(key).Where(value => !string.IsNullOrEmpty(value)).GroupBy(value => value!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+        var platformCounts = CountBy(card => Matches(card, options with { Platforms = null }) && InvoiceMatches(card), card => card.PlatformCode);
+        var cargoCounts = CountBy(card => Matches(card, options with { Cargo = null }) && InvoiceMatches(card), card => card.CargoProviderName?.Trim());
+        var reasonCounts = CountBy(card => Matches(card, options with { ReasonKey = null }) && InvoiceMatches(card), card => ReturnReasonKey(card.ReasonCode, card.ReasonText));
+        var invoiceCounts = CountBy(card => Matches(card, options), card => labels.GetValueOrDefault(card.ClaimId));
         return new(counts, platforms.Select(code => new ReturnPlatformOption(code, platformNames[code])).ToList(), cargo,
-            reasons.Select(reason => reasonSources[reason]).ToList(), invoiceStatuses, listed.Cards.Count);
+            reasons.Select(reason => reasonSources[reason]).ToList(), invoiceStatuses, listed.Cards.Count, platformCounts, cargoCounts, reasonCounts, invoiceCounts);
     }
 }

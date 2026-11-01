@@ -1273,6 +1273,9 @@ public sealed record OrderListQuery(
     string? Sort = null,
     IReadOnlyList<string>? Platforms = null,
     bool? LabelPrinted = null);
+// Orders per column filter choice for the same filters as GET /orders, status tab included; a column's
+// own choice is left out of its counts. Platforms by platform code, cargos by cargo provider name.
+public sealed record OrderFacetsView(IReadOnlyDictionary<string, int> Platforms, IReadOnlyDictionary<string, int> Cargos);
 public sealed record OrderSummaryView(
     int All,
     int New,
@@ -1462,7 +1465,13 @@ public sealed record ReturnSummaryView(
     IReadOnlyList<ReturnReasonOption> Reasons,
     IReadOnlyList<string> InvoiceStatuses,
     // Cards of the current tab before the platform/cargo/reason/invoice filters.
-    int UnfilteredCount);
+    int UnfilteredCount,
+    // Cards of the current tab per filter choice under the other filters (a filter's own choice left
+    // out): platform code, cargo provider name, reason key and invoice label.
+    IReadOnlyDictionary<string, int>? PlatformCounts = null,
+    IReadOnlyDictionary<string, int>? CargoCounts = null,
+    IReadOnlyDictionary<string, int>? ReasonCounts = null,
+    IReadOnlyDictionary<string, int>? InvoiceStatusCounts = null);
 public sealed record ReturnPlatformOption(string PlatformCode, string DisplayName);
 // Value is the filter key (reason code, else text); the page labels it from code and text.
 public sealed record ReturnReasonOption(string Value, string? ReasonCode, string? ReasonText);
@@ -1504,6 +1513,7 @@ public interface IMarketplaceSalesService
     // tabs: only these counters are computed (the others answer 0); null computes every tab. allowCached lets a
     // polling caller share a recent identical answer instead of running the count again.
     Task<OrderSummaryView> OrderSummaryAsync(Guid tenantId, OrderListQuery query, CancellationToken cancellationToken, IReadOnlyCollection<string>? tabs = null, bool allowCached = false);
+    Task<OrderFacetsView> OrderFacetsAsync(Guid tenantId, OrderListQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, string? productName = null);
     Task<ServiceResult<OrderDetailView>> OrderAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<PageResult<ShipmentView>> ShipmentsAsync(Guid tenantId, int limit, string? after, string? status, CancellationToken cancellationToken);

@@ -669,6 +669,34 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"));
     }
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTimeOffset At, string Stamp, OrderFacetsView View)> OrderFacetsCache = new();
+
+    // The orders each platform and cargo choice would list: the list's filters, status tab included, without the
+    // column's own choice. A cargo counts the orders with a current package of that provider, as its filter does.
+    public async Task<OrderFacetsView> OrderFacetsAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
+    {
+        var key = $"{tenantId:N}|{JsonSerializer.Serialize(options with { Sort = null })}";
+        var stamp = await OrderSummaryStampAsync(tenantId, cancellationToken);
+        if (OrderFacetsCache.TryGetValue(key, out var cached) && cached.Stamp == stamp && DateTimeOffset.UtcNow - cached.At < OrderSummaryCacheLifetime) return cached.View;
+
+        var byPlatform = FilteredOrders(tenantId, options with { Platform = null, Platforms = null, Sort = null });
+        var platforms = await byPlatform
+            .Join(db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId), order => order.ConnectionId, connection => connection.Id, (_, connection) => connection.PlatformCode)
+            .GroupBy(code => code).Select(group => new { Code = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(row => row.Code, row => row.Count, StringComparer.OrdinalIgnoreCase, cancellationToken);
+        var byCargo = FilteredOrders(tenantId, options with { Cargo = null, Sort = null });
+        var cargos = await CurrentShipmentPackages()
+            .Where(package => package.TenantId == tenantId && package.CargoProviderExternalId != null && package.CargoProviderExternalId != ""
+                && byCargo.Any(order => order.Id == package.OrderId))
+            .Select(package => new { package.OrderId, Cargo = package.CargoProviderExternalId! }).Distinct()
+            .GroupBy(row => row.Cargo).Select(group => new { Cargo = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(row => row.Cargo, row => row.Count, StringComparer.Ordinal, cancellationToken);
+        var view = new OrderFacetsView(platforms, cargos);
+        if (OrderFacetsCache.Count > 1000) OrderFacetsCache.Clear();
+        OrderFacetsCache[key] = (DateTimeOffset.UtcNow, stamp, view);
+        return view;
+    }
+
     internal IQueryable<Order> CurrentManualShopifyOrderStatuses(Guid tenantId) => db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId
         && db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId
             && connection.Id == order.ConnectionId

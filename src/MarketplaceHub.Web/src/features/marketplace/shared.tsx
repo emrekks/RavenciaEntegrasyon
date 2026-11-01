@@ -106,12 +106,13 @@ export function notificationKindFromMessage(message: string): ReturnNoticeKind {
   if (/(kuyruğa|işleniyor|bekleniyor|salt-okunur|değişiklik yok|henüz)/u.test(normalized)) return 'info'
   return 'success'
 }
-// Column filter popover: one radio list, "Filtreyi Temizle" once a value is picked.
-export function ReturnColumnPop({ label, options, value, onPick, right, width = 240 }: { label: string; options: Array<{ value: string; label: string }>; value: string; onPick: (value: string) => void; right?: boolean; width?: number }) {
+// Column filter popover: one radio list, "Filtreyi Temizle" once a value is picked. counts: rows per option value
+// under the other filters (optional; null while they load), shown next to every option but the first ("Tümü").
+export function ReturnColumnPop({ label, options, value, onPick, right, width = 240, counts }: { label: string; options: Array<{ value: string; label: string }>; value: string; onPick: (value: string) => void; right?: boolean; width?: number; counts?: Record<string, number> | null }) {
   const active = value !== 'ALL'
-  return <div className={`rr-pop${right ? ' rr-right' : ''}`} role="dialog" style={{ minWidth: width }}><div className="rr-ph">{label}</div>{options.map((option, index) => { const on = active ? option.value === value : index === 0; return <button key={option.value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => onPick(option.value)}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}</span></button> })}{active && <div className="rr-foot"><span /><button type="button" className="rr-btn rr-quiet" style={{ height: 28 }} onClick={() => onPick('ALL')}>Filtreyi Temizle</button></div>}</div>
+  return <div className={`rr-pop${right ? ' rr-right' : ''}`} role="dialog" style={{ minWidth: width }}><div className="rr-ph">{label}</div>{options.map((option, index) => { const on = active ? option.value === value : index === 0; return <button key={option.value} type="button" className={`rr-opt${on ? ' rr-on' : ''}`} role="radio" aria-checked={on} onClick={() => onPick(option.value)}><span className="rr-radio" aria-hidden="true" /><span className="rr-grow">{option.label}</span>{counts !== undefined && index > 0 && <OptionCount value={platformOptionCount(counts, option.value)} />}</button> })}{active && <div className="rr-foot"><span /><button type="button" className="rr-btn rr-quiet" style={{ height: 28 }} onClick={() => onPick('ALL')}>Filtreyi Temizle</button></div>}</div>
 }
-// counts: rows per platform code under the other filters (optional; null while they load, shown as a placeholder).
+// counts: rows per platform code (or option value) under the other filters (optional; null while they load, shown as a placeholder).
 export function platformOptionCount(counts: Record<string, number> | null | undefined, code: string) {
   if (!counts) return undefined
   const key = Object.keys(counts).find(item => item.toLocaleUpperCase('en-US') === code.toLocaleUpperCase('en-US'))
@@ -121,9 +122,9 @@ export function ReturnPlatformPop({ options, selected, onChange, title = 'İade 
   const all = selected.length === 0
   const checked = (code: string) => all || selected.includes(code)
   const toggle = (code: string, on: boolean) => { const current = all ? options.map(option => option.value) : selected.filter(value => value !== RETURN_NO_PLATFORM); const next = on ? Array.from(new Set([...current, code])) : current.filter(value => value !== code); onChange(next.length === options.length ? [] : next.length === 0 ? [RETURN_NO_PLATFORM] : next) }
-  return <div className="rr-pop" role="dialog" style={{ minWidth: 260 }}><div className="rr-ph">{title}<button type="button" className="rr-btn rr-link" onClick={() => onChange(all ? [RETURN_NO_PLATFORM] : [])}>{all ? 'Tümünü Kaldır' : 'Tümünü Seç'}</button></div>{options.map(option => <label key={option.value} className="rr-opt"><input type="checkbox" className="rr-cb" checked={checked(option.value)} onChange={event => toggle(option.value, event.target.checked)} /><RrLogo code={option.value} /><span className="rr-grow">{option.label}</span>{counts !== undefined && <PlatformOptionCount value={platformOptionCount(counts, option.value)} />}</label>)}</div>
+  return <div className="rr-pop" role="dialog" style={{ minWidth: 260 }}><div className="rr-ph">{title}<button type="button" className="rr-btn rr-link" onClick={() => onChange(all ? [RETURN_NO_PLATFORM] : [])}>{all ? 'Tümünü Kaldır' : 'Tümünü Seç'}</button></div>{options.map(option => <label key={option.value} className="rr-opt"><input type="checkbox" className="rr-cb" checked={checked(option.value)} onChange={event => toggle(option.value, event.target.checked)} /><RrLogo code={option.value} /><span className="rr-grow">{option.label}</span>{counts !== undefined && <OptionCount value={platformOptionCount(counts, option.value)} />}</label>)}</div>
 }
-function PlatformOptionCount({ value }: { value: number | undefined }) {
+function OptionCount({ value }: { value: number | undefined }) {
   if (value === undefined) return <small className="rr-opt-count is-loading" aria-hidden="true" />
   return <small className={`rr-opt-count${value === 0 ? ' is-zero' : ''}`}>{value.toLocaleString('tr-TR')}</small>
 }

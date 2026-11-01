@@ -96,8 +96,9 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on { background: var(--rr-primary-soft); color: var(--rr-violet); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-grow { flex: 1; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt small { color: var(--rr-subtle); font-size: 12px; }
-/* A platform's row count in a platform popover: right-aligned figures; a platform with none is faded but stays selectable. */
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-opt-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+/* An option's row count in a filter popover, in the side menu's count box (design-system.css): right-aligned figures;
+   an option with none is faded but stays selectable. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-opt-count { display: inline-flex; flex: 0 0 auto; margin-left: auto; font-variant-numeric: tabular-nums; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt .rr-opt-count.is-loading { width: 22px; height: 10px; border-radius: 7px; background: var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:has(.rr-opt-count.is-zero) > :not(input) { opacity: .5; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-danger { color: var(--rr-bad); }
@@ -1013,16 +1014,11 @@ main .rr.rr:is(.rr-orders, .rr-returns) > .rr-panel { min-width: 0; }
 /* detail facts: the carrier logo sits over its tracking number */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts .rr-fact-cargo.rr-fact-cargo { display: block; width: auto; max-width: 96px; height: 20px; margin: 2px 0 4px; object-fit: contain; object-position: left center; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-facts .rr-fact-track { font-size: 13px; }
-/* product facts are never cut and stay on one line in the desktop table, whose product column is wide enough for them
-   (the table scrolls sideways). Below 1025px the rows are cards: there a long value (a stock code the marketplace sent
-   as two codes run together, "MZ035DYD-B24MZ035DYD-B26") breaks inside the card instead of pushing the page sideways. */
-@media (min-width: 1025px) {
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > small:not(.rr-card-only) { overflow: visible; text-overflow: clip; white-space: nowrap; }
-}
-@media (max-width: 1024px) {
+/* product facts are never cut. A long value (a stock code the marketplace sent as two codes run together,
+   "MZ035DYD-B24MZ035DYD-B26") breaks inside the product column instead of running over the price column beside it,
+   in the desktop table as in the cards below 1025px. */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > small:not(.rr-card-only) { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline > div > small b.rr-num { overflow-wrap: anywhere; word-break: break-word; }
-}
 @media (min-width: 1025px) {
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl col.rr-c-prod { width: 276px; }
 main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-pline { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
