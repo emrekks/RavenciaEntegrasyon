@@ -2757,6 +2757,148 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // Live 1 Nov 2026: a package first built from an undelivered-shipment return claim holds the claim's modification
+    // time; Trendyol's package read (status Returned, shipmentPackageStatus UnDeliveredAndReturned, with the tracking
+    // number) was a few seconds older and was dropped whole, so the order stayed "Teslim Edilemedi" without tracking.
+    [PostgreSqlFact]
+    public async Task TrendyolOrderSync_AnOlderPackageReadClosesAClaimBuiltUndeliveredPackageAsReturnedWithItsTracking()
+    {
+        var tenant = NewTenant("ty-undelivered-returned");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var lineId = Guid.CreateVersion7();
+        var packageId = Guid.CreateVersion7();
+        const string externalOrderId = "11721560099";
+        const string packageNumber = "4254315999";
+        var claimAt = DateTimeOffset.FromUnixTimeMilliseconds(fixture.Now.AddDays(-9).ToUnixTimeMilliseconds());
+        var packageReadAt = claimAt.AddSeconds(-4);
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
+        order.DerivedStatus = "UNDELIVERED";
+        order.LastRemoteModifiedAt = packageReadAt;
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "UnDelivered", Version = 1 });
+            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.Undelivered, RawStatus = "UnDelivered", StatusOccurredAt = claimAt, CreatedAt = claimAt, UpdatedAt = claimAt, Version = 1 });
+            seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = 1m, ShippedQuantity = 1m, SourceEventId = PackageIngestionSafety.EventId(packageNumber, claimAt) });
+            seedDb.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, PackageId = packageId, CanonicalStatus = "UNDELIVERED", RawStatus = "UnDelivered", SourceEventId = PackageIngestionSafety.EventId(packageNumber, claimAt), OccurredAt = claimAt, RecordedAt = claimAt });
+            await seedDb.SaveChangesAsync();
+        }
+
+        async Task SyncAsync()
+        {
+            var remotePackage = new RemotePackage(packageNumber, null, "Returned", packageReadAt, "Trendyol Express", "7330038117226099",
+                [new RemotePackageAllocation("line-1", 1m, 0m, 0m, 0m, 0m)], GrossAmount: 100m, NetAmount: 100m);
+            var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, claimAt.AddDays(-5), packageReadAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, "Returned")], [remotePackage], "{}");
+            await using var processorDb = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(
+                processorDb,
+                null!, null!, null!, null!, new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""", "undelivered-returned", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        try
+        {
+            await SyncAsync();
+            long version;
+            await using (var check = fixture.CreateContext())
+            {
+                var package = await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId);
+                Assert.Equal(ShipmentPackageStatus.Returned, package.Status);
+                Assert.Equal("Returned", package.RawStatus);
+                Assert.Equal("7330038117226099", package.CargoTrackingNumber);
+                Assert.Equal("Trendyol Express", package.CargoProviderExternalId);
+                // The return is not dated before the undelivered status it ends.
+                Assert.Equal(claimAt, package.StatusOccurredAt);
+                version = package.Version;
+                Assert.Equal("RETURNED", (await check.Orders.AsNoTracking().SingleAsync(x => x.Id == orderId)).DerivedStatus);
+                var history = await check.OrderStatusHistory.AsNoTracking().Where(x => x.PackageId == packageId).OrderBy(x => x.RecordedAt).ToListAsync();
+                Assert.Equal(["UNDELIVERED", "RETURNED"], history.Select(x => x.CanonicalStatus));
+                Assert.False(await check.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.Code.StartsWith("PACKAGE_")));
+            }
+
+            // The same read again changes nothing.
+            await SyncAsync();
+            await using (var check = fixture.CreateContext())
+            {
+                Assert.Equal(version, (await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId)).Version);
+                Assert.Equal(2, await check.OrderStatusHistory.CountAsync(x => x.TenantId == tenant.Id));
+            }
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // An older read that cannot change the status still fills the tracking number and carrier a package lacks, and
+    // never replaces one the package already holds.
+    [PostgreSqlTheory]
+    [InlineData(null, "7330038117226011")]
+    [InlineData("7330000000000000", "7330000000000000")]
+    public async Task TrendyolOrderSync_AnOlderReadFillsOnlyMissingCargoDetails(string? storedTracking, string expectedTracking)
+    {
+        var tenant = NewTenant("ty-older-cargo");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var lineId = Guid.CreateVersion7();
+        var packageId = Guid.CreateVersion7();
+        const string externalOrderId = "11721560098";
+        const string packageNumber = "4254315998";
+        var deliveredAt = DateTimeOffset.FromUnixTimeMilliseconds(fixture.Now.AddDays(-9).ToUnixTimeMilliseconds());
+        var packageReadAt = deliveredAt.AddSeconds(-4);
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
+        order.DerivedStatus = "DELIVERED";
+        order.LastRemoteModifiedAt = packageReadAt;
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Delivered", Version = 1 });
+            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = deliveredAt, CargoTrackingNumber = storedTracking, CreatedAt = deliveredAt, UpdatedAt = deliveredAt, Version = 1 });
+            seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, SourceEventId = PackageIngestionSafety.EventId(packageNumber, deliveredAt) });
+            seedDb.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, PackageId = packageId, CanonicalStatus = "DELIVERED", RawStatus = "Delivered", SourceEventId = PackageIngestionSafety.EventId(packageNumber, deliveredAt), OccurredAt = deliveredAt, RecordedAt = deliveredAt });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            var remotePackage = new RemotePackage(packageNumber, null, "Delivered", packageReadAt, "Aras Kargo", "7330038117226011",
+                [new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m)], GrossAmount: 100m, NetAmount: 100m);
+            var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, deliveredAt.AddDays(-3), packageReadAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, "Delivered")], [remotePackage], "{}");
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, new ReadOnlyOrderTestPort(remotePackage, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"{{packageNumber}}"}""", "older-cargo", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var check = fixture.CreateContext();
+            var package = await check.ShipmentPackages.AsNoTracking().SingleAsync(x => x.Id == packageId);
+            Assert.Equal(ShipmentPackageStatus.Delivered, package.Status);
+            Assert.Equal(deliveredAt, package.StatusOccurredAt);
+            Assert.Equal(expectedTracking, package.CargoTrackingNumber);
+            Assert.Equal("Aras Kargo", package.CargoProviderExternalId);
+            Assert.Equal(1, await check.OrderStatusHistory.CountAsync(x => x.TenantId == tenant.Id));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     // Audit S4: PTT AVM sends no status time; its made-up event time (order time + status step) names the event only.
     // The package stores the time the status was first seen, and a replay of the same read changes nothing.
     [PostgreSqlFact]
