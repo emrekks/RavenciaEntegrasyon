@@ -24,6 +24,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         if (includeDefaults) await EnsureDefaultPoliciesAsync(cancellationToken);
         await DisableExternalWriteAutomationAsync(cancellationToken);
         db.ChangeTracker.Clear();
+        // Old failures of scheduled reads that a later run of the same read has replaced stop counting as errors. Display
+        // housekeeping only: a failure here never stops the pass.
+        try
+        {
+            await ScheduledReadSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException) { }
         // Marketplace lists a connection supports but has never read (at startup and hourly; once a day per gap).
         if (includeDefaults)
         {
@@ -101,7 +108,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             // within the last hour is not looked at again.
             var isListingVerify = row.Policy.ResourceType == ListingVerificationPolicy.ResourceType;
             if (isListingVerify && row.Policy.LastScheduledAt is { } verifyQueuedAt && now - verifyQueuedAt < ListingVerificationPolicy.RetrySpacing) continue;
-            if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(interval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) continue;
+            var shortestInterval = row.Policy.ResourceType == "RETURNS" ? Math.Max(interval, ReturnCadencePolicy.BaseSeconds) : interval;
+            if (!isListingVerify && !MayBeDue(row.Policy.LastScheduledAt, ScheduledOrderPollingCadencePolicy.ForEnvironment(shortestInterval, row.Connection.Environment), jitterSeconds, now, isHotOrder)) continue;
             // Questions are rare; a connection without a new question for a while is asked less often. Healthy order
             // notifications make the order polls a slower safety net. Both thin out to the policy's idle interval and
             // only while its idle rule is on (SyncCadencePolicy, set in the panel).
@@ -114,6 +122,17 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             var healthy = idleKind == SyncCadencePolicy.IdleWebhook
                 && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id);
             interval = SyncCadencePolicy.EffectiveSeconds(row.Connection.PlatformCode, row.Policy.ResourceType, row.Connection.Environment, interval, idleKind is not null, row.Policy.IdleIntervalSeconds, healthy, lastQuestionAt, now);
+            // Returns are read every ten minutes at most, less often while none is open or Hepsiburada's notifications bring them.
+            if (row.Policy.ResourceType == "RETURNS")
+            {
+                var hasOpenReturns = await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken);
+                var lastNewReturnAt = await db.ReturnClaims.AsNoTracking()
+                    .Where(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id)
+                    .MaxAsync(x => (DateTimeOffset?)x.CreatedAt, cancellationToken);
+                var notificationsHealthy = ReturnCadencePolicy.NotificationsCarryClaims(row.Connection.PlatformCode)
+                    && (webhookHealthy ??= await HealthyWebhookConnectionsAsync(now, cancellationToken)).Contains(row.Connection.Id);
+                interval = ReturnCadencePolicy.IntervalSeconds(interval, row.Connection.PlatformCode, notificationsHealthy, hasOpenReturns, lastNewReturnAt, now);
+            }
             // Different scheduled job types can share one provider execution
             // lane (for example order sync and order reconciliation). Checking
             // the execution group keeps the queue coalesced before it reaches
@@ -174,6 +193,9 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 if (!ListingVerificationPolicy.MayQueueAgain(queuedRuns, blocked)) continue;
             }
             else if (!isHotOrder && !IsDue(latest, interval, jitterSeconds, now)) continue;
+            // An open-return scan with no open claim to follow has nothing to do and is not queued (a local check).
+            if (row.Policy.ResourceType == "RETURN_LIFECYCLE"
+                && !await OpenReturnClaimsExistAsync(db, row.Policy.TenantId, row.Connection.Id, row.Connection.PlatformCode, cancellationToken)) continue;
             // A hot order read of a connection without any order yet runs at once, whatever its interval.
             if (isHotOrder && !IsDue(latest, interval, jitterSeconds, now)
                 && await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == row.Policy.TenantId && x.ConnectionId == row.Connection.Id, cancellationToken)) continue;
@@ -337,6 +359,10 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         if (after >= before) return Task.FromResult(false);
         return db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.CreatedAt > after && order.CreatedAt <= before, cancellationToken);
     }
+
+    // Whether the connection has a claim the open-return scan follows (MarketplaceJobProcessor.ReturnLifecycleCandidates).
+    internal static Task<bool> OpenReturnClaimsExistAsync(AppDbContext db, Guid tenantId, Guid connectionId, string? platformCode, CancellationToken cancellationToken) =>
+        MarketplaceJobProcessor.ReturnLifecycleCandidates(db.ReturnClaims.AsNoTracking(), tenantId, connectionId, platformCode).AnyAsync(cancellationToken);
 
     // Missed orders are kept as {"missed":[...]}. The earlier bare list also counted orders the poll merely read
     // before their notification arrived, so it is not trusted and reads as no misses.

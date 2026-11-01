@@ -41,7 +41,9 @@ gonderildi → Shipped; gondericisine_teslim_edildi → Undelivered; tamamlandi 
 Cancelled; iade → Returned.
 
 ## Quirks
-- No return service: returns come from "iade" lines, already completed; return actions are refused.
+- No return service: returns come from "iade" lines, already completed; return actions are refused. RETURN_SYNC reads
+  the last 2 days, the whole 3 months every 6 h (PttAvmReturnReadPolicy). A read answered with an unexplained fault
+  ("Bilinmeyen bir hata oluştu") is retried (PTTAVM_REMOTE_FAULT); a write keeps PTTAVM_REQUEST_REJECTED.
 - `IsInvoice=true` only for invoices sent through the API; panel uploads leave it false, so false = unverified.
 - `SaveInvoince` answers Success=false with "işlem gerçekleştirilmiştir" on success — the result is read back.
 - An upsert without the variant list deletes all variants.

@@ -1211,6 +1211,58 @@ public static class QuestionCadencePolicy
     }
 }
 
+// How often a connection's returns are read (review of 1 Nov 2026: returns were read every three minutes on five
+// connections, about 2,400 jobs a day for two real changes). Ten minutes is the base. Hepsiburada's notifications carry
+// claim events (PUT /claims/..., POST /claims/packages), so while they are healthy the read is a safety net of half an
+// hour with an open claim and an hour without. Trendyol's notifications carry order packages only (subscribedStatuses
+// lists package statuses; no claim event was ever received), so Trendyol, like n11, Pazarama and PTT AVM, reads on its
+// own cadence: ten minutes while a claim is open, stretching to twenty after a day and thirty after a week without a
+// new claim. A longer configured cadence stays.
+public static class ReturnCadencePolicy
+{
+    public const int BaseSeconds = 600;
+    public const int QuietSeconds = 1200;
+    public const int LongQuietSeconds = 1800;
+    public const int NotifiedOpenSeconds = 1800;
+    public const int NotifiedQuietSeconds = 3600;
+    public static readonly TimeSpan QuietAfter = TimeSpan.FromDays(1);
+    public static readonly TimeSpan LongQuietAfter = TimeSpan.FromDays(7);
+
+    // The claim states that still move on the marketplace; Approved, Rejected, Completed and Cancelled are settled.
+    public static bool IsOpen(ReturnClaimStatus status) => status is ReturnClaimStatus.Requested or ReturnClaimStatus.AwaitingShipment
+        or ReturnClaimStatus.InTransit or ReturnClaimStatus.ActionRequired or ReturnClaimStatus.Disputed;
+
+    public static bool NotificationsCarryClaims(string? platformCode) =>
+        string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase);
+
+    public static int IntervalSeconds(int policySeconds, string? platformCode, bool notificationsHealthy, bool hasOpenReturns, DateTimeOffset? lastNewReturnAt, DateTimeOffset now)
+    {
+        var floor = Math.Max(policySeconds, BaseSeconds);
+        if (notificationsHealthy && NotificationsCarryClaims(platformCode))
+            return Math.Max(floor, hasOpenReturns ? NotifiedOpenSeconds : NotifiedQuietSeconds);
+        if (hasOpenReturns) return floor;
+        var quiet = lastNewReturnAt is { } last ? now - last : TimeSpan.MaxValue;
+        if (quiet >= LongQuietAfter) return Math.Max(floor, LongQuietSeconds);
+        if (quiet >= QuietAfter) return Math.Max(floor, QuietSeconds);
+        return floor;
+    }
+
+    // The longest cadence the read can have, by which the panel judges whether it is late.
+    public static int MaximumSeconds(string? platformCode, int policySeconds) =>
+        Math.Max(policySeconds, NotificationsCarryClaims(platformCode) ? NotifiedQuietSeconds : LongQuietSeconds);
+}
+
+// PTT AVM has no return service: a return is an order line in "iade" status, read through the order date windows. A
+// run reads the last two days (PttAvmOrderHistoryPolicy.StartDay); the whole three months are read again every six
+// hours (four times a day), so a return on an older order is still seen the same day.
+public static class PttAvmReturnReadPolicy
+{
+    public static readonly TimeSpan WideInterval = TimeSpan.FromHours(6);
+
+    public static bool WideReadDue(bool full, DateTimeOffset? lastWideReadAt, DateTimeOffset now) =>
+        full || lastWideReadAt is not { } last || now - last >= WideInterval;
+}
+
 // n11 and Pazarama list claims by request date only, so a claim's later status changes are seen
 // only by re-reading older requests. Every run reads the last two days (new claims); the 45-day
 // re-read for status changes runs every 30 minutes instead of every three.

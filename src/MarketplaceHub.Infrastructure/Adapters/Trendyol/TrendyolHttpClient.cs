@@ -15,7 +15,7 @@ using Microsoft.Extensions.Options;
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol;
 
 public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, TrendyolAuthenticationHandler authentication, IConfiguration configuration, IOptions<TrendyolOptions> trendyolOptions, TimeProvider timeProvider, ILogger<TrendyolHttpClient> logger)
-    : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IReturnPort, IReturnAuditPort, IInvoiceMarketplacePort
+    : IConnectionPort, IReferenceDataPort, IProductPort, IProductVisualLookupPort, IInventoryPricePort, IOrderPort, IReturnPort, IReturnBatchReadPort, IReturnAuditPort, IInvoiceMarketplacePort
 {
     private bool GlobalWritesEnabled => configuration.GetValue<bool>("FeatureFlags:ExternalWrites");
 
@@ -771,6 +771,26 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         }
         catch (JsonException) { return AdapterResult<RemoteReturnClaim>.Failure(TrendyolErrorMapper.Contract()); }
     }
+
+    public async Task<AdapterResult<IReadOnlyList<RemoteReturnClaim>>> GetManyAsync(AdapterContext context, IReadOnlyList<string> externalReturnIds, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken); if (authorized is null) return AdapterResult<IReadOnlyList<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Configuration());
+        var ids = externalReturnIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()).Distinct(StringComparer.Ordinal).ToArray();
+        if (ids.Length == 0) return AdapterResult<IReadOnlyList<RemoteReturnClaim>>.Success([]);
+        var response = await SendAsync(authorized, HttpMethod.Get, ClaimsByIdsEndpoint(authorized.Connection.ExternalStoreId, ids), null, cancellationToken, storeFrontCode: null);
+        if (!response.IsSuccess) return AdapterResult<IReadOnlyList<RemoteReturnClaim>>.Failure(response.Error!, response.RateLimit);
+        try
+        {
+            var page = TrendyolJsonMapper.Returns(response.Value!);
+            var wanted = ids.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return AdapterResult<IReadOnlyList<RemoteReturnClaim>>.Success(page.Items.Where(claim => wanted.Contains(claim.ExternalClaimId)).ToArray(), response.RateLimit);
+        }
+        catch (JsonException) { return AdapterResult<IReadOnlyList<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract()); }
+    }
+
+    // claimIds takes one id or several, comma separated; each id is escaped, the commas are not.
+    internal static string ClaimsByIdsEndpoint(string sellerId, IReadOnlyList<string> externalReturnIds) =>
+        TrendyolEndpoints.Claims(sellerId) + "?claimIds=" + string.Join(",", externalReturnIds.Select(Uri.EscapeDataString));
 
     public async Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken)
     {

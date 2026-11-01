@@ -18,6 +18,18 @@ export function jobListQueryString(status: string, timeRange: JobListTimeRange, 
   return query ? `?${query}` : ''
 }
 
+// The server's rule for a period (JobOperationsService.InWindow), so the list keeps what the counts count: a job created
+// or finished in the period, or one still open (waiting, running, to be retried) however old it is.
+export function isJobInTimeRange(job: { createdAt: string; completedAt: string | null; status: string }, timeRange: JobListTimeRange, now = Date.now()) {
+  if (timeRange === 'all') return true
+  if (job.status === 'PENDING' || job.status === 'LEASED' || job.status === 'RETRY_SCHEDULED') return true
+  const cutoff = now - rangeMilliseconds[timeRange]
+  const created = Date.parse(job.createdAt)
+  if (Number.isNaN(created) || created >= cutoff) return true
+  const completed = job.completedAt ? Date.parse(job.completedAt) : Number.NaN
+  return !Number.isNaN(completed) && completed >= cutoff
+}
+
 // One cursor page of the job list: the same filters as the list plus the job types of the selected tab and the
 // cursor of the previous page, so every filter is applied by the server on every page.
 export function jobPageQueryString(status: string, timeRange: JobListTimeRange, options: { jobTypes?: readonly string[] | null; after?: string | null; limit?: number; platform?: string | null } = {}, now = Date.now()) {

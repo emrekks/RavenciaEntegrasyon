@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
+import { isJobInTimeRange, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListMaximumAutoPages, jobListPollInterval, jobListQueryString, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage } from './job-list-query'
 
 describe('jobListQueryString', () => {
   const now = Date.parse('2026-10-14T12:00:00.000Z')
@@ -12,6 +12,23 @@ describe('jobListQueryString', () => {
   it('omits since for all time and returns nothing without filters', () => {
     expect(jobListQueryString('', 'all', now)).toBe('')
     expect(jobListQueryString('LEASED', 'all', now)).toBe('?status=LEASED')
+  })
+})
+
+describe('isJobInTimeRange (P7)', () => {
+  const now = Date.parse('2026-11-01T12:00:00.000Z')
+  const old = '2026-10-28T12:00:00.000Z'
+
+  it('keeps a job open for days in the last 24 hours, like the server counts it', () => {
+    expect(isJobInTimeRange({ createdAt: old, completedAt: null, status: 'RETRY_SCHEDULED' }, '24h', now)).toBe(true)
+    expect(isJobInTimeRange({ createdAt: old, completedAt: null, status: 'PENDING' }, '24h', now)).toBe(true)
+  })
+
+  it('keeps an old job that finished inside the period and drops one that finished before it', () => {
+    expect(isJobInTimeRange({ createdAt: old, completedAt: '2026-11-01T08:00:00.000Z', status: 'SUCCEEDED' }, '24h', now)).toBe(true)
+    expect(isJobInTimeRange({ createdAt: old, completedAt: '2026-10-29T08:00:00.000Z', status: 'BLOCKED' }, '24h', now)).toBe(false)
+    expect(isJobInTimeRange({ createdAt: old, completedAt: '2026-10-29T08:00:00.000Z', status: 'BLOCKED' }, '7d', now)).toBe(true)
+    expect(isJobInTimeRange({ createdAt: old, completedAt: null, status: 'BLOCKED' }, 'all', now)).toBe(true)
   })
 })
 

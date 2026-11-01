@@ -82,14 +82,19 @@ public sealed partial class MarketplaceJobProcessor
         return true;
     }
 
-    // PTT AVM returns are order lines in "iade" status (no return service): each run reads the order windows of the
-    // last three months and records the returned lines as completed returns. Nothing is sent to PTT AVM.
-    private async Task<bool> SyncPttAvmReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    // PTT AVM returns are order lines in "iade" status (no return service), recorded as completed returns. A run reads
+    // the order windows of the last two days; the first run, and one every six hours, reads the whole three months
+    // (PttAvmReturnReadPolicy). It used to read the three months on every run, every three minutes. Nothing is sent to PTT AVM.
+    private async Task<bool> SyncPttAvmReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
+        var wideCursor = await Cursor(tenantId, connectionId, ReturnRereadPolicy.WideCursorResource, cancellationToken);
         var now = timeProvider.GetUtcNow();
+        var full = ReadBoolean(payloadJson, "forceFull") || cursor.LastSuccessAt is null;
+        var wide = PttAvmReturnReadPolicy.WideReadDue(full, wideCursor.LastSuccessAt, now);
+        var startDay = PttAvmOrderHistoryPolicy.StartDay(wide, cursor.LastModifiedWatermark, now);
         var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
-        foreach (var (windowStart, windowEnd) in PttAvmOrderHistoryPolicy.Windows(PttAvmOrderHistoryPolicy.StartDay(true, null, now), now))
+        foreach (var (windowStart, windowEnd) in PttAvmOrderHistoryPolicy.Windows(startDay, now))
         {
             if (cancellationToken.IsCancellationRequested) return false;
             TrackRequest();
@@ -104,6 +109,11 @@ public sealed partial class MarketplaceJobProcessor
                 TrackReceived();
                 await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
             }
+        }
+        if (wide)
+        {
+            wideCursor.LastSuccessAt = now;
+            wideCursor.Version++;
         }
         cursor.OpaqueCursor = null;
         cursor.LastModifiedWatermark = now;
