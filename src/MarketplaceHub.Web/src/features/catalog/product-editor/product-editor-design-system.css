@@ -456,8 +456,8 @@
 }
 
 @layer features {
-  /* "#" sits over the row number badge: a 24px track from the same padding as .variant-row-lead, centred. */
-  .variant-table-head > span:first-child { display: grid; grid-template-columns: 24px; justify-items: center; text-align: center; }
+  /* "#" and the row number badge both sit in the middle of the first column. */
+  .variant-table-head > span:first-child { display: grid; justify-items: center; text-align: center; }
 }
 
 @layer features {
@@ -561,7 +561,7 @@
 }
 
 @layer features {
-  .variant-row-lead { display: flex; align-items: center; gap: 4px; cursor: grab; }
+  .variant-row-lead { display: flex; align-items: center; justify-content: center; gap: 0; cursor: grab; }
 }
 
 @layer features {
