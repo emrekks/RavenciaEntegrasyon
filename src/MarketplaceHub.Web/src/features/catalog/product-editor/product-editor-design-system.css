@@ -948,12 +948,14 @@
 .product-publish-popup-modal > header h2 { margin-bottom: 0; }
 /* The same space above the cards and below the Yayınla bar: the body has no bottom padding and the steps add none, so
    the bar sits --popup-gap above the popup's edge both while it sticks and at the end of the list. */
-.product-publish-popup-body { --popup-gap: 20px; min-height: 0; overflow: auto; padding: var(--popup-gap) 24px 0; }
+.product-publish-popup-body { --popup-gap: 20px; --popup-pad-x: 24px; min-height: 0; overflow: auto; padding: var(--popup-gap) var(--popup-pad-x) 0; }
 .product-publish-popup { display: block; min-width: 0; }
 .product-publish-popup :is(.product-add-workspace, .product-publish-step, .product-publish-layout, .product-publish-main) { margin: 0; padding: 0; }
-.product-publish-popup .product-publish-step .publish-selection-footer { bottom: var(--popup-gap); margin-bottom: var(--popup-gap); }
+/* In a popup the bar (the single product's and the bulk publish's) is the popup's bottom edge: flush with its sides and
+   bottom, square, only a top hairline, so it meets the popup's own rounded corners. */
+.app-shell.stitch-shell main .product-publish-popup .product-publish-step .publish-selection-footer { position: sticky; bottom: 0; z-index: var(--rv-z-sticky, 30); margin: 16px calc(-1 * var(--popup-pad-x, 24px)) 0; padding-inline: var(--popup-pad-x, 24px); background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 0; border-top: 1px solid var(--rv-color-border-strong, var(--rv-color-border)); border-radius: 0; box-shadow: 0 -10px 24px -12px rgb(0 0 0 / 35%); }
 @media (max-width: 760px) {
-  .product-publish-popup-body { --popup-gap: 16px; padding-inline: 16px; }
+  .product-publish-popup-body { --popup-gap: 16px; --popup-pad-x: 16px; padding-inline: 16px; }
 }
 
 /* Editing a product: the heading names it (one line, the full name on hover) with its model code under it. */

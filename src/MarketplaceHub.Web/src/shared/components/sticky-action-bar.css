@@ -27,8 +27,7 @@
   animation: rv-action-bar-in .18s cubic-bezier(.2, .8, .2, 1) both;
 }
 .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
-.app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar,
-.app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar {
+.app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar {
   margin: 16px 0 calc(-1 * var(--rv-page-pad-b));
   max-width: none;
   padding-inline: 16px;
@@ -43,5 +42,6 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .rv-action-bar.rv-action-bar, .app-shell.stitch-shell main .rv-action-bar.rv-action-bar.is-leaving { animation: none; }
 }
-/* The publish step's bar sits inside the step's own layout, not at the end of the page. */
-.app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar { margin-bottom: 0; }
+/* The publish step's bar sits inside the step's own layout, not at the end of the page; docked to the window's bottom
+   edge it is square, with only its top hairline (rounded top corners looked like a card floating off the edge). */
+.app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar { margin: 16px 0 0; padding-inline: 16px; border: 0; border-top: 1px solid var(--rv-color-border-strong, var(--rv-color-border)); border-radius: 0; }

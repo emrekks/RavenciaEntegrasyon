@@ -12,6 +12,7 @@ import { bulkPublishPlan, useBulkPublicationReadiness, type BulkConnectionReadin
 import { bulkPublishModelTooltip, bulkPublishPlatformName, summarizeBulkPublishModels, summarizeBulkPublishStatus, type BulkPublishModelTooltip, type BulkPublishStatusSummary } from './bulk-publish-status'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { CategoryMappingDialog } from '../CategoryMappingDialog'
+import { publishPopoverBounds } from '../publish-popover-placement'
 import type { PublicationValueMappingFix } from '../publication-attribute-readiness'
 import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
@@ -252,9 +253,10 @@ function BulkPublishStatusPill({ summary, modelTip, platformName, tipId }: { sum
   const [place, setPlace] = useState<{ top: number; left: number; above: boolean } | null>(null)
   const hasTip = Boolean(modelTip?.rows.length)
   const show = () => {
-    const rect = pillRef.current?.getBoundingClientRect()
-    if (!rect || !hasTip) return
-    const spaceBelow = window.innerHeight - rect.bottom
+    if (!pillRef.current || !hasTip) return
+    // The room below ends at the popup's Yayınla bar, not at the window's edge.
+    const { bottom, anchor: rect } = publishPopoverBounds(pillRef.current)
+    const spaceBelow = bottom - rect.bottom
     const above = spaceBelow < 300 && rect.top > spaceBelow
     setPlace({ top: above ? rect.top - 8 : rect.bottom + 8, left: Math.min(window.innerWidth - 16, Math.max(rect.right, 16 + 320)), above })
   }

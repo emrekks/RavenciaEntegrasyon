@@ -27,6 +27,7 @@ import { isOptionRequirement, loadPublicationAttributeIssues, missingPublication
 import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { CategoryMappingDialog } from '../CategoryMappingDialog'
+import { placePublishPopover } from '../publish-popover-placement'
 import { LocalImagePreview, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
@@ -707,9 +708,11 @@ function placePublishIssueTooltip(event: { currentTarget: HTMLElement }) {
   tooltip.style.display = 'block'
   const height = tooltip.offsetHeight
   tooltip.style.removeProperty('display')
-  const rect = status.getBoundingClientRect()
-  const fitsBelow = window.innerHeight - rect.bottom >= height + 16
-  tooltip.dataset.placement = !fitsBelow && rect.top >= height + 16 ? 'top' : 'bottom'
+  // Never under the step's sticky Yayınla bar: it opens upward, or shorter, when the room below is taken.
+  const { placement, maxHeight } = placePublishPopover(status, height)
+  tooltip.dataset.placement = placement
+  if (maxHeight) tooltip.style.maxHeight = `${maxHeight}px`
+  else tooltip.style.removeProperty('max-height')
 }
 // A card with no publication record of its own (matched by an import, or never sent) is refreshed by looking the
 // product up on the marketplace: Trendyol and n11 by model code, Pazarama and PTT AVM by barcode, Shopify by barcode or
