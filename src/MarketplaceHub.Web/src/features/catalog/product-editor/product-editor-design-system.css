@@ -823,19 +823,6 @@
   container-type: inline-size;
 }
 
-@container (max-width: 700px) {
-
-  .app-shell.stitch-shell main .rich-text-editor-pro .rich-text-tool-group {
-    display: contents;
-  }
-}
-
-@container (max-width: 700px) {
-
-  .app-shell.stitch-shell main .rich-text-editor-pro .rich-text-tool-group select {
-    flex: 0 0 128px;
-  }
-}
 .app-shell.stitch-shell main .product-add-stepper {
   width: 100%;
   max-width: none;
