@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyGeneratedVariantCodes, applyVariantCodesByKey, buildMissingVariantCodes, buildSequentialVariantCode, buildSequentialVariantCodes, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds, variantCodeChangeConfirmText } from './variant-generation'
+import { applyGeneratedVariantCodes, applyVariantCodesByKey, buildSequentialVariantCode, buildSequentialVariantCodes, buildVariantGenerationDefaults, planVariantCodes, resolveVariantSyncAttributeIds, variantCodeCandidates, variantCodeChangeConfirmText } from './variant-generation'
 
 describe('variant generation defaults', () => {
   it('leaves the stock code and the barcode of a new variant empty when automatic barcodes are off: no code is made up', () => {
@@ -99,10 +99,30 @@ describe('column-menu variant codes', () => {
   ]
 
   it('generates codes only for the rows whose column is empty, skipping codes another row holds', () => {
-    expect(buildMissingVariantCodes(rows, 'barcode', 'MZ021Y-CD')).toEqual({ b: 'MZ021Y-CD-02', d: 'MZ021Y-CD-04' })
-    expect(buildMissingVariantCodes([{ key: 'x', barcode: 'M-01', sku: '' }, { key: 'y', barcode: '', sku: '' }, { key: 'z', barcode: 'M-02', sku: '' }], 'barcode', 'M')).toEqual({ y: 'M-04' })
-    expect(buildMissingVariantCodes(rows, 'sku', 'MZ021Y-CD')).toEqual({ b: 'MZ021Y-CD-02', c: 'MZ021Y-CD-03' })
-    expect(buildMissingVariantCodes(rows, 'sku', ' ')).toEqual({})
+    expect(planVariantCodes(rows, 'barcode', 'missing', 'MZ021Y-CD')?.codesByKey).toEqual({ b: 'MZ021Y-CD-02', d: 'MZ021Y-CD-04' })
+    expect(planVariantCodes([{ key: 'x', barcode: 'M-01', sku: '' }, { key: 'y', barcode: '', sku: '' }, { key: 'z', barcode: 'M-02', sku: '' }], 'barcode', 'missing', 'M')?.codesByKey).toEqual({ y: 'M-03' })
+    expect(planVariantCodes(rows, 'sku', 'missing', 'MZ021Y-CD')?.codesByKey).toEqual({ b: 'MZ021Y-CD-02', c: 'MZ021Y-CD-03' })
+    expect(planVariantCodes(rows, 'sku', 'missing', ' ')?.codesByKey).toEqual({})
+  })
+
+  it('moves a number the catalog holds on by one, and the next row continues past it', () => {
+    // Live 2026-11-02: the İndigo card of MZ021Y-CD already held MZ021Y-CD-01…-03; the generator now skips them.
+    const taken = new Set(['MZ021Y-CD-01', 'MZ021Y-CD-02', 'MZ021Y-CD-05'])
+    const four = Array.from({ length: 4 }, (_, index) => ({ key: `r${index + 1}`, barcode: '', sku: '' }))
+    expect(planVariantCodes(four, 'sku', 'all', 'MZ021Y-CD', code => taken.has(code))).toEqual({
+      codesByKey: { r1: 'MZ021Y-CD-03', r2: 'MZ021Y-CD-04', r3: 'MZ021Y-CD-06', r4: 'MZ021Y-CD-07' },
+      skipped: 3,
+      highest: 7,
+    })
+    // "36 is free in the form; the server holds it, so 37."
+    const rows36 = Array.from({ length: 36 }, (_, index) => ({ key: `k${index + 1}`, barcode: '', sku: index < 35 ? `RYP007-${String(index + 1).padStart(2, '0')}` : '' }))
+    expect(planVariantCodes(rows36, 'sku', 'missing', 'RYP007', code => code === 'RYP007-36')?.codesByKey).toEqual({ k36: 'RYP007-37' })
+  })
+
+  it('asks for more numbers when a row would go past the scanned range', () => {
+    const rows2 = [{ key: 'a', barcode: '', sku: '' }, { key: 'b', barcode: '', sku: '' }]
+    expect(planVariantCodes(rows2, 'sku', 'all', 'M', code => code !== 'M-05', 4)).toBeNull()
+    expect(variantCodeCandidates('M', 3, 5)).toEqual(['M-03', 'M-04', 'M-05'])
   })
 
   it('writes one column of the keyed rows and leaves the rest alone', () => {

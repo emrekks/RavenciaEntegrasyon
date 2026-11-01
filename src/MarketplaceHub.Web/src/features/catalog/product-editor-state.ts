@@ -119,6 +119,41 @@ export function editorFieldErrors(error: unknown): EditorFieldErrors {
   return result
 }
 
+export function variantCodeKey(field: 'barcode' | 'sku', code: string) {
+  return `${field}:${code.trim().toLocaleUpperCase('tr-TR')}`
+}
+
+// The codes a refused save names as held by another card ("sku\tMZ021Y-CD-01\tKadın … Bluz"), keyed by field and
+// code, with the holding card's title.
+export function variantCodeConflictsFrom(error: unknown): Record<string, string> {
+  if (!(error instanceof ApiRequestError)) return {}
+  const entries = error.fieldErrors?.variantCodeConflicts ?? error.fieldErrors?.VariantCodeConflicts ?? []
+  const result: Record<string, string> = {}
+  for (const entry of entries) {
+    const [field, code, title] = entry.split('\t')
+    if ((field === 'sku' || field === 'barcode') && code?.trim()) result[variantCodeKey(field, code)] = title?.trim() || 'başka bir ürün'
+  }
+  return result
+}
+
+// After a save, rows the form still holds under a temporary key take the id of the saved variant with their stock
+// code, so a second Kaydet updates them instead of creating them again, even before the form is refilled.
+export function rekeySavedVariantRows<T extends { key: string; sku: string }>(rows: T[], saved: ReadonlyArray<{ id: string; sku: string }>): T[] {
+  const savedIds = new Set(saved.map(variant => variant.id))
+  const idBySku = new Map(saved.map(variant => [variant.sku.trim().toLocaleUpperCase('tr-TR'), variant.id]))
+  const usedIds = new Set(rows.filter(row => savedIds.has(row.key)).map(row => row.key))
+  let changed = false
+  const next = rows.map(row => {
+    if (savedIds.has(row.key) || !row.sku.trim()) return row
+    const id = idBySku.get(row.sku.trim().toLocaleUpperCase('tr-TR'))
+    if (!id || usedIds.has(id)) return row
+    usedIds.add(id)
+    changed = true
+    return { ...row, key: id }
+  })
+  return changed ? next : rows
+}
+
 // Turkey's VAT rates since 10 July 2023 (8 and 18 became 10 and 20); 0 is for exempt goods.
 export const TURKISH_VAT_RATES = ['0', '1', '10', '20']
 export const DEFAULT_VAT_RATE = '10'

@@ -961,11 +961,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
         var normalizedSkus = command.Variants.Select(x => Normalize(x.Sku)).ToArray();
         if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variants", "SKU boş veya tekrarlı olamaz.");
-        var skuKeys = CatalogKeyNormalizer.LookupKeys(command.Variants.Select(x => x.Sku));
-        if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && skuKeys.Contains(x.SkuNormalized), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+        var createSkuClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId), [.. command.Variants.Select(x => x.Sku)], [], cancellationToken);
+        if (createSkuClashes.Count > 0) return CodeConflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "Stok kodu başka bir üründe kullanılıyor", createSkuClashes);
         var normalizedBarcodes = command.Variants.Select(x => NormalizeBarcode(x.Barcode)).OfType<string>().ToArray();
-        var barcodeKeys = CatalogKeyNormalizer.LookupKeys(command.Variants.Select(x => x.Barcode));
-        if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && barcodeKeys.Contains(x.BarcodeNormalized), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+        if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
+        var createBarcodeClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId), [], [.. command.Variants.Select(x => x.Barcode).OfType<string>().Where(x => !string.IsNullOrWhiteSpace(x))], cancellationToken);
+        if (createBarcodeClashes.Count > 0) return CodeConflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir üründe kullanılıyor", createBarcodeClashes);
 
         var now = timeProvider.GetUtcNow();
         var productStatus = command.Status == "ACTIVE" ? ProductStatus.Active : (command.Status == "ARCHIVED" ? ProductStatus.Archived : ProductStatus.Draft); var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenantId, Title = command.Title.Trim(), Description = command.Description.Trim(), BrandId = command.BrandId, CategoryId = command.CategoryId, DefaultListPrice = command.DefaultListPrice, DefaultSalePrice = command.DefaultSalePrice, WarrantyMonths = command.WarrantyMonths is > 0 ? command.WarrantyMonths : null, DeliveryDays = command.DeliveryDays ?? ProductDeliveryDays.Default, TrendyolWebColorValueId = command.TrendyolWebColorValueId is Guid createWebColor && createWebColor != Guid.Empty ? createWebColor : null, VatRate = command.VatRate, VatInclusion = command.VatRate is null ? null : NormalizeVatInclusion(command.VatInclusion), Status = productStatus, CreatedAt = now, UpdatedAt = now };
@@ -1252,9 +1253,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (proposedSkus.Any(string.IsNullOrWhiteSpace) || proposedSkus.Distinct().Count() != proposedSkus.Length) return Invalid<ProductView>("variantUpdates", "Stok kodları boş veya tekrarlı olamaz.");
             var proposedBarcodes = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? NormalizeBarcode(update.Barcode) : NormalizeBarcode(variant.Barcode)).OfType<string>().ToArray();
             if (proposedBarcodes.Distinct().Count() != proposedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
-            var proposedSkuKeys = CatalogKeyNormalizer.LookupKeys(existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku));
-            var proposedBarcodeKeys = CatalogKeyNormalizer.LookupKeys(existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Barcode : variant.Barcode));
-            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId) && (proposedSkuKeys.Contains(x.SkuNormalized) || x.BarcodeNormalized != null && proposedBarcodeKeys.Contains(x.BarcodeNormalized)), cancellationToken)) return Conflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir varyantla çakışıyor.");
+            var proposedSkuValues = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku).ToArray();
+            var proposedBarcodeValues = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Barcode : variant.Barcode).OfType<string>().Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
+            var updateClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId)), proposedSkuValues, proposedBarcodeValues, cancellationToken);
+            if (updateClashes.Count > 0) return CodeConflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir üründe kullanılıyor", updateClashes);
             var updatedAt = timeProvider.GetUtcNow();
             // O15: the editor sends every row of the model-code family on each save. Only a row whose
             // data really changes gets a new version, and only such a row makes its product a local edit.
@@ -1311,11 +1313,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
             var normalizedSkus = variantsToCreate.Select(x => Normalize(x.Sku)).ToArray();
             if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variantsToCreate", "SKU boş veya tekrarlı olamaz.");
-            var createSkuKeys = CatalogKeyNormalizer.LookupKeys(variantsToCreate.Select(x => x.Sku));
-            if (await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && createSkuKeys.Contains(x.SkuNormalized) && !variantIdsToDelete.Contains(x.Id), cancellationToken)) return Conflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "SKU başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+            var newSkuClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !variantIdsToDelete.Contains(x.Id)), [.. variantsToCreate.Select(x => x.Sku)], [], cancellationToken);
+            if (newSkuClashes.Count > 0) return CodeConflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "Stok kodu başka bir varyantta kullanılıyor", newSkuClashes);
             var normalizedBarcodes = variantsToCreate.Select(x => NormalizeBarcode(x.Barcode)).OfType<string>().ToArray();
-            var createBarcodeKeys = CatalogKeyNormalizer.LookupKeys(variantsToCreate.Select(x => x.Barcode));
-            if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length || await db.ProductVariants.AnyAsync(x => x.TenantId == tenantId && x.BarcodeNormalized != null && createBarcodeKeys.Contains(x.BarcodeNormalized) && !variantIdsToDelete.Contains(x.Id), cancellationToken)) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantla çakışıyor; otomatik birleştirme yapılmadı.");
+            if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
+            var newBarcodeClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !variantIdsToDelete.Contains(x.Id)), [], [.. variantsToCreate.Select(x => x.Barcode).OfType<string>().Where(x => !string.IsNullOrWhiteSpace(x))], cancellationToken);
+            if (newBarcodeClashes.Count > 0) return CodeConflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantta kullanılıyor", newBarcodeClashes);
 
             var globalAssignments = command.Attributes ?? await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).Select(x => new ProductAttributeCommand(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToListAsync(cancellationToken);
             if (command.CategoryId is Guid categoryId)
@@ -2789,5 +2792,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     private static ServiceResult<T> Invalid<T>(string field, string message) => ServiceResult<T>.Fail("VALIDATION_FAILED", message, 422, new Dictionary<string, string[]> { [field] = [message] });
     private static ServiceResult<T> NotFound<T>() => ServiceResult<T>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
     private static ServiceResult<T> Conflict<T>(string code, string message) => ServiceResult<T>.Fail(code, message, 409);
+    // A code clash names each code and the card holding it; the editor marks the rows from the field errors.
+    private static ServiceResult<T> CodeConflict<T>(string code, string lead, IReadOnlyCollection<VariantCodeAvailability.TakenVariantCode> taken)
+    {
+        var (message, fields) = VariantCodeAvailability.Describe(lead, taken);
+        return ServiceResult<T>.Fail(code, message, 409, fields);
+    }
     private static ServiceResult<T> Precondition<T>(long version) => ServiceResult<T>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{version}.", 412);
 }

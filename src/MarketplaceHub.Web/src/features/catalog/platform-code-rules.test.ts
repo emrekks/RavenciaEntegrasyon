@@ -16,6 +16,7 @@ describe('variant code callout', () => {
       missingBarcodes: 2,
       missingSkus: 1,
       ruleRows: 1,
+      heldRows: 0,
       rulePlatforms: ['Trendyol', 'Shopify'],
       title: '2 varyantta barkod eksik · 1 varyantta stok kodu eksik · 1 varyantın kodu platform kurallarına uymuyor',
     })
@@ -25,6 +26,12 @@ describe('variant code callout', () => {
     const rows = [{ key: 'a', barcode: '', sku: '' }]
     expect(summarizeVariantCodeIssues(rows, issuesFor(rows))).toMatchObject({ rulePlatforms: [], title: '1 varyantta barkod eksik · 1 varyantta stok kodu eksik' })
     expect(summarizeVariantCodeIssues([{ key: 'a', barcode: '', sku: 'X' }], new Map())).toBeNull()
+  })
+
+  it('names the card holding a code a refused save reported, and counts such rows apart', () => {
+    const rows = [{ key: 'a', barcode: 'MZ021Y-CD-01', sku: 'MZ021Y-CD-01' }]
+    expect(variantCodeFieldIssueText([], 'sku', 'MZ021Y-CD-01', 'İndigo Bluz')).toBe("MZ021Y-CD-01 · 'İndigo Bluz' ürününde kullanılıyor")
+    expect(summarizeVariantCodeIssues(rows, new Map(), (field, code) => field === 'sku' && code === 'MZ021Y-CD-01')).toMatchObject({ heldRows: 1, title: '1 varyantın kodu başka üründe kullanılıyor' })
   })
 
   it('words a red field as missing when empty and as the rule when filled', () => {
