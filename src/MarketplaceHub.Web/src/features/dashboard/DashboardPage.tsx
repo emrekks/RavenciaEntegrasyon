@@ -180,7 +180,8 @@ const LowStockDetailsModal = lazy(() => import('../catalog/products/ProductsPage
 export function DashboardPage() {
   // Periods are Istanbul calendar days, whatever the browser's clock says.
   const today = istanbulDateKey()
-  const [range, setRange] = useState<Range>('30')
+  // The panel opens on today (owner's call, 1 Nov 2026): hour by hour, against yesterday up to the same hour.
+  const [range, setRange] = useState<Range>('today')
   const [custom, setCustom] = useState({ from: today, to: today })
   // The store picked in the channel list filters the whole performance card; the metric picks what the chart draws.
   const [channel, setChannel] = useState('ALL')

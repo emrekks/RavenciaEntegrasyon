@@ -58,6 +58,12 @@ describe('DashboardPage', () => {
     expect(container.querySelector('.rr-callout.rr-warn')).toBeNull()
   })
 
+  it('opens the performance panel on today', async () => {
+    await render()
+    expect(container.querySelector('.rr-seg [aria-checked="true"]')?.textContent).toBe('Bugün')
+    expect(container.querySelector('.rr-pf-h p')?.textContent).toBe('Bugün · Tüm Platformlar')
+  })
+
   it('counts the products of the pending orders, splits them by store and opens the pending orders', async () => {
     await render()
     expect(card('Bekleyen Ürün Adedi')).toBe('35')
