@@ -524,8 +524,9 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
   const isHepsiburadaUnverifiedWithoutPackage = item.derivedStatus === 'UNVERIFIED' && item.platformCode.trim().toUpperCase() === 'HEPSIBURADA' && (item.packages?.length ?? 0) === 0
   const hepsiburadaPackageHistoryExpired = isHepsiburadaUnverifiedWithoutPackage && Date.parse(item.orderedAt) < hepsiburadaPackageStatusHistoryCutoff().getTime()
   const isCancelledOrder = normalizedOrderStatus === 'CANCELLED'
-  // In the İptal tab the order says it once, beside its platform; its product lines are only struck through.
-  const tabBadge = tab !== 'CANCELLED' ? null : cancelledPart ? <RrBadge label="Kısmi İptal" tone="warn" glyph="cancelled" /> : isCancelledOrder ? <RrBadge label="İptal" tone="bad" glyph="cancelled" /> : null
+  // In the İptal tab a partly cancelled order says so beside its platform (an order cancelled whole needs no mark
+  // there); its product lines are only struck through.
+  const tabBadge = cancelledPart ? <RrBadge label="Kısmi İptal" tone="warn" glyph="cancelled" /> : null
   const saleTotal = item.grossAmount || item.netAmount
   const hasDiscount = item.discountAmount > 0
   const invoiceableTotal = Math.max(0, saleTotal - item.discountAmount)
