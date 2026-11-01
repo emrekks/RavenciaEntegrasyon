@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dashboardOperationalLinks, dayOrdersLink, resolveInvoiceTab, resolveReturnStatus } from './dashboard-operational-links'
+import { dashboardOperationalLinks, dayCancellationsLink, dayOrdersLink, resolveInvoiceTab, resolveReturnStatus } from './dashboard-operational-links'
 
 describe('dashboard operational metric destinations', () => {
   it('opens pending orders and action-required returns in their matching views', () => {
@@ -18,6 +18,10 @@ describe('dashboard operational metric destinations', () => {
 
   it('opens the sold units of a day as the order list of that day', () => {
     expect(dayOrdersLink('2026-11-01')).toBe('/orders?from=2026-11-01&to=2026-11-01')
+  })
+
+  it("opens the day's cancellations in the İptal tab on that cancel date", () => {
+    expect(dayCancellationsLink('2026-11-01')).toBe('/orders?status=CANCELLED&cancelFrom=2026-11-01&cancelTo=2026-11-01')
   })
 
   it('falls back safely for unsupported view parameters', () => {

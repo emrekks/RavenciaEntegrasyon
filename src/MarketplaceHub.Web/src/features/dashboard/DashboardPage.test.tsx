@@ -12,6 +12,10 @@ vi.mock('../../shared/api', async importOriginal => {
     const route = path.split('?')[0]
     if (apiState.failing.has(route)) throw new Error(`${route} failed`)
     if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 4, lateOrders: 1, pendingReturns: 2 }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
+    if (route === '/dashboard/cancellations') return { stores: [
+      { connectionId: 'ty', cancelledOrders: 2, partialOrders: 1, cancelledUnits: 4, unknownTimeOrders: 0, unknownTimeUnits: 0 },
+      { connectionId: 'hb', cancelledOrders: 0, partialOrders: 0, cancelledUnits: 0, unknownTimeOrders: 1, unknownTimeUnits: 3 },
+    ] }
     if (route === '/dashboard/performance' && path.includes('from=2026-11-01&to=2026-11-01')) {
       const row = (connectionId: string, currency: string, productQuantity: number) => ({ day: '2026-11-01', connectionId, currency, amount: 100, orderCount: 1, productQuantity, packageCount: 1, returnedAmount: 0, returnedOrderCount: 0 })
       return { from: '2026-11-01', to: '2026-11-01', previousFrom: '2026-10-31', previousTo: '2026-10-31', current: [row('ty', 'TRY', 30), row('ty', 'EUR', 4), row('hb', 'TRY', 6)], previous: [row('ty', 'TRY', 99)], channels: [], partialDay: true, currentEnd: '2026-11-01T09:00:00Z' }
@@ -70,6 +74,22 @@ describe('DashboardPage', () => {
     const units = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Satılan Ürün Adedi')!
     expect(units.getAttribute('href')).toBe('/orders?from=2026-11-01&to=2026-11-01')
     expect(Array.from(units.querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol34 adet', 'Hepsiburada6 adet'])
+  })
+
+  it("counts today's whole cancellations, adds products and partial ones, and lists unknown times apart", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-01T09:00:00Z'))
+    try { await render() } finally { vi.useRealTimers() }
+    const cancel = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Günlük İptal')!
+    expect(cancel.querySelector('strong')?.textContent).toBe('2sipariş · 4 ürün · 1 kısmi')
+    expect(cancel.getAttribute('href')).toBe('/orders?status=CANCELLED&cancelFrom=2026-11-01&cancelTo=2026-11-01')
+    expect(Array.from(cancel.querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol2 sipariş · 1 kısmi · 4 adet', 'Hepsiburada · Zamanı Bilinmiyor1 sipariş · 3 adet'])
+  })
+
+  it('shows unread cancellations as unknown, not 0', async () => {
+    apiState.failing = new Set(['/dashboard/cancellations'])
+    await render()
+    expect(card('Günlük İptal')).toBe('—')
   })
 
   it('shows unread sold units as unknown, not 0', async () => {

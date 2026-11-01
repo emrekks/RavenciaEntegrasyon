@@ -5,7 +5,7 @@ import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
 import type { Product } from '../catalog/shared'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
-import { dashboardOperationalLinks, dayOrdersLink } from '../../shared/dashboard-operational-links'
+import { dashboardOperationalLinks, dayCancellationsLink, dayOrdersLink } from '../../shared/dashboard-operational-links'
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
@@ -22,6 +22,9 @@ import { instantNotificationsQueryKey, type InstantNotificationStatus } from '..
 
 type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
 type DashboardBootstrap = { metrics: DashboardMetrics; channels?: DashboardChannel[] }
+// GET /dashboard/cancellations: one store's cancellations of the day (DashboardCancellationRowView).
+type CancellationRow = { connectionId: string; cancelledOrders: number; partialOrders: number; cancelledUnits: number; unknownTimeOrders: number; unknownTimeUnits: number }
+type BreakdownRow = { key: string; code: string; name: string; value: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number }
 type MatrixCell = { state: 'ok' | 'warn' | 'bad' | 'off'; lastSuccessAt: string | null; lastProblemAt: string | null }
 type MatrixRow = { connectionId: string; platformCode: string; displayName: string; externalStoreId: string; status: string; cells: Record<string, MatrixCell>; issue: string | null }
@@ -44,6 +47,7 @@ const ICONS = {
   invoice: icon(<><path d="M4 2h5l3 3v9H4z" /><path d="M9 2v3h3M6 8.5h4M6 11h3" /></>),
   due: icon(<><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3M8 9v2" /></>),
   units: icon(<><path d="M3 5.5h10l-.9 8H3.9z" /><path d="M5.8 5.5V4.3a2.2 2.2 0 0 1 4.4 0v1.2" /><path d="M6.3 9.6l1.2 1.2 2.3-2.4" /></>),
+  cancel: icon(<><circle cx="8" cy="8" r="5.8" /><path d="M5.9 5.9l4.2 4.2M10.1 5.9l-4.2 4.2" /></>),
   lowst: icon(<><path d="M2.5 5 8 2.2 13.5 5v6L8 13.8 2.5 11z" /><path d="M2.5 5 8 7.8 13.5 5M8 7.8v6" /></>),
   up: icon(<path d="M4 10l4-4 4 4" />, 12),
   down: icon(<path d="M4 6l4 4 4-4" />, 12),
@@ -97,7 +101,7 @@ function niceStep(max: number) {
 }
 
 // One breakdown per store, shown when the card is hovered.
-function Breakdown({ rows }: { rows: Array<{ key: string; code: string; name: string; value: string }> }) {
+function Breakdown({ rows }: { rows: BreakdownRow[] }) {
   return rows.length ? <div className="rr-tip rr-bd" role="tooltip">{rows.map(row => <div className="rr-bd-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}</div> : null
 }
 
@@ -197,6 +201,8 @@ export function DashboardPage() {
   const days = periodDays(range, custom, today)
   // Today's sold units on every store, from the same report as the performance card (its "Bugün" shares the request).
   const todaySales = useQuery({ queryKey: ['dashboard', 'performance', today, today], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${today}&to=${today}`, poll), ...refresh })
+  // Today's cancellations, each counted on the day the marketplace says it happened.
+  const cancellations = useQuery({ queryKey: ['dashboard', 'cancellations', today], queryFn: () => hubApi<{ stores: CancellationRow[] }>(`/dashboard/cancellations?day=${today}`, poll), ...refresh })
   const performance = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'performance', days?.from, days?.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, poll), enabled: days !== null, ...refresh })
 
   const metrics = bootstrap.data?.metrics
@@ -244,7 +250,7 @@ export function DashboardPage() {
     return { row, auth, webhook, attention }
   })
   const attention = health.filter(item => item.attention).length
-  const errors = [bootstrap.error, invoiceSummary.error, todaySales.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
+  const errors = [bootstrap.error, invoiceSummary.error, todaySales.error, cancellations.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
   const loadingValue = (busy: boolean, value: number | undefined) => { const known = knownCount(busy, value); return known === null ? '—' : count(known) }
   // The bar places the latest finished day (or hour) between the weakest and strongest ones. The day still running
   // is left out: just after midnight it is near zero, which pinned the low end to 0 and the dot to the left.
@@ -256,7 +262,21 @@ export function DashboardPage() {
   const sold = todaySales.data ? soldUnits(todaySales.data.current) : undefined
   const breakdown = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1])
     .map(([connectionId, value]) => { const store = channels.get(connectionId); return { key: connectionId, code: store?.platformCode ?? '', name: store?.displayName ?? 'Kaldırılmış mağaza', value: `${count(value)} adet` } })
-  const ops: Array<[keyof typeof ICONS, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | undefined]> = [
+  const store = (connectionId: string) => channels.get(connectionId)
+  const cancelled = cancellations.data?.stores
+  const cancelTotal = (pick: (row: CancellationRow) => number) => (cancelled ?? []).reduce((total, row) => total + pick(row), 0)
+  // Whole cancellations are the card's number; the products cancelled and the orders left open with fewer products
+  // follow it. Cancellations whose time the marketplace does not give are listed apart, never counted in.
+  const cancelDetail = cancelled ? [`sipariş · ${count(cancelTotal(row => row.cancelledUnits))} ürün`, ...(cancelTotal(row => row.partialOrders) ? [`${count(cancelTotal(row => row.partialOrders))} kısmi`] : [])].join(' · ') : undefined
+  const cancelRows: BreakdownRow[] = (cancelled ?? []).flatMap(row => {
+    const name = store(row.connectionId)?.displayName ?? 'Kaldırılmış mağaza', code = store(row.connectionId)?.platformCode ?? ''
+    const known = row.cancelledOrders + row.partialOrders
+    return [
+      ...(known ? [{ key: row.connectionId, code, name, value: [`${count(row.cancelledOrders)} sipariş`, ...(row.partialOrders ? [`${count(row.partialOrders)} kısmi`] : []), `${count(row.cancelledUnits)} adet`].join(' · ') }] : []),
+      ...(row.unknownTimeOrders ? [{ key: `${row.connectionId}-unknown`, code, name: `${name} · Zamanı Bilinmiyor`, value: `${count(row.unknownTimeOrders)} sipariş · ${count(row.unknownTimeUnits)} adet` }] : []),
+    ]
+  })
+  const ops: Array<[keyof typeof ICONS, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, string?]> = [
     ['cart', 'Bekleyen Siparişler', knownCount(bootstrap.isLoading, metrics?.pendingOrders), 'warn', dashboardOperationalLinks.pendingOrders, metrics?.pendingByConnection],
     ['late', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
     ['ret', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
@@ -266,6 +286,7 @@ export function DashboardPage() {
     ['lowst', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
     // Units sold today (Istanbul) on every store, counted as the report counts them; it opens today's orders.
     ['units', 'Satılan Ürün Adedi', knownCount(todaySales.isLoading, sold?.total), '', dayOrdersLink(today), sold?.byConnection],
+    ['cancel', 'Günlük İptal', knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), '', dayCancellationsLink(today), cancelRows, cancelDetail],
   ]
   // The file is made from the data on screen only once it belongs to the chosen period and store.
   const reportReady = Boolean(data) && days !== null && !performance.isPlaceholderData && !performance.isFetching && data!.from === days.from && data!.to === days.to
@@ -287,8 +308,8 @@ export function DashboardPage() {
       <button type="button" className="rr-btn" onClick={downloadReport} disabled={!reportReady} title={reportReady ? undefined : 'Rapor verisi hazırlanıyor'}><RrIcon name="export" />Raporu İndir</button>
     </div></div>
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
-    <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection]) => {
-      const body = <><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={breakdown(byConnection)} /></>
+    <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
+      const body = <><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={Array.isArray(byConnection) ? byConnection : breakdown(byConnection)} /></>
       const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}`
       // Low stock opens its window here instead of taking the user to the products page.
       return kind === 'lowst'
