@@ -91,6 +91,15 @@ public static class CatalogEndpoints
             var taken = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(variant => variant.TenantId == tenant.TenantId && !excluded.Contains(variant.Id)), codes, codes, http.RequestAborted);
             return Results.Ok(new { items = taken });
         });
+        // Read only: the card that already holds a model code, for the "Yeni Ürün" editor (a new card may not take it).
+        api.MapGet("/catalog/model-codes/holder", async (string? code, HttpContext http, AppDbContext db) =>
+        {
+            if (Tenant(http) is not { } tenant) return Unauthorized(http);
+            var modelCode = code?.Trim() ?? "";
+            if (modelCode.Length > ModelCodeUniquenessPolicy.MaxCodeLength) return Problem(http, new("VALIDATION_FAILED", $"Model kodu en fazla {ModelCodeUniquenessPolicy.MaxCodeLength} karakter olabilir.", 422));
+            var holder = await ModelCodeOwnership.FindAsync(db, tenant.TenantId, [modelCode], http.RequestAborted);
+            return Results.Ok(new { taken = holder is not null, productId = holder?.ProductId, productTitle = holder?.Title, message = holder is null ? null : ModelCodeUniquenessPolicy.Message(holder.Title) });
+        });
         api.MapGet("/products/{id:guid}/marketplace-codes", async (Guid id, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? Result(await service.GetProductMarketplaceCodesAsync(tenant.TenantId, id, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapPut("/products/{id:guid}/marketplace-codes", async (Guid id, UpdateMarketplaceCodesCommand command, HttpContext http, ICatalogService service) =>

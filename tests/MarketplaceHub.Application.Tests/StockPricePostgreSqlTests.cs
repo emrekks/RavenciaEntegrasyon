@@ -1827,6 +1827,56 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal((1m, "INCLUDED"), (chosen.Value!.VatRate, chosen.Value.VatInclusion));
     }
 
+    // A model code belongs to one product: "Yeni Ürün" (a draft too) may not take one the catalog holds, whatever its case
+    // or separators; the holder's editor (an update adding a colour), a colour card an import wrote next to it and a card
+    // without a model code are not stopped.
+    [PostgreSqlFact]
+    public async Task NewProduct_WithAModelCodeTheCatalogHolds_IsRefused_FamilySaveImportAndUpdateAreNot()
+    {
+        var tenant = NewTenant("model-code-unique");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            await seed.SaveChangesAsync();
+        }
+        await using var db = fixture.CreateContext();
+        var service = NewCatalogService(db);
+        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        var modelCode = $"MZ{suffix}-CD";
+
+        var created = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Kadın Bluz Siyah", "Açıklama", null, null, [new CreateVariantCommand($"{modelCode}-01", null, modelCode)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(created.Succeeded, created.Error?.Message);
+
+        // The same code in another spelling: refused with the holder's name, before the stock codes are looked at.
+        db.ChangeTracker.Clear();
+        var second = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Kadın Bluz Beyaz", "Açıklama", null, null, [new CreateVariantCommand($"{modelCode}-01", null, $" mz{suffix.ToLowerInvariant()} cd ")], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.Equal((409, ModelCodeUniquenessPolicy.ConflictCode), (second.Error!.Status, second.Error.Code));
+        Assert.Equal(ModelCodeUniquenessPolicy.Message("Kadın Bluz Siyah"), second.Error.Message);
+        Assert.Equal(ModelCodeUniquenessPolicy.Message("Kadın Bluz Siyah"), second.Error.FieldErrors![ModelCodeUniquenessPolicy.Field][0]);
+
+        // Taslak Olarak Kaydet follows the same rule; a draft without a model code is free.
+        db.ChangeTracker.Clear();
+        var draft = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Taslak", "", null, null, [new CreateVariantCommand($"{modelCode}-90", null, modelCode.ToLowerInvariant())], Status: "DRAFT"), CancellationToken.None);
+        Assert.Equal(ModelCodeUniquenessPolicy.ConflictCode, draft.Error!.Code);
+        db.ChangeTracker.Clear();
+        var noModelCode = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Taslak", "", null, null, [new CreateVariantCommand($"NOMC-{suffix}", null, "  ")], Status: "DRAFT"), CancellationToken.None);
+        Assert.True(noModelCode.Succeeded, noModelCode.Error?.Message);
+        Assert.Equal(2, await db.Products.CountAsync(x => x.TenantId == tenant.Id));
+
+        // A colour card an import writes next to it (straight to the catalog, not through the create path) is kept.
+        var now = DateTimeOffset.UtcNow;
+        var importedCard = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = "Kadın Bluz Beyaz", Description = "", VatRate = 10m, VatInclusion = "INCLUDED", CreatedAt = now, UpdatedAt = now };
+        db.Products.Add(importedCard);
+        db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = importedCard.Id, Sku = $"{modelCode}-02", SkuNormalized = $"{modelCode}-02", ModelCode = modelCode, OptionSignature = "Renk: Beyaz", CreatedAt = now, UpdatedAt = now });
+        await db.SaveChangesAsync();
+
+        // The holder's editor adds a new colour or size with the same model code: an update, never stopped.
+        db.ChangeTracker.Clear();
+        var familySave = await service.UpdateProductAsync(tenant.Id, created.Value!.Id, created.Value.Version, new UpdateProductCommand("Kadın Bluz Siyah", "Açıklama", null, null, VariantsToCreate: [new CreateVariantCommand($"{modelCode}-03", null, modelCode)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.True(familySave.Succeeded, familySave.Error?.Message);
+        Assert.Equal(3, await db.ProductVariants.CountAsync(x => x.TenantId == tenant.Id && x.ModelCode == modelCode));
+    }
+
     // Taslak Olarak Kaydet: a draft is saved without its KDV, stays a draft without it, goes on sale only with every rule
     // met, is never sent nor flipped by the bulk status change, and a card on sale never goes back to draft.
     [PostgreSqlFact]

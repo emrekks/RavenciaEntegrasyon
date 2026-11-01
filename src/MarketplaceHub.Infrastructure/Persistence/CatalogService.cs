@@ -959,6 +959,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             }
         }
 
+        // A model code belongs to one product: a new card (a draft too) may not take one the catalog already holds. Checked
+        // before the stock codes, which the editor generates from the model code and would clash first.
+        if (await ModelCodeOwnership.FindAsync(db, tenantId, command.Variants.Select(x => x.ModelCode), cancellationToken) is { } modelCodeHolder)
+        {
+            var modelCodeMessage = ModelCodeUniquenessPolicy.Message(modelCodeHolder.Title);
+            return ServiceResult<ProductView>.Fail(ModelCodeUniquenessPolicy.ConflictCode, modelCodeMessage, 409, new Dictionary<string, string[]> { [ModelCodeUniquenessPolicy.Field] = [modelCodeMessage] });
+        }
         var normalizedSkus = command.Variants.Select(x => Normalize(x.Sku)).ToArray();
         if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variants", "SKU boş veya tekrarlı olamaz.");
         var createSkuClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId), [.. command.Variants.Select(x => x.Sku)], [], cancellationToken);
