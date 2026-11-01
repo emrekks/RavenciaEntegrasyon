@@ -33,13 +33,3 @@ Every documented credit endpoint is on the "Partner Gateway", for a marketplace 
 The direct API documentation has no endpoint for an account's own credit, and our token has no partner id to call the
 partner ones with. Checked 1 Nov 2026; ask entegrasyon@trendyolefaturam.com before building a credit display. An
 insufficient balance surfaces only as 409 `…/gateway/insufficient-credit` on invoice creation.
-
-### Credit probe (since 1 Nov 2026)
-- `TrendyolEFaturamHttpClient.GetRemainingCreditAsync` tries only `GET api/invoice/partners/remaining-credit` with the
-  connection's own sign-in token; API `GET /api/v1/connections/{id}/efaturam-remaining-credit`.
-- Answer `{available: true, remainingCredit}` on 200; otherwise `{available: false, reason}`: `user-is-not-partner`
-  (404 with that problem type), `unauthorized`, `forbidden`, `rate-limited`, `error`, `unreadable`, `sign-in-failed`.
-- `TrendyolEFaturamCreditCache`: a value 10 min, not-partner 24 h, other failures 15 min (or Retry-After).
-- Logs: `E-Faturam remaining credit. Available=True RemainingCredit=…` or the Warning
-  `E-Faturam remaining credit unavailable. Reason=…`, once per cache period.
-- The Integrations card shows `1.240 Kontör` beside the E-Faturam name only when available (warning colour under 50).

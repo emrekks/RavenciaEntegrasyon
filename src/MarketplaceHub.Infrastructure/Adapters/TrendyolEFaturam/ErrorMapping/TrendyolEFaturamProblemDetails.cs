@@ -11,9 +11,6 @@ internal static class TrendyolEFaturamProblemDetails
     // The taxpayer lookup's documented "not an e-Invoice taxpayer" answer (404). Any other 404 stays an error.
     internal const string TaxPayerNotFoundReference = "problem:/etransformation/gateway/tax-payer-not-found";
     private const string TaxPayerNotFoundPath = "/etransformation/gateway/tax-payer-not-found";
-    // The remaining-credit endpoint's documented answer (404) for an account that is not a marketplace partner.
-    internal const string UserIsNotPartnerReference = "problem:/etransformation/gateway/user-is-not-partner";
-    private const string UserIsNotPartnerPath = "/etransformation/gateway/user-is-not-partner";
 
     public static async Task<string?> TryReadReferenceAsync(HttpContent content, CancellationToken cancellationToken)
     {
@@ -110,9 +107,6 @@ internal static class TrendyolEFaturamProblemDetails
             if (string.Equals(absolute.Host, "api.trendyol.com", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(absolute.AbsolutePath, TaxPayerNotFoundPath, StringComparison.OrdinalIgnoreCase))
                 return TaxPayerNotFoundReference;
-            if (string.Equals(absolute.Host, "api.trendyol.com", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(absolute.AbsolutePath, UserIsNotPartnerPath, StringComparison.OrdinalIgnoreCase))
-                return UserIsNotPartnerReference;
             path = absolute.AbsolutePath + (string.IsNullOrEmpty(absolute.Query) ? absolute.Fragment : string.Empty);
         }
         var queryIndex = path.IndexOf('?');
@@ -123,8 +117,6 @@ internal static class TrendyolEFaturamProblemDetails
             return ApplicationMismatchReference;
         if (string.Equals(path, TaxPayerNotFoundPath, StringComparison.OrdinalIgnoreCase))
             return TaxPayerNotFoundReference;
-        if (string.Equals(path, UserIsNotPartnerPath, StringComparison.OrdinalIgnoreCase))
-            return UserIsNotPartnerReference;
         return path.StartsWith("/problem/", StringComparison.OrdinalIgnoreCase) ? $"problem:{path}" : null;
     }
 
