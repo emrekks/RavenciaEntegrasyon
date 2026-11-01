@@ -36,6 +36,9 @@ describe('order line cancellations', () => {
     for (const tab of ['ALL', 'DELIVERED']) expect(rowLines(order, tab).map(item => item.id)).toEqual(['kept'])
     expect(rowLines(order, 'CANCELLED')).toHaveLength(25)
     expect(rowLines(order, 'ALL', true)).toHaveLength(26)
+    // Kısmi İptal shows the whole order, what is left first.
+    const partialTab = rowLines({ derivedStatus: 'DELIVERED', lines: [line('gone', 1, 1), line('kept', 1, 0)] }, 'PARTIALLY_CANCELLED')
+    expect(partialTab.map(item => item.id)).toEqual(['kept', 'gone'])
     expect(rowLines({ derivedStatus: 'RETURNED', lines }, 'ALL').map(item => item.id)).toEqual(['a', 'b'])
     // An open order keeps its cancelled lines struck through, for the warehouse.
     expect(rowLines({ derivedStatus: 'PROCESSING', lines }, 'PROCESSING')).toHaveLength(3)
