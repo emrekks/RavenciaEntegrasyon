@@ -268,9 +268,6 @@
   .app-shell.stitch-shell main .variant-bulk-edit-filters > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 }
 
-/* The variant filter's clear button keeps its label on one line. */
-.app-shell.stitch-shell main .product-add-page .variant-filter-clear { white-space: nowrap; }
-
 /* The keyboard way to the picture zoom (MediaZoomButton): a small corner button, shown on hover and on keyboard focus;
    a touch screen taps the picture itself. */
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-zoom-btn { position: absolute; top: 4px; left: 4px; z-index: 2; display: grid; width: 20px; min-width: 20px; height: 20px; min-height: 20px; padding: 0; place-items: center; color: #fff; background: rgb(9 20 39 / 86%); border: 0; border-radius: var(--rv-radius-sm); box-shadow: none; opacity: 0; }
