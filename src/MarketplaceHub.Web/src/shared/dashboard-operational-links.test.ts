@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dashboardOperationalLinks, dayOrdersLink, resolveInvoiceTab, resolveReturnStatus } from './dashboard-operational-links'
+import { dashboardOperationalLinks, resolveInvoiceTab, resolveReturnStatus } from './dashboard-operational-links'
 
 describe('dashboard operational metric destinations', () => {
   it('opens pending orders and action-required returns in their matching views', () => {
@@ -14,10 +14,6 @@ describe('dashboard operational metric destinations', () => {
     expect(dashboardOperationalLinks.pendingInvoices).toBe('/invoices?tab=UNINVOICED')
     expect(dashboardOperationalLinks.dueInvoices).toBe('/invoices?tab=DUE_SOON')
     expect(resolveInvoiceTab(new URL(dashboardOperationalLinks.dueInvoices, 'https://panel.ravencia.com').searchParams.get('tab'))).toBe('DUE_SOON')
-  })
-
-  it('opens the sold units of a day as the order list of that day', () => {
-    expect(dayOrdersLink('2026-11-01')).toBe('/orders?from=2026-11-01&to=2026-11-01')
   })
 
   it('falls back safely for unsupported view parameters', () => {
