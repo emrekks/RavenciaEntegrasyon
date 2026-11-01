@@ -42,6 +42,11 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             await NoteRejectedAsync(connection, "WEBHOOK_MERCHANT_MISMATCH", $"başka bir mağazanın ({foreign}) bildirimi geldi ve işlenmedi; bu adresi o mağaza için tanımlıysa Hepsiburada'dan kaldırmasını isteyin", cancellationToken);
             return ServiceResult<bool>.Ok(false);
         }
+        // A product deleted in Shopify names only the product id, which the panel does not keep: the delivery starts the
+        // connection's link verification now instead of at night. The scan misses the deleted codes and the lookups confirm
+        // them NOT_FOUND, so the card reads "Bulunamadı" and can be published again. One run per connection in ten minutes.
+        if (connection.PlatformCode == "SHOPIFY" && envelope.ResourceType == MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.ProductDeleteResourceType)
+            return await QueueListingVerifyAsync(connection, subscription.Id, correlationId, cancellationToken);
         var source = $"{connection.PlatformCode}_WEBHOOK";
         var jobType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.WebhookIngest);
         var externalMessageId = connection.PlatformCode == "HEPSIBURADA"
@@ -69,6 +74,21 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         await db.WebhookSubscriptions.Where(x => x.TenantId == connection.TenantId && x.Id == subscription.Id && x.Status == "ACTIVE").ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastReceivedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }
+    private async Task<ServiceResult<bool>> QueueListingVerifyAsync(PlatformConnection connection, Guid subscriptionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var dedup = $"webhook:listing-verify:{connection.Id:N}:{now.ToUnixTimeSeconds() / 600}";
+        if (!await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.JobType == MarketplaceJobTypes.ListingVerify && x.JobDedupKey == dedup, cancellationToken))
+        {
+            var payload = JsonSerializer.Serialize(new { connectionId = connection.Id });
+            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, JobType = MarketplaceJobTypes.ListingVerify, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ListingVerify, userInitiated: false), TriggerType = "webhook", AvailableAt = now, CorrelationId = correlationId, Version = 1 });
+            try { await db.SaveChangesAsync(cancellationToken); }
+            catch (DbUpdateException exception) when (IsDuplicateCandidate(exception)) { db.ChangeTracker.Clear(); }
+        }
+        await db.WebhookSubscriptions.Where(x => x.TenantId == connection.TenantId && x.Id == subscriptionId && x.Status == "ACTIVE").ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastReceivedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+        return ServiceResult<bool>.Ok(true);
+    }
+
     // The route gate refuses an old or wrong route token before the body is read, so ReceiveAsync never sees it;
     // the refusal is still kept when the connection is one that receives deliveries.
     public async Task NoteRouteRefusedAsync(Guid connectionPublicId, CancellationToken cancellationToken)
