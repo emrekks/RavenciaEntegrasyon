@@ -339,13 +339,22 @@ public sealed partial class InvoicingBillingService(
             {
                 var isHidden = hiddenPackageIds.Contains(candidate.Package.Id);
                 var platformSelected = selectedPlatforms.Count == 0 || selectedPlatforms.Contains(candidate.Connection.PlatformCode);
-                if (platformSelected && isHidden) selectedHidden++;
+                // The tab badges count with the list's own filters (search, dates, shipment, cargo, invoice, action,
+                // platform), each under its tab rule, so a badge always equals the list that tab shows.
+                var otherFiltersMatch = MatchesWorkspaceFilters(candidate, platformFreeRequest, searchKey, from, to);
+                if (otherFiltersMatch && platformSelected)
+                {
+                    if (isHidden) selectedHidden++;
+                    else
+                    {
+                        if (IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))) selectedUninvoiced++;
+                        else selectedInvoiced++;
+                        if (candidate.IsDueSoon) selectedDueSoon++;
+                    }
+                }
                 if (platformSelected && !isHidden)
                 {
                     selectedTotal++;
-                    if (IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))) selectedUninvoiced++;
-                    else selectedInvoiced++;
-                    if (candidate.IsDueSoon) selectedDueSoon++;
                     if (!string.Equals(candidate.Connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
                         && (candidate.CanCreateInvoice || candidate.InvoiceStatus is "FATURA_REDDEDILDI" or "FATURA_BELIRSIZ"))
                         hasPendingMarketplaceInvoices = true;
@@ -356,7 +365,7 @@ public sealed partial class InvoicingBillingService(
                     cargoProviders.Add(candidate.Package.CargoProviderExternalId.Trim());
                 invoiceStatuses.Add(WorkspaceInvoiceDisplayStatus(candidate));
 
-                if (!MatchesWorkspacePageRequest(candidate, normalizedTab, platformFreeRequest, searchKey, from, to, isHidden)) continue;
+                if (!otherFiltersMatch || !MatchesWorkspaceTab(candidate, normalizedTab, isHidden)) continue;
                 platformCounts[candidate.Connection.PlatformCode] = platformCounts.GetValueOrDefault(candidate.Connection.PlatformCode) + 1;
                 if (!MatchesWorkspacePlatformFilter(request.PlatformCodes, candidate.Connection.PlatformCode)) continue;
                 var resultIndex = filteredCount++;
@@ -578,16 +587,8 @@ public sealed partial class InvoicingBillingService(
                 connection.Environment));
     }
 
-    private static bool MatchesWorkspacePageRequest(
-        WorkspaceCandidate candidate,
-        string normalizedTab,
-        InvoiceWorkspacePageQuery request,
-        string? searchKey,
-        DateTimeOffset? from,
-        DateTimeOffset? to,
-        bool isHidden)
-    {
-        var tabMatch = normalizedTab switch
+    private static bool MatchesWorkspaceTab(WorkspaceCandidate candidate, string normalizedTab, bool isHidden) =>
+        normalizedTab switch
         {
             "ALL" => !isHidden,
             "HIDDEN" => isHidden,
@@ -595,6 +596,15 @@ public sealed partial class InvoicingBillingService(
             "DUE_SOON" => !isHidden && candidate.IsDueSoon,
             _ => !isHidden && IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))
         };
+
+    // Every list filter except the tab.
+    private static bool MatchesWorkspaceFilters(
+        WorkspaceCandidate candidate,
+        InvoiceWorkspacePageQuery request,
+        string? searchKey,
+        DateTimeOffset? from,
+        DateTimeOffset? to)
+    {
         var shipmentMatch = string.IsNullOrWhiteSpace(request.ShipmentStatus) || request.ShipmentStatus == "ALL"
             || string.Equals(candidate.Package.Status.ToString(), request.ShipmentStatus, StringComparison.OrdinalIgnoreCase);
         var cargoMatch = string.IsNullOrWhiteSpace(request.CargoProviderName) || request.CargoProviderName == "ALL"
@@ -607,7 +617,7 @@ public sealed partial class InvoicingBillingService(
             && (!to.HasValue || candidate.Order.OrderedAt <= to.Value);
         var searchMatch = searchKey is null || new[] { candidate.Order.OrderNumber, candidate.CustomerName, candidate.InvoiceNumber, candidate.Package.CargoTrackingNumber }
             .Any(value => value?.ToLower(WorkspaceSearchCulture).Contains(searchKey, StringComparison.Ordinal) == true);
-        return tabMatch && platformMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
+        return platformMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
     }
 
     // An invoice that was issued sits with the invoiced ones while it is being sent to the marketplace; one that could
