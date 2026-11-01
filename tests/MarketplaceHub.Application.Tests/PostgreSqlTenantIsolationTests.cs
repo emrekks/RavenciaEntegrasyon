@@ -8053,6 +8053,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         {
             seedDb.Tenants.Add(tenant);
             seedDb.PlatformConnections.Add(connection);
+            // A current category list: the import reads none from the marketplace here.
+            seedDb.ReferenceSnapshots.Add(new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "CATEGORIES", SourceVersion = "test", ContentHash = "test", FetchedAt = fixture.Now, IsCurrent = true });
             seedDb.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Panel ürünü", Description = "", Status = ProductStatus.Active, CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 1 });
             seedDb.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = productId, SortOrder = 0, Sku = "SK-1", SkuNormalized = "SK-1", Barcode = "PANEL-BARCODE-1", BarcodeNormalized = "PANEL-BARCODE-1", ModelCode = "MDL-1", OptionSignature = "-", CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 1 });
             await seedDb.SaveChangesAsync();
