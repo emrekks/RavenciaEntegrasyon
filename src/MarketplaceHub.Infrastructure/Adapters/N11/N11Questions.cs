@@ -118,7 +118,7 @@ public static class N11QuestionMapper
             id,
             "PRODUCT",
             isAnswered ? "ANSWERED" : "WAITING_FOR_ANSWER",
-            subject is null || text.StartsWith(subject, StringComparison.OrdinalIgnoreCase) ? text : $"{subject}: {text}",
+            text,
             Value("productTitle"),
             string.IsNullOrWhiteSpace(image) ? null : image,
             null, null, null,
@@ -127,6 +127,8 @@ public static class N11QuestionMapper
             asked,
             null,
             answered ?? asked,
-            conversations);
+            conversations,
+            ProductExternalId: Value("productId"),
+            Subject: subject ?? "");
     }
 }

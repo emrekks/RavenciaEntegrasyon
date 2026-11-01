@@ -23,9 +23,12 @@ public sealed class N11QuestionTests
 
         Assert.Equal("WAITING_FOR_ANSWER", question.Status);
         Assert.Equal("PRODUCT", question.Kind);
-        Assert.Equal("Beden: M beden kaç cm?", question.Text);
+        Assert.Equal("M beden kaç cm?", question.Text);
+        Assert.Equal("Beden", question.Subject);
         Assert.Equal("Kadın Bluz", question.ProductName);
         Assert.Equal("https://img.example.com/1.jpg", question.ProductImageUrl);
+        // n11 sends no stock code or barcode; its productId is what links the question to the panel product.
+        Assert.Equal("4455667788", question.ProductExternalId);
         Assert.Equal(new DateTimeOffset(2026, 10, 12, 0, 0, 0, TimeSpan.FromHours(3)), question.CreatedAt);
         Assert.Empty(question.Conversations);
     }

@@ -78,15 +78,16 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         };
         var items = await orderedRows
             .Skip((page - 1) * limit).Take(limit).Select(row => Map(row.Question, row.Connection.PlatformCode, row.Connection.DisplayName)).ToListAsync(cancellationToken);
-        return new(items, page, limit, totalCount);
+        return new((await QuestionProductImages.FillAsync(db, tenantId, items, cancellationToken)).ToList(), page, limit, totalCount);
     }
 
     public async Task<MarketplaceQuestionView?> GetAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
     {
-        return await (from question in db.MarketplaceQuestions.AsNoTracking()
-                      join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
-                      where question.TenantId == tenantId && question.Id == id
-                      select Map(question, connection.PlatformCode, connection.DisplayName)).SingleOrDefaultAsync(cancellationToken);
+        var view = await (from question in db.MarketplaceQuestions.AsNoTracking()
+                          join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
+                          where question.TenantId == tenantId && question.Id == id
+                          select Map(question, connection.PlatformCode, connection.DisplayName)).SingleOrDefaultAsync(cancellationToken);
+        return view is null ? null : await WithProductImageAsync(tenantId, view, cancellationToken);
     }
 
     // The questions the same customer asked the same marketplace before this one, newest first, with the answers they
@@ -101,12 +102,13 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
                              select new { question.CustomerKey, question.CreatedAt, connection.PlatformCode }).SingleOrDefaultAsync(cancellationToken);
         if (current is null) return null;
         if (current.CustomerKey is null) return [];
-        return await (from question in db.MarketplaceQuestions.AsNoTracking()
-                      join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
-                      where question.TenantId == tenantId && question.CustomerKey == current.CustomerKey && connection.PlatformCode == current.PlatformCode
-                          && question.Id != id && question.CreatedAt < current.CreatedAt
-                      orderby question.CreatedAt descending
-                      select Map(question, connection.PlatformCode, connection.DisplayName)).Take(CustomerHistoryLimit).ToListAsync(cancellationToken);
+        var history = await (from question in db.MarketplaceQuestions.AsNoTracking()
+                             join connection in db.PlatformConnections.AsNoTracking() on new { question.TenantId, Id = question.ConnectionId } equals new { connection.TenantId, connection.Id }
+                             where question.TenantId == tenantId && question.CustomerKey == current.CustomerKey && connection.PlatformCode == current.PlatformCode
+                                 && question.Id != id && question.CreatedAt < current.CreatedAt
+                             orderby question.CreatedAt descending
+                             select Map(question, connection.PlatformCode, connection.DisplayName)).Take(CustomerHistoryLimit).ToListAsync(cancellationToken);
+        return await QuestionProductImages.FillAsync(db, tenantId, history, cancellationToken);
     }
 
     public async Task<QuestionSyncView> SyncAsync(Guid tenantId, string? kind, CancellationToken cancellationToken)
@@ -357,7 +359,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         history.Add(new("Merchant", answer.Trim(), timeProvider.GetUtcNow())); question.HistoryJson = JsonSerializer.Serialize(history);
         question.Version++;
         await db.SaveChangesAsync(cancellationToken);
-        return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+        return ServiceResult<MarketplaceQuestionView>.Ok(await WithProductImageAsync(tenantId, Map(question, connection.PlatformCode, connection.DisplayName), cancellationToken));
     }
 
     public QuestionReportCapability ReportCapability(string platformCode) => port.ReportCapability(platformCode);
@@ -376,7 +378,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         var keyMarker = ";key:" + keyHash;
         var attempts = await db.AuditLogs.AsNoTracking().Where(row => row.TenantId == tenantId && row.TargetType == QuestionReportAudit.TargetType
             && row.TargetId == target && row.Reason.Contains(keyMarker)).Select(row => row.Action).ToListAsync(cancellationToken);
-        if (attempts.Contains(QuestionReportAudit.Reported)) return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+        if (attempts.Contains(QuestionReportAudit.Reported)) return ServiceResult<MarketplaceQuestionView>.Ok(await WithProductImageAsync(tenantId, Map(question, connection.PlatformCode, connection.DisplayName), cancellationToken));
 
         var capability = port.ReportCapability(connection.PlatformCode);
         if (!capability.Supported)
@@ -390,7 +392,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         {
             db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Reported, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = QuestionReportAudit.Reason(connection.PlatformCode, command.ReasonCode ?? "", keyHash), CorrelationId = correlationId, CreatedAt = now });
             await db.SaveChangesAsync(cancellationToken);
-            return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+            return ServiceResult<MarketplaceQuestionView>.Ok(await WithProductImageAsync(tenantId, Map(question, connection.PlatformCode, connection.DisplayName), cancellationToken));
         }
         if (question.AnswerSubmissionStatus is "SUBMITTING" or "UNKNOWN" or "SUBMITTED")
             return ServiceResult<MarketplaceQuestionView>.Fail("QUESTION_REPORT_NOT_ALLOWED", "Bu soruya gönderilen cevap pazaryerinde işleniyor; soru bildirilemez.", 409);
@@ -420,7 +422,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             {
                 db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Reported, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = QuestionReportAudit.Reason(connection.PlatformCode, reason.Code, keyHash), CorrelationId = correlationId, CreatedAt = now });
                 await db.SaveChangesAsync(cancellationToken);
-                return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+                return ServiceResult<MarketplaceQuestionView>.Ok(await WithProductImageAsync(tenantId, Map(question, connection.PlatformCode, connection.DisplayName), cancellationToken));
             }
             await db.SaveChangesAsync(cancellationToken);
             return reportedRemotely
@@ -468,7 +470,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = QuestionReportAudit.Reported, TargetType = QuestionReportAudit.TargetType, TargetId = target, Reason = auditReason, CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
         await db.SaveChangesAsync(CancellationToken.None);
         logger.LogInformation("Soru pazaryerine bildirildi. TenantId: {TenantId}, ConnectionId: {ConnectionId}, QuestionId: {QuestionId}, Reason: {Reason}", tenantId, question.ConnectionId, question.Id, reason.Code);
-        return ServiceResult<MarketplaceQuestionView>.Ok(Map(question, connection.PlatformCode, connection.DisplayName));
+        return ServiceResult<MarketplaceQuestionView>.Ok(await WithProductImageAsync(tenantId, Map(question, connection.PlatformCode, connection.DisplayName), cancellationToken));
 
         static string Truncate(string value) => value.Length <= 512 ? value : value[..512];
     }
@@ -615,12 +617,12 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
     {
         var row = await db.MarketplaceQuestions.SingleOrDefaultAsync(candidate => candidate.TenantId == tenantId && candidate.ConnectionId == connectionId && candidate.ExternalQuestionId == remote.Id, cancellationToken);
         var isNew = row is null;
-        row ??= new MarketplaceQuestion { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalQuestionId = remote.Id, Kind = remote.Kind, QuestionText = remote.Text, Status = remote.Status, CreatedAt = remote.CreatedAt, LastRemoteModifiedAt = remote.LastModifiedAt };
+        row ??= new MarketplaceQuestion { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalQuestionId = remote.Id, Kind = remote.Kind, QuestionText = remote.Text, QuestionSubject = remote.Subject, Status = remote.Status, CreatedAt = remote.CreatedAt, LastRemoteModifiedAt = remote.LastModifiedAt };
         if (remote.LastModifiedAt >= row.LastRemoteModifiedAt)
         {
             row.Kind = remote.Kind; row.Status = remote.Status;
-            if (remote.Text.Length > 0) row.QuestionText = remote.Text;
-            row.ProductName = remote.ProductName; row.ProductImageUrl = remote.ProductImageUrl; row.ProductSku = remote.ProductSku; row.ProductBarcode = remote.ProductBarcode; row.ProductModelCode = remote.ProductModelCode; row.ProductUrl = remote.ProductUrl ?? row.ProductUrl; row.CustomerName = remote.CustomerName; row.ExternalOrderNumber = remote.OrderNumber;
+            if (remote.Text.Length > 0) { row.QuestionText = remote.Text; row.QuestionSubject = remote.Subject; }
+            row.ProductName = remote.ProductName; row.ProductImageUrl = remote.ProductImageUrl; row.ProductSku = remote.ProductSku; row.ProductBarcode = remote.ProductBarcode; row.ProductModelCode = remote.ProductModelCode; row.ProductExternalId = remote.ProductExternalId ?? row.ProductExternalId; row.ProductUrl = remote.ProductUrl ?? row.ProductUrl; row.CustomerName = remote.CustomerName; row.ExternalOrderNumber = remote.OrderNumber;
             // A read without the customer's number (another call of the marketplace) keeps the one already known.
             row.CustomerKey = remote.CustomerKey ?? row.CustomerKey;
             // HistoryJson is jsonb, so it comes back with PostgreSQL's key order and spacing; compare it in our own
@@ -707,7 +709,27 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         return history.Count == 0 ? null : JsonSerializer.Serialize(history.OrderBy(message => message.CreatedAt));
     }
     private static IReadOnlyList<RemoteQuestionConversation> ReadHistory(string? json) { try { return MarketplaceQuestionHistory.Deduplicate(json is null ? [] : JsonSerializer.Deserialize<RemoteQuestionConversation[]>(json, JsonOptions) ?? []); } catch (JsonException) { return []; } }
-    private static MarketplaceQuestionView Map(MarketplaceQuestion row, string platformCode, string storeName) => new(row.Id, row.ConnectionId, platformCode, storeName, row.ExternalQuestionId, row.Kind, row.Status, row.QuestionText, row.ProductName, row.ProductImageUrl, row.ProductSku, row.ProductBarcode, row.ProductModelCode, row.CustomerName, row.ExternalOrderNumber, ReadHistory(row.HistoryJson), row.CreatedAt, row.ExpiresAt, row.LastRemoteModifiedAt, row.LastSyncedAt, row.Version, row.ProductUrl, row.AnswerSubmissionStatus, row.AnswerSubmissionStatus == "NOT_DELIVERED" ? row.PendingAnswerText : null);
+    private async Task<MarketplaceQuestionView> WithProductImageAsync(Guid tenantId, MarketplaceQuestionView view, CancellationToken cancellationToken) =>
+        (await QuestionProductImages.FillAsync(db, tenantId, [view], cancellationToken))[0];
+
+    private static MarketplaceQuestionView Map(MarketplaceQuestion row, string platformCode, string storeName)
+    {
+        var (subject, text) = SubjectAndText(platformCode, row.QuestionSubject, row.QuestionText);
+        return new(row.Id, row.ConnectionId, platformCode, storeName, row.ExternalQuestionId, row.Kind, row.Status, text, row.ProductName, row.ProductImageUrl, row.ProductSku, row.ProductBarcode, row.ProductModelCode, row.CustomerName, row.ExternalOrderNumber, ReadHistory(row.HistoryJson), row.CreatedAt, row.ExpiresAt, row.LastRemoteModifiedAt, row.LastSyncedAt, row.Version, row.ProductUrl, row.AnswerSubmissionStatus, row.AnswerSubmissionStatus == "NOT_DELIVERED" ? row.PendingAnswerText : null, subject);
+    }
+
+    // n11 questions read before the subject was kept apart were stored as "{questionSubject}: {question}" by the
+    // mapper; they are shown split the same way (the stored text is left as it is). Other marketplaces send no subject.
+    private static readonly System.Text.RegularExpressions.Regex StoredN11Subject = new(@"^(?<subject>[^:\r\n]{1,60}):\s+(?<text>\S[\s\S]*)$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    internal static (string? Subject, string Text) SubjectAndText(string platformCode, string? subject, string text)
+    {
+        // An empty subject is n11's "no subject" for a question read after the split: its text is never cut.
+        if (subject is not null) return (string.IsNullOrWhiteSpace(subject) ? null : subject.Trim(), text);
+        if (!string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase)) return (null, text);
+        var match = StoredN11Subject.Match(text);
+        return match.Success ? (match.Groups["subject"].Value.Trim(), match.Groups["text"].Value) : (null, text);
+    }
     private static IEnumerable<(DateTimeOffset Start, DateTimeOffset End)> WindowsOldestFirst(DateTimeOffset start, DateTimeOffset end, TimeSpan maximum)
     {
         for (var cursor = start; cursor < end; cursor = cursor.Add(maximum)) yield return (cursor, cursor.Add(maximum) < end ? cursor.Add(maximum) : end);
