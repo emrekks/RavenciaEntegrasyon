@@ -468,3 +468,10 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qtable tbody td.rr-qt-stock { grid-template-columns: minmax(0, 1fr) 120px; align-items: center; }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qpair { gap: 8px; }
 }
+
+/* The delete confirmation names the records it removes: name and model code, the first ten, then a count. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-del-list { display: grid; gap: 4px; max-height: 240px; margin: 0; padding: 8px 10px; overflow-y: auto; list-style: none; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 7px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-del-list li { display: flex; gap: 8px; justify-content: space-between; min-width: 0; font-size: 13px; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-del-list li span { min-width: 0; overflow: hidden; color: var(--rr-ink); text-overflow: ellipsis; white-space: nowrap; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-del-list li small { flex: none; color: var(--rr-muted); font-variant-numeric: tabular-nums; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-del-list li.rr-del-more { color: var(--rr-muted); }

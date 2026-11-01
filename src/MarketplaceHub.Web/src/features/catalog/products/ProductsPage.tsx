@@ -16,7 +16,7 @@ import { toggleVariantGroupRow, updateVariantGroupSelection, variantGroupRowMate
 import { productPlatformDisplayLabel, productPlatformDisplayState } from '../product-platform-status'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockErrorMessage, stockTarget, type VariantStockSet } from '../variant-stock-set'
-import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsFinished, productSyncJobsPath } from '../product-sync-tracking'
+import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsPath, settleTrackedProductSyncJobs, trackProductSyncJobs } from '../product-sync-tracking'
 import { productImportConnection, singleProductLookupLabel } from '../product-import-platforms'
 import { productImportOptionVisibility as getProductImportOptionVisibility, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { productPlatformFilterGroups } from '../product-platform-filter'
@@ -27,7 +27,8 @@ import { formatMoney } from '../../../shared/format-money'
 import { readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../../shared/list-url-state'
 import { ProductTransferDialog } from './ProductTransferDialog'
 import { ModelCodeCopy } from './ModelCodeCopy'
-import { productDeleteJobNote, productDeleteResultMessage, type ProductDeleteResponse } from './product-delete-text'
+import { productDeleteJobNote, productDeleteListing, productDeleteMoreText, productDeleteResultMessage, type ProductDeleteResponse } from './product-delete-text'
+import { loadProductsByIds, quickStockCellValue, type SavedStock } from './quick-edit-products'
 // Loaded with the editor's stylesheet only when a bulk publication opens, like a row's publish popup.
 const BulkPublishDialog = lazy(() => import('./BulkPublishDialog').then(module => ({ default: module.BulkPublishDialog })))
 const BulkVatDialog = lazy(() => import('./BulkVatDialog').then(module => ({ default: module.BulkVatDialog })))
@@ -366,7 +367,14 @@ function QuickEditStockCell({ variant, onChanged, onSelect, onStockSaved, onErro
   const [stockDirty, setStockDirty] = useState(false)
   const [stockBase, setStockBase] = useState(variant.onHand)
   const [stockError, setStockError] = useState('')
-  useEffect(() => { if (!stockDirty) { setStock(String(variant.onHand)); setStockBase(variant.onHand) } }, [stockDirty, variant.onHand])
+  // The value this cell saved, held until the variant read again carries a new stock (quickStockCellValue).
+  const savedStock = useRef<SavedStock | null>(null)
+  useEffect(() => {
+    if (stockDirty) return
+    const view = quickStockCellValue(variant.onHand, savedStock.current)
+    savedStock.current = view.saved
+    setStock(String(view.value)); setStockBase(view.value)
+  }, [stockDirty, variant.onHand])
   const [savingStock, setSavingStock] = useState(false)
   async function saveStock() {
     if (savingStock || !stockDirty) return
@@ -378,18 +386,19 @@ function QuickEditStockCell({ variant, onChanged, onSelect, onStockSaved, onErro
     try {
       await setVariantOnHand({ variantId: variant.id, sku: variant.sku, onHand: parsed.value, expectedOnHand: stockBase }, 'Hızlı varyant stok düzenleme')
       onStockSaved?.(variant.id, parsed.value)
+      savedStock.current = { value: parsed.value, previousOnHand: variant.onHand }
       setStockBase(parsed.value)
       setStockDirty(false)
     } catch (error) {
       setStockError(stockErrorMessage(error)); onError(`stok: ${stockErrorMessage(error)}`)
       // A refused change keeps nothing local: the field shows the stock the server now holds.
-      if (isStaleStockError(error)) setStockDirty(false)
+      if (isStaleStockError(error)) { savedStock.current = null; setStockDirty(false) }
     } finally {
       setSavingStock(false)
       await onChanged().catch(() => undefined)
     }
   }
-  return <td className="rr-qt-stock rr-qt-stick rr-qt-num" data-l="Stok"><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(variant.onHand); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></td>
+  return <td className="rr-qt-stock rr-qt-stick rr-qt-num" data-l="Stok"><input className="rr-in rr-num" aria-label={`${variant.sku} stok`} aria-invalid={stockError ? true : undefined} title={stockError || undefined} value={stock} onFocus={onSelect} onChange={event => { onSelect(); setStockError(''); if (!stockDirty) setStockBase(quickStockCellValue(variant.onHand, savedStock.current).value); setStockDirty(true); setStock(event.target.value) }} onBlur={() => void saveStock()} type="number" min="0" step="1" disabled={savingStock} /></td>
 }
 // "Özel Fiyat" for one marketplace, a switch: on, its own prices are edited in its cells; unticked, it sells at the panel
 // price. Shown beside the column title on one line, and above the table on a phone, where the table becomes cards.
@@ -649,6 +658,7 @@ type ProductDeleteRequest = {
   product?: Product
   title: string
   description: string
+  listing: ReturnType<typeof productDeleteListing>
 }
 function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { request: ProductDeleteRequest; deleting: boolean; onClose: () => void; onConfirm: () => void }) {
   const isGroup = request.productIds.length > 1
@@ -666,6 +676,10 @@ function ProductDeleteConfirmModal({ request, deleting, onClose, onConfirm }: { 
   const jobNote = productDeleteJobNote(preview.data)
   return <RrModal crumb="Katalog Kaydını Sil" title={isGroup ? 'Ürün Grubunu Sil' : 'Ürünü Sil'} desc="Bu işlem yerel katalog kaydını kalıcı olarak kaldırır ve geri alınamaz. Sipariş geçmişi korunur; pazar yeri ilanı otomatik olarak silinmez." size="sm" locked={deleting} onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose} disabled={deleting}>Vazgeç</button><button type="button" className="rr-btn rr-solid" onClick={onConfirm} disabled={deleting}><RrIcon name="trash" />{deleting ? 'Siliniyor…' : isGroup ? `${request.productIds.length} Kaydı Sil` : 'Kalıcı Olarak Sil'}</button></>}>
     <div className="rr-callout rr-danger"><RrIcon name="alert" /><span><b>{request.title}</b><br />{request.description}</span></div>
+    <ul className="rr-del-list" aria-label="Silinecek ürünler">
+      {request.listing.shown.map(item => <li key={item.id}><span title={item.title}>{item.title}</span><small>{item.modelCode ? `Model Kodu: ${item.modelCode}` : 'Model kodu yok'}</small></li>)}
+      {request.listing.moreCount > 0 && <li className="rr-del-more">{productDeleteMoreText(request.listing.moreCount)}</li>}
+    </ul>
     <p className="rr-lead">Devam ederseniz bu kayıtların varyant, stok, fiyat ve platform eşleşmeleri ile stok geçmişi (sipariş ve iade stok hareketleri, rezervasyonlar) silinir; siparişler ve iadeler kalır.</p>
     {jobNote && <p className="rr-lead" role="note">{jobNote}</p>}
   </RrModal>
@@ -735,7 +749,7 @@ export function ProductsPage() {
   const archivedCountQuery = useQuery({ queryKey: ['products', 'count', 'ARCHIVED'], queryFn: () => fetchProductPage(1, { search: '', status: 'ARCHIVED', platform: '', stock: '', sort: '' }, null), staleTime: 60_000 })
   const lowStockQuery = useQuery({ queryKey: ['products', 'low-stock-details'], queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000, refetchOnWindowFocus: true })
   const connectionsQuery = useQuery({ queryKey: ['connections', 'product-price'], queryFn: () => loadAllPages<MarketplaceConnection>('/connections') })
-  const productSyncJobsQuery = useQuery({ queryKey: ['jobs', 'product-import'], queryFn: () => hubApi<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store' }), enabled: productImportOpen, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
+  const productSyncJobsQuery = useQuery({ queryKey: ['jobs', 'product-import'], queryFn: () => hubApi<ProductSyncJob[]>(productSyncJobsPath, { cache: 'no-store' }), enabled: productImportOpen || trackedProductImportJobIds.length > 0, refetchInterval: query => productImportOpen && filterActiveProductSyncJobs(query.state.data ?? []).length ? 1500 : trackedProductImportJobIds.length ? 3000 : false, refetchIntervalInBackground: true, refetchOnWindowFocus: true, staleTime: 0 })
   const products = useMemo(() => query.data?.items ?? [], [query.data]); const connections = (connectionsQuery.data?.items ?? []).filter(isProductImportConnection); const publicationConnections = (connectionsQuery.data?.items ?? []).filter(isProductPublicationConnection); const selectedImportPlatforms = productImportConnectionIds.map(connectionId => connections.find(connection => connection.id === connectionId)?.platformCode ?? '').filter(Boolean); const selectedImportHasShopify = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'SHOPIFY'); const selectedImportHasHepsiburada = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const selectedImportOnlyHepsiburada = selectedImportPlatforms.length > 0 && selectedImportPlatforms.every(code => code.trim().toUpperCase() === 'HEPSIBURADA'); const singleLookupLabel = singleProductLookupLabel(selectedImportPlatforms[0] ?? ''); const platforms = summaryQuery.data?.platforms ?? []
   const selectedImportHasTrendyol = selectedImportPlatforms.some(code => code.trim().toUpperCase() === 'TRENDYOL')
   const productImportSupportsPendingApproval = productImportMethod === 'BULK' && selectedImportHasTrendyol && (productImportMode === 'FULL' || productImportMode === 'NEW_ONLY' || productImportMode === 'MAPPING_ONLY')
@@ -746,8 +760,13 @@ export function ProductsPage() {
   const totalCount = query.data?.totalCount ?? products.length; const totalPages = Math.max(1, Math.ceil(totalCount / pageSize)); const currentPage = Math.min(pageNumber, totalPages); const pageProducts = useMemo(() => currentPage === pageNumber ? products : [], [currentPage, pageNumber, products]); const pageProductGroups = useMemo(() => productRowsAsCards(pageProducts), [pageProducts])
   const activeProductSyncJobs = useMemo(() => filterActiveProductSyncJobs(productSyncJobsQuery.data ?? []), [productSyncJobsQuery.data])
   const cancelProductSync = useMutation({ mutationFn: (jobId: string) => hubApi(`/jobs/${jobId}/cancel`, { method: 'POST', headers: { 'Idempotency-Key': `cancel-product-import:${jobId}` } }), onSuccess: () => { void productSyncJobsQuery.refetch(); void client.invalidateQueries({ queryKey: ['jobs'] }) } })
+  const pageCopyOf = (id: string) => products.find(product => product.id === id) ?? selectedProductCache[id]
+  // While the quick edit is open its products are read by id (loadProductsByIds): its saves refresh ['products'], which
+  // covers this query, so every cell works on the latest versions. The page's copies show until the first answer.
+  const quickEditIds = quickEdit?.productIds ?? []
+  const quickEditQuery = useQuery({ queryKey: ['products', 'by-ids', quickEditIds], queryFn: () => loadProductsByIds(quickEditIds, id => hubApi<Product>(`/products/${id}`, { cache: 'no-store' }), pageCopyOf), enabled: quickEditIds.length > 0, staleTime: 0, gcTime: 0 })
   const quickEditProducts = quickEdit
-    ? quickEdit.productIds.map(id => products.find(product => product.id === id) ?? selectedProductCache[id]).filter((product): product is Product => Boolean(product))
+    ? quickEditQuery.data ?? quickEdit.productIds.map(pageCopyOf).filter((product): product is Product => Boolean(product))
     : []
   const selectedProductCardCount = useMemo(() => productRowsAsCards(Object.values(selectedProductCache)).length, [selectedProductCache])
   const nextPageCursor = query.data?.nextCursor ?? null
@@ -759,11 +778,13 @@ export function ProductsPage() {
     }, 1500)
     return () => window.clearInterval(timer)
   }, [activeProductSyncJobs.length, client, pageCursor, pageNumber, pageSize, productFilters, productImportOpen])
+  // An import's end refreshes the list whether or not its window is still open; each job is followed until it ends.
   useEffect(() => {
-    if (!productImportOpen || !productSyncJobsFinished(trackedProductImportJobIds, productSyncJobsQuery.data ?? [])) return
+    const { finished, remaining } = settleTrackedProductSyncJobs(trackedProductImportJobIds, productSyncJobsQuery.data ?? [])
+    if (!finished.length) return
     void client.invalidateQueries({ queryKey: ['products'] })
-    setTrackedProductImportJobIds([])
-  }, [client, productImportOpen, productSyncJobsQuery.data, trackedProductImportJobIds])
+    setTrackedProductImportJobIds(remaining)
+  }, [client, productSyncJobsQuery.data, trackedProductImportJobIds])
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
   useChangeEffect(`${productFilterKey}|${pageSize}`, () => { setPageNumber(1); setPageCursors({}); setSelectedProductIds([]); setSelectedProductCache({}); setAllProductsSelected(false) })
   useListUrlSync({ q: searchFilter, status, platform, stock, sort: productFilters.sort, size: pageSize, page: pageNumber, after: pageNumber > 1 ? pageCursor : null, details: lowStockOpen ? 'low-stock' : null }, { size: 20, page: 1 })
@@ -841,7 +862,7 @@ export function ProductsPage() {
         if (productImportMethod === 'SINGLE') query.set('lookup', productImportLookup.trim())
         return hubApi<AcceptedJob>(`/connections/${connectionId}/product-sync-jobs?${query.toString()}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' })
       }))
-      setTrackedProductImportJobIds(queuedProductSyncJobs.map(job => job.jobId))
+      setTrackedProductImportJobIds(current => trackProductSyncJobs(current, queuedProductSyncJobs.map(job => job.jobId)))
       const modeLabel = productImportMethod === 'SINGLE' ? 'tek ürün' : full ? 'tam katalog' : productImportMode === 'NEW_ONLY' ? 'yeni ürün' : productImportMode === 'MAPPING_ONLY' ? 'ürün eşleme' : 'mevcut ürün güncelleme'
       const contentLabel = productImportMethod === 'BULK' && (full || existingOnly) ? selectedImportHasHepsiburada
         ? selectedImportOnlyHepsiburada ? ' · Hepsiburada ürün içeriği korunacak' : productImportUpdateExistingProducts ? ' · Hepsiburada içeriği korunacak, desteklenen platform içerikleri güncellenecek' : ' · mevcut ürün içerikleri korunacak'
@@ -970,50 +991,67 @@ export function ProductsPage() {
     if (!statusRunning.current && plan.targetIds.length) setStatusRequest({ productIds: plan.targetIds, status: newStatus, skippedCount: plan.alreadyIds.length })
   }
 
+  const productForDelete = (id: string) => selectedProductCache[id] ?? loadedProductById.get(id)
+
   function requestDeleteProduct(product: Product) {
-    setDeleteRequest({ productIds: [product.id], product, title: product.title, description: 'Tek bir katalog kaydı ve ona bağlı varyantlar silinecek.' })
+    setDeleteRequest({ productIds: [product.id], product, title: product.title, description: 'Tek bir katalog kaydı ve ona bağlı varyantlar silinecek.', listing: productDeleteListing([product.id], () => product) })
   }
 
   function requestDeleteProductGroup(group: ProductGroup) {
     if (group.products.length === 1) return requestDeleteProduct(group.primary)
     const ids = group.products.map(product => product.id)
-    setDeleteRequest({ productIds: ids, title: group.primary.title, description: `${ids.length} katalog kaydı aynı ürün kartında gruplanmış durumda; grubun tamamı silinecek.` })
+    setDeleteRequest({ productIds: ids, title: group.primary.title, description: `${ids.length} katalog kaydı aynı ürün kartında gruplanmış durumda; grubun tamamı silinecek.`, listing: productDeleteListing(ids, id => group.products.find(product => product.id === id)) })
   }
 
   async function confirmProductDelete() {
     const request = deleteRequest
     if (!request || deletingProducts) return
     setDeletingProducts(true)
+    // The records already deleted, chunk by chunk: they leave the selection even when a later chunk fails.
+    const deletedIds = new Set<string>()
+    const dropDeleted = () => {
+      if (!deletedIds.size) return
+      setSelectedProductIds(current => current.filter(id => !deletedIds.has(id)))
+      setSelectedProductCache(current => { const next = { ...current }; deletedIds.forEach(id => delete next[id]); return next })
+      setAllProductsSelected(false)
+    }
     try {
       const responses: ProductDeleteResponse[] = []
       if (request.product && request.productIds.length === 1) {
-        responses.push(await hubApi<ProductDeleteResponse>(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${request.product.version}"`, 'Idempotency-Key': newIdempotencyKey() } }))
+        // The delete goes against the product's current version, not the one the row had when the dialog opened
+        // (a sync or an edit since then refused it with 412 again on every try).
+        const latest = await hubApi<Product>(`/products/${request.product.id}`, { cache: 'no-store' })
+        responses.push(await hubApi<ProductDeleteResponse>(`/products/${request.product.id}`, { method: 'DELETE', headers: { 'If-Match': `"v${latest.version}"`, 'Idempotency-Key': newIdempotencyKey() } }))
+        deletedIds.add(request.product.id)
       } else {
         for (let index = 0; index < request.productIds.length; index += 500) {
           const productIds = request.productIds.slice(index, index + 500)
           responses.push(await hubApi<ProductDeleteResponse>('/products/bulk-delete', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productIds }) }))
+          productIds.forEach(id => deletedIds.add(id))
         }
       }
-      const targetIds = new Set(request.productIds)
-      setSelectedProductIds(current => current.filter(id => !targetIds.has(id)))
-      setSelectedProductCache(current => { const next = { ...current }; targetIds.forEach(id => delete next[id]); return next })
-      setAllProductsSelected(false)
+      dropDeleted()
       setDeleteRequest(null)
       // A deleted product has no page any more: the notice names it without a link.
       showProductToast(request.productIds.length === 1 ? 'Ürün Silindi' : 'Ürünler Silindi', productDeleteResultMessage(responses, request.productIds.length), 'success', { operation: 'Katalogdan silme', subject: productNotificationSubject({ name: request.title, modelCode: request.product?.modelCode }) })
-      await refresh()
     } catch (err) {
       const failure = notificationError(err, 'Ürün silinemedi.')
-      showProductToast(request.productIds.length === 1 ? 'Ürün Silinemedi' : 'Ürünler Silinemedi', failure.message, 'error', { operation: 'Katalogdan silme', code: failure.code, subject: productNotificationSubject({ id: request.product?.id, name: request.title, modelCode: request.product?.modelCode }) })
+      // A part-way bulk delete: the deleted chunks leave the selection and the dialog, the rest stay to try again.
+      dropDeleted()
+      const remaining = request.productIds.filter(id => !deletedIds.has(id))
+      if (deletedIds.size && remaining.length) setDeleteRequest({ ...request, productIds: remaining, listing: productDeleteListing(remaining, productForDelete), description: `${deletedIds.size.toLocaleString('tr-TR')} kayıt silindi; kalan ${remaining.length.toLocaleString('tr-TR')} katalog kaydı silinmedi.` })
+      const message = deletedIds.size ? `${deletedIds.size.toLocaleString('tr-TR')} kayıt silindi, ${remaining.length.toLocaleString('tr-TR')} kayıt silinemedi: ${failure.message}` : failure.message
+      showProductToast(request.productIds.length === 1 ? 'Ürün Silinemedi' : 'Ürünler Silinemedi', message, 'error', { operation: 'Katalogdan silme', code: failure.code, subject: productNotificationSubject({ id: request.product?.id, name: request.title, modelCode: request.product?.modelCode }) })
     } finally {
       setDeletingProducts(false)
+      await refresh().catch(() => undefined)
     }
   }
 
   function bulkDeleteProducts() {
     const ids = [...selectedProductIds]
     if (!ids.length) return
-    setDeleteRequest({ productIds: ids, title: `${selectedProductCardCount} Ürün Kartı`, description: `${ids.length} katalog kaydı seçildi. Siparişler ve iadeler korunur; ürünlerin katalog ve stok kayıtları silinir.` })
+    setDeleteRequest({ productIds: ids, title: `${selectedProductCardCount} Ürün Kartı`, description: `${ids.length} katalog kaydı seçildi. Siparişler ve iadeler korunur; ürünlerin katalog ve stok kayıtları silinir.`, listing: productDeleteListing(ids, productForDelete) })
   }
 
   const [selectionMode, setSelectionMode] = useState(false)

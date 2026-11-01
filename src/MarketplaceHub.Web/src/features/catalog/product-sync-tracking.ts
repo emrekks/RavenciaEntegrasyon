@@ -22,6 +22,18 @@ export function activeProductSyncJobs<T extends ProductSyncJobStatus>(jobs: T[])
   return jobs.filter(isActiveProductSyncJob)
 }
 
+// The import jobs the products page follows: a second import adds its jobs to those of the first instead of
+// replacing them, so the first one's end still refreshes the list.
+export function trackProductSyncJobs(tracked: readonly string[], added: readonly string[]) {
+  return [...new Set([...tracked, ...added])]
+}
+
+// The followed jobs split by whether they ended: the ended ones refresh the list and are no longer followed.
+export function settleTrackedProductSyncJobs(jobIds: readonly string[], jobs: ProductSyncJobStatus[]) {
+  const finished = jobIds.filter(jobId => productSyncJobsFinished([jobId], jobs))
+  return { finished, remaining: jobIds.filter(jobId => !finished.includes(jobId)) }
+}
+
 export function productSyncJobsFinished(jobIds: string[], jobs: ProductSyncJobStatus[]) {
   if (!jobIds.length) return false
   const terminalById = new Map(jobs.filter(job => job.id).map(job => [job.id!, terminalProductSyncStatuses.has(job.status.trim().toUpperCase())]))
