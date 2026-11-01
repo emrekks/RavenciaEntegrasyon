@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import './sticky-action-bar.css'
 
 const exitMs = 160
-// A page bar floats this far above the window's bottom edge while it sticks (see sticky-action-bar.css).
-const stickOffset = 12
+// A page bar sticks flush to the window's bottom edge (see sticky-action-bar.css).
+const stickOffset = 0
 
 function scrollParent(element: HTMLElement): HTMLElement | null {
   for (let node = element.parentElement; node; node = node.parentElement) {
