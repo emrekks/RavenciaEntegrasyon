@@ -946,7 +946,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const [valueFixOpen, setValueFixOpen] = useState(false)
   const [categoryFixOpen, setCategoryFixOpen] = useState(false)
   // The category fields window ("Kategori Alanları ve Değerleri") opened from a gap: the marketplace field it opens on.
-  const [fieldsFix, setFieldsFix] = useState<{ externalAttributeId: string } | null>(null)
+  const [fieldsFix, setFieldsFix] = useState<{ externalAttributeId?: string; fieldName?: string } | null>(null)
   const fieldsWindowPlatform = attributeMappingPlatform(card.connection.platformCode)
   const mappingFocus = mappingFocusItems(requiredMappingIssues, optionalMappingWarnings)
   // On close (saved or not) the card reads its publish check again, so the badge counts follow what was mapped.
@@ -979,11 +979,19 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const issueFix = (issue: { attribute: string; detail: string }): { href?: string; onRun?: () => void } => {
     const mappingIssue = [...requiredMappingIssues, ...optionalMappingWarnings].find(item => item.attribute === issue.attribute && item.detail === issue.detail)
     if (issue.attribute === 'Kategori eşlemesi' && categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
-    const fieldId = mappingIssue?.externalAttributeId
-    if (fieldId && fieldsWindowPlatform && categoryId) return { onRun: () => setFieldsFix({ externalAttributeId: fieldId }) }
-    if (mappingIssue?.fix && readinessCategoryScope) return { onRun: () => setValueFixOpen(true) }
     if (mappingCheckFailed && issue.attribute === `${card.name} özellik kontrolü`) return { onRun: () => { void mappingReadiness.refetch() } }
-    return mappingIssue ? { href: '/mappings/attributes' } : {}
+    if (/^Shopify API izin/.test(issue.attribute)) return { href: '/integrations' }
+    // A store's category must be mapped before its fields: any gap opens that first.
+    if (categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
+    // Every other gap opens the category fields window: on its own field, on Web Color for a Web Color gap, or (a gap of
+    // the product's own data) on the product's first missing field.
+    if (fieldsWindowPlatform && categoryId) {
+      const fieldName = /Web Color/i.test(`${issue.attribute} ${issue.detail}`) ? 'Web Color' : undefined
+      return { onRun: () => setFieldsFix({ externalAttributeId: mappingIssue?.externalAttributeId, fieldName }) }
+    }
+    if (mappingIssue?.fix && readinessCategoryScope) return { onRun: () => setValueFixOpen(true) }
+    if (categoryId && card.mode === 'PUBLISH' && !isShopifyCard) return { onRun: () => setCategoryFixOpen(true) }
+    return { href: categoryId ? '/mappings/attributes' : '/mappings/categories' }
   }
   const optionalBadgeProps = { optionalCount: optionalMappingWarnings.length || undefined, optionalHeading: optionalMappingWarnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${optionalMappingWarnings.length} isteğe bağlı özellik uyarısı`, optionalRows: optionalMappingWarnings.map((issue, index) => ({ key: `${issue.attribute}-${index}`, title: issue.attribute, detail: issue.detail, ...issueFix(issue) })) }
   const showWarningBadge = !hasRequiredPublicationBlock && !alreadyPublished && optionalMappingWarnings.length > 0
@@ -1014,7 +1022,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     </dl>
     {categoryFixOpen && categoryId && <CategoryMappingDialog connectionId={card.connection.id} platformName={card.name} categoryId={categoryId} categoryName={categoryName || 'Ürün'} onClose={() => setCategoryFixOpen(false)} onSaved={message => { setValueFixNotice(message) }} />}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification({ title: 'Değer Eşlemeleri Kaydedildi', message, kind: 'success', operation: 'Özellik değeri eşleştirme', platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, target: { href: '/mappings/attributes', label: 'Eşleştirmelere Git' } }) }} />}
-    {fieldsFix && fieldsWindowPlatform && categoryId && <Suspense fallback={null}><ProductCategoryFieldsDialog key={fieldsFix.externalAttributeId} platformCode={fieldsWindowPlatform} connectionId={card.connection.id} localCategoryId={categoryId} focus={{ items: mappingFocus, initialExternalAttributeId: fieldsFix.externalAttributeId }} onClose={closeFieldsFix} /></Suspense>}
+    {fieldsFix && fieldsWindowPlatform && categoryId && <Suspense fallback={null}><ProductCategoryFieldsDialog platformCode={fieldsWindowPlatform} connectionId={card.connection.id} localCategoryId={categoryId} focus={{ items: mappingFocus, initialExternalAttributeId: fieldsFix.externalAttributeId, initialFieldName: fieldsFix.fieldName }} onClose={closeFieldsFix} /></Suspense>}
     {jobDetailOpen && lastJobId && <PublicationJobDialog jobId={lastJobId} platformCode={card.connection.platformCode} platformName={card.name} storeName={card.connection.displayName} onClose={() => setJobDetailOpen(false)} />}
     {valueFixNotice && <NoticeToast kind="success" title="Değer Eşlemeleri Kaydedildi" message={valueFixNotice} onClose={() => setValueFixNotice('')} durationMs={5500} />}
     {card.mode === 'READ_ONLY' && <div className="publish-platform-warning" role="note"><UiIcon name="alert" /><div><strong>Shopify Dış Yazması Kapalı</strong><p>Ürün yayınını açmak için Entegrasyonlar bölümünde Shopify dış yazma anahtarını etkinleştirin; bağlantı testinde write_products, write_inventory, read_publications ve write_publications izinleri doğrulanmalıdır.</p></div></div>}

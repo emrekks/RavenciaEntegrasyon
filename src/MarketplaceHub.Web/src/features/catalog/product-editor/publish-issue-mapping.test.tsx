@@ -11,7 +11,7 @@ const fixture = vi.hoisted(() => {
   const product = { id: 'p1', version: 1, title: 'Yonca Desen Elbise', description: '', brandId: 'b1', categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-01T10:00:00Z', variants: [variant], primaryImageUrl: null, totalStock: 3, startingPrice: 90, currency: 'TRY', modelCode: 'RYP010', activePlatforms: [], mediaUrls: [], attributes: [{ attributeId: 'boy', valueId: 'midi' }, { attributeId: 'kal', valueId: 'orta' }], familyProductIds: ['p1'] }
   const connection = { id: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada Mağaza', externalStoreId: 'hb-1', status: 'ACTIVE', externalWritesEnabled: true }
   const attribute = (id: string, name: string, values: Array<[string, string]>) => ({ id, code: id, name, dataType: 'SELECT', isActive: true, version: 1, values: values.map(([valueId, value], index) => ({ id: valueId, value, sortOrder: index, isActive: true })) })
-  const attributes = [attribute('boy', 'Boy', [['midi', 'Midi']]), attribute('kal', 'Kalınlık', [['orta', 'Orta'], ['ince', 'İnce']]), attribute('kumas', 'Kumaş', [['pamuk', 'Pamuk']])]
+  const attributes = [attribute('boy', 'Boy', [['midi', 'Midi']]), attribute('kal', 'Kalınlık', [['orta', 'Orta'], ['ince', 'İnce']]), attribute('kumas', 'Kumaş', [['pamuk', 'Pamuk']]), attribute('renk', 'Renk', [['kirmizi', 'Kırmızı']])]
   const requirements = [
     { attributeId: 'boy', isRequired: false, allowsCustomValue: false, displayOrder: 1, role: 'ATTRIBUTE', attribute: attributes[0] },
     { attributeId: 'kal', isRequired: false, allowsCustomValue: false, displayOrder: 2, role: 'ATTRIBUTE', attribute: attributes[1] }
@@ -46,7 +46,7 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path.startsWith('/reference-data/categories/hb-cat/attributes/k4/values')) return { snapshotId: 'v1', resourceType: 'ATTRIBUTE_VALUES', fetchedAt: '2026-11-01T10:00:00Z', items: [fixture.remote('x-orta', 'Orta', false), fixture.remote('x-ince', 'İnce', false)] }
     if (path.startsWith('/reference-data/categories/hb-cat/attributes?')) {
       state.readinessReads++
-      return { snapshotId: 'a1', resourceType: 'CATEGORY_ATTRIBUTES', fetchedAt: '2026-11-01T10:00:00Z', items: [fixture.remote('k1', 'Kumaş Tipi', true), fixture.remote('k2', 'Kesim Kalıbı', true), fixture.remote('k3', 'Boy', false), fixture.remote('k4', 'Kalınlık', false)] }
+      return { snapshotId: 'a1', resourceType: 'CATEGORY_ATTRIBUTES', fetchedAt: '2026-11-01T10:00:00Z', items: [fixture.remote('k1', 'Kumaş Tipi', true), fixture.remote('k2', 'Kesim Kalıbı', true), fixture.remote('k3', 'Boy', false), fixture.remote('k4', 'Kalınlık', false), ...(fixture.connection.platformCode === 'TRENDYOL' ? [fixture.remote('k5', 'Web Color', false)] : [])] }
     }
     if (path.startsWith('/mappings/attributes?')) return state.attributeMappings
     if (path.startsWith('/mappings/attribute-values?')) return path.includes(encodeURIComponent('hb-cat/k4')) ? [{ id: 'vm-ince', connectionId: 'hb', snapshotId: 'v1', localId: 'ince', scopeExternalId: 'hb-cat/k4', externalId: 'x-ince', status: 'VERIFIED', verifiedAt: null, version: 1 }] : []
@@ -84,6 +84,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount())
   container.remove()
+  fixture.connection.platformCode = 'HEPSIBURADA'
 })
 
 async function settle(rounds = 10) {
@@ -167,5 +168,29 @@ describe('publish gap chips open the category fields window', () => {
     await waitFor(() => fixture.state.readinessReads > before)
     expect(document.querySelector('.mapping-advanced-modal')).toBeNull()
     expect(fixture.state.readinessReads).toBeGreaterThan(before)
+  })
+
+  it('gives every chip a fix; a gap of the product’s own data opens the window on its first missing field', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><main><NewProductPage editProductId="p1" publishOnly /></main></MemoryRouter></QueryClientProvider>) })
+    await waitFor(() => chips('optional').length === 2)
+    // No chip is a dead end: each is a button or a link.
+    const all = [...chips('required'), ...chips('optional')]
+    expect(all.map(item => item.textContent)).toEqual(expect.arrayContaining(['Temel Ürün Verileri', 'Görsel Kalitesi']))
+    expect(all.filter(item => !item.matches('button, a[href]')).map(item => item.textContent)).toEqual([])
+    await openFromChip('required', 'Temel Ürün Verileri')
+    expect(selectedField()).toBe('Kumaş Tipi')
+  })
+
+  it('opens Web Color on Trendyol for the "Kategori ve Web Color" gap', async () => {
+    fixture.connection.platformCode = 'TRENDYOL'
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><main><NewProductPage editProductId="p1" publishOnly /></main></MemoryRouter></QueryClientProvider>) })
+    await waitFor(() => chips('required').some(item => item.textContent === 'Kategori ve Web Color'))
+    expect(chip('required', 'Kategori ve Web Color').matches('button')).toBe(true)
+    await openFromChip('required', 'Kategori ve Web Color')
+    expect(selectedField()).toBe('Web Color')
+    // The Renk ↔ Web Color card is the field's detail.
+    expect(document.querySelector('.mapping-advanced-modal .cm-detail .cm-legacy-card')).not.toBeNull()
   })
 })

@@ -422,7 +422,7 @@ function CategoryAttributeWorkspaceModal({ onClose, description = 'Pazaryeri ala
 // The same window opened from a product's publish card: the product's category on one store, the field of the pressed gap
 // chosen, the product's gaps marked (`focus`). It sits in the page's main area (the window's styles are scoped there).
 // `onClose` runs when it closes; the card then reads its publish check again.
-export function ProductCategoryFieldsDialog({ platformCode, connectionId, localCategoryId, focus, onClose }: { platformCode: MappingPlatformCode; connectionId: string; localCategoryId: string; focus: { items: MappingFocusItem[]; initialExternalAttributeId?: string }; onClose: () => void }) {
+export function ProductCategoryFieldsDialog({ platformCode, connectionId, localCategoryId, focus, onClose }: { platformCode: MappingPlatformCode; connectionId: string; localCategoryId: string; focus: { items: MappingFocusItem[]; initialExternalAttributeId?: string; initialFieldName?: string }; onClose: () => void }) {
   const [notice, setNotice] = useState('')
   useScrollLock(true, true)
   const localCategories = useQuery({ queryKey: ['categories', 'mapping'], queryFn: () => loadAllPages<LocalCategory>('/catalog/categories') })
@@ -642,7 +642,7 @@ function TokenValueInput({ values, draft, onDraftChange, onAdd, onRemove, placeh
 }
 // `focus` (from a product's publish card): the fields that product's publish check found missing, marked in the list and
 // walked first by Sonraki Eksik, and the field the window opens on. It applies while the product's own category is shown.
-function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryId, localCategories, localAttributes, onNotice, focus }: { platformCode: MappingPlatformCode; connectionId: string; localCategoryId: string; localCategories: LocalCategory[]; localAttributes: LocalAttribute[]; onNotice: (value: string) => void; focus?: { items: MappingFocusItem[]; initialExternalAttributeId?: string } }) {
+function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryId, localCategories, localAttributes, onNotice, focus }: { platformCode: MappingPlatformCode; connectionId: string; localCategoryId: string; localCategories: LocalCategory[]; localAttributes: LocalAttribute[]; onNotice: (value: string) => void; focus?: { items: MappingFocusItem[]; initialExternalAttributeId?: string; initialFieldName?: string } }) {
   const client = useQueryClient()
   const platformLabel = mappingPlatformLabel(platformCode)
   const [attributeCategoryId, setAttributeCategoryId] = useState(localCategoryId)
@@ -921,7 +921,11 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     if (entry && !productIssueByKey.has(entry.key)) productIssueByKey.set(entry.key, item)
   }
   const productIssueKeys = [...productIssueByKey.keys()]
-  const initialFocusKey = focusActive && focus?.initialExternalAttributeId ? mappingEntries.find(entry => entry.externalId === focus.initialExternalAttributeId)?.key : undefined
+  // The pressed gap's field: by its marketplace field id, else by its name (Web Color), else the product's first gap.
+  const initialFocusKey = !focusActive ? undefined
+    : (focus?.initialExternalAttributeId ? mappingEntries.find(entry => entry.externalId === focus.initialExternalAttributeId)?.key : undefined)
+      ?? (focus?.initialFieldName ? mappingEntries.find(entry => normalizedAttributeKey(entry.name) === normalizedAttributeKey(focus.initialFieldName!))?.key : undefined)
+      ?? productIssueKeys[0]
   const activeEntry = mappingEntries.find(entry => entry.key === selectedEntryKey) ?? mappingEntries.find(entry => entry.key === initialFocusKey) ?? mappingEntries.find(entry => entry.required && entry.state !== 'done') ?? mappingEntries[0]
   const activeIndex = activeEntry ? mappingEntries.indexOf(activeEntry) : -1
   const nextOpenEntry = [...mappingEntries.slice(activeIndex + 1), ...mappingEntries.slice(0, Math.max(0, activeIndex))].sort((left, right) => Number(right.required) - Number(left.required)).find(entry => entry.state !== 'done')
