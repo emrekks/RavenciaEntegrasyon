@@ -62,16 +62,25 @@ public sealed class ShopifyInvoiceDeliveryPolicyTests
         var removed = ShopifyHttpClient.AttachInvoiceMetafields(invoiced, null, now.AddMinutes(1));
         Assert.All(removed.Packages, package =>
         {
-            Assert.Equal("NOT_INVOICED", package.Invoice?.RawStatus);
+            // A missing ravencia.* metafield says nothing: unknown, never "not invoiced" (P11, 1 Nov 2026).
+            Assert.Equal("UNKNOWN", package.Invoice?.RawStatus);
+            Assert.Equal(MarketplaceInvoiceStatus.Unknown, MarketplaceInvoiceStatePolicy.FromRemote(package.Invoice?.RawStatus));
             Assert.Null(package.Invoice?.InvoiceNumber);
             Assert.Null(package.Invoice?.InvoiceUrl);
         });
     }
 
     [Theory]
-    [InlineData("https://files.example/invoice.pdf", "INVOICED")]
-    [InlineData("  ", "NOT_INVOICED")]
     [InlineData(null, "NOT_INVOICED")]
+    [InlineData(" ", "NOT_INVOICED")]
+    [InlineData("https://files.example/invoice.pdf", "INVOICED")]
+    public void TheDeliveryReadStillSeesAnEmptyLinkSlotAsWritable(string? invoiceUrl, string expected) =>
+        Assert.Equal(expected, ShopifyHttpClient.DeliverySlotStatus(invoiceUrl));
+
+    [Theory]
+    [InlineData("https://files.example/invoice.pdf", "INVOICED")]
+    [InlineData("  ", "UNKNOWN")]
+    [InlineData(null, "UNKNOWN")]
     public void ThePdfLinkAloneTellsWhetherTheShopifyOrderHoldsAnInvoice(string? invoiceUrl, string expectedStatus)
     {
         var now = DateTimeOffset.UtcNow;

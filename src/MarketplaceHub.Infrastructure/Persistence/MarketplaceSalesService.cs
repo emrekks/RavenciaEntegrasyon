@@ -283,6 +283,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                                     || (!db.MarketplaceDeliveryStates.Any(state => state.TenantId == tenantId && state.InvoiceId == candidate.Id && state.PackageId == package.Id)
                                         && db.MarketplaceDeliveries.Any(delivery => delivery.TenantId == tenantId && delivery.InvoiceId == candidate.Id && delivery.PackageId == package.Id && delivery.Status == "CONFIRMED"))))))
                 .Select(candidate => candidate.OrderId);
+            // The same rules as the row label (IssuedInvoiceNotOnPlatform / IssuedInvoiceNeedsReview).
+            var activeProviderInvoices = db.Invoices.AsNoTracking()
+                .Where(candidate => candidate.TenantId == tenantId && candidate.OriginalInvoiceId == null
+                    && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == candidate.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")));
+            var notOnPlatformInvoiceOrderIds = activeProviderInvoices.Where(IssuedInvoiceNotOnPlatform).Select(candidate => candidate.OrderId);
+            var needsReviewInvoiceOrderIds = activeProviderInvoices.Where(IssuedInvoiceNeedsReview).Select(candidate => candidate.OrderId);
             query = invoice switch
             {
                 "FATURA_KESILDI" => query.Where(x => fullyDeliveredInvoiceOrderIds.Contains(x.Id)),
@@ -293,14 +299,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                         && (package.ManualInvoiceStatus == "UPLOADED"
                             || package.ManualInvoiceStatus == null
                                 && (package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Received || package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Invoiced)))),
-                "FATURA_PLATFORMA_AKTARILMADI" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
-                    && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
-                    && (i.Status == InvoiceStatus.MarketplaceFailed || ((i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending) && i.LastErrorCode != null)))),
-                "FATURA_REDDEDILDI" => query.Where(x =>
+                "FATURA_PLATFORMA_AKTARILMADI" => query.Where(x => notOnPlatformInvoiceOrderIds.Contains(x.Id)),
+                "FATURA_INCELEME_GEREKLI" => query.Where(x => needsReviewInvoiceOrderIds.Contains(x.Id)),
+                "FATURA_REDDEDILDI" => query.Where(x => !needsReviewInvoiceOrderIds.Contains(x.Id) && (
                     db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                         && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                         && (i.Status == InvoiceStatus.Rejected || i.Status == InvoiceStatus.ValidationFailed || i.Status == InvoiceStatus.ManualReview))
-                    || currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.ManualInvoiceStatus == null && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected)),
+                    || currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.ManualInvoiceStatus == null && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Rejected))),
                 // The provider may hold the invoice: neither rejected nor issued until it is checked.
                 "FATURA_BELIRSIZ" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -3086,6 +3091,27 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             _ => null
         };
 
+    // The orders filter and the row label read an issued invoice with these same two rules (P4, 1 Nov 2026):
+    // - not on the platform: the marketplace leg failed, or it stopped with an error while waiting;
+    // - needs review: the provider issued it (it has an external reference) and it stopped for review, for example
+    //   because the marketplace already shows an invoice. That is not a refusal ("Reddedildi").
+    internal static readonly Expression<Func<Invoice, bool>> IssuedInvoiceNotOnPlatform = invoice =>
+        invoice.Status == InvoiceStatus.MarketplaceFailed
+        || ((invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplacePending) && invoice.LastErrorCode != null);
+
+    internal static readonly Expression<Func<Invoice, bool>> IssuedInvoiceNeedsReview = invoice =>
+        invoice.Status == InvoiceStatus.ManualReview && invoice.ExternalReference != null && invoice.ExternalReference != "";
+
+    private static readonly Func<Invoice, bool> IsIssuedInvoiceNotOnPlatform = IssuedInvoiceNotOnPlatform.Compile();
+    private static readonly Func<Invoice, bool> IsIssuedInvoiceNeedsReview = IssuedInvoiceNeedsReview.Compile();
+
+    internal const string InvoiceNeedsReviewLabel = "FATURA_INCELEME_GEREKLI";
+
+    internal static string? IssuedInvoiceLabel(Invoice invoice) =>
+        IsIssuedInvoiceNeedsReview(invoice) ? InvoiceNeedsReviewLabel
+        : IsIssuedInvoiceNotOnPlatform(invoice) ? "FATURA_PLATFORMA_AKTARILMADI"
+        : null;
+
     // The one invoice label of a package: the orders list, the order detail and the invoice page read it the same way.
     internal static string PackageInvoiceLabel(ShipmentPackage? package, Invoice? invoice, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode, bool marketplaceDeliveryConfirmed = false) =>
         ManualInvoiceLabel(package?.ManualInvoiceStatus)
@@ -3095,6 +3121,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     internal static string InvoiceLabelForPlatform(Invoice? invoice, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode, bool marketplaceDeliveryConfirmed = false)
         => invoice is not null && InvoicingBillingService.SharedFiscalLabel(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference) is { } shared
             ? shared
+            : invoice is not null && IssuedInvoiceLabel(invoice) is { } issued
+            ? issued
             : InvoiceLabelForPlatform(invoice?.Status, invoice?.InvoiceNumber, marketplaceStatus, customerJson, packageRawStatuses, platformCode, marketplaceDeliveryConfirmed);
 
     internal static string InvoiceLabelForPlatform(InvoiceStatus? invoiceStatus, string? invoiceNumber, MarketplaceInvoiceStatus marketplaceStatus, string customerJson, IEnumerable<string?> packageRawStatuses, string? platformCode, bool marketplaceDeliveryConfirmed = false)
@@ -3104,6 +3132,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         {
             if (invoiceStatus == InvoiceStatus.Draft) return "FATURA_BEKLIYOR";
             if (invoiceStatus == InvoiceStatus.Completed) return "FATURA_KONTROLDE";
+            // Shopify holds only the link we write (ravencia.invoice_pdf_url): without a panel invoice and without
+            // that link nothing says whether the order was invoiced elsewhere, so it is to be reviewed, not waiting.
+            if (invoiceStatus is null && label is "FATURA_BILINMIYOR" or "FATURA_BEKLIYOR") return ShopifyUnconfirmedInvoiceLabel;
             if (label == "FATURA_BILINMIYOR") return "FATURA_BEKLIYOR";
         }
         // n11 gives no invoice state, only the link of an invoice that was attached to the order (empty until
@@ -3121,6 +3152,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     }
 
     internal const string UnverifiedInvoiceLabel = "FATURA_BEKLIYOR";
+
+    // "İncelenecek": a Shopify order with no panel invoice and no invoice link of ours. It is still invoice work: it
+    // counts and is due exactly as "Fatura Bekliyor" does (IsAwaitingInvoiceLabel).
+    internal const string ShopifyUnconfirmedInvoiceLabel = "FATURA_INCELENECEK";
+
+    internal static bool IsAwaitingInvoiceLabel(string? label) => label is "FATURA_BEKLIYOR" or ShopifyUnconfirmedInvoiceLabel;
 
     internal static readonly string[] UnverifiableInvoicePlatforms = ["N11", "PTTAVM", "PAZARAMA"];
 

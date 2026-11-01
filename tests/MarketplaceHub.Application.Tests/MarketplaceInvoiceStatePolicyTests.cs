@@ -53,7 +53,9 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     [InlineData("SHOPIFY", "UPLOADED", "FATURA_KONTROLDE")]
     [InlineData("PTTAVM", "PENDING", "FATURA_BEKLIYOR")]
     [InlineData("N11", null, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.UnverifiedInvoiceLabel)]
-    [InlineData("SHOPIFY", null, "FATURA_BEKLIYOR")]
+    // A Shopify order with no panel invoice and no invoice link of ours is to be reviewed ("İncelenecek"), 1 Nov 2026.
+    [InlineData("SHOPIFY", null, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.ShopifyUnconfirmedInvoiceLabel)]
+    [InlineData("SHOPIFY", "PENDING", "FATURA_BEKLIYOR")]
     public void HandSetStatusDecidesThePackageInvoiceLabel(string platformCode, string? manual, string expected)
     {
         var package = new ShipmentPackage { ExternalPackageId = "p1", RawStatus = "Delivered", MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.Unknown, ManualInvoiceStatus = manual };

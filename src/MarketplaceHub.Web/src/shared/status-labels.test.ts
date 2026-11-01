@@ -16,6 +16,11 @@ describe('invoice status labels', () => {
     expect(invoiceStatusLabel('FATURA_ISLENIYOR')).toBe('Fatura İletiliyor')
     expect(invoiceStatusLabel('FATURA_PLATFORMA_BEKLIYOR')).toBe('Fatura İletiliyor')
     expect(invoiceStatusLabel('FATURA_PLATFORMA_AKTARILMADI')).toBe('Fatura İletilemedi')
+    // An issued invoice stopped for review is not a refusal; a Shopify order without our invoice link is to be reviewed.
+    expect(invoiceStatusLabel('FATURA_INCELEME_GEREKLI')).toBe('İnceleme Gerekli')
+    expect(invoiceStatusLabel('FATURA_INCELENECEK')).toBe('İncelenecek')
+    expect(invoiceStatusTone('FATURA_INCELEME_GEREKLI')).toBe('warning')
+    expect(invoiceStatusTone('FATURA_INCELENECEK')).toBe('warning')
     expect(invoiceStatusLabel('MARKETPLACE_FAILED')).toBe('Fatura İletilemedi')
     expect(invoiceStatusLabel('MANUAL_REVIEW')).toBe('Fatura Oluşturulamadı')
     expect(invoiceStatusLabel('REJECTED')).toBe('Fatura Oluşturulamadı')

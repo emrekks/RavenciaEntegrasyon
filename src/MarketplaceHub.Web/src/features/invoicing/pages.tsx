@@ -178,6 +178,7 @@ function invoiceRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind, faile
 }
 function invoiceWorkspaceStatus(item: Pick<InvoiceWorkspace, 'invoiceId' | 'invoiceStatus' | 'canCreateInvoice' | 'platformInvoiceStatus' | 'invoiceErrorCode'>) {
   if (['INVOICED', 'RECEIVED'].includes(item.platformInvoiceStatus?.trim().toUpperCase() ?? '')) return { value: 'FATURA_KONTROLDE', tone: 'success' as const }
+  if (item.invoiceStatus === 'FATURA_INCELENECEK') return { value: 'FATURA_INCELENECEK', tone: 'warning' as const }
   if (item.canCreateInvoice || item.invoiceStatus === 'FATURA_BEKLIYOR') return { value: 'FATURA_BEKLIYOR', tone: 'warning' as const }
   if (isInvoiceFailureStatus(item.invoiceStatus)) return { value: item.invoiceStatus, tone: 'danger' as const }
   if (invoiceAwaitsProviderAnswer(item.invoiceStatus, item.invoiceErrorCode)) return { value: providerAnswerAwaitedStatus, tone: 'warning' as const }
@@ -322,7 +323,7 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, can
         : item.platformCode !== 'TRENDYOL' && <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}><UiIcon name="refresh" size={16} />Sipariş Durumunu Güncelle</button>}
       <button type="button" role="menuitem" disabled={!canRefreshInvoiceStatus || invoiceStatusRefreshing} title={handSetInvoiceStatusPlatforms.has(item.platformCode) ? 'Bu pazaryeri siparişteki faturayı bildirmez; fatura durumunu elle değiştirirsiniz. İptal edilen faturanın yerine yenisi için “Fatura Bekliyor”u seçin.' : canRefreshInvoiceStatus ? 'Fatura durumunu pazaryerinden yeniden okur; hiçbir şey göndermez.' : 'Pazaryeri bağlantısı etkin değil veya sipariş bilgileri eksik.'} onClick={() => { setOpen(false); onRefreshInvoiceStatus() }}><UiIcon name="sync" size={16} />{invoiceStatusRefreshing ? 'Fatura Durumu Güncelleniyor…' : 'Fatura Durumu Güncelle'}</button>
       {item.platformCode !== 'SHOPIFY' && ['FATURA_ISLENIYOR', 'FATURA_REDDEDILDI', 'FATURA_BELIRSIZ'].includes(item.invoiceStatus ?? '') && !invoiceAwaitsProviderAnswer(item.invoiceStatus, item.invoiceErrorCode) && <button type="button" role="menuitem" title="Gönderim sonucu kaybolmuş ve sağlayıcı portalında fatura görünmüyorsa yeniden gönderimi açar." onClick={() => { setOpen(false); onConfirmNoRemoteInvoice() }}><UiIcon name="sync" size={16} />Sağlayıcıda Fatura Yok, Yeniden Gönder</button>}
-      {item.platformCode !== 'SHOPIFY' && item.invoiceId && item.invoiceNumber && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_REDDEDILDI', 'FATURA_PLATFORMA_BEKLIYOR'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı pazaryerinin satıcı panelinde gördüyseniz tamamlandı olarak işaretler." onClick={() => { setOpen(false); onConfirmDelivered() }}><UiIcon name="circleCheck" size={16} />Pazaryerinde Gördüm, Tamamla</button>}
+      {item.platformCode !== 'SHOPIFY' && item.invoiceId && item.invoiceNumber && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_REDDEDILDI', 'FATURA_PLATFORMA_BEKLIYOR'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı pazaryerinin satıcı panelinde gördüyseniz tamamlandı olarak işaretler." onClick={() => { setOpen(false); onConfirmDelivered() }}><UiIcon name="circleCheck" size={16} />{deliveryUnderReview(item) ? 'İletildi Say' : 'Pazaryerinde Gördüm, Tamamla'}</button>}
       {item.platformCode !== 'SHOPIFY' && item.invoiceId && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_KONTROLDE'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı E-Faturam portalında iptal ettiyseniz bu kaydı kapatır ve yeni fatura kesmenize izin verir." onClick={() => { setOpen(false); onReplaceCancelledInvoice() }}><UiIcon name="undo" size={16} />Portalda İptal Ettim, Yeni Fatura Kes</button>}
       <hr className="invoice-reference-actions-separator" /><button type="button" role="menuitem" onClick={() => { setOpen(false); onAddManualInvoice() }}><UiIcon name="upload" size={16} />{hasManualDocument ? 'Manuel Faturayı Değiştir' : 'Manuel Fatura Ekle'}</button>
       <button type="button" role="menuitem" disabled={manualDeliveryDisabled} title={manualDeliveryDisabled ? manualDeliveryTitle : undefined} onClick={() => { setOpen(false); onSendManualInvoice() }}><UiIcon name="link" size={16} />{deliveryPending ? 'Kuyruğa Alınıyor…' : 'Manuel Faturayı Pazaryerine Gönder'}</button>
@@ -459,12 +460,12 @@ export function InvoicesPage() {
   // Only a real answer clamps the page: the previous page kept while the next one loads still names its own number.
   useEffect(() => { if (!query.isPlaceholderData && serverPageNumber !== undefined && serverPageNumber !== pageNumber) setPageNumber(serverPageNumber) }, [query.isPlaceholderData, serverPageNumber, pageNumber])
   const [previewTargets, setPreviewTargets] = useState<InvoicePreviewTarget[] | null>(null)
-  const [manualConfirmation, setManualConfirmation] = useState<{ kind: 'delivered' | 'replace' | 'noRemote'; item: InvoiceWorkspace } | null>(null)
+  const [manualConfirmation, setManualConfirmation] = useState<{ kind: ManualConfirmationKind; item: InvoiceWorkspace } | null>(null)
   function runManualConfirmation() {
     const confirmation = manualConfirmation
     if (!confirmation) return
     setManualConfirmation(null)
-    if (confirmation.kind === 'delivered') confirmDelivered.mutate(confirmation.item)
+    if (confirmation.kind === 'delivered' || confirmation.kind === 'reviewDelivered') confirmDelivered.mutate(confirmation.item)
     else if (confirmation.kind === 'replace') replaceInvoice.mutate(confirmation.item)
     else noRemoteInvoice.mutate(confirmation.item)
   }
@@ -620,7 +621,7 @@ export function InvoicesPage() {
               onSyncOrder={() => orderStatusSync.mutate(item)}
               onRefreshInvoiceStatus={() => handSetInvoiceStatusPlatforms.has(item.platformCode) ? setManualStatusBatch([item]) : invoiceReconcile.mutate(item)}
               onToggleHidden={() => visibility.mutate({ packageIds: [item.packageId], hidden: tab !== 'HIDDEN' })}
-              onConfirmDelivered={() => setManualConfirmation({ kind: 'delivered', item })}
+              onConfirmDelivered={() => setManualConfirmation({ kind: deliveryUnderReview(item) ? 'reviewDelivered' : 'delivered', item })}
               onReplaceCancelledInvoice={() => setManualConfirmation({ kind: 'replace', item })}
               onConfirmNoRemoteInvoice={() => setManualConfirmation({ kind: 'noRemote', item })}
               onAddManualInvoice={() => setManualUploadItem(item)}
@@ -683,17 +684,25 @@ function ColumnFilterChoices({ label, value, options, onChange }: { label: strin
   </div>
 }
 
-const manualConfirmationCopy = {
+type ManualConfirmationKind = 'delivered' | 'reviewDelivered' | 'replace' | 'noRemote'
+// A delivery the marketplace read sent to review (REVIEW_REQUIRED): the operator checked the seller panel. Only the
+// panel record changes; nothing is sent to the marketplace or to E-Faturam.
+function deliveryUnderReview(item: Pick<InvoiceWorkspace, 'deliveryStatus' | 'invoiceDeliveryStatus'>) { return (item.deliveryStatus ?? item.invoiceDeliveryStatus) === 'REVIEW_REQUIRED' }
+
+const manualConfirmationCopy: Record<ManualConfirmationKind, { title: string; confirm: string; tone: 'primary' | 'warn' | 'danger'; note: string }> = {
   delivered: { title: 'Pazaryerinde Gördüm, Tamamla', confirm: 'Faturayı Tamamla', tone: 'primary' as const, note: 'Onaylarsanız fatura tamamlandı olarak işaretlenir ve tekrar gönderilmez.' },
+  reviewDelivered: { title: 'İletildi Say', confirm: 'İletildi Say', tone: 'primary' as const, note: 'Onaylarsanız yalnız paneldeki kayıt “iletildi” olarak tamamlanır. Pazaryerine veya E-Faturam’a hiçbir şey gönderilmez.' },
   replace: { title: 'Portalda İptal Ettim, Yeni Fatura Kes', confirm: 'İptal Edildi, Yeni Fatura Kes', tone: 'warn' as const, note: 'Onaylarsanız bu fatura panelde iptal olarak kapanır ve aynı siparişe yeni fatura kesebilirsiniz. Portalda iptal edilmemiş bir fatura için bunu yapmayın.' },
   noRemote: { title: 'Sağlayıcıda Fatura Yok, Yeniden Gönder', confirm: 'Yeniden Gönderilebilir Yap', tone: 'danger' as const, note: 'Onaylarsanız bu fatura yeniden gönderilebilir hâle gelir. Portalda fatura varsa mükerrer fatura oluşur.' },
 }
 
 // The manual invoice confirmations, formerly browser dialogs: the order, the invoice and what the choice does.
-function InvoiceManualConfirmationModal({ kind, item, onCancel, onConfirm }: { kind: 'delivered' | 'replace' | 'noRemote'; item: InvoiceWorkspace; onCancel: () => void; onConfirm: () => void }) {
+function InvoiceManualConfirmationModal({ kind, item, onCancel, onConfirm }: { kind: ManualConfirmationKind; item: InvoiceWorkspace; onCancel: () => void; onConfirm: () => void }) {
   const copy = manualConfirmationCopy[kind]
   const orderNumber = displayInvoiceOrderNumber(item.orderNumber)
-  const description = kind === 'delivered'
+  const description = kind === 'reviewDelivered'
+    ? `${orderNumber} siparişinde pazaryerinde görünen fatura ${item.invoiceNumber ?? 'bu fatura'} mı? Pazaryeri satıcı panelinde kontrol ettiyseniz iletildi sayın.`
+    : kind === 'delivered'
     ? `${orderNumber} siparişinde ${item.invoiceNumber ?? 'mevcut'} numaralı faturayı pazaryerinin satıcı panelinde gördünüz mü?`
     : kind === 'replace'
       ? `${orderNumber} için ${item.invoiceNumber ?? 'mevcut'} numaralı faturayı E-Faturam portalında iptal ettiniz mi?`
