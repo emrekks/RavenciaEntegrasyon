@@ -139,19 +139,19 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
                                    && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
                                    && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                                orderby media.SortOrder, media.Id
-                               select new { media.ProductId, asset.Id, asset.Classification, asset.RelativePath })
+                               select new { media.ProductId, media.VariantId, media.SortOrder, asset.Id, asset.Classification, asset.RelativePath })
             .ToListAsync(cancellationToken);
         if (mediaRows.Where(media => media.Classification == "PRODUCT_MEDIA_URL").Any(media => !ProductPublicationComposer.IsPublicHttpsUrl(media.RelativePath.Trim())))
             return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", "Shopify görsellerinin tamamı güvenli ve herkese açık HTTPS adresi olmalıdır.", field: "images");
-        // Each card keeps its own first images; the first one is the picture of the card's variants.
-        var imagesByMember = members.ToDictionary(member => member.Id, member => ProductPublicationComposer.SelectPublicationImageUrls(mediaRows
-            .Where(media => media.ProductId == member.Id)
-            .Select(media => media.Classification == "PRODUCT_MEDIA_URL"
-                ? media.RelativePath.Trim()
-                : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], media.Id))
-            .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Select(url => url!)));
-        var imageUrls = members.SelectMany(member => imagesByMember[member.Id]).Distinct(StringComparer.OrdinalIgnoreCase).Take(MaximumFileCount).ToList();
+        var mediaPlan = PlanMedia(
+            mediaRows.Select(media => new ShopifyMediaRow(media.ProductId, media.VariantId, media.SortOrder, media.Classification == "PRODUCT_MEDIA_URL"
+                    ? media.RelativePath.Trim()
+                    : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], media.Id) ?? ""))
+                .Where(media => !string.IsNullOrWhiteSpace(media.Url))
+                .ToList(),
+            memberIds,
+            variants.Select(variant => (variant.Id, variant.ProductId)).ToList());
+        var imageUrls = mediaPlan.ProductUrls;
         if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", "Shopify yayını için en az bir HTTPS ürün görseli gerekir. Yerel görseller için Marketplace:PublicBaseUrl ayarını yapılandırın.", field: "images");
         var files = imageUrls.Select(url => FileInput(url, title)).ToArray();
 
@@ -172,7 +172,7 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
             var barcode = variant.Barcode?.Trim();
             var salePrice = PriceInventoryComposer.OutboundSalePrice(offer);
             var listPrice = PriceInventoryComposer.OutboundListPrice(offer);
-            var memberImage = imagesByMember[variant.ProductId].FirstOrDefault(url => imageUrls.Contains(url, StringComparer.OrdinalIgnoreCase));
+            var variantImage = mediaPlan.VariantUrls.GetValueOrDefault(variant.Id);
             productVariants.Add(new()
             {
                 ["sku"] = sku,
@@ -183,8 +183,8 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
                 ["inventoryItem"] = new { tracked = true, requiresShipping = true },
                 ["inventoryQuantity"] = decimal.ToInt32(decimal.Truncate(publishable)),
                 ["optionValues"] = plan.VariantValues[variant.Id].Select(value => new { optionName = value.OptionName, name = value.Value }).ToArray(),
-                // A family variant shows its card's first image; the product files carry the same entry, as Shopify requires.
-                ["file"] = members.Count > 1 && memberImage is not null ? FileInput(memberImage, title) : null
+                // The product files carry the same entry, as Shopify requires; Shopify attaches it once the media is ready.
+                ["file"] = variantImage is null ? null : FileInput(variantImage, title)
             });
             // This card's job records only this card's variants; the family's other cards have jobs of their own.
             if (variant.ProductId == productId) draftVariants.Add(new(variant.Id, sku, barcode ?? string.Empty));
@@ -317,6 +317,35 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         return new(new(options, variantValues), null);
     }
 
+    // Shopify gets every picture of the cards in the editor's order: each card's gallery (its product-level rows by sort
+    // order), then any picture only a variant of it carries. The variant rows are the colour pictures and sort 0, 1, 2
+    // inside each colour, so ordering them with the gallery jumbled the order (live 2026-11-01: RYP006/RYP007 went with
+    // 8 of their 18 pictures, out of order, and no variant picture). A variant shows the first of its own pictures; one
+    // without its own shows its card's first picture when the family has several cards, as before.
+    internal static ShopifyMediaPlan PlanMedia(IReadOnlyList<ShopifyMediaRow> rows, IReadOnlyList<Guid> memberIds, IReadOnlyList<(Guid VariantId, Guid ProductId)> variants)
+    {
+        var variantIndex = variants.Select((variant, index) => (variant.VariantId, index)).ToDictionary(x => x.VariantId, x => x.index);
+        var imagesByMember = memberIds.ToDictionary(memberId => memberId, memberId => rows
+            .Where(row => row.ProductId == memberId && row.VariantId is null)
+            .OrderBy(row => row.SortOrder)
+            .Concat(rows
+                .Where(row => row.ProductId == memberId && row.VariantId is Guid variantId && variantIndex.ContainsKey(variantId))
+                .OrderBy(row => variantIndex[row.VariantId!.Value]).ThenBy(row => row.SortOrder))
+            .Select(row => row.Url)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList());
+        var productUrls = memberIds.SelectMany(memberId => imagesByMember[memberId]).Distinct(StringComparer.OrdinalIgnoreCase).Take(MaximumFileCount).ToList();
+        var sent = productUrls.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var variantUrls = new Dictionary<Guid, string>();
+        foreach (var (variantId, productId) in variants)
+        {
+            var own = rows.Where(row => row.VariantId == variantId).OrderBy(row => row.SortOrder).Select(row => row.Url).FirstOrDefault(sent.Contains);
+            var image = own ?? (memberIds.Count > 1 ? imagesByMember.GetValueOrDefault(productId)?.FirstOrDefault(sent.Contains) : null);
+            if (image is not null) variantUrls[variantId] = image;
+        }
+        return new(productUrls, variantUrls);
+    }
+
     private static ShopifyFileInput FileInput(string url, string alt) => new(url, "IMAGE", alt);
 
     private static ShopifyMetafieldInput Metafield(string key, string value) => new(MetafieldNamespace, key, "single_line_text_field", value);
@@ -333,6 +362,8 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
 }
 
 internal sealed record ShopifyFileInput(string OriginalSource, string ContentType, string Alt);
+internal sealed record ShopifyMediaRow(Guid ProductId, Guid? VariantId, int SortOrder, string Url);
+internal sealed record ShopifyMediaPlan(IReadOnlyList<string> ProductUrls, IReadOnlyDictionary<Guid, string> VariantUrls);
 internal sealed record ShopifyMetafieldInput(string Namespace, string Key, string Type, string Value);
 internal sealed record ShopifyOptionValue(string Option, int OptionSort, string Value, int ValueSort);
 internal sealed record ShopifyVariantOptionRow(Guid VariantId, string Sku, int MemberIndex, IReadOnlyList<ShopifyOptionValue> Values);

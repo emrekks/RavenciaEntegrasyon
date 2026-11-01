@@ -612,6 +612,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (succeeded > 0 && !isShopify)
             await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, payload.ExternalOperationId);
         await db.SaveChangesAsync(cancellationToken);
+        // Every variant is live, but the marketplace reported something that did not go through (Shopify: pictures); the
+        // job ends with it so it shows instead of passing as a plain success.
+        if (succeeded == listings.Count && operationStatus.IssueCode is { } issueCode)
+            return JobExecutionResult.Blocked(issueCode, operationStatus.IssueSummary ?? issueCode, payload.ExternalOperationId);
         if (succeeded == listings.Count) return JobExecutionResult.Success();
         // The marketplace's own reason per refused SKU (n11 sends it with each task line), so it shows on the card.
         var reasons = RejectionReasons(listings.Select(listing => resultByKey[keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!]));

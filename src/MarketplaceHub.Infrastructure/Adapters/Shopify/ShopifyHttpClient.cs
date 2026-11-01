@@ -235,6 +235,9 @@ public sealed partial class ShopifyHttpClient(
         var requestedSkus = variants.Select(variant => variant?["sku"]?.GetValue<string>()?.Trim()).ToArray();
         if (requestedSkus.Any(string.IsNullOrWhiteSpace) || requestedSkus.Distinct(StringComparer.OrdinalIgnoreCase).Count() != requestedSkus.Length)
             return Fail<RemoteOperationRef>(AdapterErrorClass.Validation, "SHOPIFY_PRODUCT_SKUS_INVALID", "Shopify ürün yayınındaki varyant SKU değerleri boş veya yinelenen olamaz.", HttpStatusCode.BadRequest);
+        var requestedFileCount = (input["files"] as JsonArray)?.Count ?? 0;
+        // The product's media is read only as far as the files sent: a query for 250 would cost as much as the rest.
+        var mediaFirst = Math.Clamp(requestedFileCount + 1, 1, 250);
 
         // A model family's product is owned by its family key, a single product by its product id.
         var requestedFamilyKey = RequestedMetafield(input, "ravencia_family_key");
@@ -244,8 +247,8 @@ public sealed partial class ShopifyHttpClient(
         IReadOnlyList<RemoteOperationLine>? unchangedLines = null;
         string? unchangedProductId = null;
         var existingProductResult = await QueryAsync(shop,
-            "query($handle:String!,$ownerKey:String!){productByIdentifier(identifier:{handle:$handle}){id status owner:metafield(namespace:\"marketplacehub\",key:$ownerKey){value} payloadHash:metafield(namespace:\"marketplacehub\",key:\"payload_hash\"){value} variants(first:250){nodes{id sku}}}}",
-            new { handle, ownerKey }, cancellationToken);
+            "query($handle:String!,$ownerKey:String!,$mediaFirst:Int!){productByIdentifier(identifier:{handle:$handle}){id status owner:metafield(namespace:\"marketplacehub\",key:$ownerKey){value} payloadHash:metafield(namespace:\"marketplacehub\",key:\"payload_hash\"){value} " + MediaSelection + " variants(first:250){nodes{id sku}}}}",
+            new { handle, ownerKey, mediaFirst }, cancellationToken);
         if (!existingProductResult.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(existingProductResult.Error!, existingProductResult.RateLimit);
         try
         {
@@ -261,7 +264,10 @@ public sealed partial class ShopifyHttpClient(
                     return Fail<RemoteOperationRef>(AdapterErrorClass.BusinessConflict, "SHOPIFY_PRODUCT_HANDLE_CONFLICT", "Bu Shopify ürün adresi başka bir kayıt tarafından kullanılıyor; mevcut ürün değiştirilmedi.", HttpStatusCode.Conflict);
                 // Another card of the family already wrote this exact content: the product is not written again,
                 // but its Online Store publication below still runs, since that earlier write may have stopped there.
-                unchangedLines = UnchangedPublicationLines(existingProduct, requestedPayloadHash, requestedSkus!);
+                // A product whose pictures did not all arrive is written again.
+                unchangedLines = MediaShortfall(existingProduct, requestedFileCount) is null
+                    ? UnchangedPublicationLines(existingProduct, requestedPayloadHash, requestedSkus!)
+                    : null;
                 unchangedProductId = unchangedLines is null ? null : TextValue(existingProduct, "id");
                 if (string.IsNullOrWhiteSpace(unchangedProductId)) unchangedLines = null;
             }
@@ -315,6 +321,7 @@ public sealed partial class ShopifyHttpClient(
         string productId;
         IReadOnlyList<RemoteOperationLine> lines;
         AdapterResult<JsonDocument>? productSet = null;
+        string? mediaShortfall = null;
         if (unchangedLines is not null)
         {
             productId = unchangedProductId!;
@@ -323,8 +330,8 @@ public sealed partial class ShopifyHttpClient(
         else
         {
             productSet = await QueryAsync(shop,
-                "mutation($identifier:ProductSetIdentifiers!,$input:ProductSetInput!){productSet(identifier:$identifier,input:$input,synchronous:true){product{id status variants(first:250){nodes{id sku}}}userErrors{field message}}}",
-                new { identifier = new { handle }, input }, cancellationToken);
+                "mutation($identifier:ProductSetIdentifiers!,$input:ProductSetInput!,$mediaFirst:Int!){productSet(identifier:$identifier,input:$input,synchronous:true){product{id status " + MediaSelection + " variants(first:250){nodes{id sku}}}userErrors{field message}}}",
+                new { identifier = new { handle }, input, mediaFirst }, cancellationToken);
             if (!productSet.IsSuccess) return AdapterResult<RemoteOperationRef>.Failure(productSet.Error!, productSet.RateLimit);
             try
             {
@@ -344,6 +351,7 @@ public sealed partial class ShopifyHttpClient(
                     || requestedSkus.Any(sku => !remoteVariants.Any(variant => string.Equals(variant.Sku, sku, StringComparison.OrdinalIgnoreCase))))
                     return Fail<RemoteOperationRef>(AdapterErrorClass.ContractViolation, "SHOPIFY_PRODUCT_VARIANT_CONTRACT_INVALID", "Shopify yanıtındaki varyant SKU listesi gönderilen ürünle eşleşmiyor.", HttpStatusCode.BadGateway);
                 lines = remoteVariants.Select(variant => new RemoteOperationLine(variant.Sku!, true, variant.Id, null, false, "COMPLETED")).ToArray();
+                mediaShortfall = MediaShortfall(product, requestedFileCount);
             }
             catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
             {
@@ -354,8 +362,11 @@ public sealed partial class ShopifyHttpClient(
         var publish = await QueryAsync(shop, PublishMutation, new { id = productId, input = new[] { new { publicationId } } }, cancellationToken);
         if (PublishFailure(publish, productId, handle) is { } publishFailure)
             return AdapterResult<RemoteOperationRef>.Failure(publishFailure, publish.RateLimit);
-
-        var operationId = EncodeCompletedOperation(lines);
+        // The product is written and published, so its variants are recorded as live; a picture that did not arrive is not
+        // swallowed: it rides on the result and the job ends with it. The next publication writes the product again (the
+        // existing product check sees the same shortfall).
+        var operationId = EncodeCompletedOperation(lines, mediaShortfall is null ? null
+            : $"Shopify ürünü {productId} (handle {handle}) yazıldı ve yayınlandı, ancak görseller eksik: {mediaShortfall}. Görseller düzeltildikten sonra Platformlarda Güncelle ile yeniden gönderin.");
         return AdapterResult<RemoteOperationRef>.Success(new(operationId, "SHOPIFY_PRODUCT_CREATE", timeProvider.GetUtcNow()), publish.RateLimit ?? productSet?.RateLimit ?? publicationsResult.RateLimit ?? locationsResult.RateLimit);
     }
 
@@ -368,6 +379,30 @@ public sealed partial class ShopifyHttpClient(
     // publish that fails leaves no doubt about the product: it is not ambiguous and is never created again. A retry
     // finds the product by its handle with the same payload hash, skips productSet and repeats only the publication,
     // which Shopify applies once (publishing an already published product changes nothing).
+    internal const string MediaIncompleteCode = "SHOPIFY_PRODUCT_MEDIA_INCOMPLETE";
+    internal const string MediaSelection = "media(first:$mediaFirst){nodes{status mediaErrors{message}}}";
+
+    // Shopify answers productSet with the media it created from the files (status UPLOADED while it fetches them): fewer
+    // than sent, or one FAILED or carrying errors, is a shortfall. Null when every file arrived.
+    internal static string? MediaShortfall(JsonElement product, int requestedFileCount)
+    {
+        if (!product.TryGetProperty("media", out var media) || media.ValueKind != JsonValueKind.Object)
+            return requestedFileCount == 0 ? null : $"Shopify {requestedFileCount} görselin hiçbirini bildirmedi";
+        var nodes = media.GetProperty("nodes").EnumerateArray().ToArray();
+        var errors = nodes
+            .SelectMany(node => node.TryGetProperty("mediaErrors", out var list) && list.ValueKind == JsonValueKind.Array ? list.EnumerateArray().Select(error => TextValue(error, "message")) : [])
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var failed = nodes.Count(node => string.Equals(TextValue(node, "status"), "FAILED", StringComparison.OrdinalIgnoreCase));
+        if (nodes.Length >= requestedFileCount && failed == 0 && errors.Count == 0) return null;
+        var parts = new List<string>();
+        if (nodes.Length < requestedFileCount) parts.Add($"{requestedFileCount} görselden {nodes.Length} tanesi eklendi");
+        if (failed > 0) parts.Add($"{failed} görsel işlenemedi");
+        if (errors.Count > 0) parts.Add("Shopify: " + string.Join("; ", errors.Take(3)));
+        return string.Join(", ", parts);
+    }
+
     internal const string PublishRetryCode = "SHOPIFY_PRODUCT_PUBLISH_RETRY";
     internal const string PublishFailedCode = "SHOPIFY_PRODUCT_PUBLISH_FAILED";
 
@@ -422,9 +457,11 @@ public sealed partial class ShopifyHttpClient(
         try
         {
             if (!externalOperationId.StartsWith("shopify-completed:", StringComparison.Ordinal)) return Unsupported<RemoteOperationStatus>("Shopify operation kimliği tanınmıyor.");
-            var lines = JsonSerializer.Deserialize<List<RemoteOperationLine>>(Encoding.UTF8.GetString(Convert.FromBase64String(externalOperationId["shopify-completed:".Length..])));
+            var parts = externalOperationId["shopify-completed:".Length..].Split('|');
+            var lines = JsonSerializer.Deserialize<List<RemoteOperationLine>>(Encoding.UTF8.GetString(Convert.FromBase64String(parts[0])));
             if (lines is null) return Unsupported<RemoteOperationStatus>("Shopify operation sonucu okunamadı.");
-            return Task.FromResult(AdapterResult<RemoteOperationStatus>.Success(new(externalOperationId, "COMPLETED", lines)));
+            var mediaIssue = parts.Length > 1 ? Encoding.UTF8.GetString(Convert.FromBase64String(parts[1])) : null;
+            return Task.FromResult(AdapterResult<RemoteOperationStatus>.Success(new(externalOperationId, "COMPLETED", lines, IssueCode: mediaIssue is null ? null : MediaIncompleteCode, IssueSummary: mediaIssue)));
         }
         catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException) { return Unsupported<RemoteOperationStatus>("Shopify operation sonucu geçersiz."); }
     }
@@ -1098,7 +1135,10 @@ public sealed partial class ShopifyHttpClient(
     }
 
     internal static string IdempotencyKey(string value) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
-    private static string EncodeCompletedOperation(IReadOnlyList<RemoteOperationLine> lines) => "shopify-completed:" + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(lines));
+    // An issue rides after a | (no base64 character), so an operation id written before it still reads.
+    internal static string EncodeCompletedOperation(IReadOnlyList<RemoteOperationLine> lines, string? mediaIssue = null) =>
+        "shopify-completed:" + Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(lines))
+        + (mediaIssue is null ? "" : "|" + Convert.ToBase64String(Encoding.UTF8.GetBytes(mediaIssue)));
 
     internal static string? RequestedMetafield(JsonObject input, string key) => input["metafields"] is JsonArray metafields
         ? metafields.Where(item => string.Equals(item?["key"]?.GetValue<string>(), key, StringComparison.Ordinal))
