@@ -387,7 +387,7 @@ export function InvoicesPage() {
     mutationFn: async (item: InvoiceWorkspace) => hubApi<{ confirmed: boolean }>(`/invoice-workspace/orders/${item.orderId}/confirm-no-remote-invoice`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
     onSuccess: async (_result, item) => {
       setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden gönderim açıldı. Faturayı tekrar oluşturabilirsiniz.`, 'success', invoiceOrderContext(item, 'Fatura Yeniden Gönderime Açıldı', 'Fatura yeniden gönderimi'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden gönderim açılamadı.', 'error', invoiceOrderContext(item, 'Yeniden Gönderim Açılamadı', 'Fatura yeniden gönderimi', error))
   })
@@ -397,8 +397,7 @@ export function InvoicesPage() {
       setSelectedPackages(new Set())
       setSelectedItem(null)
       setMessage(variables.hidden ? 'Seçilen siparişler gizlendi.' : 'Seçilen siparişler yeniden görünür yapıldı.', 'success')
-      await client.invalidateQueries({ queryKey: ['invoice-workspace'] })
-      await client.invalidateQueries({ queryKey: ['invoice-workspace-page'] })
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] })])
     },
     onError: error => setMessage(error instanceof Error ? error.message : 'Sipariş görünürlüğü güncellenemedi.', 'error')
   })
@@ -416,7 +415,7 @@ export function InvoicesPage() {
       setMessage(result.inspectionOnlyPackageCount > 0
         ? `${result.inspectionOnlyPackageCount} paketin önceki iletim sonucu belirsiz; yalnızca pazaryeri durumu okunacak, yeni belge gönderilmeyecek.`
         : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı.`, 'success', invoiceOrderContext(item, 'Manuel Fatura İletimi Başlatıldı', 'Manuel fatura iletimi'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Manuel fatura iletimi kuyruğa alınamadı.', 'error', invoiceOrderContext(item, 'Manuel Fatura İletilemedi', 'Manuel fatura iletimi', error))
   })
@@ -436,7 +435,7 @@ export function InvoicesPage() {
     },
     onSuccess: async (_result, item) => {
       setMessage('Pazaryerindeki sipariş durumu yenileme kuyruğuna alındı.', 'success', invoiceOrderContext(item, 'Sipariş Durumu Yenileniyor', 'Sipariş durumu yenileme'))
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Sipariş durumu pazaryerinden yenilenemedi.', 'error', invoiceOrderContext(item, 'Sipariş Durumu Yenilenemedi', 'Sipariş durumu yenileme', error))
   })
@@ -452,12 +451,13 @@ export function InvoicesPage() {
       if (status === 'SUCCEEDED') setMessage('Fatura durumu pazaryerinden yeniden okundu.', 'success', invoiceOrderContext(item, 'Fatura Durumu Okundu', 'Fatura durumu kontrolü'))
       else if (status) setMessage('Fatura durumu pazaryerinden okunamadı; ayrıntı İşlem Takibi’nde.', 'error', { ...invoiceOrderContext(item, 'Fatura Durumu Okunamadı', 'Fatura durumu kontrolü'), details: [{ label: 'İş Durumu', value: status }] })
       else setMessage('Fatura durumu kontrolü sürüyor; sayfayı biraz sonra yenileyin.', 'info')
-      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
+      await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Pazaryeri fatura kontrolü kuyruğa alınamadı.', 'error', invoiceOrderContext(item, 'Fatura Durumu Kontrol Edilemedi', 'Fatura durumu kontrolü', error))
   })
   const serverPageNumber = query.data?.pageNumber
-  useEffect(() => { if (serverPageNumber !== undefined && serverPageNumber !== pageNumber) setPageNumber(serverPageNumber) }, [serverPageNumber, pageNumber])
+  // Only a real answer clamps the page: the previous page kept while the next one loads still names its own number.
+  useEffect(() => { if (!query.isPlaceholderData && serverPageNumber !== undefined && serverPageNumber !== pageNumber) setPageNumber(serverPageNumber) }, [query.isPlaceholderData, serverPageNumber, pageNumber])
   const [previewTargets, setPreviewTargets] = useState<InvoicePreviewTarget[] | null>(null)
   const [manualConfirmation, setManualConfirmation] = useState<{ kind: 'delivered' | 'replace' | 'noRemote'; item: InvoiceWorkspace } | null>(null)
   function runManualConfirmation() {
@@ -551,6 +551,8 @@ export function InvoicesPage() {
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
   useEffect(() => { setPageNumber(1) }, [searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize])
   useEffect(() => { setSelectedPackages(new Set()) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
+  // Another tab or filter shows other rows: the phone selection mode closes with the emptied selection.
+  useEffect(() => { setSelectionMode(false) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo])
   const counts = { all: (pageData?.uninvoicedCount ?? 0) + (pageData?.invoicedCount ?? 0), unInvoiced: pageData?.uninvoicedCount ?? 0, invoiced: pageData?.invoicedCount ?? 0, dueSoon: pageData?.dueSoonCount ?? 0, hidden: pageData?.hiddenCount ?? 0 }
   const activeTabLabel = tabs.find(([value]) => value === tab)?.[1] ?? 'Faturalar'
   function selectTab(value: string) {

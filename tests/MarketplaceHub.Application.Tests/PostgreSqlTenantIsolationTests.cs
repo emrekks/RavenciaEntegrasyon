@@ -6169,6 +6169,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Equal(seededRows[0].package.Id, firstPage.Items[0].PackageId);
             Assert.Empty(firstPage.Items[0].Lines!);
             Assert.Equal(1, searchedPage.TotalCount);
+            // A tab badge counts with the list's filters, so the badge of the open tab equals the list.
+            Assert.Equal(searchedPage.TotalCount, searchedPage.DueSoonCount);
+            Assert.Equal(1, searchedPage.UninvoicedCount);
+            Assert.Equal(0, searchedPage.InvoicedCount);
             Assert.Equal(seededRows[20].package.Id, Assert.Single(searchedPage.Items).PackageId);
             Assert.Equal(21, customerSearchPage.TotalCount);
             Assert.Equal("Test", customerSearchPage.Items[0].CustomerName);
