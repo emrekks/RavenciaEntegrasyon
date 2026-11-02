@@ -2500,6 +2500,12 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
+                    b.Property<int>("DeliveryRetryAttempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("DeliveryRetryNextAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<decimal>("DiscountTotal")
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");
