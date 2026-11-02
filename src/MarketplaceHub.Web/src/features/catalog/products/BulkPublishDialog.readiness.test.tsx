@@ -126,7 +126,7 @@ describe('BulkPublishDialog readiness', () => {
     act(() => badge.click())
     expect(card().querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
     expect(badge.getAttribute('aria-expanded')).toBe('true')
-    // A chip per record: its title only, the gap in its hover text.
+    // A chip per record: its title only, the gap in its accessible name.
     const link = card().querySelector<HTMLAnchorElement>('.publish-issue-tooltip a.publish-issue-chip')!
     expect(link.textContent).toBe('Elbise RYP006')
     expect(link.getAttribute('href')).toBe('/products/p6')

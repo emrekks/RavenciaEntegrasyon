@@ -82,14 +82,11 @@ describe('PublishIssueBadge chips', () => {
     expect(required[0].hasAttribute('title')).toBe(false)
     expect(required[0].getAttribute('aria-label')).toBe('Kumaş Tipi. Zorunlu Hepsiburada özelliği için güncel ve doğrulanmış eşleme yok.')
     expect(container.querySelector('.publish-issue-tooltip')?.textContent).not.toContain('doğrulanmış eşleme yok')
-    // Hover shows the styled tooltip, outside the popover.
+    // Hover shows nothing more: the chip is its name; its accessible name carries both value gaps.
     act(() => { optional[0].dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
-    const tip = document.querySelector('.publish-issue-chip-tip')
-    expect([...tip!.querySelectorAll('span')].map(line => line.textContent)).toEqual(['“Orta” için değer eşlemesi yok. · “İnce” için değer eşlemesi yok.'])
-    expect(container.querySelector('.publish-issue-tooltip')?.contains(tip)).toBe(false)
-    expect(optional[0].getAttribute('aria-describedby')).toBe(tip!.id)
-    act(() => { optional[0].dispatchEvent(new MouseEvent('mouseout', { bubbles: true })) })
-    expect(document.querySelector('.publish-issue-chip-tip')).toBeNull()
+    expect(document.querySelector('[role="tooltip"]:not(.publish-issue-tooltip)')).toBeNull()
+    expect(optional[0].hasAttribute('aria-describedby')).toBe(false)
+    expect(optional[0].getAttribute('aria-label')).toBe('Kalınlık. “Orta” için değer eşlemesi yok. · “İnce” için değer eşlemesi yok.')
     act(() => optional[0].click())
     expect(openKalinlik).toHaveBeenCalledOnce()
     expect(openKumas).not.toHaveBeenCalled()
@@ -97,7 +94,7 @@ describe('PublishIssueBadge chips', () => {
 })
 
 describe('PublishIssueBadge with the window a chip opens', () => {
-  it('shows the field name on the chip and the missing values in its tooltip', () => {
+  it('shows the field name on the chip and the missing values in its accessible name only', () => {
     act(() => root.render(<PublishIssueBadge id="v" label="Yayın için zorunlu eksik" heading="Yayın için 2 eksik var" requiredCount={2}
       rows={[
         { key: 'wc-1', title: 'Web Color', detail: '“Mürdüm” için değer yok.', values: ['Mürdüm'], onRun: vi.fn() },
@@ -108,11 +105,9 @@ describe('PublishIssueBadge with the window a chip opens', () => {
     const chips = [...container.querySelectorAll<HTMLElement>('.publish-issue-chip')]
     expect(chips.map(chip => chip.textContent)).toEqual(['Web Color', 'Kumaş Tipi'])
     act(() => { chips[0].dispatchEvent(new FocusEvent('focusin', { bubbles: true })) })
-    expect(document.querySelector('.publish-issue-chip-tip')?.textContent).toBe('Eşlenmemiş değerler: Mürdüm, Kiremit')
-    act(() => { chips[0].dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
-    act(() => { chips[1].dispatchEvent(new FocusEvent('focusin', { bubbles: true })) })
-    expect([...document.querySelectorAll('.publish-issue-chip-tip span')].map(line => line.textContent)).toEqual(['Kumaş Tipi eşlenmemiş', 'Eşlenebilecek panel özelliği: Materyal'])
+    expect(document.querySelector('[role="tooltip"]:not(.publish-issue-tooltip)')).toBeNull()
     expect(chips[0].getAttribute('aria-label')).toBe('Web Color. Eşlenmemiş değerler: Mürdüm, Kiremit')
+    expect(chips[1].getAttribute('aria-label')).toBe('Kumaş Tipi. Kumaş Tipi eşlenmemiş. Eşlenebilecek panel özelliği: Materyal')
   })
 
   it('stays open while the window is in front, ignores its presses and Escape, and gives focus back to the chip', async () => {
@@ -149,6 +144,56 @@ describe('PublishIssueBadge with the window a chip opens', () => {
     act(() => container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!.click())
     act(() => root.render(<PublishIssueBadge id="e" label="Henüz yayınlanmadı" heading="" rows={[]} />))
     expect(container.querySelector('.publish-issue-tooltip.is-open .publish-issue-empty')?.textContent).toBe('Eksik kalmadı.')
+  })
+})
+
+describe('PublishIssueBadge steps', () => {
+  it('is one named trigger that pins the popover, with the lead on top and the actions at its foot', async () => {
+    vi.useFakeTimers()
+    try {
+      const fix = vi.fn()
+      const refresh = vi.fn()
+      const dialog = document.createElement('section')
+      dialog.setAttribute('aria-modal', 'true')
+      const openJob = vi.fn(() => { document.body.append(dialog) })
+      act(() => root.render(<PublishIssueBadge variant="steps" id="st" label="Trendyol: Kısmen Yayında, 21/42 varyant yayında; 1 zorunlu eksik" trigger={<span className="steps-probe">adımlar</span>}
+        lead={<><strong>21/42 varyant yayında</strong><span>İnceleme bekliyor · Web Color eşlenmemiş.</span></>}
+        actions={[{ key: 'refresh', label: 'Durumu Yenile', icon: null, onRun: refresh, busy: true, ariaLabel: 'Trendyol yayın durumu sorgulanıyor' }, { key: 'job', label: 'İş Ayrıntısı', icon: null, onRun: openJob }]}
+        heading="Yayın için 1 eksik var" rows={[{ key: 'k', title: 'Web Color', detail: 'Eşlenmemiş.', onRun: fix }]} requiredCount={1} />))
+      const trigger = container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!
+      expect(trigger.classList.contains('publish-steps-trigger')).toBe(true)
+      expect(trigger.getAttribute('aria-label')).toBe('Trendyol: Kısmen Yayında, 21/42 varyant yayında; 1 zorunlu eksik')
+      expect(trigger.querySelector('.steps-probe')).not.toBeNull()
+      expect(trigger.querySelector('.publish-issue-label, .publish-issue-count')).toBeNull()
+      // One gap with a fix: the press still pins the popover (no shortcut), so its actions stay reachable.
+      act(() => trigger.click())
+      expect(fix).not.toHaveBeenCalled()
+      const popover = container.querySelector('.publish-issue-tooltip.is-open')!
+      expect(popover.firstElementChild?.className).toBe('publish-issue-lead')
+      expect(popover.querySelector('.publish-issue-lead')?.textContent).toBe('21/42 varyant yayındaİnceleme bekliyor · Web Color eşlenmemiş.')
+      expect(popover.lastElementChild?.className).toBe('publish-issue-actions')
+      const actions = [...popover.querySelectorAll<HTMLButtonElement>('.publish-issue-action')]
+      expect(actions.map(action => action.textContent)).toEqual(['Durumu Yenile', 'İş Ayrıntısı'])
+      expect(actions[0].getAttribute('aria-busy')).toBe('true')
+      act(() => actions[0].click())
+      expect(refresh).toHaveBeenCalledOnce()
+      // The job window opens over the popover, which stays open; focus comes back to its button when it closes.
+      act(() => actions[1].click())
+      act(() => { vi.advanceTimersByTime(300) })
+      act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+      expect(container.querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
+      dialog.remove()
+      act(() => { vi.advanceTimersByTime(300) })
+      expect(document.activeElement).toBe(actions[1])
+      expect(container.querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('says nothing about gaps where emptyText is null', () => {
+    act(() => root.render(<PublishIssueBadge variant="steps" id="lv" label="Trendyol: Yayında" trigger={null} lead={<strong>Yayında</strong>} emptyText={null} heading="" rows={[]} />))
+    act(() => container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!.click())
+    expect(container.querySelector('.publish-issue-empty')).toBeNull()
+    expect(container.querySelector('.publish-issue-actions')).toBeNull()
   })
 })
 

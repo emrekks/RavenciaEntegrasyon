@@ -703,13 +703,6 @@
   .publish-platform-status { display: inline-flex; width: fit-content; max-width: 100%; min-height: 30px; align-items: center; gap: var(--rv-space-1); padding: 0 var(--rv-space-2); color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-accent) 20%, var(--rv-color-surface-raised)); border: 1px solid color-mix(in srgb, var(--rv-color-accent) 48%, var(--rv-color-border)); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 800; line-height: 1.5; white-space: nowrap; }
 }
 
-@layer features {
-  .publish-tracking-action { min-height: 34px; padding: 0 var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-sm); font-size: var(--rv-font-size-xs); font-weight: 750; white-space: nowrap; }
-}
-
-@layer features {
-  .publish-tracking-action:disabled { cursor: wait; opacity: .65; }
-}
 
 @layer features {
   .publish-selection-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--rv-space-4); padding: var(--rv-space-4) var(--rv-space-5); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-sm); }
@@ -853,21 +846,7 @@
 .variant-header-action-menu-portal button strong { font-size: var(--rv-font-size-sm); }
 .publish-platform-fact-publication dd { display: flex; min-width: 0; align-items: center; gap: 5px; }
 .publish-platform-fact-publication .publish-platform-status { max-width: 100%; min-height: 30px; box-sizing: border-box; padding-inline: 8px; font-size: 11px; white-space: normal; line-height: 1.25; padding-block: 4px; text-align: left; }
-.publish-platform-fact-publication .publish-tracking-action { display: grid; width: 30px; min-width: 30px; height: 30px; min-height: 0; place-items: center; padding: 0; }
-/* A running publication job shows inside the status row, so the card keeps its height: the badge dot turns into a
-   spinner (job message on hover), the stop control sits beside refresh, a stopped job leaves one cut-off line. */
-.publish-platform-fact-publication .publish-platform-status.is-working > i { box-sizing: border-box; width: 10px; height: 10px; flex: 0 0 10px; background: transparent; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: rv-publish-status-spin .8s linear infinite; }
-.publish-platform-fact-publication .publish-tracking-stop > i { display: block; width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
-.publish-platform-fact-publication > small.publish-platform-job-note { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.publish-platform-fact-publication > small.publish-platform-job-note.is-muted { color: var(--rv-color-muted); }
-/* A refresh (status check or product lookup) in progress turns its icon until the job ends; the stop button sits beside it. */
-.publish-platform-fact-publication .publish-tracking-action.is-spinning:disabled { cursor: progress; opacity: 1; }
-.publish-platform-fact-publication .publish-tracking-action.is-spinning > svg { animation: rv-publish-status-spin .9s linear infinite; }
 @keyframes rv-publish-status-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .publish-platform-fact-publication .publish-platform-status.is-working > i { border-style: dotted; border-right-color: currentColor; animation: none; }
-  .publish-platform-fact-publication .publish-tracking-action.is-spinning > svg { animation: none; }
-}
 .app-shell.stitch-shell main .variant-row-actions > .variant-platform-status.variant-row-action::after {
   border-color: var(--rv-color-surface);
 }
@@ -955,12 +934,6 @@
 .app-shell.stitch-shell main .product-edit-page .product-page-heading-meta { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .product-edit-page .product-page-heading-meta b { color: var(--rv-color-ink); font-weight: 600; }
 
-/* A card's publication status opens its API job (PublicationJobDialog): the pill stays a pill, only pointing. */
-/* Same type and height as every other status pill (12px, 650, 28px tall like Yayında and Aktif Bağlantı); a button
-   would otherwise take the global button rule's size, and a running job's pill came out 22px. */
-.app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button { box-sizing: border-box; height: auto; min-height: 28px; margin: 0; font-family: inherit; font-size: 12px; font-weight: 650; line-height: 1.2; letter-spacing: normal; text-transform: none; cursor: pointer; box-shadow: none; }
-.app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button:hover { border-color: var(--rv-color-border-strong); filter: brightness(.97); }
-.app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 
 .publication-job-modal { width: min(760px, 100%); }
 .publication-job-modal > header { align-items: flex-start; }
@@ -1103,10 +1076,8 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .publish-selection-footer > button.publish-select-all { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 14px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-weight: 600; }
 .app-shell.stitch-shell main .publish-selection-footer > button.publish-select-all:hover:not(:disabled) { background: var(--rv-color-surface-raised); }
 
-/* "Yayın Kuyruğunda", "Trendyol'a gönderildi"…: the status pill wraps onto a second line instead of being cut off by the
-   refresh and stop buttons beside it; those keep their size. */
+/* The bulk publish window's status pill wraps onto a second line instead of being cut off. */
 .app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-platform-status { flex: 0 1 auto; min-width: 0; overflow: visible; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; text-align: left; }
-.app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-tracking-action { flex: none; }
 .variant-platform-pricing-modal > footer button { box-sizing: border-box; height: 34px; min-height: 0; padding-block: 0; }
 /* A field a save refused: framed red, and shaken once the page has scrolled to it (field-error-reveal.ts). */
 .product-creation-workspace :is(input, select, textarea)[aria-invalid="true"],

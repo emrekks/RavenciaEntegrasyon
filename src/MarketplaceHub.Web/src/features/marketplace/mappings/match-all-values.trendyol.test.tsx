@@ -63,6 +63,6 @@ describe('Tüm Değerleri Eşle on Trendyol', () => {
     await settle()
     expect(state.valueMappings.map(item => `${item.localId}=${item.externalId}`).sort()).toEqual(['v-36-38=t-36 - 38', 'v-L=t-L', 'v-M=t-M', 'v-XL=t-XL', 'v-ılık=t-ILIK'].sort())
     expect(rowTarget('L')).toBe('L')
-    expect(document.body.textContent).toContain('aynı adlı Trendyol karşılığı yok (Beden: Tek Ebat)')
+    expect(document.body.textContent).toContain('1 değerin aynı adlı Trendyol karşılığı yok (Beden 1).')
   })
 })
