@@ -296,11 +296,11 @@
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item b { flex-wrap: nowrap; white-space: nowrap; }
 }
 
-/* Wider screens give the reading pane the room: each store's import status is one compact chip (logo, name, record
-   count, state mark) on a single row, its state and last import shown on hover or focus; a store that is importing
-   or failed says so in the chip. The facts stay one row down to a 500px card and the answer box starts at two lines,
+/* Tablets and wider screens give the reading pane the room: each store's import status is one compact chip (logo, name,
+   record count, state mark) on a single row, its state and last import shown on hover or focus; a store that is
+   importing or failed says so in the chip. The facts stay one row down to a 500px card and the answer box starts at two lines,
    growing with the text. */
-@media (min-width: 901px) {
+@media (min-width: 761px) {
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync { display: flex; flex-wrap: wrap; gap: 8px; overflow: visible; background: none; border: 0; border-radius: 0; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item { position: relative; display: flex !important; align-items: center; gap: 8px; min-height: 0; height: 36px; padding: 0 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border) !important; border-radius: 7px; outline: none; }
   .app-shell.stitch-shell main .qi-page .qi-sync.qi-sync .rv-questions-sync-item:focus-visible { border-color: var(--rv-color-primary) !important; }
