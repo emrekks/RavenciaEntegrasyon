@@ -120,6 +120,27 @@ export function sortRequirements(requirements: CategoryRequirement[] | undefined
   return (requirements ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder)
 }
 
+// Automatic Web Color, read the way the server builds it (ProductPublicationComposer): each variant's own Renk option
+// names a catalog colour, and that colour's Web Color mapping goes with the variant. So the check passes when every
+// variant row carries a Renk the catalog knows, whether or not the form's option group was synced (live 2026-11-02:
+// MZ068BT showed "Web Color" as missing while all seven colours had verified mappings), and it names what the server
+// would refuse: rows without a Renk, and Renk values with no catalog colour (sent without a Web Color, the server stops
+// on REQUIRED_ATTRIBUTE_MISSING).
+function autoWebColorIssues(draft: PublicationReadinessDraft, colorOptionRequirement: CategoryRequirement | undefined): string[] {
+  const syncHint = 'Web Color otomatik aktarımı için Renk seçeneğini eşitleyip değer seçin.'
+  if (!colorOptionRequirement) return [syncHint]
+  const colorId = colorOptionRequirement.attributeId
+  if (!draft.variantRows.length)
+    return draft.variantAttributeIds.includes(colorId) || (draft.attributeSelections[colorId]?.length ?? 0) > 0 ? [] : [syncHint]
+  const colorOf = (row: ReadinessRow) => rowOptionValue(row, { name: colorOptionRequirement.attribute.name }).trim()
+  const knows = (row: ReadinessRow) => Boolean(row.attributeValueIds[colorId])
+    || colorOptionRequirement.attribute.values.some(value => normalizeVariantOptionValue(value.value) === normalizeVariantOptionValue(colorOf(row)))
+  const withoutColor = draft.variantRows.filter(row => !row.attributeValueIds[colorId] && !colorOf(row))
+  if (withoutColor.length) return [`Web Color otomatik aktarımı için ${withoutColor.length} varyantta Renk seçilmemiş.`]
+  const unknown = [...new Set(draft.variantRows.filter(row => !knows(row)).map(colorOf))]
+  return unknown.length ? [`Web Color için katalogda karşılığı olmayan renk: ${unknown.join(', ')}.`] : []
+}
+
 export function publicationProductChecks(draft: PublicationReadinessDraft, requirements: PublicationRequirementsState): PublicationProductCheck[] {
   const allRequirements = requirements.items
   const { mappedRequirements, colorOptionRequirement, webColorRequirement, optionRequirements } = publicationRequirementSets(allRequirements)
@@ -150,7 +171,7 @@ export function publicationProductChecks(draft: PublicationReadinessDraft, requi
   const webColorValidationIssues = !draft.categoryId || !requirements.isSuccess ? [] : !webColorRequirement
     ? ['Web Color için kategori özelliği eşleştirilmemiş.']
     : draft.webColorAutoEnabled
-      ? (!colorOptionRequirement || (!variantAttributeIds.includes(colorOptionRequirement.attributeId) && !(attributeSelections[colorOptionRequirement.attributeId]?.length))) ? ['Web Color otomatik aktarımı için Renk seçeneğini eşitleyip değer seçin.'] : []
+      ? autoWebColorIssues(draft, colorOptionRequirement)
       : !draft.manualWebColorValueId ? ['Manuel Web Color için katalog rengi seçin.'] : webColorRequirement.attribute.values.some(value => value.id === draft.manualWebColorValueId) ? [] : ['Manuel Web Color değeri geçerli değil.']
   // Web Color is a Trendyol field (no other marketplace's API has it): its check is a check of its own that only the
   // Trendyol cards read, so it never blocks Hepsiburada, n11, Pazarama or PTT AVM.
