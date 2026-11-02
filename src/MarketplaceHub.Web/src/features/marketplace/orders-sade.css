@@ -145,13 +145,16 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl.rr-printed { color: var(--rr-subtle); background: transparent; border-color: var(--rr-line); opacity: .6; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-lbl.rr-printed:hover { opacity: 1; color: var(--rr-muted); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl td.rr-mid > .rr-ring { justify-items: start; }
-/* ---------- phones: each order is a compact card (mobil-tum-sayfalar.html) ----------
-   identity · time strip · buyer and carrier · products · invoice and total · two actions */
 @media (max-width: 760px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f { flex-wrap: nowrap; gap: 6px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn { min-width: 0; flex: none; height: 36px; padding-inline: 10px; gap: 6px; font-size: 13px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn:not(.rr-primary) > .rr-ico:first-child { display: none; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-btn.rr-primary { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+}
+/* ---------- phones and tablets: each order is a compact card (mobil-tum-sayfalar.html) ----------
+   identity · time strip · buyer and carrier · products · invoice and total · two actions. Tablets lay the cards two
+   to a row (styles/tablet-ops.css). */
+@media (max-width: 1024px) {
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-panel { background: none; border: 0; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-panel-h { padding: 0 0 10px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tblwrap { overflow: visible; border: 0; }
@@ -211,8 +214,8 @@
 /* when the order was handed to the carrier, under its tracking number: a quiet label over the date */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small.rr-shipdate { display: grid; gap: 1px; margin-top: 2px; max-width: 100%; overflow: visible; white-space: normal; color: var(--rr-subtle); font-size: 11px; line-height: 14px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small.rr-shipdate b { color: var(--rr-ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
-@media (max-width: 760px) {
-  /* phones: the cargo row wraps and the date takes a line of its own below the carrier and tracking number */
+@media (max-width: 1024px) {
+  /* phone and tablet cards: the cargo row wraps and the date takes a line of its own below the carrier and tracking number */
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell.rr-cargocell { flex-wrap: wrap; }
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cargocell small.rr-shipdate { order: 9; flex-basis: 100%; display: flex; gap: 6px; margin-top: 0; }
 }

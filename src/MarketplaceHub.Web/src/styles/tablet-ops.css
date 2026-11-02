@@ -46,3 +46,49 @@
   html body main .rr.rr-dashboard .rr-mxt.rr-mxt td[data-l]::before { content: none; }
   html body main .rr.rr-dashboard .rr-mxt.rr-mxt tr.rr-attn td:first-child { box-shadow: inset 2px 0 0 var(--rr-warn); }
 }
+
+/* ---------- Siparişler and İadeler ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* The phone order and return cards (orders-sade.css, returns-sade.css), two to a row. */
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl > tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl > tbody > tr { margin: 0; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl > tbody > tr:has(> td.rr-empty-row, > td[colspan]) { grid-column: 1 / -1; }
+  /* A phone opens a detail sheet on a tap; a tablet does not, so the card keeps what the desktop row shows: the
+     package number, the shipping deadline, a note, and the amounts under the invoice state. The tracking number is
+     already in the carrier strip. */
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > small.rr-num + small.rr-num,
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > small:is(.rr-due, .rr-note-line) { display: block; grid-column: 1 / -1; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-ordercell > div > small.rr-num + small.rr-num + small.rr-num { display: none; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-tbl.rr-tbl .rr-invcell .rr-m:not(.rr-pay) { display: flex; grid-column: 1 / -1; justify-content: space-between; gap: 8px; color: var(--rr-muted); font-size: 12.5px; }
+
+  /* Filters: the desktop fields stay in the card (search, platform, date, sort and the two buttons); the fields the
+     desktop keeps in the table heads open with "Filtre" in a centred window, two to a row. */
+  html body main .rr.rr .rr-fcard { position: relative; }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters > .rr-sheet-only { display: none; }
+  html body main .rr.rr .rr-fcard > .rr-ftoggle { position: absolute; bottom: 16px; left: 16px; display: inline-flex; height: 36px; gap: 6px; }
+  html body main .rr.rr .rr-fcard .rr-filters .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters > .rr-search { grid-column: 1 / -1; }
+  html body main .rr.rr .rr-fcount { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 1.5px 5px 0; color: #fff; background: var(--rr-primary); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 1; }
+
+  html body main .rr.rr .rr-fopen > .rr-fscrim { position: fixed; inset: 0; z-index: 900; display: block; background: rgb(0 0 0 / 55%); }
+  /* Centred by margin, not transform: a transform would become the frame of the option lists, which RrAnchor pins
+     to the screen with position: fixed above their field. */
+  html body main .rr.rr .rr-fopen > .rr-filters {
+    position: fixed; inset: 0; z-index: 901; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;
+    width: min(680px, calc(100vw - 48px)); height: fit-content; max-height: calc(100dvh - 96px); margin: auto; overflow-y: auto; padding: 56px 20px 0;
+    background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 14px; box-shadow: 0 30px 80px rgb(0 0 0 / 45%);
+  }
+  html body main .rr.rr .rr-fopen > .rr-filters::before { content: "Filtrele"; position: absolute; top: 18px; left: 20px; color: var(--rr-ink); font-size: 16px; font-weight: 600; }
+  html body main .rr.rr .rr-fopen > .rr-filters > :is(.rr-search, .rr-fbtns) { grid-column: 1 / -1; }
+  html body main .rr.rr .rr-fopen .rr-filters > .rr-fbtns { position: sticky; bottom: 0; display: flex; gap: 8px; margin: 0 -20px; padding: 12px 20px 16px; background: var(--rr-surface); border-top: 1px solid var(--rr-line); }
+  html body main .rr.rr .rr-fopen .rr-filters > .rr-fbtns > .rr-btn { justify-content: center; min-width: 120px; }
+}
+@media (min-width: 900px) and (max-width: 1024px) {
+  /* Landscape: the four return figures on one row, as on the desktop. */
+  html body main .rr.rr.rr-returns > .rr-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* Landscape: all desktop fields on one row. */
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters { grid-template-columns: minmax(0, 1.3fr) repeat(3, minmax(0, 1fr)); }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters > .rr-search { grid-column: auto; }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort) { grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); }
+}

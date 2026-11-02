@@ -6,9 +6,10 @@ const fs = (globalThis as unknown as { process: { getBuiltinModule(name: string)
 const testFileUrl = import.meta.url
 const css = fs.readFileSync(new URL('./orders-sade.css', testFileUrl), 'utf8')
 
-function phoneBlocks() {
+// The card rules serve phones and tablets alike (tablets lay the cards two to a row in styles/tablet-ops.css).
+function cardBlocks() {
   const blocks: string[] = []
-  let index = css.indexOf('@media (max-width: 760px) {')
+  let index = css.indexOf('@media (max-width: 1024px) {')
   while (index >= 0) {
     let depth = 0
     let end = index
@@ -17,14 +18,14 @@ function phoneBlocks() {
       if (css[end] === '}') { depth -= 1; if (depth === 0) break }
     }
     blocks.push(css.slice(index, end + 1))
-    index = css.indexOf('@media (max-width: 760px) {', end)
+    index = css.indexOf('@media (max-width: 1024px) {', end)
   }
   return blocks.join('\n')
 }
 
-describe('order cards on phones (W-F12)', () => {
+describe('order cards on phones and tablets (W-F12)', () => {
   it('show the late shipping line that the other card lines hide', () => {
-    const phone = phoneBlocks()
+    const phone = cardBlocks()
     expect(phone).toContain('.rr-ordercell > div > small:not(:first-of-type) { display: none; }')
     expect(phone).toMatch(/\.rr-ordercell > div > small\.rr-due\.is-late \{ display: block;/)
     expect(phone.indexOf('small.rr-due.is-late')).toBeGreaterThan(phone.indexOf('small:not(:first-of-type)'))

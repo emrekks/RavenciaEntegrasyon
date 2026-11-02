@@ -912,9 +912,10 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen .rr-pop { position: static !important; width: 100% !important; min-width: 0 !important; max-width: none !important; margin-top: 6px; box-shadow: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fopen :is(.rr-in, .rr-trigger, .date-range-picker-trigger) { height: 44px; min-height: 44px; font-size: 14px; }
 }
-/* ---------- phones: each return is a compact card (mobil-tum-sayfalar.html) ----------
-   identity · status strip · buyer and carrier · products · reason · invoice and total · actions */
-@media (max-width: 760px) {
+/* ---------- phones and tablets: each return is a compact card (mobil-tum-sayfalar.html) ----------
+   identity · status strip · buyer and carrier · products · reason · invoice and total · actions. Tablets lay the cards
+   two to a row (styles/tablet-ops.css). */
+@media (max-width: 1024px) {
 .rr.rr-returns .rr-panel { background: none; border: 0; }
 .rr.rr-returns .rr-panel-h { padding: 0 0 10px; }
 main .rr.rr-returns .rr-tblwrap.rr-tblwrap { overflow: visible; padding-top: 12px; border: 0; }
