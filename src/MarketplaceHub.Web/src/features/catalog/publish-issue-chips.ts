@@ -27,9 +27,10 @@ export function publishIssueChips(rows: readonly PublishIssueRow[], optionalRows
 
 // The lines of a mapping gap's tooltip, read from the publish check's own finding (the single source the window also
 // reads): a field with no mapping, a mapping on an older list, a product with no value, or the gap's own words.
-export function attributeIssueTip(issue: { attribute: string; detail: string; state?: string; panelAttribute?: string }): string[] {
+export function attributeIssueTip(issue: { attribute: string; detail: string; state?: string; panelAttribute?: string; fieldName?: string }): string[] {
+  const field = issue.fieldName ?? issue.attribute
   switch (issue.state) {
-    case 'unmapped': return [`${issue.attribute} eşlenmemiş`, ...(issue.panelAttribute && issue.panelAttribute !== issue.attribute ? [`Eşlenebilecek panel özelliği: ${issue.panelAttribute}`] : issue.panelAttribute ? ['Aynı adlı panel özelliğiyle eşlenebilir'] : [])]
+    case 'unmapped': return [`${field} eşlenmemiş`, ...(issue.panelAttribute && issue.panelAttribute !== field ? [`Eşlenebilecek panel özelliği: ${issue.panelAttribute}`] : issue.panelAttribute ? ['Aynı adlı panel özelliğiyle eşlenebilir'] : [])]
     case 'stale': return ['Eşleme eski kategori listesine göre, yeniden doğrulanmalı', ...(issue.panelAttribute ? [`Kayıtlı panel özelliği: ${issue.panelAttribute}`] : [])]
     case 'no-value': return [`${issue.attribute} için üründe değer seçilmemiş`]
     case 'values': return []
