@@ -938,7 +938,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       const done = needsValues && saved ? new Set(saved.filter(mapping => activeValues.some(value => value.id === mapping.localId)).map(mapping => mapping.localId)).size : null
       const state: FieldState = !current ? 'none' : needsValues && done !== null && done < activeValues.length ? 'partial' : 'done'
       const meta = !current ? 'Eşlenmedi' : !needsValues ? 'Eşlendi' : done !== null && done < activeValues.length ? `${done}/${activeValues.length} değer` : `${activeValues.length} değer`
-      return { key: `attribute-${item.externalId}`, name: item.name, required: item.isRequired === true, state, meta, remote: item, mapping: current }
+      return { key: `attribute-${item.externalId}`, name: item.name, required: item.isRequired === true, state, meta, ratio: done !== null && activeValues.length ? done / activeValues.length : undefined, remote: item, mapping: current }
   }
   const requiredEntries = mappingEntries.filter(entry => entry.required)
   const optionalEntries = mappingEntries.filter(entry => !entry.required)
@@ -984,7 +984,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       {(platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') && categoryScope && <button type="button" className="secondary" title={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler`} onClick={() => setExtraPanel('defaults')}>Platform Varsayılanları <span className="cm-count">{attributeDefaultsCount}</span></button>}
       <button type="button" className={`secondary${mappingConflictCount ? ' cm-has-conflicts' : ''}`} title={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler`} onClick={() => setExtraPanel('conflicts')}>Gözden Geçirilecek <span className="cm-count">{mappingConflictCount}</span></button>
       {platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" className="secondary" title="Trendyol’daki ürünleri salt-okunur okuyarak ürün seçeneklerini günceller; Trendyol’a yazma yapmaz." disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler Eşitleniyor…' : 'Seçenekleri Eşitle'}</button>}
-      <button type="button" className="secondary" title={`Bu kategorinin ${platformLabel} alan listesini salt-okunur olarak yeniden okur.`} disabled={sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" />{sync.isPending ? 'Güncelleniyor…' : 'Alanları Güncelle'}</button>
+      <button type="button" className="secondary" title={`Bu kategorinin ${platformLabel} alan listesini salt-okunur olarak yeniden okur.`} disabled={sync.isPending} onClick={() => sync.mutate()}><UiIcon name="refresh" />{sync.isPending ? 'Güncelleniyor…' : 'Pazaryerinden Güncelle'}</button>
       </div>}
     </div>
     {dataLoading ? <Busy text="Kategori özellikleri ve eşlemeler yükleniyor…" /> : dataFailed ? <div className="unknown"><strong>Güncel kategori özellik verisi alınamadı</strong><p>Seçili {platformLabel} kategorisinin özellik listesini yeniden eşitleyin.</p><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa Alınıyor…' : 'Kategori Özelliklerini Eşitle'}</button></div> : <>
@@ -997,7 +997,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
               const unsaved = Boolean(entry.remote && valueDrafts.drafts.has(`${categoryScope}/${entry.remote.externalId}`))
               const productIssue = productIssueByKey.get(entry.key)
               const issueText = productIssue ? `${productIssue.required ? 'Bu üründe zorunlu eksik' : 'Bu üründe isteğe bağlı uyarı'}: ${productIssue.details.join(' · ')}` : ''
-              return <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}${unsaved ? ' is-unsaved' : ''}${productIssue ? ` has-product-issue is-product-${productIssue.required ? 'required' : 'optional'}` : ''}`} title={[unsaved ? 'Kaydedilmemiş değer seçimleri var' : '', issueText].filter(Boolean).join(' — ') || undefined} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} data-gap-target={entry.key === initialFocusKey ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph state={entry.state} required={entry.required} /><span className="cm-name">{entry.name}{productIssue && <span className="cm-product-issue" aria-label={issueText} role="img" />}</span><span className="cm-meta">{entry.meta}</span></button>
+              return <button type="button" key={entry.key} className={`cm-item${entry.key === activeEntry?.key ? ' is-selected' : ''}${unsaved ? ' is-unsaved' : ''}${productIssue ? ` has-product-issue is-product-${productIssue.required ? 'required' : 'optional'}` : ''}`} title={[unsaved ? 'Kaydedilmemiş değer seçimleri var' : '', issueText].filter(Boolean).join(' — ') || undefined} aria-current={entry.key === activeEntry?.key ? 'true' : undefined} data-gap-target={entry.key === initialFocusKey ? 'true' : undefined} onClick={() => setSelectedEntryKey(entry.key)}><MappingStateGlyph state={entry.state} required={entry.required} ratio={entry.ratio} /><span className="cm-name">{entry.name}{productIssue && <span className="cm-product-issue" aria-label={issueText} role="img" />}</span><span className="cm-meta">{entry.meta}</span></button>
             })}
           </Fragment>)}
         </nav>
@@ -1024,7 +1024,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
     </Modal>
   </article>
 }
-type MappingEntry = { key: string; externalId?: string; name: string; required: boolean; state: FieldState; meta: string; node?: ReactNode; remote?: ReferenceItem; mapping?: CatalogMapping | null; localAttributes?: LocalAttribute[]; role?: 'ATTRIBUTE' | 'OPTION'; fieldDefault?: AttributeDefault; productBrand?: boolean }
+type MappingEntry = { key: string; externalId?: string; name: string; required: boolean; state: FieldState; meta: string; ratio?: number; node?: ReactNode; remote?: ReferenceItem; mapping?: CatalogMapping | null; localAttributes?: LocalAttribute[]; role?: 'ATTRIBUTE' | 'OPTION'; fieldDefault?: AttributeDefault; productBrand?: boolean }
 const n11BrandAttributeId = '1'
 function ProductBrandField({ remote, required, platformLabel, footerHint, onNext }: { remote: ReferenceItem; required: boolean; platformLabel: string; footerHint: string; onNext?: () => void }) {
   return <>
