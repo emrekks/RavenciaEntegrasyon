@@ -39,7 +39,24 @@
 /* A card whose gap list is open stays above its neighbours even when the pointer moves onto another card (that card is
    raised on hover to 6), so the open list is never covered. */
 .publish-platform-card.publish-platform-card:has(.publish-issue-trigger[aria-expanded="true"]) { position: relative; z-index: 8; }
-.publish-platform-card.publish-platform-card > .publish-platform-card-head { border-radius: 11px 11px 0 0; }
+.publish-platform-card.publish-platform-card > .publish-platform-card-head, .publish-platform-card.publish-platform-card > .publish-platform-card-top > .publish-platform-card-head { border-radius: 11px 11px 0 0; }
+/* The editor card's header: the selection button, and beside it (never inside it) the borderless refresh icon, laid
+   over a 32 px gap the button keeps just left of its toggle; pressing the icon never changes the selection. */
+.publish-platform-card-top { position: relative; }
+.publish-platform-card-head.has-refresh { grid-template-columns: 42px minmax(0, 1fr) 32px auto; }
+.publish-platform-head-gap { width: 32px; height: 32px; }
+.app-shell.stitch-shell main .publish-platform-card-refresh, .publish-platform-card-refresh {
+  position: absolute; top: 50%; right: calc(var(--rv-space-4, 16px) + 38px + var(--rv-space-3, 12px)); display: grid; box-sizing: border-box;
+  width: 32px; height: 32px; min-width: 0; min-height: 0; place-items: center; margin: 0; padding: 0; color: var(--rv-color-muted);
+  background: transparent; border: 0; border-radius: 7px; box-shadow: none; transform: translateY(-50%); cursor: pointer;
+}
+.app-shell.stitch-shell main .publish-platform-card-refresh:hover:not(:disabled), .publish-platform-card-refresh:hover:not(:disabled) { color: var(--rv-color-primary-text); background: var(--rv-color-primary-soft); border: 0; }
+.publish-platform-card-refresh:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+.app-shell.stitch-shell main .publish-platform-card-refresh:disabled, .publish-platform-card-refresh:disabled { cursor: not-allowed; opacity: .45; }
+.app-shell.stitch-shell main .publish-platform-card-refresh.is-busy:disabled, .publish-platform-card-refresh.is-busy:disabled { cursor: progress; opacity: 1; }
+.publish-platform-card-refresh.is-busy > svg { animation: rv-publish-status-spin .9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .publish-platform-card-refresh.is-busy > svg { animation: none; } }
+.app-shell.stitch-shell main .publish-platform-card.is-settling .publish-platform-card-refresh { visibility: hidden; }
 .publish-platform-card.publish-platform-card > :last-child { border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }
 
 /* The badge is a button: hover previews the gaps, a press pins them with their fixes (PublishIssueBadge). */
@@ -51,7 +68,8 @@
 .publish-platform-fact-publication > dd { flex-wrap: nowrap; container-type: inline-size; }
 
 /* The editor card's status: one 36 px pill of four icon steps (Hazırlık → Gönderim → Onay → Yayında) joined by short
-   links, then its counts (PublishStatusSteps). The whole pill is the trigger of the gaps popover. */
+   links, its counts as corner badges on the steps, then the state label (PublishStatusSteps). The whole pill is the
+   trigger of the gaps popover. */
 .publish-steps-trigger {
   --ps-ok: var(--rv-color-accent); --ps-bad: var(--rv-color-danger); --ps-run: var(--rv-color-info);
   --ps-idle: color-mix(in srgb, var(--rv-color-ink) 14%, transparent); --ps-idle-ink: var(--rv-color-subtle);
@@ -61,14 +79,14 @@
 :root[data-theme="light"] .publish-steps-trigger { --ps-on: #fff; }
 .app-shell.stitch-shell main .publish-platform-fact-publication .publish-steps-trigger, .publish-steps-trigger {
   display: inline-flex; box-sizing: border-box; max-width: 100%; min-width: 0; height: 36px; min-height: 0; align-items: center;
-  margin: 0; padding: 0 9px 0 6px; overflow: hidden; color: var(--rv-color-ink); background: var(--ps-ground);
+  margin: 0; padding: 2px 12px 0 6px; overflow: visible; color: var(--rv-color-ink); background: var(--ps-ground);
   border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: none; font: inherit; font-size: 12px;
   line-height: 1; text-align: left; cursor: pointer;
 }
 .app-shell.stitch-shell main .publish-platform-fact-publication .publish-steps-trigger:hover, .publish-steps-trigger:hover { color: var(--rv-color-ink); background: var(--ps-ground); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border-strong)); }
 .publish-steps-trigger[aria-expanded="true"] { border-color: var(--rv-color-primary); }
 .publish-steps-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
-.publish-steps { display: inline-flex; min-width: 0; align-items: center; gap: 8px; }
+.publish-steps { display: inline-flex; min-width: 0; align-items: center; gap: 12px; }
 .publish-steps-track, .publish-steps-item { display: inline-flex; flex: none; align-items: center; }
 .publish-step-link { flex: none; width: 8px; height: 3px; margin: 0 2px; background: var(--ps-idle); border-radius: 2px; }
 .publish-step-link.is-full { background: var(--ps-ok); }
@@ -83,30 +101,28 @@
 /* Partly live: the Yayında step is a ring filled to the live share around the store icon. */
 .publish-step.is-half { color: var(--ps-ok); background: conic-gradient(var(--ps-ok) calc(var(--publish-step-share, 50) * 1%), var(--ps-idle) 0); }
 .publish-step.is-half::before { position: absolute; inset: 3px; content: ""; background: var(--ps-ground); border-radius: 50%; }
-/* The counts: the live share in bold green, then 20 px chips — red for the required gaps (or refused variants), yellow
-   for the optional warnings — on their soft tone, readable in both themes. */
-.publish-steps-counts { display: inline-flex; flex: none; align-items: center; gap: 5px; }
-.publish-steps-share { color: var(--ps-ok); font-size: 12.5px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.publish-steps-count { display: inline-flex; box-sizing: border-box; min-width: 20px; height: 20px; align-items: center; justify-content: center; padding: 0 6px; border: 1px solid; border-radius: 7px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: pre; }
-.publish-steps-count.is-required { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 42%, transparent); }
-.publish-steps-count.is-optional { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 45%, transparent); }
+/* A count sits on the corner of the step it concerns, as on a notification icon: 18 px, 11 px bold, solid in its tone
+   with a 2 px ring in the pill's colour so it stands clear of the icon; a step's second count takes the lower corner.
+   Red: required gaps or refused / vanished variants; yellow: optional warnings; green: how many are live. */
+.publish-step-badge { position: absolute; z-index: 1; right: -9px; display: grid; box-sizing: border-box; min-width: 18px; height: 18px; place-items: center; padding: 0 4px; color: var(--ps-on); border: 2px solid var(--ps-ground); border-radius: 7px; font-size: 11px; font-style: normal; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
+.publish-step-badge.is-top { top: -8px; }
+.publish-step-badge.is-bottom { bottom: -8px; }
+.publish-step-badge.is-red { background: var(--ps-bad); }
+.publish-step-badge.is-yellow { background: var(--rv-color-warning); }
+.publish-step-badge.is-green { background: var(--ps-ok); }
 .publish-steps-label { min-width: 0; overflow: hidden; font-size: 12.5px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
 .publish-steps-label.is-ok { color: var(--ps-ok); }
 .publish-steps-label.is-fail { color: var(--ps-bad); }
 .publish-steps-label.is-now { color: var(--ps-run); }
 .publish-steps-label.is-idle { color: var(--rv-color-muted); }
 @media (prefers-reduced-motion: reduce) { .publish-step.is-now > svg, .publish-issue-action.is-busy > svg { animation: none; } }
-/* A narrower cell: smaller steps and links, then no links; the words (the state label, "eksik", "uyarı") give way
-   below the width their pill needs (data-fit, publishStepsFit); the numbers always stay. */
+/* A narrower cell: smaller steps and links; the state label gives way below the width its pill needs (data-fit,
+   publishStepsFit); the steps and their badges always stay. */
 @container (max-width: 235px) {
   .publish-step { width: 20px; height: 20px; }
   .publish-step > svg { width: 11px; height: 11px; }
   .publish-step-link { width: 6px; margin: 0 1px; }
   .publish-steps { gap: 6px; }
-}
-@container (max-width: 205px) {
-  .publish-step-link { display: none; }
-  .publish-steps-track { gap: 3px; }
 }
 @container (max-width: 179.98px) { .publish-steps[data-fit="180"] .publish-steps-word { display: none; } }
 @container (max-width: 199.98px) { .publish-steps[data-fit="200"] .publish-steps-word { display: none; } }
@@ -137,7 +153,7 @@
 .publish-issue-lead > span.is-danger { color: var(--rv-color-danger); }
 .publish-issue-lead > span.is-success { color: var(--rv-color-accent); }
 .publish-issue-lead > span.is-info { color: var(--rv-color-info); }
-/* Its foot: the card's actions (Durumu Yenile, stop, İş Ayrıntısı), 36 px like every control. */
+/* Its foot: the card's actions (stop, İş Ayrıntısı), 36 px like every control. */
 .publish-issue-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }
 .publish-issue-lead + .publish-issue-actions { margin-top: 0; padding-top: 0; border-top: 0; }
 .app-shell.stitch-shell main .publish-issue-action, .publish-issue-action { display: inline-flex; box-sizing: border-box; height: 36px; min-height: 0; align-items: center; gap: 6px; margin: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }

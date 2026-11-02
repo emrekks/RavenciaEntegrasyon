@@ -138,20 +138,27 @@ export function publishStepsAriaLabel(platformName: string, steps: PublishSteps,
   return `${platformName}: ${steps.label}${partial ? `, ${partial} ${unit} yayında` : ''}${notes.length ? `; ${notes.join(', ')}` : ''}`
 }
 
-// The words of the pill (its state label when it has no counts, "eksik" / "uyarı" on the count chips) show only when
-// the cell is wide enough for them; the cell's container queries hide them below the width this estimate rounds up to,
-// in 20 px steps (publish-platform-issues.css). The numbers always show.
+// The counts sit as corner badges on the step they concern: the red one (required gaps, or the variants refused or no
+// longer found) on the failing step, the yellow one (optional warnings) on Hazırlık, the green one (how many are live)
+// on a partly live Yayında. A step with two badges carries the second at its lower corner.
+export type PublishStepBadge = { step: number; tone: 'red' | 'yellow' | 'green'; text: string; corner: 'top' | 'bottom'; title: string }
+
+export function publishStepBadges(steps: PublishSteps, unit: 'varyant' | 'renk' = 'varyant'): PublishStepBadge[] {
+  const { partial, required, missing, optional } = steps.counts
+  const failing = steps.steps.indexOf('fail')
+  const badges: Array<Omit<PublishStepBadge, 'corner'>> = []
+  if (required) badges.push({ step: failing >= 0 ? failing : 0, tone: 'red', text: String(required), title: `${required} zorunlu eksik` })
+  else if (missing) badges.push({ step: failing >= 0 ? failing : 3, tone: 'red', text: String(missing.count), title: `${missing.count} varyant ${missing.word === 'ret' ? 'reddedildi' : 'pazaryerinde bulunamadı'}` })
+  if (partial) badges.push({ step: 3, tone: 'green', text: partial.split('/')[0], title: `${partial} ${unit} yayında` })
+  if (optional) badges.push({ step: 0, tone: 'yellow', text: String(optional), title: `${optional} isteğe bağlı uyarı` })
+  return badges.map((badge, index) => ({ ...badge, corner: badges.slice(0, index).some(other => other.step === badge.step) ? 'bottom' : 'top' }))
+}
+
+// The pill's state label shows only when the cell is wide enough for it; the cell's container queries hide it below the
+// width this estimate rounds up to, in 20 px steps (publish-platform-issues.css). The steps and their badges always show.
 export const publishStepsFitTiers = [180, 200, 220, 240, 260, 280, 300, 320, 340, 360] as const
 
 export function publishStepsFit(steps: PublishSteps) {
-  const { partial, required, missing, optional } = steps.counts
-  const chip = (count: number, word: string) => 5 + 14 + String(count).length * 7.2 + 4 + word.length * 6.6
-  let width = 144
-  const hasCounts = Boolean(partial || required || missing || optional)
-  if (partial) width += 8 + partial.length * 7.4
-  if (required) width += chip(required, 'eksik')
-  if (missing) width += chip(missing.count, missing.word)
-  if (optional) width += chip(optional, 'uyarı')
-  if (!hasCounts) width += 8 + steps.label.length * 7.1
+  const width = 150 + 8 + steps.label.length * 7.1
   return publishStepsFitTiers.find(tier => tier >= width) ?? 400
 }
