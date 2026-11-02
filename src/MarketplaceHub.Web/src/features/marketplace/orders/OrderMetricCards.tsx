@@ -1,4 +1,4 @@
-// The six summary cards above the order list (three by two; two by three on a phone).
+// The six summary cards above the order list (three by two; two by three on a phone); every count reads "N Paket".
 // "Yeni Sipariş" reads "N Paket | M Adet Ürün": the orders of the Yeni tab under the list's filters and their products
 // (each line's ordered quantity less what was cancelled of it); hovering lists the products per store.
 // "İşleme Alınan" is the same set as the "İşleme Alınanlar" tab: taken into processing, not yet handed to the carrier.
@@ -52,16 +52,16 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, lat
       <small>Yeni Sipariş</small><Packages packages={newOrders} units={newUnits} />
       {stores.length > 0 && <div className="rr-metric-tip" role="tooltip">{stores.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{count(row.units)} adet</b></div>)}</div>}
     </article>
-    <article><small>İşleme Alınan</small><strong><CountUp value={metricText(processing)} /></strong></article>
-    <article className={positive(late) ? 'rr-bad rr-alert' : undefined}><small>Geciken</small><strong><CountUp value={metricText(late)} /></strong></article>
+    <article><small>İşleme Alınan</small><Packages packages={processing} units={undefined} /></article>
+    <article className={positive(late) ? 'rr-bad rr-alert' : undefined}><small>Geciken</small><Packages packages={late} units={undefined} /></article>
     <article className="rr-metric-link rr-metric-tipped">
-      <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Kargoya verilmemiş mikro ihracat siparişleri'} onClick={() => onOpenDay('micro')}><small>Mikro İhracat Sipariş</small><strong><CountUp value={metricText(microExport)} /></strong></button>
+      <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Kargoya verilmemiş mikro ihracat siparişleri'} onClick={() => onOpenDay('micro')}><small>Mikro İhracat Sipariş</small><Packages packages={microExport} units={undefined} /></button>
       {countries.length > 0 && <div className="rr-metric-tip" role="tooltip">{countries.map(([code, value]) => <div className="rr-metric-tip-r" key={code || 'unknown'}>{code ? <Flag code={code} /> : <span className="rr-metric-tip-none" aria-hidden="true" />}<span>{code ? countryName(code) : 'Ülke Bilinmiyor'}</span><b className="rr-num">{count(value)}</b></div>)}</div>}
     </article>
     <article className={`${positive(cancelled) ? 'rr-bad ' : ''}rr-metric-link${partial > 0 ? ' rr-metric-chipped' : ''}`}>
       <button type="button" className="rr-metric-open" title="Bugün iptal edilen siparişler" onClick={() => onOpenDay('cancelled')}><small>İptal</small><Packages packages={cancelled} units={undefined} /></button>
       {partial > 0 && <button type="button" className="rr-metric-chip rr-metric-chip-alert" title={`Bugün kısmen iptal edilen ${count(partial)} sipariş`} onClick={() => onOpenDay('partial')}>{count(partial)} Kısmi İptal{partialUnits !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(partialUnits)} Adet</>}</button>}
     </article>
-    <article className="rr-metric-link"><button type="button" className="rr-metric-open" title="Kargoya verilmemiş yeniden gönderimler" onClick={() => onOpenDay('resent')}><small>Yeniden Gönderim</small><strong><CountUp value={metricText(resent)} /></strong></button></article>
+    <article className="rr-metric-link"><button type="button" className="rr-metric-open" title="Kargoya verilmemiş yeniden gönderimler" onClick={() => onOpenDay('resent')}><small>Yeniden Gönderim</small><Packages packages={resent} units={undefined} /></button></article>
   </div>
 }

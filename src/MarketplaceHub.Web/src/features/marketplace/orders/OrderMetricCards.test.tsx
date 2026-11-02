@@ -11,18 +11,18 @@ const card = (host: HTMLElement, title: string) => Array.from(host.querySelector
 const open = (host: HTMLElement, title: string) => card(host, title).querySelector<HTMLButtonElement>('.rr-metric-open')!.click()
 
 describe('order summary cards', () => {
-  it('shows six cards in one grid, a title and a count each, packages with their products on Yeni Sipariş and İptal', () => {
+  it('shows six cards in one grid, a title and a package count each, with their products on Yeni Sipariş', () => {
     const { host } = render(<OrderMetricCards {...props()} />)
 
     const row = host.querySelector('.rr-metrics.rr-metrics-6')!
     const cards = Array.from(row.querySelectorAll('article')).map(item => [item.querySelector('small')?.textContent, item.querySelector('strong')?.textContent])
     expect(cards).toEqual([
       ['Yeni Sipariş', '12 Paket | 37 Adet Ürün'],
-      ['İşleme Alınan', (1234).toLocaleString('tr-TR')],
-      ['Geciken', '2'],
-      ['Mikro İhracat Sipariş', '186'],
+      ['İşleme Alınan', `${(1234).toLocaleString('tr-TR')} Paket`],
+      ['Geciken', '2 Paket'],
+      ['Mikro İhracat Sipariş', '186 Paket'],
       ['İptal', '68 Paket'],
-      ['Yeniden Gönderim', '3']
+      ['Yeniden Gönderim', '3 Paket']
     ])
     // Neither Kargoda nor Kargolanacak Ürün Adedi is a card any more.
     expect(card(host, 'Kargoda')).toBeUndefined()
@@ -33,7 +33,7 @@ describe('order summary cards', () => {
     const { host } = render(<OrderMetricCards {...props({ newOrders: metric(undefined, true), newUnits: undefined, newRows: undefined, processing: metric(undefined, true), late: metric(undefined), microExport: metric(undefined, true), microCountries: undefined, cancelled: metric(undefined, true), cancelledUnits: undefined, partiallyCancelled: metric(undefined, true), resent: metric(undefined, true) })} />)
 
     const values = Array.from(host.querySelectorAll('article strong')).map(value => value.textContent)
-    expect(values).toEqual(['…', '…', '0', '…', '…', '…'])
+    expect(values).toEqual(['…', '…', '0 Paket', '…', '…', '…'])
     // While the data loads, the chip and the hover panels are not drawn.
     expect(host.querySelector('.rr-metric-chip')).toBeNull()
     expect(host.querySelector('.rr-metric-tip')).toBeNull()
