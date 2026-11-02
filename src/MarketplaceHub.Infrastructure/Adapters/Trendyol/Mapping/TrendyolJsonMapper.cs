@@ -716,7 +716,8 @@ public static class TrendyolJsonMapper
             }
         var batchStatus = Text(root, "status");
         if (string.IsNullOrWhiteSpace(batchStatus)) batchStatus = PriceInventoryBatchStatus(root, itemStatuses);
-        return new(NullText(root, "batchRequestId") ?? requestedId, batchStatus, lines);
+        int? itemCount = root.TryGetProperty("itemCount", out var count) && count.ValueKind == JsonValueKind.Number && count.TryGetInt32(out var reported) ? reported : null;
+        return new(NullText(root, "batchRequestId") ?? requestedId, batchStatus, lines, ReportedItemCount: itemCount);
     }
 
     // toplu-işlem-kontrolü: a price-and-inventory batch answers no batch-level status ("Batch status alanı tarafınıza

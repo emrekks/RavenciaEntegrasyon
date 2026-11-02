@@ -24,6 +24,9 @@ public static class JobVariantResultPolicy
         var status = listingStatus.Trim().ToUpperInvariant();
         if (status is "CREATE_REJECTED" or "UPDATE_REJECTED" or "REJECTED" or "BLACKLISTED" or "LOCKED" or "ARCHIVED") return Rejected;
         if (jobType == MarketplaceJobTypes.ProductApprovalReconcile) return status == "LIVE" ? Approved : Pending;
+        // The batch answered without this variant, or the job stopped before an answer: its outcome is not known yet.
+        if (status is ProductBatchResultPolicy.ResultUnknownStatus or "MANUAL_REVIEW") return Pending;
+        if (status == "BLOCKED") return Rejected;
         // A send's answer is accepted or refused; approval comes later (a card already live counts as sent too).
         return Sent;
     }
@@ -35,7 +38,7 @@ public static class JobVariantResultPolicy
         var status = listingStatus.Trim().ToUpperInvariant();
         return jobType switch
         {
-            MarketplaceJobTypes.ProductCreate => status == "CREATE_REJECTED" ? Rejected : Sent,
+            MarketplaceJobTypes.ProductCreate => status == "CREATE_REJECTED" ? Rejected : status is ProductBatchResultPolicy.ResultUnknownStatus or "MANUAL_REVIEW" ? Pending : Sent,
             MarketplaceJobTypes.ProductUpdate => status == "UPDATE_REJECTED" ? Rejected : Sent,
             _ => StatusFor(jobType, status)
         };

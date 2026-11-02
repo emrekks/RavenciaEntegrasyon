@@ -16,6 +16,7 @@ const statusLabels: Record<string, string> = {
   CONFIRMED: 'Platformda doğrulandı',
   CONNECTED: 'Bağlandı',
   CREATED: 'Oluşturuldu',
+  CREATE_RESULT_UNKNOWN: 'Sonuç bekleniyor',
   DEAD: 'Hata',
   DEGRADED: 'Yavaşlıyor',
   DELAYED: 'Gecikiyor',

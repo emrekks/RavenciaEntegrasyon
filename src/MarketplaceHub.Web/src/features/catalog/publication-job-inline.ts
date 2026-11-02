@@ -28,7 +28,7 @@ export function publicationJobInline(job: PublicationJobSnapshot | null | undefi
   if (status === 'SUCCEEDED') return { state: 'hidden' }
   // An approval check only waiting for the marketplace: the card's status already says "Onay bekliyor".
   if (isApprovalWaitJob(job)) return { state: 'hidden' }
-  const summary = job.lastErrorSummary?.trim()
+  const summary = publicationJobSummary(job.lastErrorCode, job.lastErrorSummary)
   if (isSettledPublicationJob(status)) {
     return { state: 'settled', message: summary ? `${statusLabel(status)} · ${summary}` : statusLabel(status), tone: status === 'CANCELLED' ? 'muted' : 'danger' }
   }
@@ -37,6 +37,18 @@ export function publicationJobInline(job: PublicationJobSnapshot | null | undefi
   const progress = percent !== null ? [`%${percent}`, counts].filter(Boolean).join(' · ') : counts
   const label = job.progressLabel?.trim() || 'Yayın işlemi'
   return { state: 'running', message: `${label}: ${summary || progress || statusLabel(status)}` }
+}
+
+// A create job stopped before 2026-11-03 when Trendyol's batch result did not list every barcode yet (it writes the
+// result while saying COMPLETED); the old internal text said nothing the user could act on. Such a job now waits for the
+// whole result; one already stopped is read again by retrying it (the retry only asks Trendyol, it sends nothing).
+const incompleteBatchSummary = 'Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.'
+
+export function publicationJobSummary(code: string | null | undefined, summary: string | null | undefined) {
+  const text = summary?.trim()
+  if (code?.trim().toUpperCase() === 'PRODUCT_BATCH_CONTRACT_INVALID' && text === incompleteBatchSummary)
+    return "Trendyol sonucu bazı barkodlar henüz listelenmeden okundu; varyantların gerçek durumu bilinmiyor. İşler sayfasında bu işin Manuel Yeniden Dene düğmesi sonucu Trendyol'dan yeniden sorgular, ürünü yeniden göndermez."
+  return text || undefined
 }
 
 // The job a card's refresh started (a status check or a product lookup) is running until it ends; a status check that
