@@ -441,10 +441,18 @@
 .cm-card .cm-item.is-product-optional { --cm-product-tone: var(--rv-color-warning); }
 .app-shell .panel.mapping-step.cm-card .cm-item.has-product-issue, .cm-card .cm-item.has-product-issue { box-shadow: inset 3px 0 0 var(--cm-product-tone); }
 .app-shell .panel.mapping-step.cm-card .cm-item.has-product-issue:not(.is-selected), .cm-card .cm-item.has-product-issue:not(.is-selected) { background: color-mix(in srgb, var(--cm-product-tone) 7%, transparent); }
-.cm-card .cm-product-issue { display: inline-block; width: 8px; height: 8px; margin-left: 7px; vertical-align: middle; background: var(--cm-product-tone); border-radius: 50%; box-shadow: 0 0 0 2px color-mix(in srgb, var(--cm-product-tone) 28%, transparent); }
+/* The dot sits on the label's optical centre (about half its capital height above the baseline), not its x-height. */
+.cm-card .cm-product-issue { display: inline-block; width: 8px; height: 8px; margin-left: 7px; vertical-align: 0.07em; background: var(--cm-product-tone); border-radius: 50%; box-shadow: 0 0 0 2px color-mix(in srgb, var(--cm-product-tone) 28%, transparent); }
 .cm-card .cm-product-note { margin: 0 0 12px; padding: 8px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; background: color-mix(in srgb, var(--cm-product-tone) 9%, transparent); border: 1px solid color-mix(in srgb, var(--cm-product-tone) 32%, transparent); border-radius: 7px; }
 .cm-card .cm-product-note.is-required { --cm-product-tone: var(--rv-color-danger); }
 .cm-card .cm-product-note.is-optional { --cm-product-tone: var(--rv-color-warning); }
 .cm-card .cm-product-note > b { margin-right: 6px; color: var(--cm-product-tone); font-weight: 600; }
 .cm-card .cm-vrow.is-product-issue { background: color-mix(in srgb, var(--rv-color-warning) 8%, transparent); }
 .cm-card .cm-product-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, transparent); border-radius: 7px; font-size: 11px; font-weight: 600; vertical-align: middle; white-space: nowrap; }
+/* The values (colours) a product still needs mapped: a count and their names above the list, each marked in it; once
+   none is left a short green line. */
+.cm-card .cm-need-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; padding: 8px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.4; background: color-mix(in srgb, var(--rv-color-warning) 10%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-warning) 35%, transparent); border-radius: 7px; }
+.cm-card .cm-need-summary > b { color: var(--rv-color-warning); font-weight: 600; }
+.cm-card .cm-need-summary.is-done { color: var(--rv-color-success); background: color-mix(in srgb, var(--rv-color-success) 9%, transparent); border-color: color-mix(in srgb, var(--rv-color-success) 30%, transparent); }
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value.needs-mapping, .cm-card .web-color-panel-value.needs-mapping { background: color-mix(in srgb, var(--rv-color-warning) 12%, transparent); border-color: color-mix(in srgb, var(--rv-color-warning) 55%, transparent); }
+.cm-card .web-color-panel-value .cm-need-tag { flex: none; margin-left: auto; color: var(--rv-color-warning); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
