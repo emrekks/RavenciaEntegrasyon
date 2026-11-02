@@ -43,7 +43,15 @@ export function invoiceFailureReason(code: string | null) {
     EFATURAM_SIGNIN_UNAVAILABLE: 'E-Faturam oturumu açılamadı; fatura gönderilmedi. Otomatik olarak yeniden denenecek.',
     EFATURAM_OPERATION_FORBIDDEN: 'E-Faturam hesabı bu işlem için yetkili değil; fatura oluşturulmadı.',
     CAPABILITY_NOT_VERIFIED: 'E-Faturam dış gönderim izni kapalı; fatura oluşturulmadı.',
-    INVOICE_ADJUSTMENT_REQUIRED: 'Sipariş fatura kesildikten sonra iptal edildi veya iadesi kabul edildi; e-Arşiv iptali ya da iade faturası gerekli.'
+    INVOICE_ADJUSTMENT_REQUIRED: 'Sipariş fatura kesildikten sonra iptal edildi veya iadesi kabul edildi; e-Arşiv iptali ya da iade faturası gerekli.',
+    // The invoice was issued but not sent to the marketplace by itself (InvoiceMarketplaceAutoDeliveryPolicy).
+    INVOICE_AUTO_DELIVERY_PLATFORM_UNSUPPORTED: 'Pazaryerine gönderilmedi: bu pazaryeri fatura iletimi için API sunmuyor. Faturayı pazaryeri panelinden yükleyin.',
+    INVOICE_AUTO_DELIVERY_LINK_MISSING: 'Pazaryerine gönderilmedi: E-Faturam belge linkini henüz vermedi.',
+    INVOICE_AUTO_DELIVERY_WRITES_OFF: 'Pazaryerine gönderilmedi: sunucuda pazaryerine fatura iletme anahtarı kapalı.',
+    INVOICE_AUTO_DELIVERY_CONNECTION_NOT_LIVE: 'Pazaryerine gönderilmedi: pazaryeri bağlantısı aktif bir canlı bağlantı değil.',
+    INVOICE_AUTO_DELIVERY_CONNECTION_WRITES_OFF: 'Pazaryerine gönderilmedi: pazaryeri bağlantısında dış yazma kapalı. Entegrasyonlar sayfasından açabilirsiniz.',
+    INVOICE_AUTO_DELIVERY_PACKAGE_MISSING: 'Pazaryerine gönderilmedi: siparişin gönderilecek etkin paketi bulunamadı.',
+    INVOICE_AUTO_DELIVERY_SHOPIFY_SCOPE_MISSING: 'Pazaryerine gönderilmedi: Shopify bağlantısında sipariş yazma izni (write_orders) doğrulanmadı. Bağlantıyı yeniden test edin.'
   }
   return labels[code ?? ''] ?? (code ? `İletilemedi: ${code}` : 'Ayrıntılar için faturayı açın.')
 }
