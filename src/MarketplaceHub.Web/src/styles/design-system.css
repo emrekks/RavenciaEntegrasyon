@@ -6960,7 +6960,7 @@ html body .rr-opt-count:not(.is-loading) { display: inline-flex !important; }
   .app-shell.stitch-shell.stitch-shell > aside { padding-bottom: var(--rv-space-3); }
 }
 @media (min-width: 701px) and (max-height: 800px) {
-  .app-shell.stitch-shell.stitch-shell > aside :is(nav, nav .nav-group) { row-gap: 6px; }
+  .app-shell.stitch-shell.stitch-shell > aside :is(nav, nav .nav-group) { row-gap: 8px; }
 }
 
 /* Verileri Sıfırla: the connection in the header, then the Özetli Liste (shared/components/DataResetLedger). The window
@@ -7025,7 +7025,7 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
   /* On a short window the item list gives way (it scrolls on its own) so the profile row keeps to the bottom edge. */
   /* It never grows to fill the menu (its rows keep their own rhythm from the top; the room left stays below them). */
   .app-shell.stitch-shell.stitch-shell > aside > nav { flex: 0 1 auto; min-height: 0; overflow-y: auto; scrollbar-width: none; }
-  .app-shell.stitch-shell.stitch-shell > aside > nav :is(.nav-group, ul) { align-content: start; row-gap: 4px; }
+  .app-shell.stitch-shell.stitch-shell > aside > nav :is(.nav-group, ul) { align-content: start; row-gap: 8px; }
   .app-shell.stitch-shell.stitch-shell > aside .sidebar-side-bottom { flex: none; margin-top: auto; }
   .app-shell.stitch-shell.stitch-shell > aside .sidebar-side-bottom { margin-bottom: 0; padding-bottom: 0; }
   .app-shell.stitch-shell.stitch-shell > aside .sidebar-profile.sidebar-profile {
