@@ -72,9 +72,10 @@ public sealed record ReportGeographyView(
 // Orders: non-cancelled orders. CancelRate: cancelled / (orders + cancelled). SoldQuantity: ordered minus cancelled
 // units of non-cancelled orders. ReturnedQuantity: units sent back (a returned order whole; otherwise the larger of the
 // line's returned quantity and its accepted return claims). ReturnClaims: claims that were not rejected or cancelled.
-// GrossSales: what the customers paid (cancelled packages left out); NetRevenue: GrossSales less what went back (the
-// overview's revenue). AverageOrderValue: GrossSales / orders with an amount. ListAmount: the same orders at their list
-// price, before the marketplace's discounts; DiscountAmount = ListAmount - GrossSales.
+// GrossSales: what the customers paid plus the marketplace's own discount, which it pays the seller (cancelled packages
+// left out); NetRevenue: GrossSales less what went back (the overview's revenue). AverageOrderValue: GrossSales / orders
+// with an amount. ListAmount: the same orders at their list price, before any discount; DiscountAmount = ListAmount -
+// GrossSales, the seller's own discount.
 public sealed record ReportSummaryView(
     int Orders,
     int CancelledOrders,
@@ -105,7 +106,7 @@ public sealed record ReportSummaryView(
 public sealed record ReportCommissionView(decimal CoveredRevenue, decimal? Coverage, decimal EstimatedCommission, decimal EstimatedPayout, decimal? EffectiveRate);
 
 // Cost only over kept units whose variant has a cost price (the current one, not the one at the sale). CostedRevenue
-// is those units' share of what the customer paid; GrossProfit = CostedRevenue - CostTotal. NetProfit is over units
+// is those units' share of the order's revenue (GrossSales); GrossProfit = CostedRevenue - CostTotal. NetProfit is over units
 // that carry both a cost and a commission: their revenue - cost - estimated commission (before cargo and VAT).
 public sealed record ReportCostView(
     decimal KeptQuantity,
@@ -152,7 +153,7 @@ public sealed record ReportProductOptionView(string Name, string Value);
 
 // NetAmount: SalesAmount less what went back. PreviousSoldQuantity: the units sold in the previous period (0 when none);
 // Available: the variant's stock now, for the variants whose stock was read (null otherwise).
-// SalesAmount: the line's share of what the customer paid for the order. ModelCode, ImageUrl and Options come from the
+// SalesAmount: the line's share of the order's revenue (GrossSales). ModelCode, ImageUrl and Options come from the
 // catalogue for a line matched to a variant (the picture: the variant's own, else the product's); null or empty otherwise.
 public sealed record ReportProductView(
     Guid? VariantId,

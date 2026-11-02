@@ -648,7 +648,7 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
     { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', money.tax !== null && money.tax < 0 ? 'Masraflardaki KDV satışların KDV\'sinden fazla; fark devreden KDV\'dir ve kârı artırır.' : 'Satışların KDV\'sinden ürün maliyetindeki ve masraflardaki KDV düşülür. Tahminidir.') },
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost ?? 0, note: explain('cost', costCoverageText(money.costCoverage)) }
   ].filter(item => item.value !== 0)
-  const rows: BridgeRow[] = [{ key: 'sales', label: 'Satış Tutarı', from: 0, to: money.total, kind: 'total', note: 'Müşterilerin ödediği toplam tutar.\nİptaller hariç, iadeler düşülmeden. Platformlara göre görmek için tıklayın.' }]
+  const rows: BridgeRow[] = [{ key: 'sales', label: 'Satış Tutarı', from: 0, to: money.total, kind: 'total', note: 'Liste fiyatından satıcı indirimi düşülmüş satış.\nPazaryerinin kendi indirimi dahildir (pazaryeri satıcıya öder). İptaller hariç, iadeler düşülmeden. Platformlara göre görmek için tıklayın.' }]
   let at = money.total
   for (const item of taken) {
     rows.push({ key: item.key, label: item.label, from: at - item.value, to: at, kind: 'minus', note: item.note })
@@ -731,7 +731,7 @@ function ProfitLedger({ money }: { money: Money }) {
       <span role="tooltip" id={`${tip}-${key}`} className="reports-hover-tip"><TipText text={note} /></span>
     </div>
   return <dl className="reports-ledger">
-    {row('sales', undefined, 'Satış Tutarı', formatTl(money.total), 'Müşterilerin ödediği toplam tutar.\nİptaller hariç, iadeler düşülmeden.')}
+    {row('sales', undefined, 'Satış Tutarı', formatTl(money.total), 'Liste fiyatından satıcı indirimi düşülmüş satış.\nPazaryerinin kendi indirimi dahildir. İptaller hariç, iadeler düşülmeden.')}
     {money.deductions.map(part => row(part.key, 'is-minus', part.label, `− ${formatTl(part.value)}`, `${costMeaning[part.key] ?? part.label}\n${share(part.value)}`))}
     {row('left', `is-total is-${money.left < 0 ? 'bad' : 'good'}`, 'Masraflar Sonrası', amount(money.left), `Satıştan iade ve pazaryeri masrafları düştükten sonra kalan.\n${share(money.left)}`)}
     {money.tax !== null && row('vat', money.tax < 0 ? undefined : 'is-minus', 'Net KDV', money.tax < 0 ? `+ ${formatTl(-money.tax)}` : `− ${formatTl(money.tax)}`,
@@ -780,7 +780,7 @@ function productMetrics(data: ReportSales, money: Money | null): Metric[] {
     { key: 'profit', label: 'Adet Başına Kâr', value: profit === null || now.keptQuantity === 0 ? '—' : signedTl(profit / now.keptQuantity), tone: profit !== null && profit < 0 ? 'bad' : undefined,
       note: profit === null ? 'Satılan her üründen kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : `Satılan her üründen kalan tahmini kâr.\nTahmini net kâr ÷ net satılan adet (${formatNumber(now.keptQuantity)} adet).` },
     { key: 'commission', label: 'Ortalama Komisyon Oranı', value: formatPercent(data.commission.effectiveRate), note: 'Pazaryerinin satıştan aldığı ortalama pay.\nKomisyon ÷ komisyon oranı bilinen satış.' },
-    { key: 'discountTotal', label: 'İndirim Toplamı', value: discountKnown ? formatTl(discount ?? 0) : '—', note: 'Liste fiyatından yapılan indirimlerin toplamı.\nİptaller hariç.' },
+    { key: 'discountTotal', label: 'İndirim Toplamı', value: discountKnown ? formatTl(discount ?? 0) : '—', note: 'Satıcının liste fiyatından yaptığı indirimlerin toplamı.\nPazaryerinin kendi indirimi sayılmaz (satıcıya ödenir). İptaller hariç.' },
     { key: 'discount', label: 'Ortalama İndirim Oranı', value: discountKnown ? formatPercent((discount ?? 0) / list) : '—',
       note: discountKnown ? `Ürünlerin liste fiyatına göre ortalama indirimi.\nListe fiyatı toplamı ${formatTl(list)}, yapılan indirim ${formatTl(discount)}; iptaller hariç.` : 'Ürünlerin liste fiyatına göre ortalama indirimi.\nBu dönemde liste fiyatı okunmadı.' }
   ]
@@ -1274,7 +1274,7 @@ function productColumns(): Column<ReportProduct>[] {
 
 function Products({ data }: { data: ReportSales }) {
   return <div className="reports-grid">
-    <div className="is-wide"><DataTable title="En Çok Satan 20 Ürün" description="Varyant bazında; satış tutarı, siparişte ödenen tutarın satıra düşen payıdır." csvName="rapor-en-cok-satanlar" rows={data.topProducts} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={productColumns()} /></div>
+    <div className="is-wide"><DataTable title="En Çok Satan 20 Ürün" description="Varyant bazında; satış tutarı, sipariş tutarının satıra düşen payıdır." csvName="rapor-en-cok-satanlar" rows={data.topProducts} rowKey={row => row.variantId ?? row.sku} initialSort="sold" columns={productColumns()} /></div>
     <div className="is-wide"><DataTable title="En Çok İade Edilen 20 Ürün" csvName="rapor-en-cok-iade" rows={data.topReturned} rowKey={row => row.variantId ?? row.sku} initialSort="returned" columns={productColumns()} empty="Bu dönemde iade yok." /></div>
   </div>
 }

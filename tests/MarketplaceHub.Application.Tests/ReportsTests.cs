@@ -458,6 +458,51 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         }
     }
 
+    // Live, 1-2 Nov 2026, order 11772267262: list 1,127.17, seller discount 76.28, Trendyol discount 150.00 (75 on each
+    // of two lines), paid 900.89. Trendyol pays its discount to the seller, so the revenue is 1,050.89 and the discount
+    // shown is the seller's 76.28, on the overview and in the reports alike.
+    [PostgreSqlFact]
+    public async Task The_marketplaces_own_discount_is_revenue_and_not_the_sellers_discount()
+    {
+        var tenant = NewTenant("rep-ty-discount");
+        var trendyol = NewConnection(tenant.Id, "TRENDYOL", "PRODUCTION");
+        var order = NewOrder(tenant.Id, trendyol.Id, "t-tydisc", TrendyolNoon, 900.89m, "CREATED", "{}", "{}");
+        order.GrossAmount = 1127.17m;
+        var first = NewLine(order, "t-tydisc-1", 450.44m, 1m, """{"commission":16.1}""", null);
+        first.PlatformDiscount = 75m;
+        var second = NewLine(order, "t-tydisc-2", 450.45m, 1m, """{"commission":16.1}""", null);
+        second.PlatformDiscount = 75m;
+        var package = NewPackage(order, "pkg-tydisc", 900.89m, ShipmentPackageStatus.New, "Trendyol Express");
+        package.GrossAmount = 1127.17m;
+        package.DiscountAmount = 226.28m;
+        try
+        {
+            await using (var seed = fixture.CreateContext())
+            {
+                seed.Tenants.Add(tenant);
+                seed.PlatformConnections.Add(trendyol);
+                seed.Orders.Add(order);
+                seed.OrderLines.AddRange(first, second);
+                seed.ShipmentPackages.Add(package);
+                await seed.SaveChangesAsync();
+            }
+
+            var report = await ReportAsync(tenant.Id, includeTest: false);
+            Assert.Equal(1050.89m, report.Summary.GrossSales);
+            Assert.Equal(1050.89m, report.Summary.NetRevenue);
+            Assert.Equal(76.28m, report.Summary.DiscountAmount);
+            // Commission on the price before Trendyol's discount: 16.1 % of 525.44 and of 525.45, 84.60 each.
+            Assert.Equal(169.20m, report.Commission.EstimatedCommission);
+
+            var overview = Assert.Single(await OverviewAsync(tenant.Id));
+            Assert.Equal(1050.89m, overview.Amount);
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task<ReportSalesView> ReportAsync(Guid tenantId, bool includeTest)
     {
         await using var db = fixture.CreateContext();

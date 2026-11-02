@@ -158,7 +158,7 @@ function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () 
       <section>
         <h3>Gider Kalemleri</h3>
         <ul className="reports-order-costs">
-          <li><span><b>Sipariş Tutarı</b><small>Müşterinin ödediği, iadeler düşülmüş</small></span><strong>{money(order.amount)}</strong></li>
+          <li><span><b>Sipariş Tutarı</b><small>Satıcı indirimi ve iadeler düşülmüş</small></span><strong>{money(order.amount)}</strong></li>
           <li><span><b>Ürün Maliyeti</b><small>Ürün ayarlarındaki maliyet</small></span><strong>{order.cost === null ? 'Eksik' : money(-order.cost)}</strong></li>
           {order.costs.map(cost => <li key={cost.key}>
             <span><b>{cost.label}{cost.estimated && <em>Tahmini</em>}</b>{cost.source && <small>{cost.source}</small>}</span>
