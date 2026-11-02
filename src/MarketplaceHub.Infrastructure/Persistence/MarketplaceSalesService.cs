@@ -716,9 +716,20 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var (micro, microCountries) = includeMicro ? await MicroExportCountsAsync(tenantId, options with { Status = requested[0] }, cancellationToken) : (0, null);
         var newUnits = !includeMicro && requested.Contains("NEW") ? await TabUnitsByConnectionAsync(tenantId, options, "NEW", cancellationToken) : null;
         var processingUnits = !includeMicro && requested.Contains("PROCESSING") ? await TabUnitsByConnectionAsync(tenantId, options, "PROCESSING", cancellationToken) : null;
+        // The Geciken card's stores (the late orders per store), and the Yeniden Gönderim card's, which asks for the RESENT
+        // tab over the resends not handed to the carrier (resentNotShipped=true); the tab counters skip them otherwise.
+        var lateStores = !includeMicro && requested.Contains("LATE") && Count("LATE") > 0 ? await TabOrdersByConnectionAsync(tenantId, options, "LATE", cancellationToken) : null;
+        var resentStores = !includeMicro && options.ResentNotShipped == true && requested.Contains("RESENT") ? await TabOrdersByConnectionAsync(tenantId, options, "RESENT", cancellationToken) : null;
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
-            Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries, newUnits, processingUnits);
+            Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries, newUnits, processingUnits,
+            lateStores ?? (requested.Contains("LATE") && !includeMicro ? new Dictionary<string, int>() : null), resentStores);
     }
+
+    // The orders a tab lists under the same filters, per store.
+    private async Task<IReadOnlyDictionary<string, int>> TabOrdersByConnectionAsync(Guid tenantId, OrderListQuery options, string tab, CancellationToken cancellationToken) =>
+        await FilteredOrders(tenantId, options with { Status = tab, Sort = null })
+            .GroupBy(order => order.ConnectionId).Select(group => new { ConnectionId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(row => row.ConnectionId.ToString("D"), row => row.Count, cancellationToken);
 
     // The products of the orders a tab (Yeni, İşleme Alınanlar) lists under the same filters, per store: each line's
     // ordered quantity less what was cancelled of it (the rule of the overview's Bekleyen Ürün Adedi).

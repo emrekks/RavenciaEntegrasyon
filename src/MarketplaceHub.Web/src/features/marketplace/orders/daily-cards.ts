@@ -39,6 +39,12 @@ export function dayCardFilters(card: DayCard, day: string) {
     : { kind: 'ALL', status: card === 'cancelled' ? 'CANCELLED' : 'PARTIALLY_CANCELLED', dateFrom: '', dateTo: '', cancelFrom: day, cancelTo: day }
 }
 
+// The Yeniden Gönderim card's request: the order summary's RESENT tab alone over the resends not handed to the carrier,
+// which carries their count and their stores (the same set the Yeniden Gönderimler list shows under that filter).
+export function resentPendingParams() {
+  return new URLSearchParams({ tabs: 'RESENT', resentNotShipped: 'true' }).toString()
+}
+
 // GET /dashboard/bootstrap, the part the page reads: the late count and the stores' names (the Yeni Sipariş hover).
 export type DashboardBootstrap = {
   metrics: { lateOrders: number; uninvoicedInvoices: number }
@@ -53,4 +59,27 @@ export function storeUnits(unitsByConnection: Record<string, number> | null | un
   const rows = Object.entries(unitsByConnection).filter(([, value]) => value > 0).map(([connectionId, value]) => ({ key: connectionId, code: byId.get(connectionId)?.platformCode ?? '', name: byId.get(connectionId)?.displayName ?? 'Kaldırılmış mağaza', units: value }))
     .sort((left, right) => right.units - left.units || left.name.localeCompare(right.name, 'tr-TR'))
   return { units: rows.reduce((sum, row) => sum + row.units, 0), rows }
+}
+
+type Channels = DashboardBootstrap['channels']
+const storeOf = (channels: Channels, connectionId: string) => {
+  const channel = (channels ?? []).find(item => item.connectionId === connectionId)
+  return { key: connectionId, code: channel?.platformCode ?? '', name: channel?.displayName ?? 'Kaldırılmış mağaza' }
+}
+
+// The Geciken and Yeniden Gönderim cards' hover: their orders per store, the biggest first; [] when there are none and
+// undefined while unread (or from an older API).
+export function storeCounts(byConnection: Record<string, number> | null | undefined, channels: Channels) {
+  if (!byConnection) return undefined
+  return Object.entries(byConnection).filter(([, value]) => value > 0).map(([connectionId, packages]) => ({ ...storeOf(channels, connectionId), packages }))
+    .sort((left, right) => right.packages - left.packages || left.name.localeCompare(right.name, 'tr-TR'))
+}
+
+// The İptal card's hover: today's cancellations per store, the orders cancelled whole with their units and the partly
+// cancelled ones with the units cancelled of them (units undefined from an older API). The biggest first.
+export function cancellationStores(stores: DailyCancellationRow[] | undefined, channels: Channels) {
+  if (!stores) return undefined
+  return stores.filter(row => row.cancelledOrders > 0 || row.partialOrders > 0)
+    .map(row => ({ ...storeOf(channels, row.connectionId), packages: row.cancelledOrders, units: row.wholeUnits, partial: row.partialOrders, partialUnits: row.partialUnits }))
+    .sort((left, right) => right.packages - left.packages || right.partial - left.partial || left.name.localeCompare(right.name, 'tr-TR'))
 }

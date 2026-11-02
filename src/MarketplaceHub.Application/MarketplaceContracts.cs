@@ -1317,7 +1317,11 @@ public sealed record OrderSummaryView(
     // of it), per store id; null when the New tab was not counted (the Yeni Sipariş card's "N Paket | M Adet Ürün").
     IReadOnlyDictionary<string, decimal>? NewUnitsByConnection = null,
     // The same for the İşleme Alınanlar tab's orders (the İşleme Alınan card); null when that tab was not counted.
-    IReadOnlyDictionary<string, decimal>? ProcessingUnitsByConnection = null);
+    IReadOnlyDictionary<string, decimal>? ProcessingUnitsByConnection = null,
+    // The Geciken tab's orders per store id (null when that tab was not counted), and the Yeniden Gönderim tab's under
+    // resentNotShipped=true (null otherwise).
+    IReadOnlyDictionary<string, int>? LateByConnection = null,
+    IReadOnlyDictionary<string, int>? ResentByConnection = null);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,
