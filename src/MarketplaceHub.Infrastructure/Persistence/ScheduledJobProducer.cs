@@ -31,6 +31,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             await ScheduledReadSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
         }
         catch (Exception exception) when (exception is not OperationCanceledException) { }
+        // Old publish and approval failures of a product that a later publish or approval on the same connection has
+        // replaced leave the job queue and the review counts (also the ones from before this pass existed).
+        try
+        {
+            await PublicationJobSupersession.CloseAsync(db, timeProvider.GetUtcNow(), cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException) { }
         // Marketplace lists a connection supports but has never read (at startup and hourly; once a day per gap).
         if (includeDefaults)
         {
