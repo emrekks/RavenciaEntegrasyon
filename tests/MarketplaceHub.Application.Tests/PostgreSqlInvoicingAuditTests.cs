@@ -133,6 +133,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
     public async Task DueScan_QueuesDeliveryForOrderLevelSaleInvoiceThatWasNeverQueued()
     {
         var seed = NewSeed("audit-never-queued");
+        seed.Marketplace.SettingsJson = """{"ExternalWritesEnabled":true}""";
         var invoice = NewInvoice(seed, seed.Order.Id, InvoiceStatus.Accepted);
         invoice.PackageId = null;
         invoice.UpdatedAt = fixture.Now.AddMinutes(-10);
@@ -171,6 +172,163 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         {
             await DeleteTenantAsync(seed.Tenant.Id);
         }
+    }
+
+    // Live 2 Nov 2026: the n11 invoice DAP2026000000453 got no delivery job because the connection's INVOICE_DELIVER
+    // record was "Unknown" after a credential rotation. Every platform with a delivery adapter is now queued alike.
+    [PostgreSqlFact]
+    public async Task DocumentFetch_QueuesN11DeliveryWithoutAVerifiedCapabilityRecord()
+    {
+        var seed = NewSeed("audit-n11-after-document");
+        seed.Marketplace.PlatformCode = "N11";
+        seed.Marketplace.SettingsJson = """{"ExternalWritesEnabled":true}""";
+        var invoice = NewInvoice(seed, seed.Order.Id, InvoiceStatus.Accepted);
+        invoice.PackageId = null;
+        var (asset, document) = NewStoredPdf(seed, invoice);
+        var capability = new PlatformCapability
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            ConnectionId = seed.Marketplace.Id,
+            Code = InvoicingCapabilities.InvoiceDeliver,
+            SupportLevel = CapabilitySupportLevel.Unknown,
+            ApiVersion = "V1",
+            Environment = "PRODUCTION",
+            StoreScope = seed.Marketplace.ExternalStoreId,
+            EvidenceNote = "Credential rotasyonu sonrası yeniden doğrulama gerekiyor."
+        };
+        await SeedAsync(seed, db => { db.Invoices.Add(invoice); db.FileAssets.Add(asset); db.InvoiceDocuments.Add(document); db.PlatformCapabilities.Add(capability); });
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, new DocumentProvider(), DeliveryWritesOn).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceDocumentFetch,
+                    $$"""{"invoiceId":"{{invoice.Id}}"}""", "audit-n11-after-document", CancellationToken.None);
+                Assert.True(result.Succeeded);
+            }
+
+            await using var verification = fixture.CreateContext();
+            var job = Assert.Single(await verification.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery).ToListAsync());
+            Assert.Equal(seed.Marketplace.Id, job.ConnectionId);
+            Assert.Equal($"{InvoicingJobTypes.MarketplaceDelivery}:{invoice.Id}:after-document", job.JobDedupKey);
+            Assert.Null((await verification.Invoices.SingleAsync(item => item.Id == invoice.Id)).LastErrorCode);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // No silent skip: an invoice that is not sent carries the reason the invoice screen shows.
+    [PostgreSqlFact]
+    public async Task DocumentFetch_RecordsWhyTheInvoiceWasNotSentWhenTheConnectionWritesAreOff()
+    {
+        var seed = NewSeed("audit-delivery-skip-reason");
+        seed.Marketplace.PlatformCode = "PAZARAMA";
+        seed.Marketplace.SettingsJson = """{"ExternalWritesEnabled":false}""";
+        var invoice = NewInvoice(seed, seed.Order.Id, InvoiceStatus.Accepted);
+        invoice.PackageId = null;
+        var (asset, document) = NewStoredPdf(seed, invoice);
+        await SeedAsync(seed, db => { db.Invoices.Add(invoice); db.FileAssets.Add(asset); db.InvoiceDocuments.Add(document); });
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, new DocumentProvider(), DeliveryWritesOn).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceDocumentFetch,
+                    $$"""{"invoiceId":"{{invoice.Id}}"}""", "audit-delivery-skip-reason", CancellationToken.None)).Succeeded);
+
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery));
+            var stored = await verification.Invoices.SingleAsync(item => item.Id == invoice.Id);
+            Assert.Equal(InvoiceStatus.Accepted, stored.Status);
+            Assert.Equal(InvoiceMarketplaceAutoDeliveryPolicy.ConnectionWritesOffCode, stored.LastErrorCode);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // The recovery sends only invoices issued in the last two weeks that never had a delivery job.
+    [PostgreSqlFact]
+    public async Task DueScan_DoesNotRecoverOldInvoicesOrOnesWhoseDeliveryJobAlreadyRan()
+    {
+        var seed = NewSeed("audit-never-queued-window");
+        seed.Marketplace.SettingsJson = """{"ExternalWritesEnabled":true}""";
+        var old = NewInvoice(seed, seed.Order.Id, InvoiceStatus.Accepted);
+        old.PackageId = null;
+        old.IssuedAt = fixture.Now.AddDays(-15);
+        old.UpdatedAt = fixture.Now.AddMinutes(-10);
+        var ranOrder = NewOrder(seed.Tenant.Id, seed.Marketplace.Id, "audit-never-queued-ran");
+        var ranPackage = NewPackage(seed.Tenant.Id, seed.Marketplace.Id, ranOrder.Id, "audit-never-queued-ran-package");
+        var ran = NewInvoice(seed, ranOrder.Id, InvoiceStatus.Accepted);
+        ran.PackageId = null;
+        ran.UpdatedAt = fixture.Now.AddMinutes(-10);
+        var ranJob = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{ran.Id}:after-document", $$"""{"invoiceId":"{{ran.Id}}"}""", JobStatus.Blocked);
+        var (oldAsset, oldDocument) = NewStoredPdf(seed, old);
+        var (ranAsset, ranDocument) = NewStoredPdf(seed, ran);
+        await SeedAsync(seed, db =>
+        {
+            db.Orders.Add(ranOrder);
+            db.ShipmentPackages.Add(ranPackage);
+            db.Invoices.AddRange(old, ran);
+            db.FileAssets.AddRange(oldAsset, ranAsset);
+            db.InvoiceDocuments.AddRange(oldDocument, ranDocument);
+            db.IntegrationJobs.Add(ranJob);
+        });
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null, DeliveryWritesOn).ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "audit-never-queued-window", CancellationToken.None)).Succeeded);
+
+            await using var verification = fixture.CreateContext();
+            var job = Assert.Single(await verification.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.MarketplaceDelivery).ToListAsync());
+            Assert.Equal(ranJob.Id, job.Id);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private static readonly Dictionary<string, string?> DeliveryWritesOn = new()
+    {
+        ["FeatureFlags:ExternalWrites"] = "true",
+        ["FeatureFlags:InvoiceMarketplaceDeliveryWrites"] = "true"
+    };
+
+    private static readonly byte[] PdfContent = "%PDF-1.4 audit"u8.ToArray();
+
+    // A PDF already stored with the same content the provider returns, so the document fetch takes the stored one.
+    private (FileAsset Asset, InvoiceDocument Document) NewStoredPdf(Seed seed, Invoice invoice)
+    {
+        var asset = NewFileAsset(seed.Tenant.Id);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(PdfContent));
+        asset.Sha256 = hash;
+        asset.RelativePath = $"audit/{invoice.Id:N}.pdf";
+        return (asset, new InvoiceDocument
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InvoiceId = invoice.Id,
+            DocumentType = "PDF",
+            FileAssetId = asset.Id,
+            Sha256 = hash,
+            PermanentUrl = "https://documents.example.test/invoice.pdf",
+            CreatedAt = fixture.Now
+        });
+    }
+
+    private sealed class DocumentProvider : IInvoiceProviderPort
+    {
+        public Task<AdapterResult<RemoteInvoiceDocument>> GetDocumentAsync(AdapterContext context, ExternalInvoiceReference reference, string documentKind, CancellationToken cancellationToken) =>
+            Task.FromResult(AdapterResult<RemoteInvoiceDocument>.Success(new("PDF", "application/pdf", "invoice.pdf", PdfContent, "remote-document", "https://documents.example.test/invoice.pdf")));
+        public Task<AdapterResult<InvoiceRemoteStatus>> QueryStatusAsync(AdapterContext context, ExternalInvoiceReference reference, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<ConnectionIdentity>> TestConnectionAsync(AdapterContext context, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<InvoiceSubmissionResult>> SubmitAsync(AdapterContext context, InvoiceSubmission submission, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<InvoiceCancellationResult>> CancelAsync(AdapterContext context, InvoiceCancellation command, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     // Live 20 Oct 2026: a recovery job was queued beside the retry of an invoice-level delivery job ({"invoiceId"}
@@ -991,6 +1149,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         await db.LegalEntityProfiles.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ReturnClaims.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformCredentials.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.PlatformCapabilities.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ShipmentPackages.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();

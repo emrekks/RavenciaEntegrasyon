@@ -1312,7 +1312,10 @@ public sealed record OrderSummaryView(
     // Micro-export orders within the same filters in the one tab asked for under micro=true (the card asks for PENDING),
     // and their count per country (invoice address, else the storefront); 0 and null for any other request.
     int MicroExport = 0,
-    IReadOnlyDictionary<string, int>? MicroExportCountries = null);
+    IReadOnlyDictionary<string, int>? MicroExportCountries = null,
+    // The products of the New tab's orders under the same filters (each line's ordered quantity less what was cancelled
+    // of it), per store id; null when the New tab was not counted (the Yeni Sipariş card's "N Paket | M Adet Ürün").
+    IReadOnlyDictionary<string, decimal>? NewUnitsByConnection = null);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,

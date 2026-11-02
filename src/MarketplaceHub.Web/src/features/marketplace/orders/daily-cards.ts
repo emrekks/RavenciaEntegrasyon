@@ -3,48 +3,54 @@
 
 // GET /dashboard/cancellations: one store's cancellations of the day. The Genel Bakış card reads the same rows, so both
 // count an order cancelled whole, and one cancelled in part, the same way (a cancellation of unknown time is not counted).
-export type DailyCancellationRow = { connectionId: string; cancelledOrders: number; partialOrders: number; cancelledUnits: number; unknownTimeOrders: number; unknownTimeUnits: number }
+// wholeUnits are the cancelled units of the orders cancelled whole, partialUnits those cancelled of the orders that stay
+// open (an older API answers without them).
+export type DailyCancellationRow = { connectionId: string; cancelledOrders: number; partialOrders: number; cancelledUnits: number; unknownTimeOrders: number; unknownTimeUnits: number; wholeUnits?: number; partialUnits?: number }
 
-// Orders cancelled whole and orders cancelled in part today, over every store; undefined while the rows are not read.
+// Orders cancelled whole and in part today over every store, with their cancelled units (undefined from an older API);
+// undefined while the rows are not read.
 export function dailyCancellationCounts(stores: DailyCancellationRow[] | undefined) {
   if (!stores) return undefined
-  return { whole: stores.reduce((sum, row) => sum + row.cancelledOrders, 0), partial: stores.reduce((sum, row) => sum + row.partialOrders, 0) }
+  const units = (pick: (row: DailyCancellationRow) => number | undefined) => stores.some(row => pick(row) === undefined) ? undefined : stores.reduce((sum, row) => sum + (pick(row) ?? 0), 0)
+  return {
+    whole: stores.reduce((sum, row) => sum + row.cancelledOrders, 0),
+    partial: stores.reduce((sum, row) => sum + row.partialOrders, 0),
+    wholeUnits: units(row => row.wholeUnits),
+    partialUnits: units(row => row.partialUnits)
+  }
 }
 
 // The micro-export card's request: the order summary's PENDING tab alone over the micro-export orders, which carries
-// their count and countries. Pending is the overview's and Kargolanacak's set (not yet handed to the carrier); no date.
+// their count and countries. Pending is the overview's set (not yet handed to the carrier); no date.
 export function microPendingParams() {
   return new URLSearchParams({ tabs: 'PENDING', micro: 'true' }).toString()
 }
 
 // The lists the cards open: the pending micro-export orders, orders cancelled today (whole, or in part), and the resends
-// that have not been handed to the carrier and the pending orders whose products are to ship (not about today).
-export type DayCard = 'micro' | 'cancelled' | 'partial' | 'resent' | 'ship'
+// that have not been handed to the carrier (not about today).
+export type DayCard = 'micro' | 'cancelled' | 'partial' | 'resent'
 
 // The list a card opens: the micro-export list in the pending tab (Bekleyen, no date), or İptal / Kısmi İptal on the orders
 // cancelled that day. Only the date filter the tab offers is set (order-date-filters.ts), the other is cleared.
 export function dayCardFilters(card: DayCard, day: string) {
-  if (card === 'ship') return { kind: 'ALL', status: 'PENDING', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' }
   if (card === 'resent') return { kind: 'RESENT_UNSHIPPED', status: 'RESENT', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' }
   return card === 'micro'
     ? { kind: 'MICRO', status: 'PENDING', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' }
     : { kind: 'ALL', status: card === 'cancelled' ? 'CANCELLED' : 'PARTIALLY_CANCELLED', dateFrom: '', dateTo: '', cancelFrom: day, cancelTo: day }
 }
 
-// GET /dashboard/bootstrap, the part the cards read: the pending orders (the warehouse queue the overview's Bekleyen
-// Siparişler counts) and their products, each per store, and the stores' names.
+// GET /dashboard/bootstrap, the part the page reads: the late count and the stores' names (the Yeni Sipariş hover).
 export type DashboardBootstrap = {
-  metrics: { lateOrders: number; uninvoicedInvoices: number; pendingOrders?: number; pendingByConnection?: Record<string, number>; pendingUnitsByConnection?: Record<string, number> | null }
+  metrics: { lateOrders: number; uninvoicedInvoices: number }
   channels?: Array<{ connectionId: string; platformCode: string; displayName: string }>
 }
 
-// The products to ship: the pending orders' products over every store, the number of those orders and a row per store
-// (biggest first) for the hover. undefined while the bootstrap is not read or an older answer holds no products.
-export function pendingShipments(bootstrap: DashboardBootstrap | undefined) {
-  const units = bootstrap?.metrics.pendingUnitsByConnection
-  if (!bootstrap || !units) return undefined
-  const channels = new Map((bootstrap.channels ?? []).map(channel => [channel.connectionId, channel]))
-  const rows = Object.entries(units).filter(([, value]) => value > 0).map(([connectionId, value]) => ({ key: connectionId, code: channels.get(connectionId)?.platformCode ?? '', name: channels.get(connectionId)?.displayName ?? 'Kaldırılmış mağaza', units: value }))
+// The Yeni Sipariş card's products: the summary's units per store summed, and a row per store (biggest first) for the
+// hover. undefined while the summary is not read or an older answer holds no units.
+export function storeUnits(unitsByConnection: Record<string, number> | null | undefined, channels: DashboardBootstrap['channels']) {
+  if (!unitsByConnection) return undefined
+  const byId = new Map((channels ?? []).map(channel => [channel.connectionId, channel]))
+  const rows = Object.entries(unitsByConnection).filter(([, value]) => value > 0).map(([connectionId, value]) => ({ key: connectionId, code: byId.get(connectionId)?.platformCode ?? '', name: byId.get(connectionId)?.displayName ?? 'Kaldırılmış mağaza', units: value }))
     .sort((left, right) => right.units - left.units || left.name.localeCompare(right.name, 'tr-TR'))
-  return { units: rows.reduce((sum, row) => sum + row.units, 0), orders: Object.values(bootstrap.metrics.pendingByConnection ?? {}).reduce((sum, value) => sum + value, 0), rows }
+  return { units: rows.reduce((sum, row) => sum + row.units, 0), rows }
 }
