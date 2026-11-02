@@ -76,8 +76,8 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip { position: absolute; z-index: var(--rv-z-tooltip); top: 0; left: 0; width: 290px; padding: 10px 12px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); font-size: 12.5px; pointer-events: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip > b { display: block; margin-bottom: 6px; font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip table { width: 100%; border-collapse: collapse; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th { color: var(--rr-subtle); font-size: 11.5px; font-weight: 500; text-align: right; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td { padding: 3px 0; color: var(--rr-muted); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th { color: var(--rr-ink); font-size: 11.5px; font-weight: 600; text-align: right; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td { padding: 3px 0; color: var(--rr-ink); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td + td { color: var(--rr-ink); text-align: right; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td:last-child { color: var(--rr-muted); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-legend { display: flex; gap: 18px; color: var(--rr-muted); font-size: 12.5px; }
@@ -202,7 +202,8 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-hpill .inv-glyph { width: 15px; height: 15px; flex: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ph .rr-date .date-range-picker-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ph .rr-date .date-range-picker-trigger { height: 36px; min-height: 36px; font-size: 13px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th { font-weight: inherit; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td { font-weight: inherit; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th { font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td b { font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-ico { color: var(--rr-subtle); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-nm small { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

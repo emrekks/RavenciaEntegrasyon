@@ -89,7 +89,7 @@
 .qi-page :is(.qi-deadline, .qi-item-state) { display: inline-flex; align-items: center; gap: 6px; }
 .qi-page .qi-deadline.is-urgent { color: var(--rv-color-warning); }
 .qi-page .qi-item-state .qi-glyph { width: 13px; height: 13px; }
-.qi-page .qi-draft { color: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); }
+.qi-page .qi-draft { color: var(--rv-color-primary-text); }
 .qi-page .qi-list .rv-empty-state, .qi-page .qi-list .rv-loading-state { min-height: 200px; margin: 12px; border: 0; }
 .qi-page .qi-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; color: var(--rv-color-subtle); border-top: 1px solid var(--rv-color-border); font-size: 12px; }
 .qi-page .qi-foot nav { display: flex; align-items: center; gap: 6px; }

@@ -8,6 +8,7 @@ import './app.css'
 import responsiveStylesheet from './styles/responsive.css?url'
 import phoneSpacingStylesheet from './styles/phone-spacing.css?url'
 import tabletOpsStylesheet from './styles/tablet-ops.css?url'
+import tabletCatalogStylesheet from './styles/tablet-catalog.css?url'
 import { installScrollbarVisibility } from './shared/scrollbar-visibility'
 import { reloadForNewBuild } from './shared/lazy-page'
 import { ApiRequestError } from './shared/api'
@@ -33,6 +34,12 @@ tabletOpsLink.rel = 'stylesheet'
 tabletOpsLink.href = tabletOpsStylesheet
 tabletOpsLink.media = '(min-width: 761px) and (max-width: 1024px)'
 document.head.appendChild(tabletOpsLink)
+// Tablet layout of the catalog pages (Ürünler, product editor, Eşleştirmeler, Entegrasyonlar, Ayarlar), tablets only.
+const tabletCatalogLink = document.createElement('link')
+tabletCatalogLink.rel = 'stylesheet'
+tabletCatalogLink.href = tabletCatalogStylesheet
+tabletCatalogLink.media = '(min-width: 761px) and (max-width: 1024px)'
+document.head.appendChild(tabletCatalogLink)
 
 // A preload of the next screen's code failed (an older build is running after a deploy): load the new build.
 window.addEventListener('vite:preloadError', event => { if (reloadForNewBuild()) event.preventDefault() })
