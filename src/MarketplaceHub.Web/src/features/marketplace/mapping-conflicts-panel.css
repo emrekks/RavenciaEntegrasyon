@@ -60,7 +60,7 @@
 .mapping-conflicts-body li.mc-cross-row,
 .app-shell.stitch-shell main .cm-extra-modal .mapping-conflicts-body li.mc-cross-row {
   display: grid;
-  grid-template-columns: 180px minmax(0, 1fr) auto;
+  grid-template-columns: 160px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px 12px;
   padding: 12px;
@@ -74,10 +74,10 @@
 .app-shell.stitch-shell main .cm-extra-modal .mc-choice > button {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   height: 36px;
   min-height: 0;
-  padding: 0 12px;
+  padding: 0 10px;
   color: var(--rv-color-ink);
   background: var(--rv-color-surface);
   border: 1px solid var(--rv-color-border-strong);
