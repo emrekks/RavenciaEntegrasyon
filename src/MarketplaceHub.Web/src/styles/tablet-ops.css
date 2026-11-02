@@ -1,0 +1,48 @@
+/* Tablets only (761-1024 px): shell and operations pages (dashboard, orders, returns, invoices, reports, jobs,
+   questions, promotions). main.tsx links this file with the same media, so phones and desktops never read it; the
+   @media blocks below repeat it so the rules stay tablet-only wherever the file is loaded. Per element the layout
+   is taken from the phone or the desktop design, whichever fits the width: desktop tables where they fit, phone
+   cards two to a row where they do not, centred windows, one-row tab bars, 36 px controls. Portrait is 761-899 px,
+   landscape 900-1024 px.
+   Lazy page sheets load after this one, so every selector starts with "html body" and repeats the page's path. */
+
+/* ---------- shell ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Top bar: 36 px controls like the desktop bar instead of the 44 px phone targets. */
+  html body .rv-topbar :is(.rv-mobile-menu-toggle, .rv-icon-button, .rv-topbar-theme, .rv-topbar-search, .rv-topbar-notification-trigger) { min-width: 36px; height: 36px; min-height: 0; }
+  html body .rv-topbar :is(.rv-mobile-menu-toggle, .rv-topbar-search.rv-topbar-search-icon, .rv-topbar-notification-trigger) { width: 36px; padding-inline: 0; }
+
+  /* Windows are centred dialogs with the page gutter (24 px) around them; the phone bottom sheets stay on phones. */
+  html body :is(.rv-overlay, .workspace-modal-backdrop) { padding: 24px; }
+  html body :is(.rv-overlay > .rv-modal, .workspace-modal-backdrop > .workspace-modal) { max-width: 100%; max-height: calc(100dvh - 48px); }
+  html body .rr-layer.rr-layer .rr-overlay { padding: 24px; }
+  html body .rr-layer.rr-layer .rr-modal { max-height: calc(100dvh - 48px); }
+  /* The window's close cross is a 36 px touch target. */
+  html body .rr-layer.rr-layer .rr-m-head .rr-icon-btn { width: 36px; height: 36px; min-height: 0; }
+}
+
+/* ---------- Genel Bakış ---------- */
+@media (min-width: 900px) and (max-width: 1024px) {
+  /* Landscape: the desktop rows (three operation cards, four performance figures, chart beside the channels). */
+  html body main .rr.rr-dashboard .rr-opgrid.rr-opgrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  html body main .rr.rr-dashboard .rr-kgrid.rr-kgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  html body main .rr.rr-dashboard .rr-kgrid.rr-kgrid > .rr-kc { border-right: 1px solid var(--rr-line); border-bottom: 0; }
+  html body main .rr.rr-dashboard .rr-kgrid.rr-kgrid > .rr-kc:last-child { border-right: 0; }
+  html body main .rr.rr-dashboard .rr-pf-body.rr-pf-body { grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); }
+  html body main .rr.rr-dashboard .rr-pf-chan.rr-pf-chan { padding: 0 0 0 16px; border-top: 0; border-left: 1px solid var(--rr-line); }
+
+  /* Landscape: the integration matrix is the desktop table again (it fits with 8 px cell padding) instead of a
+     card per marketplace. */
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt { display: table; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt > thead { display: table-header-group; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt > tbody { display: table-row-group; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt tr { display: table-row; padding: 0; border-bottom: 0; box-shadow: none; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt th { padding-inline: 8px; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt td { display: table-cell; padding: 11px 8px !important; border-bottom: 1px solid var(--rr-line); }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt :is(th, td):first-child { padding-left: 16px !important; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt td.rr-mx-act { padding-right: 16px !important; text-align: right; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt td.rr-mx-act:empty { display: table-cell; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt tr:last-child td { border-bottom: 0; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt td[data-l]::before { content: none; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt tr.rr-attn td:first-child { box-shadow: inset 2px 0 0 var(--rr-warn); }
+}
