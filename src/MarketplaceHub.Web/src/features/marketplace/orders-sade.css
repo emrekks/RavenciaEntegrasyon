@@ -227,7 +227,7 @@
    stay unstruck. Partly cancelled orders keep their per-line treatment. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) tr.is-cancelled :is(td, small, small b, .rr-cust b, .rr-on-no, .rr-invcell .rr-m > span) { color: var(--rr-muted); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) tr.is-cancelled :is(.rr-thumb, .rr-cargo-img) { opacity: .55; filter: grayscale(1); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) tr.is-cancelled :is(.rr-on-cut, .rr-pline-off > div > b, .rr-pr-off > b, .rr-invcell .rr-m b) { color: var(--rr-muted); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, currentColor 55%, transparent); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) tr.is-cancelled :is(.rr-on-cut, .rr-ordercell small.rr-num, .rr-cust b, .rr-cargocell small.rr-num, .rr-pline-off > div > b, .rr-pr-off > b, .rr-invcell .rr-m b) { color: var(--rr-muted); text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, currentColor 55%, transparent); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-pline .rr-pline-cut { color: var(--rr-bad); }
 /* The rest of a partly cancelled order, under its number and date in the İptal tab (and on the phone card). */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-order-part { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 6px; font-size: 12px; color: var(--rr-muted); }
