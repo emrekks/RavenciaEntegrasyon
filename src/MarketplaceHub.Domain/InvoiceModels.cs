@@ -113,6 +113,11 @@ public sealed class Invoice
     public DateTimeOffset? IssuedAt { get; set; }
     public Guid? OriginalInvoiceId { get; set; }
     public string? LastErrorCode { get; set; }
+    // The scheduler's retry of the document fetch and marketplace delivery (InvoiceDeliveryAutoRetryPolicy): attempts
+    // made since the last manual retry, and when the next one is due. Derived like DueAt: they change neither Version
+    // nor UpdatedAt.
+    public int DeliveryRetryAttempts { get; set; }
+    public DateTimeOffset? DeliveryRetryNextAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;

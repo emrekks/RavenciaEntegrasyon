@@ -1753,6 +1753,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     {
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null || invoice.ProviderConnectionId != connectionId || string.IsNullOrWhiteSpace(invoice.ExternalReference)) return false;
+        // A fetch started by the delivery retry (InvoiceDeliveryAutoRetryPolicy) carries its attempt's key; the
+        // delivery after the document is keyed by it, so an earlier "after-document" job does not block it.
+        var retryKey = InvoiceDeliveryRetryReader.ReadRetryKey(payloadJson);
         var result = await provider.GetDocumentAsync(Context(tenantId, connectionId, correlationId, $"document:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, invoice.InvoiceType), "PDF", cancellationToken);
         if (!result.IsSuccess) { invoice.LastErrorCode = result.Error!.Code; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
         var document = result.Value!; var hash = Convert.ToHexString(SHA256.HashData(document.Content));
@@ -1760,21 +1763,23 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (existing is not null)
         {
             existing.PermanentUrl ??= document.PermanentUrl; invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
-            await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, existing.PermanentUrl, correlationId, cancellationToken);
+            await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, existing.PermanentUrl, correlationId, cancellationToken, retryKey);
             await db.SaveChangesAsync(cancellationToken); return true;
         }
         await using var content = new MemoryStream(document.Content, writable: false); var assetId = Guid.CreateVersion7(); var stored = await files.SaveAsync(tenantId, $"{assetId:N}-{Path.GetFileName(document.FileName)}", document.MimeType, content, document.Content.LongLength, cancellationToken);
         db.FileAssets.Add(new FileAsset { Id = assetId, TenantId = tenantId, Classification = "INVOICE_DOCUMENT", RelativePath = stored, OriginalNameSafe = Path.GetFileName(document.FileName), MimeType = document.MimeType, SizeBytes = document.Content.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() });
         db.InvoiceDocuments.Add(new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, DocumentType = document.DocumentKind, FileAssetId = assetId, Sha256 = hash, ExternalDocumentId = document.ExternalDocumentId, PermanentUrl = document.PermanentUrl, CreatedAt = timeProvider.GetUtcNow() });
         invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
-        await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, document.PermanentUrl, correlationId, cancellationToken);
+        await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, document.PermanentUrl, correlationId, cancellationToken, retryKey);
         await db.SaveChangesAsync(cancellationToken); return true;
     }
 
-    private async Task QueueMarketplaceDeliveryAfterDocument(Guid tenantId, Invoice invoice, string? permanentUrl, string correlationId, CancellationToken cancellationToken)
+    private async Task QueueMarketplaceDeliveryAfterDocument(Guid tenantId, Invoice invoice, string? permanentUrl, string correlationId, CancellationToken cancellationToken, string retryKey = "")
     {
-        // Only an accepted invoice is delivered; any other status (cancelled, in review...) has its own path.
-        if (invoice.Status != InvoiceStatus.Accepted) return;
+        // Only an accepted invoice is delivered; any other status (cancelled, in review...) has its own path. A retry
+        // also delivers one whose earlier delivery failed (MarketplaceFailed), never one in review or being cancelled.
+        var retrying = !string.IsNullOrEmpty(retryKey);
+        if (!(invoice.Status == InvoiceStatus.Accepted || retrying && invoice.Status == InvoiceStatus.MarketplaceFailed)) return;
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
                 ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
@@ -1830,7 +1835,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             RecordAutomaticDeliverySkip(invoice, skip);
             return;
         }
-        await EnqueueAutomaticJob(tenantId, marketplaceConnectionId, invoice.Id, InvoicingJobTypes.MarketplaceDelivery, "after-document", correlationId, cancellationToken);
+        await EnqueueAutomaticJob(tenantId, marketplaceConnectionId, invoice.Id, InvoicingJobTypes.MarketplaceDelivery, retrying ? $"after-document:{retryKey}" : "after-document", correlationId, cancellationToken);
     }
 
     // The invoice stays Accepted; the code tells the invoice screen (and the orders list, IssuedInvoiceNotOnPlatform)
@@ -1898,6 +1903,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, tenantId, now, cancellationToken);
         await QueuePendingMarketplaceDeliveryRecovery(tenantId, now, cancellationToken);
+        await QueueDeliveryRetries(tenantId, now, cancellationToken);
         await CloseDeliveryJobsSettledElsewhere(tenantId, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return true;
     }
@@ -2123,6 +2129,55 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
     }
 
+    // Issued sale invoices whose document was never stored, or whose delivery job ended without delivering it, are
+    // tried again with backoff (InvoiceDeliveryAutoRetryPolicy): a fetch of the stored invoice's document, then its
+    // delivery, each under this attempt's own key. The delivery job's state machine still decides whether anything is
+    // written, so a package already STARTED, SUBMITTED or CONFIRMED is never sent twice. No invoice is issued here.
+    private async Task QueueDeliveryRetries(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        const int batchSize = 50;
+        var issuedSince = now - InvoiceDeliveryAutoRetryPolicy.Window;
+        var settledBefore = now - InvoiceDeliveryAutoRetryPolicy.SettleDelay;
+        var dueIds = await db.Invoices.AsNoTracking()
+            .Where(invoice => invoice.TenantId == tenantId
+                && invoice.SequencePurpose == "SALE" && invoice.OriginalInvoiceId == null
+                && invoice.ExternalReference != null
+                && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplaceFailed)
+                && (invoice.IssuedAt ?? invoice.CreatedAt) >= issuedSince
+                && invoice.UpdatedAt <= settledBefore
+                && invoice.DeliveryRetryAttempts < InvoiceDeliveryAutoRetryPolicy.MaxAttempts
+                && (invoice.DeliveryRetryNextAt == null || invoice.DeliveryRetryNextAt <= now))
+            .OrderBy(invoice => invoice.DeliveryRetryNextAt ?? invoice.UpdatedAt)
+            .Select(invoice => invoice.Id)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+        if (dueIds.Count == 0) return;
+        var entries = await InvoiceDeliveryRetryReader.LoadAsync(db, tenantId, dueIds, now, cancellationToken);
+        var deliveryAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
+            configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+            configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
+        foreach (var entry in entries.Values)
+        {
+            if (entry.HasActiveJob || entry.View.State != InvoiceDeliveryAutoRetryPolicy.Scheduled) continue;
+            if (entry.Need == InvoiceDeliveryRetryNeed.Deliver && !deliveryAllowed) continue;
+            var invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == entry.InvoiceId, cancellationToken);
+            InvoiceDeliveryRetryReader.RecordAutomaticAttempt(invoice, now);
+            var retryKey = $"delivery-retry:{invoice.DeliveryRetryAttempts}:{now.ToUnixTimeSeconds()}";
+            var correlationId = $"invoice-delivery-retry:{invoice.Id:N}:{invoice.DeliveryRetryAttempts}";
+            // A retry nobody clicked: it yields to single user actions in the user lane.
+            var priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery, bulk: true);
+            if (entry.Need == InvoiceDeliveryRetryNeed.FetchDocument)
+                db.IntegrationJobs.Add(InvoiceDeliveryRetryReader.NewDocumentFetchJob(invoice, retryKey, priority, correlationId, now));
+            else
+            {
+                var permanentUrl = await db.InvoiceDocuments.AsNoTracking()
+                    .Where(document => document.TenantId == tenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
+                    .OrderByDescending(document => document.CreatedAt).Select(document => document.PermanentUrl).FirstAsync(cancellationToken);
+                await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, permanentUrl, correlationId, cancellationToken, retryKey);
+            }
+        }
+    }
+
     private sealed record RecoveryTargetPackage(Guid Id, Guid OrderId, Guid ConnectionId, ShipmentPackageStatus Status);
 
     private static string RecoveryDedupKey(Guid invoiceId, Guid packageId, long stateVersion, long bucket) =>
@@ -2155,7 +2210,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             if (invoice.Status == InvoiceStatus.Cancelled)
                 await InvoiceAdjustmentTracking.MarkLinkRevocationRequiredAsync(db, invoice, timeProvider.GetUtcNow(), cancellationToken);
             if (invoice.Status == InvoiceStatus.CancellationPending)
-                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, "after-cancellation", correlationId, cancellationToken);
+                // Keyed per cancellation request: after a refused cancellation, a new request that the provider answers
+                // "pending" must get its own reconcile, which the first request's key would otherwise block for good.
+                await EnqueueAutomaticJob(tenantId, connectionId, invoice.Id, InvoicingJobTypes.InvoiceReconcile, CancellationReconcileSuffix(correlationId), correlationId, cancellationToken);
         }
         else
         {
@@ -2174,6 +2231,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         return true;
     }
+
+    // One reconcile per cancellation request (its correlation id); a retry of the same cancellation job keeps the key.
+    internal static string CancellationReconcileSuffix(string correlationId) => $"after-cancellation:{Hash(correlationId)[..16]}";
 
     private async Task EnqueueAutomaticJob(Guid tenantId, Guid connectionId, Guid invoiceId, string jobType, string suffix, string correlationId, CancellationToken cancellationToken)
     {

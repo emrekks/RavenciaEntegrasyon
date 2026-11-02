@@ -740,6 +740,7 @@ public sealed partial class InvoicingBillingService(
                 .Select(issue => new { issue.DedupeKey, issue.Code, issue.Summary })
                 .ToListAsync(cancellationToken))
                 .ToDictionary(issue => issue.DedupeKey, issue => (issue.Code, issue.Summary), StringComparer.Ordinal);
+        var deliveryRetries = await InvoiceDeliveryRetryReader.LoadAsync(db, tenantId, invoiceIds, timeProvider.GetUtcNow(), cancellationToken);
 
         return candidates.Select(candidate =>
         {
@@ -847,7 +848,8 @@ public sealed partial class InvoicingBillingService(
                 previousPlatformReferencesByPackage.GetValueOrDefault(candidate.Package.Id) ?? [],
                 orderSnapshotsForItem?.ConnectionId,
                 orderSnapshotsForItem?.ExternalOrderId,
-                packageDetailsForItem?.ExternalPackageId ?? candidate.Package.ExternalPackageId);
+                packageDetailsForItem?.ExternalPackageId ?? candidate.Package.ExternalPackageId,
+                candidate.Invoice is null ? null : deliveryRetries.GetValueOrDefault(candidate.Invoice.Id)?.View);
         }).ToList();
     }
 
@@ -1291,7 +1293,7 @@ public sealed partial class InvoicingBillingService(
         var attempts = await db.InvoiceSubmissionAttempts.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new InvoiceAttemptView(x.AttemptNumber, x.Outcome, x.ErrorCode, x.StartedAt, x.CompletedAt)).ToListAsync(cancellationToken);
         var deliveries = await db.MarketplaceDeliveries.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new MarketplaceDeliveryView(x.Id, x.DeliveryType, x.Status, x.ExternalReference, x.ErrorCode, x.CreatedAt)).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId, cancellationToken);
-        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, DetailInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection), await LinkRevocationViewsAsync(invoice, cancellationToken)));
+        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, DetailInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection), await LinkRevocationViewsAsync(invoice, cancellationToken), await DeliveryRetryViewAsync(invoice, cancellationToken)));
     }
 
     public async Task<ServiceResult<InvoiceDetailView>> ValidateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
@@ -1538,6 +1540,47 @@ public sealed partial class InvoicingBillingService(
         return await AddJob(invoice, InvoicingJobTypes.MarketplaceDelivery, idempotencyKey, correlationId, cancellationToken, packages[0].ConnectionId, manualDeliveryRetry, bulk);
     }
 
+    internal const string RetryDeliveryAction = "RETRY_DELIVERY";
+
+    private async Task<InvoiceDeliveryRetryView?> DeliveryRetryViewAsync(Invoice invoice, CancellationToken cancellationToken) =>
+        (await InvoiceDeliveryRetryReader.LoadAsync(db, invoice.TenantId, [invoice.Id], timeProvider.GetUtcNow(), cancellationToken)).GetValueOrDefault(invoice.Id)?.View;
+
+    // The manual "Tekrar Dene" runs the scheduler's retry at once and starts its count again: a missing document is
+    // fetched from E-Faturam (the delivery follows it), a stored one is delivered under the usual gates. The delivery job's
+    // state machine still refuses a second write to a package that was STARTED, SUBMITTED or CONFIRMED.
+    public async Task<ServiceResult<Guid>> RetryDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
+        var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
+        if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
+        // The request's key names this attempt; a long one is hashed so the job keys stay within their 256 characters.
+        var retryKey = $"delivery-retry:manual:{(idempotencyKey.Length <= 96 ? idempotencyKey : Hash(idempotencyKey)[..32])}";
+        var fetchKey = $"{InvoicingJobTypes.InvoiceDocumentFetch}:{invoice.Id}:{retryKey}";
+        var deliveryKey = $"{InvoicingJobTypes.MarketplaceDelivery}:{invoice.Id}:{retryKey}";
+        var replay = await db.IntegrationJobs.AsNoTracking()
+            .Where(job => job.TenantId == tenantId && (job.JobDedupKey == fetchKey || job.JobDedupKey == deliveryKey))
+            .Select(job => (Guid?)job.Id).FirstOrDefaultAsync(cancellationToken);
+        if (replay is { } replayedJob) return ServiceResult<Guid>.Ok(replayedJob);
+        var now = timeProvider.GetUtcNow();
+        var entry = (await InvoiceDeliveryRetryReader.LoadAsync(db, tenantId, [invoice.Id], now, cancellationToken)).GetValueOrDefault(invoice.Id);
+        if (entry is null) return ServiceResult<Guid>.Fail(InvoiceDeliveryAutoRetryPolicy.NotApplicableCode, "Bu faturada yeniden denenecek bir belge alma veya pazaryerine iletim yok.", 409);
+        if (entry.HasActiveJob) return ServiceResult<Guid>.Fail(InvoiceDeliveryAutoRetryPolicy.AlreadyRunningCode, "Bu faturanın belge alma veya iletim işi zaten sürüyor; bitmesini bekleyin.", 409);
+        if (entry.Need == InvoiceDeliveryRetryNeed.Deliver)
+        {
+            var delivery = await EnqueueDeliveryAsync(tenantId, id, retryKey, correlationId, bulk: false, cancellationToken);
+            if (!delivery.Succeeded) return delivery;
+            InvoiceDeliveryRetryReader.RecordManualAttempt(invoice, now);
+            await db.SaveChangesAsync(cancellationToken);
+            return delivery;
+        }
+        // A read of the invoice E-Faturam already holds, like the fetch after acceptance.
+        InvoiceDeliveryRetryReader.RecordManualAttempt(invoice, now);
+        var job = InvoiceDeliveryRetryReader.NewDocumentFetchJob(invoice, retryKey,
+            InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery), correlationId, now, "user");
+        db.IntegrationJobs.Add(job);
+        await db.SaveChangesAsync(cancellationToken);
+        return ServiceResult<Guid>.Ok(job.Id);
+    }
+
     public async Task<ServiceResult<(Stream Content, string MimeType, string FileName)>> OpenDocumentAsync(Guid tenantId, Guid invoiceId, Guid documentId, CancellationToken cancellationToken)
     {
         var row = await (from document in db.InvoiceDocuments.AsNoTracking()
@@ -1596,7 +1639,11 @@ public sealed partial class InvoicingBillingService(
                 allConnectionsReady &= InvoiceDeliveryEnvironmentPolicy.IsCompatible(providerEnvironment, environment)
                     && await WriteGates(invoice.TenantId, packageConnectionId, InvoicingCapabilities.InvoiceDeliver, cancellationToken);
             }
-            if (permanentLinkReady && allConnectionsReady) actions.Add("DELIVER");
+            // "Tekrar Dene" stands for the document fetch and the delivery while the invoice is in the retry; the plain
+            // delivery would only repeat it next to it.
+            var retry = (await InvoiceDeliveryRetryReader.LoadAsync(db, invoice.TenantId, [invoice.Id], timeProvider.GetUtcNow(), cancellationToken)).GetValueOrDefault(invoice.Id);
+            if (retry is { HasActiveJob: false }) actions.Add(RetryDeliveryAction);
+            else if (permanentLinkReady && allConnectionsReady) actions.Add("DELIVER");
         }
         if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed or InvoiceStatus.AdjustmentRequired or InvoiceStatus.CancellationRejected or InvoiceStatus.CancellationPending)
             && InvoiceCancellationOutcomePolicy.CanRequest(invoice.Status, invoice.Status == InvoiceStatus.CancellationPending && await HasActiveInvoiceJobAsync(invoice.TenantId, invoice.Id, cancellationToken))

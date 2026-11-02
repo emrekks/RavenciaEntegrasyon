@@ -523,6 +523,157 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // O8 (2 Nov 2026): after a refused cancellation, a second request the provider answers "pending" gets its own
+    // reconcile; the first request's reconcile no longer blocks it.
+    [PostgreSqlFact]
+    public async Task ASecondCancellationRequestAnsweredPendingIsReconciledAgain()
+    {
+        var seed = NewSeed("o8-cancel-again", InvoiceStatus.CancellationPending);
+        await SeedAsync(seed);
+        try
+        {
+            var provider = new ScriptedProvider { RemoteStatus = "ACCEPTED" };
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null, provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceCancellation, InvoicePayload(seed), "o8-first-request", CancellationToken.None)).Succeeded);
+            await using (var db = fixture.CreateContext())
+            {
+                // The first reconcile ran and the provider refused that cancellation; the panel asks again.
+                await db.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceReconcile)
+                    .ExecuteUpdateAsync(setter => setter.SetProperty(job => job.Status, JobStatus.Succeeded));
+                await db.Invoices.Where(item => item.Id == seed.Invoice.Id).ExecuteUpdateAsync(setter => setter.SetProperty(item => item.Status, InvoiceStatus.CancellationPending));
+            }
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null, provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceCancellation, InvoicePayload(seed), "o8-second-request", CancellationToken.None)).Succeeded);
+            // A retry of the second request's job adds nothing.
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null, provider: provider).ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceCancellation, InvoicePayload(seed), "o8-second-request", CancellationToken.None)).Succeeded);
+
+            await using var verification = fixture.CreateContext();
+            var reconciles = await verification.IntegrationJobs.Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceReconcile).ToListAsync();
+            Assert.Equal(2, reconciles.Count);
+            Assert.Single(reconciles, job => job.Status == JobStatus.Pending);
+            Assert.Equal(InvoiceStatus.CancellationPending, (await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id)).Status);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // Y4 (2 Nov 2026): an issued invoice whose document fetch ended in review (DAP2026000000452's case: MarketplaceFailed,
+    // no document, a read-only REVOKED state, the after-acceptance fetch in MANUAL_REVIEW) is fetched again by the scan
+    // under a new key, counted, and offered for a manual retry once the attempts are used up. Nothing is issued.
+    [PostgreSqlFact]
+    public async Task AnIssuedInvoiceWithoutItsDocumentIsFetchedAgainThenOfferedForAManualRetry()
+    {
+        var seed = NewSeed("y4-retry", InvoiceStatus.MarketplaceFailed, "HEPSIBURADA");
+        seed.Invoice.LastErrorCode = InvoiceDeliveryRecoveryPolicy.DocumentMissingNotDeliveredErrorCode;
+        var observation = NewDeliveryState(seed, "REVOKED");
+        observation.ExternalIdempotencyKey = $"{InvoiceDeliveryRecoveryPolicy.ObservationOnlyStateKeyPrefix}{seed.Invoice.Id:N}";
+        var oldFetchPayload = JsonSerializer.Serialize(new { invoiceId = seed.Invoice.Id });
+        var oldFetch = new IntegrationJob
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            ConnectionId = seed.Provider.Id,
+            JobType = InvoicingJobTypes.InvoiceDocumentFetch,
+            PayloadJson = oldFetchPayload,
+            PayloadVersion = 1,
+            PayloadHash = "y4-old",
+            JobDedupKey = $"{InvoicingJobTypes.InvoiceDocumentFetch}:{seed.Invoice.Id}:after-acceptance",
+            EffectIdempotencyKey = $"{InvoicingJobTypes.InvoiceDocumentFetch}:{seed.Invoice.Id}:after-acceptance",
+            Status = JobStatus.ManualReview,
+            AvailableAt = fixture.Now.AddDays(-1),
+            CorrelationId = "y4-old",
+            CreatedAt = fixture.Now.AddDays(-1),
+            Version = 1
+        };
+        await SeedAsync(seed, db => { db.MarketplaceDeliveryStates.Add(observation); db.IntegrationJobs.Add(oldFetch); });
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var view = (await NewBillingService(db, OpenWrites).GetAsync(seed.Tenant.Id, seed.Invoice.Id, CancellationToken.None)).Value!;
+                Assert.Equal(InvoiceDeliveryAutoRetryPolicy.Scheduled, view.DeliveryRetry?.State);
+                Assert.Equal("FETCH_DOCUMENT", view.DeliveryRetry?.Need);
+                Assert.Contains(InvoicingBillingService.RetryDeliveryAction, view.AllowedActions);
+            }
+
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null).ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "y4-scan", CancellationToken.None)).Succeeded);
+            // The fetch it queued is waiting: the next scan adds nothing.
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null).ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "y4-scan-again", CancellationToken.None)).Succeeded);
+
+            await using (var db = fixture.CreateContext())
+            {
+                var fetches = await db.IntegrationJobs.AsNoTracking().Where(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceDocumentFetch && job.Id != oldFetch.Id).ToListAsync();
+                var fetch = Assert.Single(fetches);
+                Assert.StartsWith($"{InvoicingJobTypes.InvoiceDocumentFetch}:{seed.Invoice.Id}:delivery-retry:1:", fetch.JobDedupKey, StringComparison.Ordinal);
+                Assert.Equal(seed.Provider.Id, fetch.ConnectionId);
+                Assert.StartsWith("delivery-retry:1:", InvoiceDeliveryRetryReader.ReadRetryKey(fetch.PayloadJson), StringComparison.Ordinal);
+                var invoice = await db.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id);
+                Assert.Equal(1, invoice.DeliveryRetryAttempts);
+                Assert.InRange(invoice.DeliveryRetryNextAt!.Value, DateTimeOffset.UtcNow.AddMinutes(55), DateTimeOffset.UtcNow.AddMinutes(61));
+                Assert.Equal(InvoiceStatus.MarketplaceFailed, invoice.Status);
+                Assert.False(await db.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceSubmit));
+                Assert.DoesNotContain(InvoicingBillingService.RetryDeliveryAction, (await NewBillingService(db, OpenWrites).GetAsync(seed.Tenant.Id, seed.Invoice.Id, CancellationToken.None)).Value!.AllowedActions);
+
+                // That fetch failed too and the attempts are used up.
+                await db.IntegrationJobs.Where(job => job.Id == fetch.Id).ExecuteUpdateAsync(setter => setter.SetProperty(job => job.Status, JobStatus.ManualReview));
+                await db.Invoices.Where(item => item.Id == seed.Invoice.Id).ExecuteUpdateAsync(setter => setter
+                    .SetProperty(item => item.DeliveryRetryAttempts, InvoiceDeliveryAutoRetryPolicy.MaxAttempts)
+                    .SetProperty(item => item.DeliveryRetryNextAt, (DateTimeOffset?)null));
+            }
+
+            await using (var db = fixture.CreateContext())
+            {
+                var service = NewBillingService(db, OpenWrites);
+                var view = (await service.GetAsync(seed.Tenant.Id, seed.Invoice.Id, CancellationToken.None)).Value!;
+                Assert.Equal(InvoiceDeliveryAutoRetryPolicy.Exhausted, view.DeliveryRetry?.State);
+                Assert.Contains(InvoicingBillingService.RetryDeliveryAction, view.AllowedActions);
+                var manual = await service.RetryDeliveryAsync(seed.Tenant.Id, seed.Invoice.Id, "y4-manual", "y4-manual", CancellationToken.None);
+                Assert.True(manual.Succeeded, manual.Error?.Message);
+                // The same request again answers the same job.
+                Assert.Equal(manual.Value, (await service.RetryDeliveryAsync(seed.Tenant.Id, seed.Invoice.Id, "y4-manual", "y4-manual", CancellationToken.None)).Value);
+                Assert.Equal(InvoiceDeliveryAutoRetryPolicy.AlreadyRunningCode, (await service.RetryDeliveryAsync(seed.Tenant.Id, seed.Invoice.Id, "y4-manual-2", "y4-manual-2", CancellationToken.None)).Error?.Code);
+            }
+
+            await using var verification = fixture.CreateContext();
+            var manualJob = await verification.IntegrationJobs.SingleAsync(job => job.TenantId == seed.Tenant.Id && job.JobDedupKey == $"{InvoicingJobTypes.InvoiceDocumentFetch}:{seed.Invoice.Id}:delivery-retry:manual:y4-manual");
+            Assert.Equal("user", manualJob.TriggerType);
+            var reset = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
+            Assert.Equal(0, reset.DeliveryRetryAttempts);
+            Assert.InRange(reset.DeliveryRetryNextAt!.Value, DateTimeOffset.UtcNow.AddMinutes(55), DateTimeOffset.UtcNow.AddMinutes(61));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // A delivery that may have reached the marketplace is never retried from here.
+    [PostgreSqlFact]
+    public async Task ADeliveryThatStartedIsNotRetriedByTheScan()
+    {
+        var seed = NewSeed("y4-started", InvoiceStatus.MarketplaceFailed);
+        await SeedAsync(seed, db => db.MarketplaceDeliveryStates.Add(NewDeliveryState(seed, "STARTED")));
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null).ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "y4-started-scan", CancellationToken.None)).Succeeded);
+            await using var verification = fixture.CreateContext();
+            Assert.False(await verification.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && (job.JobType == InvoicingJobTypes.InvoiceDocumentFetch || job.JobType == InvoicingJobTypes.MarketplaceDelivery)));
+            Assert.Equal(0, (await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id)).DeliveryRetryAttempts);
+            Assert.Equal(InvoiceDeliveryAutoRetryPolicy.NotApplicableCode,
+                (await NewBillingService(verification, OpenWrites).RetryDeliveryAsync(seed.Tenant.Id, seed.Invoice.Id, "y4-started-manual", "y4-started-manual", CancellationToken.None)).Error?.Code);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     private InvoicingBillingService NewBillingService(AppDbContext db, IDictionary<string, string?> configuration, IInvoiceMarketplacePort? marketplace = null)
     {
         var dataProtection = new EphemeralDataProtectionProvider();

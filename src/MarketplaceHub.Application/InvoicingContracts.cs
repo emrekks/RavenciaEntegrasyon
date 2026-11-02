@@ -492,7 +492,9 @@ public sealed record InvoiceWorkspaceItemView(
     IReadOnlyList<MarketplaceInvoiceReferenceHistoryView>? PreviousPlatformInvoiceReferences = null,
     Guid? MarketplaceConnectionId = null,
     string? ExternalOrderId = null,
-    string? ExternalPackageNumber = null);
+    string? ExternalPackageNumber = null,
+    // The automatic retry of the document fetch and marketplace delivery (InvoiceDeliveryAutoRetryPolicy); null when nothing is retried.
+    InvoiceDeliveryRetryView? DeliveryRetry = null);
 
 public sealed record MarketplaceInvoiceReferenceHistoryView(
     string? InvoiceNumber,
@@ -576,7 +578,7 @@ public sealed record InvoiceLineView(Guid Id, int LineSequence, string Descripti
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
 public sealed record InvoiceAttemptView(int AttemptNumber, string Outcome, string? ErrorCode, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt);
 public sealed record MarketplaceDeliveryView(Guid Id, string DeliveryType, string Status, string? ExternalReference, string? ErrorCode, DateTimeOffset CreatedAt);
-public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation, IReadOnlyList<MarketplaceLinkRevocationView>? LinkRevocations = null);
+public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation, IReadOnlyList<MarketplaceLinkRevocationView>? LinkRevocations = null, InvoiceDeliveryRetryView? DeliveryRetry = null);
 // A marketplace link a cancelled invoice left behind. Mode is AUTOMATIC, VERIFY_ONLY or MANUAL
 // (MarketplaceInvoiceLinkRevocationPolicy); Instructions tell the operator what to do on the marketplace.
 public sealed record MarketplaceLinkRevocationView(Guid DeliveryStateId, Guid? PackageId, string PlatformCode, string PlatformName, string? PackageNumber, string Status, string? ErrorCode, string Mode, string Instructions, bool CanAct, string? BlockedReason, DateTimeOffset UpdatedAt);
@@ -600,6 +602,8 @@ public interface IInvoicingBillingService
     Task<ServiceResult<Guid>> EnqueueStageCapabilityProbeAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReconcileAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
+    // "Tekrar Dene": fetches the stored invoice's document again when it is missing, then delivers it; never issues a new invoice.
+    Task<ServiceResult<Guid>> RetryDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueCancellationAsync(Guid tenantId, Guid id, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     // Operator-triggered only: removes (Trendyol) or verifies the removal of (Hepsiburada) the link a cancelled invoice left on a package.
     Task<ServiceResult<MarketplaceLinkRevocationView>> RevokeMarketplaceLinkAsync(Guid tenantId, Guid invoiceId, Guid deliveryStateId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);

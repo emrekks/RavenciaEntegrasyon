@@ -77,7 +77,7 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
                 return false;
             }
 
-            request = new(packageNumber, orderNumber, invoiceLink, arrangementDate.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture), documentType, invoiceNumber);
+            request = new(packageNumber, orderNumber, invoiceLink, ArrangementDateText(arrangementDate), documentType, invoiceNumber);
             error = string.Empty;
             return true;
         }
@@ -87,6 +87,12 @@ internal static class HepsiburadaInvoiceDeliveryPolicy
             return false;
         }
     }
+
+    // Hepsiburada works in Istanbul time (its order dates and query times are Istanbul local, HepsiburadaJsonMapper):
+    // a UTC "Z" date showed the invoice three hours early in its panel. The moment the invoice was issued is sent as
+    // Istanbul wall-clock time with its +03:00 offset; the stored IssuedAt (UTC) is unchanged.
+    internal static string ArrangementDateText(DateTimeOffset issuedAt) =>
+        issuedAt.ToOffset(TurkeyTime.Offset).ToString("yyyy-MM-dd'T'HH:mm:ss.fffzzz", CultureInfo.InvariantCulture);
 
     // The PUT .../invoice body exactly as live deliveries have been accepted (204): a MIME contentType and no
     // serialNumber/rowNumber. A schema copy shows contentType "pdf"/"html" and the split invoice number; that shape was
