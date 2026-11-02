@@ -10,9 +10,9 @@ export function attributeMappingPlatform(platformCode: string): MappingPlatformC
 // What one product's publish check found missing on a marketplace, as the category fields window reads it: the fields
 // the product's required gaps are about first, then those of its optional warnings, each with the panel values whose
 // value mapping is missing.
-export type MappingFocusItem = { externalAttributeId: string; required: boolean; label: string; details: string[]; localValueIds: string[] }
+export type MappingFocusItem = { externalAttributeId: string; required: boolean; label: string; details: string[]; localValueIds: string[]; panelAttribute?: string }
 
-type FocusIssue = { attribute: string; detail: string; externalAttributeId?: string; localValueId?: string }
+type FocusIssue = { attribute: string; detail: string; externalAttributeId?: string; localValueId?: string; panelAttribute?: string }
 
 // One item per marketplace field: a field in both lists counts as required; a gap without a field (a product check, the
 // category mapping) is not the window's business.
@@ -24,6 +24,7 @@ export function mappingFocusItems(requiredIssues: readonly FocusIssue[], optiona
     const item = items.get(id) ?? { externalAttributeId: id, required, label: issue.attribute, details: [], localValueIds: [] }
     if (!item.details.includes(issue.detail)) item.details.push(issue.detail)
     if (issue.localValueId && !item.localValueIds.includes(issue.localValueId)) item.localValueIds.push(issue.localValueId)
+    if (issue.panelAttribute && !item.panelAttribute) item.panelAttribute = issue.panelAttribute
     items.set(id, item)
   }
   requiredIssues.forEach(issue => add(issue, true))

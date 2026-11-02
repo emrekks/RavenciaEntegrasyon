@@ -68,15 +68,15 @@ describe('publish readiness parity', () => {
 
     const bulkClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const bulk = await checkProductReadiness(bulkClient, 'p1', null, [fixture.connection])
-    const bulkIssues = bulk.get('ty')!.issues.map(issue => `${issue.attribute}: ${issue.detail}`.replace(/\s+/g, ' ').trim())
+    const bulkIssues = bulk.get('ty')!.issues.map(issue => `${issue.attribute}. ${issue.detail}`.replace(/\s+/g, ' ').trim())
 
     expect(bulkIssues).toEqual(editorIssues)
     // The gaps themselves, so a change on either side shows here too.
     expect(bulkIssues).toEqual([
-      'Temel Ürün Verileri: Eksik alanlar: açıklama.',
-      'Görsel Kalitesi: En az bir yüksek çözünürlüklü görsel ekleyin.',
-      'Web Color: Web Color için kategori özelliği eşleştirilmemiş.',
-      'Kategori eşlemesi: Elbise kategorisinin Trendyol Mağaza karşılığı seçilmemiş; kategoriyi eşleyin.'
+      'Temel Ürün Verileri. Eksik alanlar: açıklama.',
+      'Görsel Kalitesi. En az bir yüksek çözünürlüklü görsel ekleyin.',
+      'Web Color. Web Color için kategori özelliği eşleştirilmemiş.',
+      'Kategori eşlemesi. Elbise kategorisinin Trendyol Mağaza karşılığı seçilmemiş; kategoriyi eşleyin.'
     ])
   })
 })

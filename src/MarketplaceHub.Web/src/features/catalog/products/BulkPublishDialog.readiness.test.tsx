@@ -123,7 +123,7 @@ describe('BulkPublishDialog readiness', () => {
     const link = card().querySelector<HTMLAnchorElement>('.publish-issue-tooltip a.publish-issue-chip')!
     expect(link.textContent).toBe('Elbise RYP006')
     expect(link.getAttribute('href')).toBe('/products/p6')
-    expect(link.title).toContain('Temel Ürün Verileri')
+    expect(link.getAttribute('aria-label')).toContain('Temel Ürün Verileri')
     act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
     expect(card().querySelector('.publish-issue-tooltip.is-open')).toBeNull()
     act(() => cardButton().click())
@@ -156,7 +156,7 @@ describe('BulkPublishDialog readiness', () => {
     const hepsiburada = { id: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', externalStoreId: 'hb-1', status: 'ACTIVE', externalWritesEnabled: true }
     await render(['p7'], [hepsiburada])
     await settle()
-    expect(card().querySelector('.publish-issue-required .publish-issue-chip')?.getAttribute('title')).toContain('Kazak kategorisinin Hepsiburada karşılığı seçilmemiş; kategoriyi eşleyin.')
+    expect(card().querySelector('.publish-issue-required .publish-issue-chip')?.getAttribute('aria-label')).toContain('Kazak kategorisinin Hepsiburada karşılığı seçilmemiş; kategoriyi eşleyin.')
     expect(card().textContent).not.toContain('alınamadı')
     // One record and one fix: pressing the badge opens Kategori Eşle directly; the card has no fix rows of its own.
     expect(card().querySelector('.publish-platform-fix-mappings')).toBeNull()

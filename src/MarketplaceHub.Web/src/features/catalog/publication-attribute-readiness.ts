@@ -1,4 +1,5 @@
 import { canonicalKey } from '../../shared/value-matching'
+import { currentValueMapping } from './value-mapping-rule'
 
 export type PublicationAttributeSelection = {
   attributeId: string
@@ -39,7 +40,10 @@ export type PublicationValueMappingFix = {
 
 // `externalAttributeId` names the marketplace field the gap is about (the field the category fields window opens on);
 // `localValueId` the panel value of a value gap.
-export type PublicationAttributeIssue = { attribute: string; detail: string; fix?: PublicationValueMappingFix; externalAttributeId?: string; localValueId?: string }
+// `state`: what is missing — no mapping at all, a mapping on an older list (or not verified), no value on the product, a
+// panel value without a marketplace value, or a free value the field does not take; `panelAttribute`: the panel attribute
+// the field would map from, when one is known.
+export type PublicationAttributeIssue = { attribute: string; detail: string; fix?: PublicationValueMappingFix; externalAttributeId?: string; localValueId?: string; state?: 'unmapped' | 'stale' | 'no-value' | 'values' | 'custom'; panelAttribute?: string }
 
 export type PublicationAttributeIssues = {
   requiredIssues: PublicationAttributeIssue[]
@@ -111,7 +115,15 @@ export function classifyPublicationAttributeIssues(input: {
     if (!remote.isRequired) continue
     if (defaulted.has(remote.externalId)) continue
     if (!mappedExternalIds.has(remote.externalId)) {
-      addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için güncel ve doğrulanmış eşleme yok.`, externalAttributeId: remote.externalId })
+      // A mapping made on an older field list (or not verified) is named as such; otherwise the panel attribute of the
+      // same name (read through the synonyms) is offered as the one it would map from.
+      const outdated = input.attributeMappings.find(mapping => mapping.externalId === remote.externalId)
+      const panelAttribute = outdated
+        ? input.selectedAttributes.find(selected => selected.attributeId === outdated.localId)?.name
+        : input.selectedAttributes.find(selected => canonicalKey(selected.name) === canonicalKey(remote.name))?.name
+      addIssue(true, outdated
+        ? { attribute: remote.name, detail: `${platformName} eşlemesi eski alan listesine göre ya da doğrulanmamış; yeniden doğrulanmalı.`, externalAttributeId: remote.externalId, state: 'stale', panelAttribute }
+        : { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için güncel ve doğrulanmış eşleme yok.`, externalAttributeId: remote.externalId, state: 'unmapped', panelAttribute })
       continue
     }
 
@@ -122,7 +134,7 @@ export function classifyPublicationAttributeIssues(input: {
       mappedLocalIds.has(selected.attributeId) && (selected.values.length > 0 || selected.hasCustomValue)
     )
     if (!hasSelectedValue) {
-      addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için ürün veya varyant değeri seçilmemiş ya da girilmemiş.`, externalAttributeId: remote.externalId })
+      addIssue(true, { attribute: remote.name, detail: `Zorunlu ${platformName} özelliği için ürün veya varyant değeri seçilmemiş ya da girilmemiş.`, externalAttributeId: remote.externalId, state: 'no-value' })
     }
   }
 
@@ -145,7 +157,7 @@ export function classifyPublicationAttributeIssues(input: {
       // (a mapping forgotten); one the category does not list at all (Cep on Hepsiburada Bluz) is simply not its business.
       const counterpart = unmappedRemoteByKey.get(canonicalKey(selected.name))
       if (counterpart)
-        addIssue(false, { attribute: selected.name, detail: `${platformName} kategorisindeki “${counterpart.name}” alanı eşlenmemiş; eşlenmezse bu değer gönderilmez.`, externalAttributeId: counterpart.externalId })
+        addIssue(false, { attribute: selected.name, detail: `${platformName} kategorisindeki “${counterpart.name}” alanı eşlenmemiş; eşlenmezse bu değer gönderilmez.`, externalAttributeId: counterpart.externalId, state: 'unmapped', panelAttribute: selected.name })
       continue
     }
 
@@ -154,39 +166,35 @@ export function classifyPublicationAttributeIssues(input: {
       const webColorRemote = remoteById.get(webColorMapping.externalId)
       const webColorReferences = input.valueReferencesByAttribute[webColorMapping.externalId]
       for (const value of selected.values) {
-        const webColorValue = webColorReferences?.mappings.find(candidate =>
-          candidate.localId === value.id && candidate.status === 'VERIFIED' && candidate.snapshotId === webColorReferences.snapshotId
-        )
-        const activeWebColor = webColorValue && webColorReferences.items.some(item => item.externalId === webColorValue.externalId && item.isActive)
+        const activeWebColor = webColorReferences && currentValueMapping(webColorReferences.mappings, value.id, webColorReferences.snapshotId, externalId => webColorReferences.items.some(item => item.externalId === externalId && item.isActive))
         if (!activeWebColor) addIssue(webColorRemote?.isRequired === true || required, {
           attribute: webColorRemote?.name ?? 'Web Color',
           detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} Web Color değer eşlemesi yok.`,
           fix: { externalAttributeId: webColorMapping.externalId, attributeName: webColorRemote?.name ?? 'Web Color', localValueId: value.id, valueLabel: value.label },
           externalAttributeId: webColorMapping.externalId,
-          localValueId: value.id
+          localValueId: value.id,
+          state: webColorReferences?.mappings.some(candidate => candidate.localId === value.id) ? 'stale' : 'values'
         })
       }
     }
 
     if (selected.hasCustomValue && remote.allowsCustomValue !== true) {
-      addIssue(required, { attribute: selected.name, detail: `${platformName} bu özellik için serbest değeri kabul etmiyor.`, externalAttributeId: remote.externalId })
+      addIssue(required, { attribute: selected.name, detail: `${platformName} bu özellik için serbest değeri kabul etmiyor.`, externalAttributeId: remote.externalId, state: 'custom' })
     }
 
     if (isCustomPanelColorName(remote.name)) continue
     if (input.sendsUnmappedValuesAsFreeText && remote.allowsCustomValue === true) continue
     const references = input.valueReferencesByAttribute[remote.externalId]
     for (const value of selected.values) {
-      const valueMapping = references?.mappings.find(candidate =>
-        candidate.localId === value.id && candidate.status === 'VERIFIED' && candidate.snapshotId === references.snapshotId
-      )
-      const activeReference = valueMapping && references.items.some(item => item.externalId === valueMapping.externalId && item.isActive)
+      const activeReference = references && currentValueMapping(references.mappings, value.id, references.snapshotId, externalId => references.items.some(item => item.externalId === externalId && item.isActive))
       if (!activeReference) {
         addIssue(required, {
           attribute: selected.name,
           detail: `“${value.label || 'Seçili değer'}” için güncel ${platformName} değer eşlemesi yok.`,
           fix: { externalAttributeId: remote.externalId, attributeName: remote.name, localValueId: value.id, valueLabel: value.label },
           externalAttributeId: remote.externalId,
-          localValueId: value.id
+          localValueId: value.id,
+          state: references?.mappings.some(candidate => candidate.localId === value.id) ? 'stale' : 'values'
         })
       }
     }

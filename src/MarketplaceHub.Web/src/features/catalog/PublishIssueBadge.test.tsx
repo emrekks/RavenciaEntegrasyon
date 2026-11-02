@@ -33,12 +33,13 @@ describe('PublishIssueBadge', () => {
     const sections = [...container.querySelectorAll('.publish-issue-tooltip.is-open > section')]
     expect(sections.map(section => section.className)).toEqual(['publish-issue-required', 'publish-issue-optional'])
     expect(sections[1].querySelector('a.publish-issue-chip')?.getAttribute('href')).toBe('/mappings/attributes')
-    // No row of buttons: the gap's chip opens its fix, and a hint says so.
+    // No row of buttons and no hint line: the popover ends with the chips, each opening its fix.
     expect(container.querySelector('.publish-issue-actions')).toBeNull()
-    expect(container.querySelector('.publish-issue-hint')?.textContent).toBe('Düzeltmek için bir eksiğe tıklayın.')
+    expect(container.querySelector('.publish-issue-hint')).toBeNull()
     act(() => sections[0].querySelector<HTMLButtonElement>('button.publish-issue-chip')!.click())
     expect(mapCategory).toHaveBeenCalledOnce()
-    expect(container.querySelector('.publish-issue-tooltip.is-open')).toBeNull()
+    // The fix's window opens over the popover, which stays open behind it.
+    expect(container.querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
   })
 
   it('stands as a yellow warning badge when nothing blocks', () => {
@@ -76,13 +77,74 @@ describe('PublishIssueBadge chips', () => {
     expect(required.map(chip => chip.textContent)).toEqual(['Kumaş Tipi', 'Kesim Kalıbı'])
     // Kumaş Tipi is required, so it is not repeated among the warnings; Kalınlık's two value gaps share one chip.
     expect(optional.map(chip => chip.textContent)).toEqual(['Kalınlık'])
-    expect(required[0].title).toBe('Zorunlu Hepsiburada özelliği için güncel ve doğrulanmış eşleme yok.')
-    expect(required[0].getAttribute('aria-label')).toBe('Kumaş Tipi: Zorunlu Hepsiburada özelliği için güncel ve doğrulanmış eşleme yok.')
-    expect(optional[0].title).toBe('“Orta” için değer eşlemesi yok. · “İnce” için değer eşlemesi yok.')
+    // No native title; the accessible name carries the gap.
+    expect(required[0].hasAttribute('title')).toBe(false)
+    expect(required[0].getAttribute('aria-label')).toBe('Kumaş Tipi. Zorunlu Hepsiburada özelliği için güncel ve doğrulanmış eşleme yok.')
     expect(container.querySelector('.publish-issue-tooltip')?.textContent).not.toContain('doğrulanmış eşleme yok')
+    // Hover shows the styled tooltip, outside the popover.
+    act(() => { optional[0].dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+    const tip = document.querySelector('.publish-issue-chip-tip')
+    expect([...tip!.querySelectorAll('span')].map(line => line.textContent)).toEqual(['“Orta” için değer eşlemesi yok. · “İnce” için değer eşlemesi yok.'])
+    expect(container.querySelector('.publish-issue-tooltip')?.contains(tip)).toBe(false)
+    expect(optional[0].getAttribute('aria-describedby')).toBe(tip!.id)
+    act(() => { optional[0].dispatchEvent(new MouseEvent('mouseout', { bubbles: true })) })
+    expect(document.querySelector('.publish-issue-chip-tip')).toBeNull()
     act(() => optional[0].click())
     expect(openKalinlik).toHaveBeenCalledOnce()
     expect(openKumas).not.toHaveBeenCalled()
+  })
+})
+
+describe('PublishIssueBadge with the window a chip opens', () => {
+  it('names the missing values on the chip and in its tooltip', () => {
+    act(() => root.render(<PublishIssueBadge id="v" label="Yayın için zorunlu eksik" heading="Yayın için 2 eksik var" requiredCount={2}
+      rows={[
+        { key: 'wc-1', title: 'Web Color', detail: '“Mürdüm” için değer yok.', values: ['Mürdüm'], onRun: vi.fn() },
+        { key: 'wc-2', title: 'Web Color', detail: '“Kiremit” için değer yok.', values: ['Kiremit'], onRun: vi.fn() },
+        { key: 'kumas', title: 'Kumaş Tipi', detail: 'Eşleme yok.', tip: ['Kumaş Tipi eşlenmemiş', 'Eşlenebilecek panel özelliği: Materyal'], onRun: vi.fn() }
+      ]} />))
+    act(() => container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!.click())
+    const chips = [...container.querySelectorAll<HTMLElement>('.publish-issue-chip')]
+    expect(chips.map(chip => chip.textContent)).toEqual(['Web Color eşleşmemiş: Mürdüm, Kiremit', 'Kumaş Tipi'])
+    act(() => { chips[1].dispatchEvent(new FocusEvent('focusin', { bubbles: true })) })
+    expect([...document.querySelectorAll('.publish-issue-chip-tip span')].map(line => line.textContent)).toEqual(['Kumaş Tipi eşlenmemiş', 'Eşlenebilecek panel özelliği: Materyal'])
+    expect(chips[0].getAttribute('aria-label')).toBe('Web Color. Eşlenmemiş değerler: Mürdüm, Kiremit')
+  })
+
+  it('stays open while the window is in front, ignores its presses and Escape, and gives focus back to the chip', async () => {
+    vi.useFakeTimers()
+    try {
+      const dialog = document.createElement('section')
+      dialog.setAttribute('aria-modal', 'true')
+      const open = vi.fn(() => { document.body.append(dialog) })
+      act(() => root.render(<PublishIssueBadge id="m" label="Yayın için zorunlu eksik" heading="Yayın için 2 eksik var" requiredCount={2}
+        rows={[{ key: 'a', title: 'Kumaş Tipi', detail: 'Yok.', onRun: open }, { key: 'b', title: 'Kesim Kalıbı', detail: 'Yok.', onRun: vi.fn() }]} />))
+      act(() => container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!.click())
+      const chip = [...container.querySelectorAll<HTMLButtonElement>('.publish-issue-chip')][0]
+      act(() => chip.click())
+      expect(open).toHaveBeenCalledOnce()
+      act(() => { vi.advanceTimersByTime(300) })
+      // A press inside the window and its Escape are the window's, not the popover's.
+      act(() => { dialog.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+      act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+      expect(container.querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
+      // The window closes: focus comes back to the chip, the popover is still open.
+      dialog.remove()
+      act(() => { vi.advanceTimersByTime(300) })
+      expect(document.activeElement).toBe(chip)
+      expect(container.querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
+      // With no window in front an outside press closes it again.
+      act(() => { document.body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })) })
+      expect(container.querySelector('.publish-issue-tooltip.is-open')).toBeNull()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('says no gap is left when its list empties while open', () => {
+    const render = (rows: Array<{ key: string; title: string; detail: string; onRun?: () => void }>) => act(() => root.render(<PublishIssueBadge id="e" label="Yayın için zorunlu eksik" heading="Yayın için 1 eksik var" rows={rows} requiredCount={rows.length} optionalRows={[{ key: 'x', title: 'Boy', detail: 'Uyarı.' }]} />))
+    render([{ key: 'a', title: 'Kumaş Tipi', detail: 'Yok.', onRun: vi.fn() }])
+    act(() => container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!.click())
+    act(() => root.render(<PublishIssueBadge id="e" label="Henüz yayınlanmadı" heading="" rows={[]} />))
+    expect(container.querySelector('.publish-issue-tooltip.is-open .publish-issue-empty')?.textContent).toBe('Eksik kalmadı.')
   })
 })
 

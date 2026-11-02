@@ -1576,7 +1576,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId)).ToListAsync(cancellationToken);
         var variantIds = variants.Select(x => x.Id).ToList();
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).ToListAsync(cancellationToken);
-        var links = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).Select(x => new { x.ConnectionId, x.VariantId, x.HealthStatus }).ToListAsync(cancellationToken);
+        var links = await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId)).KnownOnMarketplace(db, tenantId).Select(x => new { x.ConnectionId, x.VariantId, x.HealthStatus }).ToListAsync(cancellationToken);
         var profiles = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && cardIds.Contains(x.ProductId) && connectionIds.Contains(x.ConnectionId)).ToListAsync(cancellationToken);
         var brandOf = products.ToDictionary(x => x.Id, x => x.BrandId);
         // An offer of another colour card of the variant's model family (same brand and model code) among this request's cards.
@@ -1677,6 +1677,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId
                 && (link.HealthStatus == MarketplaceVariantLinkHealth.NotFound || link.HealthStatus == MarketplaceVariantLinkHealth.Rejected)
                 && db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.Id == link.VariantId && variant.ProductId == productId))
+            .KnownOnMarketplace(db, tenantId)
             .Select(link => link.HealthStatus)
             .FirstOrDefaultAsync(cancellationToken);
         if (brokenHealth is null) return false;
@@ -2271,6 +2272,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))).ToListAsync(cancellationToken);
         var variantLinks = await db.MarketplaceVariantLinks.AsNoTracking()
             .Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId))
+            .KnownOnMarketplace(db, tenantId)
             .Select(x => new { x.ConnectionId, x.VariantId, x.HealthStatus })
             .ToListAsync(cancellationToken);
         var profileIds = profiles.Select(x => x.Id).ToArray();
@@ -2724,6 +2726,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Select(connection => connection.Id);
         var links = await db.MarketplaceVariantLinks.AsNoTracking()
             .Where(link => link.TenantId == tenantId && connectionIds.Contains(link.ConnectionId) && variantIds.Contains(link.VariantId))
+            .KnownOnMarketplace(db, tenantId)
             .Select(link => new { link.VariantId, link.ConnectionId, link.HealthStatus })
             .ToListAsync(cancellationToken);
         var listings = await (from listing in db.ChannelListingVariants.AsNoTracking()
