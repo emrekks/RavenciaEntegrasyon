@@ -19,7 +19,7 @@ afterEach(() => {
   container.remove()
 })
 
-const optional = [{ key: 'materyal', title: 'Materyal', detail: 'Hepsiburada özelliği eşlenmemiş.', href: '/mappings/attributes' }, { key: 'boy', title: 'Boy', detail: '“Midi” için değer eşlemesi yok.' }]
+const optional = [{ key: 'materyal', title: 'Materyal', detail: 'Hepsiburada özelliği eşlenmemiş.', href: '/mappings/categories' }, { key: 'boy', title: 'Boy', detail: '“Midi” için değer eşlemesi yok.' }]
 
 describe('PublishIssueBadge', () => {
   it('lists the required gaps first and the optional warnings below them, with a counter each', () => {
@@ -32,7 +32,7 @@ describe('PublishIssueBadge', () => {
     act(() => trigger.click())
     const sections = [...container.querySelectorAll('.publish-issue-tooltip.is-open > section')]
     expect(sections.map(section => section.className)).toEqual(['publish-issue-required', 'publish-issue-optional'])
-    expect(sections[1].querySelector('a.publish-issue-chip')?.getAttribute('href')).toBe('/mappings/attributes')
+    expect(sections[1].querySelector('a.publish-issue-chip')?.getAttribute('href')).toBe('/mappings/categories')
     // No row of buttons and no hint line: the popover ends with the chips, each opening its fix.
     expect(container.querySelector('.publish-issue-actions')).toBeNull()
     expect(container.querySelector('.publish-issue-hint')).toBeNull()
