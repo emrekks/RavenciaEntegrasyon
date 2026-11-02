@@ -109,3 +109,15 @@
   html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters > .invoice-reference-search { grid-column: auto; }
   html body .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
+
+/* ---------- Raporlar ---------- */
+@media (min-width: 761px) and (max-width: 899px) {
+  /* Portrait: the period buttons take a row; the custom period, platform and grouping share the next one. */
+  html body .app-shell.stitch-shell main .reports-page .reports-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 8px 12px; }
+  html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-period-field,
+  html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-period-field > .reports-period-row { display: contents; }
+  html body .app-shell.stitch-shell main .reports-page .reports-period-field > span { grid-column: 1 / -1; margin-bottom: -2px; }
+  html body .app-shell.stitch-shell main .reports-page .reports-period-row > .reports-segmented { grid-column: 1 / -1; margin-bottom: 6px; }
+  html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-field { min-width: 0; }
+  html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-refreshing { position: absolute; top: 16px; right: 18px; }
+}
