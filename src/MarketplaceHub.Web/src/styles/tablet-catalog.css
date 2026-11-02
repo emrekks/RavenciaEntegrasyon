@@ -1,0 +1,142 @@
+/* Tablet layout (761-1024px, portrait 768 and landscape 1024) for the catalog side of the panel: Ürünler, the product
+   editor, Eşleştirmeler, Entegrasyonlar and Ayarlar. main.tsx links this file with that media query, so phones and
+   desktops never read it; every block repeats the query so a rule pasted elsewhere stays tablet-only.
+   Each element takes whichever reference fits the width: the desktop layout where it fits without sideways scroll,
+   otherwise the phone layout, set two to a row. `html body` raises the selectors over the feature files, which load
+   after this one. */
+
+/* ---------- Ürünler: list ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Filters: the search across the top, then the three selects and Temizle / Filtrele on one row. */
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-filters.rr-has-sort { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-filters.rr-has-sort > .rr-search { grid-column: 1 / -1; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-filters.rr-has-sort > .rr-fbtns { grid-column: auto; align-self: end; justify-content: flex-end; flex-wrap: nowrap; }
+
+  /* The list is the phone's product card, two to a row (the stacked label/value card was 392px tall per product). */
+  html body .app-shell.stitch-shell main .rr.rr-products > .rr-panel { padding-inline: 0; background: none; border: 0; box-shadow: none; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-panel-h { padding: 0 0 10px; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-tblwrap { overflow: visible; border: 0; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl { display: block; width: 100%; min-width: 0; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > thead { display: none; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-pager { padding: 12px 0; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr {
+    position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "p p p" "pr st v" "pl pl s" "a a a";
+    gap: 10px 0; margin: 0; padding: 12px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 14px;
+  }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr:has(> td[colspan]) { display: block; grid-column: 1 / -1; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr.rr-sel { border-color: color-mix(in srgb, var(--rr-primary) 70%, transparent); background: color-mix(in srgb, var(--rr-primary-soft) 45%, var(--rr-surface)); }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td { min-width: 0; padding: 0 !important; border: 0 !important; background: none !important; text-align: left; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td::before { display: none !important; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td:first-child { grid-area: p; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Fiyat"] { grid-area: pr; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Stok"] { grid-area: st; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Varyant"] { grid-area: v; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Platform Durumu"] { grid-area: pl; align-self: center; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Durum"] { grid-area: s; align-self: center; justify-self: end; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="İşlemler"] { grid-area: a; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td:is([data-l="Fiyat"], [data-l="Stok"], [data-l="Varyant"]) {
+    display: grid; align-content: start; gap: 2px; padding: 8px 10px !important; background: var(--rr-bg) !important;
+    border-top: 1px solid var(--rr-line) !important; border-bottom: 1px solid var(--rr-line) !important;
+  }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td:is([data-l="Fiyat"], [data-l="Stok"], [data-l="Varyant"])::before { display: block !important; margin: 0; color: var(--rr-subtle); font-size: 11.5px; font-weight: 500; content: attr(data-l); }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Fiyat"] { border-left: 1px solid var(--rr-line) !important; border-radius: 10px 0 0 10px; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Varyant"] { border-right: 1px solid var(--rr-line) !important; border-radius: 0 10px 10px 0; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl :is(.rr-qbtn, .rr-varcell) { justify-items: start; padding: 0; text-align: left; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn.rr-qbtn { min-height: 0; margin: 0; padding: 0; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn.rr-qbtn:hover { background: none; border-color: transparent; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn > b { text-decoration: underline dotted; text-underline-offset: 3px; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-pmarks { justify-content: flex-start; flex-wrap: nowrap; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-actcell { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-actcell > *,
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-actcell > .rr-anchor > .rr-trigger { width: 100% !important; min-width: 0; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-actcell :is(.rr-btn, .rr-trigger) { height: 36px; min-height: 36px; justify-content: center; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-actcell .rr-btn.rr-link { border: 1px solid var(--rr-line-strong); border-radius: 7px; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-actcell .rr-trigger > span { flex: none; }
+  /* the variant stock table opens inside its card at the card's width */
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl :is(td.rr-mid, .rr-vhover) { position: static; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover { display: block; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip { top: auto; right: 12px; left: 12px; width: auto; max-width: none; max-height: 280px; margin-top: 6px; transform: none; }
+
+  /* Summary cards: five in one row from 900px (as on desktop), three over two below it. */
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > * { min-width: 0; }
+}
+@media (min-width: 900px) and (max-width: 1024px) {
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > *,
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > :nth-child(n + 4) { grid-column: auto; }
+}
+
+/* ---------- Ürün ekle / düzenle ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Product info in the desktop's four columns: name and sale status on one row, brand, category and model code on
+     the next, the codes row under them (it took five single-field rows). */
+  html body .app-shell.stitch-shell main .product-add-page .product-basics-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  html body .app-shell.stitch-shell main .product-add-page .product-basics-grid > * { grid-column: auto; min-width: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .product-basics-grid > .product-title-field { grid-column: span 3; }
+  html body .app-shell.stitch-shell main .product-add-page .product-basics-grid > .product-category-field { grid-column: span 2; }
+  html body .app-shell.stitch-shell main .product-add-page .product-basics-grid > :is(.product-identifiers-grid, .wide, .product-description-field) { grid-column: 1 / -1; }
+
+  /* Variants: two lines per variant instead of a 1166px sideways table. Line one: number, the full option name and
+     the row buttons; line two: Barkod, Stok Kodu, Stok, Fiyat, Maliyet, Liste Fiyatı under one header row. */
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor { overflow-x: visible; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-head, .variant-table-row) {
+    grid-template-columns: 34px minmax(0, 1.25fr) minmax(0, 1.25fr) repeat(4, minmax(0, .8fr)); column-gap: 8px; min-width: 0; padding-inline: 12px;
+  }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-row { row-gap: 6px; min-height: 0; padding-block: 6px; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-head, .variant-table-row) > * { min-width: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head > :is(:nth-child(2), :nth-child(9)) { display: none; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-head, .variant-table-row) > :nth-child(1) { grid-column: 1; grid-row: 1 / span 2; align-self: center; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head > :nth-child(1) { grid-row: 1; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-row > :nth-child(2) { grid-column: 2 / 5; grid-row: 1; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-row > :nth-child(9) { grid-column: 5 / -1; grid-row: 1; justify-content: flex-end; justify-self: end; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-row > :nth-child(n + 3):nth-child(-n + 8) { grid-row: 2; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-head, .variant-table-row) > :nth-child(3) { grid-column: 2; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-head, .variant-table-row) > :nth-child(4) { grid-column: 3; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-head, .variant-table-row) > :nth-child(5) { grid-column: 4; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-head, .variant-table-row) > :nth-child(6) { grid-column: 5; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-head, .variant-table-row) > :nth-child(7) { grid-column: 6; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > :is(.variant-table-head, .variant-table-row) > :nth-child(8) { grid-column: 7; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-row > input { height: 36px; min-height: 36px; font-size: 13px; }
+  /* line one is 36px: the name cell loses its table padding and the row buttons their 44px floor */
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-row > :nth-child(2) { align-self: center; min-height: 0; padding-block: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-row > .variant-option-cell button { min-height: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-row > :nth-child(9) { align-self: center; gap: 4px; padding-block: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-row > .variant-row-actions > * { height: 36px; min-height: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { font-size: 12px; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head > * { gap: 4px; }
+
+  /* A long product name in the heading ends in an ellipsis at the page edge instead of running past it. */
+  html body .app-shell.stitch-shell main .product-add-page .product-page-heading-copy { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .product-page-heading-copy > .product-page-heading-title { width: auto; max-width: 100%; min-width: 0; }
+
+  /* Option groups side by side; the "Seçenekler Güncel" button is a 36px control. */
+  html body .app-shell.stitch-shell main .product-add-page .attribute-builder-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html body .app-shell.stitch-shell main .product-add-page .attribute-variant-actions > button { height: 36px; min-height: 0; }
+
+  /* Marketplace attribute fields: three to a row from 900px. */
+  html body .app-shell.stitch-shell main .product-add-page .category-attribute-mapping-list > * { min-width: 0; }
+
+  /* Yayınlama, the bulk publish window and the platform update window: the marketplace cards two to a row (one each
+     below 900px), and the selection bar keeps its note, warning and Yayınla on one line. */
+  html body :is(.product-add-page .product-publish-step, .product-publish-popup-modal, .platform-update-modal) .publish-platform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html body .app-shell.stitch-shell main .publish-selection-footer.publish-selection-footer { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
+  html body .app-shell.stitch-shell main .publish-selection-footer.publish-selection-footer > button { grid-column: auto; width: auto; min-width: 140px; }
+
+  /* Variant bulk edit window: its mode switch and footer buttons are 36px. */
+  html body .variant-bulk-edit-modal :is(footer > button, .variant-bulk-modes > button) { height: 36px; min-height: 36px; }
+}
+@media (min-width: 900px) and (max-width: 1024px) {
+  html body .app-shell.stitch-shell main .product-add-page .category-attribute-mapping-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ---------- Category field mapping window (from a publication gap, and the Eşleştirmeler page) ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* the field list beside the field being edited, as on desktop (stacked, the list showed two rows) */
+  html body .cm-card .cm-layout { grid-template-columns: 240px minmax(0, 1fr); }
+  html body .cm-card .cm-nav { max-height: none; border-right: 1px solid var(--rv-color-border); border-bottom: 0; }
+  html body .cm-card .cm-detail { padding: 18px 18px 0; }
+  html body .cm-card .cm-foot { margin-inline: -18px; padding-inline: 18px; }
+  /* the tool buttons wrap to a second row instead of running off the window's edge */
+  html body .app-shell .panel.mapping-step.cm-card .cm-actions { flex-wrap: wrap; overflow-x: visible; }
+}
