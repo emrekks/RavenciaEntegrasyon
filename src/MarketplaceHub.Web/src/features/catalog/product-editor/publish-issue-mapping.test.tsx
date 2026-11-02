@@ -142,22 +142,20 @@ describe('publish gap chips open the category fields window', () => {
     expect(button('Yalnızca Eksikler').getAttribute('aria-pressed')).toBe('true')
     expect([...document.querySelectorAll('.mapping-advanced-modal .cm-vrow.is-product-issue .cm-pv')].map(item => item.firstChild?.textContent)).toEqual(['Orta'])
     expect([...document.querySelectorAll('.mapping-advanced-modal .cm-vscroll .cm-vrow')]).toHaveLength(1)
-    // A count and the names at the top; picking a value clears the mark live and says all are mapped.
-    expect(document.querySelector('.mapping-advanced-modal .cm-need-summary')?.textContent).toBe('Eşleşmesi gereken 1 Orta')
+    // The row's own tag marks the value (no summary box above the table); picking a value clears the mark live.
+    expect(document.querySelector('.mapping-advanced-modal .cm-need-summary')).toBeNull()
+    expect(document.querySelector('.mapping-advanced-modal .cm-vrow.needs-mapping .cm-product-tag')?.textContent).toBe('Eşleşmesi gereken')
     await act(async () => { document.querySelector<HTMLButtonElement>('.mapping-advanced-modal .cm-vrow.needs-mapping .vp-trigger')!.click() })
     await act(async () => { [...document.querySelectorAll<HTMLButtonElement>('.vp-list [role="option"]')].find(option => option.textContent === 'Orta')!.click() })
     expect(document.querySelector('.mapping-advanced-modal .cm-vrow.needs-mapping')).toBeNull()
-    expect(document.querySelector('.mapping-advanced-modal .cm-need-summary.is-done')?.textContent).toBe('Bu ürünün değerlerinin hepsi eşlendi. Kalıcı olması için Kaydet’e basın.')
 
     // Any other field can still be chosen; from there Sonraki Eksik goes back to the product's first gap.
     await act(async () => { [...document.querySelectorAll<HTMLButtonElement>('.mapping-advanced-modal .cm-item')].find(item => item.querySelector('.cm-name')?.textContent === 'Kumaş Tipi')!.click() })
     expect(selectedField()).toBe('Kumaş Tipi')
     await act(async () => { button('Sonraki Eksik').click() })
     expect(selectedField()).toBe('Kesim Kalıbı')
-
-    // "Bu Üründeki Eksikler" narrows the list to the product's gaps.
-    await act(async () => { [...document.querySelectorAll<HTMLButtonElement>('.mapping-advanced-modal button')].find(item => item.textContent?.startsWith('Bu Üründeki Eksikler'))!.click() })
-    expect(document.querySelectorAll('.mapping-advanced-modal .cm-item')).toHaveLength(4)
+    // No list filter above the fields: the dots beside the names show the product's gaps.
+    expect(document.querySelector('.mapping-advanced-modal .cm-product-filter')).toBeNull()
   })
 
   it('reads the publish check again after a save and when the window closes', async () => {
