@@ -21,7 +21,7 @@ describe('order summary cards', () => {
       ['İşleme Alınan', (1234).toLocaleString('tr-TR')],
       ['Geciken', '2'],
       ['Mikro İhracat Sipariş', '186'],
-      ['İptal', '68 Paket | 75 Adet Ürün'],
+      ['İptal', '68 Paket'],
       ['Yeniden Gönderim', '3']
     ])
     // Neither Kargoda nor Kargolanacak Ürün Adedi is a card any more.
