@@ -24,14 +24,14 @@
   background: var(--rv-action-bar-bg);
   backdrop-filter: none;
   border: 0;
-  border-top: 1px solid var(--rv-color-border-strong, var(--rv-color-border));
+  border-top: 1px solid var(--rv-color-border);
   border-radius: 0;
   box-shadow: 0 -10px 24px -12px rgb(0 0 0 / 35%);
   animation: rv-action-bar-in .18s cubic-bezier(.2, .8, .2, 1) both;
 }
 /* A page's own bar (a direct child of the page, or of its form) is the settings bar: flush with the window's bottom edge
    while the page scrolls (the page-padding compensation in design-system.css), as wide as the cards, framed with the
-   cards' border colour and a hairline on top (the settings bar's top rule), square on top and 14 px round at the bottom,
+   cards' border colour all round, the top included (the pager footer's colour), square on top and 14 px round at the bottom,
    with a soft shadow rising from it. At the end of the page it rests under the last card and merges with it
    (StickyActionBar sets data-docked): no gap, the card's bottom corners go square, its bottom edge is the bar's top
    rule, and the shadow goes. Phones keep the separate bar (fully rounded). */
@@ -41,7 +41,7 @@
   max-width: none;
   padding-inline: 16px;
   border: 1px solid var(--rv-color-border);
-  border-top-color: var(--rv-color-border-strong, var(--rv-color-border));
+  border-top-color: var(--rv-color-border);
   /* Bottom corners: square while the bar is stuck to the window's edge over a list that goes on (useStuckBottom sets
      data-stuck), round like the card's once the page is scrolled to its end and the bar rests at its place. */
   --rv-bar-bottom-r: 0px;
@@ -68,11 +68,21 @@
     border-bottom-color: transparent !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important;
   }
 }
-/* The publish step's bar sits inside the step's own layout (a popup), square on the bottom edge of its panel. */
+/* The publish step's bar sits under the grid of platform cards with a gap above it, so it is framed like the page bars
+   (the cards' border colour all round, round on top) and, like them, square at the bottom while stuck to the window's
+   edge and round once it rests at the end of the page. */
 .app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar {
   margin: 16px 0 0;
   max-width: none;
   padding-inline: 16px;
+  border: 1px solid var(--rv-color-border);
+  --rv-bar-bottom-r: 0px;
+  border-radius: var(--rv-action-bar-radius) var(--rv-action-bar-radius) var(--rv-bar-bottom-r) var(--rv-bar-bottom-r);
+  transition: border-radius .15s ease;
+}
+.app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar[data-stuck="false"] { --rv-bar-bottom-r: var(--rv-action-bar-radius); }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell > main > .content .product-publish-main > .rv-action-bar.rv-action-bar { transition: none; }
 }
 .app-shell.stitch-shell main .rv-action-bar.rv-action-bar:has(.rr-menu) { z-index: 80; }
 .app-shell.stitch-shell main .rv-action-bar.rv-action-bar.is-leaving { animation: rv-action-bar-out .16s ease-in both; pointer-events: none; }

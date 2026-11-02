@@ -89,7 +89,8 @@
 .publish-issue-tooltip.is-warning { border-color: color-mix(in srgb, var(--rv-color-warning) 45%, var(--rv-color-border-strong)); }
 .publish-issue-tooltip > section + section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }
 .publish-issue-tooltip .publish-issue-optional > strong { color: var(--rv-color-warning); }
-.publish-issue-count.is-optional { color: #3a2800; background: color-mix(in srgb, var(--rv-color-warning) 40%, #ffd27a); }
+/* The optional-warning count: white on the solid warning amber, like the required count on red, so the white digit stays readable. */
+.publish-issue-count.is-optional { color: #fff; background: var(--rv-color-warning); }
 .publish-issue-trigger.status-warning:focus-visible { outline-color: var(--rv-color-warning); }
 
 /* No gap left (the card keeps the open popover after the last fix): a short green line. */
