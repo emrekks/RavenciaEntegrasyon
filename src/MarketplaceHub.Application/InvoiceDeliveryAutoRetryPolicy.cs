@@ -8,8 +8,8 @@ public enum InvoiceDeliveryRetryNeed
     None,
     // The provider holds the invoice but its document was never stored: fetch it from E-Faturam, then deliver.
     FetchDocument,
-    // The document is stored, an earlier delivery job ended without delivering it, and nothing was sent that could
-    // have reached the marketplace: deliver again.
+    // The document is stored, the latest delivery job used up its retries on retryable errors (Dead), and nothing was
+    // sent that could have reached the marketplace: deliver again. A refused (Blocked) one stays with the user.
     Deliver
 }
 

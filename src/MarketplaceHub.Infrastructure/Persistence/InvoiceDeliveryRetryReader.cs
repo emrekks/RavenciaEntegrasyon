@@ -46,11 +46,14 @@ internal static class InvoiceDeliveryRetryReader
             var jobs = await db.IntegrationJobs.AsNoTracking()
                 .Where(job => job.TenantId == tenantId
                     && (job.JobDedupKey.StartsWith(fetchPrefix) || job.JobDedupKey.StartsWith(deliveryPrefix) || job.JobDedupKey.StartsWith(reconcilePrefix)))
-                .Select(job => new { job.JobType, job.Status })
+                .Select(job => new { job.JobType, job.Status, job.CreatedAt })
                 .ToListAsync(cancellationToken);
             var hasActiveJob = jobs.Any(job => job.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled);
-            var hadEndedDeliveryJob = jobs.Any(job => job.JobType == InvoicingJobTypes.MarketplaceDelivery
-                && job.Status is not (JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled or JobStatus.Succeeded));
+            // Only a delivery that failed retryably is retried: the latest delivery job used up its retries (Dead). One
+            // that was refused (Blocked: a missing package, a refused precondition) or stopped for review stays with the
+            // user, as the never-queued recovery leaves it.
+            var hadEndedDeliveryJob = jobs.Where(job => job.JobType == InvoicingJobTypes.MarketplaceDelivery)
+                .OrderByDescending(job => job.CreatedAt).Select(job => (JobStatus?)job.Status).FirstOrDefault() == JobStatus.Dead;
             var need = InvoiceDeliveryAutoRetryPolicy.Need(invoice.Status, true, documented.Contains(invoice.Id),
                 states[invoice.Id].ToArray(), hadEndedDeliveryJob, invoice.LastErrorCode);
             if (need == InvoiceDeliveryRetryNeed.None) continue;
