@@ -10,7 +10,7 @@ import { useEffect, useRef, type RefObject } from 'react'
 
 export type DismissReason = 'outside' | 'escape' | 'route' | 'other-opened'
 
-type Entry = { refs: ReadonlyArray<RefObject<Element | null>>; isInside?: (node: Node) => boolean; close: (reason: DismissReason) => void }
+type Entry = { refs: ReadonlyArray<RefObject<Element | null>>; isInside?: (node: Node) => boolean; stayOpen?: () => boolean; close: (reason: DismissReason) => void }
 const openEntries = new Set<Entry>()
 
 const contains = (entry: Entry, node: Node | null) => !!node && (entry.refs.some(ref => ref.current?.contains(node)) || !!entry.isInside?.(node))
@@ -27,6 +27,9 @@ type Options = {
   exclusive?: boolean
   /** For popovers found by class rather than by ref (one of several column filters): true when a node belongs to it. */
   isInside?: (node: Node) => boolean
+  /** true while the popover stays open whatever happens elsewhere (a window it opened is in front: its presses, its
+   *  Escape and its own pickers are not the popover's business). */
+  stayOpen?: () => boolean
 }
 
 export function useDismissable(open: boolean, refs: ReadonlyArray<RefObject<Element | null>>, onClose: (reason: DismissReason) => void, options: Options = {}) {
@@ -45,6 +48,7 @@ export function useDismissable(open: boolean, refs: ReadonlyArray<RefObject<Elem
     const entry: Entry = {
       get refs() { return latest.current.refs },
       isInside: node => latest.current.options.isInside?.(node) ?? false,
+      stayOpen: () => latest.current.options.stayOpen?.() ?? false,
       close: reason => {
         if (!openEntries.has(entry)) return
         openEntries.delete(entry)
@@ -57,19 +61,21 @@ export function useDismissable(open: boolean, refs: ReadonlyArray<RefObject<Elem
       const anchor = latest.current.refs[0]?.current ?? null
       for (const other of [...openEntries]) {
         const nested = contains(other, anchor) || other.refs.some(ref => contains(entry, ref.current))
-        if (!nested) other.close('other-opened')
+        if (!nested && !other.stayOpen?.()) other.close('other-opened')
       }
     }
     openEntries.add(entry)
     const press = (event: Event) => {
       const target = event.target as Node | null
       if (contains(entry, target)) return
+      if (latest.current.options.stayOpen?.()) return
       // A press inside a popover nested in this one (portalled elsewhere) counts as inside.
       for (const other of openEntries) if (other !== entry && contains(other, target) && other.refs.some(ref => contains(entry, ref.current))) return
       entry.close('outside')
     }
     const key = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return
+      if (latest.current.options.stayOpen?.()) return
       // Only the most recently opened popover answers Escape; the window behind it stays open.
       const last = [...openEntries].pop()
       if (last !== entry) return
