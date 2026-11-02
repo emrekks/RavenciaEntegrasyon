@@ -1,6 +1,6 @@
 /* Bulk publish popup: the "Yayın Durumu" pill's per model code tooltip. It sits on the page body, fixed to the screen,
    its right edge under the pill's right edge (above the pill when there is no room below). */
-.publish-platform-status.has-model-tip { cursor: help; }
+.publish-platform-status.has-model-tip { cursor: default; }
 .publish-platform-status.has-model-tip:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .bulk-publish-model-tip {
   position: fixed;

@@ -57,10 +57,11 @@ public sealed class PostgreSqlConnectionInvoiceSwitchTests(PostgreSqlTenantIsola
         // A Hepsiburada connection saved before the switch existed: no InvoiceCreationEnabled in its settings.
         var hepsiburada = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "HEPSIBURADA", Environment = "PRODUCTION", DisplayName = "Hepsiburada", ExternalStoreId = $"hb-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = """{"ExternalWritesEnabled":false}""", Version = 1 };
         var shopify = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "SHOPIFY", Environment = "PRODUCTION", DisplayName = "Shopify", ExternalStoreId = $"shop{Guid.NewGuid():N}"[..20], Status = "ACTIVE", ApiVersion = "2026-10", SettingsJson = """{"ExternalWritesEnabled":false,"InvoiceCreationEnabled":false}""", Version = 1 };
+        var n11 = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "N11", Environment = "PRODUCTION", DisplayName = "N11", ExternalStoreId = $"n11-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V1", SettingsJson = """{"ExternalWritesEnabled":false,"InvoiceCreationEnabled":false,"N11ShipmentTemplate":"Aras","N11PreparingDay":1}""", Version = 1 };
         await using (var seed = fixture.CreateContext())
         {
             seed.Tenants.Add(tenant);
-            seed.PlatformConnections.AddRange(hepsiburada, shopify);
+            seed.PlatformConnections.AddRange(hepsiburada, shopify, n11);
             await seed.SaveChangesAsync();
         }
 
@@ -92,6 +93,24 @@ public sealed class PostgreSqlConnectionInvoiceSwitchTests(PostgreSqlTenantIsola
             var shopifyOn = await service.UpdateAsync(tenant.Id, shopify.Id, shopify.Version, new UpdateConnectionCommand("Shopify", null, InvoiceCreationEnabled: true), CancellationToken.None);
             Assert.True(shopifyOn.Succeeded, shopifyOn.Error?.Message);
             Assert.True(shopifyOn.Value!.InvoiceCreationEnabled);
+
+            // N11 kept its stored value on every save, so the switch could be turned off but never on again.
+            var n11On = await service.UpdateAsync(tenant.Id, n11.Id, n11.Version, new UpdateConnectionCommand("N11", null, InvoiceCreationEnabled: true), CancellationToken.None);
+            Assert.True(n11On.Succeeded, n11On.Error?.Message);
+            Assert.True(n11On.Value!.InvoiceCreationEnabled);
+            var n11Stored = await db.PlatformConnections.AsNoTracking().Where(x => x.Id == n11.Id).Select(x => x.SettingsJson).SingleAsync();
+            Assert.True(MarketplaceInvoiceCreationPolicy.IsEnabled("N11", n11Stored));
+            using (var n11Document = JsonDocument.Parse(n11Stored))
+            {
+                Assert.Equal("Aras", n11Document.RootElement.GetProperty("N11ShipmentTemplate").GetString());
+                Assert.False(n11Document.RootElement.GetProperty("ExternalWritesEnabled").GetBoolean());
+            }
+            var n11Renamed = await service.UpdateAsync(tenant.Id, n11.Id, n11On.Value.Version, new UpdateConnectionCommand("N11 Mağaza", null), CancellationToken.None);
+            Assert.True(n11Renamed.Succeeded, n11Renamed.Error?.Message);
+            Assert.True(n11Renamed.Value!.InvoiceCreationEnabled);
+            var n11Off = await service.UpdateAsync(tenant.Id, n11.Id, n11Renamed.Value.Version, new UpdateConnectionCommand("N11 Mağaza", null, InvoiceCreationEnabled: false), CancellationToken.None);
+            Assert.True(n11Off.Succeeded, n11Off.Error?.Message);
+            Assert.False(n11Off.Value!.InvoiceCreationEnabled);
         }
         finally
         {
