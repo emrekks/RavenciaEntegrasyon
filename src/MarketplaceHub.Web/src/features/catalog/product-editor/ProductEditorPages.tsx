@@ -1030,17 +1030,17 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     if (mappingIssue) {
       if (fieldsWindowPlatform && categoryId && mappingIssue.externalAttributeId) { const externalAttributeId = mappingIssue.externalAttributeId; return { onRun: () => setFieldsFix({ externalAttributeId, missing }) } }
       if (mappingIssue.fix && readinessCategoryScope) return { onRun: () => setValueFixOpen(true) }
-      return { href: '/mappings/attributes' }
+      return { href: '/mappings/categories' }
     }
     // Trendyol's Web Color (only Trendyol cards read it) opens the window on Web Color, the Renk ↔ Web Color card.
     if (productCheck?.title === 'Web Color') {
       if (fieldsWindowPlatform && categoryId && !categoryMappingGap) return { onRun: () => setFieldsFix({ fieldName: 'Web Color', missing }) }
-      return { href: '/mappings/attributes' }
+      return { href: '/mappings/categories' }
     }
     // The product's own data (name, images, variants, the category's attributes and options) is fixed in its form.
     if (productCheck) return onEditProductData ? { onRun: onEditProductData } : productId ? { href: `/products/${productId}` } : {}
     if (categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
-    return { href: categoryId ? '/mappings/attributes' : '/mappings/categories' }
+    return { href: '/mappings/categories' }
   }
   const optionalBadgeProps = { optionalCount: optionalMappingWarnings.length || undefined, optionalHeading: optionalMappingWarnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${optionalMappingWarnings.length} isteğe bağlı özellik uyarısı`, optionalRows: optionalMappingWarnings.map((issue, index) => ({ key: `${issue.attribute}-${index}`, title: issue.attribute, detail: issue.detail, ...issueInfo(issue), ...issueFix(issue) })) }
   // Partly live: the Yayında step is a ring of the live share and the pill reads "21/42"; the popover's top line says what
@@ -1060,7 +1060,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const displayedPublicationTone = partialBlocked ? 'info' : hasRequiredPublicationBlock ? 'danger' : noneFound ? 'danger' : familyPartial ? 'info' : allLinked ? 'success' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? 'warning' : productId ? publicationTone : 'neutral'
   // The status as four steps (Hazırlık → Gönderim → Onay → Yayında) with the counts beside them, in one pill: hover or
   // focus shows the gaps popover, a press pins it; its top line says the state and why (the job's reason, a refusal
-  // code), its foot holds the card's actions (Durumu Yenile, stop, İş Ayrıntısı).
+  // code), its foot holds the card's actions (stop, İş Ayrıntısı); the refresh sits in the header.
   const pttAvmChecking = isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus)
   const lastJobKind = lastJobType?.trim().toUpperCase() ?? ''
   const publishSteps = publishStatusSteps({
@@ -1094,12 +1094,14 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const statusLead = <><strong>{leadTitle}</strong>{leadReasons.map(reason => <span key={reason.key} className={`is-${reason.tone}`}>{reason.text}</span>)}</>
   const statusRecorded = Boolean(publication.data?.profileId && publication.data.actualStatus && publication.data.actualStatus !== 'UNKNOWN') || pttAvmFamilySent
   const stopIcon = <i className="publish-issue-action-stop" aria-hidden="true" />
-  const statusActionSlots: Array<PublishIssueAction | null> = [
-    statusRecorded
-      ? { key: 'refresh', label: 'Durumu Yenile', icon: <UiIcon name="refresh" size={14} />, busy: refreshBusy, ariaLabel: refreshBusy ? `${card.name} yayın durumu sorgulanıyor` : `${card.name} yayın durumunu güncelle`, title: refreshBusy ? 'Platformdaki durum sorgulanıyor…' : 'Platformdaki mevcut durumu yeniden sorgula', disabled: refreshBusy || isPublicationStatusJobRunning(publication.data?.lastJobStatus), onRun: () => refreshPublication.mutate() }
+  // The card's refresh (a status check, or a store lookup while no record is there): a borderless icon in the header,
+  // beside the selection toggle, never inside it.
+  const refreshAction: PublishIssueAction | null = statusRecorded
+      ? { key: 'refresh', label: 'Durumu Yenile', icon: null, busy: refreshBusy, ariaLabel: refreshBusy ? `${card.name} yayın durumu sorgulanıyor` : `${card.name} yayın durumunu yenile`, title: refreshBusy ? 'Platformdaki durum sorgulanıyor…' : 'Platformdaki mevcut durumu yeniden sorgula', disabled: refreshBusy || isPublicationStatusJobRunning(publication.data?.lastJobStatus), onRun: () => refreshPublication.mutate() }
       : productId && card.mode !== 'READ_ONLY'
-        ? { key: 'refresh', label: 'Durumu Yenile', icon: <UiIcon name="refresh" size={14} />, busy: refreshBusy, ariaLabel: refreshBusy ? `${card.name} mağazasında ürün aranıyor` : `${card.name} mağazasında ürünü ara`, title: refreshBusy ? `${card.name} mağazasında ${lookupKey} aranıyor…` : lookupKey ? `${card.name} mağazasında ${lookupKey} ara ve varyantları eşleştir` : `${card.name} tek ürünü kendi ürün numarasıyla arar; bu ürün için o numara bilinmiyor. Ürün Aktar'dan arayın.`, disabled: !lookupKey || refreshBusy || publication.isPending, onRun: () => lookupProduct.mutate() }
-        : null,
+        ? { key: 'refresh', label: 'Durumu Yenile', icon: null, busy: refreshBusy, ariaLabel: refreshBusy ? `${card.name} mağazasında ürün aranıyor` : `${card.name} yayın durumunu yenile`, title: refreshBusy ? `${card.name} mağazasında ${lookupKey} aranıyor…` : lookupKey ? `${card.name} mağazasında ${lookupKey} ara ve varyantları eşleştir` : `${card.name} tek ürünü kendi ürün numarasıyla arar; bu ürün için o numara bilinmiyor. Ürün Aktar'dan arayın.`, disabled: !lookupKey || refreshBusy || publication.isPending, onRun: () => lookupProduct.mutate() }
+        : null
+  const statusActionSlots: Array<PublishIssueAction | null> = [
     refreshJob.running && !(jobRunning && publication.data?.lastJobId === refreshJobId)
       ? { key: 'stop-refresh', label: 'Sorguyu Durdur', icon: stopIcon, tone: 'danger', ariaLabel: refreshJob.cancel.isPending ? `${card.name} sorgusu durduruluyor` : `${card.name} sorgusunu durdur`, disabled: refreshJob.cancel.isPending, onRun: () => refreshJob.cancel.mutate() }
       : null,
@@ -1116,16 +1118,20 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   // The card's frame and place in the grid: not yet published first, then refused, in progress, and live last.
   const cardState = publishCardState({ tone: displayedPublicationTone, jobRunning, requiredBlock: hasRequiredPublicationBlock, retryable: Boolean(pttAvmRetry) })
   return <article className={`publish-platform-card is-state-${settling ? 'settling' : cardState}${selected && !settling ? ' selected' : ''}${settling ? ' is-settling' : ''}${card.mode === 'READ_ONLY' ? ' is-read-only' : ''}`} aria-busy={settling || undefined}>
-    <button type="button" className="publish-platform-card-head" onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? readOnlyTitle : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={settling || card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(selectionStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
+    <div className="publish-platform-card-top">
+    <button type="button" className={`publish-platform-card-head${refreshAction ? ' has-refresh' : ''}`} onClick={onSelect} aria-pressed={selected} aria-describedby={issueDescriptionIds} title={card.mode === 'READ_ONLY' ? readOnlyTitle : alreadyPublished ? 'Ürün bu platformda zaten yayında.' : undefined} disabled={settling || card.mode === 'READ_ONLY' || isPublicationSelectionDisabled(selectionStatus, selected, publicationCheckPending, publicationCheckUnavailable, selectionBlocked)}>
       <span className={`publish-platform-mark ${card.tone}`}><img className={`publish-platform-logo ${platformLogoClass(card.connection.platformCode)}`} src={platformLogoSource(card.connection.platformCode) ?? '/platforms/trendyol.webp'} alt="" aria-hidden="true" /></span>
       <span><strong>{card.name}</strong><small>{settling ? 'Yayın durumu yükleniyor' : card.mode === 'READ_ONLY' ? 'Dış yazma kapalı · yayın kuyruğu devre dışı' : alreadyPublished ? 'Zaten yayında · yeniden seçilemez' : publicationCheckPending ? 'Yayın durumu kontrol ediliyor…' : publicationCheckUnavailable ? 'Yayın durumu doğrulanamadı' : shopifyCapabilityCheckPending ? 'Shopify yazma izinleri kontrol ediliyor…' : selected ? 'Yayın için seçildi' : mappingCheckPending ? 'Zorunlu alanlar kontrol ediliyor…' : selectionBlocked ? 'Zorunlu eksikler giderilmeden seçilemez' : pttAvmRetry ? "Tekrar denemek için seçip Yayınla'ya basın" : 'Yayın için seçilmedi'}</small></span>
+      {refreshAction && <span className="publish-platform-head-gap" aria-hidden="true" />}
       <i className={`publish-platform-toggle ${selected && !settling ? 'on' : ''}`} aria-hidden="true"><b /></i>
     </button>
+    {refreshAction && <button type="button" className={`publish-platform-card-refresh${refreshAction.busy ? ' is-busy' : ''}`} aria-label={refreshAction.ariaLabel} aria-busy={refreshAction.busy || undefined} title={refreshAction.title} disabled={refreshAction.disabled} onClick={refreshAction.onRun}><UiIcon name="refresh" size={16} /></button>}
+    </div>
     <dl className="publish-platform-facts">
       <div><dt>Mağaza</dt><dd title={card.connection.externalStoreId ? `Mağaza no: ${card.connection.externalStoreId}` : undefined}>{card.connection.displayName || card.connection.externalStoreId || '—'}</dd></div>
       <div><dt>Platform</dt><dd>{publishPlatformName(card.connection.platformCode)}</dd></div>
       <div><dt>Bağlantı</dt><dd><span className="publish-platform-status active"><i aria-hidden="true" />Aktif Bağlantı</span></dd></div>
-      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd><PublishIssueBadge variant="steps" id={`${issueListId}-popover`} label={stepsLabel} trigger={<PublishStatusSteps steps={publishSteps} fit={publishStepsFit(publishSteps)} />} lead={statusLead} actions={statusActions} emptyText={stepsEmptyText} requiredCount={blockedIssues.length} heading={issueBadgeHeading} rows={hasRequiredPublicationBlock ? issueBadgeRows : []} moreText={hasRequiredPublicationBlock ? issueBadgeMore : undefined} {...optionalBadgeProps} />{jobRunning && <span className="sr-only">{jobView.message}</span>}</dd></div>}
+      {(productId || card.mode !== 'READ_ONLY') && <div className="publish-platform-fact-publication" aria-live="polite"><dt>Yayın Durumu</dt><dd><PublishIssueBadge variant="steps" id={`${issueListId}-popover`} label={stepsLabel} trigger={<PublishStatusSteps steps={publishSteps} fit={publishStepsFit(publishSteps)} unit={partialUnit} />} lead={statusLead} actions={statusActions} emptyText={stepsEmptyText} requiredCount={blockedIssues.length} heading={issueBadgeHeading} rows={hasRequiredPublicationBlock ? issueBadgeRows : []} moreText={hasRequiredPublicationBlock ? issueBadgeMore : undefined} {...optionalBadgeProps} />{jobRunning && <span className="sr-only">{jobView.message}</span>}</dd></div>}
     </dl>
     {categoryFixOpen && categoryId && <CategoryMappingDialog connectionId={card.connection.id} platformName={card.name} categoryId={categoryId} categoryName={categoryName || 'Ürün'} onClose={() => setCategoryFixOpen(false)} onSaved={message => { setValueFixNotice(message) }} />}
     {valueFixOpen && readinessCategoryScope && <MissingValueMappingDialog connectionId={card.connection.id} platformName={card.name} categoryScope={readinessCategoryScope} fixes={valueMappingFixes} onClose={() => setValueFixOpen(false)} onSaved={message => { setValueFixNotice(message); appendNotification({ title: 'Değer Eşlemeleri Kaydedildi', message, kind: 'success', operation: 'Özellik değeri eşleştirme', platformCode: card.connection.platformCode, connectionId: card.connection.id, storeName: card.connection.displayName, target: { href: '/mappings/attributes', label: 'Eşleştirmelere Git' } }) }} />}

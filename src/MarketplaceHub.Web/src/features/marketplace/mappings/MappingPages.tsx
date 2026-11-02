@@ -1,4 +1,4 @@
-// Eşleştirmeler (/mappings/categories, /mappings/attributes).
+// Eşleştirmeler (/mappings/categories).
 import { useRememberedHeight } from '../../../shared/remembered-height'
 import './mapping-design-system.css'
 import { createContext, Fragment, useCallback, useContext, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
@@ -27,12 +27,11 @@ import { autoMatchScore, canonicalKey, valueMatchScore } from '../../../shared/v
 import { attributeValueMappingNeedsSave, isTemplateFilledRow, suggestValueMappings, type ValueMappingSuggestion, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from '../attribute-value-mapping'
 import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues, waitForReferenceSyncJobs } from '../reference-value-sync'
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from '../mapping-platforms'
-import { resolveAttributeMappingRole } from '../mapping-attribute-role'
 import { suggestCategoryMappings } from '../category-suggestions'
 import { viewTabLabel } from '../../../shared/view-tabs'
 import { formatDateTime } from '../../../shared/format-date'
 import { focusOnMount } from '../../../shared/focus'
-import { Badge, Connection, FieldState, MappingStateGlyph, Page, notificationKindFromMessage } from '../shared'
+import { Connection, FieldState, MappingStateGlyph, Page, notificationKindFromMessage } from '../shared'
 import { useDismissable } from '../../../shared/hooks/useDismissable'
 import { brandPlatformConnectionId } from './brand-mapping-state'
 import { BrandReferencePicker, BrandReferenceSelect, brandReferenceKey, lookupBrandReferences, useBrandReferenceLookup, useBrandReferenceSummary, type BrandReferenceItem, type BrandReferenceSlice } from './brand-reference'
@@ -84,8 +83,8 @@ export function SearchableSelect({ label, value, options, placeholder, disabled 
   const listId = `search-select-${label.toLocaleLowerCase('tr-TR').replace(/[^a-z0-9]+/g, '-')}`
   return <label ref={rootRef} className={`searchable-select${open ? ' open' : ''}${disabled ? ' disabled' : ''}`}><span>{label}</span><button type="button" className={triggerClassName ? `searchable-select-trigger ${triggerClassName}` : 'searchable-select-trigger'} aria-expanded={open} aria-haspopup="listbox" disabled={disabled} onClick={toggleMenu}><span>{selected?.label ?? placeholder}</span><UiIcon name="chevronDown" /></button>{open && <div id={listId} className="searchable-select-menu" role="listbox"><div className="searchable-select-search"><UiIcon name="search" /><input ref={focusOnMount} role="combobox" aria-label={`${label} ara`} aria-controls={listId} aria-expanded={open} aria-autocomplete="list" value={query} placeholder={placeholder} onKeyDown={keyDown} onChange={event => { setQuery(event.target.value); if (value) onChange('') }} onBlur={() => window.setTimeout(() => setOpen(false), 120)} /></div><div className="searchable-select-options">{filtered.length ? filtered.map(option => <button type="button" role="option" aria-selected={option.value === value} key={option.value} onMouseDown={event => { event.preventDefault(); choose(option) }}><span>{option.label}</span>{option.description && <small>{option.description}</small>}</button>) : <span className="searchable-select-empty">Eşleşen kayıt bulunamadı.</span>}</div></div>}</label>
 }
-function MappingViewTabs({ active }: { active: 'category' | 'brand' | 'attribute' }) {
-  return <div className="mapping-view-tabs rv-tabs rv-view-tabs" aria-label="Eşleştirme türü" role="tablist"><Link role="tab" aria-selected={active === 'category'} className={active === 'category' ? 'active is-active' : ''} to="/mappings/categories"><span className="rv-tab-label">{viewTabLabel('category', 'Kategori Eşleme')}</span></Link><Link role="tab" aria-selected={active === 'brand'} className={active === 'brand' ? 'active is-active' : ''} to="/mappings/categories?view=brands"><span className="rv-tab-label">{viewTabLabel('brand', 'Marka Eşleme')}</span></Link>{active === 'attribute' && <Link role="tab" aria-selected className="active is-active" to="/mappings/attributes"><span className="rv-tab-label"><span className="rv-tab-text" data-text="Özellik Eşleme">Özellik Eşleme</span></span></Link>}</div>
+function MappingViewTabs({ active }: { active: 'category' | 'brand' }) {
+  return <div className="mapping-view-tabs rv-tabs rv-view-tabs" aria-label="Eşleştirme türü" role="tablist"><Link role="tab" aria-selected={active === 'category'} className={active === 'category' ? 'active is-active' : ''} to="/mappings/categories"><span className="rv-tab-label">{viewTabLabel('category', 'Kategori Eşleme')}</span></Link><Link role="tab" aria-selected={active === 'brand'} className={active === 'brand' ? 'active is-active' : ''} to="/mappings/categories?view=brands"><span className="rv-tab-label">{viewTabLabel('brand', 'Marka Eşleme')}</span></Link></div>
 }
 function wait(milliseconds: number) { return new Promise(resolve => window.setTimeout(resolve, milliseconds)) }
 function displayAttributeName(value: string) { return value.replace(/\[(?:A-)?TDG\][\s_-]*/gi, '').replace(/^\(?(?:A-)?TDG\)?[\s_-]*/gi, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() }
@@ -106,7 +105,6 @@ export function MappingPage() {
   }, [])
   return searchParams.get('view') === 'brands' ? <BrandMappingPage /> : <CategoryMappingWorkspace />
 }
-const supportedAttributeMappingPlatforms = mappingPlatformDefinitions.filter(platform => platform.code === 'TRENDYOL' || platform.code === 'HEPSIBURADA' || platform.code === 'N11' || platform.code === 'PAZARAMA')
 function CategoryMappingWorkspace() {
   const [confirm, confirmDialog] = useConfirmDialog()
   const client = useQueryClient()
@@ -1352,111 +1350,6 @@ export function WebColorMappingCard({ connectionId, categoryScope, snapshotId, l
     {mapped ? (selectedAttribute.values.length > 0 ? <div className="cm-webcolor"><WebColorValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={selectedAttribute} externalAttributeId={remoteAttribute.externalId} needValueIds={needValueIds} /></div> : <p className="cm-empty">Panel {selectedAttribute.name} özelliğinde henüz değer yok.</p>)
       : <p className="cm-empty">Web Color, panel {selectedAttribute.name} değerlerinden gönderilir. Değer eşlemek için önce bağlayın.</p>}
   </>
-}
-export function AttributeMappingPage() {
-  const client = useQueryClient()
-  const [selectedPlatformCode, setSelectedPlatformCode] = useState<MappingPlatformCode>('TRENDYOL')
-  const [connectionId, setConnectionId] = useState('')
-  const [categoryId, setCategoryId] = useState('')
-  const [localId, setLocalId] = useState('')
-  const [externalId, setExternalId] = useState('')
-  const [notice, setNotice] = useState('')
-  const mappingConnection = useMappingNotificationConnection(connectionId)
-  useEffect(() => {
-    if (!notice) return
-    const kind = notificationKindFromMessage(notice)
-    appendNotification({ message: notice, kind, connectionId: mappingConnection.current || undefined, operation: 'Eşleştirme' })
-    document.documentElement.dataset.rvMappingFeedback = kind
-    const timeout = window.setTimeout(() => setNotice(''), kind === 'info' ? 7000 : 5500)
-    return () => window.clearTimeout(timeout)
-  }, [notice, mappingConnection])
-  const connections = useQuery({ queryKey: ['connections', 'attribute-mapping'], queryFn: () => loadAllPages<Connection>('/connections') })
-  const autoSelectedMappingPlatform = useRef(false)
-  useEffect(() => {
-    if (!connections.data || autoSelectedMappingPlatform.current) return
-    autoSelectedMappingPlatform.current = true
-    const items = connections.data.items
-    const selectedConnections = activeMappingConnectionsForPlatform(items, selectedPlatformCode)
-    const platform = selectedConnections.length
-      ? mappingPlatformDefinitions.find(item => item.code === selectedPlatformCode)
-      : supportedAttributeMappingPlatforms.find(item => activeMappingConnectionsForPlatform(items, item.code).length > 0)
-    if (!platform) return
-    const platformConnections = activeMappingConnectionsForPlatform(items, platform.code)
-    setSelectedPlatformCode(platform.code)
-    if (platformConnections.length) setConnectionId(platformConnections[0].id)
-  }, [connections.data, selectedPlatformCode])
-  const categories = useQuery({ queryKey: ['categories', 'attribute-mapping'], queryFn: () => loadAllPages<LocalCategory>('/catalog/categories') })
-  const localAttributes = useQuery({ queryKey: ['attributes', 'mapping'], queryFn: () => loadAllPages<LocalAttribute>('/catalog/attributes') })
-  const categoryRequirements = useQuery({ queryKey: ['category-requirements', categoryId, 'attribute-mapping'], queryFn: () => hubApi<CategoryRequirementView[]>(`/catalog/categories/${categoryId}/attribute-requirements`), enabled: !!categoryId })
-  const categoryMapping = useQuery({ queryKey: ['category-mapping', categoryId, connectionId], queryFn: () => hubApi<CatalogMapping | null>(`/mappings/categories/${categoryId}?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!categoryId && !!connectionId, retry: false })
-  const categoryScope = categoryMapping.data?.externalId ?? ''
-  const references = useQuery({ queryKey: ['reference-attributes', connectionId, categoryScope], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${encodeURIComponent(connectionId)}`), enabled: !!connectionId && !!categoryScope, retry: false })
-  const mapping = useQuery({ queryKey: ['attribute-mapping', localId, connectionId, categoryScope], queryFn: () => hubApi<CatalogMapping | null>(`/mappings/attributes/${localId}?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(categoryScope)}`), enabled: !!localId && !!connectionId && !!categoryScope, retry: false })
-  const sync = useMutation({
-    mutationFn: () => hubApi(`/connections/${connectionId}/reference-sync-jobs?resourceType=CATEGORY_ATTRIBUTES&parentExternalId=${encodeURIComponent(categoryScope)}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
-    onSuccess: async () => {
-      setNotice(`${mappingPlatformLabel(selectedPlatformCode)} kategori özellikleri salt-okunur eşitleme kuyruğuna alındı.`)
-      for (const delay of [500, 1000, 2000, 4000]) {
-        await wait(delay)
-        await client.invalidateQueries({ queryKey: ['reference-attributes', connectionId, categoryScope] })
-      }
-    },
-    onError: reason => setNotice(reason instanceof Error ? reason.message : 'Özellik eşitleme başlatılamadı.')
-  })
-  const save = useMutation({
-    mutationFn: () => {
-      if (!references.data || !localId || !externalId) throw new Error(`Bağlantı, kategori, panel özelliği ve ${mappingPlatformLabel(selectedPlatformCode)} özelliği zorunludur.`)
-      if (categoryRequirements.isLoading) throw new Error('Panel kategori özelliği rolü yükleniyor; eşlemeyi tekrar deneyin.')
-      const localAttribute = localAttributes.data?.items.find(item => item.id === localId)
-      const role = resolveAttributeMappingRole(categoryRequirements.data?.find(item => item.attributeId === localId)?.role, localAttribute ? isOptionAttribute(localAttribute) : false)
-      return hubApi<CatalogMapping>(`/mappings/attributes/${localId}`, { method: 'PUT', headers: mapping.data ? { 'If-Match': `"v${mapping.data.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: references.data.snapshotId, scopeExternalId: categoryScope, externalId, status: 'VERIFIED', role }) })
-    },
-    onSuccess: async value => {
-      setNotice('Özellik eşlemesi doğrulandı ve kategori kapsamında kaydedildi.')
-      setExternalId(value.externalId)
-      await client.invalidateQueries({ queryKey: ['attribute-mapping', localId, connectionId, categoryScope] })
-    },
-    onError: reason => setNotice(mappingSaveErrorMessage(reason, 'Özellik eşlemesi kaydedilemedi.')), onSettled: () => refreshMappingConflicts(client, connectionId)
-  })
-  useEffect(() => { if (mapping.data) setExternalId(mapping.data.externalId) }, [mapping.data])
-  const activeConnections = activeMappingConnectionsForPlatform(connections.data?.items ?? [], selectedPlatformCode)
-  const selectedPlatformLabel = mappingPlatformLabel(selectedPlatformCode)
-  const localLeaves = categories.data?.items.filter(item => item.isActive && item.isLeaf) ?? []
-  const activeAttributes = localAttributes.data?.items.filter(item => item.isActive) ?? []
-  const remoteAttributes = references.data?.items.filter(item => item.isActive) ?? []
-  function selectPlatform(platformCode: MappingPlatformCode) {
-    setSelectedPlatformCode(platformCode)
-    setConnectionId('')
-    setCategoryId('')
-    setLocalId('')
-    setExternalId('')
-    setNotice('')
-  }
-  return <section className="content f3 mapping-page">
-    <div className="page-heading rv-page-head"><div><p className="eyebrow">Eşleştirme Ayarları</p><h1>Özellik Eşlemeleri</h1></div><Badge value="SAFE READ" /></div>
-    {notice && <MessageToast message={notice} onClose={() => setNotice('')} />}
-    <MappingViewTabs active="attribute" />
-    <div className="mapping-category-platform-tabs mapping-platform-tabs rv-tabs rv-view-tabs" role="tablist" aria-label="Özellik eşleştirme pazaryeri">
-      {supportedAttributeMappingPlatforms.map(platform => <button type="button" role="tab" aria-selected={selectedPlatformCode === platform.code} className={`${selectedPlatformCode === platform.code ? 'active is-active' : ''}${activeMappingConnectionsForPlatform(connections.data?.items ?? [], platform.code).length ? '' : ' is-unavailable'}`} title={activeMappingConnectionsForPlatform(connections.data?.items ?? [], platform.code).length ? `${platform.label} özelliği eşlemelerini göster` : `${platform.label} için aktif bağlantı yok`} key={platform.code} onClick={() => selectPlatform(platform.code)}><span className="rv-tab-label">{platformLogoSource(platform.code) && <img className="rv-view-tab-logo" src={platformLogoSource(platform.code)!} alt="" aria-hidden="true" />}{platform.label}</span></button>)}
-    </div>
-    <article className="panel mapping-step">
-      <div className="editor-section-title"><span>1</span><div><h2>Kategori Kapsamını Seçin</h2><p>Özellik kimlikleri seçili ve doğrulanmış {selectedPlatformLabel} yaprak kategorisi kapsamında tutulur.</p></div></div>
-      <div className="mapping-fields">
-        <label>{selectedPlatformLabel} için Aktif Bağlantı<select aria-label={`${selectedPlatformLabel} için aktif bağlantı`} value={connectionId} onChange={event => { setConnectionId(event.target.value); setCategoryId(''); setLocalId(''); setExternalId(''); setNotice('') }}><option value="">Bağlantı Seçin</option>{activeConnections.map(item => <option value={item.id} key={item.id}>{item.displayName} · {item.externalStoreId}</option>)}</select></label>
-        <label>Panel Yaprak Kategorisi<select aria-label="Özellik kapsamı panel kategorisi" value={categoryId} onChange={event => { setCategoryId(event.target.value); setLocalId(''); setExternalId(''); setNotice('') }} disabled={!connectionId}><option value="">Kategori Seçin</option>{localLeaves.map(item => <option value={item.id} key={item.id}>{item.path}</option>)}</select></label>
-      </div>
-      {!activeConnections.length ? <div className="unknown"><strong>{selectedPlatformLabel} bağlantısı gerekli</strong><p>Özellik referanslarını eşleyebilmek için önce aktif bir bağlantı kurun.</p><Link className="button-link" to="/integrations">Entegrasyonlara Git</Link></div> : categoryId && !categoryMapping.isLoading && !categoryMapping.data ? <div className="unknown"><strong>Kategori eşlemesi gerekli</strong><p>Özellikleri almadan önce panel kategorisini {selectedPlatformLabel} yaprak kategorisiyle eşleyin.</p><Link className="button-link" to="/mappings/categories">Kategori Eşlemelerine Git</Link></div> : categoryScope && references.isError ? <div className="unknown"><strong>Güncel özellik listesi yok</strong><p>Seçili kategori için yalnız salt-okunur özellik listesini eşitleyin.</p><button type="button" disabled={sync.isPending} onClick={() => sync.mutate()}>{sync.isPending ? 'Kuyruğa Alınıyor…' : 'Kategori Özelliklerini Eşitle'}</button></div> : null}
-    </article>
-    {references.data && <article className="panel mapping-step">
-      <div className="editor-section-title"><span>2</span><div><h2>Özelliği Eşleyin</h2><p>Bu işlem yalnız yerel eşleme kaydı oluşturur; pazar yerine yazmaz.</p></div></div>
-      <div className="mapping-fields">
-        <label>Panel Özelliği<select aria-label="Panel özelliği" value={localId} onChange={event => { setLocalId(event.target.value); setExternalId(''); setNotice('') }}><option value="">Özellik Seçin</option>{activeAttributes.map(item => <option value={item.id} key={item.id}>{item.name} · {item.dataType}</option>)}</select></label>
-        <label>{selectedPlatformLabel} Kategori Özelliği<select aria-label={`${selectedPlatformLabel} kategori özelliği`} value={externalId} onChange={event => setExternalId(event.target.value)} disabled={!localId || mapping.isLoading}><option value="">Özellik Seçin</option>{remoteAttributes.map(item => <option value={item.externalId} key={item.externalId}>{item.name}{item.isRequired ? ' · Zorunlu' : ''}{item.allowsCustomValue ? ' · Serbest Değer' : ''}</option>)}</select></label>
-      </div>
-      <div className="mapping-action"><span>{remoteAttributes.length.toLocaleString('tr-TR')} özellik · kategori {categoryScope}{mapping.data ? ` · mevcut eşleme v${mapping.data.version}` : ''}</span><button type="button" disabled={!localId || !externalId || save.isPending || mapping.isLoading || categoryRequirements.isLoading} onClick={() => save.mutate()}>{save.isPending ? 'Kaydediliyor…' : mapping.data ? 'Eşlemeyi Güncelle' : 'Eşlemeyi Doğrula ve Kaydet'}</button></div>
-      {mapping.data && localId && <AttributeValueMappingEditor connectionId={connectionId} categoryScope={categoryScope} attribute={activeAttributes.find(item => item.id === localId)!} externalAttributeId={mapping.data.externalId} platformLabel={selectedPlatformLabel} customPanelColorValues={selectedPlatformCode === 'TRENDYOL' && usesCustomPanelColorValue(remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.name ?? '')} marketplaceAllowsFreeText={remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.allowsCustomValue === true} autoSyncMissingValues={selectedPlatformCode === 'HEPSIBURADA' && remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.allowsCustomValue === false} allowReusablePanelValues={selectedPlatformCode === 'HEPSIBURADA'} required={remoteAttributes.find(item => item.externalId === mapping.data!.externalId)?.isRequired === true} />}
-    </article>}
-  </section>
 }
 // `needValueIds`: the panel colours a product's publish check found without a Web Color value. They come first, are
 // marked until each has one (picked here or saved), counted at the top, and the first is brought into view.
