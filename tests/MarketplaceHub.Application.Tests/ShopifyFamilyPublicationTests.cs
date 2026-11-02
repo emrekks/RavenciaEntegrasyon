@@ -33,10 +33,36 @@ public sealed class ShopifyFamilyPublicationTests
 
         Assert.Null(result.Error);
         var plan = result.Plan!;
-        Assert.Equal(["Beden", "Renk"], plan.Options.Select(option => option.Name));
-        Assert.Equal(["L", "XL"], plan.Options[0].Values);
-        Assert.Equal(["Siyah", "Kahverengi"], plan.Options[1].Values);
-        Assert.Equal([("Beden", "XL"), ("Renk", "Kahverengi")], plan.VariantValues[brown[1].VariantId]);
+        // The panel sorts Beden before Renk here; Shopify still gets Renk first (its admin groups variants by it).
+        Assert.Equal(["Renk", "Beden"], plan.Options.Select(option => option.Name));
+        Assert.Equal(["Siyah", "Kahverengi"], plan.Options[0].Values);
+        Assert.Equal(["L", "XL"], plan.Options[1].Values);
+        Assert.Equal([("Renk", "Kahverengi"), ("Beden", "XL")], plan.VariantValues[brown[1].VariantId]);
+    }
+
+    [Fact]
+    public void TheColourOptionGoesFirstAndTheOtherOptionsKeepThePanelOrder()
+    {
+        var variantId = Guid.NewGuid();
+        var row = new ShopifyVariantOptionRow(variantId, "X-1", 0, [new("Boy", 0, "Uzun", 0), new("Beden", 1, "L", 0), new("Color", 2, "Black", 0)]);
+
+        var plan = ShopifyProductPublicationComposer.PlanOptions([row]).Plan!;
+
+        Assert.Equal(["Color", "Boy", "Beden"], plan.Options.Select(option => option.Name));
+        Assert.Equal([("Color", "Black"), ("Boy", "Uzun"), ("Beden", "L")], plan.VariantValues[variantId]);
+    }
+
+    [Fact]
+    public void WithoutAColourOptionThePanelOrderIsKept()
+    {
+        var first = new ShopifyVariantOptionRow(Guid.NewGuid(), "X-1", 0, [new("Kol", 1, "Kısa", 0), new("Beden", 0, "L", 0), new("Web Color", 2, "Siyah", 0)]);
+        var second = new ShopifyVariantOptionRow(Guid.NewGuid(), "X-2", 0, [new("Kol", 1, "Uzun", 1), new("Beden", 0, "XL", 1), new("Web Color", 2, "Siyah", 0)]);
+
+        var plan = ShopifyProductPublicationComposer.PlanOptions([first, second]).Plan!;
+
+        // Web Color is no colour option: it does not jump ahead.
+        Assert.Equal(["Beden", "Kol", "Web Color"], plan.Options.Select(option => option.Name));
+        Assert.Equal([("Beden", "XL"), ("Kol", "Uzun"), ("Web Color", "Siyah")], plan.VariantValues[second.VariantId]);
     }
 
     [Fact]

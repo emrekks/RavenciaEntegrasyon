@@ -271,13 +271,16 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
             .Select((option, index) => new ShopifyOptionValue(option.Key, index, option.Value, variantSortOrder))
             .ToList();
 
+    // Shopify admin groups the variant list by the product's first option, so the colour option (Renk/Color, the
+    // same names the option signature puts first) goes first; the other options keep the panel's order.
     internal static ShopifyOptionPlanResult PlanOptions(IReadOnlyList<ShopifyVariantOptionRow> rows)
     {
         var names = rows.SelectMany(row => row.Values)
             .Where(value => !string.IsNullOrWhiteSpace(value.Option))
             .GroupBy(value => value.Option.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(group => (Name: group.First().Option.Trim(), Sort: group.Min(value => value.OptionSort)))
-            .OrderBy(item => item.Sort).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(item => VariantOptionSignature.IsColorName(item.Name) ? 0 : 1)
+            .ThenBy(item => item.Sort).ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .Select(item => item.Name)
             .ToList();
         if (names.Count > 3)
