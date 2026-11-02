@@ -458,8 +458,9 @@ public sealed record RemoteOperationRef(string ExternalOperationId, string Kind,
 public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, string? ExternalId, string? ErrorCode, bool Retryable, string? Status = null, IReadOnlyList<string>? Reasons = null);
 // UnlistedLinesUnconfirmed: the answer lists refused lines alone (Hepsiburada) but failed as a whole, so a line it
 // leaves out was not shown to be applied. IssueCode/IssueSummary: the lines went through, but something the job must
-// show did not (Shopify: pictures that did not arrive).
-public sealed record RemoteOperationStatus(string ExternalOperationId, string Status, IReadOnlyList<RemoteOperationLine> Lines, bool UnlistedLinesUnconfirmed = false, string? IssueCode = null, string? IssueSummary = null);
+// show did not (Shopify: pictures that did not arrive). ReportedItemCount: how many items the marketplace says the
+// batch holds (Trendyol itemCount), when it says so; more than the lines listed means the answer is not complete yet.
+public sealed record RemoteOperationStatus(string ExternalOperationId, string Status, IReadOnlyList<RemoteOperationLine> Lines, bool UnlistedLinesUnconfirmed = false, string? IssueCode = null, string? IssueSummary = null, int? ReportedItemCount = null);
 public sealed record ProductPublication(Guid ProductId, string PayloadHash, string PayloadJson);
 public sealed record ProductPublicationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt);
 public sealed record ProductApprovalReconciliationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string PayloadHash, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt, string? ExternalOperationId = null);
