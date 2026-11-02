@@ -228,21 +228,15 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         };
     }
 
-    // The period's orders by their real order time (Trendyol's stored time minus its offset), any status.
+    // The period's orders by their order time (a real instant on every platform), any status.
     private IQueryable<PeriodOrder> PeriodOrders(Guid tenantId, Guid[] allowedIds, ReportPeriod period)
     {
-        var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
-        var ahead = MarketplaceStoredClock.TurkeyWallClockAhead;
         var start = period.Start;
         var end = period.End;
-        var scanEnd = period.End + ahead;
         return from order in db.Orders.AsNoTracking()
-               join connection in db.PlatformConnections.AsNoTracking() on new { order.TenantId, Id = order.ConnectionId } equals new { connection.TenantId, connection.Id }
                where order.TenantId == tenantId && allowedIds.Contains(order.ConnectionId)
-                   && order.OrderedAt >= start && order.OrderedAt < scanEnd
-               let realAt = wallClockPlatforms.Contains(connection.PlatformCode) ? order.OrderedAt - ahead : order.OrderedAt
-               where realAt >= start && realAt < end
-               select new PeriodOrder { Order = order, RealAt = realAt };
+                   && order.OrderedAt >= start && order.OrderedAt < end
+               select new PeriodOrder { Order = order, RealAt = order.OrderedAt };
     }
 
     // One row per order. Amount: the order's current packages that are not cancelled (an order whose packages carry

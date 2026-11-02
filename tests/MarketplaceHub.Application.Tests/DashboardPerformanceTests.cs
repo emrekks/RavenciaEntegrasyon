@@ -114,15 +114,6 @@ public sealed class DashboardPerformanceTests
     }
 
     [Fact]
-    public void Trendyol_stored_times_are_three_hours_ahead_and_others_are_real()
-    {
-        Assert.Equal(TimeSpan.FromHours(3), MarketplaceStoredClock.StoredClockAhead("TRENDYOL"));
-        Assert.Equal(TimeSpan.FromHours(3), MarketplaceStoredClock.StoredClockAhead("trendyol"));
-        Assert.Equal(TimeSpan.Zero, MarketplaceStoredClock.StoredClockAhead("HEPSIBURADA"));
-        Assert.Equal(TimeSpan.Zero, MarketplaceStoredClock.StoredClockAhead(null));
-    }
-
-    [Fact]
     public void Performance_queries_group_by_day_store_and_currency_in_the_database()
     {
         using var db = DashboardOrderVisibilityTests.MetadataOnlyContext();

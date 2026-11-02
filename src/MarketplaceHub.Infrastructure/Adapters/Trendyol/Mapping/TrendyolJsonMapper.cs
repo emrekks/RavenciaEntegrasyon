@@ -81,7 +81,7 @@ public static class TrendyolJsonMapper
                 // For newly created packages shipmentPackageStatus may already be
                 // ReadyToShip while status is still Created; the latter is the
                 // authoritative workflow state for the order projection.
-                var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? Instant(package, "orderDate") ?? DateTimeOffset.UnixEpoch; var ordered = Instant(package, "orderDate") ?? modified;
+                var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? OrderDate(package) ?? DateTimeOffset.UnixEpoch; var ordered = OrderDate(package) ?? modified;
                 var invoice = new RemotePackageInvoiceObservation(
                     NullText(package, "invoiceStatus"),
                     NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
@@ -823,7 +823,7 @@ public static class TrendyolJsonMapper
         var orderNumber = Text(claim, "orderNumber");
         if (string.IsNullOrWhiteSpace(orderNumber)) return null;
 
-        var ordered = Instant(claim, "orderDate") ?? Instant(claim, "claimDate") ?? DateTimeOffset.UnixEpoch;
+        var ordered = OrderDate(claim) ?? Instant(claim, "claimDate") ?? DateTimeOffset.UnixEpoch;
         var packageOccurredAt = Instant(claim, "lastModifiedDate") ?? Instant(claim, "claimDate") ?? ordered;
         // This is a partial order projection reconstructed from a return claim.
         // Its claim timestamp can be newer than the original order timestamp,
@@ -1187,6 +1187,14 @@ public static class TrendyolJsonMapper
         }
         return null;
     }
+    // orderDate is Trendyol's "GMT+3" epoch: the Turkey wall-clock time written as if it were UTC, three hours ahead of
+    // the real instant (C13; proven on live 2 Nov 2026: order 11776722829 arrived 19:01:53Z with orderDate 22:01:41Z).
+    // lastModifiedDate, createdDate, claimDate (documented as GMT) and agreedDeliveryDate (23:59 Istanbul) are real
+    // UTC epochs and are read as they are.
+    private static DateTimeOffset? OrderDate(JsonElement value) =>
+        value.TryGetProperty("orderDate", out var item) && item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var milliseconds)
+            ? TurkeyTime.FromTurkeyWallClockEpochMilliseconds(milliseconds)
+            : null;
     private static DateTimeOffset? Instant(JsonElement value, string name) => value.TryGetProperty(name, out var item) && item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out var milliseconds) ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds) : null;
     private static DateTimeOffset? FlexibleInstant(JsonElement value, params string[] names)
     {

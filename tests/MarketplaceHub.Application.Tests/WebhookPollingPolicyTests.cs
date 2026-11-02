@@ -64,11 +64,11 @@ public sealed class WebhookPollingPolicyTests
     [Fact]
     public void AnOrderThePollReadsBeforeItsNotificationIsNotAMiss()
     {
-        // Trendyol order times are stored three hours ahead (Turkey wall time); the cut-off moves with them.
-        var cutoff = WebhookPollingPolicy.MissedOrderCutoff(Now, TimeSpan.FromHours(3));
-        Assert.Equal(Now.AddHours(3).AddMinutes(-10), cutoff);
-        Assert.False(Now.AddHours(3).AddSeconds(-20) <= cutoff);
-        Assert.True(Now.AddHours(3).AddMinutes(-30) <= cutoff);
+        // Order times are real instants on every platform (Trendyol's orderDate is read from its GMT+3 epoch).
+        var cutoff = WebhookPollingPolicy.MissedOrderCutoff(Now);
+        Assert.Equal(Now.AddMinutes(-10), cutoff);
+        Assert.False(Now.AddSeconds(-20) <= cutoff);
+        Assert.True(Now.AddMinutes(-30) <= cutoff);
     }
 
     [Fact]

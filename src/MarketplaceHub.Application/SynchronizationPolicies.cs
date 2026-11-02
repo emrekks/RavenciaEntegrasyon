@@ -817,22 +817,17 @@ public static class TrendyolLookupPolicy
     public static readonly TimeSpan V2MaximumSpan = TimeSpan.FromDays(14);
     public static readonly TimeSpan StreamMargin = TimeSpan.FromDays(6);
 
-    // Order times on Trendyol's stored clock (three hours ahead) as the real instant they mean.
-    private static DateTimeOffset RealOrderedAt(DateTimeOffset storedOrderedAt) => MarketplaceStoredClock.ToReal(storedOrderedAt, "TRENDYOL");
-
     // A known order is read from its own storefront; an unknown one from every storefront, Türkiye first.
     public static IReadOnlyList<string> Storefronts(OrderLookupHint? hint, IReadOnlyList<string> codes) =>
         hint?.StoreFrontCode is { Length: > 0 } code ? [code.Trim().ToUpperInvariant()] : codes;
 
     // The last two weeks for an unknown or recent order, the two weeks from its order date for a
-    // two-to-four-week-old order, and no V2 read at all for an order older than a month. The hint carries the
-    // stored order time (MarketplaceStoredClock), so the order's age is judged on its real instant; the request
-    // window itself still starts from the stored time, the date Trendyol wrote.
+    // two-to-four-week-old order, and no V2 read at all for an order older than a month.
     public static (DateTimeOffset Start, DateTimeOffset End)? V2Window(OrderLookupHint? hint, DateTimeOffset now)
     {
-        if (hint?.OrderedAt is not { } orderedAt || RealOrderedAt(orderedAt) >= now - V2MaximumSpan) return (now - V2MaximumSpan, now);
+        if (hint?.OrderedAt is not { } orderedAt || orderedAt >= now - V2MaximumSpan) return (now - V2MaximumSpan, now);
         var oldest = now - V2History;
-        if (RealOrderedAt(orderedAt) < oldest) return null;
+        if (orderedAt < oldest) return null;
         var start = orderedAt.AddDays(-1);
         if (start < oldest) start = oldest;
         var end = start + V2MaximumSpan;
@@ -857,7 +852,7 @@ public static class TrendyolLookupPolicy
             {
                 var fits = batch.Count == 0
                     || batch.Count < PackageBatchSize
-                        && (RealOrderedAt(batch[0].OrderedAt) >= now - V2MaximumSpan || package.OrderedAt - batch[0].OrderedAt <= V2MaximumSpan - TimeSpan.FromDays(1));
+                        && (batch[0].OrderedAt >= now - V2MaximumSpan || package.OrderedAt - batch[0].OrderedAt <= V2MaximumSpan - TimeSpan.FromDays(1));
                 if (!fits) Flush();
                 batch.Add(package);
             }
@@ -867,40 +862,16 @@ public static class TrendyolLookupPolicy
     }
 
     // A known order V2 cannot serve is read from the stream six days either side of its last
-    // recorded change; an order whose last change is older than the stream keeps is not read. Without a recorded
-    // change the order time stands in, brought back to its real instant like the change times the stream filters by.
+    // recorded change; an order whose last change is older than the stream keeps is not read.
     public static (DateTimeOffset Start, DateTimeOffset End)? StreamWindow(OrderLookupHint? hint, DateTimeOffset now)
     {
-        if ((hint?.LastModifiedAt ?? (hint?.OrderedAt is { } orderedAt ? (DateTimeOffset?)RealOrderedAt(orderedAt) : null)) is not { } anchor) return null;
+        if ((hint?.LastModifiedAt ?? hint?.OrderedAt) is not { } anchor) return null;
         var oldest = now.AddMonths(-TrendyolOrderHistoryPolicy.StreamInitialLookbackMonths);
         if (anchor < oldest || anchor > now) return anchor > now ? (now - StreamMargin, now) : null;
         var start = anchor - StreamMargin;
         var end = anchor + StreamMargin;
         return (start < oldest ? oldest : start, end > now ? now : end);
     }
-}
-
-// Trendyol order times (OrderedAt, ShipmentDueAt) are stored as Turkey wall time labelled UTC, so the stored value
-// is three hours ahead of the real instant. Existing rows are not migrated; every read that compares them with a
-// real instant (day buckets, "late" checks, the webhook miss cut-off) subtracts this offset instead.
-public static class MarketplaceStoredClock
-{
-    public static readonly TimeSpan TurkeyWallClockAhead = TimeSpan.FromHours(3);
-
-    // The platforms whose stored order times carry the offset; queries that cannot call StoredClockAhead use it.
-    public static readonly string[] WallClockPlatforms = ["TRENDYOL"];
-
-    public static TimeSpan StoredClockAhead(string? platformCode) =>
-        platformCode is not null && WallClockPlatforms.Contains(platformCode.Trim().ToUpperInvariant(), StringComparer.Ordinal)
-            ? TurkeyWallClockAhead
-            : TimeSpan.Zero;
-
-    // A real cut-off (now minus a window, a day the user picked) on the platform's stored clock, so a query can
-    // compare the stored order time with it directly: stored >= ToStored(cut-off) means real >= cut-off.
-    public static DateTimeOffset ToStored(DateTimeOffset realInstant, string? platformCode) => realInstant + StoredClockAhead(platformCode);
-
-    // The real instant of a stored order time.
-    public static DateTimeOffset ToReal(DateTimeOffset storedInstant, string? platformCode) => storedInstant - StoredClockAhead(platformCode);
 }
 
 // While a marketplace's order notifications arrive, polling is only the safety net and runs every
@@ -975,18 +946,17 @@ public static class WebhookPollingPolicy
     // order older than this when polling inserted it shows that the notifications did not bring it.
     public static readonly TimeSpan DeliveryGrace = TimeSpan.FromMinutes(10);
 
-    // Trendyol order times are stored as Turkey wall time (three hours ahead of UTC), so the cut-off moves with them.
-    public static DateTimeOffset MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead) => now - DeliveryGrace + storedClockAhead;
+    public static DateTimeOffset MissedOrderCutoff(DateTimeOffset now) => now - DeliveryGrace;
 
     // Only an order placed before the notifications' last delivery is a miss: notifications arrived after it,
     // yet not its own. Orders placed while nothing was delivered (the server was shut for the night, the
     // webhook passive) are an outage, which the silence rule judges; counting them would spend one of the
     // day's two allowed misses every morning. Without any delivery yet nothing counts as missed.
-    public static DateTimeOffset? MissedOrderCutoff(DateTimeOffset now, TimeSpan storedClockAhead, DateTimeOffset? lastReceivedAt)
+    public static DateTimeOffset? MissedOrderCutoff(DateTimeOffset now, DateTimeOffset? lastReceivedAt)
     {
         if (lastReceivedAt is not { } lastDelivery) return null;
         var cutoff = now - DeliveryGrace;
-        return (lastDelivery < cutoff ? lastDelivery : cutoff) + storedClockAhead;
+        return lastDelivery < cutoff ? lastDelivery : cutoff;
     }
 }
 

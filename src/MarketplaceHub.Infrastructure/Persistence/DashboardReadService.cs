@@ -65,17 +65,12 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
     private async Task<IReadOnlyDictionary<string, decimal>> PendingUnitsAsync(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken) =>
         (await PendingUnitsQuery(db, tenantId, now).ToListAsync(cancellationToken)).ToDictionary(x => x.ConnectionId.ToString("D"), x => x.Units);
 
-    // Pending orders whose ship-by time has passed. Trendyol stores that time three hours ahead (Turkey wall time
-    // labelled UTC), so its orders are late only once the stored value is behind now plus that offset.
-    internal static IQueryable<Order> LateOrderMetricsQuery(AppDbContext db, Guid tenantId, DateTimeOffset now)
-    {
-        var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
-        var wallClockNow = now + MarketplaceStoredClock.TurkeyWallClockAhead;
-        return PendingOrderMetricsQuery(db, tenantId, now).Where(x => DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus)
+    // Pending orders whose ship-by time has passed. Every platform's ship-by time is a real instant (Trendyol's
+    // agreedDeliveryDate is a plain UTC epoch: 23:59 Istanbul is stored as 20:59Z).
+    internal static IQueryable<Order> LateOrderMetricsQuery(AppDbContext db, Guid tenantId, DateTimeOffset now) =>
+        PendingOrderMetricsQuery(db, tenantId, now).Where(x => DashboardMetricPolicy.LateOrderStatuses.Contains(x.DerivedStatus)
             && x.ShipmentDueAt != null
-            && (x.ShipmentDueAt < now
-                || (x.ShipmentDueAt < wallClockNow && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)))));
-    }
+            && x.ShipmentDueAt < now);
 
     // Returns waiting for the seller's decision, with the same Hepsiburada history rule as the return list: a
     // Hepsiburada claim whose order is older than the return history the marketplace still serves is not listed.
@@ -285,8 +280,6 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
     // return its statement has not refunded takes nothing off, as in the reports (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
     internal static IQueryable<PerformanceOrderRow> PerformanceOrders(AppDbContext db, Guid tenantId, DashboardPerformancePeriod period, string timezone, bool hourly = false)
     {
-        var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
-        var ahead = MarketplaceStoredClock.TurkeyWallClockAhead;
         var cancelled = DashboardRevenuePolicy.CancelledStatuses;
         var returnedStatuses = DashboardRevenuePolicy.ReturnedStatuses;
         var excludedConnections = DashboardRevenuePolicy.ExcludedConnectionStatuses;
@@ -296,7 +289,6 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var previousEnd = period.PreviousEnd;
         var currentStart = period.CurrentStart;
         var currentEnd = period.CurrentEnd;
-        var scanEnd = period.CurrentEnd + ahead;
         var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
         var lines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
         var allocations = db.PackageLineAllocations.AsNoTracking().Where(allocation => allocation.TenantId == tenantId);
@@ -309,10 +301,9 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                    && !excludedConnections.Contains(connection.Status)
                    // Test-environment stores (Hepsiburada SIT and the like) are not sales: the reports leave them out too.
                    && connection.Environment.ToUpper() == "PRODUCTION"
-                   && order.OrderedAt >= previousStart && order.OrderedAt < scanEnd
                    && !cancelled.Contains(order.DerivedStatus)
                    && (order.NetAmount > 0 || order.GrossAmount > 0)
-               let realAt = wallClockPlatforms.Contains(connection.PlatformCode) ? order.OrderedAt - ahead : order.OrderedAt
+               let realAt = order.OrderedAt
                where (realAt >= previousStart && realAt < previousEnd) || (realAt >= currentStart && realAt < currentEnd)
                let priced = currentPackages.Any(package => package.OrderId == order.Id && (package.NetAmount > 0 || package.GrossAmount > 0))
                // DashboardRevenuePolicy.Amount: what the customer paid plus the marketplace's own discount on the lines that

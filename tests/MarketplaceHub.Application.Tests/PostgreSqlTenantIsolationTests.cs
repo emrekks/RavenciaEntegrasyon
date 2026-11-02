@@ -3270,6 +3270,52 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // The Trendyol order-time correction moves only Trendyol order times back three hours, and the recorded migration
+    // (its history row is written with it) changes nothing when its SQL runs again.
+    [PostgreSqlFact]
+    public async Task CorrectTrendyolOrderTimesMigration_MovesOnlyTrendyolOrderTimesAndRunsOnce()
+    {
+        var tenant = NewTenant("ty-order-time-correction");
+        var trendyol = NewQuestionConnection(tenant);
+        var shopify = NewQuestionConnection(tenant);
+        shopify.PlatformCode = "SHOPIFY";
+        var storedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-1).ToUnixTimeSeconds());
+        var trendyolOrder = NewInvoiceTestOrder(tenant.Id, trendyol.Id, Guid.CreateVersion7(), "ty-time-1", isReturnClaim: false, fixture.Now);
+        var shopifyOrder = NewInvoiceTestOrder(tenant.Id, shopify.Id, Guid.CreateVersion7(), "sh-time-1", isReturnClaim: false, fixture.Now);
+        foreach (var order in new[] { trendyolOrder, shopifyOrder }) { order.OrderedAt = storedAt; order.ShipmentDueAt = storedAt.AddDays(1); order.LastRemoteModifiedAt = storedAt; order.Version = 1; }
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(trendyol, shopify);
+            seedDb.Orders.AddRange(trendyolOrder, shopifyOrder);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                // The correction itself, kept to this test's tenant so the shared database's other rows stay as they are.
+                var tenantShift = MarketplaceHub.Infrastructure.Persistence.Migrations.CorrectTrendyolOrderTimes.Shift.TrimEnd().TrimEnd(';') + " AND o.\"TenantId\" = {0}";
+                await db.Database.ExecuteSqlRawAsync(tenantShift, tenant.Id);
+                // The fixture database is migrated, so the guarded migration SQL finds itself recorded and does nothing.
+                foreach (var operation in new MarketplaceHub.Infrastructure.Persistence.Migrations.CorrectTrendyolOrderTimes().UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>())
+                    await db.Database.ExecuteSqlRawAsync(operation.Sql);
+            }
+
+            await using var check = fixture.CreateContext();
+            var orders = await check.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+            var corrected = orders[trendyolOrder.Id];
+            Assert.Equal((storedAt.AddHours(-3), storedAt.AddDays(1), storedAt, 2L), (corrected.OrderedAt, corrected.ShipmentDueAt!.Value, corrected.LastRemoteModifiedAt, corrected.Version));
+            var untouched = orders[shopifyOrder.Id];
+            Assert.Equal((storedAt, 1L), (untouched.OrderedAt, untouched.Version));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     // The repair of the lines the recorded event left without an allocation: only a line of a completed Trendyol order
     // with one Delivered package whose allocations carry one event; run twice, it adds each allocation once.
     [PostgreSqlFact]

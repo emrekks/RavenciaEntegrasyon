@@ -495,18 +495,11 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (!string.IsNullOrWhiteSpace(cargo) && cargo != "ALL")
             query = query.Where(x => currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.CargoProviderExternalId == cargo));
 
-        // Sipariş Tarihi is the real order time: Trendyol stores its order times three hours ahead of the real instant
-        // (MarketplaceStoredClock), so its stored time is brought back before it meets the day the user picked, as the
-        // dashboard and the reports do. Without it the evening orders of one day counted for the next.
-        if (options.DateFrom is not null || options.DateTo is not null)
-        {
-            var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
-            var ahead = MarketplaceStoredClock.TurkeyWallClockAhead;
-            if (options.DateFrom?.ToUniversalTime() is { } dateFrom)
-                query = query.Where(x => (db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)) ? x.OrderedAt - ahead : x.OrderedAt) >= dateFrom);
-            if (options.DateTo?.ToUniversalTime() is { } dateTo)
-                query = query.Where(x => (db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)) ? x.OrderedAt - ahead : x.OrderedAt) <= dateTo);
-        }
+        // Sipariş Tarihi is the real order time on every platform (Trendyol's orderDate is read from its GMT+3 epoch).
+        if (options.DateFrom?.ToUniversalTime() is { } dateFrom)
+            query = query.Where(x => x.OrderedAt >= dateFrom);
+        if (options.DateTo?.ToUniversalTime() is { } dateTo)
+            query = query.Where(x => x.OrderedAt <= dateTo);
         // A line cancelled in the range: at the marketplace's time, or when the panel saw it if that time is unknown.
         if (options.CancelFrom is not null || options.CancelTo is not null)
         {
@@ -2215,13 +2208,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             query = query.Where(x => db.ReturnLines.Any(returnLine => returnLine.TenantId == x.TenantId && returnLine.ClaimId == x.Id && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.Id == returnLine.OrderLineId && ((line.Barcode != null && line.Barcode.Contains(barcode)) || line.Sku.Contains(barcode)))));
         var reason = options.Reason?.Trim();
         if (!string.IsNullOrWhiteSpace(reason)) query = query.Where(x => x.ReasonCode == reason || (x.ReasonText != null && x.ReasonText.Contains(reason)));
-        // The order's real time meets the picked day, as on the order list (Trendyol stores it ahead, MarketplaceStoredClock).
-        var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
-        var ahead = MarketplaceStoredClock.TurkeyWallClockAhead;
-        if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId
-            && (db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)) ? order.OrderedAt - ahead : order.OrderedAt) >= dateFrom));
-        if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId
-            && (db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)) ? order.OrderedAt - ahead : order.OrderedAt) <= dateTo));
+        if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt >= dateFrom));
+        if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt <= dateTo));
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)
