@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { useConfirmDialog } from '../../shared/components'
 import { mappingSaveErrorMessage } from './mappings/mapping-refresh'
-import { changeLine, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type Conflicts, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
+import { changeLine, choicePreview, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type Conflicts, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
 import './mapping-conflicts-panel.css'
 
 // Value mappings worth a look: a panel value mapped to several marketplace values in one category
@@ -192,19 +192,35 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
             const choosable = crossConflictAttribute(conflict) !== ''
             const selected = picked[rowKey] ?? ''
             const selectedName = conflict.options.find(option => option.externalId === selected)?.name
-            return <li key={rowKey}>
+            const choose = (externalId: string) => setPicked(value => ({ ...value, [rowKey]: externalId }))
+            // Arrow keys move the choice like any radio group.
+            const step = (index: number, delta: number, group: HTMLElement | null) => {
+              const next = conflict.options[(index + delta + conflict.options.length) % conflict.options.length]
+              choose(next.externalId)
+              group?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[conflict.options.indexOf(next)]?.focus()
+            }
+            return <li key={rowKey} className="mc-cross-row">
               <div className="mapping-conflict-head"><strong>{conflict.localValueName}</strong><span>{conflict.attributeName}</span></div>
-              <div className="mapping-conflict-options is-info is-choosable" role="group" aria-label={`${conflict.localValueName} için kullanılacak ${platformLabel} değeri`}>
-                {conflict.options.map(option => <button type="button" key={option.externalId} className={selected === option.externalId ? 'is-selected' : undefined} aria-pressed={selected === option.externalId} disabled={busyKey !== '' || !choosable}
-                  onClick={() => setPicked(value => ({ ...value, [rowKey]: value[rowKey] === option.externalId ? '' : option.externalId }))}
-                  title={option.scopes?.length ? option.scopes.map(scope => scope.categoryName).join(', ') : undefined}>
-                  {option.name} <small>{option.categories} kategori</small>{option.externalId === conflict.templateExternalId ? <em>Şablon</em> : null}
-                </button>)}
-                <button type="button" className="mapping-conflict-apply" disabled={busyKey !== '' || !selected} onClick={() => void applyEverywhere(conflict, selected)}
-                  title={selectedName ? `Bütün kategorilerde “${selectedName}” kullanılsın` : 'Önce bir değer seçin'}>
-                  {busyKey === rowKey ? 'Kaydediliyor…' : 'Hepsinde Bunu Kullan'}
-                </button>
+              <div className="mc-choice" role="radiogroup" aria-label={`${conflict.localValueName} için kullanılacak ${platformLabel} değeri`}>
+                {conflict.options.map((option, index) => {
+                  const checked = selected === option.externalId
+                  return <button type="button" role="radio" key={option.externalId} aria-checked={checked} tabIndex={checked || (!selected && index === 0) ? 0 : -1} disabled={busyKey !== '' || !choosable}
+                    onClick={() => choose(option.externalId)}
+                    onKeyDown={event => {
+                      if (event.key === 'ArrowRight' || event.key === 'ArrowDown') { event.preventDefault(); step(index, 1, event.currentTarget.parentElement) }
+                      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); step(index, -1, event.currentTarget.parentElement) }
+                    }}
+                    title={option.scopes?.length ? option.scopes.map(scope => scope.categoryName).join(', ') : undefined}>
+                    {checked && <svg className="mc-choice-check" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3.5 8.5 3 3 6-7" /></svg>}
+                    <span className="mc-choice-name">{option.name}</span><small>{option.categories} kategori</small>{option.externalId === conflict.templateExternalId ? <em>Şablon</em> : null}
+                  </button>
+                })}
               </div>
+              <button type="button" className={`mc-apply${selected ? '' : ' secondary'}`} disabled={busyKey !== '' || !selected} onClick={() => void applyEverywhere(conflict, selected)}
+                title={selectedName ? `Bütün kategorilerde “${selectedName}” kullanılsın` : 'Önce bir değer seçin'}>
+                {busyKey === rowKey ? 'Kaydediliyor…' : 'Hepsinde Bunu Kullan'}
+              </button>
+              {selectedName && <p className="mc-choice-preview" aria-live="polite">{choicePreview(conflict, selected, selectedName)}</p>}
             </li>
           })}
         </ul>
