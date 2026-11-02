@@ -29,6 +29,22 @@ export function selectionsDiffer(selections: ReferencePanelSelections, saved: Re
   return [...new Set([...Object.keys(saved), ...Object.keys(selections)])].some(externalId => !sameIds(selections[externalId] ?? [], saved[externalId] ?? []))
 }
 
+// The server's pairs changed under an open value table (Tüm Değerleri Eşle saved some, or another window did): the
+// panel values the user has not touched since the table was filled follow the server, the ones they changed keep their
+// choice. Without this the table kept its first copy, showed the saved values as "Seçin…" and its Kaydet removed them
+// again (2 Nov 2026, n11 Tunik Beden).
+export function rebaseSelections(selections: ReferencePanelSelections, baseline: ReferencePanelSelections, next: ReferencePanelSelections): ReferencePanelSelections {
+  const targetsOf = (grouped: ReferencePanelSelections, localId: string) => Object.keys(grouped).filter(externalId => grouped[externalId].includes(localId))
+  const localIds = new Set([selections, baseline, next].flatMap(grouped => Object.values(grouped).flat()))
+  const result: ReferencePanelSelections = {}
+  for (const localId of localIds) {
+    const chosen = targetsOf(selections, localId)
+    const kept = sameIds(chosen, targetsOf(baseline, localId)) ? targetsOf(next, localId) : chosen
+    for (const externalId of kept) result[externalId] = [...(result[externalId] ?? []), localId]
+  }
+  return result
+}
+
 // What saving a draft sends: removals of saved pairs no longer chosen, then the chosen pairs that are new or were
 // saved against an older reference snapshot. Values the marketplace list no longer has are skipped.
 export function valueDraftOperations(draft: ValueDraft): ValueDraftOperation[] {

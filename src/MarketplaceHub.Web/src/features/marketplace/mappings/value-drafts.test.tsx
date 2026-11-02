@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, click, render, type } from '../../../test/render'
-import { groupSavedSelections, runInBatches, selectionsDiffer, valueDraftOperations } from './value-drafts'
+import { groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations } from './value-drafts'
 import { ValuePicker, pickerOptions, rankPickerMatches } from './ValuePicker'
 
 afterEach(cleanup)
@@ -22,6 +22,16 @@ describe('value drafts', () => {
     const grouped = groupSavedSelections(saved)
     expect(selectionsDiffer({ r1: ['red'], r2: ['navy'] }, grouped)).toBe(false)
     expect(selectionsDiffer({ r1: ['red'] }, grouped)).toBe(true)
+  })
+
+  it('lets untouched values follow the server and keeps the ones the user changed', () => {
+    const baseline = { r1: ['red'] }
+    const server = { r1: ['red'], r2: ['navy'], r4: ['blue'] }
+    // the user moved red to r3 and cleared nothing else; the server added navy and blue meanwhile
+    expect(rebaseSelections({ r3: ['red'] }, baseline, server)).toEqual({ r3: ['red'], r2: ['navy'], r4: ['blue'] })
+    expect(rebaseSelections(baseline, baseline, server)).toEqual(server)
+    // a value the user picked themselves is not overwritten by a different server pair
+    expect(rebaseSelections({ r1: ['red'], r5: ['blue'] }, baseline, server)).toEqual({ r1: ['red'], r5: ['blue'], r2: ['navy'] })
   })
 
   it('attempts every request and reports the refused ones', async () => {
