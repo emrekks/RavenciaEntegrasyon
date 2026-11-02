@@ -45,9 +45,8 @@ export function publishIssueTipLines(row: PublishIssueRow) {
   return lines.length ? lines : row.detail ? [row.detail] : []
 }
 
-// The chip's text: its title, or for a value gap "Web Color eşleşmemiş: Mürdüm, Kiremit" (the first three, then "+N").
+// The chip's text is the field's name only ("Kalınlık", "Web Color"); the values without a marketplace value are said
+// by its tooltip and accessible name.
 export function publishIssueChipText(row: PublishIssueRow) {
-  const values = row.values?.filter(Boolean) ?? []
-  if (!values.length) return row.title
-  return `${row.title} eşleşmemiş: ${values.slice(0, 3).join(', ')}${values.length > 3 ? ` +${values.length - 3}` : ''}`
+  return row.title
 }
