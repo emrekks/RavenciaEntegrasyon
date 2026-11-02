@@ -140,3 +140,77 @@
   /* the tool buttons wrap to a second row instead of running off the window's edge */
   html body .app-shell .panel.mapping-step.cm-card .cm-actions { flex-wrap: wrap; overflow-x: visible; }
 }
+
+/* ---------- Entegrasyonlar / Platformlar ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Connection cards two to a row (one each below 900px), and the page title keeps Filtrele / Ekle on its right
+     (the title was pushed to the right edge above the buttons); the doubled classes outrank the shell's stretch rule. */
+  html body .app-shell.stitch-shell main .integrations-reference-page .integration-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html body .app-shell.stitch-shell main section.content > :is(.integration-reference-heading.integration-reference-heading, .mapping-reference-heading.mapping-reference-heading) { flex-direction: row; align-items: flex-end !important; justify-content: space-between; }
+  html body .app-shell.stitch-shell main section.content > :is(.integration-reference-heading.integration-reference-heading, .mapping-reference-heading.mapping-reference-heading) > div:first-child { flex: 1 1 auto; }
+  html body .app-shell.stitch-shell main section.content > :is(.integration-reference-heading.integration-reference-heading, .mapping-reference-heading.mapping-reference-heading) > :is(.integration-heading-actions, .mapping-reference-heading-actions) { flex: none; width: auto; justify-content: flex-end; }
+  html body .app-shell.stitch-shell main section.content > :is(.integration-reference-heading.integration-reference-heading, .mapping-reference-heading.mapping-reference-heading) > :is(.integration-heading-actions, .mapping-reference-heading-actions) > * { white-space: nowrap; }
+  html body .app-shell.stitch-shell main .integrations-reference-page .reference-menu-trigger { width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-close { width: 36px; min-width: 36px; height: 36px; min-height: 36px; }
+}
+/* Connection detail below 861px (above it the desktop side menu fits): the section tabs share one row without
+   scrolling (icons off, Araçlar was cut off), the three overview facts stand side by side, and each data flow is one
+   row under the desktop column heads (Akış, Durum, Son Başarılı) instead of four stacked lines. */
+@media (min-width: 761px) and (max-width: 860px) {
+  html body .app-shell.stitch-shell main .cs-workspace .cs-nav { overflow-x: hidden; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-nav > button { display: inline-flex; flex: 1 1 auto; justify-content: center; min-width: 0; padding: 0 8px; white-space: nowrap; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-nav > button > :is(svg, .ui-icon) { display: none; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-stats > div { border-top: 0; border-left: 1px solid var(--rv-color-border); }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-stats > div:first-child { border-left: 0; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px 92px; grid-template-areas: none; gap: 14px; padding: 6px 16px; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow > * { grid-area: auto; grid-column: auto; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-frow.cs-frow:not(.is-head) > .cs-ftime { padding-left: 0; }
+  html body .app-shell.stitch-shell main .cs-workspace .cs-frow.is-head { display: grid; }
+}
+
+/* ---------- Eşleştirmeler ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Saved mappings: the desktop table fitted to the card (it was 900px wide and scrolled sideways); the platform shows
+     as its logo like on phones, the marketplace path wraps. */
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table { overflow-x: visible; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table table { width: 100%; min-width: 0; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table :is(th, td) { padding-inline: 12px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(1) { width: 18%; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table.is-brand th:nth-child(1) { width: auto; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(2) { width: 56px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(4) { width: 92px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(5) { width: 228px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table.is-brand th:nth-child(5) { width: 96px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table td:nth-child(2) .ms-platform { display: inline-flex; align-items: center; gap: 0; min-width: 0; font-size: 0; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table td:nth-child(2) .ms-platform img { width: 22px; height: 22px; }
+  /* its platform tabs take their own row (the last ones were cut off), search and A-Z under them at 36px */
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .rv-tabs { grid-column: 1 / -1; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > input { width: 100%; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .mapping-sort-button { width: 64px; min-width: 64px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > :is(input, .mapping-sort-button) { height: 36px !important; min-height: 36px !important; }
+
+  /* New category / brand mapping: panel side, link and marketplace side on one row as on desktop. */
+  html body .app-shell.stitch-shell main section.mapping-page :is(.mapping-category-builder .mapping-reference-grid, .brand-mapping-pair-grid) { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); align-items: end; }
+  html body .app-shell.stitch-shell main section.mapping-page :is(.mapping-category-builder .mapping-reference-grid > .mapping-reference-local, .brand-mapping-pair-grid > .mapping-side.local) { grid-column: 1; grid-row: 1; }
+  html body .app-shell.stitch-shell main section.mapping-page :is(.mapping-category-builder .mapping-reference-grid, .brand-mapping-pair-grid) > .mapping-link-rail { grid-column: 2; grid-row: 1; align-self: end; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > :not(.mapping-reference-local):not(.mapping-link-rail),
+  html body .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-side.remote { grid-column: 3; grid-row: 1; }
+  /* the brand count beside Senkronize Et / Eşleştirmeyi Kaydet instead of centred over them */
+  html body .app-shell.stitch-shell main section.mapping-page .brand-reference-action { flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+  html body .app-shell.stitch-shell main section.mapping-page .brand-reference-action > .brand-reference-buttons { flex: none; }
+
+  /* Panel brands and attribute records three to a row. */
+  html body .app-shell.stitch-shell main section.mapping-page :is(.brand-library-list, .panel-attribute-records) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ---------- Ayarlar ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Label designer: the properties panel's Genel / Yazı / Barkod tabs fit its 237px column (Barkod was cut off); the
+     tab rule sets padding with !important, hence the repeated classes. */
+  html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-itabs > button { flex: 1 1 auto; min-width: 0; padding: 0 8px !important; }
+  html body .app-shell.stitch-shell main .ss-page .ss-itabs .rv-tab-label > svg { display: none; }
+  /* Small buttons and chips are 36px touch targets (the 28px small buttons of Veri, the 26px label field chips, the 34px theme picks). */
+  html body .app-shell.stitch-shell main .ss-page :is(.ss-btn.is-xs, .ss-fchip, .ss-th-pick) { min-height: 36px; }
+}
