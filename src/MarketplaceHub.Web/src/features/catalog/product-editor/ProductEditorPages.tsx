@@ -926,7 +926,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   // Until the product is in and this open has read the card's own and its colour family's statuses, the card is masked:
   // a status cached from an earlier open, or a family not read yet, would show "Zaten yayında" or "Kısmen yayında · 1/8"
   // for a moment and then change ("değer flaşı yok").
-  const settling = pageSettling || (card.mode === 'PUBLISH' && Boolean(productId) && (!publication.isFetchedAfterMount || familyStatuses.some(status => !status.isFetchedAfterMount)))
+  const statusSettling = pageSettling || (card.mode === 'PUBLISH' && Boolean(productId) && (!publication.isFetchedAfterMount || familyStatuses.some(status => !status.isFetchedAfterMount)))
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
   // card.code is lower case (it also names the logo tone); the platform code decides the Shopify-only checks.
   const isShopifyCard = card.connection.platformCode.trim().toUpperCase() === 'SHOPIFY'
@@ -943,8 +943,8 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     ? requiredShopifyCapabilities.filter(code => !shopifyWriteCapabilities.data?.some(capability => capability.code === code && capability.supportLevel.toUpperCase() === 'SUPPORTED' && capability.verifiedForConnection))
     : []
   useEffect(() => {
-    if (!settling && alreadyPublished && selected) onDeselect()
-  }, [alreadyPublished, onDeselect, selected, settling])
+    if (!statusSettling && alreadyPublished && selected) onDeselect()
+  }, [alreadyPublished, onDeselect, selected, statusSettling])
   const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
   const { view: jobView, cancel: cancelJob } = usePublicationJobInline(publication.data?.lastJobId, productId, card.connection.id, {
     onCancelled: status => onFeedback({ title: status?.trim().toUpperCase() === 'CANCELLED' ? 'Yayın İşi Durduruldu' : 'Durdurma İstendi', message: publicationCancelMessage(platformName, status), kind: 'info' }),
@@ -965,6 +965,10 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const optionalMappingWarnings = mappingReadinessEnabled ? mappingReadiness.data?.optionalWarnings ?? [] : []
   const mappingCheckFailed = mappingReadinessEnabled && mappingReadiness.isError
   const mappingCheckPending = mappingReadinessEnabled && mappingReadiness.isPending
+  // The card shows its state once, when everything it rests on is in: the publish statuses (also the colour family's), the
+  // editor's product and category requirements, the mapping check and (Shopify) the write permissions. Until then it is
+  // masked ("Yayın durumu yükleniyor"), so no first state turns into another a moment later.
+  const settling = statusSettling || mappingCheckPending || shopifyCapabilityCheckPending
   const valueMappingFixes = mappingReadinessEnabled ? fixableValueMappings(mappingReadiness.data) : []
   const readinessCategoryScope = mappingReadinessEnabled ? mappingReadiness.data?.categoryScope : undefined
   const [valueFixOpen, setValueFixOpen] = useState(false)
@@ -1443,7 +1447,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     void productToEdit.refetch().finally(() => setReseedRequest(value => value + 1))
   }
 
-  useEffect(() => {
+  // Layout effects: the saved Web Color choice and the variant options are in before the first paint, so the publish
+  // cards never show a check made without them.
+  useLayoutEffect(() => {
     const product = seedProduct
     if ((!editProductId && !duplicateProductId) || !product || !webColorRequirement || requirements.isLoading) return
     const productKey = editorSeedKey(editProductId ? 'edit' : 'copy', product.id, product.version, editorDataStamp(product.variants))
@@ -1454,7 +1460,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setManualWebColorValueId(savedManualColor)
   }, [duplicateProductId, editProductId, requirements.isLoading, seedProduct, webColorRequirement])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const product = seedProduct
     if ((!editProductId && !duplicateProductId) || !product || !allRequirements.length || requirements.isLoading) return
     const productKey = editorSeedKey(editProductId ? 'edit' : 'copy', product.id, product.version, editorDataStamp(product.variants))
@@ -3409,7 +3415,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               categoryId={form.categoryId}
               categoryName={leafCategories.find(item => item.id === form.categoryId)?.name ?? ''}
               selected={selectedChannelIds.includes(card.connection.id)}
-              settling={editorHydrating}
+              settling={editorHydrating || (Boolean(form.categoryId) && requirements.isLoading)}
               productChecks={productChecks}
               selectedAttributes={publicationAttributeSelections}
               variantMediaWarning={variantsWithoutMediaCount > 0 ? `${variantRows.length} varyanttan ${variantsWithoutMediaCount} tanesine görsel seçilmedi. Varyant tablosundan veya “Seçeneklere görsel ata” ile görsel atayın.` : undefined}

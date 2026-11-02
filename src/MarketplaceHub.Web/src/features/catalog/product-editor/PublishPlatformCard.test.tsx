@@ -10,7 +10,7 @@ const apiState = vi.hoisted(() => ({ pending: new Map<string, (value: unknown) =
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
   const respond = (path: string) => {
-    if (path.includes('/publication-status/')) return new Promise(resolve => apiState.pending.set(path, resolve))
+    if (path.includes('/publication-status/') || path.startsWith('/mappings/categories/')) return new Promise(resolve => apiState.pending.set(path, resolve))
     return Promise.resolve(null)
   }
   return { ...original, hubApi: vi.fn(respond), hubPoll: vi.fn(respond) }
@@ -26,10 +26,10 @@ let client: QueryClient
 
 const card = { code: 'trendyol', name: 'Trendyol', initial: 'T', tone: 'trendyol', mode: 'PUBLISH' as const, connection: { id: 'c1', platformCode: 'TRENDYOL', displayName: 'Mağaza', externalStoreId: '930112', status: 'ACTIVE' } }
 
-async function render(props: { familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }> } = {}) {
+async function render(props: { familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }>; categoryId?: string } = {}) {
   await act(async () => {
     root.render(<QueryClientProvider client={client}><MemoryRouter>
-      <PublishPlatformCard card={card} selected={props.selected ?? false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} categoryId="" productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onBlockedChange={props.onBlockedChange} onFeedback={vi.fn()} />
+      <PublishPlatformCard card={card} selected={props.selected ?? false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} categoryId={props.categoryId ?? ''} productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onBlockedChange={props.onBlockedChange} onFeedback={vi.fn()} />
     </MemoryRouter></QueryClientProvider>)
   })
 }
@@ -79,6 +79,19 @@ describe('PublishPlatformCard first frames', () => {
     await answer('p2', { actualStatus: 'UNKNOWN' })
     expect(article().classList.contains('is-settling')).toBe(false)
     expect(container.textContent).toContain('1/2 renk yayında')
+  })
+
+  it('stays masked until the mapping check is in, then shows its state once', async () => {
+    await render({ categoryId: 'c1' })
+    await answer('p1', { actualStatus: 'UNKNOWN' })
+    // The status is in but the mapping check is not: no provisional state ("Yayın için seçilmedi") to change later.
+    expect(article().classList.contains('is-settling')).toBe(true)
+    expect(subtitle()).toBe('Yayın durumu yükleniyor')
+    const mappingKey = [...apiState.pending.keys()].find(path => path.startsWith('/mappings/categories/c1'))!
+    await act(async () => { apiState.pending.get(mappingKey)!(null); apiState.pending.delete(mappingKey); await new Promise(resolve => setTimeout(resolve, 10)) })
+    expect(article().classList.contains('is-settling')).toBe(false)
+    expect(subtitle()).toBe('Zorunlu eksikler giderilmeden seçilemez')
+    expect(container.querySelector('.publish-issue-trigger')?.getAttribute('title')).toBe('Yayın için zorunlu eksik')
   })
 
   it('stays masked while the product itself is loading', async () => {
