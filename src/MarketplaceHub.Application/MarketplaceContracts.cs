@@ -1308,8 +1308,8 @@ public sealed record OrderSummaryView(
     int Undelivered = 0,
     // Pending orders past their ship-by time within the same filters (the Geciken tab).
     int Late = 0,
-    // Micro-export orders within the same filters (any tab), and their count per country (invoice address, else the
-    // storefront); null when only some tabs were asked for.
+    // Micro-export orders within the same filters in the one tab asked for under micro=true (the card asks for PENDING),
+    // and their count per country (invoice address, else the storefront); 0 and null for any other request.
     int MicroExport = 0,
     IReadOnlyDictionary<string, int>? MicroExportCountries = null);
 public sealed record OrderLineView(
