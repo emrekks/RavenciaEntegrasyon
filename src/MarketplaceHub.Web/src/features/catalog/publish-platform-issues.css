@@ -36,6 +36,9 @@
 /* The explanation of a missing item may extend past the card, so the card no longer clips its content. */
 .publish-platform-card.publish-platform-card { overflow: visible; }
 .publish-platform-card.publish-platform-card:hover, .publish-platform-card.publish-platform-card:focus-within { position: relative; z-index: 6; }
+/* A card whose gap list is open stays above its neighbours even when the pointer moves onto another card (that card is
+   raised on hover to 6), so the open list is never covered. */
+.publish-platform-card.publish-platform-card:has(.publish-issue-trigger[aria-expanded="true"]) { position: relative; z-index: 8; }
 .publish-platform-card.publish-platform-card > .publish-platform-card-head { border-radius: 11px 11px 0 0; }
 .publish-platform-card.publish-platform-card > :last-child { border-bottom-left-radius: 11px; border-bottom-right-radius: 11px; }
 
