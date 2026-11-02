@@ -27,9 +27,10 @@ export function publishIssueChips(rows: readonly PublishIssueRow[], optionalRows
 
 // The lines of a mapping gap's tooltip, read from the publish check's own finding (the single source the window also
 // reads): a field with no mapping, a mapping on an older list, a product with no value, or the gap's own words.
-export function attributeIssueTip(issue: { attribute: string; detail: string; state?: string; panelAttribute?: string }): string[] {
+export function attributeIssueTip(issue: { attribute: string; detail: string; state?: string; panelAttribute?: string; fieldName?: string }): string[] {
+  const field = issue.fieldName ?? issue.attribute
   switch (issue.state) {
-    case 'unmapped': return [`${issue.attribute} eşlenmemiş`, ...(issue.panelAttribute && issue.panelAttribute !== issue.attribute ? [`Eşlenebilecek panel özelliği: ${issue.panelAttribute}`] : issue.panelAttribute ? ['Aynı adlı panel özelliğiyle eşlenebilir'] : [])]
+    case 'unmapped': return [`${field} eşlenmemiş`, ...(issue.panelAttribute && issue.panelAttribute !== field ? [`Eşlenebilecek panel özelliği: ${issue.panelAttribute}`] : issue.panelAttribute ? ['Aynı adlı panel özelliğiyle eşlenebilir'] : [])]
     case 'stale': return ['Eşleme eski kategori listesine göre, yeniden doğrulanmalı', ...(issue.panelAttribute ? [`Kayıtlı panel özelliği: ${issue.panelAttribute}`] : [])]
     case 'no-value': return [`${issue.attribute} için üründe değer seçilmemiş`]
     case 'values': return []
@@ -44,9 +45,8 @@ export function publishIssueTipLines(row: PublishIssueRow) {
   return lines.length ? lines : row.detail ? [row.detail] : []
 }
 
-// The chip's text: its title, or for a value gap "Web Color eşleşmemiş: Mürdüm, Kiremit" (the first three, then "+N").
+// The chip's text is the field's name only ("Kalınlık", "Web Color"); the values without a marketplace value are said
+// by its tooltip and accessible name.
 export function publishIssueChipText(row: PublishIssueRow) {
-  const values = row.values?.filter(Boolean) ?? []
-  if (!values.length) return row.title
-  return `${row.title} eşleşmemiş: ${values.slice(0, 3).join(', ')}${values.length > 3 ? ` +${values.length - 3}` : ''}`
+  return row.title
 }

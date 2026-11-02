@@ -96,7 +96,7 @@ describe('PublishIssueBadge chips', () => {
 })
 
 describe('PublishIssueBadge with the window a chip opens', () => {
-  it('names the missing values on the chip and in its tooltip', () => {
+  it('shows the field name on the chip and the missing values in its tooltip', () => {
     act(() => root.render(<PublishIssueBadge id="v" label="Yayın için zorunlu eksik" heading="Yayın için 2 eksik var" requiredCount={2}
       rows={[
         { key: 'wc-1', title: 'Web Color', detail: '“Mürdüm” için değer yok.', values: ['Mürdüm'], onRun: vi.fn() },
@@ -105,7 +105,10 @@ describe('PublishIssueBadge with the window a chip opens', () => {
       ]} />))
     act(() => container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!.click())
     const chips = [...container.querySelectorAll<HTMLElement>('.publish-issue-chip')]
-    expect(chips.map(chip => chip.textContent)).toEqual(['Web Color eşleşmemiş: Mürdüm, Kiremit', 'Kumaş Tipi'])
+    expect(chips.map(chip => chip.textContent)).toEqual(['Web Color', 'Kumaş Tipi'])
+    act(() => { chips[0].dispatchEvent(new FocusEvent('focusin', { bubbles: true })) })
+    expect(document.querySelector('.publish-issue-chip-tip')?.textContent).toBe('Eşlenmemiş değerler: Mürdüm, Kiremit')
+    act(() => { chips[0].dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
     act(() => { chips[1].dispatchEvent(new FocusEvent('focusin', { bubbles: true })) })
     expect([...document.querySelectorAll('.publish-issue-chip-tip span')].map(line => line.textContent)).toEqual(['Kumaş Tipi eşlenmemiş', 'Eşlenebilecek panel özelliği: Materyal'])
     expect(chips[0].getAttribute('aria-label')).toBe('Web Color. Eşlenmemiş değerler: Mürdüm, Kiremit')

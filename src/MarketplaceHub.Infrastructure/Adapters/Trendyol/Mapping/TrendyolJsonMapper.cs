@@ -709,8 +709,9 @@ public static class TrendyolJsonMapper
                 if (item.TryGetProperty("requestItem", out var request) && request.ValueKind == JsonValueKind.Object)
                     key = Text(request, "barcode", "contentId", "stockCode");
                 if (string.IsNullOrWhiteSpace(key)) key = Text(item, "barcode", "contentId", "stockCode");
-                var status = Text(item, "status"); var succeeded = string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase); var failure = item.TryGetProperty("failureReasons", out var reasons) && reasons.ValueKind == JsonValueKind.Array ? reasons.EnumerateArray().Select(x => x.ToString()).FirstOrDefault() : null;
-                lines.Add(new(key, succeeded, null, failure, !succeeded && !string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase)));
+                var status = Text(item, "status"); var succeeded = string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase); var allFailures = item.TryGetProperty("failureReasons", out var reasons) && reasons.ValueKind == JsonValueKind.Array ? reasons.EnumerateArray().Select(x => x.ToString()).Where(x => !string.IsNullOrWhiteSpace(x)).ToList() : [];
+                var failure = allFailures.FirstOrDefault();
+                lines.Add(new(key, succeeded, null, failure, !succeeded && !string.Equals(status, "FAILED", StringComparison.OrdinalIgnoreCase), Reasons: allFailures.Count == 0 ? null : allFailures));
                 itemStatuses.Add(status);
             }
         var batchStatus = Text(root, "status");
