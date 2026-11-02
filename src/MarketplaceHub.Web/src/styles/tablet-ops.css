@@ -92,3 +92,20 @@
   html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters > .rr-search { grid-column: auto; }
   html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort) { grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); }
 }
+
+/* ---------- Faturalar ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Filters: three to a row (search wider), the column chips three to a row, 36 px high. */
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters.invoice-reference-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters > .invoice-reference-search { grid-column: span 2; }
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters > .invoice-reference-date-filter { grid-column: auto; }
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters > .invoice-reference-filter-reset { grid-column: auto; align-self: end; justify-self: start; }
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters .invoice-sort-trigger { width: 100%; min-width: 0; }
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head > * { min-height: 36px; border-radius: 7px; }
+}
+@media (min-width: 900px) and (max-width: 1024px) {
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters.invoice-reference-filters { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1.1fr) minmax(0, 1fr) auto; }
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-filters > .invoice-reference-search { grid-column: auto; }
+  html body .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
