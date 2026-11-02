@@ -469,7 +469,105 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var productId = PayloadGuid(job.PayloadJson, "productId");
         if (productId is { } payloadProductId && !await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == job.TenantId && x.Id == payloadProductId, cancellationToken))
             productId = null;
-        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice, productId);
+        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice, productId, await VariantResultsAsync(job, cancellationToken));
+    }
+
+    // A publication job's answer per variant: what it recorded, else (an older job) its card's state when the card still
+    // holds this publication and no newer job of the same kind followed. Every variant of the product the job did not
+    // carry is listed as not sent, with the reason only when it is known.
+    private async Task<JobVariantResultsView?> VariantResultsAsync(IntegrationJob job, CancellationToken cancellationToken)
+    {
+        if (!JobVariantResultPolicy.AppliesTo(job.JobType) || job.ConnectionId is not Guid connectionId) return null;
+        var productId = PayloadGuid(job.PayloadJson, "productId");
+        if (productId is null) return null;
+        var profileId = PayloadGuid(job.PayloadJson, "profileId");
+        string? publicationHash = null;
+        try
+        {
+            using var document = JsonDocument.Parse(job.PayloadJson);
+            publicationHash = StringValue(document.RootElement, "payloadHash");
+        }
+        catch (JsonException) { }
+
+        var variants = await db.ProductVariants.AsNoTracking()
+            .Where(x => x.TenantId == job.TenantId && x.ProductId == productId.Value)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Sku)
+            .Select(x => new { x.Id, x.Sku, x.Barcode, x.SortOrder })
+            .ToListAsync(cancellationToken);
+        var variantIds = variants.Select(x => x.Id).ToArray();
+        var optionRows = await (from assignment in db.VariantOptionValues.AsNoTracking()
+                                join option in db.ProductOptions.AsNoTracking() on assignment.OptionId equals option.Id
+                                join value in db.ProductOptionValues.AsNoTracking() on assignment.OptionValueId equals value.Id
+                                where assignment.TenantId == job.TenantId && variantIds.Contains(assignment.VariantId)
+                                select new { assignment.VariantId, option.SortOrder, option.Label, Value = value.Label })
+            .ToListAsync(cancellationToken);
+        var optionsByVariant = optionRows.GroupBy(x => x.VariantId)
+            .ToDictionary(group => group.Key, group => JobVariantResultPolicy.OptionsText(group.Select(x => (x.SortOrder, x.Label, x.Value))));
+
+        var listings = profileId is { } profile
+            ? await db.ChannelListingVariants.AsNoTracking().Where(x => x.TenantId == job.TenantId && x.ProfileId == profile).ToListAsync(cancellationToken)
+            : [];
+        var listingVariantIds = listings.Select(x => x.VariantId).ToArray();
+        var states = listingVariantIds.Length == 0
+            ? new Dictionary<Guid, MarketplaceListingState>()
+            : await db.MarketplaceListingStates.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.ConnectionId == connectionId && listingVariantIds.Contains(x.VariantId))
+                .ToDictionaryAsync(x => x.VariantId, cancellationToken);
+
+        var rows = await db.JobVariantResults.AsNoTracking()
+            .Where(x => x.TenantId == job.TenantId && x.JobId == job.Id)
+            .Select(x => new { x.VariantId, x.Barcode, x.StockCode, x.Status, x.Reason })
+            .ToListAsync(cancellationToken);
+        var source = rows.Count > 0 ? "RECORDED" : "NONE";
+        if (rows.Count == 0 && profileId is { } cardId && !string.IsNullOrWhiteSpace(publicationHash))
+        {
+            var profileText = cardId.ToString("D");
+            var newerJob = await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == job.TenantId && x.ConnectionId == connectionId
+                && x.JobType == job.JobType && x.CreatedAt > job.CreatedAt && x.PayloadJson.Contains(profileText), cancellationToken);
+            var ofThisPublication = listings
+                .Where(x => states.TryGetValue(x.VariantId, out var state) && string.Equals(state.PayloadHash, publicationHash, StringComparison.Ordinal))
+                .ToList();
+            if (!newerJob && ofThisPublication.Count > 0)
+            {
+                source = "CARD_STATE";
+                rows = ofThisPublication.Select(x =>
+                {
+                    var status = JobVariantResultPolicy.StatusFromCardState(job.JobType, x.ActualStatus);
+                    return new
+                    {
+                        VariantId = (Guid?)x.VariantId,
+                        Barcode = x.ExternalBarcode ?? x.ExternalSku ?? "",
+                        StockCode = x.ExternalSku,
+                        Status = status,
+                        Reason = status is JobVariantResultPolicy.Rejected or JobVariantResultPolicy.Pending ? x.RejectionCode : null
+                    };
+                }).ToList();
+            }
+        }
+        if (source == "NONE") return new JobVariantResultsView(source, []);
+
+        var sortOrder = variants.Select((x, index) => (x.Id, index)).ToDictionary(x => x.Id, x => x.index);
+        var items = rows
+            .Select(row => new
+            {
+                Order = row.VariantId is { } id && sortOrder.TryGetValue(id, out var order) ? order : int.MaxValue,
+                View = new JobVariantResultView(row.Barcode, row.StockCode,
+                    row.VariantId is { } variantId ? optionsByVariant.GetValueOrDefault(variantId) : null, row.Status, row.Reason)
+            })
+            .ToList();
+        var carried = rows.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).ToHashSet();
+        var carriedBarcodes = rows.Select(x => x.Barcode).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var variant in variants)
+        {
+            if (carried.Contains(variant.Id) || (variant.Barcode is { } code && carriedBarcodes.Contains(code))) continue;
+            // Known: a variant another publication already made live is left out when only its siblings are sent again.
+            var reason = states.TryGetValue(variant.Id, out var state) && string.Equals(state.ActualStatus, "LIVE", StringComparison.Ordinal)
+                && !string.Equals(state.PayloadHash, publicationHash, StringComparison.Ordinal)
+                ? JobVariantResultPolicy.AlreadyLiveReason
+                : null;
+            items.Add(new { Order = sortOrder[variant.Id], View = new JobVariantResultView(variant.Barcode, variant.Sku, optionsByVariant.GetValueOrDefault(variant.Id), JobVariantResultPolicy.NotSent, reason) });
+        }
+        return new JobVariantResultsView(source, items.OrderBy(x => x.Order).Select(x => x.View).ToList());
     }
 
     // Hepsiburada SIT certification read-back (STAGE Hepsiburada connections only): the job detail's external id

@@ -2943,6 +2943,52 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("job_attempts", "integration");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.JobVariantResult", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Barcode")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("StockCode")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("JobId", "Barcode")
+                        .IsUnique();
+
+                    b.ToTable("job_variant_results", "integration");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.LegalEntityProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7290,6 +7336,21 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("MarketplaceHub.Domain.JobAttempt", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.IntegrationJob", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.JobVariantResult", b =>
                 {
                     b.HasOne("MarketplaceHub.Domain.IntegrationJob", null)
                         .WithMany()

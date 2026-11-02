@@ -27,6 +27,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<IntegrationJob> IntegrationJobs => Set<IntegrationJob>();
     public DbSet<IntegrationOutboxEvent> IntegrationOutboxEvents => Set<IntegrationOutboxEvent>();
     public DbSet<JobAttempt> JobAttempts => Set<JobAttempt>();
+    public DbSet<JobVariantResult> JobVariantResults => Set<JobVariantResult>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     public DbSet<ExternalEffectRecord> ExternalEffectRecords => Set<ExternalEffectRecord>();
     public DbSet<PriceStockSendLog> PriceStockSendLogs => Set<PriceStockSendLog>();
@@ -377,6 +378,16 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             // A tenant's recent attempts (connection error history) read by time and joined to their job. It also
             // serves the tenant foreign key, so the former single-column TenantId index is gone.
             entity.HasIndex(x => new { x.TenantId, x.StartedAt }).IncludeProperties(x => x.JobId);
+            entity.HasOne<IntegrationJob>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<JobVariantResult>(entity =>
+        {
+            entity.ToTable("job_variant_results", "integration"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.Barcode).HasMaxLength(256); entity.Property(x => x.StockCode).HasMaxLength(256);
+            entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Reason).HasMaxLength(2000);
+            entity.HasIndex(x => new { x.JobId, x.Barcode }).IsUnique();
+            entity.HasIndex(x => x.TenantId);
             entity.HasOne<IntegrationJob>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });

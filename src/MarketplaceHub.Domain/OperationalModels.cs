@@ -69,6 +69,21 @@ public sealed class JobAttempt
     public string? ErrorSummary { get; set; }
 }
 
+// A publication job's answer per variant (product create, update or approval check): which barcode it carried, what the
+// marketplace said and why. The job's last run replaces its rows; they go with the job (cascade).
+public sealed class JobVariantResult
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid JobId { get; set; }
+    public Guid? VariantId { get; set; }
+    public required string Barcode { get; set; }
+    public string? StockCode { get; set; }
+    public required string Status { get; set; }
+    public string? Reason { get; set; }
+    public DateTimeOffset RecordedAt { get; set; }
+}
+
 public sealed class InboxMessage
 {
     public Guid Id { get; set; }

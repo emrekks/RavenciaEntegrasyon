@@ -118,8 +118,8 @@ describe('publish gap chips open the category fields window', () => {
     await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><main><NewProductPage editProductId="p1" publishOnly /></main></MemoryRouter></QueryClientProvider>) })
     await waitFor(() => chips('optional').length === 2)
     expect(chips('required').map(item => item.textContent)).toEqual(expect.arrayContaining(['Kumaş Tipi', 'Kesim Kalıbı']))
-    // A value gap names its values on the chip.
-    expect(chips('optional').map(item => item.textContent)).toEqual(['Boy', 'Kalınlık eşleşmemiş: Orta'])
+    // Chips carry the field names only; the values are in the tooltip.
+    expect(chips('optional').map(item => item.textContent)).toEqual(['Boy', 'Kalınlık'])
 
     await openFromChip('required', 'Kesim Kalıbı')
     expect(document.querySelector('.mapping-advanced-modal h2')?.textContent).toBe('Kategori Alanları ve Değerleri')

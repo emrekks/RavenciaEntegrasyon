@@ -670,6 +670,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         profile.Version++;
         if (succeeded > 0 && !isShopify)
             await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, payload.ExternalOperationId);
+        await RecordJobVariantResults(tenantId, job.Id, MarketplaceJobTypes.ProductCreate, listings,
+            listings.ToDictionary(x => x.VariantId, x => LineReason(resultByKey[keyedBySku ? x.ExternalSku! : x.ExternalBarcode!])), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         // Every variant is live, but the marketplace reported something that did not go through (Shopify: pictures); the
         // job ends with it so it shows instead of passing as a plain success.
@@ -969,6 +971,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             profile.LastRejectionCode = firstCode;
         }
         profile.Version++;
+        await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductApprovalReconcile, listings,
+            candidates.ToDictionary(x => x.VariantId, x => remoteByBarcode[approvalKey(x)!].RejectionCode), cancellationToken, payload.PayloadHash, states);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -1196,6 +1200,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             : rejected == listings.Count ? "REJECTED"
             : "PARTIAL_REJECTED";
         profile.Version++;
+        await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductApprovalReconcile, listings,
+            listings.ToDictionary(x => x.VariantId, x => LineReason(byMerchantSku[x.ExternalSku!])), cancellationToken, payload.PayloadHash, states);
         await db.SaveChangesAsync(cancellationToken);
         if (manualReview > 0) return JobExecutionResult.ManualReview(firstCode ?? "HEPSIBURADA_PRODUCT_STATUS_UNKNOWN", "Hepsiburada ürün durum eşlemesi veya HB SKU kimliği belirsiz; manuel inceleme gerekir.", payload.ExternalOperationId);
         if (pending > 0) return JobExecutionResult.Retry("HEPSIBURADA_PRODUCT_APPROVAL_PENDING", "Hepsiburada ürün inceleme/eşleşme süreci henüz tamamlanmadı.", TimeSpan.FromMinutes(5), payload.ExternalOperationId);
@@ -1288,6 +1294,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         profile.ActualStatus = candidates.Count == listings.Count ? "LIVE" : "PARTIAL_FAILURE";
         profile.LastRejectionCode = null;
         profile.Version++;
+        await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductApprovalReconcile, listings, null, cancellationToken, payload.PayloadHash, states);
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Success();
     }
@@ -1775,6 +1782,43 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     private static string? SafeCode(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim()[..Math.Min(256, value.Trim().Length)];
 
+    // A refused line's reasons as the marketplace wrote them: every failure reason (Trendyol), the line's status text
+    // (n11, Pazarama) and its error code.
+    private static string? LineReason(RemoteOperationLine line) =>
+        line.Succeeded ? null : JobVariantResultPolicy.Reason([.. line.Reasons ?? [], line.Status, line.ErrorCode]);
+
+    // Replaces the job's per-variant answer with this run's listing outcome; the caller's SaveChanges stores it. With a
+    // publication hash, a listing another publication left (a live variant not sent again) is not this job's.
+    private async Task RecordJobVariantResults(Guid tenantId, Guid jobId, string jobType, IEnumerable<ChannelListingVariant> listings, IReadOnlyDictionary<Guid, string?>? reasons, CancellationToken cancellationToken, string? payloadHash = null, IReadOnlyDictionary<Guid, MarketplaceListingState>? states = null)
+    {
+        await db.JobVariantResults.Where(x => x.TenantId == tenantId && x.JobId == jobId).ExecuteDeleteAsync(cancellationToken);
+        var now = timeProvider.GetUtcNow();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var listing in listings)
+        {
+            if (payloadHash is not null && states is not null && states.TryGetValue(listing.VariantId, out var state)
+                && !string.Equals(state.PayloadHash, payloadHash, StringComparison.Ordinal)) continue;
+            var barcode = (listing.ExternalBarcode ?? listing.ExternalSku)?.Trim();
+            if (string.IsNullOrWhiteSpace(barcode) || !seen.Add(barcode)) continue;
+            var status = JobVariantResultPolicy.StatusFor(jobType, listing.ActualStatus);
+            var reason = status is JobVariantResultPolicy.Rejected or JobVariantResultPolicy.Pending
+                ? JobVariantResultPolicy.Reason([reasons?.GetValueOrDefault(listing.VariantId) ?? listing.RejectionCode])
+                : null;
+            db.JobVariantResults.Add(new JobVariantResult
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenantId,
+                JobId = jobId,
+                VariantId = listing.VariantId,
+                Barcode = barcode[..Math.Min(256, barcode.Length)],
+                StockCode = SafeCode(listing.ExternalSku),
+                Status = status,
+                Reason = reason,
+                RecordedAt = now
+            });
+        }
+    }
+
     private async Task<JobExecutionResult> UpdateProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         ProductUpdateJobPayload? payload;
@@ -1949,6 +1993,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             profile.ActualStatus = ProductProfileStatusAfterInPlaceUpdate(listings.Select(x => x.ActualStatus).ToList());
             profile.LastRejectionCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)); profile.Version++;
+            await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductUpdate, listings, null, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return rejected == 0 ? JobExecutionResult.Success() : rejected == listings.Count ? JobExecutionResult.Blocked("PRODUCT_UPDATE_REJECTED", "Ürün güncellemesindeki tüm varyantlar reddedildi.") : JobExecutionResult.Blocked("PRODUCT_UPDATE_PARTIAL_FAILURE", "Ürün güncellemesi bazı varyantlar için reddedildi.");
         }
@@ -1963,6 +2008,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var approvalOperationId = payload.ProductOperationId
             ?? (payload.ExternalOperationId?.StartsWith(Adapters.Hepsiburada.HepsiburadaHttpClient.ShippingInfoUploadPrefix, StringComparison.Ordinal) == true ? null : payload.ExternalOperationId);
         if (rejected < listings.Count) await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, approvalOperationId);
+        await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductUpdate, listings, null, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         var platformName = ProductUpdatePlatformName(isHepsiburada, string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase));
         return rejected == 0 ? JobExecutionResult.Success() : rejected == listings.Count ? JobExecutionResult.Blocked("PRODUCT_UPDATE_REJECTED", $"{platformName} ürün güncellemesindeki tüm varyantlar reddedildi.") : JobExecutionResult.Blocked("PRODUCT_UPDATE_PARTIAL_FAILURE", $"{platformName} ürün güncellemesi bazı varyantlar için reddedildi.");

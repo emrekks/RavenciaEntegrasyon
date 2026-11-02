@@ -42,8 +42,9 @@ export type PublicationValueMappingFix = {
 // `localValueId` the panel value of a value gap.
 // `state`: what is missing — no mapping at all, a mapping on an older list (or not verified), no value on the product, a
 // panel value without a marketplace value, or a free value the field does not take; `panelAttribute`: the panel attribute
-// the field would map from, when one is known.
-export type PublicationAttributeIssue = { attribute: string; detail: string; fix?: PublicationValueMappingFix; externalAttributeId?: string; localValueId?: string; state?: 'unmapped' | 'stale' | 'no-value' | 'values' | 'custom'; panelAttribute?: string }
+// the field would map from, when one is known; `fieldName`: the marketplace field, when the gap is named after the panel
+// attribute (Materyal for Hepsiburada's Kumaş Tipi).
+export type PublicationAttributeIssue = { attribute: string; detail: string; fix?: PublicationValueMappingFix; externalAttributeId?: string; localValueId?: string; state?: 'unmapped' | 'stale' | 'no-value' | 'values' | 'custom'; panelAttribute?: string; fieldName?: string }
 
 export type PublicationAttributeIssues = {
   requiredIssues: PublicationAttributeIssue[]
@@ -157,7 +158,7 @@ export function classifyPublicationAttributeIssues(input: {
       // (a mapping forgotten); one the category does not list at all (Cep on Hepsiburada Bluz) is simply not its business.
       const counterpart = unmappedRemoteByKey.get(canonicalKey(selected.name))
       if (counterpart)
-        addIssue(false, { attribute: selected.name, detail: `${platformName} kategorisindeki “${counterpart.name}” alanı eşlenmemiş; eşlenmezse bu değer gönderilmez.`, externalAttributeId: counterpart.externalId, state: 'unmapped', panelAttribute: selected.name })
+        addIssue(false, { attribute: selected.name, detail: `${platformName} kategorisindeki “${counterpart.name}” alanı eşlenmemiş; eşlenmezse bu değer gönderilmez.`, externalAttributeId: counterpart.externalId, state: 'unmapped', panelAttribute: selected.name, fieldName: counterpart.name })
       continue
     }
 
