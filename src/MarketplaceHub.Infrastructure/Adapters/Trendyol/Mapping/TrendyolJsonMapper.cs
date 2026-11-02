@@ -53,7 +53,10 @@ public static class TrendyolJsonMapper
                                 throw new JsonException($"Order line {externalLineId} has no SKU/barcode or product name.");
                             var rawStatus = Text(line, "orderLineItemStatusName");
                             if (!hasVatRate) linesWithoutVat.Add(lines.Count);
-                            lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText()));
+                            // lineTyDiscount is Trendyol's own discount per unit (lineUnitPrice = lineGrossAmount − lineSellerDiscount −
+                            // lineTyDiscount); Trendyol pays it to the seller, so it is the seller's revenue. A line without it stays unknown.
+                            decimal? platformDiscount = TryDecimal(line, out var tyDiscount, "lineTyDiscount", "tyDiscount") && tyDiscount >= 0 ? tyDiscount : null;
+                            lines.Add(new(externalLineId, sku, barcode, title, quantity, unitPrice, vatRate, rawStatus, line.GetRawText(), PlatformDiscount: platformDiscount));
                             allocations.Add(new(externalLineId, quantity, 0, 0, 0, 0));
                         }
                         catch (JsonException exception)

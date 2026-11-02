@@ -634,7 +634,7 @@ public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, str
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
 // CancelledAt: when the marketplace says the line's cancelled quantity was cancelled; null when it does not say.
-public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0, DateTimeOffset? CancelledAt = null);
+public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0, DateTimeOffset? CancelledAt = null, decimal? PlatformDiscount = null);
 public sealed record RemotePackageAllocation(string ExternalLineId, decimal AllocatedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity);
 public sealed record RemotePackageInvoiceObservation(
     string? RawStatus,

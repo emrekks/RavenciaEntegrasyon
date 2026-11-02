@@ -4220,6 +4220,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");
 
+                    b.Property<decimal?>("PlatformDiscount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
                     b.Property<string>("RawStatus")
                         .IsRequired()
                         .HasMaxLength(96)

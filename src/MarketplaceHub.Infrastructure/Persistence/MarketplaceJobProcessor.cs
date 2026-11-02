@@ -9561,7 +9561,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 linesByExternalId.Remove(previousExternalLineId);
             }
             line.ExternalLineId = remoteLine.ExternalLineId;
-            line.Sku = sku; line.Barcode = remoteLine.Barcode ?? line.Barcode; line.TitleSnapshot = title; line.SourceSnapshotJson = sourceSnapshot; line.OrderedQuantity = orderedQuantity; line.UnitPrice = importedUnitPrice ?? remoteLine.UnitPrice; line.VatRate = remoteLine.VatRate ?? line.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
+            line.Sku = sku; line.Barcode = remoteLine.Barcode ?? line.Barcode; line.TitleSnapshot = title; line.SourceSnapshotJson = sourceSnapshot; line.OrderedQuantity = orderedQuantity; line.UnitPrice = importedUnitPrice ?? remoteLine.UnitPrice; line.PlatformDiscount = remoteLine.PlatformDiscount ?? line.PlatformDiscount; line.VatRate = remoteLine.VatRate ?? line.VatRate; line.RawStatus = remoteLine.RawStatus; if (db.Entry(line).State != EntityState.Added) line.Version++; lines[remoteLine.ExternalLineId] = line;
             linesByExternalId[remoteLine.ExternalLineId] = line;
             if (!string.IsNullOrWhiteSpace(remoteLine.SourceSnapshotJson) && remoteLine.SourceSnapshotJson != "{}") linesBySnapshot[remoteLine.SourceSnapshotJson] = line;
         }

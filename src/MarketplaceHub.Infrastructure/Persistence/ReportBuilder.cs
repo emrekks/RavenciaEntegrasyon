@@ -117,6 +117,8 @@ internal sealed class ReportLineRow
     public string Sku { get; init; } = "";
     public string? Barcode { get; init; }
     public decimal UnitPrice { get; init; }
+    // The marketplace's own discount per unit (OrderLine.PlatformDiscount), 0 when unknown: part of the seller's revenue.
+    public decimal PlatformDiscount { get; init; }
     public decimal OrderedQuantity { get; init; }
     public decimal CancelledQuantity { get; init; }
     public decimal ReturnedQuantity { get; init; }
@@ -460,14 +462,15 @@ internal static class ReportBuilder
             // The same part of the order at its list price.
             var listAmount = Math.Max(order.ListAmount, order.Amount);
             var backList = order.Amount > 0 ? Math.Round(back * listAmount / order.Amount, 2) : 0m;
-            // A line's money is its share of what the customer paid for the order.
+            // A line's money is its share of the order's revenue: what the customer paid plus the marketplace's own discount,
+            // the price the marketplace also takes its commission on (LineValue is on the same base).
             var scale = order.LineValue > 0 ? order.Amount / order.LineValue : 0m;
             var lines = new List<LineFact>();
             foreach (var line in rows)
             {
                 var active = Math.Max(0m, line.OrderedQuantity - line.CancelledQuantity);
                 var lineBack = returnedOrder ? active : Math.Min(active, Math.Max(line.ReturnedQuantity, line.AcceptedReturnQuantity));
-                var paidUnit = isTry ? scale * line.UnitPrice : 0m;
+                var paidUnit = isTry ? scale * (line.UnitPrice + line.PlatformDiscount) : 0m;
                 var keptUnits = active - lineBack;
                 var extra = input.LineExtras.GetValueOrDefault(line.Id);
                 var commission = isTry && extra is not null
@@ -807,7 +810,7 @@ internal static class ReportBuilder
         string Percent(decimal? value) => $"%{(value ?? 0m) * 100:N1}";
         var notes = new List<string>
         {
-            "Satış tutarı müşterinin ödediği tutardır (iptal edilen paketler hariç); net ciro iade edilenler düşülerek Genel Bakış ile aynı kuralla hesaplanır.",
+            "Satış tutarı liste fiyatından satıcı indirimi düşülmüş tutardır; pazaryerinin kendi indirimi (Trendyol indirimi gibi) satıcıya ödendiği için dahildir (iptal edilen paketler hariç); net ciro iade edilenler düşülerek Genel Bakış ile aynı kuralla hesaplanır.",
             "İadeler ve iptaller siparişin verildiği döneme yazılır; iade talebi sayısına reddedilen ve iptal edilen talepler girmez."
         };
         if (summary.OrdersWithoutAmount > 0)

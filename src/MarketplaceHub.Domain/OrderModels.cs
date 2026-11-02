@@ -517,6 +517,10 @@ public sealed class OrderLine
     // already cancelled. Not a cancellation time: it only places cancellations whose time is unknown (PTT AVM).
     public DateTimeOffset? CancelSeenAt { get; set; }
     public decimal UnitPrice { get; set; }
+    // The marketplace's own discount per unit that UnitPrice and the package net leave out (Trendyol lineTyDiscount): the
+    // customer did not pay it, but the marketplace pays it to the seller, so it belongs to the seller's revenue. Null when
+    // the marketplace does not say (unknown, never taken as 0 from a missing field). Only Trendyol fills it so far.
+    public decimal? PlatformDiscount { get; set; }
     public decimal VatRate { get; set; }
     public required string RawStatus { get; set; }
     public long Version { get; set; } = 1;
