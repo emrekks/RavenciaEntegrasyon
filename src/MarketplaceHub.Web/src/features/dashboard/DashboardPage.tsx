@@ -46,7 +46,6 @@ const ICONS = {
   ret: icon(<><path d="M5.5 4 2.5 7l3 3" /><path d="M2.5 7h7a4 4 0 0 1 0 8H7" /></>),
   invoice: icon(<><path d="M4 2h5l3 3v9H4z" /><path d="M9 2v3h3M6 8.5h4M6 11h3" /></>),
   due: icon(<><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3M8 9v2" /></>),
-  units: icon(<><path d="M3 5.5h10l-.9 8H3.9z" /><path d="M5.8 5.5V4.3a2.2 2.2 0 0 1 4.4 0v1.2" /><path d="M6.3 9.6l1.2 1.2 2.3-2.4" /></>),
   cancel: icon(<><circle cx="8" cy="8" r="5.8" /><path d="M5.9 5.9l4.2 4.2M10.1 5.9l-4.2 4.2" /></>),
   lowst: icon(<><path d="M2.5 5 8 2.2 13.5 5v6L8 13.8 2.5 11z" /><path d="M2.5 5 8 7.8 13.5 5M8 7.8v6" /></>),
   up: icon(<path d="M4 10l4-4 4 4" />, 12),
@@ -261,6 +260,12 @@ export function DashboardPage() {
   // The products of the pending orders (ordered less cancelled), from the same orders the Bekleyen Siparişler card counts.
   const pendingUnits = metrics?.pendingUnitsByConnection
   const pendingUnitTotal = pendingUnits ? Object.values(pendingUnits).reduce((sum, value) => sum + value, 0) : undefined
+  // Per store "N paket · M adet": the orders and their products; what is not known is left out, never shown as 0.
+  const pendingRows: BreakdownRow[] = [...new Set([...Object.keys(metrics?.pendingByConnection ?? {}), ...Object.keys(pendingUnits ?? {})])]
+    .map(key => ({ key, orders: metrics?.pendingByConnection?.[key], units: pendingUnits?.[key] }))
+    .filter(item => (item.orders ?? 0) > 0 || (item.units ?? 0) > 0)
+    .sort((left, right) => (right.orders ?? 0) - (left.orders ?? 0) || (right.units ?? 0) - (left.units ?? 0))
+    .map(item => { const shop = channels.get(item.key); return { key: item.key, code: shop?.platformCode ?? '', name: shop?.displayName ?? 'Kaldırılmış mağaza', value: [item.orders === undefined ? '' : `${count(item.orders)} paket`, item.units === undefined ? '' : `${count(item.units)} adet`].filter(Boolean).join(' · ') } })
   const breakdown = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1])
     .map(([connectionId, value]) => { const store = channels.get(connectionId); return { key: connectionId, code: store?.platformCode ?? '', name: store?.displayName ?? 'Kaldırılmış mağaza', value: `${count(value)} adet` } })
   const store = (connectionId: string) => channels.get(connectionId)
@@ -278,13 +283,12 @@ export function DashboardPage() {
       ...(row.unknownTimeOrders ? [{ key: `${row.connectionId}-unknown`, code, name: `${name} · Zamanı Bilinmiyor`, value: `${count(row.unknownTimeOrders)} sipariş · ${count(row.unknownTimeUnits)} adet` }] : []),
     ]
   })
-  const ops: Array<[keyof typeof ICONS, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, string?]> = [
-    ['cart', 'Bekleyen Siparişler', knownCount(bootstrap.isLoading, metrics?.pendingOrders), 'warn', dashboardOperationalLinks.pendingOrders, metrics?.pendingByConnection],
+  const ops: Array<[keyof typeof ICONS, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, ReactNode?]> = [
+    // "N Paket | M Adet Ürün": the units are left out while they are not known (an older API), never shown as 0.
+    ['cart', 'Bekleyen Siparişler', knownCount(bootstrap.isLoading, metrics?.pendingOrders), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} Adet Ürün</>}</>],
     ['late', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
     ['ret', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
     ['invoice', 'Bekleyen Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined],
-    // Under Bekleyen Siparişler: the products of the same orders.
-    ['units', 'Bekleyen Ürün Adedi', knownCount(bootstrap.isLoading, pendingUnitTotal), '', dashboardOperationalLinks.pendingOrders, pendingUnits ?? undefined],
     // Today's cancellations; the section is about today, so the label does not repeat it.
     ['cancel', cancelLabel, knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), '', dayCancellationsLink(today), cancelRows],
     // The same count as the product list's low-stock filter it opens.
@@ -313,7 +317,7 @@ export function DashboardPage() {
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
     <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
       const body = <><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={Array.isArray(byConnection) ? byConnection : breakdown(byConnection)} /></>
-      const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}`
+      const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'cart' ? ' rr-opcard-wide' : ''}`
       // Low stock opens its window here instead of taking the user to the products page.
       return kind === 'lowst'
         ? <button key={kind} type="button" className={className} aria-haspopup="dialog" onClick={() => setLowStockOpen(true)}>{body}</button>
