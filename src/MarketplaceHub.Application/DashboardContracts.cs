@@ -25,7 +25,8 @@ public sealed record DashboardBootstrapView(
     long Version);
 
 // One day of one connection in one currency. Revenue is what the customer paid (net, gross only when no net is
-// known); cancelled and returned orders are left out of Amount/OrderCount, returned ones are shown separately.
+// known); cancelled orders are left out. Amount leaves the returned money out (ReturnedAmount holds it); OrderCount counts
+// every order with an amount, returned ones included, so (Amount + ReturnedAmount) ÷ OrderCount is one basis.
 public sealed record DashboardPerformanceRowView(
     DateOnly Day,
     Guid ConnectionId,

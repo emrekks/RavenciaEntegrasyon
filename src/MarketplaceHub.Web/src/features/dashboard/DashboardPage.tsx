@@ -11,7 +11,7 @@ import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
 import { webhookCell } from './integration-health'
 import type { Connection } from '../marketplace/shared'
@@ -160,9 +160,10 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
 
 // Option A of genel-bakis-platform-sekmeleri.html: one metric of the performance card. The cells that can be drawn
 // pick the chart's metric; the bar shows where the latest day sits between the weakest and the strongest one.
-function KpiCell({ label, value, delta, note, avgLabel = 'Günlük Ortalama', avg, min, max, position, on, onPick, loading }: { loading?: boolean; label: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
-  return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
-    <small>{label}</small><strong className="rr-num">{value}</strong>
+// hint is a word or two beside the label ("İadeler Dahil"); tip says under the pointer how the figure is worked out.
+function KpiCell({ label, hint, tip, value, delta, note, avgLabel = 'Günlük Ortalama', avg, min, max, position, on, onPick, loading }: { loading?: boolean; label: string; hint?: string; tip?: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
+  return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} title={tip} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
+    <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className="rr-num">{value}</strong>
     {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span><em>önceki döneme göre</em></span> : <span className="rr-trend"><em>{note}</em></span>}
     <span className="rr-avg">{avgLabel} <b className="rr-num">{avg}</b></span>
     <div className="rr-krange" role="img" aria-label={`${min} – ${max}`}><span className="rr-kbar"><i style={{ left: `${Math.max(0, Math.min(1, position)) * 100}%` }} /></span><span className="rr-kends"><span className="rr-num">{min}</span><span className="rr-num">{max}</span></span></div>
@@ -175,7 +176,6 @@ function dailyStats(values: number[], format: (value: number) => string, average
   return { avg: format(average), min: format(low), max: format(high), position: high > low ? (today - low) / (high - low) : 0.5 }
 }
 
-const sumOf = (points: DayPoint[], pick: (point: DayPoint) => number) => points.reduce((total, point) => total + pick(point), 0)
 
 // The products page's low stock window, loaded only when the card is opened.
 const LowStockDetailsModal = lazy(() => import('../catalog/products/ProductsPage').then(module => ({ default: module.LowStockDetailsModal })))
@@ -214,13 +214,10 @@ export function DashboardPage() {
   const lastHour = data && data.partialDay ? istanbulHour(data.currentEnd) : 23
   const series = data ? (hourly ? hourSeries(data.currentHours ?? [], data.from, channel, currency, lastHour) : daySeries(data.current, data.from, data.to, channel, currency)) : []
   const previousSeries = data ? (hourly ? hourSeries(data.previousHours ?? [], data.previousFrom, channel, currency, lastHour) : daySeries(data.previous, data.previousFrom, data.previousTo, channel, currency)) : []
-  const total = sumOf(series, point => point.amount)
-  const orders = sumOf(series, point => point.orderCount)
-  const previousTotal = sumOf(previousSeries, point => point.amount)
-  const previousOrders = sumOf(previousSeries, point => point.orderCount)
+  // Ciro, Toplam Sipariş and Ortalama Sepet on one basis, returns included (the report's Net Ciro takes them off).
+  const { amount: total, orders, basket } = periodFigures(series)
+  const { amount: previousTotal, orders: previousOrders, basket: previousBasket } = periodFigures(previousSeries)
   const foreign = data ? otherCurrencies(data.current, channel, currency) : []
-  const basket = orders ? total / orders : 0
-  const previousBasket = previousOrders ? previousTotal / previousOrders : 0
   const dayCount = Math.max(1, series.length)
   const storeTotals = data ? channelTotals(data, currency) : []
   const channelAmount = storeTotals.reduce((sum, item) => sum + item.amount, 0)
@@ -332,9 +329,9 @@ export function DashboardPage() {
       </div></div>
       {days === null && <p className="rr-pf-note" role="status">Raporu görmek için bitiş tarihini de seçin.</p>}
       <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
-        <KpiCell loading={loading} label="Ciro" avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
-        <KpiCell loading={loading} label="Toplam Sipariş" avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
-        <KpiCell loading={loading} label="Ortalama Sepet" avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
+        <KpiCell loading={loading} label="Ciro" hint="İadeler Dahil" tip={'Dönemde satılan her şey, iadeler dahil; iptaller hariç.\nRaporlardaki Net Ciro iadeler düşülmüş tutardır.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
+        <KpiCell loading={loading} label="Toplam Sipariş" tip={'Tutarı olan siparişler, iade edilenler dahil; iptaller hariç.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
+        <KpiCell loading={loading} label="Ortalama Sepet" tip={'Ciro ÷ Toplam Sipariş, ikisi de iadeler dahil.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
         <KpiCell loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={loadingValue(productSummary.isLoading, products?.outOfStockCount)} min={`Düşük stok ${loadingValue(productSummary.isLoading, products?.lowStockCount)}`} max={`Toplam ${loadingValue(productSummary.isLoading, products?.totalCount)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>
       {!loading && foreign.length > 0 && <p className="rr-pf-note">

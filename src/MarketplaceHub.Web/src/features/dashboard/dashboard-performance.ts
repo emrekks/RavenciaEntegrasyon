@@ -2,7 +2,8 @@
 // Istanbul calendar day × store × currency for the chosen period and the previous one of equal elapsed time
 // (GET /dashboard/performance); everything here only adds those rows up.
 // The server's amount leaves returned orders out; the panel's revenue (ciro) is everything sold, returns included,
-// with the returned part still shown apart.
+// with the returned part still shown apart. The server's order count has the returned orders in it as well, so
+// Ortalama Sepet is that ciro over those orders: the report's Satış Tutarı ÷ Tutarı Olan Sipariş, not its Net Ciro.
 
 export type PerformanceRow = { day: string; connectionId: string; currency: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
 export type DashboardChannel = { connectionId: string; platformCode: string; displayName: string; status: string }
@@ -72,6 +73,13 @@ export function daySeries(rows: PerformanceRow[], from: string, to: string, chan
   return dayKeys(from, to).map(day => byDay.get(day) ?? { day, amount: 0, orderCount: 0, productQuantity: 0, packageCount: 0, returnedAmount: 0, returnedOrderCount: 0 })
 }
 
+/** The Ciro, Toplam Sipariş and Ortalama Sepet tiles of a series: one basis, returns included in all three. */
+export function periodFigures(points: DayPoint[]) {
+  const amount = points.reduce((total, point) => total + point.amount, 0)
+  const orders = points.reduce((total, point) => total + point.orderCount, 0)
+  return { amount, orders, basket: orders ? amount / orders : 0 }
+}
+
 /** Revenue in currencies other than the panel's, which is never added into its total. */
 export function otherCurrencies(rows: PerformanceRow[], channel: string, primary: string) {
   const totals = new Map<string, { amount: number; orders: number }>()
@@ -113,7 +121,7 @@ const slug = (value: string) => value.toLocaleLowerCase('tr-TR').replace(/[ıİ]
 export function revenueReport(performance: Performance, channel: string, channelName: string) {
   const currencies = [...new Set(performance.current.filter(row => inChannel(row, channel)).map(row => row.currency))].sort()
   if (!currencies.length) currencies.push('TRY')
-  const header = ['Tarih', 'Para Birimi', 'Ciro', 'Sipariş', 'Ürün Adedi', 'Paket', 'İade Tutarı', 'İade Sipariş']
+  const header = ['Tarih', 'Para Birimi', 'Ciro (İadeler Dahil)', 'Sipariş (İadeler Dahil)', 'Ürün Adedi', 'Paket', 'İade Tutarı', 'İade Sipariş']
   const rows = currencies.flatMap(currency => daySeries(performance.current, performance.from, performance.to, channel, currency)
     .map(point => [point.day.slice(0, 10), currency, amountText(point.amount), point.orderCount, point.productQuantity, point.packageCount, amountText(point.returnedAmount), point.returnedOrderCount]))
   rows.sort((left, right) => String(left[0]).localeCompare(String(right[0])) || String(left[1]).localeCompare(String(right[1])))
