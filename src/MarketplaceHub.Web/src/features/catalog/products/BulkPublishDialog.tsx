@@ -227,7 +227,7 @@ function BulkPublishPlatformCard({ connection, summary, modelTip, readiness, sel
       : entry.fixes.length && entry.categoryScope ? { onRun: () => setFixScope(entry.categoryScope!) }
         : entry.checkFailed ? { onRun: onMappingsSaved }
           : { href: `/products/${entry.productId}` }
-  const optionalBadgeProps = { optionalCount: warnings.length || undefined, optionalHeading: warnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${warnings.length} isteğe bağlı özellik uyarısı`, optionalRows: warnings.map(({ fixable, scope, ...row }) => ({ ...row, ...(fixable && scope ? { onRun: () => setFixScope(scope) } : { href: '/mappings/attributes' }) })) }
+  const optionalBadgeProps = { optionalCount: warnings.length || undefined, optionalHeading: warnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${warnings.length} isteğe bağlı özellik uyarısı`, optionalRows: warnings.map(({ fixable, scope, ...row }) => ({ ...row, ...(fixable && scope ? { onRun: () => setFixScope(scope) } : { href: '/mappings/categories' }) })) }
   const openGroup = groups.find(group => group.categoryScope === fixScope)
   const state = settling ? 'settling' : allBlocked ? 'error' : bulkPublishCardState(summary)
   const format = (value: number) => value.toLocaleString('tr-TR')

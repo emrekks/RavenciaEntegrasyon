@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { publishStatusSteps, publishStepsAriaLabel, publishStepsFit, publishStepTitle, type PublishStepsInput } from './publish-status-steps'
+import { publishStatusSteps, publishStepBadges, publishStepsAriaLabel, publishStepsFit, publishStepTitle, type PublishStepsInput } from './publish-status-steps'
 
 const base: PublishStepsInput = { requiredGaps: 0, optionalWarnings: 0, live: false, fallbackLabel: 'Henüz yayınlanmadı' }
 const steps = (input: Partial<PublishStepsInput>) => publishStatusSteps({ ...base, ...input })
@@ -105,10 +105,16 @@ describe('publish steps words', () => {
     expect(result.steps.map((state, index) => publishStepTitle(index, state, result))).toEqual(['Hazırlık · Tamam', 'Gönderim · Sırada', 'Onay · Bekliyor', 'Yayında · 21/42'])
   })
 
-  it('asks for more room the more counts a pill carries', () => {
-    const one = publishStepsFit(steps({ optionalWarnings: 2 }))
-    const three = publishStepsFit(steps({ actualStatus: 'LIVE', requiredGaps: 1, optionalWarnings: 2, partial: { live: 21, total: 42, unit: 'varyant' } }))
-    expect(one).toBeLessThan(three)
-    expect(publishStepsFit(steps({ live: true }))).toBeGreaterThanOrEqual(200)
+  it('puts each count on the corner of the step it concerns', () => {
+    const blocked = steps({ actualStatus: 'LIVE', requiredGaps: 1, optionalWarnings: 2, partial: { live: 21, total: 42, unit: 'varyant' } })
+    expect(publishStepBadges(blocked).map(({ step, tone, text, corner }) => `${tone} ${text} @${step} ${corner}`)).toEqual(['red 1 @0 top', 'green 21 @3 top', 'yellow 2 @0 bottom'])
+    expect(publishStepBadges(blocked)[1].title).toBe('21/42 varyant yayında')
+    const refused = steps({ actualStatus: 'PARTIAL_REJECTED', partial: { live: 18, total: 21, unit: 'varyant' }, missingVariants: 3 })
+    expect(publishStepBadges(refused).map(({ step, tone, text }) => `${tone} ${text} @${step}`)).toEqual(['red 3 @2', 'green 18 @3'])
+    expect(publishStepBadges(steps({ live: true }))).toEqual([])
+  })
+
+  it('asks for more room for a longer state label', () => {
+    expect(publishStepsFit(steps({ live: true }))).toBeLessThan(publishStepsFit(steps({ actualStatus: 'PARTIAL_REJECTED' })))
   })
 })
