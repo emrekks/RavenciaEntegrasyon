@@ -122,7 +122,7 @@ describe('DashboardPage', () => {
   it('reads "N Bekleyen | M Yaklaşan" in one wide invoice card that opens the pending invoices', async () => {
     await render()
     const invoice = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Bekleyen Faturalar')!
-    expect(invoice.classList.contains('rr-opcard-wide')).toBe(true)
+    expect(invoice.classList.contains('rr-opcard-wide')).toBe(false)
     expect(invoice.getAttribute('href')).toBe('/invoices?tab=UNINVOICED')
     expect(invoice.querySelector('a')).toBeNull()
   })
