@@ -1544,8 +1544,10 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.StartsWith("ravencia-model-", root.GetProperty("handle").GetString(), StringComparison.Ordinal);
         Assert.Equal(["FAM-S-L", "FAM-S-XL", "FAM-K-L", "FAM-K-XL"], root.GetProperty("variants").EnumerateArray().Select(variant => variant.GetProperty("sku").GetString()));
         var options = root.GetProperty("productOptions").EnumerateArray().ToArray();
-        Assert.Equal(["Beden", "Renk"], options.Select(option => option.GetProperty("name").GetString()));
-        Assert.Equal(["Siyah", "Kahverengi"], options[1].GetProperty("values").EnumerateArray().Select(value => value.GetProperty("name").GetString()));
+        // The panel sorts Beden first; Shopify gets Renk first so its admin groups the variant list by colour.
+        Assert.Equal(["Renk", "Beden"], options.Select(option => option.GetProperty("name").GetString()));
+        Assert.Equal([1, 2], options.Select(option => option.GetProperty("position").GetInt32()));
+        Assert.Equal(["Siyah", "Kahverengi"], options[0].GetProperty("values").EnumerateArray().Select(value => value.GetProperty("name").GetString()));
         Assert.Equal("https://cdn.example.com/Kahverengi.jpg", root.GetProperty("variants")[2].GetProperty("file").GetProperty("originalSource").GetString());
         Assert.Equal(2, root.GetProperty("files").GetArrayLength());
         var metafields = root.GetProperty("metafields").EnumerateArray().ToDictionary(item => item.GetProperty("key").GetString()!, item => item.GetProperty("value").GetString());
