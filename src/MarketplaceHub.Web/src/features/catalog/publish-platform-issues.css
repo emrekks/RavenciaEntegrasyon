@@ -48,31 +48,107 @@
 .publish-issue-badge { display: inline-flex; min-width: 0; max-width: 100%; }
 .publish-platform-fact-publication, .publish-platform-fact-publication dd { min-width: 0; }
 .publish-platform-fact-publication dd > .publish-issue-badge { flex: 0 1 auto; }
-/* The status and its refresh button keep to one row: the status shrinks, the button never drops below it. */
-.publish-platform-fact-publication > dd { flex-wrap: nowrap; }
-.publish-platform-fact-publication > dd > .publish-tracking-action { flex: none; }
-/* Partly live: one pill "21/42 yayında" led by a bar (up to 48 × 4 px) of the live share. It stays in its column beside
-   Bağlantı: on a narrow card the bar narrows and the pill keeps "21/42", so the refresh button keeps its row. */
-.publish-platform-fact-publication > dd { container-type: inline-size; }
-.publish-partial-progress { position: relative; display: inline-block; flex: none; width: 48px; height: 4px; overflow: hidden; background: color-mix(in srgb, currentColor 22%, transparent); border-radius: 2px; }
-.publish-partial-progress > b { position: absolute; inset: 0 auto 0 0; background: currentColor; border-radius: 2px; }
-.app-shell.stitch-shell main .publish-platform-fact-publication dd > .publish-platform-status:has(> .publish-partial-progress), .publish-platform-status:has(> .publish-partial-progress) { flex: none; width: auto; gap: 7px; white-space: nowrap; }
-.publish-partial-count, .publish-partial-suffix { flex: none; white-space: pre; }
-@container (max-width: 215px) { .publish-partial-progress { width: 28px; } }
-@container (max-width: 194px) { .publish-partial-suffix { display: none; } }
-@container (max-width: 130px) { .publish-partial-progress { width: 22px; } }
-/* Under it one quiet 12 px line on the rest: green when it is ready, red (and pressable: the gap chips) when not. */
-.publish-platform-fact-publication > .publish-partial-note, .publish-partial-note { position: relative; display: flex; min-width: 0; max-width: 100%; align-items: center; gap: 5px; margin-top: 5px; font-size: 12px; font-weight: 500; line-height: 1.3; }
-.publish-platform-fact-publication > .publish-partial-note.is-ready { color: var(--rv-color-success); }
-.publish-partial-note > svg, .publish-issue-note-trigger > svg { flex: none; }
-.publish-platform-fact-publication > .publish-partial-note.is-blocked { color: var(--rv-color-danger); }
-.app-shell.stitch-shell main .publish-issue-note-trigger, .publish-issue-note-trigger { display: inline-flex; min-width: 0; max-width: 100%; min-height: 0; height: auto; align-items: center; gap: 5px; padding: 0; color: inherit; background: none; border: 0; font: inherit; font-weight: 500; cursor: pointer; }
-.publish-issue-note-trigger .publish-issue-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.publish-issue-note-trigger:hover .publish-issue-label { text-decoration: underline; text-underline-offset: 2px; }
-.publish-issue-note-trigger:focus-visible { border-radius: 4px; outline: 2px solid var(--rv-color-danger); outline-offset: 2px; }
-.publish-issue-note-trigger[aria-expanded="true"] svg:last-child { transform: rotate(180deg); }
-.publish-partial-note .publish-issue-tooltip { top: calc(100% + 6px); right: auto; left: 0; }
-.publish-partial-note .publish-issue-tooltip[data-placement="top"] { top: auto; bottom: calc(100% + 6px); }
+.publish-platform-fact-publication > dd { flex-wrap: nowrap; container-type: inline-size; }
+
+/* The editor card's status: one 36 px pill of four icon steps (Hazırlık → Gönderim → Onay → Yayında) joined by short
+   links, then its counts (PublishStatusSteps). The whole pill is the trigger of the gaps popover. */
+.publish-steps-trigger {
+  --ps-ok: var(--rv-color-accent); --ps-bad: var(--rv-color-danger); --ps-run: var(--rv-color-info);
+  --ps-idle: color-mix(in srgb, var(--rv-color-ink) 14%, transparent); --ps-idle-ink: var(--rv-color-subtle);
+  /* The icon on a filled step: dark on the dark theme's bright fills, white on the light theme's deep ones. */
+  --ps-on: #101014; --ps-ground: var(--rv-color-surface);
+}
+:root[data-theme="light"] .publish-steps-trigger { --ps-on: #fff; }
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-steps-trigger, .publish-steps-trigger {
+  display: inline-flex; box-sizing: border-box; max-width: 100%; min-width: 0; height: 36px; min-height: 0; align-items: center;
+  margin: 0; padding: 0 9px 0 6px; overflow: hidden; color: var(--rv-color-ink); background: var(--ps-ground);
+  border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: none; font: inherit; font-size: 12px;
+  line-height: 1; text-align: left; cursor: pointer;
+}
+.app-shell.stitch-shell main .publish-platform-fact-publication .publish-steps-trigger:hover, .publish-steps-trigger:hover { color: var(--rv-color-ink); background: var(--ps-ground); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border-strong)); }
+.publish-steps-trigger[aria-expanded="true"] { border-color: var(--rv-color-primary); }
+.publish-steps-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+.publish-steps { display: inline-flex; min-width: 0; align-items: center; gap: 8px; }
+.publish-steps-track, .publish-steps-item { display: inline-flex; flex: none; align-items: center; }
+.publish-step-link { flex: none; width: 8px; height: 3px; margin: 0 2px; background: var(--ps-idle); border-radius: 2px; }
+.publish-step-link.is-full { background: var(--ps-ok); }
+.publish-step-link.is-half { background: linear-gradient(90deg, var(--ps-ok) 50%, var(--ps-idle) 0); }
+.publish-step { position: relative; display: grid; box-sizing: border-box; flex: none; width: 22px; height: 22px; place-items: center; color: var(--ps-idle-ink); background: var(--ps-idle); border-radius: 50%; }
+.publish-step > svg { position: relative; display: block; width: 12px; height: 12px; }
+.publish-step.is-done { color: var(--ps-on); background: var(--ps-ok); }
+.publish-step.is-next { color: var(--ps-ok); background: transparent; border: 1.5px dashed var(--ps-ok); }
+.publish-step.is-fail { color: var(--ps-on); background: var(--ps-bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ps-bad) 26%, transparent); }
+.publish-step.is-now { color: var(--ps-on); background: var(--ps-run); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ps-run) 24%, transparent); }
+.publish-step.is-now > svg { animation: rv-publish-status-spin 1.4s linear infinite; }
+/* Partly live: the Yayında step is a ring filled to the live share around the store icon. */
+.publish-step.is-half { color: var(--ps-ok); background: conic-gradient(var(--ps-ok) calc(var(--publish-step-share, 50) * 1%), var(--ps-idle) 0); }
+.publish-step.is-half::before { position: absolute; inset: 3px; content: ""; background: var(--ps-ground); border-radius: 50%; }
+/* The counts: the live share in bold green, then 20 px chips — red for the required gaps (or refused variants), yellow
+   for the optional warnings — on their soft tone, readable in both themes. */
+.publish-steps-counts { display: inline-flex; flex: none; align-items: center; gap: 5px; }
+.publish-steps-share { color: var(--ps-ok); font-size: 12.5px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.publish-steps-count { display: inline-flex; box-sizing: border-box; min-width: 20px; height: 20px; align-items: center; justify-content: center; padding: 0 6px; border: 1px solid; border-radius: 7px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: pre; }
+.publish-steps-count.is-required { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 42%, transparent); }
+.publish-steps-count.is-optional { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 45%, transparent); }
+.publish-steps-label { min-width: 0; overflow: hidden; font-size: 12.5px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.publish-steps-label.is-ok { color: var(--ps-ok); }
+.publish-steps-label.is-fail { color: var(--ps-bad); }
+.publish-steps-label.is-now { color: var(--ps-run); }
+.publish-steps-label.is-idle { color: var(--rv-color-muted); }
+@media (prefers-reduced-motion: reduce) { .publish-step.is-now > svg, .publish-issue-action.is-busy > svg { animation: none; } }
+/* A narrower cell: smaller steps and links, then no links; the words (the state label, "eksik", "uyarı") give way
+   below the width their pill needs (data-fit, publishStepsFit); the numbers always stay. */
+@container (max-width: 235px) {
+  .publish-step { width: 20px; height: 20px; }
+  .publish-step > svg { width: 11px; height: 11px; }
+  .publish-step-link { width: 6px; margin: 0 1px; }
+  .publish-steps { gap: 6px; }
+}
+@container (max-width: 205px) {
+  .publish-step-link { display: none; }
+  .publish-steps-track { gap: 3px; }
+}
+@container (max-width: 179.98px) { .publish-steps[data-fit="180"] .publish-steps-word { display: none; } }
+@container (max-width: 199.98px) { .publish-steps[data-fit="200"] .publish-steps-word { display: none; } }
+@container (max-width: 219.98px) { .publish-steps[data-fit="220"] .publish-steps-word { display: none; } }
+@container (max-width: 239.98px) { .publish-steps[data-fit="240"] .publish-steps-word { display: none; } }
+@container (max-width: 259.98px) { .publish-steps[data-fit="260"] .publish-steps-word { display: none; } }
+@container (max-width: 279.98px) { .publish-steps[data-fit="280"] .publish-steps-word { display: none; } }
+@container (max-width: 299.98px) { .publish-steps[data-fit="300"] .publish-steps-word { display: none; } }
+@container (max-width: 319.98px) { .publish-steps[data-fit="320"] .publish-steps-word { display: none; } }
+@container (max-width: 339.98px) { .publish-steps[data-fit="340"] .publish-steps-word { display: none; } }
+@container (max-width: 359.98px) { .publish-steps[data-fit="360"] .publish-steps-word { display: none; } }
+@container (max-width: 399.98px) { .publish-steps[data-fit="400"] .publish-steps-word { display: none; } }
+/* On a phone-wide card the status takes the whole row under Mağaza / Platform / Bağlantı, so steps and counts fit. */
+@container publish-card (max-width: 400px) {
+  .publish-platform-card .publish-platform-facts > .publish-platform-fact-publication:has(.publish-steps-trigger) { grid-column: 1 / -1; }
+}
+
+/* Its popover: hover or keyboard focus shows it (the pill or a button in it), a press pins it. A thin bridge keeps the
+   hover across the gap to the popover, so its buttons can be reached with the pointer. */
+.publish-issue-badge:has(:focus-visible) .publish-issue-tooltip { display: block; }
+.publish-issue-badge.is-steps:hover::after { position: absolute; top: 100%; right: 0; left: 0; height: 10px; content: ""; }
+.publish-issue-badge.is-steps:hover:has(> .publish-issue-tooltip[data-placement="top"])::after { top: auto; bottom: 100%; }
+/* Its top line: the state in words, then why (the job's reason, a refusal code, what the rest would meet). */
+.publish-issue-lead { display: grid; gap: 4px; margin: 0 0 10px; padding-bottom: 10px; border-bottom: 1px solid var(--rv-color-border); font-size: 13px; line-height: 1.4; }
+.publish-issue-lead:last-child { margin: 0; padding: 0; border: 0; }
+.publish-issue-lead > strong { color: var(--rv-color-ink); font-weight: 650; }
+.publish-issue-lead > span { color: var(--rv-color-muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.publish-issue-lead > span.is-danger { color: var(--rv-color-danger); }
+.publish-issue-lead > span.is-success { color: var(--rv-color-accent); }
+.publish-issue-lead > span.is-info { color: var(--rv-color-info); }
+/* Its foot: the card's actions (Durumu Yenile, stop, İş Ayrıntısı), 36 px like every control. */
+.publish-issue-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }
+.publish-issue-lead + .publish-issue-actions { margin-top: 0; padding-top: 0; border-top: 0; }
+.app-shell.stitch-shell main .publish-issue-action, .publish-issue-action { display: inline-flex; box-sizing: border-box; height: 36px; min-height: 0; align-items: center; gap: 6px; margin: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.app-shell.stitch-shell main .publish-issue-action:hover:not(:disabled), .publish-issue-action:hover:not(:disabled) { color: var(--rv-color-primary-text); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border-strong)); }
+.app-shell.stitch-shell main .publish-issue-action.is-danger:hover:not(:disabled), .publish-issue-action.is-danger:hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border-strong)); }
+.publish-issue-action:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
+.app-shell.stitch-shell main .publish-issue-action:disabled, .publish-issue-action:disabled { cursor: wait; opacity: .6; }
+.app-shell.stitch-shell main .publish-issue-action.is-busy:disabled, .publish-issue-action.is-busy:disabled { cursor: progress; opacity: 1; }
+.publish-issue-action > svg { flex: none; }
+.publish-issue-action.is-busy > svg { animation: rv-publish-status-spin .9s linear infinite; }
+.publish-issue-action-stop { display: block; flex: none; width: 9px; height: 9px; background: currentColor; border-radius: 2px; }
 .publish-issue-trigger.publish-platform-status { min-width: 0; max-width: 100%; white-space: nowrap; }
 .publish-issue-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .publish-issue-trigger > :is(i, .publish-issue-count, svg) { flex: none; }

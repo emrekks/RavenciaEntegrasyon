@@ -152,6 +152,56 @@ describe('PublishIssueBadge with the window a chip opens', () => {
   })
 })
 
+describe('PublishIssueBadge steps', () => {
+  it('is one named trigger that pins the popover, with the lead on top and the actions at its foot', async () => {
+    vi.useFakeTimers()
+    try {
+      const fix = vi.fn()
+      const refresh = vi.fn()
+      const dialog = document.createElement('section')
+      dialog.setAttribute('aria-modal', 'true')
+      const openJob = vi.fn(() => { document.body.append(dialog) })
+      act(() => root.render(<PublishIssueBadge variant="steps" id="st" label="Trendyol: Kısmen Yayında, 21/42 varyant yayında; 1 zorunlu eksik" trigger={<span className="steps-probe">adımlar</span>}
+        lead={<><strong>21/42 varyant yayında</strong><span>İnceleme bekliyor · Web Color eşlenmemiş.</span></>}
+        actions={[{ key: 'refresh', label: 'Durumu Yenile', icon: null, onRun: refresh, busy: true, ariaLabel: 'Trendyol yayın durumu sorgulanıyor' }, { key: 'job', label: 'İş Ayrıntısı', icon: null, onRun: openJob }]}
+        heading="Yayın için 1 eksik var" rows={[{ key: 'k', title: 'Web Color', detail: 'Eşlenmemiş.', onRun: fix }]} requiredCount={1} />))
+      const trigger = container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!
+      expect(trigger.classList.contains('publish-steps-trigger')).toBe(true)
+      expect(trigger.getAttribute('aria-label')).toBe('Trendyol: Kısmen Yayında, 21/42 varyant yayında; 1 zorunlu eksik')
+      expect(trigger.querySelector('.steps-probe')).not.toBeNull()
+      expect(trigger.querySelector('.publish-issue-label, .publish-issue-count')).toBeNull()
+      // One gap with a fix: the press still pins the popover (no shortcut), so its actions stay reachable.
+      act(() => trigger.click())
+      expect(fix).not.toHaveBeenCalled()
+      const popover = container.querySelector('.publish-issue-tooltip.is-open')!
+      expect(popover.firstElementChild?.className).toBe('publish-issue-lead')
+      expect(popover.querySelector('.publish-issue-lead')?.textContent).toBe('21/42 varyant yayındaİnceleme bekliyor · Web Color eşlenmemiş.')
+      expect(popover.lastElementChild?.className).toBe('publish-issue-actions')
+      const actions = [...popover.querySelectorAll<HTMLButtonElement>('.publish-issue-action')]
+      expect(actions.map(action => action.textContent)).toEqual(['Durumu Yenile', 'İş Ayrıntısı'])
+      expect(actions[0].getAttribute('aria-busy')).toBe('true')
+      act(() => actions[0].click())
+      expect(refresh).toHaveBeenCalledOnce()
+      // The job window opens over the popover, which stays open; focus comes back to its button when it closes.
+      act(() => actions[1].click())
+      act(() => { vi.advanceTimersByTime(300) })
+      act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+      expect(container.querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
+      dialog.remove()
+      act(() => { vi.advanceTimersByTime(300) })
+      expect(document.activeElement).toBe(actions[1])
+      expect(container.querySelector('.publish-issue-tooltip.is-open')).not.toBeNull()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('says nothing about gaps where emptyText is null', () => {
+    act(() => root.render(<PublishIssueBadge variant="steps" id="lv" label="Trendyol: Yayında" trigger={null} lead={<strong>Yayında</strong>} emptyText={null} heading="" rows={[]} />))
+    act(() => container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!.click())
+    expect(container.querySelector('.publish-issue-empty')).toBeNull()
+    expect(container.querySelector('.publish-issue-actions')).toBeNull()
+  })
+})
+
 describe('PublishIssueBadge shortcut', () => {
   it('opens the one fix directly when there is one gap with a fix', () => {
     const fix = vi.fn()
