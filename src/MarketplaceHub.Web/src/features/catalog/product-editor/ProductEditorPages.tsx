@@ -1030,17 +1030,17 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     if (mappingIssue) {
       if (fieldsWindowPlatform && categoryId && mappingIssue.externalAttributeId) { const externalAttributeId = mappingIssue.externalAttributeId; return { onRun: () => setFieldsFix({ externalAttributeId, missing }) } }
       if (mappingIssue.fix && readinessCategoryScope) return { onRun: () => setValueFixOpen(true) }
-      return { href: '/mappings/attributes' }
+      return { href: '/mappings/categories' }
     }
     // Trendyol's Web Color (only Trendyol cards read it) opens the window on Web Color, the Renk ↔ Web Color card.
     if (productCheck?.title === 'Web Color') {
       if (fieldsWindowPlatform && categoryId && !categoryMappingGap) return { onRun: () => setFieldsFix({ fieldName: 'Web Color', missing }) }
-      return { href: '/mappings/attributes' }
+      return { href: '/mappings/categories' }
     }
     // The product's own data (name, images, variants, the category's attributes and options) is fixed in its form.
     if (productCheck) return onEditProductData ? { onRun: onEditProductData } : productId ? { href: `/products/${productId}` } : {}
     if (categoryMappingGap && categoryId) return { onRun: () => setCategoryFixOpen(true) }
-    return { href: categoryId ? '/mappings/attributes' : '/mappings/categories' }
+    return { href: '/mappings/categories' }
   }
   const optionalBadgeProps = { optionalCount: optionalMappingWarnings.length || undefined, optionalHeading: optionalMappingWarnings.length === 1 ? 'İsteğe bağlı özellik uyarısı' : `${optionalMappingWarnings.length} isteğe bağlı özellik uyarısı`, optionalRows: optionalMappingWarnings.map((issue, index) => ({ key: `${issue.attribute}-${index}`, title: issue.attribute, detail: issue.detail, ...issueInfo(issue), ...issueFix(issue) })) }
   // Partly live: the Yayında step is a ring of the live share and the pill reads "21/42"; the popover's top line says what
