@@ -194,3 +194,13 @@ export function idleRuleText(kind: SyncCadence['idleKind'], platformCode?: strin
     ? 'Pazaryeri bildirimleri sağlıklı geldikçe bu okuma yalnız güvenlik ağıdır ve seyrek sıklıkta çalışır; bildirim aksarsa hemen kendi sıklığına döner.'
     : 'Yeni soru gelmedikçe aralık her yarım saatte ikiye katlanır ve seyrek sıklıkta durur; yeni soru gelince kendi sıklığına döner.'
 }
+
+/**
+ * The toast after the Faturalama switch is saved. It follows what the server stored; when that is not what was asked
+ * for it says so instead of a "kapatıldı" success (N11 used to accept "on" and keep "off").
+ */
+export function invoiceCreationFeedback(requested: boolean, saved: boolean) {
+  if (requested !== saved)
+    return { kind: 'error' as const, message: requested ? 'Fatura oluşturma açılamadı: ayar sunucuda kapalı kaldı. Sayfayı yenileyip tekrar deneyin; sorun sürerse destek ekibine bildirin.' : 'Fatura oluşturma kapatılamadı: ayar sunucuda açık kaldı. Sayfayı yenileyip tekrar deneyin.' }
+  return { kind: 'success' as const, message: saved ? 'Bu bağlantı için fatura oluşturma açıldı.' : 'Bu bağlantı için fatura oluşturma kapatıldı; mevcut belgeler ve fatura kayıtları korunuyor.' }
+}
