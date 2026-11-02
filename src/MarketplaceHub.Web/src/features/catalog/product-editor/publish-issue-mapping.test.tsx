@@ -118,7 +118,8 @@ describe('publish gap chips open the category fields window', () => {
     await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter><main><NewProductPage editProductId="p1" publishOnly /></main></MemoryRouter></QueryClientProvider>) })
     await waitFor(() => chips('optional').length === 2)
     expect(chips('required').map(item => item.textContent)).toEqual(expect.arrayContaining(['Kumaş Tipi', 'Kesim Kalıbı']))
-    expect(chips('optional').map(item => item.textContent)).toEqual(['Boy', 'Kalınlık'])
+    // A value gap names its values on the chip.
+    expect(chips('optional').map(item => item.textContent)).toEqual(['Boy', 'Kalınlık eşleşmemiş: Orta'])
 
     await openFromChip('required', 'Kesim Kalıbı')
     expect(document.querySelector('.mapping-advanced-modal h2')?.textContent).toBe('Kategori Alanları ve Değerleri')
@@ -137,6 +138,12 @@ describe('publish gap chips open the category fields window', () => {
     expect(button('Yalnızca Eksikler').getAttribute('aria-pressed')).toBe('true')
     expect([...document.querySelectorAll('.mapping-advanced-modal .cm-vrow.is-product-issue .cm-pv')].map(item => item.firstChild?.textContent)).toEqual(['Orta'])
     expect([...document.querySelectorAll('.mapping-advanced-modal .cm-vscroll .cm-vrow')]).toHaveLength(1)
+    // A count and the names at the top; picking a value clears the mark live and says all are mapped.
+    expect(document.querySelector('.mapping-advanced-modal .cm-need-summary')?.textContent).toBe('Eşleşmesi gereken 1 Orta')
+    await act(async () => { document.querySelector<HTMLButtonElement>('.mapping-advanced-modal .cm-vrow.needs-mapping .vp-trigger')!.click() })
+    await act(async () => { [...document.querySelectorAll<HTMLButtonElement>('.vp-list [role="option"]')].find(option => option.textContent === 'Orta')!.click() })
+    expect(document.querySelector('.mapping-advanced-modal .cm-vrow.needs-mapping')).toBeNull()
+    expect(document.querySelector('.mapping-advanced-modal .cm-need-summary.is-done')?.textContent).toBe('Bu ürünün değerlerinin hepsi eşlendi. Kalıcı olması için Kaydet’e basın.')
 
     // Any other field can still be chosen; from there Sonraki Eksik goes back to the product's first gap.
     await act(async () => { [...document.querySelectorAll<HTMLButtonElement>('.mapping-advanced-modal .cm-item')].find(item => item.querySelector('.cm-name')?.textContent === 'Kumaş Tipi')!.click() })
@@ -161,9 +168,9 @@ describe('publish gap chips open the category fields window', () => {
       select.value = 'kumas'
       select.dispatchEvent(new Event('change', { bubbles: true }))
     })
-    await waitFor(() => Boolean(chip('required', 'Kumaş Tipi')?.title.includes('değeri seçilmemiş')))
+    await waitFor(() => Boolean(chip('required', 'Kumaş Tipi')?.getAttribute('aria-label')?.includes('üründe değer seçilmemiş')))
     expect(fixture.state.puts).toEqual([{ path: '/mappings/attributes/kumas', body: expect.objectContaining({ connectionId: 'hb', scopeExternalId: 'hb-cat', externalId: 'k1', status: 'VERIFIED' }) }])
-    expect(chip('required', 'Kumaş Tipi').title).toContain('ürün veya varyant değeri seçilmemiş')
+    expect(chip('required', 'Kumaş Tipi').getAttribute('aria-label')).toContain('Kumaş Tipi için üründe değer seçilmemiş')
     // Closing reads the check once more.
     const before = fixture.state.readinessReads
     await act(async () => { document.querySelector<HTMLButtonElement>('.mapping-advanced-modal .modal-close')!.click() })
