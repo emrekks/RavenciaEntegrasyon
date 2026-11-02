@@ -157,9 +157,30 @@ public sealed class ReturnClaim
     // after the claim); shown as an estimate, never as the marketplace's date.
     public bool ActionDueAtEstimated { get; set; }
     public DateTimeOffset LastRemoteModifiedAt { get; set; }
+    // Where a rejected return's package back to the customer stands (ReturnRejectedPackageStates). Only Trendyol
+    // reports it (getClaims rejectedPackageInfo); null on the other marketplaces and on a claim not read since.
+    public string? RejectedPackageState { get; set; }
+    // When the marketplace approved or rejected the claim (its current outcome), as the marketplace itself dates it:
+    // Trendyol claim item audits, Hepsiburada acceptedDate/rejectedDate, n11 approvedDate/deniedDate. Null when the
+    // marketplace gave no date; never derived from a change time.
+    public DateTimeOffset? DecidedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+// Trendyol rejectedPackageInfo: the field is missing while no package back to the customer exists (NONE); a package
+// without cargoTrackingLink has not left yet (the link comes once it is on its way); dontShipBack marks a package
+// that is never sent back (reason 2013).
+public static class ReturnRejectedPackageStates
+{
+    public const string None = "NONE";
+    public const string AwaitingCargo = "AWAITING_CARGO";
+    public const string Shipped = "SHIPPED";
+    public const string DontShipBack = "DONT_SHIP_BACK";
+
+    // Whether a later read can still change the state (the package may yet be created or leave).
+    public static bool IsOpen(string? state) => state is null or None or AwaitingCargo;
 }
 
 public sealed class ReturnLine

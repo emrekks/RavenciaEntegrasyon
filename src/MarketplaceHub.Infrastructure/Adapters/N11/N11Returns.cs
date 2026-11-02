@@ -129,7 +129,14 @@ public static class N11ReturnMapper
             N11HttpClient.Child(element, "shipmentCompany"),
             N11HttpClient.Child(element, "trackingNumber"),
             null,
-            requested);
+            requested,
+            // n11 dates the decision itself (approvedDate/deniedDate), often as a plain Turkey day.
+            DecidedAt: rawStatus.Trim().ToUpperInvariant() switch
+            {
+                "APPROVED" => Date(N11HttpClient.Child(element, "approvedDate")),
+                "DENIED" => Date(N11HttpClient.Child(element, "deniedDate")),
+                _ => null
+            });
     }
 
     // n11 claim states, named as the shared return status canonicalizer understands them.

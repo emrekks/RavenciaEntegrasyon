@@ -634,7 +634,7 @@ public sealed record PriceInventoryJobPayload(Guid JobId, Guid ConnectionId, str
 public sealed record BatchResult<T>(IReadOnlyList<T> Lines, string? ExternalOperationId, bool IsPartial);
 public sealed record OrderPollWindow(DateTimeOffset? ModifiedAfter, DateTimeOffset? ModifiedBefore, string? StoreFrontCode = null);
 // CancelledAt: when the marketplace says the line's cancelled quantity was cancelled; null when it does not say.
-public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0, DateTimeOffset? CancelledAt = null);
+public sealed record RemoteOrderLine(string ExternalLineId, string Sku, string? Barcode, string Title, decimal Quantity, decimal UnitPrice, decimal? VatRate, string RawStatus, string SourceSnapshotJson = "{}", decimal CancelledQuantity = 0, DateTimeOffset? CancelledAt = null, decimal? PlatformDiscount = null);
 public sealed record RemotePackageAllocation(string ExternalLineId, decimal AllocatedQuantity, decimal CancelledQuantity, decimal ShippedQuantity, decimal DeliveredQuantity, decimal ReturnedQuantity);
 public sealed record RemotePackageInvoiceObservation(
     string? RawStatus,
@@ -765,7 +765,7 @@ public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrde
 // One status change of a return line as the marketplace keeps it (Trendyol getClaimItemAudits).
 public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
 // ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.
-public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false);
+public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null);
 public sealed record ReturnActionResult(string ExternalClaimId, string Status, string? ExternalOperationId);
@@ -1308,8 +1308,8 @@ public sealed record OrderSummaryView(
     int Undelivered = 0,
     // Pending orders past their ship-by time within the same filters (the Geciken tab).
     int Late = 0,
-    // Micro-export orders within the same filters (any tab), and their count per country (invoice address, else the
-    // storefront); null when only some tabs were asked for.
+    // Micro-export orders within the same filters in the one tab asked for under micro=true (the card asks for PENDING),
+    // and their count per country (invoice address, else the storefront); 0 and null for any other request.
     int MicroExport = 0,
     IReadOnlyDictionary<string, int>? MicroExportCountries = null);
 public sealed record OrderLineView(
@@ -1488,7 +1488,14 @@ public sealed record ReturnSummaryView(
     IReadOnlyDictionary<string, int>? PlatformCounts = null,
     IReadOnlyDictionary<string, int>? CargoCounts = null,
     IReadOnlyDictionary<string, int>? ReasonCounts = null,
-    IReadOnlyDictionary<string, int>? InvoiceStatusCounts = null);
+    IReadOnlyDictionary<string, int>? InvoiceStatusCounts = null,
+    ReturnMetricCounts? Metrics = null);
+// The metric cards. RejectedAwaitingCargo: rejected returns whose package back to the customer exists but has not been
+// handed to cargo (Trendyol rejectedPackageInfo without a tracking link); RejectedCargoUnknown: rejected returns whose
+// package state is not known (other marketplaces, or not read yet). TodayApproved/TodayRejected: returns approved or
+// rejected since 00:00 Istanbul, dated by the marketplace (ReturnClaim.DecidedAt) or by a panel decision confirmed
+// today; a return without either date is left out.
+public sealed record ReturnMetricCounts(int RejectedAwaitingCargo, int RejectedCargoUnknown, int TodayApproved, int TodayRejected);
 public sealed record ReturnPlatformOption(string PlatformCode, string DisplayName);
 // Value is the filter key (reason code, else text); the page labels it from code and text.
 public sealed record ReturnReasonOption(string Value, string? ReasonCode, string? ReasonText);

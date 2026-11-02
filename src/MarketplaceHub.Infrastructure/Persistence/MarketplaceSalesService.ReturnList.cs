@@ -16,7 +16,7 @@ public sealed partial class MarketplaceSalesService
     internal static readonly string[] ReturnTabs = ["ALL", "REQUESTED", "SHIPPING", "ACTION_REQUIRED", "APPROVED", "REJECTED", "REVIEW", "DISPUTED", "SUSPENDED"];
     private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
 
-    private sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset LastRemoteModifiedAt);
+    private sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null);
 
     // One row of the Returns page. LineIds are the card's order lines (a claim's view lines).
     internal sealed record ReturnCard(Guid ClaimId, int Kind, string Status, string PlatformCode, string PlatformName, string? CargoProviderName, string? ReasonCode, string? ReasonText, IReadOnlyList<Guid> LineIds)
@@ -99,7 +99,7 @@ public sealed partial class MarketplaceSalesService
         // check below repeats them on the loaded rows.
         if (applyRefinements) ApplyReturnRefinements(ref query, tenantId, options);
         var rows = await query.OrderBy(x => x.Id)
-            .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt))
+            .Select(x => new ReturnClaimRow(x.Id, x.Status, x.OrderId, x.ConnectionId, x.ExternalClaimId, x.CargoProviderName, x.ReasonCode, x.ReasonText, x.LastRemoteModifiedAt, x.RejectedPackageState, x.DecidedAt))
             .ToListAsync(cancellationToken);
         var claims = rows.ToDictionary(x => x.Id);
         if (rows.Count == 0) return new([], claims, null);
@@ -357,7 +357,59 @@ public sealed partial class MarketplaceSalesService
         var cargoCounts = CountBy(card => Matches(card, options with { Cargo = null }) && InvoiceMatches(card), card => card.CargoProviderName?.Trim());
         var reasonCounts = CountBy(card => Matches(card, options with { ReasonKey = null }) && InvoiceMatches(card), card => ReturnReasonKey(card.ReasonCode, card.ReasonText));
         var invoiceCounts = CountBy(card => Matches(card, options), card => labels.GetValueOrDefault(card.ClaimId));
+        var metrics = await ReturnMetricsAsync(tenantId, counted, cancellationToken);
         return new(counts, platforms.Select(code => new ReturnPlatformOption(code, platformNames[code])).ToList(), cargo,
-            reasons.Select(reason => reasonSources[reason]).ToList(), invoiceStatuses, listed.Cards.Count, platformCounts, cargoCounts, reasonCounts, invoiceCounts);
+            reasons.Select(reason => reasonSources[reason]).ToList(), invoiceStatuses, listed.Cards.Count, platformCounts, cargoCounts, reasonCounts, invoiceCounts, metrics);
+    }
+
+    // 00:00 today in Istanbul (UTC+3 all year), as an instant.
+    internal static DateTimeOffset IstanbulDayStart(DateTimeOffset now)
+    {
+        var offset = TimeSpan.FromHours(3);
+        return new DateTimeOffset(now.ToOffset(offset).Date, offset).ToUniversalTime();
+    }
+
+    // A rejected card counts as waiting for cargo only when the marketplace said its package back to the customer exists
+    // and has no tracking link yet; a rejected card without a known package state is counted apart, never as waiting.
+    internal static (bool AwaitingCargo, bool Unknown) RejectedCargoState(ReturnClaimStatus status, string? rejectedPackageState) =>
+        status != ReturnClaimStatus.Rejected ? (false, false)
+        : (rejectedPackageState == ReturnRejectedPackageStates.AwaitingCargo, rejectedPackageState is null);
+
+    // The metric cards over the counted cards (every filter but the tab). Today's decisions: the marketplace's own date
+    // (DecidedAt) or a panel decision confirmed today, the claim still standing in that outcome.
+    private async Task<ReturnMetricCounts> ReturnMetricsAsync(Guid tenantId, ReturnCardScan counted, CancellationToken cancellationToken)
+    {
+        var awaitingCargo = 0; var unknownCargo = 0;
+        foreach (var card in counted.Cards)
+        {
+            if (ReturnTabGroup(card.Status) != "REJECTED" || !counted.Claims.TryGetValue(card.ClaimId, out var row)) continue;
+            var (awaiting, unknown) = RejectedCargoState(row.Status, row.RejectedPackageState);
+            if (awaiting) awaitingCargo++;
+            if (unknown) unknownCargo++;
+        }
+        var dayStart = IstanbulDayStart(timeProvider.GetUtcNow());
+        var cardClaims = counted.Cards.Select(card => card.ClaimId).ToHashSet();
+        bool IsApproved(ReturnClaimRow row) => row.Status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
+        var approved = new HashSet<Guid>(); var rejected = new HashSet<Guid>();
+        foreach (var row in counted.Claims.Values)
+        {
+            if (!cardClaims.Contains(row.Id) || row.DecidedAt is not { } decidedAt || decidedAt < dayStart) continue;
+            if (IsApproved(row)) approved.Add(row.Id);
+            else if (row.Status == ReturnClaimStatus.Rejected) rejected.Add(row.Id);
+        }
+        if (cardClaims.Count > 0)
+        {
+            var decisions = await db.ReturnDecisions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.Status == "SUCCEEDED" && x.CompletedAt >= dayStart && (x.Action == "APPROVE" || x.Action == "REJECT"))
+                .Select(x => new { x.ClaimId, x.Action })
+                .ToListAsync(cancellationToken);
+            foreach (var decision in decisions)
+            {
+                if (!cardClaims.Contains(decision.ClaimId) || !counted.Claims.TryGetValue(decision.ClaimId, out var row)) continue;
+                if (decision.Action == "APPROVE" && IsApproved(row)) approved.Add(row.Id);
+                else if (decision.Action == "REJECT" && row.Status == ReturnClaimStatus.Rejected) rejected.Add(row.Id);
+            }
+        }
+        return new(awaitingCargo, unknownCargo, approved.Count, rejected.Count);
     }
 }

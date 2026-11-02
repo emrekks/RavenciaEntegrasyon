@@ -884,7 +884,9 @@ internal static class HepsiburadaJsonMapper
             cargoCompany,
             trackingNumber,
             trackingLink,
-            Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt"));
+            Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt"),
+            // The decision's own date (acceptedDate/rejectedDate), only for the status it dates.
+            DecidedAt: status.ToUpperInvariant() is "ACCEPTED" or "REJECTED" ? statusDate : null);
     }
 
     private static JsonElement ReturnDelivery(JsonElement delivery)

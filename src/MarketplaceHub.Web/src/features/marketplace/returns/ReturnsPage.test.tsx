@@ -20,7 +20,8 @@ const returnedLine = {
 const summary = {
   tabCounts: { ALL: 41, REQUESTED: 3, SHIPPING: 5, ACTION_REQUIRED: 7, APPROVED: 22, REJECTED: 4, REVIEW: 0, DISPUTED: 0, SUSPENDED: 0 },
   platforms: [{ platformCode: 'TRENDYOL', displayName: 'Trendyol' }], cargoProviders: ['Yurtiçi', 'Aras Kargo'],
-  reasons: [{ value: 'SIZE', reasonCode: 'SIZE', reasonText: null }], invoiceStatuses: ['FATURA_BILINMIYOR'], unfilteredCount: 41
+  reasons: [{ value: 'SIZE', reasonCode: 'SIZE', reasonText: null }], invoiceStatuses: ['FATURA_BILINMIYOR'], unfilteredCount: 41,
+  metrics: { rejectedAwaitingCargo: 3, rejectedCargoUnknown: 1, todayApproved: 6, todayRejected: 2 }
 }
 
 vi.mock('../../../shared/api', async importOriginal => ({
@@ -54,15 +55,20 @@ describe('returns page', () => {
   it('reads one page of cards and the tab counts from the server instead of every return', async () => {
     const { host } = renderPage()
     await waitFor(() => host.textContent?.includes('#2'))
-    await waitFor(() => host.querySelector('.rr-metrics')?.textContent?.includes('22'))
+    await waitFor(() => host.querySelector('.rr-metrics')?.textContent?.includes('Reddedilen3'))
 
     const returnRequests = api.paths.filter(path => path.startsWith('/returns'))
     expect(returnRequests).toContain('/returns?limit=20')
     expect(returnRequests).toContain('/returns/summary?')
     expect(returnRequests).toHaveLength(2)
-    const metrics = host.querySelector('.rr-metrics')!.textContent!
-    expect(metrics).toContain('7')
-    expect(metrics).toContain('41')
+    const cards = Array.from(host.querySelectorAll<HTMLElement>('.rr-metrics article'))
+    expect(cards.map(card => card.querySelector('small')!.textContent)).toEqual(['Aksiyon Bekleyen', 'Kargoya Verilen', 'Reddedilen', 'Bugün Onaylanan / Reddedilen'])
+    expect(cards[0].querySelector('strong')!.textContent).toBe('7')
+    // Rejected returns whose package back to the customer is not with the cargo yet, not every rejected return (4).
+    expect(cards[2].querySelector('strong')!.textContent).toBe('3')
+    expect(cards[2].className).toBe('rr-warn')
+    expect(cards[2].textContent).toContain('1 iadede bilinmiyor')
+    expect(cards[3].querySelector('strong')!.textContent).toBe('6 / 2')
     expect(host.textContent).toContain('Toplam 41 iade bilgisi')
     // The return's amounts as the marketplace wrote them, never ones calculated from the order.
     expect(host.textContent).not.toContain('Siparişten hesaplanan')

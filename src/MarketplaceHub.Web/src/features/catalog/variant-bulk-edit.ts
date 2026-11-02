@@ -29,8 +29,44 @@ export function variantBulkEditIssue(field: VariantBulkEditField, value: number)
   return null
 }
 
-export function applyVariantBulkEditValue<T extends VariantBulkEditRow>(rows: T[], rowKeys: ReadonlySet<string>, field: VariantBulkEditField, value: number) {
-  return rows.map(row => rowKeys.has(row.key) ? { ...row, [field]: value } : row)
+export type VariantBulkMode = 'set' | 'increase' | 'decrease'
+
+export const variantBulkModeLabels: Record<VariantBulkMode, string> = { set: 'Eşitle', increase: 'Arttır', decrease: 'Azalt' }
+
+export type VariantBulkInput = { mode: VariantBulkMode, value: number | null }
+
+export type VariantBulkInputs = Record<VariantBulkEditField, VariantBulkInput>
+
+// One field's new value: Eşitle writes the typed number, Arttır adds it, Azalt subtracts it but never goes below 0.
+// A missing cost counts as 0 for Arttır / Azalt. Prices are kept to 2 decimals, stock to a whole number.
+export function applyVariantBulkMode(current: number | null, input: VariantBulkInput, field: VariantBulkEditField): { value: number | null, clamped: boolean } {
+  const typed = input.value
+  if (typed == null || !Number.isFinite(typed)) return { value: current, clamped: false }
+  const round = (number: number) => field === 'stock' ? Math.round(number) : Math.round((number + Number.EPSILON) * 100) / 100
+  if (input.mode === 'set') return { value: typed, clamped: false }
+  if (typed < 0) return { value: current, clamped: false }
+  const base = current ?? 0
+  if (input.mode === 'increase') return { value: round(base + typed), clamped: false }
+  const result = round(base - typed)
+  return result < 0 ? { value: 0, clamped: true } : { value: result, clamped: false }
+}
+
+// Applies all four fields' operations to the chosen rows; `clamped` counts the variants that stopped at 0 on any field.
+export function applyVariantBulkModes<T extends VariantBulkEditRow>(rows: T[], rowKeys: ReadonlySet<string>, inputs: VariantBulkInputs) {
+  let clamped = 0
+  const next = rows.map(row => {
+    if (!rowKeys.has(row.key)) return row
+    const updated: T = { ...row }
+    let rowClamped = false
+    for (const field of ['stock', 'salePrice', 'costPrice', 'listPrice'] as const) {
+      const result = applyVariantBulkMode(row[field], inputs[field], field)
+      if (result.clamped) rowClamped = true
+      if (result.value != null) (updated as VariantBulkEditRow)[field] = result.value
+    }
+    if (rowClamped) clamped++
+    return updated
+  })
+  return { rows: next, clamped }
 }
 
 // The groups sharing a grid row with `key` (row-major, `columns` per row); one column puts each group on its own row.

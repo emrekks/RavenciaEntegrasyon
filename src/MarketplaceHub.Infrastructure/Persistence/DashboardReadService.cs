@@ -293,6 +293,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var scanEnd = period.CurrentEnd + ahead;
         var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
         var lines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
+        var allocations = db.PackageLineAllocations.AsNoTracking().Where(allocation => allocation.TenantId == tenantId);
         var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
         return from order in db.Orders.AsNoTracking()
                join connection in db.PlatformConnections.AsNoTracking() on new { order.TenantId, Id = order.ConnectionId } equals new { connection.TenantId, connection.Id }
@@ -308,21 +309,38 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                let realAt = wallClockPlatforms.Contains(connection.PlatformCode) ? order.OrderedAt - ahead : order.OrderedAt
                where (realAt >= previousStart && realAt < previousEnd) || (realAt >= currentStart && realAt < currentEnd)
                let priced = currentPackages.Any(package => package.OrderId == order.Id && (package.NetAmount > 0 || package.GrossAmount > 0))
-               // DashboardRevenuePolicy.Amount: what the customer paid; the price before discounts only when no net is known.
-               let amount = priced
+               // DashboardRevenuePolicy.Amount: what the customer paid plus the marketplace's own discount on the lines that
+               // are not cancelled; the price before discounts only when no net is known. Never above the list price.
+               let paid = priced
                    ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
                        .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
                    : (order.NetAmount > 0 ? order.NetAmount : order.GrossAmount)
+               let listAmount = priced
+                   ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
+                       .Sum(package => package.GrossAmount > 0 ? package.GrossAmount : package.NetAmount)
+                   : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
+               let platformDiscount = lines.Where(line => line.OrderId == order.Id && line.PlatformDiscount != null)
+                   .Sum(line => line.PlatformDiscount!.Value * (line.OrderedQuantity - line.CancelledQuantity))
+               let ceiling = listAmount > paid ? listAmount : paid
+               let amount = paid + platformDiscount > ceiling ? ceiling : paid + platformDiscount
                let returnBooked = !unbookedReturns.Contains(order.Id)
                let packagesBack = priced && returnBooked
                    ? currentPackages.Where(package => package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned)
                        .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
+                     + (from package in currentPackages
+                        where package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned
+                        join allocation in allocations on package.Id equals allocation.PackageId
+                        join line in lines on allocation.OrderLineId equals line.Id
+                        where line.PlatformDiscount != null
+                        select line.PlatformDiscount!.Value * allocation.AllocatedQuantity).Sum()
                    : 0m
-               let lineValue = lines.Where(line => line.OrderId == order.Id).Sum(line => line.UnitPrice * (line.OrderedQuantity - line.CancelledQuantity))
+               // The lines at the same base as the amount: the price paid plus the marketplace's own discount.
+               let lineValue = lines.Where(line => line.OrderId == order.Id)
+                   .Sum(line => (line.UnitPrice + (line.PlatformDiscount ?? 0m)) * (line.OrderedQuantity - line.CancelledQuantity))
                let lineBack = lines.Where(line => line.OrderId == order.Id)
                    .Select(line => new
                    {
-                       line.UnitPrice,
+                       UnitPrice = line.UnitPrice + (line.PlatformDiscount ?? 0m),
                        Active = line.OrderedQuantity - line.CancelledQuantity,
                        ReturnedQuantity = returnBooked ? line.ReturnedQuantity : 0m,
                        Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
@@ -467,8 +485,11 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
     }
 }
 
-// What the performance panel counts as revenue. Owner decision (20 Oct 2026): revenue is what the customer paid
-// (net); cancelled orders and packages are left out; what was returned is left out of revenue and shown on its own line.
+// What the performance panel counts as revenue. Owner decision (20 Oct 2026): revenue is the net sale; cancelled orders
+// and packages are left out; what was returned is left out of revenue and shown on its own line. The net sale is what the
+// customer paid plus the marketplace's own discount (OrderLine.PlatformDiscount), which the marketplace pays the seller:
+// Trendyol's Net Satış is the list price less the seller's discount only (1-2 Nov 2026: 18,655.38, the panel 18,505.38
+// before, the 150.00 being one order's Trendyol discount).
 public static class DashboardRevenuePolicy
 {
     public static readonly string[] CancelledStatuses = ["CANCELLED", "CANCELED"];
@@ -482,7 +503,6 @@ public static class DashboardRevenuePolicy
     public static readonly string[] AcceptedReturnLineRawStatuses = ["ACCEPTED", "APPROVED", "COMPLETED", "REFUNDED"];
 
     public static decimal Amount(decimal netAmount, decimal grossAmount) => netAmount > 0 ? netAmount : grossAmount;
-
     // Trendyol micro-export orders (a storefront other than Turkey's) whose statement records no refund. Their return (claim,
     // returned line or package, returned status) takes nothing off: Trendyol keeps the sale and takes a weekly overseas
     // return fee off the payout instead (owner, 29 Oct 2026; 7-13 Sep 2026, a Romanian order of 584.75 TL). The overview

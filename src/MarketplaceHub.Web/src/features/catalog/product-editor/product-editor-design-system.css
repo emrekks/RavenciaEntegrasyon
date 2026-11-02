@@ -302,6 +302,10 @@
 }
 
 @layer features {
+  /* Eşitle / Arttır / Azalt: one compact segmented control above each bulk field (panel and dialog). */
+  .variant-bulk-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 2px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+  .app-shell.stitch-shell .variant-bulk-modes > button, .variant-bulk-edit-modal .variant-bulk-modes > button { min-width: 0; min-height: 0; height: 28px; padding: 0 4px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 5px; font-size: var(--rv-font-size-xs); font-weight: 750; white-space: nowrap; }
+  .app-shell.stitch-shell .variant-bulk-modes > button.is-on, .variant-bulk-edit-modal .variant-bulk-modes > button.is-on { color: #fff; background: var(--rv-color-primary-fill); }
   .variant-bulk-edit-modal { width: min(500px, 100%); }
 }
 
@@ -372,22 +376,6 @@
 }
 
 @layer features {
-  .variant-filter-panel:not(.is-open) .variant-filter-panel-toggle-action > .ui-icon { transform: rotate(-90deg); }
-}
-
-@layer features {
-  .variant-filter-panel-body { display: grid; gap: var(--rv-space-3); }
-}
-
-@layer features {
-  .variant-filter-panel-summary { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); }
-}
-
-@layer features {
-  .variant-filter-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-
-@layer features {
   .variant-filter-field { position: relative; min-width: 0; }
 }
 
@@ -400,7 +388,10 @@
 }
 
 @layer features {
-  .variant-filter-dropdown-tools { display: grid; gap: var(--rv-space-2); }
+  .variant-filter-dropdown-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--rv-space-2); }
+  /* Always laid out beside the search box (hidden, not removed, with no selection) so the option list never shifts. */
+  .app-shell.stitch-shell main .variant-filter-dropdown-tools > button.variant-filter-clear-selection { width: auto; min-height: 0; height: 36px; padding: 0 var(--rv-space-2); color: var(--rv-color-primary); background: transparent; border: 0; font-size: var(--rv-font-size-xs); font-weight: 750; white-space: nowrap; }
+  .app-shell.stitch-shell main .variant-filter-dropdown-tools > button.variant-filter-clear-selection:disabled { visibility: hidden; }
 }
 
 @layer features {
@@ -1139,3 +1130,8 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .product-add-page .product-submit-actions button[aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
 .app-shell.stitch-shell main .product-submit-sticky.rv-action-bar > div:first-child > .product-submit-code-block { display: inline-flex; align-items: center; gap: 6px; height: auto; min-height: 0; margin: 2px 0 0; padding: 0; color: var(--rv-color-danger); background: none; border: 0; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
 .app-shell.stitch-shell main .product-submit-sticky.rv-action-bar > div:first-child > .product-submit-code-block:hover > span { text-decoration: underline; }
+
+/* The bulk edit dialog is portaled into main, where the unlayered app-shell button rule (44 px) beats the layered rules
+   above, and the product page's 36 px secondary rule beats a plainer selector: its footer buttons are 34 px and the Eşitle / Arttır / Azalt segments 28 px (34 px with their frame) here. */
+html body .app-shell.stitch-shell main .variant-bulk-edit-modal.workspace-modal > footer button { box-sizing: border-box; height: 34px; min-height: 0; padding-block: 0; }
+html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { height: 28px; min-height: 0; padding-block: 0; }

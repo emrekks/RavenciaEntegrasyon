@@ -246,18 +246,20 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     }
 
     // One row per order. Amount: the order's current packages that are not cancelled (an order whose packages carry
-    // no amount keeps its order total); the returned part is worked out from these in ReportBuilder, as the overview does.
+    // no amount keeps its order total) plus the marketplace's own discount on the lines that are not cancelled
+    // (DashboardRevenuePolicy.Amount); the returned part is worked out from these in ReportBuilder, as the overview does.
     private async Task<List<ReportOrderRow>> OrderRowsAsync(Guid tenantId, Guid[] allowedIds, ReportPeriod period, CancellationToken cancellationToken)
     {
         var acceptedClaims = DashboardRevenuePolicy.AcceptedReturnStatuses;
         var acceptedLines = DashboardRevenuePolicy.AcceptedReturnLineRawStatuses;
         var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
         var orderLines = db.OrderLines.AsNoTracking().Where(line => line.TenantId == tenantId);
+        var allocations = db.PackageLineAllocations.AsNoTracking().Where(allocation => allocation.TenantId == tenantId);
         var unbookedReturns = DashboardRevenuePolicy.OrdersWithUnbookedReturn(db, tenantId);
         return await (from row in PeriodOrders(tenantId, allowedIds, period)
                       let order = row.Order
                       let priced = currentPackages.Any(package => package.OrderId == order.Id && (package.NetAmount > 0 || package.GrossAmount > 0))
-                      let amount = priced
+                      let paid = priced
                           ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
                               .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
                           : (order.NetAmount > 0 ? order.NetAmount : order.GrossAmount)
@@ -265,18 +267,31 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           ? currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
                               .Sum(package => package.GrossAmount > 0 ? package.GrossAmount : package.NetAmount)
                           : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
+                      let platformDiscount = orderLines.Where(line => line.OrderId == order.Id && line.PlatformDiscount != null)
+                          .Sum(line => line.PlatformDiscount!.Value * (line.OrderedQuantity - line.CancelledQuantity))
+                      // Never above the list price: an amount that already is the list price (no net known) takes nothing more.
+                      let ceiling = listAmount > paid ? listAmount : paid
+                      let amount = paid + platformDiscount > ceiling ? ceiling : paid + platformDiscount
                       // A Trendyol micro-export order's return (claim, returned line or package, returned status) counts once Trendyol's
                       // statement records the refund, on the overview too (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
                       let returnBooked = !unbookedReturns.Contains(order.Id)
                       let packagesBack = priced && returnBooked
                           ? currentPackages.Where(package => package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned)
                               .Sum(package => package.NetAmount > 0 ? package.NetAmount : package.GrossAmount)
+                            + (from package in currentPackages
+                               where package.OrderId == order.Id && package.Status == ShipmentPackageStatus.Returned
+                               join allocation in allocations on package.Id equals allocation.PackageId
+                               join line in orderLines on allocation.OrderLineId equals line.Id
+                               where line.PlatformDiscount != null
+                               select line.PlatformDiscount!.Value * allocation.AllocatedQuantity).Sum()
                           : 0m
-                      let lineValue = orderLines.Where(line => line.OrderId == order.Id).Sum(line => line.UnitPrice * (line.OrderedQuantity - line.CancelledQuantity))
+                      // The lines at the same base as the amount: the price paid plus the marketplace's own discount.
+                      let lineValue = orderLines.Where(line => line.OrderId == order.Id)
+                          .Sum(line => (line.UnitPrice + (line.PlatformDiscount ?? 0m)) * (line.OrderedQuantity - line.CancelledQuantity))
                       let lineBack = orderLines.Where(line => line.OrderId == order.Id)
                           .Select(line => new
                           {
-                              line.UnitPrice,
+                              UnitPrice = line.UnitPrice + (line.PlatformDiscount ?? 0m),
                               Active = line.OrderedQuantity - line.CancelledQuantity,
                               ReturnedQuantity = returnBooked ? line.ReturnedQuantity : 0m,
                               Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
@@ -335,6 +350,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           Sku = line.Sku,
                           Barcode = line.Barcode,
                           UnitPrice = line.UnitPrice,
+                          PlatformDiscount = line.PlatformDiscount ?? 0m,
                           OrderedQuantity = line.OrderedQuantity,
                           CancelledQuantity = line.CancelledQuantity,
                           ReturnedQuantity = unbookedReturns.Contains(row.Order.Id) ? 0m : line.ReturnedQuantity,
