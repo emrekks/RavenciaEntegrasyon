@@ -9480,7 +9480,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // sibling package; that fragment is validated per package below and
         // merged with the persisted projection instead of being rejected as an
         // incomplete order.
-        if (order is null && remoteLineQuantities.Count > 0 && detailedPackages.Length > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, detailedPackages, out _))
+        // Split parents (UnPacked) carry no quantities of their own and are left out of the check, as below.
+        var quantityPackages = usesTrendyolPackageStatuses
+            ? detailedPackages.Where(package => !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus)).ToArray()
+            : detailedPackages;
+        if (order is null && remoteLineQuantities.Count > 0 && quantityPackages.Length > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, quantityPackages, out _))
         {
             var rejectedEventId = remote.Packages.Count > 0
                 ? PackageIngestionSafety.EventId(remote.Packages[0].ExternalPackageId, remote.Packages[0].OccurredAt)
@@ -9635,8 +9639,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 && TrendyolShipmentPackageStatusPolicy.HasSameNormalizedStatus(package.RawStatus, remotePackage.RawStatus)
                 && target != ShipmentPackageStatus.OnHold
                 && TrendyolShipmentPackageStatusPolicy.IsLegacyOnHoldProjection(remotePackage.RawStatus);
-            var packageAllocations = remotePackage.Allocations;
-            if (remotePackage.IsStatusObservation && packageAllocations.Count == 0 && package is not null)
+            // A Trendyol split parent (UnPacked) carries no quantities of its own: its lines live on in the child
+            // packages, and its listed lines can exceed what the order still holds. Its lines are not checked or
+            // allocated (the line projection skips split parents too), and a refusal it caused before is resolved.
+            var isSplitParent = usesTrendyolPackageStatuses && ShipmentPackageSupersession.IsSplitParentRawStatus(remotePackage.RawStatus);
+            if (isSplitParent) await ResolvePackageQuantityIssues(tenantId, connectionId, remotePackage.ExternalPackageId, cancellationToken);
+            var packageAllocations = isSplitParent ? [] : remotePackage.Allocations;
+            if (!isSplitParent && remotePackage.IsStatusObservation && packageAllocations.Count == 0 && package is not null)
             {
                 packageAllocations = allocationsByKey.Values
                     .Where(allocation => allocation.PackageId == package.Id && externalLineIdsById.ContainsKey(allocation.OrderLineId))
@@ -9654,7 +9663,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     .ToArray();
             }
             IReadOnlyDictionary<string, NormalizedPackageAllocation> safeAllocations = new Dictionary<string, NormalizedPackageAllocation>(StringComparer.Ordinal);
-            if (packageAllocations.Count > 0 || !remotePackage.IsStatusObservation)
+            if (!isSplitParent && (packageAllocations.Count > 0 || !remotePackage.IsStatusObservation))
             {
                 if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, packageAllocations, target, out safeAllocations))
                 {
@@ -12623,6 +12632,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         issue.Summary = summary;
         issue.LastSeenAt = now;
         issue.OccurrenceCount++;
+    }
+    // Every open quantity refusal of the package, whatever event it was raised for.
+    private async Task ResolvePackageQuantityIssues(Guid tenantId, Guid connectionId, string externalPackageId, CancellationToken cancellationToken)
+    {
+        var prefix = OperationalIssueRetentionService.PackageQuantityIssuePrefix(connectionId, externalPackageId);
+        foreach (var issue in await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix)).ToListAsync(cancellationToken))
+        {
+            issue.Status = IssueStatus.Resolved;
+            issue.ResolvedAt = timeProvider.GetUtcNow();
+        }
     }
     private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null && issue.Status != IssueStatus.Resolved) { issue.Status = IssueStatus.Resolved; issue.ResolvedAt = timeProvider.GetUtcNow(); } }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));
