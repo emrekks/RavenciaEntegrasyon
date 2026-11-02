@@ -1,3 +1,4 @@
+import type { QueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
 import { cleanOptionValue, isColorOptionName, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, variantColorKey, variantOptionEntries, type Attribute, type MarketplaceConnection, type Product, type Variant } from '../shared'
 import { classifyPublicationAttributeIssues, type PublicationAttributeIssue, type PublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from '../publication-attribute-readiness'
@@ -261,17 +262,26 @@ export function publicationReadinessQueryKey(connectionId: string, categoryId: s
   return ['publication-attribute-readiness', connectionId, categoryId, selectedAttributes] as const
 }
 
+// One read of the mapping check, cached in the query client under the check's own prefix: the editor's cards (one
+// run per form state, so a few runs while the form settles), the bulk check and its rechecks share it, so each request
+// goes once. It sits under ['publication-attribute-readiness'], so every save that invalidates the check marks these
+// reads stale too and the next run reads what was saved.
+export function publicationReadinessSourceKey(connectionId: string, source: string, ...parts: string[]) {
+  return ['publication-attribute-readiness', 'source', connectionId, source, ...parts] as const
+}
+
 // The card's mapping check: category mapping, the marketplace's required attributes and the value mappings of what the
 // product uses. `cardName` names the marketplace in the messages.
 // `categoryName` names the panel category in the "not mapped" gap.
-export async function loadPublicationAttributeIssues(connection: ReadinessConnection, cardName: string, categoryId: string, selectedAttributes: PublicationAttributeSelection[], categoryName = ''): Promise<PublicationAttributeIssues> {
+export async function loadPublicationAttributeIssues(client: QueryClient, connection: ReadinessConnection, cardName: string, categoryId: string, selectedAttributes: PublicationAttributeSelection[], categoryName = ''): Promise<PublicationAttributeIssues> {
   const connectionId = encodeURIComponent(connection.id)
-  const categoryMapping = await readPublicationReadinessSource('Kategori eşlemesi', () => hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`))
+  const cached = <T,>(source: string, parts: string[], load: () => Promise<T>) => client.fetchQuery({ queryKey: publicationReadinessSourceKey(connection.id, source, ...parts), queryFn: load, staleTime: 15_000, retry: false })
+  const categoryMapping = await readPublicationReadinessSource('Kategori eşlemesi', () => cached('category-mapping', [categoryId], () => hubApi<{ externalId: string; snapshotId: string; status: string } | null>(`/mappings/categories/${categoryId}?connectionId=${connectionId}`)))
   if (!categoryMapping || categoryMapping.status !== 'VERIFIED') {
     return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${categoryName ? `${categoryName} kategorisinin` : 'Ürün kategorisinin'} ${cardName} karşılığı seçilmemiş; kategoriyi eşleyin.` }], optionalWarnings: [], categoryMapping: 'missing' }
   }
 
-  const categoryReferences = await readPublicationReadinessSource(`${cardName} kategori listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}`))
+  const categoryReferences = await readPublicationReadinessSource(`${cardName} kategori listesi`, () => cached('reference-categories', [], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isLeaf: boolean }> }>(`/reference-data/categories?connectionId=${connectionId}`)))
   const mappedCategory = categoryReferences.items.find(item => item.externalId === categoryMapping.externalId && item.isActive && item.isLeaf)
   if (categoryMapping.snapshotId !== categoryReferences.snapshotId || !mappedCategory) {
     return { requiredIssues: [{ attribute: 'Kategori eşlemesi', detail: `${cardName} kategori eşlemesi güncel değil; kategori eşlemesini yenileyin.` }], optionalWarnings: [], categoryMapping: 'stale' }
@@ -280,8 +290,8 @@ export async function loadPublicationAttributeIssues(connection: ReadinessConnec
 
   const categoryScope = categoryMapping.externalId
   const [attributeReferences, attributeMappings] = await Promise.all([
-    readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`)),
-    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`))
+    readPublicationReadinessSource(`${cardName} kategori özellik listesi`, () => cached('reference-attributes', [categoryScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; name: string; isActive: boolean; isRequired?: boolean | null; allowsCustomValue?: boolean | null }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes?connectionId=${connectionId}`))),
+    readPublicationReadinessSource('Yerel kategori özellik eşlemeleri', () => cached('attribute-mappings', [categoryScope], () => hubApi<PublicationMappingReference[]>(`/mappings/attributes?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(categoryScope)}`)))
   ])
   const selectedIds = new Set(selectedAttributes.map(item => item.attributeId))
   const currentMappings = attributeMappings.filter(mapping => mapping.status === 'VERIFIED' && mapping.snapshotId === attributeReferences.snapshotId)
@@ -290,10 +300,10 @@ export async function loadPublicationAttributeIssues(connection: ReadinessConnec
     const valueScope = `${categoryScope}/${externalAttributeId}`
     const selectedAttribute = selectedAttributes.find(item => item.attributeId === currentMappings.find(mapping => mapping.externalId === externalAttributeId)?.localId)
     const attributeLabel = selectedAttribute?.name ?? externalAttributeId
-    const mappings = await readPublicationReadinessSource(`“${attributeLabel}” yerel değer eşlemeleri`, () => hubApi<PublicationMappingReference[]>(`/mappings/attribute-values?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(valueScope)}`))
+    const mappings = await readPublicationReadinessSource(`“${attributeLabel}” yerel değer eşlemeleri`, () => cached('attribute-value-mappings', [valueScope], () => hubApi<PublicationMappingReference[]>(`/mappings/attribute-values?connectionId=${connectionId}&scopeExternalId=${encodeURIComponent(valueScope)}`)))
     let references: { snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }
     try {
-      references = await readPublicationReadinessSource(`${cardName} “${attributeLabel}” özellik değer listesi`, () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${connectionId}`))
+      references = await readPublicationReadinessSource(`${cardName} “${attributeLabel}” özellik değer listesi`, () => cached('reference-attribute-values', [valueScope], () => hubApi<{ snapshotId: string; items: Array<{ externalId: string; isActive: boolean }> }>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(externalAttributeId)}/values?connectionId=${connectionId}`)))
     } catch (reason) {
       if (!(reason instanceof ApiRequestError && reason.code === 'REFERENCE_SNAPSHOT_UNAVAILABLE') && !(reason instanceof PublicationReadinessSourceError && reason.apiCode === 'REFERENCE_SNAPSHOT_UNAVAILABLE')) throw reason
       references = { snapshotId: '', items: [] }
@@ -302,7 +312,7 @@ export async function loadPublicationAttributeIssues(connection: ReadinessConnec
   }))
   const valueReferencesByAttribute: Record<string, PublicationValueReferenceSet> = Object.fromEntries(valueEntries)
   // Connection defaults (e.g. Menşei = TR) cover required attributes the product leaves empty.
-  const attributeDefaults = await hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`).catch(() => [])
+  const attributeDefaults = await cached('attribute-defaults', [], () => hubApi<Array<{ externalAttributeId: string }>>(`/connections/${connectionId}/attribute-defaults`)).catch(() => [])
   // n11 fills its brand attribute (id 1) from the product brand, so it needs no mapping.
   const brandAttributeIds = connection.platformCode.trim().toUpperCase() === 'N11' ? ['1'] : []
   const result = classifyPublicationAttributeIssues({
@@ -327,6 +337,31 @@ export function missingPublicationChecks(productChecks: PublicationProductCheck[
     .filter(check => !check.platforms || check.platforms.includes(platform))
     .filter(check => !(isShopify ? check.shopifyOk ?? check.ok : check.ok))
     .map(check => ({ ...check, detail: isShopify ? check.shopifyDetail ?? check.detail : check.detail }))
+}
+
+// The Shopify write permissions the server wants verified before it queues a publish (CatalogService
+// HasShopifyPublicationEvidenceAsync, SHOPIFY_PUBLICATION_SCOPES_REQUIRED). The editor's card and the bulk check both
+// read them through this key and turn them into gaps with `shopifyCapabilityIssues`, so the two agree.
+export type ConnectionCapability = { code: string; supportLevel: string; verifiedForConnection: boolean }
+export const requiredShopifyCapabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE'] as const
+export function connectionCapabilitiesQueryKey(connectionId: string) {
+  return ['capabilities', connectionId] as const
+}
+export function loadConnectionCapabilities(connectionId: string) {
+  return hubApi<ConnectionCapability[]>(`/connections/${connectionId}/capabilities`)
+}
+export function missingShopifyCapabilities(capabilities: ConnectionCapability[] | undefined) {
+  if (!capabilities) return []
+  return requiredShopifyCapabilities.filter(code => !capabilities.some(capability => capability.code === code && capability.supportLevel.toUpperCase() === 'SUPPORTED' && capability.verifiedForConnection))
+}
+// A Shopify card's connection gaps: the permissions not verified, or that they could not be read. Other platforms: none.
+export function shopifyCapabilityIssues(platformCode: string, capabilities: ConnectionCapability[] | undefined, readFailed: boolean): Array<{ attribute: string; detail: string }> {
+  if (platformCode.trim().toUpperCase() !== 'SHOPIFY') return []
+  const missing = missingShopifyCapabilities(capabilities)
+  return [
+    ...(missing.length ? [{ attribute: 'Shopify API izinleri', detail: `Ürün göndermeden önce Entegrasyonlar bölümünde Shopify erişimini yeniden yetkilendirin ve ${missing.join(', ')} izinlerini doğrulayın.` }] : []),
+    ...(readFailed ? [{ attribute: 'Shopify API izin kontrolü', detail: 'Shopify bağlantı izinleri okunamadı. Entegrasyonlar bölümünde bağlantıyı test edip izin kanıtlarını yenileyin.' }] : [])
+  ]
 }
 
 // What keeps a card from publishing, in the card's order: the product checks, the connection's own gaps (the editor's

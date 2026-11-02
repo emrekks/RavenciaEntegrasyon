@@ -3,7 +3,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { hubApi, loadAllPages } from '../../../shared/api'
 import { fixableValueMappings, type PublicationAttributeIssues, type PublicationValueMappingFix } from '../publication-attribute-readiness'
 import { isPublicationLive, isPublicationStatusPending } from '../publication-status'
-import { loadPublicationAttributeIssues, missingPublicationChecks, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessDraftFromProduct, publicationReadinessQueryKey, sortRequirements, type CategoryRequirement } from '../product-editor/publication-readiness'
+import { connectionCapabilitiesQueryKey, loadConnectionCapabilities, loadPublicationAttributeIssues, missingPublicationChecks, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessDraftFromProduct, publicationReadinessQueryKey, shopifyCapabilityIssues, sortRequirements, type CategoryRequirement, type ConnectionCapability } from '../product-editor/publication-readiness'
 import type { Category, MarketplaceConnection, Product } from '../shared'
 import { bulkPublishChunks } from './bulk-publish-run'
 import { bulkPublishStatusBucket, productConnectionStatus } from './bulk-publish-status'
@@ -88,12 +88,21 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
     }
     const isShopify = connection.platformCode.trim().toUpperCase() === 'SHOPIFY'
     const cardName = connection.displayName
+    // As the editor's card: a Shopify store without its verified write permissions blocks (the server would answer
+    // SHOPIFY_PUBLICATION_SCOPES_REQUIRED). The card's own query, so each store is read once.
+    let capabilities: ConnectionCapability[] | undefined
+    let capabilitiesFailed = false
+    if (isShopify) {
+      try {
+        capabilities = await client.query({ queryKey: connectionCapabilitiesQueryKey(connection.id), queryFn: () => loadConnectionCapabilities(connection.id), staleTime: 15_000, retry: false })
+      } catch { capabilitiesFailed = true }
+    }
     let mapping: PublicationAttributeIssues | undefined
     let mappingError: unknown = null
     // As the editor's card: Shopify needs no category mapping, and nothing is checked without a category.
     if (!isShopify && categoryId) {
       try {
-        mapping = await client.query({ queryKey: publicationReadinessQueryKey(connection.id, categoryId, selectedAttributes), queryFn: () => loadPublicationAttributeIssues(connection, cardName, categoryId, selectedAttributes, categoryName), staleTime: 15_000, retry: false })
+        mapping = await client.query({ queryKey: publicationReadinessQueryKey(connection.id, categoryId, selectedAttributes), queryFn: () => loadPublicationAttributeIssues(client, connection, cardName, categoryId, selectedAttributes, categoryName), staleTime: 15_000, retry: false })
       } catch (reason) { mappingError = reason }
     }
     results.set(connection.id, {
@@ -101,7 +110,7 @@ export async function checkProductReadiness(client: QueryClient, productId: stri
       title: product.title,
       skipped: false,
       notPublished: standing === 'notPublished',
-      issues: publicationBlockingIssues(missingPublicationChecks(productChecks, connection.platformCode), [], mapping?.requiredIssues ?? [], mappingError, cardName),
+      issues: publicationBlockingIssues(missingPublicationChecks(productChecks, connection.platformCode), shopifyCapabilityIssues(connection.platformCode, capabilities, capabilitiesFailed), mapping?.requiredIssues ?? [], mappingError, cardName),
       warnings: (mapping?.optionalWarnings ?? []).map(issue => ({ attribute: issue.attribute, detail: issue.detail, fixable: Boolean(issue.fix) })),
       fixes: fixableValueMappings(mapping),
       categoryScope: mapping?.categoryScope,
