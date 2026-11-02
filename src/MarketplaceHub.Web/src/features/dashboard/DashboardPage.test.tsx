@@ -61,7 +61,7 @@ describe('DashboardPage', () => {
   it('shows the counts it read', async () => {
     await render()
     expect(card('Bekleyen Siparişler')).toBe('4Paket | 35 Adet Ürün')
-    expect(card('Bekleyen Faturalar')).toBe('7Bekleyen | 3 Yaklaşan')
+    expect(card('Faturalar')).toBe('7Bekleyen | 3 Yaklaşan')
     expect(container.querySelector('.rr-callout.rr-warn')).toBeNull()
   })
 
@@ -76,7 +76,7 @@ describe('DashboardPage', () => {
   it('has no separate pending products card', async () => {
     await render()
     expect(Array.from(container.querySelectorAll('.rr-opcard small')).map(label => label.textContent)).toEqual([
-      'Bekleyen Siparişler', 'Geciken Siparişler', 'Bekleyen İadeler', 'Bekleyen Faturalar',
+      'Bekleyen Siparişler', 'Geciken Siparişler', 'Bekleyen İadeler', 'Faturalar',
       'İptal · 1 Kısmi İptal', 'Düşük Stok',
     ])
   })
@@ -121,7 +121,7 @@ describe('DashboardPage', () => {
 
   it('reads "N Bekleyen | M Yaklaşan" in one wide invoice card that opens the pending invoices', async () => {
     await render()
-    const invoice = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Bekleyen Faturalar')!
+    const invoice = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Faturalar')!
     expect(invoice.classList.contains('rr-opcard-wide')).toBe(false)
     expect(invoice.getAttribute('href')).toBe('/invoices?tab=UNINVOICED')
     expect(invoice.querySelector('a')).toBeNull()
@@ -130,13 +130,13 @@ describe('DashboardPage', () => {
   it('leaves the due count out while it is unknown, never as 0', async () => {
     bootstrapOverride.due = null
     await render()
-    expect(card('Bekleyen Faturalar')).toBe('7Bekleyen')
+    expect(card('Faturalar')).toBe('7Bekleyen')
   })
 
   it('shows an unread invoice summary or bootstrap as unknown, not 0, and says data is missing', async () => {
     apiState.failing = new Set(['/invoice-workspace/summary', '/dashboard/bootstrap'])
     await render()
-    expect(card('Bekleyen Faturalar')).toBe('—')
+    expect(card('Faturalar')).toBe('—')
     expect(card('Bekleyen Siparişler')).toBe('—')
     expect(card('Geciken Siparişler')).toBe('—')
     expect(card('Düşük Stok')).toBe('2')
