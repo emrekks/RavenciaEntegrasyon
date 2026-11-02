@@ -4276,9 +4276,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 throw new JobProcessingException(JobExecutionResult.Continue("Açık paket taraması kaldığı paketten birkaç saniye içinde devam edecek."));
         }
 
+        // A "0" placeholder cannot be read by its package number: its order is read by order number in the daily pass
+        // below, which brings the real package and closes the placeholder.
         if (!position.Older)
         {
-            var recent = open.Where(package => package.OrderedAt >= v2Cutoff).ToList();
+            var recent = open.Where(package => package.OrderedAt >= v2Cutoff && !ShipmentPackageSupersession.IsPlaceholder(package.ExternalPackageId)).ToList();
             var byPackage = recent.GroupBy(package => package.ExternalPackageId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
             foreach (var chunk in TrendyolOpenScanRemaining(byPackage.Keys, position.After).Chunk(TrendyolOpenScanRecentChunk))
             {
@@ -4308,7 +4310,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The daily pass over older packages; one that is under way (a saved position) is finished first.
         if (position.After is not null || olderCursor.LastSuccessAt is not { } lastOlderRead || now - lastOlderRead >= TimeSpan.FromDays(1))
         {
-            var older = open.Where(package => package.OrderedAt < v2Cutoff).GroupBy(package => package.ExternalOrderId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            var older = open.Where(package => package.OrderedAt < v2Cutoff || ShipmentPackageSupersession.IsPlaceholder(package.ExternalPackageId)).GroupBy(package => package.ExternalOrderId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
             foreach (var chunk in TrendyolOpenScanRemaining(older.Keys, position.After).Chunk(TrendyolOpenScanOlderChunk))
             {
                 var received = new List<RemoteOrder>();
@@ -9861,13 +9863,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             foreach (var package in packagesByExternalId.Values)
             {
-                if (!TrendyolShipmentPackageStatusPolicy.ShouldRepairLegacyPlaceholderOnHold(
-                        package.ExternalPackageId,
-                        package.RawStatus,
-                        package.Status,
-                        hasAuthoritativePackage: true)) continue;
+                // The "0" placeholder Trendyol listed before it created the real package is closed, whatever status it
+                // was left in (Awaiting, an old OnHold projection): it never ships and is never reported again.
+                if (!TrendyolShipmentPackageStatusPolicy.ShouldClosePlaceholder(package.ExternalPackageId, package.Status, hasAuthoritativePackage: true)) continue;
 
-                package.Status = TrendyolShipmentPackageStatusPolicy.FromRemote(package.RawStatus);
+                package.Status = ShipmentPackageStatus.Cancelled;
                 package.UpdatedAt = now;
                 package.Version++;
                 telemetryUpdatedCount++;

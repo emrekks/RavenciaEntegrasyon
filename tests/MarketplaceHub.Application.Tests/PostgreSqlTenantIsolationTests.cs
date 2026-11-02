@@ -5802,7 +5802,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 .Where(row => row.TenantId == tenant.Id && row.OrderId == orderId)
                 .ToDictionaryAsync(row => row.ExternalPackageId);
             Assert.Equal("NEW", persistedOrder.DerivedStatus);
-            Assert.Equal(ShipmentPackageStatus.PaymentPending, persistedPackages["0"].Status);
+            Assert.Equal(ShipmentPackageStatus.Cancelled, persistedPackages["0"].Status);
             Assert.Equal(ShipmentPackageStatus.New, persistedPackages[currentPackageNumber].Status);
             var sales = new MarketplaceSalesService(verifyDb,
                 new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider),

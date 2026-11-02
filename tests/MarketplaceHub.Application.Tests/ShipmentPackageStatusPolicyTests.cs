@@ -57,39 +57,37 @@ public sealed class ShipmentPackageStatusPolicyTests
     }
 
     [Theory]
-    [InlineData("Awaiting", ShipmentPackageStatus.PaymentPending)]
-    [InlineData("Verified", ShipmentPackageStatus.PaymentPending)]
-    [InlineData("UnPacked", ShipmentPackageStatus.Cancelled)]
-    [InlineData("At_Collection_Point", ShipmentPackageStatus.Shipped)]
-    public void TrendyolStatusPolicy_RepairsLegacyZeroIdHoldWhenRealPackageIsPresent(
-        string rawStatus,
-        ShipmentPackageStatus expected)
+    [InlineData("0", ShipmentPackageStatus.PaymentPending, true, true)]
+    [InlineData("0", ShipmentPackageStatus.OnHold, true, true)]
+    [InlineData(" 0 ", ShipmentPackageStatus.New, true, true)]
+    [InlineData("0", ShipmentPackageStatus.Cancelled, true, false)]
+    [InlineData("0", ShipmentPackageStatus.PaymentPending, false, false)]
+    [InlineData("4234395651", ShipmentPackageStatus.PaymentPending, true, false)]
+    public void TrendyolStatusPolicy_ClosesTheZeroPlaceholderWhateverItsStatusOnceARealPackageIsPresent(
+        string externalPackageId,
+        ShipmentPackageStatus status,
+        bool hasAuthoritativePackage,
+        bool expected)
     {
-        Assert.True(TrendyolShipmentPackageStatusPolicy.ShouldRepairLegacyPlaceholderOnHold(
-            "0",
-            rawStatus,
-            ShipmentPackageStatus.OnHold,
-            hasAuthoritativePackage: true));
-        Assert.Equal(expected, TrendyolShipmentPackageStatusPolicy.FromRemote(rawStatus));
+        Assert.Equal(expected, TrendyolShipmentPackageStatusPolicy.ShouldClosePlaceholder(externalPackageId, status, hasAuthoritativePackage));
     }
 
-    [Theory]
-    [InlineData("0", "Awaiting", false)]
-    [InlineData("4234395651", "Awaiting", true)]
-    [InlineData("0", "Awaiting", true)]
-    [InlineData("0", "Processing", true)]
-    public void TrendyolStatusPolicy_DoesNotRepairUnrelatedPackageStates(
-        string externalPackageId,
-        string rawStatus,
-        bool hasAuthoritativePackage)
+    // Live 11763229493: a delivered real package next to the "0" placeholder left Awaiting (PaymentPending) read as
+    // PAYMENT_PENDING and blocked the sale invoice. The placeholder no longer decides the order once a real package exists.
+    [Fact]
+    public void TheZeroPlaceholderDoesNotDecideAnOrderThatHasARealPackage()
     {
-        var shouldRepair = TrendyolShipmentPackageStatusPolicy.ShouldRepairLegacyPlaceholderOnHold(
-            externalPackageId,
-            rawStatus,
-            ShipmentPackageStatus.OnHold,
-            hasAuthoritativePackage);
+        static ShipmentPackage Package(string id, ShipmentPackageStatus status, string raw) =>
+            new() { ExternalPackageId = id, Status = status, RawStatus = raw };
 
-        Assert.Equal(externalPackageId == "0" && rawStatus == "Awaiting" && hasAuthoritativePackage, shouldRepair);
+        var withReal = new[] { Package("0", ShipmentPackageStatus.PaymentPending, "Awaiting"), Package("4287472684", ShipmentPackageStatus.Delivered, "Delivered") };
+        var sources = ShipmentPackageSupersession.StatusSources(withReal);
+        Assert.Equal([ShipmentPackageStatus.Delivered], sources);
+        Assert.Equal(ShipmentPackageStatus.Delivered, ShipmentPackageStatusPolicy.Aggregate(sources!));
+
+        // While Trendyol has not created the package yet, the placeholder alone is the order's state.
+        var placeholderOnly = new[] { Package("0", ShipmentPackageStatus.PaymentPending, "Awaiting") };
+        Assert.Equal([ShipmentPackageStatus.PaymentPending], ShipmentPackageSupersession.StatusSources(placeholderOnly));
     }
 
     [Fact]

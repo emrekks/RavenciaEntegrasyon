@@ -46,10 +46,14 @@ public static class PackageLineProjectionPolicy
         // lines live on in the child packages. Until the children are read the
         // line projection keeps its previous values instead of counting the
         // parent's allocation as cancelled.
+        // Trendyol's "0" placeholder is the order before its real package existed: once that package is stored its
+        // lines are the real package's, not both.
+        var hasRealPackage = packageByExternalId.Keys.Any(id => !ShipmentPackageSupersession.IsPlaceholder(id));
         var currentPackages = packageByExternalId.Values
             .Where(package => !replacedExternalIds.Contains(package.ExternalPackageId)
                 && !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus)
-                && !ShipmentPackageSupersession.IsLocallyUnpacked(package.RawStatus));
+                && !ShipmentPackageSupersession.IsLocallyUnpacked(package.RawStatus)
+                && !(hasRealPackage && ShipmentPackageSupersession.IsPlaceholder(package.ExternalPackageId)));
         var result = new Dictionary<Guid, NormalizedPackageAllocation>();
 
         foreach (var package in currentPackages)
