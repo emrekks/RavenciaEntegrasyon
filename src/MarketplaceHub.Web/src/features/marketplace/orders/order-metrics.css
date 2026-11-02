@@ -37,12 +37,14 @@
 /* A card lists more on hover or focus (countries, stores): a small panel under it. It must open over the tab bar and
    the filter card below (the tab bar sits at z-index 80): the row of cards is raised above it while one is open. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-tipped { position: relative; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics:has(.rr-metric-tipped:is(:hover, :focus-within)) { position: relative; z-index: 90; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics:has(.rr-metric-tipped:is(:hover, :focus-visible, :has(:focus-visible))) { position: relative; z-index: 90; }
 /* Each card sits on its own layer (it lifts on hover), so a later card paints over an earlier one's panel: the card
    whose panel is open is raised above its neighbours. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-tipped:is(:hover, :focus-within) { z-index: 3; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-tipped:is(:hover, :focus-visible, :has(:focus-visible)) { z-index: 3; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; min-width: 220px; padding: 8px 10px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tipped:is(:hover, :focus-within) .rr-metric-tip { display: grid; gap: 2px; }
+/* Only the pointer or a keyboard focus opens a panel: a mouse click leaves focus on the card, and a panel kept open by
+   it would stay under the next card the pointer moves onto. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tipped:is(:hover, :focus-visible, :has(:focus-visible)) .rr-metric-tip { display: grid; gap: 2px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; color: var(--rr-ink); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r b { font-weight: 600; white-space: nowrap; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-none { width: 16px; height: 11px; border: 1px dashed var(--rr-line-strong); border-radius: 0; }
