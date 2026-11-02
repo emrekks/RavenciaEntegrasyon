@@ -1,17 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useStuckBottom } from './useStuckBottom'
 import './sticky-action-bar.css'
 
 const exitMs = 160
-// A page bar sticks flush to the window's bottom edge (see sticky-action-bar.css).
-const stickOffset = 0
-
-function scrollParent(element: HTMLElement): HTMLElement | null {
-  for (let node = element.parentElement; node; node = node.parentElement) {
-    const overflowY = window.getComputedStyle(node).overflowY
-    if (overflowY === 'auto' || overflowY === 'scroll') return node
-  }
-  return null
-}
 
 // The bottom bar of a page's selection or save actions. It docks to the bottom edge of the content column with no
 // gap (rows never scroll by under it) and stays in the page flow, so at the end of the list it sits after the last
@@ -27,34 +18,10 @@ export function StickyActionBar({ open = true, label, className, children }: { o
     const timer = window.setTimeout(() => setPresent(false), exitMs)
     return () => window.clearTimeout(timer)
   }, [open, present])
-  const barRef = useRef<HTMLDivElement>(null)
-  // data-docked is true when the page has been scrolled to its end and the bar rests at its place in the flow (under
-  // the last card, which then merges with it); false while it floats above the window's edge.
-  useEffect(() => {
-    const bar = barRef.current
-    if (!bar) return undefined
-    const scroller = scrollParent(bar)
-    const target: HTMLElement | Window = scroller ?? window
-    let frame = 0
-    const update = () => {
-      frame = 0
-      const edge = scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight
-      bar.dataset.docked = String(bar.getBoundingClientRect().bottom < edge - stickOffset - 1)
-    }
-    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update) }
-    update()
-    target.addEventListener('scroll', schedule, { passive: true })
-    window.addEventListener('resize', schedule)
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule)
-    observer?.observe(scroller ?? document.body)
-    observer?.observe(bar)
-    return () => {
-      if (frame) window.cancelAnimationFrame(frame)
-      target.removeEventListener('scroll', schedule)
-      window.removeEventListener('resize', schedule)
-      observer?.disconnect()
-    }
-  }, [present])
+  // data-stuck is true while the bar floats over the end of a list that continues below it (square bottom corners) and
+  // false once the page is scrolled to its end and the bar rests under the last card (bottom corners round like the
+  // card's). data-docked is its opposite: the card above merges with a resting bar.
+  const [barRef, stuck] = useStuckBottom<HTMLDivElement>()
   if (!open && !present) return null
-  return <div ref={barRef} className={`rv-action-bar${open ? '' : ' is-leaving'}${className ? ` ${className}` : ''}`} role="group" aria-label={label} inert={!open || undefined}>{open ? children : lastChildren.current}</div>
+  return <div ref={barRef} data-stuck={String(stuck)} data-docked={String(!stuck)} className={`rv-action-bar${open ? '' : ' is-leaving'}${className ? ` ${className}` : ''}`} role="group" aria-label={label} inert={!open || undefined}>{open ? children : lastChildren.current}</div>
 }

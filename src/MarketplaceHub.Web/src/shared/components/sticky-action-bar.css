@@ -7,6 +7,8 @@
    so at the end of the page it sits on the bottom edge right after the last row (also when it is the last part of a page form, as in the product
    editor). Every bar is one 56px row: 10px above and below 36px controls, its title and note on one line. Page rules keep
    their own inner layout (flex/grid, gap). */
+/* One surface for every bar: the list card's footer (pager) colour, light and dark. */
+:root { --rv-action-bar-bg: var(--rv-color-surface); --rv-action-bar-radius: var(--rv-radius-lg, 12px); }
 .app-shell.stitch-shell > main > .content { --rv-page-pad-x: 24px; --rv-page-pad-b: 28px; }
 @media (max-width: 760px) { .app-shell.stitch-shell > main > .content { --rv-page-pad-x: 16px; --rv-page-pad-b: 16px; } }
 
@@ -19,7 +21,7 @@
   margin: 16px 0 0;
   padding-top: 10px;
   padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-  background: var(--rv-color-surface-raised, var(--rv-color-surface));
+  background: var(--rv-action-bar-bg);
   backdrop-filter: none;
   border: 0;
   border-top: 1px solid var(--rv-color-border-strong, var(--rv-color-border));
@@ -40,14 +42,24 @@
   padding-inline: 16px;
   border: 1px solid var(--rv-color-border);
   border-top-color: var(--rv-color-border-strong, var(--rv-color-border));
-  border-radius: 14px;
+  /* Bottom corners: square while the bar is stuck to the window's edge over a list that goes on (useStuckBottom sets
+     data-stuck), round like the card's once the page is scrolled to its end and the bar rests at its place. */
+  --rv-bar-bottom-r: 0px;
+  border-radius: 14px 14px var(--rv-bar-bottom-r) var(--rv-bar-bottom-r);
+  transition: border-radius .15s ease;
+}
+.app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar[data-stuck="false"],
+.app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar[data-stuck="false"] { --rv-bar-bottom-r: var(--rv-action-bar-radius); }
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
+  .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar { transition: none; }
 }
 @media (min-width: 761px) {
   /* The grid gap above the bar (the page's, or the product form's) is taken back, so the bar starts at the card's edge. */
   .app-shell.stitch-shell > main > .content { --rv-bar-gap: 16px; }
   .app-shell.stitch-shell > main > .content > form.product-add-workspace { --rv-bar-gap: 20px; }
   .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
-  .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar { margin-top: calc(-1 * var(--rv-bar-gap, 16px)); border-radius: 0 0 14px 14px; }
+  .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar { margin-top: calc(-1 * var(--rv-bar-gap, 16px)); border-radius: 0 0 var(--rv-bar-bottom-r) var(--rv-bar-bottom-r); }
   .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar[data-docked="true"],
   .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar[data-docked="true"] { box-shadow: none; }
   /* The card above keeps its 1 px bottom border (made transparent, so nothing moves); the bar's top rule is the divider. */
