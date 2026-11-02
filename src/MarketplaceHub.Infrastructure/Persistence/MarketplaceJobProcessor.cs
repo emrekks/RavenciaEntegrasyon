@@ -3729,7 +3729,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var lastNotificationAt = await db.WebhookSubscriptions.AsNoTracking()
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Status == "ACTIVE" && x.ExternalSubscriptionId != null)
                 .MaxAsync(x => x.LastReceivedAt, cancellationToken);
-            if (WebhookPollingPolicy.MissedOrderCutoff(now, MarketplaceStoredClock.StoredClockAhead("TRENDYOL"), lastNotificationAt) is { } missedOrderCutoff
+            if (WebhookPollingPolicy.MissedOrderCutoff(now, lastNotificationAt) is { } missedOrderCutoff
                 && await db.Orders.AsNoTracking().AnyAsync(order => order.TenantId == tenantId && order.ConnectionId == connectionId
                     && order.CreatedAt >= now && order.OrderedAt <= missedOrderCutoff, cancellationToken))
                 await NoteWebhookGapAsync(tenantId, connectionId, now, cancellationToken);
@@ -4263,8 +4263,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                               && package.ExternalPackageId != ""
                           select new { package.ExternalPackageId, order.ExternalOrderId, order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode })
             .ToListAsync(cancellationToken);
-        // OrderedAt is on Trendyol's stored clock (MarketplaceStoredClock), so the 30-day boundary moves with it.
-        var v2Cutoff = MarketplaceStoredClock.ToStored(now - TrendyolLookupPolicy.V2History, "TRENDYOL");
+        var v2Cutoff = now - TrendyolLookupPolicy.V2History;
 
         // Saves the chunk's results and the position, then hands the lock back when the slice is used up.
         async Task CheckpointAsync(List<RemoteOrder> received, TrendyolOpenScanPosition next)
@@ -4277,9 +4276,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 throw new JobProcessingException(JobExecutionResult.Continue("Açık paket taraması kaldığı paketten birkaç saniye içinde devam edecek."));
         }
 
+        // A "0" placeholder cannot be read by its package number: its order is read by order number in the daily pass
+        // below, which brings the real package and closes the placeholder.
         if (!position.Older)
         {
-            var recent = open.Where(package => package.OrderedAt >= v2Cutoff).ToList();
+            var recent = open.Where(package => package.OrderedAt >= v2Cutoff && !ShipmentPackageSupersession.IsPlaceholder(package.ExternalPackageId)).ToList();
             var byPackage = recent.GroupBy(package => package.ExternalPackageId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
             foreach (var chunk in TrendyolOpenScanRemaining(byPackage.Keys, position.After).Chunk(TrendyolOpenScanRecentChunk))
             {
@@ -4309,7 +4310,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The daily pass over older packages; one that is under way (a saved position) is finished first.
         if (position.After is not null || olderCursor.LastSuccessAt is not { } lastOlderRead || now - lastOlderRead >= TimeSpan.FromDays(1))
         {
-            var older = open.Where(package => package.OrderedAt < v2Cutoff).GroupBy(package => package.ExternalOrderId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            var older = open.Where(package => package.OrderedAt < v2Cutoff || ShipmentPackageSupersession.IsPlaceholder(package.ExternalPackageId)).GroupBy(package => package.ExternalOrderId, StringComparer.Ordinal).ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
             foreach (var chunk in TrendyolOpenScanRemaining(older.Keys, position.After).Chunk(TrendyolOpenScanOlderChunk))
             {
                 var received = new List<RemoteOrder>();
@@ -4777,9 +4778,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var isShopify = platformCode == "SHOPIFY";
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90);
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 25, 1, 100);
-        // The window is on the connection's stored order clock (MarketplaceStoredClock): Trendyol's last three hours
-        // of orders are stored ahead of now and would otherwise fall outside it.
-        var end = MarketplaceStoredClock.ToStored(timeProvider.GetUtcNow(), platformCode);
+        var end = timeProvider.GetUtcNow();
         var start = end.AddDays(-lookbackDays);
         // Reconciliation is deliberately driven by local order numbers and the
         // documented orderNumber read. The stream is ideal for discovery, but a
@@ -4854,7 +4853,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     && package.ConnectionId == connectionId
                     && package.OrderId == order.Id
                     && package.Status != ShipmentPackageStatus.Cancelled))
-            : DueInvoiceReconciliationOrders(tenantId, connectionId, platformCode, now);
+            : DueInvoiceReconciliationOrders(tenantId, connectionId, now);
         SyncCursor? invoiceCursor = null;
         List<string?> cursorAfterOrder = [];
         var sweepOrderIds = new HashSet<string>(StringComparer.Ordinal);
@@ -5106,9 +5105,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return (true, isTrendyol && stoppedByTimeBudget);
     }
 
-    private IQueryable<Order> DueInvoiceReconciliationOrders(Guid tenantId, Guid connectionId, string? platformCode, DateTimeOffset now)
+    private IQueryable<Order> DueInvoiceReconciliationOrders(Guid tenantId, Guid connectionId, DateTimeOffset now)
     {
-        var recentOrderCutoff = MarketplaceStoredClock.ToStored(now - MarketplaceInvoiceReconciliationCadencePolicy.RecentOrderWindow, platformCode);
+        var recentOrderCutoff = now - MarketplaceInvoiceReconciliationCadencePolicy.RecentOrderWindow;
         var recentCheckCutoff = now - MarketplaceInvoiceReconciliationCadencePolicy.RecentInterval;
         var olderCheckCutoff = now - MarketplaceInvoiceReconciliationCadencePolicy.OlderInterval;
 
@@ -5148,7 +5147,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var observed = new HashSet<Guid>();
         var orderIds = sweepOrderIds.ToList();
-        var v2Cutoff = MarketplaceStoredClock.ToStored(now - TrendyolLookupPolicy.V2History, "TRENDYOL");
+        var v2Cutoff = now - TrendyolLookupPolicy.V2History;
         var packages = await (from package in db.ShipmentPackages.AsNoTracking()
                               join order in db.Orders.AsNoTracking()
                                   on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
@@ -5219,7 +5218,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // Trendyol orders of the last 90 days with a shipped or delivered package still uninvoiced on the platform.
     private IQueryable<Order> TrendyolInvoiceSweepOrders(Guid tenantId, Guid connectionId, DateTimeOffset now)
     {
-        var orderedAfter = MarketplaceStoredClock.ToStored(now - TrendyolInvoiceReconciliationPolicy.SweepOrderWindow, "TRENDYOL");
+        var orderedAfter = now - TrendyolInvoiceReconciliationPolicy.SweepOrderWindow;
         return db.Orders.AsNoTracking()
             .Where(order => order.TenantId == tenantId
                 && order.ConnectionId == connectionId
@@ -9481,7 +9480,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // sibling package; that fragment is validated per package below and
         // merged with the persisted projection instead of being rejected as an
         // incomplete order.
-        if (order is null && remoteLineQuantities.Count > 0 && detailedPackages.Length > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, detailedPackages, out _))
+        // Split parents (UnPacked) carry no quantities of their own and are left out of the check, as below.
+        var quantityPackages = usesTrendyolPackageStatuses
+            ? detailedPackages.Where(package => !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus)).ToArray()
+            : detailedPackages;
+        if (order is null && remoteLineQuantities.Count > 0 && quantityPackages.Length > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, quantityPackages, out _))
         {
             var rejectedEventId = remote.Packages.Count > 0
                 ? PackageIngestionSafety.EventId(remote.Packages[0].ExternalPackageId, remote.Packages[0].OccurredAt)
@@ -9636,8 +9639,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 && TrendyolShipmentPackageStatusPolicy.HasSameNormalizedStatus(package.RawStatus, remotePackage.RawStatus)
                 && target != ShipmentPackageStatus.OnHold
                 && TrendyolShipmentPackageStatusPolicy.IsLegacyOnHoldProjection(remotePackage.RawStatus);
-            var packageAllocations = remotePackage.Allocations;
-            if (remotePackage.IsStatusObservation && packageAllocations.Count == 0 && package is not null)
+            // A Trendyol split parent (UnPacked) carries no quantities of its own: its lines live on in the child
+            // packages, and its listed lines can exceed what the order still holds. Its lines are not checked or
+            // allocated (the line projection skips split parents too), and a refusal it caused before is resolved.
+            var isSplitParent = usesTrendyolPackageStatuses && ShipmentPackageSupersession.IsSplitParentRawStatus(remotePackage.RawStatus);
+            if (isSplitParent) await ResolvePackageQuantityIssues(tenantId, connectionId, remotePackage.ExternalPackageId, cancellationToken);
+            var packageAllocations = isSplitParent ? [] : remotePackage.Allocations;
+            if (!isSplitParent && remotePackage.IsStatusObservation && packageAllocations.Count == 0 && package is not null)
             {
                 packageAllocations = allocationsByKey.Values
                     .Where(allocation => allocation.PackageId == package.Id && externalLineIdsById.ContainsKey(allocation.OrderLineId))
@@ -9655,7 +9663,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     .ToArray();
             }
             IReadOnlyDictionary<string, NormalizedPackageAllocation> safeAllocations = new Dictionary<string, NormalizedPackageAllocation>(StringComparer.Ordinal);
-            if (packageAllocations.Count > 0 || !remotePackage.IsStatusObservation)
+            if (!isSplitParent && (packageAllocations.Count > 0 || !remotePackage.IsStatusObservation))
             {
                 if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, packageAllocations, target, out safeAllocations))
                 {
@@ -9864,13 +9872,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             foreach (var package in packagesByExternalId.Values)
             {
-                if (!TrendyolShipmentPackageStatusPolicy.ShouldRepairLegacyPlaceholderOnHold(
-                        package.ExternalPackageId,
-                        package.RawStatus,
-                        package.Status,
-                        hasAuthoritativePackage: true)) continue;
+                // The "0" placeholder Trendyol listed before it created the real package is closed, whatever status it
+                // was left in (Awaiting, an old OnHold projection): it never ships and is never reported again.
+                if (!TrendyolShipmentPackageStatusPolicy.ShouldClosePlaceholder(package.ExternalPackageId, package.Status, hasAuthoritativePackage: true)) continue;
 
-                package.Status = TrendyolShipmentPackageStatusPolicy.FromRemote(package.RawStatus);
+                package.Status = ShipmentPackageStatus.Cancelled;
                 package.UpdatedAt = now;
                 package.Version++;
                 telemetryUpdatedCount++;
@@ -12626,6 +12632,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         issue.Summary = summary;
         issue.LastSeenAt = now;
         issue.OccurrenceCount++;
+    }
+    // Every open quantity refusal of the package, whatever event it was raised for.
+    private async Task ResolvePackageQuantityIssues(Guid tenantId, Guid connectionId, string externalPackageId, CancellationToken cancellationToken)
+    {
+        var prefix = OperationalIssueRetentionService.PackageQuantityIssuePrefix(connectionId, externalPackageId);
+        foreach (var issue in await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix)).ToListAsync(cancellationToken))
+        {
+            issue.Status = IssueStatus.Resolved;
+            issue.ResolvedAt = timeProvider.GetUtcNow();
+        }
     }
     private async Task ResolveIssue(Guid tenantId, string key, CancellationToken cancellationToken) { var issue = await db.OperationalIssues.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.DedupeKey == key, cancellationToken); if (issue is not null && issue.Status != IssueStatus.Resolved) { issue.Status = IssueStatus.Resolved; issue.ResolvedAt = timeProvider.GetUtcNow(); } }
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string idempotency) => new(tenantId, connectionId, correlationId, idempotency, timeProvider.GetUtcNow().AddMinutes(2));

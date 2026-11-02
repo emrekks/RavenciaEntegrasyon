@@ -557,6 +557,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                     var issues = scope.ServiceProvider.GetRequiredService<OperationalIssueRetentionService>();
                     var resolved = await issues.ResolveStaleAsync(staleAfter, stoppingToken);
                     if (resolved > 0) logger.LogInformation("Issue retention resolved {Count} operational issue(s) not seen for {Days} days", resolved, staleAfter.TotalDays);
+                    // Trendyol quantity refusals of packages superseded by their split children, or no longer listed.
+                    var superseded = await issues.ResolveSupersededPackageQuantityIssuesAsync(TimeSpan.FromDays(3), stoppingToken);
+                    if (superseded > 0) logger.LogInformation("Issue retention resolved {Count} package quantity refusal(s) of superseded or removed Trendyol packages", superseded);
                     var deleted = await issues.DeleteResolvedAsync(resolvedRetention, stoppingToken);
                     if (deleted > 0) logger.LogInformation("Issue retention deleted {Count} resolved operational issue(s) not seen for {Days} days", deleted, resolvedRetention.TotalDays);
                 }

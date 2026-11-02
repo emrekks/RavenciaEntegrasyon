@@ -108,15 +108,15 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
     }
 
     [PostgreSqlFact]
-    public async Task A_store_waiting_for_credentials_keeps_its_sales_and_a_hidden_one_does_not_and_Trendyol_days_stay_shifted()
+    public async Task A_store_waiting_for_credentials_keeps_its_sales_and_a_hidden_one_does_not_and_Trendyol_days_follow_Istanbul()
     {
         var tenant = NewTenant("rev-conn");
         var draft = NewConnection(tenant.Id, "TRENDYOL", "DRAFT");
         var hidden = NewConnection(tenant.Id, "HEPSIBURADA", "HIDDEN");
-        // Trendyol stores Turkey wall time labelled UTC: 23:30 "UTC" is 23:30 in Istanbul, still the 15th, while
-        // 01:30 "UTC" on the 16th is the 16th in Istanbul.
-        var lateEvening = NewOrder(tenant.Id, draft.Id, "draft-1", new DateTimeOffset(2026, 10, 15, 23, 30, 0, TimeSpan.Zero), 150m, "DELIVERED");
-        var nextDay = NewOrder(tenant.Id, draft.Id, "draft-2", new DateTimeOffset(2026, 10, 16, 1, 30, 0, TimeSpan.Zero), 70m, "DELIVERED");
+        // Trendyol order times are real instants: 20:30Z is 23:30 in Istanbul, still the 15th, while 22:30Z is
+        // 01:30 on the 16th in Istanbul.
+        var lateEvening = NewOrder(tenant.Id, draft.Id, "draft-1", new DateTimeOffset(2026, 10, 15, 20, 30, 0, TimeSpan.Zero), 150m, "DELIVERED");
+        var nextDay = NewOrder(tenant.Id, draft.Id, "draft-2", new DateTimeOffset(2026, 10, 15, 22, 30, 0, TimeSpan.Zero), 70m, "DELIVERED");
         var hiddenOrder = NewOrder(tenant.Id, hidden.Id, "hidden-1", Noon, 500m, "DELIVERED");
         // A test-environment store (Hepsiburada SIT) is not sales: neither its order nor the store shows.
         var stage = NewConnection(tenant.Id, "HEPSIBURADA", "ACTIVE");

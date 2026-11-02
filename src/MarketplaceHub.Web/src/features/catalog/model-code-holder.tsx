@@ -17,13 +17,15 @@ export function modelCodeToCheck(value: string) {
   return code && code.length <= maxModelCodeLength ? code : ''
 }
 
+// One short line under the field: the holder's name (cut when long) and its link; the field's neighbours must not move.
 export function modelCodeHolderMessage(productTitle: string) {
-  return `Bu model kodu '${productTitle}' ürününde kullanılıyor. Yeni renk veya beden eklemek için o ürünü düzenleyin.`
+  const title = productTitle.length > 28 ? `${productTitle.slice(0, 27).trimEnd()}…` : productTitle
+  return `Kullanımda: ${title}.`
 }
 
 // The holder that blocks the create: only a taken answer for the code currently in the field.
 export function blockingModelCodeHolder(answer: ModelCodeHolder | undefined) {
-  return answer?.taken && answer.productId ? { productId: answer.productId, message: answer.message || modelCodeHolderMessage(answer.productTitle || 'başka bir ürün') } : null
+  return answer?.taken && answer.productId ? { productId: answer.productId, message: modelCodeHolderMessage(answer.productTitle || 'başka bir ürün') } : null
 }
 
 function useSettledValue(value: string, delayMs: number) {
@@ -51,5 +53,5 @@ export function useModelCodeHolder(modelCode: string, enabled: boolean) {
 
 export function ModelCodeHolderNotice({ holder }: { holder: { productId: string; message: string } | null }) {
   if (!holder) return null
-  return <small className="product-field-error model-code-holder-notice" role="alert">{holder.message} <Link to={`/products/${holder.productId}`}>Ürünü Aç</Link></small>
+  return <small className="product-field-error model-code-holder-notice" role="alert" title="Yeni renk veya beden eklemek için o ürünü düzenleyin.">{holder.message} <Link to={`/products/${holder.productId}`}>Ürünü Aç</Link></small>
 }

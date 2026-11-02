@@ -159,13 +159,11 @@ public sealed class JobQueueAuditTests
     [Fact]
     public void OrdersPlacedWhileNothingWasDeliveredAreNotWebhookMisses()
     {
-        var storedClockAhead = TimeSpan.FromHours(3);
-
         // The server was off overnight: the last delivery was yesterday evening, so the night's orders are not misses.
-        Assert.Equal(Now.AddHours(-11) + storedClockAhead, WebhookPollingPolicy.MissedOrderCutoff(Now, storedClockAhead, Now.AddHours(-11)));
+        Assert.Equal(Now.AddHours(-11), WebhookPollingPolicy.MissedOrderCutoff(Now, Now.AddHours(-11)));
         // Deliveries are flowing: the usual ten-minute grace applies.
-        Assert.Equal(Now.AddMinutes(-10) + storedClockAhead, WebhookPollingPolicy.MissedOrderCutoff(Now, storedClockAhead, Now.AddMinutes(-1)));
-        Assert.Null(WebhookPollingPolicy.MissedOrderCutoff(Now, storedClockAhead, null));
+        Assert.Equal(Now.AddMinutes(-10), WebhookPollingPolicy.MissedOrderCutoff(Now, Now.AddMinutes(-1)));
+        Assert.Null(WebhookPollingPolicy.MissedOrderCutoff(Now, null));
     }
 
     [Fact]

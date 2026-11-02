@@ -184,11 +184,10 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             Assert.Equal(2, summary.MicroExportCountries!["SA"]);
             Assert.Equal(1, summary.MicroExportCountries["BG"]);
             Assert.Equal(1, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(Search: "mic-bg", MicroExport: true), CancellationToken.None, ["ALL"])).MicroExport);
-            // The list's day filter: the orders are stored 20 minutes ago, and Trendyol stores its order times three hours
-            // ahead of the real instant, so they were really placed about three hours and twenty minutes ago.
+            // The list's day filter: the orders were placed 20 minutes ago, a real instant on every platform.
             var around = (double fromHours, double toHours) => new OrderListQuery(DateFrom: DateTimeOffset.UtcNow.AddHours(fromHours), DateTo: DateTimeOffset.UtcNow.AddHours(toHours));
-            Assert.Empty((await service.OrdersAsync(tenantId, 50, 1, null, around(-1, 1) with { MicroExport = true }, CancellationToken.None)).Items);
-            Assert.Equal(3, (await service.OrdersAsync(tenantId, 50, 1, null, around(-4, -3) with { MicroExport = true }, CancellationToken.None)).Items.Count);
+            Assert.Equal(3, (await service.OrdersAsync(tenantId, 50, 1, null, around(-1, 1) with { MicroExport = true }, CancellationToken.None)).Items.Count);
+            Assert.Empty((await service.OrdersAsync(tenantId, 50, 1, null, around(-4, -3) with { MicroExport = true }, CancellationToken.None)).Items);
             // The tab counters (every tab, no names), a menu counter that asks for one tab without micro=true, and the
             // micro-export list's own tab counters (several tabs) leave the micro-export count out.
             Assert.Equal(0, (await service.OrderSummaryAsync(tenantId, new OrderListQuery(), CancellationToken.None)).MicroExport);
