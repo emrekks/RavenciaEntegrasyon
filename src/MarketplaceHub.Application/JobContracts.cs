@@ -169,7 +169,15 @@ public sealed record JobDetailView(
     JobScanView? Scan = null,
     IReadOnlyList<JobFailureReasonView>? FailureReasons = null,
     JobInvoiceContextView? Invoice = null,
-    Guid? ProductId = null);
+    Guid? ProductId = null,
+    JobVariantResultsView? VariantResults = null);
+
+// A publication job's per-variant answer. Source: RECORDED (the job stored it), CARD_STATE (an older job whose card
+// still holds this publication's state) or NONE (nothing is known). A variant of the product the job did not carry is
+// NOT_SENT; its Reason is null when the reason is not known.
+public sealed record JobVariantResultsView(string Source, IReadOnlyList<JobVariantResultView> Items);
+
+public sealed record JobVariantResultView(string? Barcode, string? StockCode, string? Options, string Status, string? Reason);
 
 // The job list returns at most Limit of the newest matching jobs (default 200, max 1,000)
 // instead of the whole history. After is the NextCursor of the previous page (paged list only):

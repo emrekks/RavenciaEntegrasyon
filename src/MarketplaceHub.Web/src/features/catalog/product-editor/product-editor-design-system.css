@@ -962,7 +962,7 @@
 .app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button:hover { border-color: var(--rv-color-border-strong); filter: brightness(.97); }
 .app-shell.stitch-shell main .publish-platform-facts button.publish-platform-status-button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 
-.publication-job-modal { width: min(640px, 100%); }
+.publication-job-modal { width: min(760px, 100%); }
 .publication-job-modal > header { align-items: flex-start; }
 .publication-job-head { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
 .publication-job-head h2 { margin: 0 0 6px; font-size: 18px; }
@@ -991,6 +991,26 @@
 .publication-job-attempts li small { color: var(--rv-color-muted); overflow-wrap: anywhere; }
 .publication-job-attempts li.is-failed small { color: var(--rv-color-danger); }
 .publication-job-attempts li.is-ok small { color: var(--rv-color-accent); }
+/* Per-variant results: a compact table that scrolls inside the modal. */
+.publication-job-variants { display: grid; gap: 8px; min-width: 0; }
+.publication-job-variants h3 { margin: 0; font-size: 14px; }
+.publication-job-variants-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.publication-job-variants-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; }
+.publication-job-variants-tools label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+html body .app-shell .publication-job-variants-tools button { box-sizing: border-box; height: 30px; min-height: 0; padding: 0 10px; font-size: 13px; border-radius: 7px; }
+.publication-job-variants-summary { margin: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
+.publication-job-variants-scroll { max-height: 320px; overflow: auto; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.publication-job-variants table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.publication-job-variants th { position: sticky; top: 0; z-index: 1; padding: 8px 10px; text-align: left; font-weight: 600; color: var(--rv-color-muted); background: var(--rv-color-surface-soft, var(--rv-color-surface)); border-bottom: 1px solid var(--rv-color-border); white-space: nowrap; }
+.publication-job-variants td { padding: 7px 10px; border-bottom: 1px solid var(--rv-color-border); vertical-align: top; color: var(--rv-color-ink); }
+.publication-job-variants tr:last-child td { border-bottom: 0; }
+.publication-job-variants td:nth-child(-n+2) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.publication-job-variant-reason { min-width: 160px; overflow-wrap: anywhere; color: var(--rv-color-muted); }
+.publication-job-variant-status { display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 7px; font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--rv-color-info, var(--rv-color-ink)); background: color-mix(in srgb, var(--rv-color-info, var(--rv-color-primary)) 10%, var(--rv-color-surface)); }
+.publication-job-variant-status.is-success { color: var(--rv-color-accent); background: color-mix(in srgb, var(--rv-color-accent) 12%, var(--rv-color-surface)); }
+.publication-job-variant-status.is-danger { color: var(--rv-color-danger); background: color-mix(in srgb, var(--rv-color-danger) 10%, var(--rv-color-surface)); }
+.publication-job-variant-status.is-warning { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 12%, var(--rv-color-surface)); }
+.publication-job-variant-status.is-neutral { color: var(--rv-color-muted); background: var(--rv-color-surface-soft, var(--rv-color-surface)); }
 .publication-job-modal > footer { display: flex; justify-content: flex-end; gap: 10px; }
 /* Both footer buttons 34px. Portaled into main, the dialog also meets the app-shell 44px button rule, so .app-shell is in the selector. */
 html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizing: border-box; height: 34px; min-height: 0; display: inline-flex; align-items: center; padding: 0 14px; font-size: 14px; }
