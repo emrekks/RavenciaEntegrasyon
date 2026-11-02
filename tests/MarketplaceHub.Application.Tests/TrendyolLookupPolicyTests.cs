@@ -52,6 +52,61 @@ public sealed class TrendyolLookupPolicyTests
         Assert.Equal(Now.AddDays(-28), olderBatch.Hint.OrderedAt);
     }
 
+    // Trendyol order times are stored three hours ahead of the real instant (MarketplaceStoredClock); the age of an
+    // order is judged on its real instant, so an order just past a boundary in real time is past it here too.
+    [Fact]
+    public void V2WindowJudgesTheTwoWeekBoundaryOnTheRealOrderTime()
+    {
+        // Real time: 14 days and one hour ago (stored two hours inside the two weeks).
+        var justOlder = new OrderLookupHint(Now.AddDays(-14).AddHours(2), null, "TR");
+        Assert.Equal((Now.AddDays(-15).AddHours(2), Now.AddDays(-1).AddHours(2)), TrendyolLookupPolicy.V2Window(justOlder, Now));
+
+        // Real time: one hour inside the two weeks.
+        var justInside = new OrderLookupHint(Now.AddDays(-14).AddHours(4), null, "TR");
+        Assert.Equal((Now.AddDays(-14), Now), TrendyolLookupPolicy.V2Window(justInside, Now));
+    }
+
+    [Fact]
+    public void V2WindowJudgesTheOneMonthBoundaryOnTheRealOrderTime()
+    {
+        // Real time: 30 days and one hour ago, beyond what V2 keeps, though the stored value is inside the month.
+        Assert.Null(TrendyolLookupPolicy.V2Window(new(Now.AddDays(-30).AddHours(2), null, "TR"), Now));
+        // Real time: one hour inside the month.
+        Assert.Equal((Now.AddDays(-30), Now.AddDays(-16)), TrendyolLookupPolicy.V2Window(new(Now.AddDays(-30).AddHours(4), null, "TR"), Now));
+    }
+
+    [Fact]
+    public void PackageBatchesJudgeTheTwoWeekBoundaryOnTheRealOrderTime()
+    {
+        // The first package is 14 days and one hour old in real time, so the batch needs one 13-day window and the
+        // package of today does not fit in it.
+        var packages = new[] { new TrendyolPackageRef("tr-edge", Now.AddDays(-14).AddHours(2), "TR"), new TrendyolPackageRef("tr-today", Now, "TR") };
+        var batches = TrendyolLookupPolicy.PackageBatches(packages, Now);
+        Assert.Equal(2, batches.Count);
+
+        // One hour inside the two weeks in real time: any dates of the last two weeks share the batch.
+        var recent = new[] { new TrendyolPackageRef("tr-edge", Now.AddDays(-14).AddHours(4), "TR"), new TrendyolPackageRef("tr-today", Now, "TR") };
+        Assert.Single(TrendyolLookupPolicy.PackageBatches(recent, Now));
+    }
+
+    [Fact]
+    public void StreamWindowWithoutARecordedChangeAnchorsOnTheRealOrderTime()
+    {
+        var hint = new OrderLookupHint(Now.AddDays(-40), null, "TR");
+        var real = Now.AddDays(-40).AddHours(-3);
+        Assert.Equal((real.AddDays(-6), real.AddDays(6)), TrendyolLookupPolicy.StreamWindow(hint, Now));
+    }
+
+    [Fact]
+    public void StoredClockShiftsOnlyTheWallClockPlatforms()
+    {
+        Assert.Equal(Now.AddHours(3), MarketplaceStoredClock.ToStored(Now, "TRENDYOL"));
+        Assert.Equal(Now.AddHours(3), MarketplaceStoredClock.ToStored(Now, " trendyol "));
+        Assert.Equal(Now.AddHours(-3), MarketplaceStoredClock.ToReal(Now, "TRENDYOL"));
+        Assert.Equal(Now, MarketplaceStoredClock.ToStored(Now, "HEPSIBURADA"));
+        Assert.Equal(Now, MarketplaceStoredClock.ToReal(Now, null));
+    }
+
     [Fact]
     public void OrderBeyondTheStreamHistoryIsNotReadAndUnknownOrdersHaveNoStreamWindow()
     {

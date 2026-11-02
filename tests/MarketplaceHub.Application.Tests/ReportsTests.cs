@@ -410,6 +410,9 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             Assert.Equal(after.Summary.NetRevenue, overviewAfter.Sum(x => x.Amount));
             Assert.Equal(after.Summary.ReturnedAmount, overviewAfter.Sum(x => x.ReturnedAmount));
             Assert.Equal(after.Summary.KeptQuantity, overviewAfter.Sum(x => x.ProductQuantity));
+            // The panel's Ciro (returns included) is the report's Satış Tutarı, over the same orders (O5, 2 Nov 2026).
+            Assert.Equal(after.Summary.GrossSales, overviewAfter.Sum(x => x.Amount + x.ReturnedAmount));
+            Assert.Equal(after.Summary.OrdersWithAmount, overviewAfter.Sum(x => x.OrderCount));
         }
         finally
         {

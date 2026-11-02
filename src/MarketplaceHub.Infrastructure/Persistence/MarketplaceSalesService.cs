@@ -2215,8 +2215,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             query = query.Where(x => db.ReturnLines.Any(returnLine => returnLine.TenantId == x.TenantId && returnLine.ClaimId == x.Id && db.OrderLines.Any(line => line.TenantId == x.TenantId && line.Id == returnLine.OrderLineId && ((line.Barcode != null && line.Barcode.Contains(barcode)) || line.Sku.Contains(barcode)))));
         var reason = options.Reason?.Trim();
         if (!string.IsNullOrWhiteSpace(reason)) query = query.Where(x => x.ReasonCode == reason || (x.ReasonText != null && x.ReasonText.Contains(reason)));
-        if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt >= dateFrom));
-        if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId && order.OrderedAt <= dateTo));
+        // The order's real time meets the picked day, as on the order list (Trendyol stores it ahead, MarketplaceStoredClock).
+        var wallClockPlatforms = MarketplaceStoredClock.WallClockPlatforms;
+        var ahead = MarketplaceStoredClock.TurkeyWallClockAhead;
+        if (options.DateFrom?.ToUniversalTime() is { } dateFrom) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId
+            && (db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)) ? order.OrderedAt - ahead : order.OrderedAt) >= dateFrom));
+        if (options.DateTo?.ToUniversalTime() is { } dateTo) query = query.Where(x => db.Orders.Any(order => order.TenantId == x.TenantId && order.Id == x.OrderId
+            && (db.PlatformConnections.Any(connection => connection.TenantId == order.TenantId && connection.Id == order.ConnectionId && wallClockPlatforms.Contains(connection.PlatformCode)) ? order.OrderedAt - ahead : order.OrderedAt) <= dateTo));
     }
 
     public async Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken)

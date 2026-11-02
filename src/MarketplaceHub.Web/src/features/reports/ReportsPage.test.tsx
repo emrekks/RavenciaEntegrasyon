@@ -129,7 +129,11 @@ describe('ReportsPage', () => {
     expect(figures[0]).toContain('Net Ciro')
     // Money in a strip is shown in whole liras, the previous period's too.
     expect(figures[0]).toContain('Net Ciro₺250')
-    expect(figures[0]).toContain('Önceki dönem ₺200Satıştan')
+    expect(figures[0]).toContain('Önceki dönem ₺200Satış tutarından')
+    // O5: the overview's Ciro has the returns in it, Net Ciro not; the margin says which amount it is over.
+    expect(figures[0]).toContain('iadeler düşülmüş ciro')
+    expect(figures[0]).toContain('Genel Bakış\'taki Ciro iadeler dahildir')
+    expect(figures[2]).toContain('satış tutarı (iadeler düşülmeden; Net Ciro değil)')
     expect(figures[0]).toContain('+%25')
     expect(figures[1]).toContain('Net Kâr')
     expect(figures[1]).toContain('Net Kâr₺127')

@@ -613,8 +613,10 @@ public sealed partial class InvoicingBillingService(
             || string.Equals(WorkspaceInvoiceDisplayStatus(candidate), request.InvoiceStatus, StringComparison.OrdinalIgnoreCase);
         var actionMatch = WorkspaceMatchesInvoiceAction(candidate, request.InvoiceAction, request.ProviderHasCredential);
         var platformMatch = MatchesWorkspacePlatformFilter(request.PlatformCodes, candidate.Connection.PlatformCode);
-        var dateMatch = (!from.HasValue || candidate.Order.OrderedAt >= from.Value)
-            && (!to.HasValue || candidate.Order.OrderedAt <= to.Value);
+        // The order's real time meets the picked day (Trendyol stores it ahead, MarketplaceStoredClock).
+        var orderedAt = MarketplaceStoredClock.ToReal(candidate.Order.OrderedAt, candidate.Connection.PlatformCode);
+        var dateMatch = (!from.HasValue || orderedAt >= from.Value)
+            && (!to.HasValue || orderedAt <= to.Value);
         var searchMatch = searchKey is null || new[] { candidate.Order.OrderNumber, candidate.CustomerName, candidate.InvoiceNumber, candidate.Package.CargoTrackingNumber }
             .Any(value => value?.ToLower(WorkspaceSearchCulture).Contains(searchKey, StringComparison.Ordinal) == true);
         return platformMatch && shipmentMatch && cargoMatch && invoiceMatch && actionMatch && dateMatch && searchMatch;
