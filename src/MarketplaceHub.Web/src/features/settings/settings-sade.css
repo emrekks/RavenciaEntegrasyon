@@ -2,7 +2,7 @@
    section list on the left and one section on the right, each with its own head, body and sticky apply bar. */
 
 .ss-page {
-  --ss-violet: color-mix(in srgb, var(--rv-color-primary) 55%, #fff);
+  --ss-violet: var(--rv-color-primary-text);
   --ss-violet-line: color-mix(in srgb, var(--rv-color-primary) 55%, transparent);
   --ss-focus: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent);
   font-size: 14px;

@@ -273,7 +273,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 /* Section list starts closer to the head; selected filter chips use the shared soft violet. */
 .cs-workspace .cs-nav { padding-top: 6px; }
 .app-shell.stitch-shell main .cs-workspace .cs-chip.is-on { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 55%, transparent); }
-.app-shell.stitch-shell main .cs-workspace .cs-chip.is-on b { color: color-mix(in srgb, var(--rv-color-primary) 55%, #fff); }
+.app-shell.stitch-shell main .cs-workspace .cs-chip.is-on b { color: var(--rv-color-primary-text); }
 
 /* Phones: the head keeps logo, name and close on one line with the status tags under the name; a flow that needs
    attention shows its name on the full width and its actions on the line below, so the name never breaks word by word. */

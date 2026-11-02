@@ -39,6 +39,7 @@
   --rv-color-subtle: #8a8a99;
   --rv-color-primary: #8b5cf6;
   --rv-color-primary-hover: #7c3aed;
+  --rv-color-primary-text: color-mix(in srgb, var(--rv-color-primary) 55%, #fff);
   /* White text needs at least 4.5:1: filled controls use the palette's deeper violet (#7c3aed by default), not primary. */
   --rv-color-primary-fill: var(--rv-color-primary-hover);
   --rv-color-primary-fill-hover: color-mix(in srgb, var(--rv-color-primary-hover) 86%, #000);
@@ -134,6 +135,7 @@
   --rv-color-muted: #525e77;
   --rv-color-subtle: #59657d;
   --rv-color-primary: #5b44d2;
+  --rv-color-primary-text: color-mix(in srgb, var(--rv-color-primary) 85%, #000);
   --rv-color-primary-hover: #4b36bb;
   --rv-color-primary-fill: var(--rv-color-primary);
   --rv-color-primary-fill-hover: var(--rv-color-primary-hover);
