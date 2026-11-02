@@ -59,7 +59,8 @@ describe('model code holder', () => {
     expect(blockingModelCodeHolder({ taken: false })).toBeNull()
     expect(blockingModelCodeHolder(undefined)).toBeNull()
     expect(blockingModelCodeHolder({ taken: true, productId: 'p-1', productTitle: 'Bluz' })).toEqual({ productId: 'p-1', message: modelCodeHolderMessage('Bluz') })
-    expect(modelCodeHolderMessage('Bluz')).toBe("Bu model kodu 'Bluz' ürününde kullanılıyor. Yeni renk veya beden eklemek için o ürünü düzenleyin.")
+    expect(modelCodeHolderMessage('Bluz')).toBe('Kullanımda: Bluz.')
+    expect(modelCodeHolderMessage('Burgu Kumaş Bağcıklı Tunik Uzun Ad')).toBe('Kullanımda: Burgu Kumaş Bağcıklı Tunik….')
   })
 
   it('shows the message with a link to the holder once the typing settles', async () => {
@@ -72,7 +73,7 @@ describe('model code holder', () => {
     expect(hubApi).toHaveBeenCalledWith('/catalog/model-codes/holder?code=MZ021Y-CD')
     expect(container.querySelector('[data-testid="state"]')?.textContent).toBe('blocked')
     const notice = container.querySelector('.model-code-holder-notice')
-    expect(notice?.textContent).toContain("'Kadın Bluz' ürününde kullanılıyor")
+    expect(notice?.textContent).toContain('Kullanımda: Kadın Bluz.')
     expect(notice?.querySelector('a')?.getAttribute('href')).toBe('/products/p-1')
     expect(notice?.querySelector('a')?.textContent).toBe('Ürünü Aç')
   })
