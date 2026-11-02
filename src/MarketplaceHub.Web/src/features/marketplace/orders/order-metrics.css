@@ -44,7 +44,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip { position: absolute; z-index: 20; top: calc(100% + 6px); left: 0; display: none; min-width: 220px; padding: 8px 10px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tipped:is(:hover, :focus-within) .rr-metric-tip { display: grid; gap: 2px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; color: var(--rr-ink); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r b { font-weight: 600; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r b { font-weight: 600; white-space: nowrap; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-none { width: 16px; height: 11px; border: 1px dashed var(--rr-line-strong); border-radius: 0; }
 @media (max-width: 760px) {
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 20px; }

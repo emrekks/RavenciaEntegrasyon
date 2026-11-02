@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dailyCancellationCounts, dayCardFilters, microPendingParams, storeUnits } from './daily-cards'
+import { cancellationStores, dailyCancellationCounts, dayCardFilters, microPendingParams, resentPendingParams, storeCounts, storeUnits } from './daily-cards'
 import { tabDateFilters } from './order-date-filters'
 
 const row = (cancelledOrders: number, partialOrders: number, unknownTimeOrders = 0, wholeUnits?: number, partialUnits?: number) => ({ connectionId: 'c', cancelledOrders, partialOrders, cancelledUnits: 0, unknownTimeOrders, unknownTimeUnits: 0, wholeUnits, partialUnits })
@@ -45,5 +45,27 @@ describe('daily order cards', () => {
     expect(storeUnits({}, channels)).toEqual({ units: 0, rows: [] })
     expect(storeUnits(null, channels)).toBeUndefined()
     expect(storeUnits(undefined, channels)).toBeUndefined()
+  })
+
+  it('asks the summary for the RESENT tab alone over the resends not handed to the carrier', () => {
+    expect(resentPendingParams()).toBe('tabs=RESENT&resentNotShipped=true')
+  })
+
+  // The Geciken, Yeniden Gönderim and İptal cards' hover: their stores, the biggest first.
+  it('lists the stores of the late orders, the resends and today\'s cancellations', () => {
+    const channels = [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada' }]
+    expect(storeCounts({ hb: 1, ty: 3, gone: 0 }, channels)).toEqual([{ key: 'ty', code: 'TRENDYOL', name: 'Trendyol', packages: 3 }, { key: 'hb', code: 'HEPSIBURADA', name: 'Hepsiburada', packages: 1 }])
+    expect(storeCounts({}, channels)).toEqual([])
+    expect(storeCounts(null, channels)).toBeUndefined()
+    const cancellations = [
+      { connectionId: 'hb', cancelledOrders: 0, partialOrders: 1, cancelledUnits: 2, unknownTimeOrders: 0, unknownTimeUnits: 0, wholeUnits: 0, partialUnits: 2 },
+      { connectionId: 'ty', cancelledOrders: 2, partialOrders: 0, cancelledUnits: 3, unknownTimeOrders: 0, unknownTimeUnits: 0, wholeUnits: 3, partialUnits: 0 },
+      { connectionId: 'x', cancelledOrders: 0, partialOrders: 0, cancelledUnits: 0, unknownTimeOrders: 1, unknownTimeUnits: 1, wholeUnits: 0, partialUnits: 0 }
+    ]
+    expect(cancellationStores(cancellations, channels)).toEqual([
+      { key: 'ty', code: 'TRENDYOL', name: 'Trendyol', packages: 2, units: 3, partial: 0, partialUnits: 0 },
+      { key: 'hb', code: 'HEPSIBURADA', name: 'Hepsiburada', packages: 0, units: 0, partial: 1, partialUnits: 2 }
+    ])
+    expect(cancellationStores(undefined, channels)).toBeUndefined()
   })
 })

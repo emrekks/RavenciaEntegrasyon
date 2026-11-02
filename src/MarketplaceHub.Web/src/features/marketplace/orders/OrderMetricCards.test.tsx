@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render } from '../../../test/render'
-import { microCountryRows, OrderMetricCards } from './OrderMetricCards'
+import { cancelRowText, microCountryRows, OrderMetricCards } from './OrderMetricCards'
 
 afterEach(cleanup)
 
@@ -144,5 +144,29 @@ describe('order summary cards', () => {
     expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-tip')).toBeNull()
     // Without the panel a native title says what it counts.
     expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Kargoya verilmemiş mikro ihracat siparişleri')
+  })
+
+  it('lists the stores of Geciken, İptal and Yeniden Gönderim on hover while they count any', () => {
+    const lateRows = [{ key: 'ty', code: 'TRENDYOL', name: 'Trendyol', packages: 2 }]
+    const resentRows = [{ key: 'hb', code: 'HEPSIBURADA', name: 'Hepsiburada', packages: 3 }]
+    const cancelledRows = [{ key: 'ty', code: 'TRENDYOL', name: 'Trendyol', packages: 68, units: 75, partial: 0, partialUnits: 0 }, { key: 'hb', code: 'HEPSIBURADA', name: 'Hepsiburada', packages: 0, units: 0, partial: 1, partialUnits: 2 }]
+    const tip = (host: HTMLElement, title: string) => Array.from(card(host, title).querySelectorAll('.rr-metric-tip-r')).map(row => [row.querySelector('span')?.textContent, row.querySelector('b')?.textContent])
+    const { host } = render(<OrderMetricCards {...props({ lateRows, resentRows, cancelledRows })} />)
+    expect(tip(host, 'Geciken')).toEqual([['Trendyol', '2 paket']])
+    expect(tip(host, 'Yeniden Gönderim')).toEqual([['Hepsiburada', '3 paket']])
+    expect(tip(host, 'İptal')).toEqual([['Trendyol', '68 paket · 75 adet'], ['Hepsiburada', '1 kısmi · 2 adet']])
+    expect(card(host, 'Geciken').className).toBe('rr-bad rr-alert rr-metric-tipped')
+    expect(card(host, 'İptal').className).toBe('rr-bad rr-metric-link rr-metric-chipped rr-metric-tipped')
+    // The panel says it; a native title would open over it.
+    expect(card(host, 'İptal').querySelector('.rr-metric-open')!.getAttribute('title')).toBeNull()
+    cleanup()
+    // At 0 a card lists nothing.
+    const quiet = render(<OrderMetricCards {...props({ late: metric(0), resent: metric(0), cancelled: metric(0), partiallyCancelled: metric(0), lateRows, resentRows, cancelledRows })} />).host
+    for (const title of ['Geciken', 'İptal', 'Yeniden Gönderim']) expect(card(quiet, title).querySelector('.rr-metric-tip')).toBeNull()
+  })
+
+  it('writes an İptal store row with its partly cancelled orders and leaves unknown units out', () => {
+    expect(cancelRowText({ packages: 2, units: 3, partial: 1, partialUnits: 1 })).toBe('2 paket · 3 adet, 1 kısmi · 1 adet')
+    expect(cancelRowText({ packages: 2, units: undefined, partial: 0, partialUnits: undefined })).toBe('2 paket')
   })
 })
