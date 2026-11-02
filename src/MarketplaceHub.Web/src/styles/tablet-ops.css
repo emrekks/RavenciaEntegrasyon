@@ -121,3 +121,16 @@
   html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-field { min-width: 0; }
   html body .app-shell.stitch-shell main .reports-page .reports-filters > .reports-refreshing { position: absolute; top: 16px; right: 18px; }
 }
+
+/* ---------- İşlem Takibi ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Title and its actions on one row, as on the desktop (the phone column put the title on the right). */
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-heading { flex-direction: row; align-items: flex-end; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-heading > .jobs-reference-heading-actions { display: flex; width: auto; flex: none; }
+}
+@media (min-width: 761px) and (max-width: 899px) {
+  /* Portrait: the desktop table without its correlation id column (the id is in the job detail too) fits the width. */
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table.jobs-reference-table { width: 100%; min-width: 0; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody .jobs-reference-row, tbody > tr:not(.jobs-reference-row)) { grid-template-columns: minmax(200px, 1.9fr) minmax(130px, 1fr) minmax(70px, .5fr) minmax(224px, 1.15fr); }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-table :is(thead tr, tbody tr) > :nth-child(5) { display: none; }
+}
