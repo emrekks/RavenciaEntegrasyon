@@ -151,10 +151,14 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         {
             var orders = store.GroupBy(line => line.OrderId).ToList();
             var known = orders.Where(order => order.Any(line => line.TimeKnown)).ToList();
-            var whole = known.Count(order => DashboardRevenuePolicy.CancelledStatuses.Contains(order.First().DerivedStatus.ToUpperInvariant()));
-            return new DashboardCancellationRowView(store.Key, whole, known.Count - whole,
-                store.Where(line => line.TimeKnown).Sum(line => line.Quantity),
-                orders.Count - known.Count, store.Where(line => !line.TimeKnown).Sum(line => line.Quantity));
+            var wholeOrders = known.Where(order => DashboardRevenuePolicy.CancelledStatuses.Contains(order.First().DerivedStatus.ToUpperInvariant())).ToList();
+            var knownUnits = store.Where(line => line.TimeKnown).Sum(line => line.Quantity);
+            // The units of the orders cancelled whole, and the rest of the known ones: the units cancelled of the orders
+            // that stay open (the İptal card's "M Adet Ürün" and its Kısmi İptal chip).
+            var wholeUnits = wholeOrders.SelectMany(order => order).Where(line => line.TimeKnown).Sum(line => line.Quantity);
+            return new DashboardCancellationRowView(store.Key, wholeOrders.Count, known.Count - wholeOrders.Count, knownUnits,
+                orders.Count - known.Count, store.Where(line => !line.TimeKnown).Sum(line => line.Quantity),
+                wholeUnits, knownUnits - wholeUnits);
         })
         .OrderBy(row => row.ConnectionId)
         .ToList();

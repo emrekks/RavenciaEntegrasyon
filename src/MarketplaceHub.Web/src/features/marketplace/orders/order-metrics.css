@@ -1,8 +1,8 @@
-/* The order summary row has eight cards in a grid of four by two (761 px and wider); two per row, four rows, on a phone
+/* The order summary row has six cards in a grid of three by two (761 px and wider); two per row, three rows, on a phone
    (≤760 px). Builds on the shared .rr-metrics rules in returns-sade.css. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-8 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 760px) {
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-8 { grid-template-columns: 1fr 1fr; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics.rr-metrics-6 { grid-template-columns: 1fr 1fr; }
 }
 /* The cards that open a list: same box as the others, the buttons inside are plain. The global button rule sets
    min-height: 44px; it is reset on these. */
@@ -10,19 +10,29 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link:hover { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open { display: grid; gap: 2px; width: 100%; min-height: 0; height: auto; padding: 0; margin: 0; color: inherit; text-align: left; font: inherit; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; justify-content: normal; justify-items: start; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 24px; font-weight: 600; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, .rr-metric-chip):focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 2px; border-radius: 6px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, .rr-metric-chip, .rr-metric-tipped):focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 2px; border-radius: 6px; }
+/* "N Paket | M Adet Ürün" (Yeni Sipariş, İptal): the package count big, the words and the units smaller on its line,
+   in the muted ink so the number keeps the card's tone. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-pk .rr-metric-sub { color: var(--rr-muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-sep { color: var(--rr-line-strong); font-size: inherit; }
 /* The İptal card: the count under the title like the others and, while orders were cancelled in part, a chip beside it
    that opens them: a light border, 22 px high, as the side menu's counters. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-chipped { grid-template-columns: auto minmax(0, 1fr); align-items: end; column-gap: 8px; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip { display: inline-flex; align-items: center; justify-self: start; min-height: 0; height: 22px; margin: 0 0 4px; padding: 0 8px; color: var(--rr-ink); background: var(--rr-soft); border: 1px solid var(--rr-line); border-radius: 7px; box-shadow: none; font: inherit; font-size: 11px; line-height: 1; text-decoration: none; cursor: pointer; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-chipped { grid-template-columns: auto minmax(0, 1fr); align-items: end; column-gap: 10px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip { display: inline-flex; align-items: center; gap: 0; justify-self: start; min-height: 0; height: 22px; margin: 0 0 6px; padding: 0 8px; color: var(--rr-ink); background: var(--rr-soft); border: 1px solid var(--rr-line); border-radius: 7px; box-shadow: none; font: inherit; font-size: 11px; line-height: 1; white-space: nowrap; text-decoration: none; cursor: pointer; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip:hover { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
-/* A warning card with something to warn about (Geciken above 0): a faint red box and a dot beside its title that fades
-   slowly in and out (the text and the number stay still); at 0 the card is as plain as the others. */
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert { border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); background: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert small::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; vertical-align: middle; background: var(--rr-bad); border-radius: 50%; animation: rr-alert-dot 2.2s ease-in-out infinite; }
-@keyframes rr-alert-dot { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip .rr-metric-sep { margin: 0 4px; }
+/* Something to warn about: Geciken above 0 (rr-alert) and the Kısmi İptal chip. Both turn red and their tint and border
+   fade slowly in and out over 2.4 s, one keyframe for both (the text stays still); at 0 the card is as plain as the
+   others and the chip is not drawn. Reduced motion keeps the red at rest. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(article.rr-alert, .rr-metric-chip.rr-metric-chip-alert) { background-color: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); animation: rr-alert-pulse 2.4s ease-in-out infinite; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip.rr-metric-chip-alert { color: var(--rr-bad); font-weight: 600; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip.rr-metric-chip-alert .rr-metric-sep { color: color-mix(in srgb, var(--rr-bad) 45%, var(--rr-surface)); }
+@keyframes rr-alert-pulse {
+  0%, 100% { background-color: color-mix(in srgb, var(--rr-bad) 4%, var(--rr-surface)); border-color: color-mix(in srgb, var(--rr-bad) 28%, var(--rr-surface)); }
+  50% { background-color: color-mix(in srgb, var(--rr-bad) 11%, var(--rr-surface)); border-color: color-mix(in srgb, var(--rr-bad) 58%, var(--rr-surface)); }
+}
 @media (prefers-reduced-motion: reduce) {
-  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-alert small::before { animation: none; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(article.rr-alert, .rr-metric-chip.rr-metric-chip-alert) { animation: none; }
 }
 /* A card lists more on hover or focus (countries, stores): a small panel under it. It must open over the tab bar and
    the filter card below (the tab bar sits at z-index 80): the row of cards is raised above it while one is open. */
@@ -35,6 +45,10 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-none { width: 16px; height: 11px; border: 1px dashed var(--rr-line-strong); border-radius: 0; }
 @media (max-width: 760px) {
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 20px; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-pk .rr-metric-sub { font-size: 12px; }
+  /* On a phone the İptal card stacks its chip under the count, so "N Paket | M Adet Ürün" keeps its line. */
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-chipped { grid-template-columns: minmax(0, 1fr); }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-chipped .rr-metric-chip { margin: 2px 0 0; }
   /* The panel of a card in the right-hand column opens to the left so it stays on the screen. */
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:nth-child(even) .rr-metric-tip { right: 0; left: auto; }
 }
