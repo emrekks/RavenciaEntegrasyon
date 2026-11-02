@@ -1315,7 +1315,9 @@ public sealed record OrderSummaryView(
     IReadOnlyDictionary<string, int>? MicroExportCountries = null,
     // The products of the New tab's orders under the same filters (each line's ordered quantity less what was cancelled
     // of it), per store id; null when the New tab was not counted (the Yeni Sipariş card's "N Paket | M Adet Ürün").
-    IReadOnlyDictionary<string, decimal>? NewUnitsByConnection = null);
+    IReadOnlyDictionary<string, decimal>? NewUnitsByConnection = null,
+    // The same for the İşleme Alınanlar tab's orders (the İşleme Alınan card); null when that tab was not counted.
+    IReadOnlyDictionary<string, decimal>? ProcessingUnitsByConnection = null);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,

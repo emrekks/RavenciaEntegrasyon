@@ -1,7 +1,8 @@
 // The six summary cards above the order list (three by two; two by three on a phone); every count reads "N Paket".
 // "Yeni Sipariş" reads "N Paket | M Adet Ürün": the orders of the Yeni tab under the list's filters and their products
 // (each line's ordered quantity less what was cancelled of it); hovering lists the products per store.
-// "İşleme Alınan" is the same set as the "İşleme Alınanlar" tab: taken into processing, not yet handed to the carrier.
+// "İşleme Alınan" is the same set as the "İşleme Alınanlar" tab (taken into processing, not yet handed to the carrier)
+// and reads and hovers the same way as Yeni Sipariş.
 // "Geciken" turns red and pulses softly while there is any. "Mikro İhracat Sipariş" counts the pending micro-export
 // orders, whatever the list's filters are: the orders the row's flag icon marks that are not yet handed to the carrier
 // (New and İşleme Alınan, the overview's Bekleyen set, any day); hovering lists their countries. "İptal" shows today (the
@@ -40,19 +41,25 @@ function Packages({ packages, units }: { packages: Metric; units: number | undef
   </strong>
 }
 
-export function OrderMetricCards({ newOrders, newUnits, newRows, processing, late, microExport, microCountries, cancelled, partiallyCancelled, partialUnits, resent, onOpenDay }: { newOrders: Metric; newUnits?: number; newRows?: UnitRow[]; processing: Metric; late: Metric; microExport: Metric; microCountries?: Record<string, number>; cancelled: Metric; cancelledUnits?: number; partiallyCancelled: Metric; partialUnits?: number; resent: Metric; onOpenDay: (card: DayCard) => void }) {
+// A card that reads "N Paket | M Adet Ürün" and lists the products per store on hover or focus (no panel without them).
+function UnitsCard({ title, tone, packages, units, rows }: { title: string; tone?: string; packages: Metric; units: number | undefined; rows: UnitRow[] | undefined }) {
+  const stores = packages.loading ? [] : rows ?? []
+  const className = [tone, stores.length > 0 ? 'rr-metric-tipped' : undefined].filter(Boolean).join(' ')
+  return <article className={className || undefined} tabIndex={stores.length > 0 ? 0 : undefined}>
+    <small>{title}</small><Packages packages={packages} units={units} />
+    {stores.length > 0 && <div className="rr-metric-tip" role="tooltip">{stores.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{count(row.units)} adet</b></div>)}</div>}
+  </article>
+}
+
+export function OrderMetricCards({ newOrders, newUnits, newRows, processing, processingUnits, processingRows, late, microExport, microCountries, cancelled, partiallyCancelled, partialUnits, resent, onOpenDay }: { newOrders: Metric; newUnits?: number; newRows?: UnitRow[]; processing: Metric; processingUnits?: number; processingRows?: UnitRow[]; late: Metric; microExport: Metric; microCountries?: Record<string, number>; cancelled: Metric; cancelledUnits?: number; partiallyCancelled: Metric; partialUnits?: number; resent: Metric; onOpenDay: (card: DayCard) => void }) {
   // The partly cancelled orders are a chip beside the cancelled count only while there are any.
   const partial = partiallyCancelled.loading ? 0 : partiallyCancelled.value ?? 0
   // A warning card is plain at 0 and warns only above it: Geciken with a softly pulsing red box, İptal with its number.
   const positive = (metric: Metric) => !metric.loading && (metric.value ?? 0) > 0
   const countries = microCountryRows(microCountries)
-  const stores = newOrders.loading ? [] : newRows ?? []
   return <div className="rr-metrics rr-metrics-6">
-    <article className={`rr-warn${stores.length > 0 ? ' rr-metric-tipped' : ''}`} tabIndex={stores.length > 0 ? 0 : undefined}>
-      <small>Yeni Sipariş</small><Packages packages={newOrders} units={newUnits} />
-      {stores.length > 0 && <div className="rr-metric-tip" role="tooltip">{stores.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{count(row.units)} adet</b></div>)}</div>}
-    </article>
-    <article><small>İşleme Alınan</small><Packages packages={processing} units={undefined} /></article>
+    <UnitsCard title="Yeni Sipariş" tone="rr-warn" packages={newOrders} units={newUnits} rows={newRows} />
+    <UnitsCard title="İşleme Alınan" packages={processing} units={processingUnits} rows={processingRows} />
     <article className={positive(late) ? 'rr-bad rr-alert' : undefined}><small>Geciken</small><Packages packages={late} units={undefined} /></article>
     <article className="rr-metric-link rr-metric-tipped">
       <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Kargoya verilmemiş mikro ihracat siparişleri'} onClick={() => onOpenDay('micro')}><small>Mikro İhracat Sipariş</small><Packages packages={microExport} units={undefined} /></button>

@@ -45,7 +45,7 @@ export type DashboardBootstrap = {
   channels?: Array<{ connectionId: string; platformCode: string; displayName: string }>
 }
 
-// The Yeni Sipariş card's products: the summary's units per store summed, and a row per store (biggest first) for the
+// The Yeni Sipariş and İşleme Alınan cards' products: the summary's units per store summed, and a row per store (biggest first) for the
 // hover. undefined while the summary is not read or an older answer holds no units.
 export function storeUnits(unitsByConnection: Record<string, number> | null | undefined, channels: DashboardBootstrap['channels']) {
   if (!unitsByConnection) return undefined
