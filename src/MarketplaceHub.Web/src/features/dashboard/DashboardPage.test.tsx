@@ -5,13 +5,14 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiState = vi.hoisted(() => ({ failing: new Set<string>() }))
+const bootstrapOverride = vi.hoisted(() => ({ units: undefined as Record<string, number> | null | undefined }))
 
 vi.mock('../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../shared/api')>()
   const respond = async (path: string) => {
     const route = path.split('?')[0]
     if (apiState.failing.has(route)) throw new Error(`${route} failed`)
-    if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 4, lateOrders: 1, pendingReturns: 2, pendingUnitsByConnection: { ty: 34, hb: 1 } }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
+    if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 4, lateOrders: 1, pendingReturns: 2, pendingByConnection: { ty: 3, hb: 1 }, pendingUnitsByConnection: bootstrapOverride.units === undefined ? { ty: 34, hb: 1 } : bootstrapOverride.units }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
     if (route === '/dashboard/cancellations') return { stores: [
       { connectionId: 'ty', cancelledOrders: 2, partialOrders: 1, cancelledUnits: 4, unknownTimeOrders: 0, unknownTimeUnits: 0 },
       { connectionId: 'hb', cancelledOrders: 0, partialOrders: 0, cancelledUnits: 0, unknownTimeOrders: 1, unknownTimeUnits: 3 },
@@ -44,6 +45,7 @@ const card = (label: string) => Array.from(container.querySelectorAll('.rr-opcar
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   apiState.failing = new Set()
+  bootstrapOverride.units = undefined
   container = document.createElement('div')
   document.body.append(container)
 })
@@ -57,7 +59,7 @@ afterEach(() => {
 describe('DashboardPage', () => {
   it('shows the counts it read', async () => {
     await render()
-    expect(card('Bekleyen Siparişler')).toBe('4')
+    expect(card('Bekleyen Siparişler')).toBe('4Paket | 35 Adet Ürün')
     expect(card('Bekleyen Faturalar')).toBe('7')
     expect(container.querySelector('.rr-callout.rr-warn')).toBeNull()
   })
@@ -70,11 +72,11 @@ describe('DashboardPage', () => {
     expect(toned('Bekleyen İadeler')).toBe(false)
   })
 
-  it('places the pending products under the pending orders', async () => {
+  it('has no separate pending products card', async () => {
     await render()
     expect(Array.from(container.querySelectorAll('.rr-opcard small')).map(label => label.textContent)).toEqual([
       'Bekleyen Siparişler', 'Geciken Siparişler', 'Bekleyen İadeler', 'Bekleyen Faturalar',
-      'Bekleyen Ürün Adedi', 'İptal · 1 Kısmi İptal', 'Düşük Stok', 'Yaklaşan Faturalar',
+      'İptal · 1 Kısmi İptal', 'Düşük Stok', 'Yaklaşan Faturalar',
     ])
   })
 
@@ -100,12 +102,20 @@ describe('DashboardPage', () => {
     expect(container.querySelector('.rr-pf-h p')?.textContent).toBe('Bugün · Tüm Platformlar')
   })
 
-  it('counts the products of the pending orders, splits them by store and opens the pending orders', async () => {
+  const pendingCard = () => Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Bekleyen Siparişler')!
+
+  it('reads "N Paket | M Adet Ürün" in one card, splits both by store and opens the pending orders', async () => {
     await render()
-    expect(card('Bekleyen Ürün Adedi')).toBe('35')
-    const units = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Bekleyen Ürün Adedi')!
-    expect(units.getAttribute('href')).toBe('/orders?status=PENDING')
-    expect(Array.from(units.querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol34 adet', 'Hepsiburada1 adet'])
+    expect(pendingCard().querySelector('strong')?.textContent).toBe('4Paket | 35 Adet Ürün')
+    expect(pendingCard().getAttribute('href')).toBe('/orders?status=PENDING')
+    expect(Array.from(pendingCard().querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol3 paket · 34 adet', 'Hepsiburada1 paket · 1 adet'])
+  })
+
+  it('leaves the units out while they are unknown, never as 0', async () => {
+    bootstrapOverride.units = null
+    await render()
+    expect(pendingCard().querySelector('strong')?.textContent).toBe('4Paket')
+    expect(Array.from(pendingCard().querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol3 paket', 'Hepsiburada1 paket'])
   })
 
   it('shows an unread invoice summary or bootstrap as unknown, not 0, and says data is missing', async () => {
@@ -115,7 +125,6 @@ describe('DashboardPage', () => {
     expect(card('Yaklaşan Faturalar')).toBe('—')
     expect(card('Bekleyen Siparişler')).toBe('—')
     expect(card('Geciken Siparişler')).toBe('—')
-    expect(card('Bekleyen Ürün Adedi')).toBe('—')
     expect(card('Düşük Stok')).toBe('2')
     expect(container.querySelector('.rr-callout.rr-warn')?.textContent).toContain('Bazı rapor verileri alınamadı')
   })
