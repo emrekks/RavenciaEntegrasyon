@@ -1064,7 +1064,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     ? <span className="publish-partial-progress" aria-hidden="true"><b style={{ width: `${Math.round(partialShare * 100)}%` }} /></span>
     : <i aria-hidden="true" />
   // A product that is not saved yet has no platform record: it shows what keeps it from publishing, or that it is not out yet.
-  const displayedPublicationLabel = partialBlocked ? partialLabel : hasRequiredPublicationBlock ? 'Yayın için zorunlu eksik' : noneFound ? 'Bulunamadı' : familyPartial ? partialLabel : allLinked ? 'Yayında' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? pttAvmRetryLabel : productId ? publicationLabel : 'Henüz yayınlanmadı'
+  const displayedPublicationLabel = partialBlocked ? partialLabel : hasRequiredPublicationBlock ? 'Zorunlu Eksik' : noneFound ? 'Bulunamadı' : familyPartial ? partialLabel : allLinked ? 'Yayında' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? pttAvmRetryLabel : productId ? publicationLabel : 'Henüz yayınlanmadı'
   // On a narrow card the pill keeps "21/42" and drops " yayında" (publish-platform-issues.css), so the refresh button
   // never leaves its row.
   const statusText = familyPartial

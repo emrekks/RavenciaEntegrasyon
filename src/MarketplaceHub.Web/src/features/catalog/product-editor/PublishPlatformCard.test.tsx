@@ -91,7 +91,7 @@ describe('PublishPlatformCard first frames', () => {
     await act(async () => { apiState.pending.get(mappingKey)!(null); apiState.pending.delete(mappingKey); await new Promise(resolve => setTimeout(resolve, 10)) })
     expect(article().classList.contains('is-settling')).toBe(false)
     expect(subtitle()).toBe('Zorunlu eksikler giderilmeden seçilemez')
-    expect(container.querySelector('.publish-issue-trigger')?.getAttribute('title')).toBe('Yayın için zorunlu eksik')
+    expect(container.querySelector('.publish-issue-trigger')?.getAttribute('title')).toBe('Zorunlu Eksik')
   })
 
   it('stays masked while the product itself is loading', async () => {
@@ -161,7 +161,7 @@ describe('PublishPlatformCard partly live', () => {
     await render({ familyProductIds: ['p1', 'p2'], productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }] })
     await answer('p1', { actualStatus: 'UNKNOWN' })
     await answer('p2', { actualStatus: 'UNKNOWN' })
-    expect(status().querySelector('.publish-issue-trigger')?.getAttribute('title')).toBe('Yayın için zorunlu eksik')
+    expect(status().querySelector('.publish-issue-trigger')?.getAttribute('title')).toBe('Zorunlu Eksik')
     expect(fact().querySelector('.publish-partial-note, .publish-partial-progress')).toBeNull()
   })
 
