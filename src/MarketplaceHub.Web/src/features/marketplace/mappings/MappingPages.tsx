@@ -875,8 +875,11 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
       await refreshMappingConflicts(client, connectionId).catch(() => undefined)
       const openCount = leftovers.reduce((sum, item) => sum + item.values.length, 0)
-      const openList = leftovers.map(item => `${item.heading}: ${item.values.slice(0, 5).join(', ')}${item.values.length > 5 ? ` ve ${item.values.length - 5} değer daha` : ''}`).join('; ')
-      const openText = openCount ? `${openCount} değerin aynı adlı ${platformLabel} karşılığı yok (${openList}); bunları listeden elle eşleyin.` : ''
+      // A summary, not the values: each heading with its count, the largest first, at most six; the values themselves
+      // are marked in each field's table.
+      const byCount = [...leftovers].sort((left, right) => right.values.length - left.values.length)
+      const openList = byCount.slice(0, 6).map(item => `${item.heading} ${item.values.length}`).join(', ') + (byCount.length > 6 ? ` ve ${byCount.length - 6} başlık daha` : '')
+      const openText = openCount ? `${leftovers.length} başlıkta ${openCount} değerin aynı adlı ${platformLabel} karşılığı yok (${openList}). Bunları alanlarının tablosundan elle eşleyin.` : ''
       const extra = `${refreshed ? ` ${refreshed} eşleme güncel ${platformLabel} listesine taşındı.` : ''}${ambiguous ? ` Aynı adı taşıyan birden fazla değer olduğu için ${ambiguous} değer atlandı.` : ''}${skipped ? ` ${skipped} değer başka bir karşılığa bağlı olduğu için atlandı.` : ''}${unavailable ? ` ${unavailable} başlığın değer listesi okunamadı; önce alanları yenileyin.` : ''}${failed ? ` ${failed} değer kaydedilemedi.` : ''}`
       onNotice(pairs
         ? `${headings} başlıkta ${pairs} değer aynı adlı karşılığıyla eşlendi ve kaydedildi.${openText ? ` ${openText}` : ''}${extra}`

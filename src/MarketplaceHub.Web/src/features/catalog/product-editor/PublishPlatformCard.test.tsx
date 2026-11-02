@@ -5,11 +5,14 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Each status request waits until the test answers it, so the first frames can be read before the data is in.
-const apiState = vi.hoisted(() => ({ pending: new Map<string, (value: unknown) => void>() }))
+// A job's detail is answered from `jobs` at once; every path asked is kept in `calls`.
+const apiState = vi.hoisted(() => ({ pending: new Map<string, (value: unknown) => void>(), jobs: new Map<string, unknown>(), calls: [] as string[] }))
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
   const respond = (path: string) => {
+    apiState.calls.push(path)
+    if (path.startsWith('/jobs/')) return Promise.resolve(apiState.jobs.get(path) ?? null)
     if (path.includes('/publication-status/') || path.startsWith('/mappings/categories/')) return new Promise(resolve => apiState.pending.set(path, resolve))
     return Promise.resolve(null)
   }
@@ -26,10 +29,10 @@ let client: QueryClient
 
 const card = { code: 'trendyol', name: 'Trendyol', initial: 'T', tone: 'trendyol', mode: 'PUBLISH' as const, connection: { id: 'c1', platformCode: 'TRENDYOL', displayName: 'Mağaza', externalStoreId: '930112', status: 'ACTIVE' } }
 
-async function render(props: { familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }>; categoryId?: string } = {}) {
+async function render(props: { variantLinks?: { linked: number; total: number; missing?: number }; familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }>; categoryId?: string } = {}) {
   await act(async () => {
     root.render(<QueryClientProvider client={client}><MemoryRouter>
-      <PublishPlatformCard card={card} selected={props.selected ?? false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} categoryId={props.categoryId ?? ''} productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onBlockedChange={props.onBlockedChange} onFeedback={vi.fn()} />
+      <PublishPlatformCard card={card} selected={props.selected ?? false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} variantLinks={props.variantLinks} categoryId={props.categoryId ?? ''} productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onBlockedChange={props.onBlockedChange} onFeedback={vi.fn()} />
     </MemoryRouter></QueryClientProvider>)
   })
 }
@@ -42,6 +45,13 @@ async function answer(productId: string, status: Record<string, unknown>) {
 
 const article = () => container.querySelector('article.publish-platform-card')!
 const subtitle = () => container.querySelector('.publish-platform-card-head small')?.textContent
+const fact = () => container.querySelector('.publish-platform-fact-publication')!
+const pill = () => fact().querySelector<HTMLButtonElement>('button.publish-steps-trigger')!
+const steps = () => [...pill().querySelectorAll('.publish-step')].map(step => step.className.replace('publish-step is-', ''))
+const counts = () => [...pill().querySelectorAll('.publish-steps-share, .publish-steps-count')].map(item => item.textContent)
+const popover = () => fact().querySelector<HTMLElement>('.publish-issue-tooltip')!
+const ok = [{ title: 'Temel Ürün Verileri', detail: 'Eksiksiz.', ok: true }]
+const gap = [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }]
 
 beforeEach(() => {
   container = document.createElement('div')
@@ -49,6 +59,8 @@ beforeEach(() => {
   root = createRoot(container)
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   apiState.pending.clear()
+  apiState.jobs.clear()
+  apiState.calls.length = 0
 })
 
 afterEach(() => {
@@ -91,7 +103,8 @@ describe('PublishPlatformCard first frames', () => {
     await act(async () => { apiState.pending.get(mappingKey)!(null); apiState.pending.delete(mappingKey); await new Promise(resolve => setTimeout(resolve, 10)) })
     expect(article().classList.contains('is-settling')).toBe(false)
     expect(subtitle()).toBe('Zorunlu eksikler giderilmeden seçilemez')
-    expect(container.querySelector('.publish-issue-trigger .publish-issue-label')?.textContent).toBe('Zorunlu Eksik')
+    expect(steps()).toEqual(['fail', 'idle', 'idle', 'idle'])
+    expect(pill().getAttribute('aria-label')).toBe('Trendyol: Zorunlu Eksik; 1 zorunlu eksik')
   })
 
   it('stays masked while the product itself is loading', async () => {
@@ -125,51 +138,96 @@ describe('PublishPlatformCard required gaps', () => {
   })
 })
 
-describe('PublishPlatformCard partly live', () => {
-  const fact = () => container.querySelector('.publish-platform-fact-publication')!
-  const status = () => fact().querySelector('dd')!
-  const pill = () => status().querySelector<HTMLElement>('.publish-platform-status')!
-
-  it('shows one pill with the live share and a line saying the rest is ready', async () => {
-    await render({ familyProductIds: ['p1', 'p2'], productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksiksiz.', ok: true }] })
-    await answer('p1', { actualStatus: 'LIVE' })
-    await answer('p2', { actualStatus: 'UNKNOWN' })
-    expect(pill().textContent).toBe('1/2 renk yayında')
-    expect(pill().querySelector<HTMLElement>('.publish-partial-progress > b')?.style.width).toBe('50%')
-    // One pill only: no second status and no separate "hazır" chip in the status row.
-    expect(status().querySelectorAll('.publish-platform-status')).toHaveLength(1)
-    expect(status().querySelector('.publish-issue-trigger')).toBeNull()
-    const note = fact().querySelector('.publish-partial-note.is-ready')!
-    expect(note.textContent).toBe('Kalan 1 renk yayına hazır')
-    expect(note.querySelector('svg')).not.toBeNull()
-  })
-
-  it('says how many gaps the rest has in a line that opens the same gap chips', async () => {
-    await render({ familyProductIds: ['p1', 'p2'], productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }] })
-    await answer('p1', { actualStatus: 'LIVE' })
-    await answer('p2', { actualStatus: 'UNKNOWN' })
-    expect(pill().textContent).toBe('1/2 renk yayında')
-    expect(status().querySelectorAll('.publish-platform-status')).toHaveLength(1)
-    expect(fact().querySelector('.publish-partial-note.is-ready')).toBeNull()
-    const line = fact().querySelector<HTMLButtonElement>('.publish-partial-note.is-blocked .publish-issue-note-trigger')!
-    expect(line.textContent).toBe('Kalan 1 renkte 1 eksik')
-    await act(async () => { line.click() })
-    expect(fact().querySelector('.publish-partial-note .publish-issue-tooltip.is-open .publish-issue-required .publish-issue-chip')?.textContent).toBe('Temel Ürün Verileri')
-  })
-
-  it('leaves a card with nothing live as it was', async () => {
-    await render({ familyProductIds: ['p1', 'p2'], productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }] })
+describe('PublishPlatformCard status steps', () => {
+  it('reads a never sent, ready card as Hazırlık done and Gönderim next, with no count', async () => {
+    await render({ productChecks: ok })
     await answer('p1', { actualStatus: 'UNKNOWN' })
-    await answer('p2', { actualStatus: 'UNKNOWN' })
-    expect(status().querySelector('.publish-issue-trigger .publish-issue-label')?.textContent).toBe('Zorunlu Eksik')
-    expect(fact().querySelector('.publish-partial-note, .publish-partial-progress')).toBeNull()
+    expect(steps()).toEqual(['done', 'next', 'idle', 'idle'])
+    expect(counts()).toEqual([])
+    expect(pill().querySelector('.publish-steps-label')?.textContent).toBe('Yayına Hazır')
+    expect(pill().getAttribute('aria-label')).toBe('Trendyol: Yayına Hazır')
+    expect([...pill().querySelectorAll('.publish-step')].map(step => step.getAttribute('title'))).toEqual(['Hazırlık · Tamam', 'Gönderim · Sırada', 'Onay · Bekliyor', 'Yayında · Bekliyor'])
+    // The pill is the cell's one control: no refresh icon beside it, no job line under it.
+    expect(fact().querySelectorAll('button')).toHaveLength(1 + popover().querySelectorAll('button').length)
+    expect(fact().querySelector('small')).toBeNull()
+    expect(popover().querySelector('.publish-issue-empty')?.textContent).toBe('Eksik kalmadı.')
   })
 
-  it('leaves a fully live card as it was', async () => {
+  it('reads a fully live card as four done steps', async () => {
     await render({ familyProductIds: ['p1', 'p2'] })
-    await answer('p1', { actualStatus: 'LIVE' })
+    await answer('p1', { actualStatus: 'LIVE', profileId: 'pr1' })
     await answer('p2', { actualStatus: 'LIVE' })
     expect(subtitle()).toBe('Zaten yayında · yeniden seçilemez')
-    expect(fact().querySelector('.publish-partial-note, .publish-partial-progress')).toBeNull()
+    expect(steps()).toEqual(['done', 'done', 'done', 'done'])
+    expect(counts()).toEqual([])
+    expect(popover().querySelector('.publish-issue-empty')).toBeNull()
+  })
+
+  it('shows the live share of a partly live card whose rest is ready, and says so in the popover', async () => {
+    await render({ familyProductIds: ['p1', 'p2'], productChecks: ok })
+    await answer('p1', { actualStatus: 'LIVE' })
+    await answer('p2', { actualStatus: 'UNKNOWN' })
+    expect(steps()).toEqual(['done', 'next', 'idle', 'half'])
+    expect(counts()).toEqual(['1/2'])
+    expect(pill().querySelector<HTMLElement>('.publish-steps')?.style.getPropertyValue('--publish-step-share')).toBe('50')
+    expect(pill().getAttribute('aria-label')).toBe('Trendyol: Kısmen Yayında, 1/2 renk yayında')
+    expect(popover().querySelector('.publish-issue-lead')?.textContent).toBe('1/2 renk yayındaKalan 1 renk yayına hazır')
+  })
+
+  it('shows the gap count of a partly live card whose rest is blocked, and a press pins the gap chips', async () => {
+    await render({ familyProductIds: ['p1', 'p2'], productChecks: gap })
+    await answer('p1', { actualStatus: 'LIVE' })
+    await answer('p2', { actualStatus: 'UNKNOWN' })
+    expect(steps()).toEqual(['fail', 'idle', 'idle', 'half'])
+    expect(counts()).toEqual(['1/2', '1 eksik'])
+    expect(pill().getAttribute('aria-label')).toBe('Trendyol: Kısmen Yayında, 1/2 renk yayında; 1 zorunlu eksik')
+    await act(async () => { pill().click() })
+    expect(pill().getAttribute('aria-expanded')).toBe('true')
+    expect(popover().classList.contains('is-open')).toBe(true)
+    expect(popover().querySelector('.publish-issue-lead')?.textContent).toContain('Kalan 1 renkte 1 eksik')
+    expect(popover().querySelector('.publish-issue-required .publish-issue-chip')?.textContent).toBe('Temel Ürün Verileri')
+  })
+
+  it('reads a card with nothing live and a required gap as Hazırlık failed', async () => {
+    await render({ familyProductIds: ['p1', 'p2'], productChecks: gap })
+    await answer('p1', { actualStatus: 'UNKNOWN' })
+    await answer('p2', { actualStatus: 'UNKNOWN' })
+    expect(steps()).toEqual(['fail', 'idle', 'idle', 'idle'])
+    expect(counts()).toEqual(['1 eksik'])
+  })
+
+  it('puts Durumu Yenile and İş Ayrıntısı at the foot of the popover of a card awaiting approval', async () => {
+    await render({ productChecks: ok })
+    await answer('p1', { actualStatus: 'APPROVAL_PENDING', profileId: 'pr1', lastJobId: 'j1', lastJobStatus: 'SUCCEEDED' })
+    expect(steps()).toEqual(['done', 'done', 'now', 'idle'])
+    const actions = [...popover().querySelectorAll<HTMLButtonElement>('.publish-issue-actions > button')]
+    expect(actions.map(action => action.textContent)).toEqual(['Durumu Yenile', 'İş Ayrıntısı'])
+    expect(actions[0].getAttribute('aria-label')).toBe('Trendyol yayın durumunu güncelle')
+    await act(async () => { actions[0].click(); await new Promise(resolve => setTimeout(resolve, 10)) })
+    expect(apiState.calls).toContain('/products/p1/publication-status/c1/refresh')
+  })
+
+  it('marks the step a failed job stopped at and moves its reason into the popover', async () => {
+    apiState.jobs.set('/jobs/j1', { job: { id: 'j1', jobType: 'PRODUCT_CREATE', status: 'DEAD', progressCurrent: 0, progressTotal: null, progressPercent: null, progressLabel: null, lastErrorCode: 'X', lastErrorSummary: 'Web Color değeri eşlenmemiş.' } })
+    await render({ productChecks: ok })
+    await answer('p1', { actualStatus: 'UNKNOWN', lastJobId: 'j1', lastJobStatus: 'DEAD' })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)) })
+    expect(steps()).toEqual(['done', 'fail', 'idle', 'idle'])
+    expect(popover().querySelector('.publish-issue-lead span.is-danger')?.textContent).toContain('Web Color değeri eşlenmemiş.')
+    expect(fact().querySelector('small')).toBeNull()
+  })
+
+  it('reads a refused card as Onay failed', async () => {
+    await render({ productChecks: ok })
+    await answer('p1', { actualStatus: 'CREATE_REJECTED', profileId: 'pr1' })
+    expect(steps()).toEqual(['done', 'done', 'fail', 'idle'])
+  })
+
+  it('reads a card the marketplace no longer knows as Yayında failed, with the count of the vanished variants', async () => {
+    await render({ productChecks: ok, variantLinks: { linked: 0, total: 2, missing: 2 } })
+    await answer('p1', { actualStatus: 'LIVE', profileId: 'pr1' })
+    expect(steps()).toEqual(['done', 'done', 'done', 'fail'])
+    expect(counts()).toEqual(['2 yok'])
   })
 })
+
