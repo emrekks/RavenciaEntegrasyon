@@ -96,6 +96,8 @@ public sealed class OrderLineCancelTimeTests
         Assert.Equal(1, row.CancelledOrders);
         Assert.Equal(2, row.PartialOrders);
         Assert.Equal(5, row.CancelledUnits);
+        Assert.Equal(3, row.WholeUnits);
+        Assert.Equal(2, row.PartialUnits);
         Assert.Equal(1, row.UnknownTimeOrders);
         Assert.Equal(6, row.UnknownTimeUnits);
     }

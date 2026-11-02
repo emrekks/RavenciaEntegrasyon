@@ -124,6 +124,10 @@ describe('publish gap chips open the category fields window', () => {
     await openFromChip('required', 'Kesim Kalıbı')
     expect(document.querySelector('.mapping-advanced-modal h2')?.textContent).toBe('Kategori Alanları ve Değerleri')
     expect(selectedField()).toBe('Kesim Kalıbı')
+    // The note gives the gap's own message only, nothing joined to it.
+    expect(document.querySelector('.mapping-advanced-modal .cm-product-note')?.textContent).toMatch(/^Bu Üründe Zorunlu Eksik Zorunlu .+ özelliği için güncel ve doğrulanmış eşleme yok\.$/)
+    // The gap's field is focused: its panel attribute picker.
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Kesim Kalıbı için panel özelliği')
     // Red marks for the required gaps, yellow for the optional warnings; a field the product does not need stays plain.
     expect(marked('required')).toEqual(['Kesim Kalıbı', 'Kumaş Tipi'])
     expect(marked('optional')).toEqual(['Boy', 'Kalınlık'])

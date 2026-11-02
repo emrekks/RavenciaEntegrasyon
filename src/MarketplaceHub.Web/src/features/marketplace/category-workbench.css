@@ -441,7 +441,8 @@
 .cm-card .cm-item.is-product-optional { --cm-product-tone: var(--rv-color-warning); }
 .app-shell .panel.mapping-step.cm-card .cm-item.has-product-issue, .cm-card .cm-item.has-product-issue { box-shadow: inset 3px 0 0 var(--cm-product-tone); }
 .app-shell .panel.mapping-step.cm-card .cm-item.has-product-issue:not(.is-selected), .cm-card .cm-item.has-product-issue:not(.is-selected) { background: color-mix(in srgb, var(--cm-product-tone) 7%, transparent); }
-.cm-card .cm-product-issue { display: inline-block; width: 8px; height: 8px; margin-left: 7px; vertical-align: middle; background: var(--cm-product-tone); border-radius: 50%; box-shadow: 0 0 0 2px color-mix(in srgb, var(--cm-product-tone) 28%, transparent); }
+/* The dot sits on the label's optical centre (about half its capital height above the baseline), not its x-height. */
+.cm-card .cm-product-issue { display: inline-block; width: 8px; height: 8px; margin-left: 7px; vertical-align: 0.07em; background: var(--cm-product-tone); border-radius: 50%; box-shadow: 0 0 0 2px color-mix(in srgb, var(--cm-product-tone) 28%, transparent); }
 .cm-card .cm-product-note { margin: 0 0 12px; padding: 8px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.45; background: color-mix(in srgb, var(--cm-product-tone) 9%, transparent); border: 1px solid color-mix(in srgb, var(--cm-product-tone) 32%, transparent); border-radius: 7px; }
 .cm-card .cm-product-note.is-required { --cm-product-tone: var(--rv-color-danger); }
 .cm-card .cm-product-note.is-optional { --cm-product-tone: var(--rv-color-warning); }
