@@ -103,3 +103,12 @@ body:has(.publish-issue-tooltip.is-open) .publish-issue-tooltip:not(.is-open) { 
 .publish-issue-chip-tip { position: fixed; z-index: calc(var(--rv-z-modal, 1000) + 20); display: grid; gap: 3px; box-sizing: border-box; max-width: min(300px, calc(100vw - 16px)); padding: 8px 10px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); font-size: 12px; font-weight: 500; line-height: 1.4; pointer-events: none; }
 .publish-issue-chip-tip.is-above { transform: translateY(-100%); }
 .publish-issue-chip-tip > span:first-child { font-weight: 600; }
+
+/* On a narrow card (three a row) the Yayın Durumu column takes more of the width than Mağaza / Bağlantı, whose values
+   are short, so "Zorunlu Eksik" with both counts and the refresh button fits on one line. */
+.publish-platform-card.publish-platform-card { container-type: inline-size; container-name: publish-card; }
+@container publish-card (max-width: 460px) {
+  .publish-platform-card .publish-platform-facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); }
+}
+/* If the column is still too narrow, the badge keeps its dot and counts and drops the words. */
+@container (max-width: 178px) { .publish-issue-trigger .publish-issue-label { display: none; } }
