@@ -11,7 +11,6 @@ export const ProductDetailPage = lazyPage(() => import('../features/catalog/prod
 export const ProductsPage = lazyPage(() => import('../features/catalog/products/ProductsPage').then(module => ({ default: module.ProductsPage })))
 
 // Each marketplace route loads its own module (orders, shipments, returns, integrations, mappings) as its own chunk.
-export const AttributeMappingPage = lazyPage(() => import('../features/marketplace/mappings/MappingPages').then(module => ({ default: module.AttributeMappingPage })))
 export const IntegrationDetailPage = lazyPage(() => import('../features/marketplace/integrations/IntegrationPages').then(module => ({ default: module.IntegrationDetailPage })))
 export const IntegrationsPage = lazyPage(() => import('../features/marketplace/integrations/IntegrationPages').then(module => ({ default: module.IntegrationsPage })))
 export const MappingPage = lazyPage(() => import('../features/marketplace/mappings/MappingPages').then(module => ({ default: module.MappingPage })))
