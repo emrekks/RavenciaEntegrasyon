@@ -169,3 +169,39 @@
   html body .app-shell.stitch-shell main .cs-workspace .cs-frow.is-head { display: grid; }
 }
 
+/* ---------- Eşleştirmeler ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Saved mappings: the desktop table fitted to the card (it was 900px wide and scrolled sideways); the platform shows
+     as its logo like on phones, the marketplace path wraps. */
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table { overflow-x: visible; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table table { width: 100%; min-width: 0; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table :is(th, td) { padding-inline: 12px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(1) { width: 18%; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table.is-brand th:nth-child(1) { width: auto; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(2) { width: 56px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(4) { width: 92px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table th:nth-child(5) { width: 228px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table.is-brand th:nth-child(5) { width: 96px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table td:nth-child(2) .ms-platform { display: inline-flex; align-items: center; gap: 0; min-width: 0; font-size: 0; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-table td:nth-child(2) .ms-platform img { width: 22px; height: 22px; }
+  /* its platform tabs take their own row (the last ones were cut off), search and A-Z under them at 36px */
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools { grid-template-columns: minmax(0, 1fr) auto; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .rv-tabs { grid-column: 1 / -1; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > input { width: 100%; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .mapping-sort-button { width: 64px; min-width: 64px; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > :is(input, .mapping-sort-button) { height: 36px !important; min-height: 36px !important; }
+
+  /* New category / brand mapping: panel side, link and marketplace side on one row as on desktop. */
+  html body .app-shell.stitch-shell main section.mapping-page :is(.mapping-category-builder .mapping-reference-grid, .brand-mapping-pair-grid) { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); align-items: end; }
+  html body .app-shell.stitch-shell main section.mapping-page :is(.mapping-category-builder .mapping-reference-grid > .mapping-reference-local, .brand-mapping-pair-grid > .mapping-side.local) { grid-column: 1; grid-row: 1; }
+  html body .app-shell.stitch-shell main section.mapping-page :is(.mapping-category-builder .mapping-reference-grid, .brand-mapping-pair-grid) > .mapping-link-rail { grid-column: 2; grid-row: 1; align-self: end; }
+  html body .app-shell.stitch-shell main section.mapping-page .mapping-category-builder .mapping-reference-grid > :not(.mapping-reference-local):not(.mapping-link-rail),
+  html body .app-shell.stitch-shell main section.mapping-page .brand-mapping-pair-grid > .mapping-side.remote { grid-column: 3; grid-row: 1; }
+  /* the brand count beside Senkronize Et / Eşleştirmeyi Kaydet instead of centred over them */
+  html body .app-shell.stitch-shell main section.mapping-page .brand-reference-action { flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+  html body .app-shell.stitch-shell main section.mapping-page .brand-reference-action > .brand-reference-buttons { flex: none; }
+
+  /* Panel brands and attribute records three to a row. */
+  html body .app-shell.stitch-shell main section.mapping-page :is(.brand-library-list, .panel-attribute-records) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
