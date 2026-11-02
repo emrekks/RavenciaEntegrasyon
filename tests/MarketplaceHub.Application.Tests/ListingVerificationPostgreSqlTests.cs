@@ -444,6 +444,66 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.Equal(JobCompletionKind.Blocked, result.Kind);
     }
 
+    // Live 2026-11-02: Trendyol answered a 28-barcode create batch COMPLETED with 21 items 16 s after the send, and the
+    // job stopped in manual review with an internal text and no per-variant rows. A short answer is a result still being
+    // written: the job asks again; past the grace the listed item gets its outcome and the missing one stays unknown.
+    [PostgreSqlFact]
+    public async Task A_create_batch_result_missing_a_sent_barcode_waits_then_records_it_as_unknown()
+    {
+        var seed = await Seed("TRENDYOL");
+        var productId = seed.Seen.ProductId;
+        var profileId = Guid.CreateVersion7();
+        var jobId = Guid.CreateVersion7();
+        await using (var setup = fixture.CreateContext())
+        {
+            await setup.ProductVariants.Where(x => x.Id == seed.Missed.Id).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.ProductId, productId));
+            setup.ChannelListingProfiles.Add(new ChannelListingProfile { Id = profileId, TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, ProductId = productId, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "BATCH_SUBMITTED" });
+            foreach (var variant in new[] { seed.Seen, seed.Missed })
+            {
+                setup.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ProfileId = profileId, VariantId = variant.Id, ExternalSku = variant.Barcode, ExternalBarcode = variant.Barcode, DesiredStatus = "LIVE", ActualStatus = "BATCH_SUBMITTED" });
+                setup.MarketplaceListingStates.Add(new MarketplaceListingState { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, VariantId = variant.Id, DesiredStatus = "LIVE", ActualStatus = "BATCH_SUBMITTED", PayloadHash = "create-hash" });
+            }
+            await setup.SaveChangesAsync();
+        }
+        string Payload(DateTimeOffset submittedAt) => JsonSerializer.Serialize(new ProductPublicationJobPayload(jobId, productId, profileId, "POLL", "create-hash", "{\"items\":[]}", "batch-1", submittedAt));
+        await using (var setup = fixture.CreateContext())
+        {
+            setup.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, JobType = MarketplaceJobTypes.ProductCreate, PayloadJson = Payload(DateTimeOffset.UtcNow.AddSeconds(-16)), PayloadVersion = 1, PayloadHash = "h", JobDedupKey = $"product-create:{seed.Connection.Id:N}:{productId:N}:x", EffectIdempotencyKey = $"pc:{jobId:N}", Status = JobStatus.Leased, AvailableAt = DateTimeOffset.UtcNow, CorrelationId = "pc", CreatedAt = DateTimeOffset.UtcNow, Version = 1 });
+            await setup.SaveChangesAsync();
+        }
+        var port = new ScriptedProductPort { Operation = new RemoteOperationStatus("batch-1", "COMPLETED", [new RemoteOperationLine("869100000001", true, null, null, false)], ReportedItemCount: 2) };
+
+        await using (var db = fixture.CreateContext())
+        {
+            var early = await Processor(db, port).ProcessAsync(seed.Tenant.Id, seed.Connection.Id, MarketplaceJobTypes.ProductCreate, Payload(DateTimeOffset.UtcNow.AddSeconds(-16)), "pc", CancellationToken.None, jobId);
+            Assert.Equal(JobCompletionKind.Retry, early.Kind);
+            Assert.Equal("PRODUCT_BATCH_PENDING", early.ErrorCode);
+            Assert.True(JobWaitingPolicy.IsWaiting(early));
+        }
+        await using (var check = fixture.CreateContext())
+        {
+            Assert.Equal("BATCH_IN_PROGRESS", (await check.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.Id == profileId)).ActualStatus);
+            Assert.False(await check.JobVariantResults.AnyAsync(x => x.JobId == jobId));
+        }
+
+        await using (var db = fixture.CreateContext())
+        {
+            var settled = await Processor(db, port).ProcessAsync(seed.Tenant.Id, seed.Connection.Id, MarketplaceJobTypes.ProductCreate, Payload(DateTimeOffset.UtcNow - ProductBatchResultPolicy.IncompleteGrace - TimeSpan.FromMinutes(1)), "pc", CancellationToken.None, jobId);
+            Assert.Equal(JobCompletionKind.Succeeded, settled.Kind);
+            Assert.Equal(ProductBatchResultPolicy.IncompleteResultCode, settled.ErrorCode);
+        }
+        await using var after = fixture.CreateContext();
+        Assert.Equal("APPROVAL_PENDING", (await after.ChannelListingProfiles.AsNoTracking().SingleAsync(x => x.Id == profileId)).ActualStatus);
+        var listings = await after.ChannelListingVariants.AsNoTracking().Where(x => x.ProfileId == profileId).ToDictionaryAsync(x => x.VariantId);
+        Assert.Equal("CREATE_ACCEPTED", listings[seed.Seen.Id].ActualStatus);
+        Assert.Equal(ProductBatchResultPolicy.ResultUnknownStatus, listings[seed.Missed.Id].ActualStatus);
+        var rows = await after.JobVariantResults.AsNoTracking().Where(x => x.JobId == jobId).ToDictionaryAsync(x => x.VariantId!.Value);
+        Assert.Equal(JobVariantResultPolicy.Sent, rows[seed.Seen.Id].Status);
+        Assert.Equal(JobVariantResultPolicy.Pending, rows[seed.Missed.Id].Status);
+        Assert.Equal(ProductBatchResultPolicy.MissingReason("Trendyol"), rows[seed.Missed.Id].Reason);
+        Assert.True(await after.IntegrationJobs.AnyAsync(x => x.TenantId == seed.Tenant.Id && x.JobType == MarketplaceJobTypes.ProductApprovalReconcile));
+    }
+
     private sealed record Seeded(Tenant Tenant, PlatformConnection Connection, ProductVariant Seen, ProductVariant Missed);
 
     // A connection with two linked variants of two products: one the catalog lists (…001), one it does not (…002).

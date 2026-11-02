@@ -24,6 +24,9 @@ public sealed class JobVariantResultPolicyTests
     [InlineData(MarketplaceJobTypes.ProductCreate, "CREATE_ACCEPTED", JobVariantResultPolicy.Sent)]
     [InlineData(MarketplaceJobTypes.ProductCreate, "CREATE_REJECTED", JobVariantResultPolicy.Rejected)]
     [InlineData(MarketplaceJobTypes.ProductUpdate, "UPDATE_REJECTED", JobVariantResultPolicy.Rejected)]
+    [InlineData(MarketplaceJobTypes.ProductCreate, ProductBatchResultPolicy.ResultUnknownStatus, JobVariantResultPolicy.Pending)]
+    [InlineData(MarketplaceJobTypes.ProductCreate, "MANUAL_REVIEW", JobVariantResultPolicy.Pending)]
+    [InlineData(MarketplaceJobTypes.ProductCreate, "BLOCKED", JobVariantResultPolicy.Rejected)]
     public void A_listing_status_names_the_job_outcome(string jobType, string listingStatus, string expected) =>
         Assert.Equal(expected, JobVariantResultPolicy.StatusFor(jobType, listingStatus));
 
@@ -34,6 +37,32 @@ public sealed class JobVariantResultPolicyTests
         Assert.Equal(JobVariantResultPolicy.Sent, JobVariantResultPolicy.StatusFromCardState(MarketplaceJobTypes.ProductCreate, "REJECTED"));
         Assert.Equal(JobVariantResultPolicy.Sent, JobVariantResultPolicy.StatusFromCardState(MarketplaceJobTypes.ProductCreate, "LIVE"));
         Assert.Equal(JobVariantResultPolicy.Approved, JobVariantResultPolicy.StatusFromCardState(MarketplaceJobTypes.ProductApprovalReconcile, "LIVE"));
+    }
+
+    [Fact]
+    public void A_short_create_batch_answer_is_waited_for_then_settles_as_unknown()
+    {
+        // Live 2026-11-02: COMPLETED with 21 of 28 items, 16 s after the send.
+        var status = TrendyolJsonMapper.Batch("""{"batchRequestId":"b-1","status":"COMPLETED","itemCount":28,"failedItemCount":0,"items":[{"requestItem":{"barcode":"A"},"status":"SUCCESS","failureReasons":[]}]}""", "b-1");
+        Assert.Equal(28, status.ReportedItemCount);
+        Assert.Null(TrendyolJsonMapper.Batch("""{"batchRequestId":"b-1","status":"COMPLETED","items":[]}""", "b-1").ReportedItemCount);
+
+        Assert.True(ProductBatchResultPolicy.KeepWaiting(7, TimeSpan.FromSeconds(16)));
+        Assert.False(ProductBatchResultPolicy.KeepWaiting(7, ProductBatchResultPolicy.IncompleteGrace));
+        Assert.False(ProductBatchResultPolicy.KeepWaiting(0, TimeSpan.FromSeconds(16)));
+        Assert.True(JobWaitingPolicy.IsWaitingCode("PRODUCT_BATCH_PENDING"));
+        Assert.Equal("Trendyol sonucu henüz gönderilen 28 varyantın 21 tanesini listeliyor; kalanların sonucu bekleniyor.", ProductBatchResultPolicy.WaitingMessage("Trendyol", 21, 28));
+        // An older job read from the card: a manual review or an unlisted variant is not "sent", it is not known yet.
+        Assert.Equal(JobVariantResultPolicy.Pending, JobVariantResultPolicy.StatusFromCardState(MarketplaceJobTypes.ProductCreate, "MANUAL_REVIEW"));
+        Assert.Equal(JobVariantResultPolicy.Pending, JobVariantResultPolicy.StatusFromCardState(MarketplaceJobTypes.ProductCreate, ProductBatchResultPolicy.ResultUnknownStatus));
+    }
+
+    [Fact]
+    public void A_trendyol_refusal_reason_reaches_the_job_summary()
+    {
+        var status = TrendyolJsonMapper.Batch("""{"batchRequestId":"b-1","status":"COMPLETED","items":[{"requestItem":{"barcode":"MZ-22"},"status":"FAILED","failureReasons":["Web Color alanı zorunludur."]},{"requestItem":{"barcode":"MZ-01"},"status":"SUCCESS","failureReasons":[]}]}""", "b-1");
+
+        Assert.Equal(" Reddedilen: MZ-22 (Web Color alanı zorunludur.)", MarketplaceHub.Infrastructure.Persistence.MarketplaceJobProcessor.RejectionReasons(status.Lines));
     }
 
     [Fact]
