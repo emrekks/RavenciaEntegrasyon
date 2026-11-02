@@ -205,3 +205,12 @@
   html body .app-shell.stitch-shell main section.mapping-page :is(.brand-library-list, .panel-attribute-records) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
+/* ---------- Ayarlar ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  /* Label designer: the properties panel's Genel / Yazı / Barkod tabs fit its 237px column (Barkod was cut off); the
+     tab rule sets padding with !important, hence the repeated classes. */
+  html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-itabs > button { flex: 1 1 auto; min-width: 0; padding: 0 8px !important; }
+  html body .app-shell.stitch-shell main .ss-page .ss-itabs .rv-tab-label > svg { display: none; }
+  /* Small buttons and chips are 36px touch targets (the 28px small buttons of Veri, the 26px label field chips, the 34px theme picks). */
+  html body .app-shell.stitch-shell main .ss-page :is(.ss-btn.is-xs, .ss-fchip, .ss-th-pick) { min-height: 36px; }
+}
