@@ -8,6 +8,7 @@ import { platformLogoSource } from '../../../shared/platform-logos'
 import { jobPresentation } from '../../operations/job-presentation'
 import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobLabel } from '../../operations/job-waiting'
 import { publicationJobPollInterval } from '../publication-job-poll'
+import { PublicationJobVariants, type JobVariantResults } from './PublicationJobVariants'
 
 type JobAttempt = { attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }
 type JobChange = { label: string; value: string; detail: string | null }
@@ -21,6 +22,7 @@ export type PublicationJobDialogDetail = {
   }
   attempts?: JobAttempt[]
   change?: JobChange | null
+  variantResults?: JobVariantResults | null
 }
 
 const statusLabels: Record<string, string> = {
@@ -107,6 +109,7 @@ export function PublicationJobDialog({ jobId, platformCode, platformName, storeN
               {hasError && <div className="publication-job-error" role="alert"><UiIcon name="alert" /><div><strong>{job.lastErrorSummary ?? 'Pazaryeri işi reddetti.'}</strong>{job.lastErrorCode && <small>Kod: {job.lastErrorCode}</small>}</div></div>}
               {detail.data?.change && <p className="publication-job-change"><b>{detail.data.change.label}:</b> {detail.data.change.value}{detail.data.change.detail ? ` — ${detail.data.change.detail}` : ''}</p>}
               <dl className="publication-job-facts">{facts.filter(([, value]) => value).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+              {detail.data?.variantResults && <PublicationJobVariants results={detail.data.variantResults} approvalCheck={job.jobType.trim().toUpperCase().includes('APPROVAL')} />}
               {attempts.length > 0 && <section className="publication-job-attempts" aria-label="Denemeler">
                 <h3>Denemeler</h3>
                 <ol>{attempts.map(attempt => <li key={attempt.attemptNumber} className={attemptClass[jobAttemptOutcome(attempt)]}>

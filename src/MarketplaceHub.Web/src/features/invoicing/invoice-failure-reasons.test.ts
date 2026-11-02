@@ -21,6 +21,12 @@ describe('invoice failure reasons', () => {
     expect(invoiceFailureReason('CAPABILITY_NOT_VERIFIED')).toContain('izni kapalı')
   })
 
+  it('says why an issued invoice was not sent to the marketplace by itself', () => {
+    for (const code of ['PLATFORM_UNSUPPORTED', 'LINK_MISSING', 'WRITES_OFF', 'CONNECTION_NOT_LIVE', 'CONNECTION_WRITES_OFF', 'PACKAGE_MISSING', 'SHOPIFY_SCOPE_MISSING'])
+      expect(invoiceFailureReason(`INVOICE_AUTO_DELIVERY_${code}`)).toMatch(/^Pazaryerine gönderilmedi: /)
+    expect(invoiceFailureReason('INVOICE_AUTO_DELIVERY_CONNECTION_WRITES_OFF')).toContain('dış yazma kapalı')
+  })
+
   it('keeps the raw code visible for codes without a text', () => {
     expect(invoiceFailureReason('SOMETHING_NEW')).toBe('İletilemedi: SOMETHING_NEW')
     expect(invoiceFailureReason(null)).toBe('Ayrıntılar için faturayı açın.')

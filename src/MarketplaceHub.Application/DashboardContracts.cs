@@ -79,13 +79,16 @@ public interface IDashboardReadService
 // Orders cancelled on one tenant calendar day, per store. A line counts on the day the marketplace says it was
 // cancelled; a line whose time the marketplace does not give counts apart (UnknownTime…) on the day the panel saw the
 // cancellation. CancelledOrders are orders cancelled whole, PartialOrders orders that stay open with fewer products;
-// the units are the cancelled quantities of the lines that count.
+// the units are the cancelled quantities of the lines that count (CancelledUnits = WholeUnits + PartialUnits: those of
+// the orders cancelled whole, and those cancelled of the orders that stay open).
 public sealed record DashboardCancellationRowView(
     Guid ConnectionId,
     int CancelledOrders,
     int PartialOrders,
     decimal CancelledUnits,
     int UnknownTimeOrders,
-    decimal UnknownTimeUnits);
+    decimal UnknownTimeUnits,
+    decimal WholeUnits = 0,
+    decimal PartialUnits = 0);
 
 public sealed record DashboardCancellationsView(DateOnly Day, DateTimeOffset Start, DateTimeOffset End, IReadOnlyList<DashboardCancellationRowView> Stores);

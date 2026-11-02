@@ -454,7 +454,8 @@ public sealed record CapabilityEvidence(string Code, string SupportLevel, string
 public sealed record RemoteReferenceItem(string ResourceType, string ExternalId, string? ParentExternalId, string Name, string Path, int Depth, bool IsLeaf, bool IsActive, string RawJson, bool? IsRequired = null, bool? AllowsCustomValue = null, bool? AllowsMultipleValues = null);
 public sealed record ReferenceResource(string ResourceType, string? ParentExternalId);
 public sealed record RemoteOperationRef(string ExternalOperationId, string Kind, DateTimeOffset SubmittedAt);
-public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, string? ExternalId, string? ErrorCode, bool Retryable, string? Status = null);
+// Reasons: every failure reason the marketplace gave for the line, verbatim (ErrorCode keeps the first).
+public sealed record RemoteOperationLine(string ExternalKey, bool Succeeded, string? ExternalId, string? ErrorCode, bool Retryable, string? Status = null, IReadOnlyList<string>? Reasons = null);
 // UnlistedLinesUnconfirmed: the answer lists refused lines alone (Hepsiburada) but failed as a whole, so a line it
 // leaves out was not shown to be applied. IssueCode/IssueSummary: the lines went through, but something the job must
 // show did not (Shopify: pictures that did not arrive).
@@ -1311,7 +1312,10 @@ public sealed record OrderSummaryView(
     // Micro-export orders within the same filters in the one tab asked for under micro=true (the card asks for PENDING),
     // and their count per country (invoice address, else the storefront); 0 and null for any other request.
     int MicroExport = 0,
-    IReadOnlyDictionary<string, int>? MicroExportCountries = null);
+    IReadOnlyDictionary<string, int>? MicroExportCountries = null,
+    // The products of the New tab's orders under the same filters (each line's ordered quantity less what was cancelled
+    // of it), per store id; null when the New tab was not counted (the Yeni Sipariş card's "N Paket | M Adet Ürün").
+    IReadOnlyDictionary<string, decimal>? NewUnitsByConnection = null);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,

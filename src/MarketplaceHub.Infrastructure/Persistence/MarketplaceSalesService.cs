@@ -714,8 +714,23 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         int Count(string tab) => counts.GetValueOrDefault(tab);
         // The micro-export card counts them in the one tab it asked for, under the same filters.
         var (micro, microCountries) = includeMicro ? await MicroExportCountsAsync(tenantId, options with { Status = requested[0] }, cancellationToken) : (0, null);
+        var newUnits = !includeMicro && requested.Contains("NEW") ? await NewUnitsByConnectionAsync(tenantId, options, cancellationToken) : null;
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
-            Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries);
+            Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries, newUnits);
+    }
+
+    // The products of the orders the New tab lists under the same filters, per store: each line's ordered quantity less
+    // what was cancelled of it (the rule of the overview's Bekleyen Ürün Adedi).
+    private async Task<IReadOnlyDictionary<string, decimal>> NewUnitsByConnectionAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)
+    {
+        var orders = FilteredOrders(tenantId, options with { Status = "NEW", Sort = null });
+        var rows = await (
+            from order in orders
+            join line in db.OrderLines.AsNoTracking() on new { order.TenantId, OrderId = order.Id } equals new { line.TenantId, line.OrderId }
+            group line by order.ConnectionId into grouped
+            select new { ConnectionId = grouped.Key, Units = grouped.Sum(line => line.OrderedQuantity > line.CancelledQuantity ? line.OrderedQuantity - line.CancelledQuantity : 0m) })
+            .ToListAsync(cancellationToken);
+        return rows.ToDictionary(row => row.ConnectionId.ToString("D"), row => row.Units);
     }
 
     private async Task<(int Count, IReadOnlyDictionary<string, int> Countries)> MicroExportCountsAsync(Guid tenantId, OrderListQuery options, CancellationToken cancellationToken)

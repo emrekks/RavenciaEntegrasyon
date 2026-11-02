@@ -1773,14 +1773,19 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     private async Task QueueMarketplaceDeliveryAfterDocument(Guid tenantId, Invoice invoice, string? permanentUrl, string correlationId, CancellationToken cancellationToken)
     {
-        if (invoice.Status != InvoiceStatus.Accepted || string.IsNullOrWhiteSpace(permanentUrl)) return;
+        // Only an accepted invoice is delivered; any other status (cancelled, in review...) has its own path.
+        if (invoice.Status != InvoiceStatus.Accepted) return;
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
                 ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
                 : item.Id == invoice.PackageId.Value))
             .OrderBy(item => item.Id).ToListAsync(cancellationToken);
         var marketplaceConnectionIds = packages.Select(item => item.ConnectionId).Distinct().ToArray();
-        if (marketplaceConnectionIds.Length == 0) return;
+        if (marketplaceConnectionIds.Length == 0)
+        {
+            RecordAutomaticDeliverySkip(invoice, InvoiceMarketplaceAutoDeliveryPolicy.PackageMissingCode);
+            return;
+        }
         if (marketplaceConnectionIds.Length > 1)
         {
             invoice.Status = InvoiceStatus.ManualReview;
@@ -1804,17 +1809,47 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             invoice.Version++;
             return;
         }
-        if (!IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
+        // Every marketplace with a delivery adapter is gated the same way (InvoiceMarketplaceAutoDeliveryPolicy). The
+        // hand-kept INVOICE_DELIVER capability record no longer gates it: a stale "Unknown" (n11 after a credential
+        // rotation) silently kept issued invoices off the marketplace.
+        var marketplaceConnection = await db.PlatformConnections.AsNoTracking()
+            .SingleOrDefaultAsync(connection => connection.TenantId == tenantId && connection.Id == marketplaceConnectionId, cancellationToken);
+        var skip = marketplaceConnection is null
+            ? InvoiceMarketplaceAutoDeliveryPolicy.ConnectionNotLiveCode
+            : InvoiceMarketplaceAutoDeliveryPolicy.SkipReason(
+                marketplaceConnection.PlatformCode,
+                marketplaceConnection.Status,
+                marketplaceConnection.Environment,
+                marketplaceConnection.SettingsJson,
                 configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
-                configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"))) return;
-        var marketplacePlatform = await db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId && connection.Id == marketplaceConnectionId)
-            .Select(connection => connection.PlatformCode).SingleOrDefaultAsync(cancellationToken);
-        // Hepsiburada's adapter reads the package before and after the write, so it does not depend on a hand-entered capability record.
-        if (!string.Equals(marketplacePlatform, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
-            && !await db.PlatformCapabilities.AsNoTracking().AnyAsync(capability => capability.TenantId == tenantId
-                && capability.ConnectionId == marketplaceConnectionId && capability.Code == InvoicingCapabilities.InvoiceDeliver
-                && capability.SupportLevel == CapabilitySupportLevel.Supported && capability.VerifiedAt != null, cancellationToken)) return;
+                configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"),
+                !string.IsNullOrWhiteSpace(permanentUrl),
+                await ShopifyWriteScopeVerifiedAsync(tenantId, marketplaceConnection, cancellationToken));
+        if (skip is not null)
+        {
+            RecordAutomaticDeliverySkip(invoice, skip);
+            return;
+        }
         await EnqueueAutomaticJob(tenantId, marketplaceConnectionId, invoice.Id, InvoicingJobTypes.MarketplaceDelivery, "after-document", correlationId, cancellationToken);
+    }
+
+    // The invoice stays Accepted; the code tells the invoice screen (and the orders list, IssuedInvoiceNotOnPlatform)
+    // that it was not sent to the marketplace and why. A later delivery clears it.
+    private void RecordAutomaticDeliverySkip(Invoice invoice, string code)
+    {
+        invoice.LastErrorCode = code;
+        invoice.UpdatedAt = timeProvider.GetUtcNow();
+        invoice.Version++;
+    }
+
+    // Shopify takes the invoice only with the write_orders scope its connection test recorded; the adapter checks the same.
+    private async Task<bool> ShopifyWriteScopeVerifiedAsync(Guid tenantId, PlatformConnection? connection, CancellationToken cancellationToken)
+    {
+        if (connection is null || !string.Equals(connection.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)) return false;
+        var evidence = await db.PlatformCapabilities.AsNoTracking()
+            .Where(item => item.TenantId == tenantId && item.ConnectionId == connection.Id && item.Code == InvoicingCapabilities.InvoiceDeliver)
+            .ToListAsync(cancellationToken);
+        return evidence.Count == 1 && CapabilityEvidencePolicy.IsVerifiedWriteCapability(evidence[0], connection, InvoicingCapabilities.InvoiceDeliver);
     }
 
     private async Task<bool> StageCapabilityProbe(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -1967,6 +2002,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
                 configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"))) return;
 
+        var deliveryPlatforms = InvoiceMarketplaceAutoDeliveryPolicy.DeliveryPlatformCodes;
         var candidates = await (from state in db.MarketplaceDeliveryStates.AsNoTracking()
                                 join invoice in db.Invoices.AsNoTracking()
                                     on new { state.TenantId, Id = state.InvoiceId } equals new { invoice.TenantId, invoice.Id }
@@ -1981,19 +2017,26 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                                     && state.UpdatedAt <= now.AddMinutes(-2)
                                     && connection.Status == "ACTIVE"
                                     && connection.Environment == "PRODUCTION"
-                                    && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA" || connection.PlatformCode == "PTTAVM")
+                                    && deliveryPlatforms.Contains(connection.PlatformCode)
                                     && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
                                 select new { invoice.Id, PackageId = package.Id, ConnectionId = package.ConnectionId, StateVersion = state.Version }).ToListAsync(cancellationToken);
 
         var bucket = now.ToUnixTimeSeconds() / 300;
         // Sale invoices are order level (PackageId null): their targets are the order's non-cancelled packages,
         // resolved the same way EnqueueDeliveryAsync does, and they must all sit on one marketplace connection.
+        // Only invoices issued within the recovery window (14 days), so an old invoice is never sent by surprise, and only
+        // those that never had a delivery job: one that ran and stopped before a delivery state was written (a missing
+        // package, a refused precondition) is left to the user instead of being queued again every five minutes.
+        var issuedSince = now - InvoiceMarketplaceAutoDeliveryPolicy.NeverQueuedRecoveryWindow;
         var acceptedNeverDelivered = await db.Invoices.AsNoTracking()
             .Where(invoice => invoice.TenantId == tenantId
                 && invoice.SequencePurpose == "SALE"
                 && invoice.Status == InvoiceStatus.Accepted
                 && invoice.UpdatedAt <= now.AddMinutes(-2)
+                && (invoice.IssuedAt ?? invoice.CreatedAt) >= issuedSince
                 && !db.MarketplaceDeliveryStates.Any(state => state.TenantId == invoice.TenantId && state.InvoiceId == invoice.Id)
+                && !db.IntegrationJobs.Any(job => job.TenantId == invoice.TenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
+                    && job.PayloadJson.Contains(invoice.Id.ToString()))
                 && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null))
             .Select(invoice => new { invoice.Id, invoice.OrderId, invoice.PackageId })
             .ToListAsync(cancellationToken);
@@ -2004,12 +2047,21 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var targetPackages = acceptedNeverDelivered.Count == 0 ? [] : await db.ShipmentPackages.AsNoTracking()
             .Where(package => package.TenantId == tenantId && (neverOrderIds.Contains(package.OrderId) || neverPackageIds.Contains(package.Id)))
             .Select(package => new RecoveryTargetPackage(package.Id, package.OrderId, package.ConnectionId, package.Status)).ToListAsync(cancellationToken);
-        var deliverableConnections = (await db.PlatformConnections.AsNoTracking()
+        // The same gate as the delivery after the document (InvoiceMarketplaceAutoDeliveryPolicy): the documents read
+        // above all have their link, and the server switches were checked at the top.
+        var liveConnections = await db.PlatformConnections.AsNoTracking()
             .Where(connection => connection.TenantId == tenantId
                 && connection.Status == "ACTIVE"
                 && connection.Environment == "PRODUCTION"
-                && (connection.PlatformCode == "TRENDYOL" || connection.PlatformCode == "HEPSIBURADA" || connection.PlatformCode == "SHOPIFY" || connection.PlatformCode == "N11" || connection.PlatformCode == "PAZARAMA" || connection.PlatformCode == "PTTAVM"))
-            .Select(connection => connection.Id).ToListAsync(cancellationToken)).ToHashSet();
+                && deliveryPlatforms.Contains(connection.PlatformCode))
+            .ToListAsync(cancellationToken);
+        var deliverableConnections = new HashSet<Guid>();
+        foreach (var connection in liveConnections)
+        {
+            if (InvoiceMarketplaceAutoDeliveryPolicy.SkipReason(connection.PlatformCode, connection.Status, connection.Environment, connection.SettingsJson,
+                    true, true, true, await ShopifyWriteScopeVerifiedAsync(tenantId, connection, cancellationToken)) is null)
+                deliverableConnections.Add(connection.Id);
+        }
         var activeDeliveryJobs = await db.IntegrationJobs.AsNoTracking()
             .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
                 && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled))

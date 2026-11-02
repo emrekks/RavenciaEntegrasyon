@@ -1531,6 +1531,8 @@ public sealed partial class InvoicingBillingService(
             }
         }
         invoice.Status = InvoiceStatus.MarketplacePending; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
+        // The reason the automatic delivery was skipped no longer holds once the user sends it.
+        if (InvoiceMarketplaceAutoDeliveryPolicy.IsSkipCode(invoice.LastErrorCode)) invoice.LastErrorCode = null;
         return await AddJob(invoice, InvoicingJobTypes.MarketplaceDelivery, idempotencyKey, correlationId, cancellationToken, packages[0].ConnectionId, manualDeliveryRetry, bulk);
     }
 
