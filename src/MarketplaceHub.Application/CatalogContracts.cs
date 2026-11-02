@@ -325,7 +325,10 @@ public sealed record UpsertConnectionAttributeDefaultCommand(string AttributeNam
 // Value mappings to review. SameCategory: one panel value mapped to several marketplace values in
 // one category (only one can be sent). CrossCategory: one panel value mapped to different
 // marketplace values in different categories of the same marketplace attribute.
-public sealed record MappingConflictOptionView(string ExternalId, string Name, long Version, DateTimeOffset? VerifiedAt, int Categories);
+// Scopes (cross-category only): the categories holding this option, each with its mapping version, so the panel
+// can set one option in every category through the ordinary versioned value-mapping save.
+public sealed record MappingConflictScopeView(string ScopeExternalId, string CategoryName, long Version);
+public sealed record MappingConflictOptionView(string ExternalId, string Name, long Version, DateTimeOffset? VerifiedAt, int Categories, IReadOnlyList<MappingConflictScopeView>? Scopes = null);
 public sealed record MappingConflictView(string ScopeExternalId, string CategoryName, string AttributeName, Guid LocalValueId, string LocalValueName, IReadOnlyList<MappingConflictOptionView> Options, string? TemplateExternalId);
 public sealed record MappingConflictsView(IReadOnlyList<MappingConflictView> SameCategory, IReadOnlyList<MappingConflictView> CrossCategory);
 

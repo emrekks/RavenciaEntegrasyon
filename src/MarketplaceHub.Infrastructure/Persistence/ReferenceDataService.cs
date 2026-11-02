@@ -470,7 +470,8 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             var sample = group.First();
             return new MappingConflictView("", "", Name("CATEGORY_ATTRIBUTES", sample.Category, attribute), localId, localNames.GetValueOrDefault(localId, ""),
                 group.GroupBy(x => x.ExternalId).OrderByDescending(values => values.Count())
-                    .Select(values => new MappingConflictOptionView(values.Key, Name("ATTRIBUTE_VALUES", values.First().ScopeExternalId, values.Key), 0, values.Max(x => x.VerifiedAt), values.Select(x => x.Category).Distinct().Count()))
+                    .Select(values => new MappingConflictOptionView(values.Key, Name("ATTRIBUTE_VALUES", values.First().ScopeExternalId, values.Key), 0, values.Max(x => x.VerifiedAt), values.Select(x => x.Category).Distinct().Count(),
+                        values.OrderBy(x => x.ScopeExternalId, StringComparer.Ordinal).Select(x => new MappingConflictScopeView(x.ScopeExternalId, Name("CATEGORIES", "", x.Category), x.Version)).ToList()))
                     .ToList(),
                 templates.GetValueOrDefault((attribute, localId)));
         }).OrderBy(x => x.AttributeName).ThenBy(x => x.LocalValueName).ToList();
