@@ -141,3 +141,11 @@
   html body .app-shell.stitch-shell main .qi-page .qi-head { flex-wrap: nowrap; align-items: flex-end; }
   html body .app-shell.stitch-shell main .qi-page .qi-head .qi-acts { width: auto; flex: none; }
 }
+
+/* ---------- Promosyon ---------- */
+@media (min-width: 761px) and (max-width: 1024px) {
+  html body .app-shell.stitch-shell main .commission-tariffs .commission-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 900px) and (max-width: 1024px) {
+  html body .app-shell.stitch-shell main .commission-tariffs .commission-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
