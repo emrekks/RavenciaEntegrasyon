@@ -49,7 +49,9 @@ export type PublishSteps = {
 }
 
 const sendingStatuses = new Set(['QUEUED', 'UPDATE_QUEUED'])
-const approvalStatuses = new Set(['BATCH_SUBMITTED', 'BATCH_IN_PROGRESS', 'CREATE_ACCEPTED', 'UPDATE_SUBMITTED', 'UPDATE_IN_PROGRESS', 'IMPORT_SUBMITTED', 'IMPORT_IN_PROGRESS', 'IMPORT_ACCEPTED', 'SHOPIFY_SUBMITTED', 'APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING'])
+// Sent and waiting for the marketplace's word (CREATE_RESULT_UNKNOWN: the batch result had no line for the variant yet,
+// the approval check reads it by barcode).
+const approvalStatuses = new Set(['BATCH_SUBMITTED', 'BATCH_IN_PROGRESS', 'CREATE_RESULT_UNKNOWN', 'CREATE_ACCEPTED', 'UPDATE_SUBMITTED', 'UPDATE_IN_PROGRESS', 'IMPORT_SUBMITTED', 'IMPORT_IN_PROGRESS', 'IMPORT_ACCEPTED', 'SHOPIFY_SUBMITTED', 'APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING'])
 const rejectedStatuses = new Set(['REJECTED', 'CREATE_REJECTED', 'UPDATE_REJECTED', 'MANUAL_REVIEW'])
 const partlyFailedStatuses = new Set(['PARTIAL_FAILURE', 'UPDATE_PARTIAL_FAILURE'])
 const blockedStatuses = new Set(['BLOCKED', 'UPDATE_BLOCKED'])

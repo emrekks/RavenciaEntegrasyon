@@ -45,6 +45,7 @@ describe('publishStatusSteps', () => {
   it('reads a sent card awaiting approval as Onay now', () => {
     expect(steps({ actualStatus: 'APPROVAL_PENDING' }).steps).toEqual(['done', 'done', 'now', 'idle'])
     expect(steps({ actualStatus: 'CREATE_ACCEPTED' }).label).toBe('Onay Bekliyor')
+    expect(steps({ actualStatus: 'CREATE_RESULT_UNKNOWN' }).steps).toEqual(['done', 'done', 'now', 'idle'])
     // PTT AVM has no approval: its wait is our own check.
     expect(steps({ actualStatus: 'APPROVAL_PENDING', checking: true }).label).toBe('Kontrol Ediliyor')
   })
