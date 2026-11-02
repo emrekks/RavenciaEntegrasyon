@@ -3402,8 +3402,10 @@ small,
     border-color: var(--rv-color-border-strong);
   }
 
+  /* The open panel's row background fills its row exactly: the rail width is 2 px wider than the row's padding box, and
+     the row clips what overflows, so the right edge of the active row's border was cut off. */
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before {
-    width: var(--rv-sidebar-rail-width);
+    width: 100%;
   }
 
   .app-shell.stitch-shell.sidebar-collapsed.sidebar-hover-expanded > aside .sidebar-profile {
