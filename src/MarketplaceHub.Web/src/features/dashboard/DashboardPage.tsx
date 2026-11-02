@@ -283,17 +283,19 @@ export function DashboardPage() {
       ...(row.unknownTimeOrders ? [{ key: `${row.connectionId}-unknown`, code, name: `${name} · Zamanı Bilinmiyor`, value: `${count(row.unknownTimeOrders)} sipariş · ${count(row.unknownTimeUnits)} adet` }] : []),
     ]
   })
+  const dueSoon = knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount)
   const ops: Array<[keyof typeof ICONS, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, ReactNode?]> = [
     // "N Paket | M Adet Ürün": the units are left out while they are not known (an older API), never shown as 0.
     ['cart', 'Bekleyen Siparişler', knownCount(bootstrap.isLoading, metrics?.pendingOrders), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} Adet Ürün</>}</>],
     ['late', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
     ['ret', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
-    ['invoice', 'Bekleyen Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined],
+    // "N Bekleyen | M Yaklaşan": M is the former Yaklaşan Faturalar count (delivered 5+ days ago, still awaiting an invoice),
+    // left out while it is not known, never shown as 0. The card opens the pending list; the due list is a tab there.
+    ['invoice', 'Bekleyen Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <>Bekleyen{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(dueSoon)} Yaklaşan</>}</>],
     // Today's cancellations; the section is about today, so the label does not repeat it.
     ['cancel', cancelLabel, knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), '', dayCancellationsLink(today), cancelRows],
     // The same count as the product list's low-stock filter it opens.
     ['lowst', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
-    ['due', 'Yaklaşan Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount), '', dashboardOperationalLinks.dueInvoices, undefined],
   ]
   // The file is made from the data on screen only once it belongs to the chosen period and store.
   const reportReady = Boolean(data) && days !== null && !performance.isPlaceholderData && !performance.isFetching && data!.from === days.from && data!.to === days.to
@@ -317,7 +319,7 @@ export function DashboardPage() {
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
     <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
       const body = <><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={Array.isArray(byConnection) ? byConnection : breakdown(byConnection)} /></>
-      const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'cart' ? ' rr-opcard-wide' : ''}`
+      const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'cart' || kind === 'invoice' ? ' rr-opcard-wide' : ''}`
       // Low stock opens its window here instead of taking the user to the products page.
       return kind === 'lowst'
         ? <button key={kind} type="button" className={className} aria-haspopup="dialog" onClick={() => setLowStockOpen(true)}>{body}</button>

@@ -5,7 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const apiState = vi.hoisted(() => ({ failing: new Set<string>() }))
-const bootstrapOverride = vi.hoisted(() => ({ units: undefined as Record<string, number> | null | undefined }))
+const bootstrapOverride = vi.hoisted(() => ({ units: undefined as Record<string, number> | null | undefined, due: 3 as number | null }))
 
 vi.mock('../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../shared/api')>()
@@ -17,7 +17,7 @@ vi.mock('../../shared/api', async importOriginal => {
       { connectionId: 'ty', cancelledOrders: 2, partialOrders: 1, cancelledUnits: 4, unknownTimeOrders: 0, unknownTimeUnits: 0 },
       { connectionId: 'hb', cancelledOrders: 0, partialOrders: 0, cancelledUnits: 0, unknownTimeOrders: 1, unknownTimeUnits: 3 },
     ] }
-    if (route === '/invoice-workspace/summary') return { dueSoonCount: 3, uninvoicedCount: 7 }
+    if (route === '/invoice-workspace/summary') return { dueSoonCount: bootstrapOverride.due ?? undefined, uninvoicedCount: 7 }
     if (route === '/products/summary') return { totalCount: 10, activeCount: 8, outOfStockCount: 1, lowStockCount: 2 }
     if (route === '/dashboard/integration-matrix') return [{ connectionId: 'c1', platformCode: 'TRENDYOL', displayName: 'Trendyol', externalStoreId: '9999', status: 'ACTIVE', cells: {}, issue: 'Son sipariş çekimi hata verdi' }]
     if (route === '/dashboard/performance') return { from: '2026-10-01', to: '2026-10-31', previousFrom: '2026-09-01', previousTo: '2026-09-30', current: [], previous: [], channels: [], partialDay: false, currentEnd: '2026-10-31T20:59:59Z' }
@@ -46,6 +46,7 @@ beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
   apiState.failing = new Set()
   bootstrapOverride.units = undefined
+  bootstrapOverride.due = 3
   container = document.createElement('div')
   document.body.append(container)
 })
@@ -60,7 +61,7 @@ describe('DashboardPage', () => {
   it('shows the counts it read', async () => {
     await render()
     expect(card('Bekleyen Siparişler')).toBe('4Paket | 35 Adet Ürün')
-    expect(card('Bekleyen Faturalar')).toBe('7')
+    expect(card('Bekleyen Faturalar')).toBe('7Bekleyen | 3 Yaklaşan')
     expect(container.querySelector('.rr-callout.rr-warn')).toBeNull()
   })
 
@@ -76,7 +77,7 @@ describe('DashboardPage', () => {
     await render()
     expect(Array.from(container.querySelectorAll('.rr-opcard small')).map(label => label.textContent)).toEqual([
       'Bekleyen Siparişler', 'Geciken Siparişler', 'Bekleyen İadeler', 'Bekleyen Faturalar',
-      'İptal · 1 Kısmi İptal', 'Düşük Stok', 'Yaklaşan Faturalar',
+      'İptal · 1 Kısmi İptal', 'Düşük Stok',
     ])
   })
 
@@ -118,11 +119,24 @@ describe('DashboardPage', () => {
     expect(Array.from(pendingCard().querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol3 paket', 'Hepsiburada1 paket'])
   })
 
+  it('reads "N Bekleyen | M Yaklaşan" in one wide invoice card that opens the pending invoices', async () => {
+    await render()
+    const invoice = Array.from(container.querySelectorAll<HTMLAnchorElement>('a.rr-opcard')).find(item => item.querySelector('small')?.textContent === 'Bekleyen Faturalar')!
+    expect(invoice.classList.contains('rr-opcard-wide')).toBe(true)
+    expect(invoice.getAttribute('href')).toBe('/invoices?tab=UNINVOICED')
+    expect(invoice.querySelector('a')).toBeNull()
+  })
+
+  it('leaves the due count out while it is unknown, never as 0', async () => {
+    bootstrapOverride.due = null
+    await render()
+    expect(card('Bekleyen Faturalar')).toBe('7Bekleyen')
+  })
+
   it('shows an unread invoice summary or bootstrap as unknown, not 0, and says data is missing', async () => {
     apiState.failing = new Set(['/invoice-workspace/summary', '/dashboard/bootstrap'])
     await render()
     expect(card('Bekleyen Faturalar')).toBe('—')
-    expect(card('Yaklaşan Faturalar')).toBe('—')
     expect(card('Bekleyen Siparişler')).toBe('—')
     expect(card('Geciken Siparişler')).toBe('—')
     expect(card('Düşük Stok')).toBe('2')
