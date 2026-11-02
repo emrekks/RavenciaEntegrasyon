@@ -9,7 +9,7 @@ const api = vi.hoisted(() => {
   const requirements = [{ attributeId: 'a-renk', isRequired: false, allowsCustomValue: false, displayOrder: 1, role: 'OPTION', isWebColor: true, attribute: { id: 'a-renk', version: 1, code: 'option-renk', name: 'Renk', dataType: 'TEXT', values: [{ id: 'red', value: 'Kırmızı' }], roles: ['OPTION'] } }]
   const variant = (id: string, sku: string) => ({ id, version: 1, sku, barcode: `${sku}-B`, modelCode: sku, optionSignature: 'Renk:Kırmızı', status: 'ACTIVE', weight: null, width: null, height: null, length: null, desi: 1, costPrice: null, onHand: 3, available: 3, inventoryVersion: 1, offerId: null, listPrice: 100, salePrice: 90, currency: 'TRY', offerStatus: null, priceVersion: null, offerVersion: null, vatRate: 20, vatInclusion: 'INCLUDED', roundingMode: null, safetyStock: 0, mediaUrls: ['https://cdn.example/a.jpg'], options: { Renk: 'Kırmızı' }, attributes: [] })
   const product = (id: string, sku: string, description: string) => ({ id, version: 1, title: `Elbise ${sku}`, description, brandId: 'b1', categoryId: 'c1', status: 'ACTIVE', updatedAt: '2026-11-01T10:00:00Z', variants: [variant(`${id}-v`, sku)], primaryImageUrl: null, totalStock: 3, startingPrice: 90, currency: 'TRY', modelCode: sku, activePlatforms: [], mediaUrls: [], attributes: [], vatRate: 20 })
-  const products: Record<string, unknown> = { p6: product('p6', 'RYP006', ''), p7: product('p7', 'RYP007', 'Açıklama') }
+  const products: Record<string, unknown> = { p6: product('p6', 'RYP006', ''), p7: product('p7', 'RYP007', 'Açıklama'), p8: product('p8', 'RYP008', 'Açıklama') }
   return {
     requirements,
     products,
@@ -21,7 +21,10 @@ const api = vi.hoisted(() => {
     hbMapped: false,
     // The store's Renk (20) is mapped to the panel Renk, but "Kırmızı" has no value mapping: an optional warning.
     withWarnings: false,
-    categoryPuts: [] as Array<{ path: string; body: Record<string, unknown> }>
+    categoryPuts: [] as Array<{ path: string; body: Record<string, unknown> }>,
+    // The Shopify store's verified permissions.
+    capabilities: [] as string[],
+    capabilityReads: 0
   }
 })
 
@@ -54,6 +57,10 @@ vi.mock('../../../shared/api', async importOriginal => {
       ? { snapshotId: 'a1', items: api.withWarnings ? [{ externalId: '20', name: 'Renk Tonu', isActive: true, isRequired: false }] : [] }
       : api.withWarnings ? [{ localId: 'a-renk', externalId: '20', snapshotId: 'a1', status: 'VERIFIED' }] : []
     if (path.includes('/attribute-defaults')) return []
+    if (path.endsWith('/capabilities')) {
+      api.capabilityReads++
+      return api.capabilities.map(code => ({ code, supportLevel: 'SUPPORTED', verifiedForConnection: true }))
+    }
     return null
   }
   const pages = async (path: string) => ({ items: path.startsWith('/catalog/categories') ? [{ id: 'c1', name: 'Kazak', isLeaf: true, isActive: true, path: 'Kazak' }] : [], nextCursor: null, hasMore: false })
@@ -73,7 +80,7 @@ beforeEach(() => {
   container = document.createElement('main')
   document.body.append(container)
   root = createRoot(container)
-  api.gate = null; api.posts = []; api.inFlight = 0; api.maxInFlight = 0; api.hbMapped = false; api.categoryPuts = []; api.withWarnings = false
+  api.gate = null; api.posts = []; api.inFlight = 0; api.maxInFlight = 0; api.hbMapped = false; api.categoryPuts = []; api.withWarnings = false; api.capabilities = []; api.capabilityReads = 0
 })
 
 afterEach(() => {
@@ -171,6 +178,26 @@ describe('BulkPublishDialog readiness', () => {
     // The check runs again: the record is ready on Hepsiburada now.
     expect(card().querySelector('.publish-issue-trigger')).toBeNull()
     expect(cardButton().disabled).toBe(false)
+  })
+
+  it('blocks a Shopify store whose write permissions are not verified, as the editor card does', async () => {
+    const shopify = { id: 'sh', platformCode: 'SHOPIFY', displayName: 'Shopify Mağaza', externalStoreId: 'sh-1', status: 'ACTIVE', externalWritesEnabled: true }
+    api.capabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ']
+    await render(['p7'], [shopify])
+    await settle()
+    expect(card().textContent).toContain('1/1 üründe zorunlu eksik')
+    expect(card().querySelector('.publish-issue-required .publish-issue-chip')?.getAttribute('aria-label')).toContain('PUBLICATION_WRITE')
+    expect(cardButton().disabled).toBe(true)
+  })
+
+  it('lets a Shopify store with every write permission verified through, reading them once', async () => {
+    const shopify = { id: 'sh', platformCode: 'SHOPIFY', displayName: 'Shopify Mağaza', externalStoreId: 'sh-1', status: 'ACTIVE', externalWritesEnabled: true }
+    api.capabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE']
+    await render(['p7', 'p8'], [shopify])
+    await settle()
+    expect(card().querySelector('.publish-issue-trigger')).toBeNull()
+    expect(cardButton().disabled).toBe(false)
+    expect(api.capabilityReads).toBe(1)
   })
 
   it('shows optional warnings in a yellow badge beside the status, not as a box under the card', async () => {

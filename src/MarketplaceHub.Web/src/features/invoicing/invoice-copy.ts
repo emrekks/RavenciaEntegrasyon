@@ -1,6 +1,7 @@
 import { invoiceStatusLabel } from '../../shared/status-labels'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { invoiceFailureReason } from './invoice-failure-reasons'
+import { formatDateTime } from '../../shared/format-date'
 
 // Turkish text for the codes the invoice pages receive from the server; a code without a text is shown readable, never raw.
 
@@ -27,6 +28,24 @@ export function invoiceReopenNote(platformCodes: readonly string[]) {
   return notes.join(' ')
 }
 
+/** The scheduler's retry of an issued invoice's document fetch and marketplace delivery (InvoiceDeliveryAutoRetryPolicy). */
+export type InvoiceDeliveryRetry = { state: 'SCHEDULED' | 'IN_PROGRESS' | 'EXHAUSTED' | string; attempts: number; maxAttempts: number; nextAttemptAt: string | null; lastErrorCode: string | null; need: string }
+
+/** What the retry does next, in Istanbul time; null when nothing is retried. */
+export function invoiceDeliveryRetryText(retry: InvoiceDeliveryRetry | null | undefined) {
+  if (!retry) return null
+  if (retry.state === 'IN_PROGRESS') return 'Yeniden deneniyor…'
+  if (retry.state === 'SCHEDULED') return retry.nextAttemptAt ? `Yeniden denenecek: ${formatDateTime(retry.nextAttemptAt)}` : 'Yeniden denenecek'
+  return 'Denemeler bitti — Tekrar Dene ile elle deneyin'
+}
+
+/** "2/5 deneme" with the last error, for the line under the retry state. */
+export function invoiceDeliveryRetryDetail(retry: InvoiceDeliveryRetry | null | undefined) {
+  if (!retry) return null
+  const attempts = `${Math.min(retry.attempts, retry.maxAttempts)}/${retry.maxAttempts} otomatik deneme`
+  return retry.lastErrorCode ? `${attempts} · Son hata: ${invoiceFailureReason(retry.lastErrorCode)}` : attempts
+}
+
 /** The invoice detail's actions (InvoiceDetailView.AllowedActions). Delivery goes to the order's own marketplace. */
 export function invoiceDetailActionLabel(action: string, status?: string) {
   // A refused cancellation, or a pending one whose job ended, is requested again from the same button.
@@ -36,6 +55,7 @@ export function invoiceDetailActionLabel(action: string, status?: string) {
     STAGE_CAPABILITY_PROBE: 'Test Ortamında Mali Deneme Yap',
     RECONCILE: 'Durumu Uzlaştır',
     DELIVER: 'Pazaryerine Fatura Linkini İlet',
+    RETRY_DELIVERY: 'Tekrar Dene',
     CANCEL: 'E-Arşiv İptal İsteği Gönder',
     VALIDATE: 'Yerel Doğrula',
   } as Record<string, string>)[action] ?? readable(action)

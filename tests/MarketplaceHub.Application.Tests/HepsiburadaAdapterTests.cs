@@ -2075,7 +2075,14 @@ public sealed class HepsiburadaAdapterTests
             Assert.Equal("order-1", line.GetProperty("orderNumber").GetString());
             Assert.False(line.TryGetProperty("serialNumber", out _));
             Assert.False(line.TryGetProperty("rowNumber", out _));
+            Assert.Equal("2026-09-29T12:00:00.000+03:00", line.GetProperty("arrangementDate").GetString());
+            Assert.Equal("2026-09-29T12:00:00.000+03:00", body.RootElement.GetProperty("arrangementDate").GetString());
         }
+        // The job sends the stored issue moment in UTC ("O"); Hepsiburada gets the same moment in Istanbul time.
+        var utcIssued = command with { PayloadJson = command.PayloadJson.Replace("2026-09-29T12:00:00+03:00", "2026-10-29T14:32:35.8007570+00:00", StringComparison.Ordinal) };
+        Assert.True(HepsiburadaInvoiceDeliveryPolicy.TryCreate(utcIssued, out var utcRequest, out _));
+        Assert.Equal("2026-10-29T17:32:35.800+03:00", utcRequest!.ArrangementDate);
+        Assert.Equal(DateTimeOffset.Parse("2026-10-29T14:32:35.800Z", System.Globalization.CultureInfo.InvariantCulture), DateTimeOffset.Parse(utcRequest.ArrangementDate, System.Globalization.CultureInfo.InvariantCulture));
         var bareType = command with { PayloadJson = command.PayloadJson.Replace("Application/PDF", "pdf", StringComparison.Ordinal) };
         Assert.True(HepsiburadaInvoiceDeliveryPolicy.TryCreate(bareType, out var bareRequest, out _));
         Assert.Equal("application/pdf", bareRequest!.ContentType);

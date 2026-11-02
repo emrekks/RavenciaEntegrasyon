@@ -24,7 +24,7 @@ import { applyVariantBulkModes, variantBulkEditIssue, variantBulkModeLabels, typ
 import { applyVariantCodesByKey, buildSequentialVariantCodes, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, resolveVariantSyncAttributeIds, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
-import { isOptionRequirement, loadPublicationAttributeIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
+import { connectionCapabilitiesQueryKey, isOptionRequirement, loadConnectionCapabilities, loadPublicationAttributeIssues, shopifyCapabilityIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
 import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
 import { CategoryMappingDialog } from '../CategoryMappingDialog'
@@ -294,11 +294,14 @@ function marketplacePlatformName(platform: VariantPlatformStatus) {
 }
 const pricingPlatformOrder = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY']
 const pricingPlatformRank = (platformCode: string) => { const index = pricingPlatformOrder.indexOf(platformCode.trim().toUpperCase()); return index < 0 ? pricingPlatformOrder.length : index }
-function BulkVariantPlatformPricingModal({ row, rows, platforms: unorderedPlatforms, savedDrafts, productName, modelCode, filterGroups, matchesFilterValue, saving, onClose, onSave }: { row: VariantDraft; rows: VariantDraft[]; platforms: VariantPlatformStatus[]; savedDrafts: Record<string, ChannelPricingDraft>; productName: string; modelCode: string; filterGroups: VariantMediaGroup[]; matchesFilterValue: (row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) => boolean; saving: boolean; onClose: () => void; onSave: (drafts: Record<string, ChannelPricingDraft>) => void }) {
+export function BulkVariantPlatformPricingModal({ row, rows, platforms: unorderedPlatforms, savedDrafts, productName, modelCode, filterGroups, matchesFilterValue, saving, onClose, onSave }: { row: VariantDraft; rows: VariantDraft[]; platforms: VariantPlatformStatus[]; savedDrafts: Record<string, ChannelPricingDraft>; productName: string; modelCode: string; filterGroups: VariantMediaGroup[]; matchesFilterValue: (row: VariantDraft, group: VariantMediaGroup, value: { id: string; value: string }) => boolean; saving: boolean; onClose: () => void; onSave: (drafts: Record<string, ChannelPricingDraft>) => void }) {
   // The columns follow the marketplaces in the panel's order (Trendyol, Hepsiburada, n11, Pazarama, PTT AVM, Shopify).
-  const platforms = [...unorderedPlatforms].sort((left, right) => pricingPlatformRank(left.platformCode) - pricingPlatformRank(right.platformCode))
+  const platforms = useMemo(() => [...unorderedPlatforms].sort((left, right) => pricingPlatformRank(left.platformCode) - pricingPlatformRank(right.platformCode)), [unorderedPlatforms])
   const sortedRows = sortVariantsAlphabetically(rows)
   const platformKey = (platform: VariantPlatformStatus) => `${platform.platformCode}:${platform.connectionId ?? platform.platform}`
+  // The drafts start again only when the marketplaces or their prices change, not when the caller passes an equal list
+  // anew: a new array on every render reset the typed prices and the dirty keys on each render (Kaydet stayed off).
+  const platformsKey = platforms.map(platform => `${platformKey(platform)}=${platform.listPrice ?? ''}/${platform.salePrice ?? ''}`).join('|')
   const initialMatrixDrafts = () => Object.fromEntries(sortedRows.flatMap(item => platforms.map(platform => {
     const status = item.platformStatuses?.find(value => value.connectionId === platform.connectionId)
     const saved = platform.connectionId ? savedDrafts[`${item.key}:${platform.connectionId}`] : undefined
@@ -309,7 +312,7 @@ function BulkVariantPlatformPricingModal({ row, rows, platforms: unorderedPlatfo
   const [matrixBulkEdit, setMatrixBulkEdit] = useState<{ platform: VariantPlatformStatus; field: keyof ChannelPricingDraft; label: string; value: string; error: string } | null>(null)
   const [filterSelections, setFilterSelections] = useState<VariantOptionFilterSelections>({})
   const resetMatrixDrafts = useEffectEvent(() => { setMatrixDrafts(initialMatrixDrafts()); setDirtyMatrixDraftKeys([]) })
-  useEffect(() => resetMatrixDrafts(), [row.key, rows, platforms, savedDrafts])
+  useEffect(() => resetMatrixDrafts(), [row.key, rows, platformsKey, savedDrafts])
   const matchingRows = filterVariantsByOptions(sortedRows, filterGroups, filterSelections, matchesFilterValue)
   const matrixDraft = (item: VariantDraft, platform: VariantPlatformStatus) => matrixDrafts[`${item.key}:${platformKey(platform)}`] ?? { listPrice: '', salePrice: '' }
   const updateMatrixDraft = (item: VariantDraft, platform: VariantPlatformStatus, field: keyof ChannelPricingDraft, value: string) => {
@@ -930,18 +933,14 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const publicationCheckUnavailable = Boolean(card.mode === 'PUBLISH' && productId && publication.isError && !publication.data)
   // card.code is lower case (it also names the logo tone); the platform code decides the Shopify-only checks.
   const isShopifyCard = card.connection.platformCode.trim().toUpperCase() === 'SHOPIFY'
-  const shopifyWriteCapabilities = useQuery<Array<{ code: string; supportLevel: string; verifiedForConnection: boolean }>>({
-    queryKey: ['capabilities', card.connection.id],
-    queryFn: () => hubApi(`/connections/${card.connection.id}/capabilities`),
+  const shopifyWriteCapabilities = useQuery({
+    queryKey: connectionCapabilitiesQueryKey(card.connection.id),
+    queryFn: () => loadConnectionCapabilities(card.connection.id),
     enabled: card.mode === 'PUBLISH' && isShopifyCard,
     staleTime: 15_000,
     retry: false
   })
   const shopifyCapabilityCheckPending = card.mode === 'PUBLISH' && isShopifyCard && shopifyWriteCapabilities.isPending
-  const requiredShopifyCapabilities = ['PRODUCT_WRITE', 'INVENTORY_WRITE', 'PUBLICATION_READ', 'PUBLICATION_WRITE']
-  const missingShopifyCapabilities = isShopifyCard && shopifyWriteCapabilities.data
-    ? requiredShopifyCapabilities.filter(code => !shopifyWriteCapabilities.data?.some(capability => capability.code === code && capability.supportLevel.toUpperCase() === 'SUPPORTED' && capability.verifiedForConnection))
-    : []
   useEffect(() => {
     if (!statusSettling && alreadyPublished && selected) onDeselect()
   }, [alreadyPublished, onDeselect, selected, statusSettling])
@@ -956,7 +955,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     && (pttAvmRetry ? Boolean(categoryId) : shouldCheckPublicationAttributes(categoryId, selectionStatus, publication.data?.lastJobStatus))
   const mappingReadiness = useQuery({
     queryKey: publicationReadinessQueryKey(card.connection.id, categoryId, selectedAttributes),
-    queryFn: () => loadPublicationAttributeIssues(card.connection, card.name, categoryId, selectedAttributes, categoryName),
+    queryFn: () => loadPublicationAttributeIssues(client, card.connection, card.name, categoryId, selectedAttributes, categoryName),
     enabled: mappingReadinessEnabled,
     retry: false,
     staleTime: 15_000
@@ -988,10 +987,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   // The status opens the API job behind it; a card whose required fields are missing keeps its issue tooltip instead.
   const [jobDetailOpen, setJobDetailOpen] = useState(false)
   const [valueFixNotice, setValueFixNotice] = useState('')
-  const blockedIssues = publicationBlockingIssues(missingChecks, [
-    ...(missingShopifyCapabilities.length ? [{ attribute: 'Shopify API izinleri', detail: `Ürün göndermeden önce Entegrasyonlar bölümünde Shopify erişimini yeniden yetkilendirin ve ${missingShopifyCapabilities.join(', ')} izinlerini doğrulayın.` }] : []),
-    ...(isShopifyCard && shopifyWriteCapabilities.isError ? [{ attribute: 'Shopify API izin kontrolü', detail: 'Shopify bağlantı izinleri okunamadı. Entegrasyonlar bölümünde bağlantıyı test edip izin kanıtlarını yenileyin.' }] : [])
-  ], requiredMappingIssues, mappingCheckFailed ? mappingReadiness.error : null, card.name)
+  const blockedIssues = publicationBlockingIssues(missingChecks, shopifyCapabilityIssues(card.connection.platformCode, shopifyWriteCapabilities.data, shopifyWriteCapabilities.isError), requiredMappingIssues, mappingCheckFailed ? mappingReadiness.error : null, card.name)
   const selectionBlocked = blockedIssues.length > 0 || mappingCheckPending || shopifyCapabilityCheckPending
   const issueListId = `publish-issues-${card.connection.id}`
   const issueDescriptionIds = [
