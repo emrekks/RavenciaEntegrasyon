@@ -161,6 +161,27 @@ public sealed class DashboardPerformanceTests
             Assert.Contains("marketplace_finance_transactions", sql, StringComparison.Ordinal);
     }
 
+    // O5 (owner, 2 Nov 2026): the panel's Ciro has the returns in it (c00eff97), so its order count has the returned
+    // orders in it too; Ortalama Sepet was the returned orders' money divided by the orders without them.
+    [Fact]
+    public void Returned_orders_are_counted_with_the_money_they_bring_into_ciro()
+    {
+        var day = new DateTime(2026, 10, 20);
+        var store = Guid.NewGuid();
+        DashboardReadService.PerformanceOrderRow Row(decimal amount, decimal returnedAmount = 0m, bool returned = false) =>
+            new() { Id = Guid.NewGuid(), ConnectionId = store, Currency = "TRY", Amount = amount, ReturnedAmount = returnedAmount, Returned = returned, Day = day };
+        var orders = new[] { Row(300m), Row(200m, returnedAmount: 50m), Row(500m, returned: true), Row(0m) }.AsQueryable();
+
+        var group = Assert.Single(DashboardReadService.RevenueQuery(orders).ToList());
+
+        Assert.Equal(450m, group.Amount);
+        Assert.Equal(550m, group.ReturnedAmount);
+        Assert.Equal(2, group.ReturnedOrders);
+        // Three orders with an amount, the wholly returned one included; the one without an amount is not counted.
+        Assert.Equal(3, group.Orders);
+        Assert.Equal(1000m / 3, (group.Amount + group.ReturnedAmount) / group.Orders);
+    }
+
     [Fact]
     public void Returned_orders_stay_out_of_revenue_and_show_on_their_own()
     {
