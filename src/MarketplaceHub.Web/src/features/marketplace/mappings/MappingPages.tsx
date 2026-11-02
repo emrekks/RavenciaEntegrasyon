@@ -9,7 +9,7 @@ import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
 import { Busy, ErrorBox, Modal, Pagination, UiIcon, useConfirmDialog, DialogSurface } from '../../../shared/components'
 import { isStaleMappingError, mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from './mapping-refresh'
 import { ValuePicker, pickerOptions } from './ValuePicker'
-import { groupSavedSelections, runInBatches, selectionsDiffer, valueDraftOperations, type ValueDraft, type ValueDraftOperation } from './value-drafts'
+import { groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, type ValueDraft, type ValueDraftOperation } from './value-drafts'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { MessageToast } from '../../../shared/components/NoticeToast'
 import { mappingStatusLabel } from '../../../shared/status-labels'
@@ -807,7 +807,9 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   async function matchAllValuesByName() {
     if (!references.data || bulkBusy) return
     setBulkBusy('VALUES'); onNotice('')
-    let pairs = 0; let headings = 0; let skipped = 0; let unavailable = 0; let failed = 0
+    let pairs = 0; let refreshed = 0; let headings = 0; let skipped = 0; let unavailable = 0; let failed = 0; let ambiguous = 0
+    // Panel values still without a marketplace value after the run, by heading: they have no same-named counterpart.
+    const leftovers: Array<{ heading: string; values: string[] }> = []
     try {
       const seen = new Set<string>()
       const targets: Array<{ externalId: string; valueScope: string; remote: ReferenceItem; localValues: LocalAttribute['values'] }> = []
@@ -850,6 +852,8 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
         try {
           const existing = await hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`)
           const plan = planDirectReferenceValues(localValues, valueReferences.items.filter(item => item.isActive))
+          ambiguous += plan.ambiguousCount
+          const mappedLocalIds = new Set(existing.map(item => item.localId))
           let touched = false
           for (const pair of plan.mappings) {
             const current = existing.find(item => item.localId === pair.localId && item.externalId === pair.externalId)
@@ -858,16 +862,28 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
             if (platformCode !== 'HEPSIBURADA' && existing.some(item => item.localId === pair.localId && item.externalId !== pair.externalId)) { skipped++; continue }
             try {
               await hubApi<CatalogMapping>(`/mappings/attribute-values/${pair.localId}`, { method: 'PUT', headers: current ? { 'If-Match': `"v${current.version}"` } : {}, body: JSON.stringify({ connectionId, snapshotId: valueReferences.snapshotId, scopeExternalId: valueScope, externalId: pair.externalId, status: 'VERIFIED' }) })
-              pairs++; touched = true
+              // the same pair saved against an older list is moved to the current one, not matched anew
+              if (current) refreshed++; else { pairs++; touched = true }
+              mappedLocalIds.add(pair.localId)
             } catch { failed++ }
           }
           if (touched) headings++
+          const open = localValues.filter(item => !mappedLocalIds.has(item.id)).map(item => item.value)
+          if (open.length) leftovers.push({ heading: remote.name, values: open })
         } catch { unavailable++ }
       }
-      await client.invalidateQueries({ queryKey: ['attribute-value-mappings'] })
+      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId] })
       await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      const extra = `${skipped ? ` ${skipped} değer başka bir karşılığa bağlı olduğu için atlandı.` : ''}${unavailable ? ` ${unavailable} başlığın değer listesi okunamadı; önce alanları yenileyin.` : ''}${failed ? ` ${failed} değer eşlenemedi.` : ''}`
-      onNotice(pairs ? `${headings} başlıkta ${pairs} değer aynı adlı karşılığıyla eşlendi.${extra}` : `Yeni birebir eşleşen değer bulunamadı.${extra}`)
+      await refreshMappingConflicts(client, connectionId).catch(() => undefined)
+      const openCount = leftovers.reduce((sum, item) => sum + item.values.length, 0)
+      const openList = leftovers.map(item => `${item.heading}: ${item.values.slice(0, 5).join(', ')}${item.values.length > 5 ? ` ve ${item.values.length - 5} değer daha` : ''}`).join('; ')
+      const openText = openCount ? `${openCount} değerin aynı adlı ${platformLabel} karşılığı yok (${openList}); bunları listeden elle eşleyin.` : ''
+      const extra = `${refreshed ? ` ${refreshed} eşleme güncel ${platformLabel} listesine taşındı.` : ''}${ambiguous ? ` Aynı adı taşıyan birden fazla değer olduğu için ${ambiguous} değer atlandı.` : ''}${skipped ? ` ${skipped} değer başka bir karşılığa bağlı olduğu için atlandı.` : ''}${unavailable ? ` ${unavailable} başlığın değer listesi okunamadı; önce alanları yenileyin.` : ''}${failed ? ` ${failed} değer kaydedilemedi.` : ''}`
+      onNotice(pairs
+        ? `${headings} başlıkta ${pairs} değer aynı adlı karşılığıyla eşlendi ve kaydedildi.${openText ? ` ${openText}` : ''}${extra}`
+        : `0 değer eşlendi (değişiklik yok): ${openText || (targets.length ? 'eşlenmiş başlıkların bütün değerleri zaten eşli.' : 'değer listesi olan eşlenmiş başlık yok.')}${extra}`)
+    } catch (reason) {
+      onNotice(reason instanceof Error ? reason.message : 'Değerler eşlenemedi.')
     } finally { setBulkBusy('') }
   }
   // On phones the field list is one sideways row; the chosen field (also when Sonraki Eksik picks it) is brought into
@@ -1160,6 +1176,8 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   const references = useQuery({ queryKey: ['reference-attribute-values', connectionId, valueScope], queryFn: () => hubApi<ReferenceData>(`/reference-data/categories/${encodeURIComponent(categoryScope)}/attributes/${encodeURIComponent(remote.externalId)}/values?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 5 * 60_000 })
   const mappings = useQuery({ queryKey: ['attribute-value-mappings', connectionId, valueScope], queryFn: () => hubApi<CatalogMapping[]>(`/mappings/attribute-values?connectionId=${encodeURIComponent(connectionId)}&scopeExternalId=${encodeURIComponent(valueScope)}`), retry: false })
   const [selections, setSelections] = useState<Record<string, string[]> | null>(() => store?.drafts.get(valueScope)?.selections ?? null)
+  // The saved pairs `selections` started from; when the server's pairs move on, the untouched values follow them.
+  const [baseline, setBaseline] = useState<Record<string, string[]> | null>(() => { const draft = store?.drafts.get(valueScope); return draft ? groupSavedSelections(draft.saved) : null })
   const [search, setSearch] = useState('')
   const highlighted = new Set(highlightValueIds)
   const [onlyMissing, setOnlyMissing] = useState(() => highlightValueIds.length > 0)
@@ -1174,8 +1192,11 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   const generation = store?.generation ?? 0
   const [seenGeneration, setSeenGeneration] = useState(generation)
   // After Kaydet every field starts again from what the server holds.
-  if (seenGeneration !== generation) { setSeenGeneration(generation); setSelections(null) }
-  useEffect(() => { if (mappings.data && selections === null) setSelections(groupSavedSelections(mappings.data)) }, [mappings.data, selections])
+  if (seenGeneration !== generation) { setSeenGeneration(generation); setSelections(null); setBaseline(null) }
+  const saved = useMemo(() => groupSavedSelections(mappings.data ?? []), [mappings.data])
+  useEffect(() => { if (mappings.data && selections === null) { const grouped = groupSavedSelections(mappings.data); setSelections(grouped); setBaseline(grouped) } }, [mappings.data, selections])
+  // The saved pairs changed after the table was filled (Tüm Değerleri Eşle, Kategorilerden Doldur, another window).
+  if (mappings.data && selections !== null && baseline !== null && selectionsDiffer(saved, baseline)) { setSelections(rebaseSelections(selections, baseline, saved)); setBaseline(saved) }
   // A Hepsiburada value may reuse a panel value that already feeds another Hepsiburada value.
   const allowReuse = platformCode === 'HEPSIBURADA'
   // The marketplace list can be long (Hepsiburada Renk: 17,254 values): sorted A–Z and folded for the search once.
@@ -1191,7 +1212,6 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
     return listed.filter(item => item.name === item.name.trim() || !cleanNames.has(item.name.trim()) || mappedExternalIds.has(item.externalId)).sort((left, right) => valueCollator.compare(left.name, right.name))
   }, [references.data, mappings.data])
   const options = useMemo(() => pickerOptions(remoteValues), [remoteValues])
-  const saved = useMemo(() => groupSavedSelections(mappings.data ?? []), [mappings.data])
   const dirty = selections !== null && selectionsDiffer(selections, saved)
   const putDraft = store?.put, dropDraft = store?.drop
   const snapshotId = references.data?.snapshotId ?? ''
