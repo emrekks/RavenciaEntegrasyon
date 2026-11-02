@@ -398,16 +398,15 @@ public static class TrendyolShipmentPackageStatusPolicy
     public static bool IsLegacyOnHoldProjection(string? rawStatus) => Normalize(rawStatus) is
         "AWAITING" or "VERIFIED" or "UNPACKED" or "ATCOLLECTIONPOINT";
 
-    public static bool ShouldRepairLegacyPlaceholderOnHold(
+    // Once the order has a real package, the "0" placeholder is closed whatever its status (Awaiting, an old OnHold
+    // projection); one already closed is left as it is.
+    public static bool ShouldClosePlaceholder(
         string? externalPackageId,
-        string? rawStatus,
         ShipmentPackageStatus currentStatus,
         bool hasAuthoritativePackage) =>
         hasAuthoritativePackage
-        && string.Equals(externalPackageId?.Trim(), "0", StringComparison.Ordinal)
-        && currentStatus == ShipmentPackageStatus.OnHold
-        && IsLegacyOnHoldProjection(rawStatus)
-        && FromRemote(rawStatus) != ShipmentPackageStatus.OnHold;
+        && ShipmentPackageSupersession.IsPlaceholder(externalPackageId)
+        && currentStatus != ShipmentPackageStatus.Cancelled;
 
     public static bool HasSameNormalizedStatus(string? left, string? right) =>
         string.Equals(Normalize(left), Normalize(right), StringComparison.Ordinal);
@@ -431,16 +430,27 @@ public static class ShipmentPackageSupersession
     public static bool IsLocallyUnpacked(string? rawStatus) =>
         string.Equals(rawStatus, LocallyUnpackedRawStatus, StringComparison.Ordinal);
 
+    // The package number Trendyol reports before it has created the package (an order awaiting payment): "0".
+    public const string PlaceholderExternalId = "0";
+
+    public static bool IsPlaceholder(string? externalPackageId) =>
+        string.Equals(externalPackageId?.Trim(), PlaceholderExternalId, StringComparison.Ordinal);
+
+    // Superseded: a package another one names as its origin, one the panel unpacked, and the "0" placeholder once the
+    // order has a real package, whatever the placeholder's last status (it is never updated again: live 11763229493
+    // kept Awaiting next to its delivered package), as MarketplaceSalesService.CurrentShipmentPackages leaves it out.
     public static IReadOnlySet<string> SupersededExternalIds(IEnumerable<ShipmentPackage> packages)
     {
         var rows = packages.ToList();
         var ids = rows.Select(package => package.ExternalPackageId).ToHashSet(StringComparer.Ordinal);
+        var hasRealPackage = rows.Any(package => !string.IsNullOrWhiteSpace(package.ExternalPackageId) && !IsPlaceholder(package.ExternalPackageId));
         return rows
             .Where(package => !string.IsNullOrWhiteSpace(package.OriginExternalPackageId)
                 && !string.Equals(package.OriginExternalPackageId, package.ExternalPackageId, StringComparison.Ordinal)
                 && ids.Contains(package.OriginExternalPackageId!))
             .Select(package => package.OriginExternalPackageId!)
             .Concat(rows.Where(package => IsLocallyUnpacked(package.RawStatus)).Select(package => package.ExternalPackageId))
+            .Concat(hasRealPackage ? rows.Where(package => IsPlaceholder(package.ExternalPackageId)).Select(package => package.ExternalPackageId) : [])
             .ToHashSet(StringComparer.Ordinal);
     }
 

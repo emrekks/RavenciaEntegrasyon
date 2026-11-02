@@ -1751,6 +1751,51 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await transaction.RollbackAsync();
     }
 
+    // Live 2 Nov 2026: refusals of Trendyol split parents kept recurring (4084999185, whose child 4085035430 was read) or
+    // stayed open for a parent Trendyol removed (4040543346). Superseded or no longer listed, they are resolved.
+    [PostgreSqlFact]
+    public async Task OperationalIssueRetention_ResolvesQuantityRefusalsOfSupersededOrRemovedTrendyolPackages()
+    {
+        var tenant = NewTenant("issue-split-parent");
+        var trendyol = NewQuestionConnection(tenant);
+        var shopify = NewQuestionConnection(tenant);
+        shopify.PlatformCode = "SHOPIFY";
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.AddRange(trendyol, shopify);
+        var orderId = Guid.CreateVersion7();
+        db.Orders.Add(NewInvoiceTestOrder(tenant.Id, trendyol.Id, orderId, "split-parent-order", isReturnClaim: false, fixture.Now));
+        db.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, OrderId = orderId, ExternalPackageId = "child-1", OriginExternalPackageId = "parent-1", Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = fixture.Now, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        db.ShipmentPackages.Add(new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, OrderId = orderId, ExternalPackageId = "stored-1", Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = fixture.Now, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+        OperationalIssue Refusal(Guid connectionId, string packageId, double daysAgo)
+        {
+            var issue = NewIssue(tenant.Id, $"package-quantity:{connectionId}:{packageId}:1787028283965");
+            issue.Code = OperationalIssueRetentionService.PackageQuantityRejectedCode;
+            issue.FirstSeenAt = issue.LastSeenAt = fixture.Now.AddDays(-daysAgo);
+            return issue;
+        }
+        var superseded = Refusal(trendyol.Id, "parent-1", 0.1);
+        var removed = Refusal(trendyol.Id, "gone-1", 5);
+        var recent = Refusal(trendyol.Id, "gone-2", 1);
+        var stored = Refusal(trendyol.Id, "stored-1", 5);
+        var otherPlatform = Refusal(shopify.Id, "gone-3", 5);
+        db.OperationalIssues.AddRange(superseded, removed, recent, stored, otherPlatform);
+        await db.SaveChangesAsync();
+
+        var resolved = await new OperationalIssueRetentionService(db, fixture.TimeProvider).ResolveSupersededPackageQuantityIssuesAsync(TimeSpan.FromDays(3), CancellationToken.None);
+
+        db.ChangeTracker.Clear();
+        var statuses = await db.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id, x => x.Status);
+        Assert.Equal(IssueStatus.Resolved, statuses[superseded.Id]);
+        Assert.Equal(IssueStatus.Resolved, statuses[removed.Id]);
+        Assert.Equal(IssueStatus.Open, statuses[recent.Id]);
+        Assert.Equal(IssueStatus.Open, statuses[stored.Id]);
+        Assert.Equal(IssueStatus.Open, statuses[otherPlatform.Id]);
+        Assert.True(resolved >= 2);
+        await transaction.RollbackAsync();
+    }
+
     [PostgreSqlFact]
     public async Task SessionForDisabledTenant_DoesNotReceiveTenantClaims()
     {
@@ -3263,6 +3308,52 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.Single(allocations, allocation => allocation.OrderLineId == returnedLineId);
             Assert.All(lines, line => Assert.Equal((1m, 1m, 0m), (line.ShippedQuantity, line.DeliveredQuantity, line.CancelledQuantity)));
             Assert.Equal(1, await check.OrderStatusHistory.CountAsync(x => x.TenantId == tenant.Id));
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // The Trendyol order-time correction moves only Trendyol order times back three hours, and the recorded migration
+    // (its history row is written with it) changes nothing when its SQL runs again.
+    [PostgreSqlFact]
+    public async Task CorrectTrendyolOrderTimesMigration_MovesOnlyTrendyolOrderTimesAndRunsOnce()
+    {
+        var tenant = NewTenant("ty-order-time-correction");
+        var trendyol = NewQuestionConnection(tenant);
+        var shopify = NewQuestionConnection(tenant);
+        shopify.PlatformCode = "SHOPIFY";
+        var storedAt = DateTimeOffset.FromUnixTimeSeconds(fixture.Now.AddDays(-1).ToUnixTimeSeconds());
+        var trendyolOrder = NewInvoiceTestOrder(tenant.Id, trendyol.Id, Guid.CreateVersion7(), "ty-time-1", isReturnClaim: false, fixture.Now);
+        var shopifyOrder = NewInvoiceTestOrder(tenant.Id, shopify.Id, Guid.CreateVersion7(), "sh-time-1", isReturnClaim: false, fixture.Now);
+        foreach (var order in new[] { trendyolOrder, shopifyOrder }) { order.OrderedAt = storedAt; order.ShipmentDueAt = storedAt.AddDays(1); order.LastRemoteModifiedAt = storedAt; order.Version = 1; }
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.AddRange(trendyol, shopify);
+            seedDb.Orders.AddRange(trendyolOrder, shopifyOrder);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                // The correction itself, kept to this test's tenant so the shared database's other rows stay as they are.
+                var tenantShift = MarketplaceHub.Infrastructure.Persistence.Migrations.CorrectTrendyolOrderTimes.Shift.TrimEnd().TrimEnd(';') + " AND o.\"TenantId\" = {0}";
+                await db.Database.ExecuteSqlRawAsync(tenantShift, tenant.Id);
+                // The fixture database is migrated, so the guarded migration SQL finds itself recorded and does nothing.
+                foreach (var operation in new MarketplaceHub.Infrastructure.Persistence.Migrations.CorrectTrendyolOrderTimes().UpOperations.OfType<Microsoft.EntityFrameworkCore.Migrations.Operations.SqlOperation>())
+                    await db.Database.ExecuteSqlRawAsync(operation.Sql);
+            }
+
+            await using var check = fixture.CreateContext();
+            var orders = await check.Orders.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToDictionaryAsync(x => x.Id);
+            var corrected = orders[trendyolOrder.Id];
+            Assert.Equal((storedAt.AddHours(-3), storedAt.AddDays(1), storedAt, 2L), (corrected.OrderedAt, corrected.ShipmentDueAt!.Value, corrected.LastRemoteModifiedAt, corrected.Version));
+            var untouched = orders[shopifyOrder.Id];
+            Assert.Equal((storedAt, 1L), (untouched.OrderedAt, untouched.Version));
         }
         finally
         {
@@ -5588,6 +5679,67 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // A Trendyol split parent (UnPacked) lists lines beyond what the order still holds; it is not quantity-checked,
+    // carries no allocation, and the refusal it caused before is resolved (live: 4084999185 refused 19 times).
+    [PostgreSqlFact]
+    public async Task TrendyolOrderSync_SkipsTheQuantityCheckOfASplitParentAndResolvesItsRefusal()
+    {
+        var tenant = NewTenant("ty-split-parent");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        const string externalOrderId = "11515777689";
+        var occurredAt = fixture.Now.AddMinutes(-10);
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
+        order.LastRemoteModifiedAt = occurredAt.AddMinutes(-5);
+        var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Created", Version = 1 };
+        var oldRefusal = NewIssue(tenant.Id, $"package-quantity:{connection.Id}:4084999185:1787028283965");
+        oldRefusal.Code = OperationalIssueRetentionService.PackageQuantityRejectedCode;
+        var parent = new RemotePackage("4084999185", null, "UnPacked", occurredAt, null, null, [new RemotePackageAllocation("line-1", 2m, 0m, 0m, 0m, 0m)], GrossAmount: 200m, NetAmount: 200m);
+        var child = new RemotePackage("4085035430", "4084999185", "Delivered", occurredAt, null, null, [new RemotePackageAllocation("line-1", 1m, 0m, 1m, 1m, 0m)], GrossAmount: 100m, NetAmount: 100m);
+        var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, occurredAt.AddDays(-1), occurredAt, "TRY", 100m, 0m, 100m, "{}", "{}", "{}",
+            [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, "Delivered")], [parent, child], "{}");
+        var orderPort = new ReadOnlyOrderTestPort(child, externalOrderId: externalOrderId, directOrderResult: remoteOrder);
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(line);
+            seedDb.OperationalIssues.Add(oldRefusal);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, orderPort, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false,"packageNumber":"4085035430"}""", "trendyol-split-parent", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verifyDb = fixture.CreateContext();
+            var issues = await verifyDb.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.Code == OperationalIssueRetentionService.PackageQuantityRejectedCode).ToListAsync();
+            Assert.Equal(IssueStatus.Resolved, Assert.Single(issues).Status);
+            var packages = await verifyDb.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.OrderId == orderId).ToDictionaryAsync(x => x.ExternalPackageId);
+            Assert.Equal(ShipmentPackageStatus.Cancelled, packages["4084999185"].Status);
+            Assert.Equal(ShipmentPackageStatus.Delivered, packages["4085035430"].Status);
+            Assert.False(await verifyDb.PackageLineAllocations.AnyAsync(x => x.TenantId == tenant.Id && x.PackageId == packages["4084999185"].Id));
+            var persistedOrder = await verifyDb.Orders.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == orderId);
+            Assert.Equal("DELIVERED", persistedOrder.DerivedStatus);
+            Assert.Equal(1m, (await verifyDb.OrderLines.AsNoTracking().SingleAsync(x => x.Id == line.Id)).DeliveredQuantity);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task TrendyolOrderSync_RepairsLegacyZeroPackageHoldWhenRealPackageExists()
     {
@@ -5756,7 +5908,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 .Where(row => row.TenantId == tenant.Id && row.OrderId == orderId)
                 .ToDictionaryAsync(row => row.ExternalPackageId);
             Assert.Equal("NEW", persistedOrder.DerivedStatus);
-            Assert.Equal(ShipmentPackageStatus.PaymentPending, persistedPackages["0"].Status);
+            Assert.Equal(ShipmentPackageStatus.Cancelled, persistedPackages["0"].Status);
             Assert.Equal(ShipmentPackageStatus.New, persistedPackages[currentPackageNumber].Status);
             var sales = new MarketplaceSalesService(verifyDb,
                 new CursorCodec(new EphemeralDataProtectionProvider(), fixture.TimeProvider),

@@ -30,16 +30,15 @@ public sealed class DashboardOrderVisibilityTests
     }
 
     [Fact]
-    public void Late_orders_query_shifts_the_Trendyol_ship_by_time_by_its_stored_offset()
+    public void Late_orders_query_compares_every_ship_by_time_with_now_unshifted()
     {
         using var db = MetadataOnlyContext();
         var sql = DashboardReadService.LateOrderMetricsQuery(db, Guid.NewGuid(), new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero)).ToQueryString();
 
         Assert.Contains("ShipmentDueAt", sql, StringComparison.Ordinal);
-        // Both "now" and "now + 3 h" are compared; the shifted one only for the wall-clock platforms.
+        // Trendyol's ship-by time is a real UTC epoch (23:59 Istanbul arrives as 20:59Z): no platform is shifted.
         Assert.Contains("2026-10-20T12:00:00", sql, StringComparison.Ordinal);
-        Assert.Contains("2026-10-20T15:00:00", sql, StringComparison.Ordinal);
-        Assert.Contains("TRENDYOL", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("2026-10-20T15:00:00", sql, StringComparison.Ordinal);
     }
 
     [Fact]

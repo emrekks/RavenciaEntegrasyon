@@ -23,8 +23,10 @@ internal static partial class TurkeyTime
     }
 
     // C13: Trendyol (orderDate, stream and V2 date filters) and n11 (shipmentPackages dates, invoiceDateTime) document
-    // their epoch-millisecond dates as "GMT+3". The adapters keep sending and reading them as plain UTC epochs; the
-    // owner chose to correct the reading side once a live value proves the shift, so nothing here changes the requests.
+    // their epoch-millisecond dates as "GMT+3". The owner chose to correct the reading side once a live value proves the
+    // shift. Trendyol's orderDate is proven (2 Nov 2026: stored three hours ahead of its arrival) and is read through
+    // FromTurkeyWallClockEpochMilliseconds; its other dates and n11's dates show no shift on live and stay plain UTC
+    // epochs. Requests are unchanged.
     // These two helpers state the documented reading exactly: a "GMT+3 epoch" is the Turkey wall-clock time
     // written as if it were UTC, i.e. three hours ahead of the true UTC epoch.
     internal static long ToTurkeyWallClockEpochMilliseconds(DateTimeOffset instant) =>

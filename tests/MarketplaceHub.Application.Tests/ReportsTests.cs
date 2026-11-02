@@ -155,9 +155,9 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
     // 20 Oct 2026, 10:30 in Istanbul; the report asks for 15 Oct.
     private static readonly DateTimeOffset Now = new(2026, 10, 20, 7, 30, 0, TimeSpan.Zero);
     private static readonly DateOnly Day = new(2026, 10, 15);
-    // 15 Oct, 12:00 in Istanbul; Trendyol stores its order times three hours ahead.
+    // 15 Oct, 12:00 in Istanbul; Trendyol order times are real instants like every platform's.
     private static readonly DateTimeOffset Noon = new(2026, 10, 15, 9, 0, 0, TimeSpan.Zero);
-    private static readonly DateTimeOffset TrendyolNoon = Noon.AddHours(3);
+    private static readonly DateTimeOffset TrendyolNoon = Noon;
 
     [PostgreSqlFact]
     public async Task The_report_adds_up_and_reads_cities_commission_cost_customers_and_cargo()
@@ -289,7 +289,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
             Assert.Equal(1, report.Invoices.Buckets.Single(x => x.Key == "NOT_INVOICED").Packages);
             var seller = Assert.Single(report.Stock.BestSellers, x => x.VariantId == variant.Id);
             Assert.Equal(6m, seller.Available);
-            // The three orders came at 12:00 Istanbul time (Trendyol's stored time less its offset), Monday-first rows.
+            // The three orders came at 12:00 Istanbul time, Monday-first rows.
             Assert.Equal(3, report.Heatmap[((int)Day.DayOfWeek + 6) % 7][12]);
             Assert.Equal(summary.Orders, report.TimeSeries.Sum(x => x.Orders));
             Assert.Contains(report.DataNotes, note => note.Contains("il okunamadı", StringComparison.Ordinal));
