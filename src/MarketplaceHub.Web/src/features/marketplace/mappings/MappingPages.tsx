@@ -1018,7 +1018,6 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
         </section>
       </div>
       </ValueDraftContext.Provider>
-      <div className="cm-legend" aria-label="Durum simgeleri"><span><MappingStateGlyph state="done" /> Tamam</span><span><MappingStateGlyph state="partial" /> Değerleri Eksik</span><span><MappingStateGlyph state="none" /> Eşlenmedi</span></div>
     </>}
     <Modal open={extraPanel === 'defaults'} title="Platform Varsayılanları" description={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler.`} onClose={() => setExtraPanel('')} className="cm-extra-modal">
       {categoryScope && references.data && <AttributeDefaultsPanel connectionId={connectionId} categoryScope={categoryScope} platformLabel={platformLabel} remoteAttributes={references.data.items} onNotice={onNotice} expanded />}
@@ -1056,6 +1055,8 @@ function FieldFooter({ hint, dirty = false, saving = false, onSave, onNext }: { 
   const save = onSave ?? (pending ? () => void store?.saveAll() : undefined)
   return <div className={`cm-foot${unsaved ? ' is-dirty' : ''}`}>
     <span>{unsaved ? pending > 1 ? `${pending} alanda kaydedilmemiş değişiklik var` : 'Kaydedilmemiş değişiklikler var' : hint}</span>
+    {/* The status legend sits in the footer row instead of a row of its own under the window. */}
+    <span className="cm-legend" aria-label="Durum simgeleri"><span><MappingStateGlyph state="done" /> Tamam</span><span><MappingStateGlyph state="partial" /> Değerleri Eksik</span><span><MappingStateGlyph state="none" /> Eşlenmedi</span></span>
     <span className="cm-grow" />
     {onNext && <button type="button" className="secondary" onClick={onNext}>Sonraki Eksik</button>}
     <button type="button" disabled={!save || !unsaved || busy} onClick={save}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</button>
