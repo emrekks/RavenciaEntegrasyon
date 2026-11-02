@@ -19,8 +19,9 @@ public sealed class CorrectTrendyolOrderTimes : Migration
     // here. Only OrderedAt carried the shift: lastModifiedDate (LastRemoteModifiedAt, package and history times) and
     // agreedDeliveryDate (ShipmentDueAt, 23:59 Istanbul stored as 20:59Z) are real UTC epochs and stay.
     //
-    // Guarded against a second run: EF writes this migration's history row only after Up, in the same transaction, so a
-    // replay of this SQL once the migration is recorded changes nothing.
+    // EF runs a recorded migration only once; the guard covers a manual replay of this SQL: EF writes the history row
+    // after Up, in the same transaction, so once the migration is recorded the SQL changes nothing. Down moves the
+    // times forward again, the layout the code before this release expects, so a migration back and forth stays even.
     internal const string Shift = """
         UPDATE sales.orders o
         SET "OrderedAt" = o."OrderedAt" - INTERVAL '3 hours',
@@ -41,8 +42,11 @@ public sealed class CorrectTrendyolOrderTimes : Migration
 
     protected override void Up(MigrationBuilder migrationBuilder) => migrationBuilder.Sql(Correction);
 
-    protected override void Down(MigrationBuilder migrationBuilder)
-    {
-        // The old values were wrong; there is nothing to restore.
-    }
+    protected override void Down(MigrationBuilder migrationBuilder) => migrationBuilder.Sql("""
+        UPDATE sales.orders o
+        SET "OrderedAt" = o."OrderedAt" + INTERVAL '3 hours',
+            "Version" = o."Version" + 1
+        FROM integration.platform_connections c
+        WHERE c."Id" = o."ConnectionId" AND c."TenantId" = o."TenantId" AND c."PlatformCode" = 'TRENDYOL';
+        """);
 }
