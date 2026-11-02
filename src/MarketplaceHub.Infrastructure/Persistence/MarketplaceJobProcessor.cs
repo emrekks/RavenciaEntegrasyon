@@ -4263,7 +4263,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                               && package.ExternalPackageId != ""
                           select new { package.ExternalPackageId, order.ExternalOrderId, order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode })
             .ToListAsync(cancellationToken);
-        var v2Cutoff = now - TrendyolLookupPolicy.V2History;
+        // OrderedAt is on Trendyol's stored clock (MarketplaceStoredClock), so the 30-day boundary moves with it.
+        var v2Cutoff = MarketplaceStoredClock.ToStored(now - TrendyolLookupPolicy.V2History, "TRENDYOL");
 
         // Saves the chunk's results and the position, then hands the lock back when the slice is used up.
         async Task CheckpointAsync(List<RemoteOrder> received, TrendyolOpenScanPosition next)
@@ -4776,7 +4777,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var isShopify = platformCode == "SHOPIFY";
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 1, 1, 90);
         var batchSize = ReadBoundedInt(payloadJson, "batchSize", 25, 1, 100);
-        var end = timeProvider.GetUtcNow();
+        // The window is on the connection's stored order clock (MarketplaceStoredClock): Trendyol's last three hours
+        // of orders are stored ahead of now and would otherwise fall outside it.
+        var end = MarketplaceStoredClock.ToStored(timeProvider.GetUtcNow(), platformCode);
         var start = end.AddDays(-lookbackDays);
         // Reconciliation is deliberately driven by local order numbers and the
         // documented orderNumber read. The stream is ideal for discovery, but a
@@ -4851,7 +4854,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     && package.ConnectionId == connectionId
                     && package.OrderId == order.Id
                     && package.Status != ShipmentPackageStatus.Cancelled))
-            : DueInvoiceReconciliationOrders(tenantId, connectionId, now);
+            : DueInvoiceReconciliationOrders(tenantId, connectionId, platformCode, now);
         SyncCursor? invoiceCursor = null;
         List<string?> cursorAfterOrder = [];
         var sweepOrderIds = new HashSet<string>(StringComparer.Ordinal);
@@ -5103,9 +5106,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return (true, isTrendyol && stoppedByTimeBudget);
     }
 
-    private IQueryable<Order> DueInvoiceReconciliationOrders(Guid tenantId, Guid connectionId, DateTimeOffset now)
+    private IQueryable<Order> DueInvoiceReconciliationOrders(Guid tenantId, Guid connectionId, string? platformCode, DateTimeOffset now)
     {
-        var recentOrderCutoff = now - MarketplaceInvoiceReconciliationCadencePolicy.RecentOrderWindow;
+        var recentOrderCutoff = MarketplaceStoredClock.ToStored(now - MarketplaceInvoiceReconciliationCadencePolicy.RecentOrderWindow, platformCode);
         var recentCheckCutoff = now - MarketplaceInvoiceReconciliationCadencePolicy.RecentInterval;
         var olderCheckCutoff = now - MarketplaceInvoiceReconciliationCadencePolicy.OlderInterval;
 
@@ -5145,7 +5148,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var observed = new HashSet<Guid>();
         var orderIds = sweepOrderIds.ToList();
-        var v2Cutoff = now - TrendyolLookupPolicy.V2History;
+        var v2Cutoff = MarketplaceStoredClock.ToStored(now - TrendyolLookupPolicy.V2History, "TRENDYOL");
         var packages = await (from package in db.ShipmentPackages.AsNoTracking()
                               join order in db.Orders.AsNoTracking()
                                   on new { package.TenantId, package.OrderId } equals new { order.TenantId, OrderId = order.Id }
@@ -5216,7 +5219,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // Trendyol orders of the last 90 days with a shipped or delivered package still uninvoiced on the platform.
     private IQueryable<Order> TrendyolInvoiceSweepOrders(Guid tenantId, Guid connectionId, DateTimeOffset now)
     {
-        var orderedAfter = now - TrendyolInvoiceReconciliationPolicy.SweepOrderWindow;
+        var orderedAfter = MarketplaceStoredClock.ToStored(now - TrendyolInvoiceReconciliationPolicy.SweepOrderWindow, "TRENDYOL");
         return db.Orders.AsNoTracking()
             .Where(order => order.TenantId == tenantId
                 && order.ConnectionId == connectionId

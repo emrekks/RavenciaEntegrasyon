@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { axisLabel, matrixCellText } from './DashboardPage'
-import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
+import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
 
 const row = (day: string, connectionId: string, amount: number, extra: Partial<PerformanceRow> = {}): PerformanceRow =>
   ({ day, connectionId, currency: 'TRY', amount, orderCount: 1, productQuantity: 2, packageCount: 1, returnedAmount: 0, returnedOrderCount: 0, ...extra })
@@ -60,13 +60,23 @@ describe('dashboard performance', () => {
     expect(day.returnedOrderCount).toBe(1)
   })
 
+  // O5: a wholly returned order brings its money into Ciro and is counted among the orders (the server counts it), so
+  // Ortalama Sepet is that Ciro over those orders: 300 kept + 500 returned over 2 orders, not 800 over 1.
+  it('keeps Ciro, Toplam Sipariş and Ortalama Sepet on one basis, returns included', () => {
+    const rows = [row('2026-10-20', 'ty-1', 300), row('2026-10-20', 'ty-1', 0, { orderCount: 1, returnedAmount: 500, returnedOrderCount: 1 })]
+    const figures = periodFigures(daySeries(rows, '2026-10-19', '2026-10-20', 'ALL', 'TRY'))
+
+    expect(figures).toEqual({ amount: 800, orders: 2, basket: 400 })
+    expect(periodFigures([])).toEqual({ amount: 0, orders: 0, basket: 0 })
+  })
+
   it('exports the chosen period and store with its counts and the day as sent', () => {
     const report = revenueReport(performance([row('2026-10-20', 'ty-2', 1234.5, { orderCount: 3, productQuantity: 4, packageCount: 2, returnedAmount: 10, returnedOrderCount: 1 })]), 'ty-2', 'Trendyol İkinci')
 
     expect(report.name).toBe('ravencia-ciro-2026-10-19_2026-10-20-trendyol-ikinci.csv')
     expect(report.content.charCodeAt(0)).toBe(0xfeff)
     const lines = report.content.slice(1).split('\r\n')
-    expect(lines[0]).toBe('"Tarih";"Para Birimi";"Ciro";"Sipariş";"Ürün Adedi";"Paket";"İade Tutarı";"İade Sipariş"')
+    expect(lines[0]).toBe('"Tarih";"Para Birimi";"Ciro (İadeler Dahil)";"Sipariş (İadeler Dahil)";"Ürün Adedi";"Paket";"İade Tutarı";"İade Sipariş"')
     expect(lines[2]).toBe('"2026-10-20";"TRY";"1.244,50";"3";"4";"2";"10,00";"1"')
     expect(revenueReport(performance([]), 'ALL', '').name).toBe('ravencia-ciro-2026-10-19_2026-10-20-tum-platformlar.csv')
   })

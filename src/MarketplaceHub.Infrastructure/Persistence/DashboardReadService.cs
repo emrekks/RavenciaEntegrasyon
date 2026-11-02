@@ -196,6 +196,8 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         .ToList();
 
     // Amount is what was sold and kept; ReturnedAmount what went back (a whole returned order, or the returned part of one).
+    // Orders counts every order with an amount, returned ones too: the panel's Ciro is Amount + ReturnedAmount, so its
+    // Ortalama Sepet (Ciro ÷ Orders) divides the same orders' money by the same orders, as the report's Satış Tutarı does.
     internal sealed record RevenueGroup(DateTime Day, Guid ConnectionId, string Currency, decimal Amount, int Orders, decimal ReturnedAmount, int ReturnedOrders);
     internal sealed record UnitGroup(DateTime Day, Guid ConnectionId, string Currency, decimal Quantity);
     internal sealed record PackageGroup(DateTime Day, Guid ConnectionId, string Currency, int Count);
@@ -207,7 +209,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             x.ConnectionId,
             x.Currency,
             Kept = x.Returned ? 0m : (x.Amount > x.ReturnedAmount ? x.Amount - x.ReturnedAmount : 0m),
-            Counted = !x.Returned && x.Amount > 0 ? 1 : 0,
+            Counted = x.Amount > 0 ? 1 : 0,
             Back = x.Returned ? x.Amount : (x.ReturnedAmount < x.Amount ? x.ReturnedAmount : x.Amount),
             BackCounted = x.Returned || x.ReturnedAmount > 0 ? 1 : 0
         })
