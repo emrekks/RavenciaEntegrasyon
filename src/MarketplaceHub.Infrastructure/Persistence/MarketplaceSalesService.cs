@@ -322,11 +322,19 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.Submitted || i.Status == InvoiceStatus.Accepted || i.Status == InvoiceStatus.MarketplacePending))),
                 // A status set by hand decides here as on the label: "Faturası yüklendi" never waits, "Fatura bekliyor" does.
-                "FATURA_BEKLIYOR" => query.Where(x =>
-                    currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.ManualInvoiceStatus == "PENDING")
+                // A cancelled order (its row reads "İptal edildi") and a cancelled package wait for nothing; an order whose
+                // sale invoice was issued (any state but cancelled or a draft) carries that invoice's label instead.
+                "FATURA_BEKLIYOR" => query.Where(x => x.DerivedStatus != "CANCELLED" && (
+                    currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.Status != ShipmentPackageStatus.Cancelled && package.ManualInvoiceStatus == "PENDING")
                     || !currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.ManualInvoiceStatus == "UPLOADED")
-                        && (currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
-                            || x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED")
+                        && !db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null && i.SequencePurpose == "SALE"
+                            && i.Status != InvoiceStatus.Cancelled && i.Status != InvoiceStatus.CancelledLocal && i.Status != InvoiceStatus.Draft
+                            && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))
+                        && (currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.Status != ShipmentPackageStatus.Cancelled && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.NotInvoiced)
+                            || (x.CustomerSnapshotJson.Contains("NOTINVOICED") || x.CustomerSnapshotJson.Contains("NOT_INVOICED"))
+                                // Read from the order, it still needs a package that is not cancelled (or none recorded yet).
+                                && (currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id && package.Status != ShipmentPackageStatus.Cancelled)
+                                    || !currentPackages.Any(package => package.TenantId == x.TenantId && package.OrderId == x.Id))
                             // n11, PTT AVM and Pazarama do not report the state: no panel invoice and no observed one is waiting,
                             // as the label reads it (an n11 order with an invoice link is shown for review instead).
                             || db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == x.ConnectionId
@@ -338,7 +346,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                                     && package.Status != ShipmentPackageStatus.Cancelled
                                     && package.ManualInvoiceStatus == null && package.MarketplaceInvoiceStatus == MarketplaceInvoiceStatus.Unknown)
                                 && !db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
-                                    && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))))),
+                                    && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")))))),
                 "FATURA_ISLENIYOR" => query.Where(x => db.Invoices.Any(i => i.TenantId == x.TenantId && i.OrderId == x.Id && i.OriginalInvoiceId == null
                     && db.PlatformConnections.Any(connection => connection.TenantId == x.TenantId && connection.Id == i.ProviderConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
                     && (i.Status == InvoiceStatus.Draft || i.Status == InvoiceStatus.Validating || i.Status == InvoiceStatus.Ready || i.Status == InvoiceStatus.Submitting || i.Status == InvoiceStatus.Submitted

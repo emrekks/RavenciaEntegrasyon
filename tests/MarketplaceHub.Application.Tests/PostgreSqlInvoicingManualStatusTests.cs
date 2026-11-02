@@ -84,6 +84,43 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
         }
     }
 
+    // O1 (2 Nov 2026): a cancelled Trendyol order that still reads "not invoiced", and an order whose issued invoice
+    // failed to reach the marketplace, are not listed (nor counted) under "Fatura Bekliyor"; a live one still is.
+    [PostgreSqlFact]
+    public async Task FaturaBekliyorLeavesOutCancelledOrdersAndOrdersWithAnIssuedInvoice()
+    {
+        var waiting = NewSeed("o1-waiting", "TRENDYOL", null);
+        waiting.Package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.NotInvoiced;
+        var cancelled = NewSeed("o1-cancelled", "TRENDYOL", null);
+        cancelled.Package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.NotInvoiced;
+        cancelled.Package.Status = ShipmentPackageStatus.Cancelled;
+        cancelled.Order.DerivedStatus = "CANCELLED";
+        var issued = NewSeed("o1-issued", "HEPSIBURADA", null);
+        issued.Package.MarketplaceInvoiceStatus = MarketplaceInvoiceStatus.NotInvoiced;
+        await SeedAsync(waiting);
+        await SeedAsync(cancelled);
+        await SeedAsync(issued, db => db.Invoices.Add(NewInvoice(issued, InvoiceStatus.MarketplaceFailed)));
+        try
+        {
+            foreach (var (seed, listed, label) in new[] { (waiting, true, "FATURA_BEKLIYOR"), (cancelled, false, (string?)null), (issued, false, "FATURA_PLATFORMA_AKTARILMADI") })
+            {
+                await using var db = fixture.CreateContext();
+                var sales = NewSalesService(db);
+                var filtered = await sales.OrdersAsync(seed.Tenant.Id, 50, 1, null, new OrderListQuery(Invoice: "FATURA_BEKLIYOR"), CancellationToken.None);
+                Assert.Equal(listed, filtered.Items.Any(item => item.Id == seed.Order.Id));
+                Assert.Equal(listed ? 1 : 0, filtered.Items.Count);
+                if (label is not null)
+                    Assert.Equal(label, Assert.Single((await sales.OrdersAsync(seed.Tenant.Id, 50, 1, null, new OrderListQuery(), CancellationToken.None)).Items).InvoiceStatus);
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(waiting.Tenant.Id);
+            await DeleteTenantAsync(cancelled.Tenant.Id);
+            await DeleteTenantAsync(issued.Tenant.Id);
+        }
+    }
+
     private async Task AssertSameLabelAsync(string platformCode, string? manualStatus, string expected)
     {
         var seed = NewSeed("s2-label", platformCode, manualStatus);
