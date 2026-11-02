@@ -11295,6 +11295,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (ReturnSyncSliceEnds(nextStorefront, pagesThisSlice))
                 throw new JobProcessingException(JobExecutionResult.Continue("İade okuması kaldığı sayfadan birkaç saniye içinde devam edecek."));
         } while (!cancellationToken.IsCancellationRequested);
+        await DateTrendyolReturnDecisionsAsync(tenantId, connectionId, correlationId, cancellationToken);
         return true;
     }
 
@@ -11589,8 +11590,58 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
             ? claims.Where(claim => claim.Status != ReturnClaimStatus.Completed && claim.Status != ReturnClaimStatus.Cancelled
                 && HepsiburadaOpenClaimStatuses.Contains(claim.RawStatus))
-            : claims.Where(claim => claim.Status == ReturnClaimStatus.Requested || claim.Status == ReturnClaimStatus.AwaitingShipment
-                || claim.Status == ReturnClaimStatus.InTransit || claim.Status == ReturnClaimStatus.ActionRequired || claim.Status == ReturnClaimStatus.Disputed);
+            : string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+                // A rejected Trendyol return stays open until its package back to the customer leaves: the package and
+                // its tracking link may come without a new lastModifiedDate, so only a read by id sees them.
+                ? claims.Where(claim => claim.Status == ReturnClaimStatus.Requested || claim.Status == ReturnClaimStatus.AwaitingShipment
+                    || claim.Status == ReturnClaimStatus.InTransit || claim.Status == ReturnClaimStatus.ActionRequired || claim.Status == ReturnClaimStatus.Disputed
+                    || claim.Status == ReturnClaimStatus.Rejected && (claim.RejectedPackageState == null || claim.RejectedPackageState == ReturnRejectedPackageStates.None || claim.RejectedPackageState == ReturnRejectedPackageStates.AwaitingCargo))
+                : claims.Where(claim => claim.Status == ReturnClaimStatus.Requested || claim.Status == ReturnClaimStatus.AwaitingShipment
+                    || claim.Status == ReturnClaimStatus.InTransit || claim.Status == ReturnClaimStatus.ActionRequired || claim.Status == ReturnClaimStatus.Disputed);
+    }
+
+    // How many Trendyol claims one run dates from their item audits, and how far back: a claim changed earlier than
+    // that cannot have been decided today (a decision changes the claim's lastModifiedDate).
+    internal const int ReturnDecisionDatesPerRun = 25;
+    internal static readonly TimeSpan ReturnDecisionDateWindow = TimeSpan.FromHours(36);
+
+    // The decision time of a Trendyol claim: the latest audit entry, over the claim's items, that moved an item to the
+    // claim's current outcome (Accepted for approved, Rejected for rejected). None found: unknown (null).
+    internal static DateTimeOffset? TrendyolDecisionTime(IEnumerable<RemoteReturnLineAudit> entries, ReturnClaimStatus outcome) =>
+        entries.Where(entry => MarketplaceReturnStatus.Canonicalize(entry.NewStatus) == outcome)
+            .Select(entry => (DateTimeOffset?)entry.At.ToUniversalTime())
+            .Max();
+
+    // Dates the connection's recently decided Trendyol claims from getClaimItemAudits (a read). A failed read leaves
+    // the claim undated for the next run; it never fails the sync.
+    private async Task DateTrendyolReturnDecisionsAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        if (returns is not IReturnAuditPort audits) return;
+        var since = timeProvider.GetUtcNow().Subtract(ReturnDecisionDateWindow);
+        var claims = await db.ReturnClaims
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.DecidedAt == null && x.LastRemoteModifiedAt >= since
+                && (x.Status == ReturnClaimStatus.Approved || x.Status == ReturnClaimStatus.Rejected))
+            .OrderByDescending(x => x.LastRemoteModifiedAt)
+            .Take(ReturnDecisionDatesPerRun)
+            .ToListAsync(cancellationToken);
+        foreach (var claim in claims)
+        {
+            var lineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id)
+                .OrderBy(x => x.Id).Select(x => x.ExternalLineId).Take(20).ToListAsync(cancellationToken);
+            var entries = new List<RemoteReturnLineAudit>();
+            foreach (var lineId in lineIds)
+            {
+                TrackRequest();
+                var result = await audits.ReturnLineAuditsAsync(Context(tenantId, connectionId, correlationId, $"return-decision-audit:{lineId}"), lineId, cancellationToken);
+                if (!result.IsSuccess) { TrackResultFailure(result.Error); continue; }
+                entries.AddRange(result.Value!);
+            }
+            if (TrendyolDecisionTime(entries, claim.Status) is not { } decidedAt) continue;
+            claim.DecidedAt = decidedAt;
+            claim.UpdatedAt = timeProvider.GetUtcNow();
+            claim.Version++;
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private async Task<bool> SyncHepsiburadaOpenReturns(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -11855,6 +11906,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         incompleteCargoCursor.LastSuccessAt = timeProvider.GetUtcNow();
         completeCargoCursor.LastSuccessAt = incompleteCargoCursor.LastSuccessAt;
         await db.SaveChangesAsync(cancellationToken);
+        if (string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase))
+            await DateTrendyolReturnDecisionsAsync(tenantId, connectionId, correlationId, cancellationToken);
         return true;
     }
 
@@ -12114,6 +12167,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var claimChanged = false;
             var previousRawStatus = claim.RawStatus;
+            var previousClaimStatus = claim.Status;
             var remoteIsFresh = remote.LastModifiedAt >= claim.LastRemoteModifiedAt;
             var partialLineDecisionPending = string.Equals(claim.RawStatus, "PARTIAL_LINE_DECISION_PENDING", StringComparison.Ordinal) && !allLinesKnown;
             if (remoteIsFresh && !partialLineDecisionPending && (lineStatusOverrides || ReturnClaimStateMachine.CanTransition(claim.Status, target)))
@@ -12160,6 +12214,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (remoteCargoTracking is not null && !string.Equals(claim.CargoTrackingNumber, remoteCargoTracking, StringComparison.Ordinal)) { claim.CargoTrackingNumber = remoteCargoTracking; claimChanged = true; }
             var remoteCargoTrackingLink = SafeReturnTrackingLink(remote.CargoTrackingLink);
             if (remoteCargoTrackingLink is not null && !string.Equals(claim.CargoTrackingLink, remoteCargoTrackingLink, StringComparison.Ordinal)) { claim.CargoTrackingLink = remoteCargoTrackingLink; claimChanged = true; }
+            var (packageState, decidedAt) = NextReturnOutcomeFacts(claim.RejectedPackageState, claim.DecidedAt, previousClaimStatus, claim.Status, remote.RejectedPackageState, remote.DecidedAt);
+            if (!string.Equals(claim.RejectedPackageState, packageState, StringComparison.Ordinal)) { claim.RejectedPackageState = packageState; claimChanged = true; }
+            if (claim.DecidedAt != decidedAt) { claim.DecidedAt = decidedAt; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
         var lineStatuses = new Dictionary<Guid, string?>();
@@ -12275,10 +12332,28 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         ActionDueAt = remote.ActionDueAt,
         ActionDueAtEstimated = remote.ActionDueAtEstimated,
         LastRemoteModifiedAt = remote.LastModifiedAt,
+        RejectedPackageState = status == ReturnClaimStatus.Rejected ? remote.RejectedPackageState : null,
+        DecidedAt = status is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected ? remote.DecidedAt?.ToUniversalTime() : null,
         CreatedAt = now,
         UpdatedAt = now,
         Version = 1
     };
+
+    // The rejected package state and the decision date after a read. A new outcome drops the old outcome's date (a
+    // Trendyol claim is dated again from its audits); a date the read brings is kept only for an approved or rejected
+    // claim. A package that left (or is never sent back) does not go back to waiting on an older read.
+    internal static (string? RejectedPackageState, DateTimeOffset? DecidedAt) NextReturnOutcomeFacts(
+        string? currentPackageState, DateTimeOffset? currentDecidedAt, ReturnClaimStatus previousStatus, ReturnClaimStatus status, string? remotePackageState, DateTimeOffset? remoteDecidedAt)
+    {
+        var packageState = status != ReturnClaimStatus.Rejected ? null
+            : remotePackageState is null || !ReturnRejectedPackageStates.IsOpen(currentPackageState) && ReturnRejectedPackageStates.IsOpen(remotePackageState) ? currentPackageState
+            : remotePackageState;
+        var decidedAt = status is not (ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected) ? null
+            : remoteDecidedAt is { } remoteDate ? remoteDate.ToUniversalTime()
+            : previousStatus == status ? currentDecidedAt
+            : null;
+        return (packageState, decidedAt);
+    }
 
     private static string? SafeReturnTrackingLink(string? value) =>
         Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps

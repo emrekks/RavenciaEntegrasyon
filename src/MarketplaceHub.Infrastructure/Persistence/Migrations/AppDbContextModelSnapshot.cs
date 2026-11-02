@@ -5509,6 +5509,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("ExternalClaimId")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -5532,6 +5535,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("ReasonText")
                         .HasMaxLength(1024)
                         .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("RejectedPackageState")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<string>("Status")
                         .IsRequired()
