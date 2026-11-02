@@ -115,6 +115,44 @@ describe('product save feedback', () => {
     expect(feedback).toMatchObject({ title: 'Ürün Kaydedildi', kind: 'info', persistent: false, durationMs: 8000 })
   })
 
+  // Live 2026-11-02 (RYP006): Trendyol went out, the toast said "Yayın Başlatıldı" and nothing of the n11, Pazarama and
+  // PTT AVM cards beside it that read "Yayın için zorunlu eksik".
+  it('names every marketplace left out for a required gap and does not call the publication a full success', () => {
+    const feedback = productSaveFeedback(save({
+      productChanged: false,
+      publications: [publish({ enqueuedCards: 1, enqueuedVariants: 18 })],
+      gapSkipped: [{ platformName: 'n11', requiredGaps: 1 }, { platformName: 'Pazarama', requiredGaps: 2 }]
+    }))
+    expect(feedback).toEqual({
+      title: 'Yayın Kısmen Başlatıldı',
+      lines: [
+        'Trendyol: ürün (18 varyant) gönderim kuyruğuna alındı.',
+        'n11: gönderilmedi — yayın için 1 zorunlu eksik var; kartındaki eksikler giderilince seçilebilir.',
+        'Pazarama: gönderilmedi — yayın için 2 zorunlu eksik var; kartındaki eksikler giderilince seçilebilir.'
+      ],
+      kind: 'info',
+      persistent: true
+    })
+  })
+
+  it('says nothing started when the only marketplaces left had required gaps', () => {
+    const feedback = productSaveFeedback(save({ productChanged: false, gapSkipped: [{ platformName: 'Hepsiburada', requiredGaps: 2 }] }))
+    expect(feedback).toEqual({
+      title: 'Yayın Başlatılamadı',
+      lines: ['Hepsiburada: gönderilmedi — yayın için 2 zorunlu eksik var; kartındaki eksikler giderilince seçilebilir.'],
+      kind: 'info',
+      persistent: true
+    })
+  })
+
+  it('keeps a refusal an error when a gap was also left out', () => {
+    const feedback = productSaveFeedback(save({
+      publicationErrors: [{ platformName: 'Shopify', message: 'Yetki yok.' }],
+      gapSkipped: [{ platformName: 'n11', requiredGaps: 1 }]
+    }))
+    expect(feedback).toMatchObject({ title: 'Yayın Başlatılamadı', kind: 'error', persistent: true })
+  })
+
   it('says a plain save saved the product, and when Yayınla had no marketplace selected', () => {
     expect(productSaveFeedback(save({ publishRequested: false, savedParts: ['stok'] }))).toEqual({
       title: 'Ürün Kaydedildi', lines: ['Ürün bilgileri kaydedildi; stok güncellendi.'], kind: 'success', persistent: false, durationMs: 3500
