@@ -6,23 +6,23 @@ afterEach(cleanup)
 
 const metric = (value: number | undefined, loading = false) => ({ value, loading })
 const newRows = [{ key: 'ty', code: 'TRENDYOL', name: 'Trendyol', units: 36 }, { key: 'pz', code: 'PAZARAMA', name: 'Pazarama', units: 1 }]
-const props = (extra: Partial<Parameters<typeof OrderMetricCards>[0]> = {}) => ({ newOrders: metric(12), newUnits: 37, newRows, processing: metric(1234), late: metric(2), microExport: metric(186), microCountries: { SA: 55, BG: 40, RO: 33, AZ: 24, GR: 22, AE: 12 }, cancelled: metric(68), cancelledUnits: 75, partiallyCancelled: metric(1), partialUnits: 2, resent: metric(3), onOpenDay: () => undefined, ...extra })
+const props = (extra: Partial<Parameters<typeof OrderMetricCards>[0]> = {}) => ({ newOrders: metric(12), newUnits: 37, newRows, processing: metric(1234), processingUnits: 2, processingRows: [{ key: 'pz', code: 'PAZARAMA', name: 'Pazarama', units: 2 }], late: metric(2), microExport: metric(186), microCountries: { SA: 55, BG: 40, RO: 33, AZ: 24, GR: 22, AE: 12 }, cancelled: metric(68), cancelledUnits: 75, partiallyCancelled: metric(1), partialUnits: 2, resent: metric(3), onOpenDay: () => undefined, ...extra })
 const card = (host: HTMLElement, title: string) => Array.from(host.querySelectorAll('article')).find(item => item.querySelector('small')?.textContent === title)!
 const open = (host: HTMLElement, title: string) => card(host, title).querySelector<HTMLButtonElement>('.rr-metric-open')!.click()
 
 describe('order summary cards', () => {
-  it('shows six cards in one grid, a title and a count each, packages with their products on Yeni Sipariş and İptal', () => {
+  it('shows six cards in one grid, a title and a package count each, with their products on Yeni Sipariş and İşleme Alınan', () => {
     const { host } = render(<OrderMetricCards {...props()} />)
 
     const row = host.querySelector('.rr-metrics.rr-metrics-6')!
     const cards = Array.from(row.querySelectorAll('article')).map(item => [item.querySelector('small')?.textContent, item.querySelector('strong')?.textContent])
     expect(cards).toEqual([
       ['Yeni Sipariş', '12 Paket | 37 Adet Ürün'],
-      ['İşleme Alınan', (1234).toLocaleString('tr-TR')],
-      ['Geciken', '2'],
-      ['Mikro İhracat Sipariş', '186'],
-      ['İptal', '68 Paket | 75 Adet Ürün'],
-      ['Yeniden Gönderim', '3']
+      ['İşleme Alınan', `${(1234).toLocaleString('tr-TR')} Paket | 2 Adet Ürün`],
+      ['Geciken', '2 Paket'],
+      ['Mikro İhracat Sipariş', '186 Paket'],
+      ['İptal', '68 Paket'],
+      ['Yeniden Gönderim', '3 Paket']
     ])
     // Neither Kargoda nor Kargolanacak Ürün Adedi is a card any more.
     expect(card(host, 'Kargoda')).toBeUndefined()
@@ -33,14 +33,15 @@ describe('order summary cards', () => {
     const { host } = render(<OrderMetricCards {...props({ newOrders: metric(undefined, true), newUnits: undefined, newRows: undefined, processing: metric(undefined, true), late: metric(undefined), microExport: metric(undefined, true), microCountries: undefined, cancelled: metric(undefined, true), cancelledUnits: undefined, partiallyCancelled: metric(undefined, true), resent: metric(undefined, true) })} />)
 
     const values = Array.from(host.querySelectorAll('article strong')).map(value => value.textContent)
-    expect(values).toEqual(['…', '…', '0', '…', '…', '…'])
+    expect(values).toEqual(['…', '…', '0 Paket', '…', '…', '…'])
     // While the data loads, the chip and the hover panels are not drawn.
     expect(host.querySelector('.rr-metric-chip')).toBeNull()
     expect(host.querySelector('.rr-metric-tip')).toBeNull()
     cleanup()
     // An older API: the packages without their products.
-    const older = render(<OrderMetricCards {...props({ newUnits: undefined, newRows: undefined, cancelledUnits: undefined, partialUnits: undefined })} />).host
+    const older = render(<OrderMetricCards {...props({ newUnits: undefined, newRows: undefined, processingUnits: undefined, processingRows: undefined, cancelledUnits: undefined, partialUnits: undefined })} />).host
     expect(card(older, 'Yeni Sipariş').querySelector('strong')!.textContent).toBe('12 Paket')
+    expect(card(older, 'İşleme Alınan').querySelector('strong')!.textContent).toBe(`${(1234).toLocaleString('tr-TR')} Paket`)
     expect(older.querySelector('.rr-metric-chip')!.textContent).toBe('1 Kısmi İptal')
   })
 
@@ -86,6 +87,15 @@ describe('order summary cards', () => {
       ['Suudi Arabistan', '55', true], ['Bulgaristan', '40', true], ['Romanya', '33', true],
       ['Azerbaycan', '24', true], ['Yunanistan', '22', true], ['Birleşik Arap Emirlikleri', '12', true]
     ])
+  })
+
+  it('lists the processing orders\' products per store on hover like Yeni Sipariş', () => {
+    const { host } = render(<OrderMetricCards {...props()} />)
+    const processing = card(host, 'İşleme Alınan')
+    expect(processing.className).toBe('rr-metric-tipped')
+    expect(Array.from(processing.querySelectorAll('.rr-metric-tip-r')).map(row => row.textContent)).toEqual(['Pazarama2 adet'])
+    cleanup()
+    expect(card(render(<OrderMetricCards {...props({ processingRows: [] })} />).host, 'İşleme Alınan').className).toBe('')
   })
 
   it('lists the new orders\' products per store on hover, and draws no panel without them', () => {
