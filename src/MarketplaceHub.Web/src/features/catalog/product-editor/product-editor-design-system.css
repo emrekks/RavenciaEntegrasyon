@@ -1130,3 +1130,8 @@ html body .app-shell .publication-job-modal > footer > :is(a, button) { box-sizi
 .app-shell.stitch-shell main .product-add-page .product-submit-actions button[aria-disabled="true"] { cursor: not-allowed; opacity: .55; }
 .app-shell.stitch-shell main .product-submit-sticky.rv-action-bar > div:first-child > .product-submit-code-block { display: inline-flex; align-items: center; gap: 6px; height: auto; min-height: 0; margin: 2px 0 0; padding: 0; color: var(--rv-color-danger); background: none; border: 0; font-size: 12px; font-weight: 600; text-align: left; cursor: pointer; }
 .app-shell.stitch-shell main .product-submit-sticky.rv-action-bar > div:first-child > .product-submit-code-block:hover > span { text-decoration: underline; }
+
+/* The bulk edit dialog is portaled into main, where the unlayered app-shell button rule (44 px) beats the layered rules
+   above: its footer buttons are 34 px and the Eşitle / Arttır / Azalt segments 28 px (34 px with their frame) here. */
+html body .app-shell .variant-bulk-edit-modal > footer button { box-sizing: border-box; height: 34px; min-height: 0; padding-block: 0; }
+html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { height: 28px; min-height: 0; padding-block: 0; }
