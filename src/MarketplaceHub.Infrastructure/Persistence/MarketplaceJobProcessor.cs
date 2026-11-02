@@ -446,7 +446,33 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (error?.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.RateLimit or AdapterErrorClass.Remote5xx) telemetryRetryCount++;
     }
 
+    // Every create job that ends leaves its per-variant answer: a path that stops before the batch result (blocked,
+    // manual review, expired window) records each sent variant from the card's state, with the job's reason, so the job
+    // screen never falls back to "ran before it saved results" for a job that ran after they existed.
     private async Task<JobExecutionResult> CreateProduct(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var result = await CreateProductCore(tenantId, connectionId, payloadJson, correlationId, cancellationToken);
+        if (result.Kind != JobCompletionKind.Retry) await EnsureCreateJobVariantResults(tenantId, connectionId, payloadJson, result, cancellationToken);
+        return result;
+    }
+
+    private async Task EnsureCreateJobVariantResults(Guid tenantId, Guid connectionId, string payloadJson, JobExecutionResult result, CancellationToken cancellationToken)
+    {
+        ProductPublicationJobPayload? payload;
+        try { payload = JsonSerializer.Deserialize<ProductPublicationJobPayload>(payloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
+        catch (JsonException) { return; }
+        if (payload is null || payload.JobId == Guid.Empty || payload.ProfileId == Guid.Empty || string.IsNullOrWhiteSpace(payload.PayloadHash)) return;
+        if (await db.JobVariantResults.AnyAsync(x => x.TenantId == tenantId && x.JobId == payload.JobId, cancellationToken)) return;
+        var listings = await db.ChannelListingVariants.Where(x => x.TenantId == tenantId && x.ProfileId == payload.ProfileId).ToListAsync(cancellationToken);
+        if (listings.Count == 0) return;
+        var variantIds = listings.Select(x => x.VariantId).ToArray();
+        var states = await db.MarketplaceListingStates.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId)).ToDictionaryAsync(x => x.VariantId, cancellationToken);
+        var reason = JobVariantResultPolicy.Reason([result.ErrorSummary]);
+        await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductCreate, listings, listings.ToDictionary(x => x.VariantId, _ => reason), cancellationToken, payload.PayloadHash, states);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<JobExecutionResult> CreateProductCore(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         ProductPublicationJobPayload? payload;
         try { payload = JsonSerializer.Deserialize<ProductPublicationJobPayload>(payloadJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }); }
@@ -633,7 +659,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var lines = operationStatus.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).ToList();
         var remoteKeyLabel = isN11 ? "stok kodu" : isShopify || isHepsiburada ? "merchantSku" : "barkod";
         var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama" : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM" : "Trendyol";
-        if (lines.Count == 0 || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
+        // No lines at all is a result not written yet (it waits below), except for Shopify, which answers at once.
+        if ((lines.Count == 0 && isShopify) || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         var resultKeys = listings.Select(x => keyedBySku ? x.ExternalSku ?? "" : x.ExternalBarcode ?? "").ToList();
         if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Uzak sonuç eşlemesi için listing {remoteKeyLabel} değerleri eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         var resultKeyByListing = listings.ToDictionary(x => keyedBySku ? x.ExternalSku! : x.ExternalBarcode!, x => x, StringComparer.OrdinalIgnoreCase);
@@ -643,13 +670,42 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var pttAvmParentBarcode = string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? PttAvmProductPayloadRules.VariantParentBarcode(payload.PayloadJson) : null;
         if (pttAvmParentBarcode is not null) resultByKey = PttAvmProductPayloadRules.FamilyResultLines(pttAvmParentBarcode, resultByKey, resultKeyByListing.Keys);
         else if (isShopify) resultByKey = resultByKey.Where(x => resultKeyByListing.ContainsKey(x.Key)).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
-        if (resultKeyByListing.Keys.Any(key => !resultByKey.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         if (resultByKey.Keys.Any(key => !resultKeyByListing.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu bilinmeyen merchantSku/barkod içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
+        // A sent item the result does not list yet, or (Trendyol) lists without a final SUCCESS/FAILED, has no answer yet.
+        var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
+        var missingKeys = resultKeyByListing.Keys
+            .Where(key => !resultByKey.TryGetValue(key, out var listed) || (isTrendyol && !listed.Succeeded && listed.Retryable))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (missingKeys.Count > 0 && isShopify) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
+        if (ProductBatchResultPolicy.KeepWaiting(missingKeys.Count, timeProvider.GetUtcNow() - payload.SubmittedAt.Value))
+        {
+            profile.ActualStatus = isHepsiburada ? "IMPORT_IN_PROGRESS" : "BATCH_IN_PROGRESS";
+            profile.Version++;
+            await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken, payload.PayloadHash);
+            await db.SaveChangesAsync(cancellationToken);
+            return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", ProductBatchResultPolicy.WaitingMessage(marketplaceName, listings.Count - missingKeys.Count, listings.Count), TimeSpan.FromSeconds(15), payload.ExternalOperationId);
+        }
 
         var succeeded = 0;
+        var unknown = 0;
+        var missingReason = ProductBatchResultPolicy.MissingReason(marketplaceName);
         foreach (var listing in listings)
         {
             var key = keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!;
+            if (missingKeys.Contains(key))
+            {
+                // Unknown stays unknown: neither created nor refused; the approval check reads it by barcode.
+                listing.ActualStatus = ProductBatchResultPolicy.ResultUnknownStatus;
+                listing.RejectionCode = null;
+                unknown++;
+                if (states.TryGetValue(listing.VariantId, out var unknownState))
+                {
+                    unknownState.ActualStatus = listing.ActualStatus;
+                    unknownState.LastRejectionCode = null;
+                    unknownState.Version++;
+                }
+                continue;
+            }
             var line = resultByKey[key];
             var rejection = line.Succeeded ? null : SafeCode(line.ErrorCode ?? "REMOTE_VALIDATION_FAILED");
             // Shopify writes and publishes the product in the same call and has no approval step: an accepted SKU is
@@ -665,24 +721,34 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 state.Version++;
             }
         }
-        profile.ActualStatus = succeeded == listings.Count ? (isHepsiburada ? "IMPORT_ACCEPTED" : isShopify ? "LIVE" : "APPROVAL_PENDING") : succeeded == 0 ? "CREATE_REJECTED" : "PARTIAL_FAILURE";
+        var refused = listings.Count - succeeded - unknown;
+        profile.ActualStatus = refused == 0 ? (isHepsiburada ? "IMPORT_ACCEPTED" : isShopify ? "LIVE" : "APPROVAL_PENDING") : succeeded + unknown == 0 ? "CREATE_REJECTED" : "PARTIAL_FAILURE";
         profile.LastRejectionCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => x is not null);
         profile.Version++;
-        if (succeeded > 0 && !isShopify)
+        if (succeeded + unknown > 0 && !isShopify)
             await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, payload.ExternalOperationId);
+        string? ListingReason(ChannelListingVariant listing)
+        {
+            var key = keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!;
+            return missingKeys.Contains(key) ? missingReason : LineReason(resultByKey[key]);
+        }
         await RecordJobVariantResults(tenantId, job.Id, MarketplaceJobTypes.ProductCreate, listings,
-            listings.ToDictionary(x => x.VariantId, x => LineReason(resultByKey[keyedBySku ? x.ExternalSku! : x.ExternalBarcode!])), cancellationToken);
+            listings.ToDictionary(x => x.VariantId, ListingReason), cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         // Every variant is live, but the marketplace reported something that did not go through (Shopify: pictures); the
         // job ends with it so it shows instead of passing as a plain success.
         if (succeeded == listings.Count && operationStatus.IssueCode is { } issueCode)
             return JobExecutionResult.Blocked(issueCode, operationStatus.IssueSummary ?? issueCode, payload.ExternalOperationId);
         if (succeeded == listings.Count) return JobExecutionResult.Success();
-        // The marketplace's own reason per refused SKU (n11 sends it with each task line), so it shows on the card.
-        var reasons = RejectionReasons(listings.Select(listing => resultByKey[keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!]));
-        return succeeded == 0
+        var incomplete = unknown > 0 ? " " + ProductBatchResultPolicy.IncompleteSummary(marketplaceName, unknown, listings.Count) : string.Empty;
+        if (refused == 0) return JobExecutionResult.SuccessWithNote(ProductBatchResultPolicy.IncompleteResultCode, incomplete.Trim());
+        // The marketplace's own reason per refused SKU (Trendyol failureReasons, n11's task line text), so it shows on the card.
+        var reasons = RejectionReasons(listings
+            .Where(listing => !missingKeys.Contains(keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!))
+            .Select(listing => resultByKey[keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!]));
+        return succeeded + unknown == 0
             ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", $"{marketplaceName} ürün yayınındaki tüm varyantlar reddedildi.{reasons}", payload.ExternalOperationId)
-            : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", $"{marketplaceName} ürün yayını kısmi başarısızlıkla tamamlandı.{reasons}", payload.ExternalOperationId);
+            : JobExecutionResult.Blocked("PRODUCT_BATCH_PARTIAL_FAILURE", $"{marketplaceName} ürün yayınında {refused} varyant reddedildi.{reasons}{incomplete}", payload.ExternalOperationId);
     }
 
     // A create batch the marketplace refused as a whole, without a line per product: nothing counts as created.
@@ -1421,9 +1487,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // " Reddedilen: SKU (reason); …" for the refused lines that carry a reason, cut to stay readable; empty without one.
     internal static string RejectionReasons(IEnumerable<RemoteOperationLine> lines)
     {
+        // Trendyol gives its reasons as failureReasons (Reasons); n11 and Pazarama write theirs as the line's status text.
         var parts = lines
-            .Where(line => !line.Succeeded && !string.IsNullOrWhiteSpace(line.Status))
-            .Select(line => $"{line.ExternalKey} ({line.Status!.Trim()})")
+            .Where(line => !line.Succeeded)
+            .Select(line => (line.ExternalKey, Reason: line.Reasons is { Count: > 0 } reasons ? JobVariantResultPolicy.Reason(reasons) : JobVariantResultPolicy.Reason([line.Status])))
+            .Where(item => item.Reason is not null)
+            .Select(item => $"{item.ExternalKey} ({item.Reason})")
             .ToList();
         if (parts.Count == 0) return string.Empty;
         var text = " Reddedilen: " + string.Join("; ", parts);

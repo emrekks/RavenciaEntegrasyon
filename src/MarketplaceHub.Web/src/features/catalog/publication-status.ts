@@ -5,6 +5,7 @@ const inProgressStatuses = new Set([
   'UPDATE_QUEUED',
   'BATCH_SUBMITTED',
   'BATCH_IN_PROGRESS',
+  'CREATE_RESULT_UNKNOWN',
   'UPDATE_SUBMITTED',
   'UPDATE_IN_PROGRESS',
   'IMPORT_SUBMITTED',
@@ -26,6 +27,8 @@ const publicationLabels: Record<string, string> = {
   BATCH_SUBMITTED: "Trendyol'a gönderildi",
   BATCH_IN_PROGRESS: 'Trendyol kontrol ediyor',
   CREATE_ACCEPTED: 'Trendyol kabul etti, onay bekleniyor',
+  // The create batch ended without a line for this variant: its state is read by barcode in the approval check.
+  CREATE_RESULT_UNKNOWN: 'Trendyol sonucu bekleniyor',
   UPDATE_SUBMITTED: "Güncelleme Trendyol'a gönderildi",
   UPDATE_IN_PROGRESS: 'Trendyol güncellemeyi kontrol ediyor',
   IMPORT_SUBMITTED: "Hepsiburada'ya gönderildi",

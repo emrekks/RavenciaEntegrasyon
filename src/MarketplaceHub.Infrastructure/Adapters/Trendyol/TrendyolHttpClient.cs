@@ -200,7 +200,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         try
         {
             var result = TrendyolJsonMapper.Batch(response.Value!, externalOperationId);
-            logger.LogInformation("Trendyol PRODUCT_CREATE batch poll completed for operation {ExternalOperationId}: status {Status}, lines {LineCount}, accepted {AcceptedCount}, rejected {RejectedCount}.", externalOperationId, result.Status, result.Lines.Count, result.Lines.Count(x => x.Succeeded), result.Lines.Count(x => !x.Succeeded));
+            logger.LogInformation("Trendyol PRODUCT_CREATE batch poll completed for operation {ExternalOperationId}: status {Status}, itemCount {ItemCount}, lines {LineCount}, accepted {AcceptedCount}, rejected {RejectedCount}, failure reasons {FailureReasons}.", externalOperationId, result.Status, result.ReportedItemCount, result.Lines.Count, result.Lines.Count(x => x.Succeeded), result.Lines.Count(x => !x.Succeeded), string.Join(" | ", result.Lines.Where(x => !x.Succeeded).Select(x => $"{x.ExternalKey}: {x.ErrorCode}").Take(20)));
             return AdapterResult<RemoteOperationStatus>.Success(result, response.RateLimit);
         }
         catch (JsonException) { return AdapterResult<RemoteOperationStatus>.Failure(TrendyolErrorMapper.Contract()); }
