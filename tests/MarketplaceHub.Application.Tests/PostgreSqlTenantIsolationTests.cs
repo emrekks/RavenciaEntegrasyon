@@ -7336,6 +7336,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         Assert.Equal(new[] { "Siyah", "Siyah Melanj" }, same.Options.Select(option => option.Name).Order());
         var cross = Assert.Single(conflicts.Value.CrossCategory);
         Assert.Equal(3, cross.Options.Count);
+        // Each cross-category option names the categories holding it with their versions, for the "use this everywhere" save.
+        var blouseScope = Assert.Single(cross.Options.Single(option => option.ExternalId == "15").Scopes!);
+        Assert.Equal(("200/12", 1L), (blouseScope.ScopeExternalId, blouseScope.Version));
         await transaction.RollbackAsync();
     }
 
