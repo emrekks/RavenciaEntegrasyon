@@ -83,6 +83,8 @@
 .publish-issue-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
 .publish-issue-count { display: inline-grid; box-sizing: border-box; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; color: #fff; background: var(--rv-color-danger); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .publish-issue-badge:hover .publish-issue-tooltip, .publish-issue-tooltip.is-open { display: block; }
+/* While one gap list is open (clicked), the others do not open on hover or focus; only the open one shows. */
+body:has(.publish-issue-tooltip.is-open) .publish-issue-tooltip:not(.is-open) { display: none; }
 .publish-issue-more { margin: 8px 0 0; color: var(--rv-color-muted); font-size: 12px; }
 
 /* Required gaps (red) first, then the optional ones (yellow): attributes the store would get without a value. */

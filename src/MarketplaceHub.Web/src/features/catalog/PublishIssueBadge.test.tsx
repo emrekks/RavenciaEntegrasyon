@@ -46,7 +46,8 @@ describe('PublishIssueBadge', () => {
     act(() => root.render(<PublishIssueBadge id="w" label="2 uyarı" heading="" rows={[]} optionalHeading="2 isteğe bağlı özellik uyarısı" optionalRows={optional} optionalCount={2} />))
     const trigger = container.querySelector<HTMLButtonElement>('.publish-issue-trigger')!
     expect(trigger.classList.contains('status-warning')).toBe(true)
-    expect(trigger.title).toBe('2 uyarı')
+    expect(trigger.title).toBe('')
+    expect(trigger.querySelector('.publish-issue-label')?.textContent).toBe('2 uyarı')
     act(() => trigger.click())
     expect(container.querySelector('.publish-issue-required')).toBeNull()
     expect(container.querySelectorAll('.publish-issue-optional li')).toHaveLength(2)

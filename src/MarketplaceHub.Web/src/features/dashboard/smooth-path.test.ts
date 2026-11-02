@@ -22,4 +22,15 @@ describe('smoothPath', () => {
     expect(Math.min(...ys)).toBeGreaterThanOrEqual(10)
     expect(Math.max(...ys)).toBeLessThanOrEqual(50)
   })
+
+  it('flows through a small dip instead of flattening at it, and stays on the baseline around a lone spike', () => {
+    // y grows downwards: 100 is the baseline (zero), 20 the highest value.
+    const dip = smoothPath([[0, 60], [10, 40], [20, 50], [30, 30]])
+    const second = dip.split(' C')[1].split(' ')
+    expect(Number(second[1])).not.toBe(40)
+    const spike = smoothPath([[0, 100], [10, 100], [20, 20], [30, 100], [40, 100]])
+    const ys = [...spike.matchAll(/-?\d+\.\d (-?\d+\.\d)/g)].map(match => Number(match[1]))
+    expect(Math.max(...ys)).toBeLessThanOrEqual(100)
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(20)
+  })
 })

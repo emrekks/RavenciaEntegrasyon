@@ -117,7 +117,7 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
   const note = variant === 'note'
   const tipHost = typeof document === 'undefined' ? null : document.querySelector('.app-shell') ?? document.body
   return <span ref={wrapper} className={`publish-issue-badge is-${tone}${note ? ' publish-partial-note is-blocked' : ''}`}>
-    <button ref={trigger} type="button" className={note ? 'publish-issue-trigger publish-issue-note-trigger' : `publish-platform-status status-${tone} publish-issue-trigger`} aria-haspopup={shortcut ? 'dialog' : 'true'} aria-expanded={shortcut ? undefined : open} aria-controls={id} title={label} onMouseEnter={place} onFocus={place} onClick={() => { if (shortcut) { returnTo.current = null; shortcut() } else setOpen(value => !value) }}>
+    <button ref={trigger} type="button" className={note ? 'publish-issue-trigger publish-issue-note-trigger' : `publish-platform-status status-${tone} publish-issue-trigger`} aria-haspopup={shortcut ? 'dialog' : 'true'} aria-expanded={shortcut ? undefined : open} aria-controls={id} onMouseEnter={place} onFocus={place} onClick={() => { if (shortcut) { returnTo.current = null; shortcut() } else setOpen(value => !value) }}>
       {note ? <UiIcon name="alert" size={12} /> : <i aria-hidden="true" />}<span className="publish-issue-label">{label}</span>
       {!note && requiredCount ? <span className="publish-issue-count" aria-label={`${requiredCount} zorunlu eksik`}>{requiredCount}</span> : null}
       {!note && optionalCount ? <span className="publish-issue-count is-optional" aria-label={`${optionalCount} isteğe bağlı uyarı`}>{optionalCount}</span> : null}

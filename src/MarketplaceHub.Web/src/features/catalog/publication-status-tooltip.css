@@ -39,3 +39,6 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* While a gap list is open, the status tips of the other cards stay hidden. */
+body:has(.publish-issue-tooltip.is-open) .publish-platform-fact-publication .publish-platform-status[data-tooltip]::after { content: none; }
