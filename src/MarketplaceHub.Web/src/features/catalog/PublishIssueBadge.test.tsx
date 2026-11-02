@@ -82,14 +82,11 @@ describe('PublishIssueBadge chips', () => {
     expect(required[0].hasAttribute('title')).toBe(false)
     expect(required[0].getAttribute('aria-label')).toBe('Kumaş Tipi. Zorunlu Hepsiburada özelliği için güncel ve doğrulanmış eşleme yok.')
     expect(container.querySelector('.publish-issue-tooltip')?.textContent).not.toContain('doğrulanmış eşleme yok')
-    // Hover shows the styled tooltip, outside the popover.
+    // Hover shows nothing more: the chip is its name; its accessible name carries both value gaps.
     act(() => { optional[0].dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
-    const tip = document.querySelector('.publish-issue-chip-tip')
-    expect([...tip!.querySelectorAll('span')].map(line => line.textContent)).toEqual(['“Orta” için değer eşlemesi yok. · “İnce” için değer eşlemesi yok.'])
-    expect(container.querySelector('.publish-issue-tooltip')?.contains(tip)).toBe(false)
-    expect(optional[0].getAttribute('aria-describedby')).toBe(tip!.id)
-    act(() => { optional[0].dispatchEvent(new MouseEvent('mouseout', { bubbles: true })) })
-    expect(document.querySelector('.publish-issue-chip-tip')).toBeNull()
+    expect(document.querySelector('[role="tooltip"]:not(.publish-issue-tooltip)')).toBeNull()
+    expect(optional[0].hasAttribute('aria-describedby')).toBe(false)
+    expect(optional[0].getAttribute('aria-label')).toBe('Kalınlık. “Orta” için değer eşlemesi yok. · “İnce” için değer eşlemesi yok.')
     act(() => optional[0].click())
     expect(openKalinlik).toHaveBeenCalledOnce()
     expect(openKumas).not.toHaveBeenCalled()
@@ -97,7 +94,7 @@ describe('PublishIssueBadge chips', () => {
 })
 
 describe('PublishIssueBadge with the window a chip opens', () => {
-  it('shows the field name on the chip and the missing values in its tooltip', () => {
+  it('shows the field name on the chip and the missing values in its accessible name only', () => {
     act(() => root.render(<PublishIssueBadge id="v" label="Yayın için zorunlu eksik" heading="Yayın için 2 eksik var" requiredCount={2}
       rows={[
         { key: 'wc-1', title: 'Web Color', detail: '“Mürdüm” için değer yok.', values: ['Mürdüm'], onRun: vi.fn() },
@@ -108,11 +105,9 @@ describe('PublishIssueBadge with the window a chip opens', () => {
     const chips = [...container.querySelectorAll<HTMLElement>('.publish-issue-chip')]
     expect(chips.map(chip => chip.textContent)).toEqual(['Web Color', 'Kumaş Tipi'])
     act(() => { chips[0].dispatchEvent(new FocusEvent('focusin', { bubbles: true })) })
-    expect(document.querySelector('.publish-issue-chip-tip')?.textContent).toBe('Eşlenmemiş değerler: Mürdüm, Kiremit')
-    act(() => { chips[0].dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
-    act(() => { chips[1].dispatchEvent(new FocusEvent('focusin', { bubbles: true })) })
-    expect([...document.querySelectorAll('.publish-issue-chip-tip span')].map(line => line.textContent)).toEqual(['Kumaş Tipi eşlenmemiş', 'Eşlenebilecek panel özelliği: Materyal'])
+    expect(document.querySelector('[role="tooltip"]:not(.publish-issue-tooltip)')).toBeNull()
     expect(chips[0].getAttribute('aria-label')).toBe('Web Color. Eşlenmemiş değerler: Mürdüm, Kiremit')
+    expect(chips[1].getAttribute('aria-label')).toBe('Kumaş Tipi. Kumaş Tipi eşlenmemiş. Eşlenebilecek panel özelliği: Materyal')
   })
 
   it('stays open while the window is in front, ignores its presses and Escape, and gives focus back to the chip', async () => {

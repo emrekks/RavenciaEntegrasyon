@@ -1,11 +1,11 @@
 // One gap of a publish card: pressing it opens its fix (`onRun`: the category fields window, a category mapping, a new
 // check) or goes to the page that fixes it (`href`); a gap with neither is only information. `values`: the panel values a
 // value-mapping gap is about (the colours Web Color has no value for).
-// `tip`: the tooltip's lines besides the values (see attributeIssueTip).
+// `tip`: what else its accessible name says besides the values (see attributeIssueTip).
 export type PublishIssueRow = { key: string; title: string; detail: string; href?: string; onRun?: () => void; values?: string[]; tip?: string[] }
 
 // The badge's popover shows one chip per title: gaps with the same title (two values of one field) share it, their details
-// joined for the hover and the screen reader and their values listed together; a title already among the required gaps
+// joined for the screen reader and their values listed together; a title already among the required gaps
 // is left out of the optional ones.
 export function publishIssueChips(rows: readonly PublishIssueRow[], optionalRows: readonly PublishIssueRow[]) {
   const group = (items: readonly PublishIssueRow[], skip: ReadonlySet<string>) => {
@@ -25,7 +25,7 @@ export function publishIssueChips(rows: readonly PublishIssueRow[], optionalRows
   return { required, optional: group(optionalRows, new Set(required.map(row => row.title))) }
 }
 
-// The lines of a mapping gap's tooltip, read from the publish check's own finding (the single source the window also
+// What a mapping gap's accessible name says besides its title, read from the publish check's own finding (the single source the window also
 // reads): a field with no mapping, a mapping on an older list, a product with no value, or the gap's own words.
 export function attributeIssueTip(issue: { attribute: string; detail: string; state?: string; panelAttribute?: string; fieldName?: string }): string[] {
   const field = issue.fieldName ?? issue.attribute
@@ -38,7 +38,7 @@ export function attributeIssueTip(issue: { attribute: string; detail: string; st
   }
 }
 
-// What a chip's tooltip says: the values still without a marketplace value, then its other lines (its detail when it has
+// What a chip's accessible name says after its title (the chip shows no tooltip): the values still without a marketplace value, then its other lines (its detail when it has
 // none).
 export function publishIssueTipLines(row: PublishIssueRow) {
   const lines = [...(row.values?.length ? [`Eşlenmemiş değerler: ${row.values.join(', ')}`] : []), ...(row.tip ?? [])]
@@ -46,7 +46,7 @@ export function publishIssueTipLines(row: PublishIssueRow) {
 }
 
 // The chip's text is the field's name only ("Kalınlık", "Web Color"); the values without a marketplace value are said
-// by its tooltip and accessible name.
+// by its accessible name only.
 export function publishIssueChipText(row: PublishIssueRow) {
   return row.title
 }

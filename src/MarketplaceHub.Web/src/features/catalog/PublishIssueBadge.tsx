@@ -1,5 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { UiIcon } from '../../shared/components'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 import { placePublishPopover } from './publish-popover-placement'
@@ -10,8 +9,6 @@ export type { PublishIssueRow }
 /** A button at the foot of the popover (the card's "Durumu Yenile", "İş Ayrıntısı"): its own handler and busy state. */
 export type PublishIssueAction = { key: string; label: string; icon: ReactNode; onRun: () => void; disabled?: boolean; busy?: boolean; title?: string; ariaLabel?: string; tone?: 'danger' }
 
-type ChipTip = { lines: string[]; left: number; top: number; above: boolean }
-
 // A window (a dialog) in front that is not the one this badge sits in: the one a chip opened.
 function windowInFront(wrapper: Element | null) {
   return [...document.querySelectorAll('[aria-modal="true"]')].some(dialog => !wrapper || !dialog.contains(wrapper))
@@ -20,8 +17,8 @@ function windowInFront(wrapper: Element | null) {
 // A publish card's gaps badge: red "Yayın için zorunlu eksik" when something blocks the publish, yellow "6 uyarı" when
 // only optional attributes would be left out. Hovering it previews the gaps, pressing it (or Enter/Space) pins them in a
 // popover: the required gaps as red chips, then the optional ones as yellow chips; each chip opens its own fix, so the
-// card never grows a row or a box per fix. A chip's hover or focus shows a small tooltip with what exactly is missing
-// (the values without a marketplace value, a field with no mapping or an outdated one). With one gap that has a fix the
+// card never grows a row or a box per fix. A chip shows its name only (no hover tooltip); what exactly is missing (the
+// values without a marketplace value, a field with no mapping or an outdated one) is in its accessible name. With one gap that has a fix the
 // press opens that fix directly. The popover keeps to the room above the sticky Yayınla bar.
 // A window a chip opens leaves the popover open: its presses and its Escape are not outside presses, focus comes back to
 // the chip when it closes, and the list follows the publish check (a fixed gap leaves it; none left says so).
@@ -47,6 +44,8 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
   onOpenChange?: (open: boolean) => void
 }) {
   const [open, setOpen] = useState(false)
+  // A fix or an action that opens a window renders once more, so the effect below starts watching for its close.
+  const [, setReturnWatch] = useState(0)
   const wrapper = useRef<HTMLSpanElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
@@ -60,8 +59,6 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
   const steps = variant === 'steps'
   const shortcut = !steps && chips.required.length === 1 && !chips.optional.length && chips.required[0].onRun ? chips.required[0].onRun : null
   const tone = rows.length ? 'danger' : empty ? 'success' : 'warning'
-  const [tip, setTip] = useState<ChipTip | null>(null)
-  const tipId = useId()
 
   // Measured while shown, then placed below, above, or cut to the room (it scrolls).
   const place = () => {
@@ -99,34 +96,24 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
     return () => window.clearInterval(timer)
   })
 
-  const showTip = (row: PublishIssueRow) => (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
-    const lines = publishIssueTipLines(row)
-    if (!lines.length) return
-    const box = event.currentTarget.getBoundingClientRect()
-    const width = Math.min(300, window.innerWidth - 16)
-    const above = window.innerHeight - box.bottom < 96 && box.top > 96
-    setTip({ lines, left: Math.max(8, Math.min(box.left, window.innerWidth - width - 8)), top: above ? box.top - 6 : box.bottom + 6, above })
-  }
-  const hideTip = () => setTip(null)
   const run = (row: PublishIssueRow) => {
-    hideTip()
     returnTo.current = { key: row.key, sawWindow: false }
+    setReturnWatch(value => value + 1)
     row.onRun?.()
   }
   const list = (items: PublishIssueRow[]) => <ul className="publish-issue-chips">{items.map(row => {
     const text = publishIssueChipText(row)
     const described = [row.title, ...publishIssueTipLines(row)].join('. ')
-    const tipProps = { onMouseEnter: showTip(row), onMouseLeave: hideTip, onFocus: showTip(row), onBlur: hideTip, 'aria-label': described, 'aria-describedby': tip ? tipId : undefined, 'data-chip-key': row.key }
+    const tipProps = { 'aria-label': described, 'data-chip-key': row.key }
     return <li key={row.key}>
       {row.onRun ? <button type="button" className="publish-issue-chip is-fixable" {...tipProps} onClick={() => run(row)}>{text}</button>
         : row.href ? <a className="publish-issue-chip is-fixable" href={row.href} target="_blank" rel="noreferrer" {...tipProps} onClick={() => setOpen(false)}>{text}</a>
           : <span className="publish-issue-chip" role="note" {...tipProps}>{text}</span>}
     </li>
   })}</ul>
-  const tipHost = typeof document === 'undefined' ? null : document.querySelector('.app-shell') ?? document.body
   const runAction = (action: PublishIssueAction) => {
-    hideTip()
     returnTo.current = { key: `action:${action.key}`, sawWindow: false }
+    setReturnWatch(value => value + 1)
     action.onRun()
   }
   return <span ref={wrapper} className={`publish-issue-badge is-${tone}${steps ? ' is-steps' : ''}`}>
@@ -145,6 +132,5 @@ export function PublishIssueBadge({ id, label, heading, rows, requiredCount, opt
       {empty && emptyText && <p className="publish-issue-empty" role="status"><UiIcon name="check" size={14} />{emptyText}</p>}
       {actions.length > 0 && <div className="publish-issue-actions">{actions.map(action => <button key={action.key} type="button" className={`publish-issue-action${action.busy ? ' is-busy' : ''}${action.tone ? ` is-${action.tone}` : ''}`} data-chip-key={`action:${action.key}`} title={action.title} aria-label={action.ariaLabel} aria-busy={action.busy || undefined} disabled={action.disabled} onClick={() => runAction(action)}>{action.icon}{action.label}</button>)}</div>}
     </div>
-    {tip && tipHost && createPortal(<div id={tipId} role="tooltip" className={`publish-issue-chip-tip${tip.above ? ' is-above' : ''}`} style={{ left: tip.left, top: tip.top }}>{tip.lines.map(line => <span key={line}>{line}</span>)}</div>, tipHost)}
   </span>
 }
