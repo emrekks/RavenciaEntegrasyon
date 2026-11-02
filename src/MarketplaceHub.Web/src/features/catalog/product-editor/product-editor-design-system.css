@@ -873,7 +873,6 @@
 }
 .app-shell.stitch-shell main .variant-row-actions > .variant-platform-status-summary::after { display: none; }
 .publish-platform-warning > svg { flex: 0 0 16px; margin-top: 1px; }
-.app-shell.stitch-shell main .publish-platform-facts .publish-platform-status[title] { cursor: help; }
 
 .marketplace-pricing-open { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 14px; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); cursor: pointer; text-align: left; }
 .product-top-sidebar .marketplace-pricing-open { margin-top: var(--rv-space-3); }
@@ -913,7 +912,7 @@
    on a faint hatch, so a locked field reads apart from an empty open one in the dark theme too. */
 .app-shell.stitch-shell main .product-top-sidebar .product-step-grid :is(input, select):disabled,
 .app-shell.stitch-shell main .product-identifiers-grid input:disabled { color: var(--rv-color-subtle, var(--rv-color-muted)); background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--rv-color-border) 60%, transparent) 6px 7px), transparent; border-color: var(--rv-color-border); border-style: dashed; cursor: not-allowed; opacity: 1; }
-.app-shell.stitch-shell main .product-identifiers-grid label[title] { cursor: help; }
+.app-shell.stitch-shell main .product-identifiers-grid label[title] { cursor: default; }
 
 /* Unlayered: the global button and select rules sit outside the layers and would win over the ones above. */
 .app-shell.stitch-shell main .variant-option-cell > .variant-option-edit-button { width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; box-shadow: none; }
