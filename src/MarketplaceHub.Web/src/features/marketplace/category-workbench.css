@@ -462,7 +462,7 @@
 .cm-card .cm-foot > .cm-legend { display: inline-flex; flex-wrap: nowrap; gap: 14px; margin-left: 12px; padding: 0; border: 0; white-space: nowrap; }
 @media (max-width: 1100px) { .cm-card .cm-foot > .cm-legend { display: none; } }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-context { gap: 8px 20px; padding: 10px 20px; }
-.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail { padding: 12px 20px; }
+.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail { padding: 12px 20px 8px; }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail-head { margin-bottom: 8px; }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail-head h4 { font-size: 16px; }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-form { row-gap: 8px; padding-bottom: 0; border-bottom: 0; }
@@ -473,5 +473,7 @@
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-vrow.is-head { min-height: 32px; }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-vrow .vp-trigger { box-sizing: border-box; height: 36px; min-height: 0; padding-block: 0; }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > :is(.cm-vtable, .cm-legacy-card) { min-height: 132px; }
-.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-layout:has(.cm-detail > .cm-foot) { padding-bottom: 56px; }
-.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot { height: 56px; padding: 0 20px; }
+.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-layout:has(.cm-detail > .cm-foot) { padding-bottom: 52px; }
+/* Footer row: hint, legend and 34 px buttons in one 52 px band (9 px above and below). */
+.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot { height: 52px; padding: 9px 20px; }
+.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot > button { height: 34px; min-height: 0; }
