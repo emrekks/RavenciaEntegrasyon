@@ -543,18 +543,27 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var goneProfile = LiveProfile(gone);
         var partialProfile = LiveProfile(partial);
         var familySendProfile = LiveProfile(familySend);
+        // A code typed by hand that the marketplace never held (never seen, never published live): not published, not
+        // gone. A code a scan once saw there that is gone now: Bulunamadı, even with no panel publication.
+        var neverListed = NewProduct("Never listed card");
+        var neverListedVariant = NewVariant(neverListed, 0);
+        var seenGone = NewProduct("Seen then gone card");
+        var seenGoneVariant = NewVariant(seenGone, 0);
+        var seenGoneLink = Link(seenGoneVariant, MarketplaceVariantLinkHealth.NotFound);
+        seenGoneLink.LastSeenAt = fixture.Now.AddDays(-1);
 
         await using var db = fixture.CreateContext();
         await using var transaction = await db.Database.BeginTransactionAsync();
         db.Tenants.Add(tenant);
         db.PlatformConnections.Add(connection);
-        db.Products.AddRange(gone, partial, suspect, archived, familySend);
-        db.ProductVariants.AddRange([.. goneVariants, .. partialVariants, suspectVariant, archivedVariant, familySendVariant]);
+        db.Products.AddRange(gone, partial, suspect, archived, familySend, neverListed, seenGone);
+        db.ProductVariants.AddRange([.. goneVariants, .. partialVariants, suspectVariant, archivedVariant, familySendVariant, neverListedVariant, seenGoneVariant]);
         db.MarketplaceVariantLinks.AddRange(
             Link(goneVariants[0], MarketplaceVariantLinkHealth.NotFound), Link(goneVariants[1], MarketplaceVariantLinkHealth.Rejected),
             Link(partialVariants[0], null), Link(partialVariants[1], MarketplaceVariantLinkHealth.NotFound),
             Link(suspectVariant, MarketplaceVariantLinkHealth.Suspect),
-            Link(archivedVariant, MarketplaceVariantLinkHealth.NotFound));
+            Link(archivedVariant, MarketplaceVariantLinkHealth.NotFound),
+            Link(neverListedVariant, MarketplaceVariantLinkHealth.NotFound), seenGoneLink);
         db.ChannelListingProfiles.AddRange(goneProfile, partialProfile, familySendProfile);
         db.ChannelListingVariants.AddRange(
             LiveListing(goneProfile, goneVariants[0]), LiveListing(goneProfile, goneVariants[1]),
@@ -580,9 +589,16 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var familySendVariantStatus = Assert.Single((await View(familySend)).Variants.Single().PlatformStatuses!);
         Assert.True(familySendVariantStatus.IsMatched);
         Assert.False(familySendVariantStatus.IsMissing);
+        var neverListedStatus = StatusOf(await View(neverListed));
+        Assert.Equal(("UNLINKED", 0, 0), (neverListedStatus.Status, neverListedStatus.MatchedVariantCount, neverListedStatus.MissingVariantCount));
+        var neverListedVariantStatus = Assert.Single((await View(neverListed)).Variants.Single().PlatformStatuses!);
+        Assert.False(neverListedVariantStatus.IsMatched);
+        Assert.False(neverListedVariantStatus.IsMissing);
+        Assert.Equal(("NOT_FOUND", 1), (StatusOf(await View(seenGone)).Status, StatusOf(await View(seenGone)).MissingVariantCount));
 
         async Task<Guid[]> Filtered(string platform) => (await service.ListProductsAsync(tenant.Id, 50, null, null, null, platform, null, null, CancellationToken.None)).Items.Select(x => x.Id).Order().ToArray();
-        Assert.Equal([gone.Id], await Filtered("TRENDYOL:NOT_FOUND"));
+        Assert.Equal(new[] { gone.Id, seenGone.Id }.Order(), await Filtered("TRENDYOL:NOT_FOUND"));
+        Assert.Contains(neverListed.Id, await Filtered("TRENDYOL:PASSIVE"));
         Assert.Contains(partial.Id, await Filtered("TRENDYOL:PARTIAL"));
         Assert.DoesNotContain(gone.Id, await Filtered("TRENDYOL:PASSIVE"));
         Assert.DoesNotContain(partial.Id, await Filtered("TRENDYOL:ACTIVE"));

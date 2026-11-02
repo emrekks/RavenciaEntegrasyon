@@ -26,10 +26,10 @@ let client: QueryClient
 
 const card = { code: 'trendyol', name: 'Trendyol', initial: 'T', tone: 'trendyol', mode: 'PUBLISH' as const, connection: { id: 'c1', platformCode: 'TRENDYOL', displayName: 'Mağaza', externalStoreId: '930112', status: 'ACTIVE' } }
 
-async function render(props: { familyProductIds?: string[]; settling?: boolean; onDeselect?: () => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }> } = {}) {
+async function render(props: { familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }> } = {}) {
   await act(async () => {
     root.render(<QueryClientProvider client={client}><MemoryRouter>
-      <PublishPlatformCard card={card} selected={false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} categoryId="" productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onFeedback={vi.fn()} />
+      <PublishPlatformCard card={card} selected={props.selected ?? false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} categoryId="" productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onBlockedChange={props.onBlockedChange} onFeedback={vi.fn()} />
     </MemoryRouter></QueryClientProvider>)
   })
 }
@@ -88,6 +88,27 @@ describe('PublishPlatformCard first frames', () => {
     expect(container.querySelector('.publish-platform-toggle.on')).toBeNull()
     await render({ settling: false })
     expect(subtitle()).toBe('Zaten yayında · yeniden seçilemez')
+  })
+})
+
+describe('PublishPlatformCard required gaps', () => {
+  it('turns a picked card off once its gap is known and tells the page how many gaps it has', async () => {
+    const onDeselect = vi.fn()
+    const onBlockedChange = vi.fn()
+    await render({ selected: true, onDeselect, onBlockedChange, productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }] })
+    // Still reading the status: nothing is said yet.
+    expect(onDeselect).not.toHaveBeenCalled()
+    expect(onBlockedChange).not.toHaveBeenCalledWith(1)
+    await answer('p1', { actualStatus: 'UNKNOWN' })
+    expect(onDeselect).toHaveBeenCalled()
+    expect(onBlockedChange).toHaveBeenLastCalledWith(1)
+  })
+
+  it('reports no gap for a card that has none', async () => {
+    const onBlockedChange = vi.fn()
+    await render({ onBlockedChange, productChecks: [{ title: 'Temel Ürün Verileri', detail: 'Eksiksiz.', ok: true }] })
+    await answer('p1', { actualStatus: 'UNKNOWN' })
+    expect(onBlockedChange).toHaveBeenLastCalledWith(0)
   })
 })
 

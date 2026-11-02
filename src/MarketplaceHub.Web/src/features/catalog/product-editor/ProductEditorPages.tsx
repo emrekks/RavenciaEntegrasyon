@@ -779,9 +779,11 @@ function PublishPlatformCardSkeletons() {
   </article>)}</>
 }
 
-export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, categoryName = '', productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onFeedback: emitFeedback, onEditProductData }: {
+export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, categoryName = '', productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onBlockedChange, onFeedback: emitFeedback, onEditProductData }: {
   // A gap in the product's own data: back to the form (the publish popup has no form, its gap links to the product).
   onEditProductData?: () => void
+  /** The card's required gaps once known (0 when none, or while it is still reading them), so Yayınla can say why it left the card out. */
+  onBlockedChange?: (requiredGaps: number) => void
   familyProductIds?: string[] | null
   lookupKeys?: { modelCode: string; barcode: string; sku: string }
   // How many of the family's variants are present on this marketplace (matched or live), and how many it no longer knows.
@@ -995,6 +997,15 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     optionalMappingWarnings.length ? `${issueListId}-optional` : ''
   ].filter(Boolean).join(' ') || undefined
   const hasRequiredPublicationBlock = blockedIssues.length > 0 && !alreadyPublished
+  // A card with a required gap cannot be published: its toggle goes off as soon as the gap is known (a card picked
+  // before its check finished included), and the page learns the gap so Yayınla names it instead of saying nothing.
+  const requiredGaps = !settling && card.mode === 'PUBLISH' && hasRequiredPublicationBlock ? blockedIssues.length : 0
+  useEffect(() => {
+    if (requiredGaps > 0 && selected) onDeselect()
+  }, [requiredGaps, onDeselect, selected])
+  useEffect(() => {
+    onBlockedChange?.(requiredGaps)
+  }, [requiredGaps, onBlockedChange])
   // Each gap chip of the badge's popover opens its own fix: the category, the category fields window on the gap's
   // marketplace field (where the store has one), the value mappings, a new check, or the attribute mappings page; a
   // product field gap is information (the form above fixes it). The
@@ -1176,7 +1187,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', deliveryDays: '1', listPrice: '0', salePrice: '0', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
-  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
+  const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [blockedPublishCards, setBlockedPublishCards] = useState<Record<string, number>>({}); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [bulkOptionSyncOpen, setBulkOptionSyncOpen] = useState(false)
   const [marketplaceCodesOpen, setMarketplaceCodesOpen] = useState(false)
@@ -2740,8 +2751,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       if (editProductId ? productMediaChanged || mediaFiles.length > 0 : mediaUrls.length || mediaFiles.length) completed.push('görseller')
       if (removedFamilyMediaCount) completed.push(`diğer renklerden kaldırılan ${removedFamilyMediaCount} görsel`)
       if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
-      // A draft is never sent: no channel price is written for it and nothing is published.
-      const targetConnectionIds = createOnly || saveDraft ? [] : platformUpdate?.connectionIds ?? selectedChannelIds
+      // A draft is never sent: no channel price is written for it and nothing is published. A marketplace whose card
+      // shows a required gap is never sent either (its toggle goes off with the gap; this holds if one slipped through).
+      const gapCards = platformUpdate ? {} : blockedPublishCards
+      const targetConnectionIds = createOnly || saveDraft ? [] : platformUpdate?.connectionIds ?? selectedChannelIds.filter(id => !gapCards[id])
       // Only rows whose stock the user changed are sent, as absolute values against the stock loaded into the form;
       // a stock changed meanwhile (order, return, another tab) is refused for that row instead of being overwritten.
       const stockResult = await applyVariantStockSets(editorStockUpdates(rows, product.variants), update => setVariantOnHand(update, productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu'))
@@ -2890,6 +2903,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             publishRequested: !saveAndStay && !createOnly,
             publications,
             publicationErrors,
+            gapSkipped: (connections.data?.items ?? []).filter(connection => (gapCards[connection.id] ?? 0) > 0).map(connection => ({ platformName: connectionPlatformName(connection.id), requiredGaps: gapCards[connection.id] })),
             updates: platformUpdate ? updates : undefined
           })
       const message = result.lines.join(' ')
@@ -3401,6 +3415,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               variantMediaWarning={variantsWithoutMediaCount > 0 ? `${variantRows.length} varyanttan ${variantsWithoutMediaCount} tanesine görsel seçilmedi. Varyant tablosundan veya “Seçeneklere görsel ata” ile görsel atayın.` : undefined}
               onSelect={() => updateChannel(card.connection.id)}
               onDeselect={() => setSelectedChannelIds(current => current.filter(id => id !== card.connection.id))}
+              onBlockedChange={gaps => setBlockedPublishCards(current => (current[card.connection.id] ?? 0) === gaps ? current : { ...current, [card.connection.id]: gaps })}
               onFeedback={setFeedback}
               onEditProductData={publishOnly ? undefined : () => setWizardStep(1)}
             />) : <div className="publish-connections-empty"><strong>Aktif Bağlantı Bulunamadı</strong><p>Yayınlama için önce Platformlar sayfasından aktif bir bağlantı oluşturun.</p><Link to="/integrations">Platformları yönet <UiIcon name="arrowRight" /></Link></div>}

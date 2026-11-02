@@ -12,6 +12,16 @@ internal static class ProductListingHealth
     public const string NotFound = "NOT_FOUND";
 
     private static readonly HashSet<string> LiveStatuses = new(StringComparer.Ordinal) { "LIVE", "PARTIAL_LIVE", "ACTIVE", "ON_SALE" };
+    private static readonly string[] ListedProfileStatuses = ["LIVE", "PARTIAL_LIVE", "ACTIVE", "ON_SALE"];
+
+    // "Bulunamadı" is said only of a listing known to have been on the marketplace: a code a scan or lookup saw there
+    // (LastSeenAt), or a card whose publication there went live. A broken link never known there (a code typed by hand
+    // that the marketplace does not hold) is no listing at all: the card reads as not published, not as gone.
+    public static IQueryable<MarketplaceVariantLink> KnownOnMarketplace(this IQueryable<MarketplaceVariantLink> links, AppDbContext db, Guid tenantId) =>
+        links.Where(link => (link.HealthStatus != MarketplaceVariantLinkHealth.NotFound && link.HealthStatus != MarketplaceVariantLinkHealth.Rejected)
+            || link.LastSeenAt != null
+            || db.ChannelListingProfiles.Any(profile => profile.TenantId == tenantId && profile.ConnectionId == link.ConnectionId && ListedProfileStatuses.Contains(profile.ActualStatus)
+                && db.ProductVariants.Any(variant => variant.TenantId == tenantId && variant.Id == link.VariantId && variant.ProductId == profile.ProductId)));
 
     // The statuses a missing variant may replace. An in-progress send, a refusal or an archive keeps its own status:
     // the card then tells what the panel is doing, not what the last scan saw.

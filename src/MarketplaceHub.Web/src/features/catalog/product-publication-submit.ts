@@ -52,6 +52,9 @@ export type ProductSaveOutcome = {
   publications: readonly MarketplacePublishOutcome[]
   /** Marketplaces whose whole publication step failed before any card (name and message). */
   publicationErrors: readonly { platformName: string; message: string }[]
+  /** Marketplaces whose card showed a required gap: not sent, whether picked or not (live 2026-11-02: RYP006 went to
+   * Trendyol, the toast said only that, and the n11, Pazarama and PTT AVM cards beside it read "Yayın için zorunlu eksik"). */
+  gapSkipped?: readonly { platformName: string; requiredGaps: number }[]
   updates?: readonly MarketplaceUpdateOutcome[]
 }
 
@@ -142,14 +145,22 @@ export function productSaveFeedback(outcome: ProductSaveOutcome): ProductSaveFee
   } else if (outcome.publishRequested) {
     for (const publication of outcome.publications) lines.push(...marketplacePublishLines(publication))
     for (const error of outcome.publicationErrors) lines.push(`${error.platformName}: reddedildi — ${error.message}`)
+    const gapSkipped = outcome.gapSkipped ?? []
+    for (const gap of gapSkipped) lines.push(`${gap.platformName}: gönderilmedi — yayın için ${gap.requiredGaps} zorunlu eksik var; kartındaki eksikler giderilince seçilebilir.`)
     const anyQueued = outcome.publications.some(publication => publication.enqueuedCards > 0)
     const anyRefused = outcome.publicationErrors.length > 0 || outcome.publications.some(publication => publication.failures.size > 0)
     refused ||= anyRefused
     if (!outcome.publications.length && !outcome.publicationErrors.length) {
-      lines.push('Yayın için pazaryeri seçilmedi; ürün pazaryerlerine gönderilmedi.')
-      title = outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
+      if (!gapSkipped.length) lines.push('Yayın için pazaryeri seçilmedi; ürün pazaryerlerine gönderilmedi.')
+      title = gapSkipped.length ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
     } else {
-      title = anyQueued ? (anyRefused ? 'Yayın Kısmen Başlatıldı' : 'Yayın Başlatıldı') : anyRefused ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
+      // A marketplace left out for a gap keeps the title from saying the whole publication started.
+      title = anyQueued ? (anyRefused || gapSkipped.length ? 'Yayın Kısmen Başlatıldı' : 'Yayın Başlatıldı') : anyRefused ? 'Yayın Başlatılamadı' : outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'
+    }
+    // Not sent for a gap is not a refusal, but it is not a success either: the toast stays until it is read.
+    if (gapSkipped.length && !refused) {
+      if (!lines.length) lines.push('Kaydedilecek yeni değişiklik yoktu.')
+      return { title, lines, kind: 'info', persistent: true }
     }
   } else {
     title = outcome.created ? 'Ürün Oluşturuldu' : 'Ürün Kaydedildi'

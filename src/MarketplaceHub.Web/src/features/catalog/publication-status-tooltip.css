@@ -6,7 +6,7 @@
 }
 .publish-platform-fact-publication .publish-platform-status[data-tooltip] {
   position: relative;
-  cursor: help;
+  cursor: default;
 }
 .publish-platform-fact-publication .publish-platform-status[data-tooltip]::after {
   position: absolute;

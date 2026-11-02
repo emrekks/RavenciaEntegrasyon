@@ -172,7 +172,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-toast .rr-ti { display: grid; width: 34px; height: 34px; place-items: center; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 9px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-toast strong { display: block; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-toast p { color: var(--rr-muted); font-size: 13px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-tip { position: relative; display: inline-flex; cursor: help; outline: none; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-tip { position: relative; display: inline-flex; cursor: default; outline: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-pop { position: absolute; z-index: 70; top: calc(100% + 8px); left: 0; display: none; width: 260px; max-width: calc(100vw - 48px); padding: 10px 12px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); font-size: 12px; line-height: 1.5; white-space: normal; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-pop b { display: block; margin-bottom: 2px; color: var(--rr-bad); font-size: 13px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-pop.rr-neutral b { color: var(--rr-ink); }
@@ -256,7 +256,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb { position: relative; display: block; width: 40px; height: 60px; padding: 0; background: linear-gradient(135deg, #3a3a46, #24242c); border: 1px solid var(--rr-line); border-radius: 7px; cursor: zoom-in; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb.rr-lg { width: 52px; height: 78px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-thumb .rr-qb { position: absolute; right: -6px; top: -6px; min-width: 18px; height: 18px; display: grid; place-items: center; padding: 0 4px; color: #fff; background: var(--rr-primary); border: 2px solid var(--rr-surface); border-radius: 999px; font-size: 10px; font-weight: 600; line-height: 1; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-prodsum { color: var(--rr-muted); font-size: 12px; text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; overflow-wrap: anywhere; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-prodsum { color: var(--rr-muted); font-size: 12px; text-decoration: underline dotted; text-underline-offset: 3px; cursor: default; overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cargocell { display: grid; gap: 4px; justify-items: start; min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cargocell small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--rr-muted); font-size: 12px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cargocell .rr-muted { color: var(--rr-subtle); font-size: 12px; }
@@ -511,7 +511,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring svg { margin-top: 1px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring b,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ring small { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-tip .rr-ring b { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-reason-tip .rr-ring b { text-decoration: underline dotted; text-underline-offset: 3px; cursor: default; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small { line-height: 1.55; overflow-wrap: anywhere; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pline small b { font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl th .rr-hf > .rr-anchor { z-index: 70; }
