@@ -63,7 +63,7 @@ afterEach(() => cleanup())
 
 const settle = async () => { for (let index = 0; index < 6; index++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)) }) }
 const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.replace(/\s+/g, ' ').trim().startsWith(text))
-const chip = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('.mapping-conflict-options.is-choosable button:not(.mapping-conflict-apply)')].find(item => item.textContent?.startsWith(name))!
+const chip = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('.mc-choice [role="radio"]')].find(item => item.textContent?.startsWith(name))!
 const confirmButton = () => [...document.querySelectorAll<HTMLButtonElement>('.rv-confirm-dialog button')].find(item => item.textContent === 'Hepsinde Bunu Kullan')!
 const dialogText = () => document.querySelector('.rv-confirm-dialog')?.textContent ?? ''
 
@@ -72,7 +72,7 @@ async function renderPanel() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const invalidate = vi.spyOn(client, 'invalidateQueries')
   render(<QueryClientProvider client={client}><MappingConflictsPanel connectionId="pazarama" platformLabel="Pazarama" onNotice={value => notices.push(value)} expanded /></QueryClientProvider>)
-  await waitFor(() => document.querySelector('.mapping-conflict-options.is-choosable'))
+  await waitFor(() => document.querySelector('.mc-choice'))
   return { notices, invalidate }
 }
 async function chooseAndApply(name: string) {
@@ -88,16 +88,23 @@ describe('Kategoriler Arasında Farklı Değer', () => {
     expect(apply.disabled).toBe(true)
     expect(chip('Rahat').textContent).toContain('Şablon')
 
-    await act(async () => { chip('Relaxed').click() })
-    expect(chip('Relaxed').getAttribute('aria-pressed')).toBe('true')
-    expect(chip('Rahat').getAttribute('aria-pressed')).toBe('false')
-    expect(button('Hepsinde Bunu Kullan')!.disabled).toBe(false)
+    expect(apply.classList.contains('secondary')).toBe(true)
+    expect(document.querySelector('.mc-choice-preview')).toBeNull()
 
-    await act(async () => { chip('Rahat').click() })
-    expect(chip('Relaxed').getAttribute('aria-pressed')).toBe('false')
-    expect(chip('Rahat').getAttribute('aria-pressed')).toBe('true')
-    await act(async () => { chip('Rahat').click() })
-    expect(button('Hepsinde Bunu Kullan')!.disabled).toBe(true)
+    await act(async () => { chip('Relaxed').click() })
+    expect(chip('Relaxed').getAttribute('aria-checked')).toBe('true')
+    expect(chip('Relaxed').querySelector('.mc-choice-check')).not.toBeNull()
+    expect(chip('Rahat').getAttribute('aria-checked')).toBe('false')
+    expect(chip('Rahat').querySelector('.mc-choice-check')).toBeNull()
+    expect(button('Hepsinde Bunu Kullan')!.disabled).toBe(false)
+    expect(button('Hepsinde Bunu Kullan')!.classList.contains('secondary')).toBe(false)
+    expect(document.querySelector('.mc-choice-preview')?.textContent).toBe('1 kategoride Rahat → Relaxed olacak; yeni kategoriler için şablon olur.')
+
+    // arrow keys move the choice like a radio group
+    await act(async () => { chip('Relaxed').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
+    expect(chip('Relaxed').getAttribute('aria-checked')).toBe('false')
+    expect(chip('Rahat').getAttribute('aria-checked')).toBe('true')
+    expect(document.querySelector('.mc-choice-preview')?.textContent).toBe('1 kategoride Relaxed → Rahat olacak.')
   })
 
   it('previews what changes and writes nothing when the confirm is cancelled', async () => {
