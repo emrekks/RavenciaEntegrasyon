@@ -78,7 +78,7 @@ describe('Tüm Değerleri Eşle', () => {
     expect(document.querySelector('.cm-foot')?.classList.contains('is-dirty')).toBe(false)
     expect(button('Kaydet')?.disabled).toBe(true)
     expect(toast()).toContain('1 başlıkta 1 değer aynı adlı karşılığıyla eşlendi ve kaydedildi.')
-    expect(toast()).toContain('1 değerin aynı adlı n11 karşılığı yok (Beden: 26)')
+    expect(toast()).toContain('1 başlıkta 1 değerin aynı adlı n11 karşılığı yok (Beden 1).')
   })
 
   it('says 0 values were matched and why when nothing has a same-named counterpart', async () => {
@@ -87,6 +87,6 @@ describe('Tüm Değerleri Eşle', () => {
     await act(async () => { button('Tüm Değerleri Eşle')!.click() })
     await settle()
     expect(state.writes).toEqual([])
-    expect(toast()).toContain('0 değer eşlendi (değişiklik yok): 1 değerin aynı adlı n11 karşılığı yok (Beden: 26); bunları listeden elle eşleyin.')
+    expect(toast()).toContain('0 değer eşlendi (değişiklik yok): 1 başlıkta 1 değerin aynı adlı n11 karşılığı yok (Beden 1). Bunları alanlarının tablosundan elle eşleyin.')
   })
 })
