@@ -378,6 +378,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             connection.SettingsJson = JsonSerializer.Serialize(current with
             {
                 ExternalWritesEnabled = requestedExternalWrites,
+                InvoiceCreationEnabled = command.InvoiceCreationEnabled ?? current.InvoiceCreationEnabled,
                 N11ShipmentTemplate = command.N11ShipmentTemplate is null ? current.N11ShipmentTemplate : string.IsNullOrWhiteSpace(command.N11ShipmentTemplate) ? null : command.N11ShipmentTemplate.Trim(),
                 N11PreparingDay = command.N11PreparingDay ?? current.N11PreparingDay
             });

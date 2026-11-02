@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { connectionEnvironmentLabel, connectionTestFeedback, credentialRequestBody,readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
+import { connectionEnvironmentLabel, connectionTestFeedback, credentialRequestBody, invoiceCreationFeedback, readIntegrationListState, stageTestOrderAvailable, trendyolUserAgentNotice, writeIntegrationListState } from './integration-helpers'
 
 describe('integration helpers', () => {
   it('builds the credential body of each platform', () => {
@@ -56,5 +56,14 @@ describe('trendyolUserAgentNotice', () => {
     expect(passed.message).not.toMatch(/dış yazma|yetenek/iu)
     const failed = connectionTestFeedback('PTT AVM', { succeeded: false, errorCode: 'AUTH_FAILED', errorSummary: 'Kullanıcı adı veya şifre hatalı.' })
     expect(failed).toMatchObject({ kind: 'error', title: 'Bağlantı Testi Başarısız', message: 'PTT AVM mağazasına erişilemedi: Kullanıcı adı veya şifre hatalı.', context: { code: 'AUTH_FAILED' } })
+  })
+
+  it('reports the Faturalama switch as stored, never a false "kapatıldı" when turning it on did not stick', () => {
+    expect(invoiceCreationFeedback(true, true)).toEqual({ kind: 'success', message: 'Bu bağlantı için fatura oluşturma açıldı.' })
+    expect(invoiceCreationFeedback(false, false)).toMatchObject({ kind: 'success', message: expect.stringContaining('kapatıldı') })
+    const refused = invoiceCreationFeedback(true, false)
+    expect(refused.kind).toBe('error')
+    expect(refused.message).toContain('açılamadı')
+    expect(refused.message).not.toContain('kapatıldı')
   })
 })
