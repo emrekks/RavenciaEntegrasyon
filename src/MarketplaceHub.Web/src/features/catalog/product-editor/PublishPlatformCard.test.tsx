@@ -29,10 +29,10 @@ let client: QueryClient
 
 const card = { code: 'trendyol', name: 'Trendyol', initial: 'T', tone: 'trendyol', mode: 'PUBLISH' as const, connection: { id: 'c1', platformCode: 'TRENDYOL', displayName: 'Mağaza', externalStoreId: '930112', status: 'ACTIVE' } }
 
-async function render(props: { variantLinks?: { linked: number; total: number; missing?: number }; familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }>; categoryId?: string } = {}) {
+async function render(props: { onSelect?: () => void; variantLinks?: { linked: number; total: number; missing?: number }; familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }>; categoryId?: string } = {}) {
   await act(async () => {
     root.render(<QueryClientProvider client={client}><MemoryRouter>
-      <PublishPlatformCard card={card} selected={props.selected ?? false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} variantLinks={props.variantLinks} categoryId={props.categoryId ?? ''} productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onBlockedChange={props.onBlockedChange} onFeedback={vi.fn()} />
+      <PublishPlatformCard card={card} selected={props.selected ?? false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} variantLinks={props.variantLinks} categoryId={props.categoryId ?? ''} productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={props.onSelect ?? vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onBlockedChange={props.onBlockedChange} onFeedback={vi.fn()} />
     </MemoryRouter></QueryClientProvider>)
   })
 }
@@ -48,7 +48,8 @@ const subtitle = () => container.querySelector('.publish-platform-card-head smal
 const fact = () => container.querySelector('.publish-platform-fact-publication')!
 const pill = () => fact().querySelector<HTMLButtonElement>('button.publish-steps-trigger')!
 const steps = () => [...pill().querySelectorAll('.publish-step')].map(step => step.className.replace('publish-step is-', ''))
-const counts = () => [...pill().querySelectorAll('.publish-steps-share, .publish-steps-count')].map(item => item.textContent)
+// Each corner badge as "<tone> <count> @<step index>".
+const counts = () => [...pill().querySelectorAll('.publish-step')].flatMap((step, index) => [...step.querySelectorAll('.publish-step-badge')].map(badge => `${badge.className.match(/is-(red|yellow|green)/)![1]} ${badge.textContent} @${index}`))
 const popover = () => fact().querySelector<HTMLElement>('.publish-issue-tooltip')!
 const ok = [{ title: 'Temel Ürün Verileri', detail: 'Eksiksiz.', ok: true }]
 const gap = [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }]
@@ -168,7 +169,7 @@ describe('PublishPlatformCard status steps', () => {
     await answer('p1', { actualStatus: 'LIVE' })
     await answer('p2', { actualStatus: 'UNKNOWN' })
     expect(steps()).toEqual(['done', 'next', 'idle', 'half'])
-    expect(counts()).toEqual(['1/2'])
+    expect(counts()).toEqual(['green 1 @3'])
     expect(pill().querySelector<HTMLElement>('.publish-steps')?.style.getPropertyValue('--publish-step-share')).toBe('50')
     expect(pill().getAttribute('aria-label')).toBe('Trendyol: Kısmen Yayında, 1/2 renk yayında')
     expect(popover().querySelector('.publish-issue-lead')?.textContent).toBe('1/2 renk yayındaKalan 1 renk yayına hazır')
@@ -179,7 +180,7 @@ describe('PublishPlatformCard status steps', () => {
     await answer('p1', { actualStatus: 'LIVE' })
     await answer('p2', { actualStatus: 'UNKNOWN' })
     expect(steps()).toEqual(['fail', 'idle', 'idle', 'half'])
-    expect(counts()).toEqual(['1/2', '1 eksik'])
+    expect(counts()).toEqual(['red 1 @0', 'green 1 @3'])
     expect(pill().getAttribute('aria-label')).toBe('Trendyol: Kısmen Yayında, 1/2 renk yayında; 1 zorunlu eksik')
     await act(async () => { pill().click() })
     expect(pill().getAttribute('aria-expanded')).toBe('true')
@@ -193,18 +194,27 @@ describe('PublishPlatformCard status steps', () => {
     await answer('p1', { actualStatus: 'UNKNOWN' })
     await answer('p2', { actualStatus: 'UNKNOWN' })
     expect(steps()).toEqual(['fail', 'idle', 'idle', 'idle'])
-    expect(counts()).toEqual(['1 eksik'])
+    expect(counts()).toEqual(['red 1 @0'])
+    // The count is on the icon, not a chip beside the steps.
+    expect(pill().querySelector('.publish-steps-counts')).toBeNull()
   })
 
-  it('puts Durumu Yenile and İş Ayrıntısı at the foot of the popover of a card awaiting approval', async () => {
-    await render({ productChecks: ok })
+  it('puts the refresh icon in the header beside the toggle and İş Ayrıntısı in the popover of a card awaiting approval', async () => {
+    const onSelect = vi.fn()
+    await render({ productChecks: ok, onSelect })
     await answer('p1', { actualStatus: 'APPROVAL_PENDING', profileId: 'pr1', lastJobId: 'j1', lastJobStatus: 'SUCCEEDED' })
     expect(steps()).toEqual(['done', 'done', 'now', 'idle'])
-    const actions = [...popover().querySelectorAll<HTMLButtonElement>('.publish-issue-actions > button')]
-    expect(actions.map(action => action.textContent)).toEqual(['Durumu Yenile', 'İş Ayrıntısı'])
-    expect(actions[0].getAttribute('aria-label')).toBe('Trendyol yayın durumunu güncelle')
-    await act(async () => { actions[0].click(); await new Promise(resolve => setTimeout(resolve, 10)) })
+    expect([...popover().querySelectorAll('.publish-issue-actions > button')].map(action => action.textContent)).toEqual(['İş Ayrıntısı'])
+    const head = container.querySelector<HTMLButtonElement>('button.publish-platform-card-head')!
+    const refresh = container.querySelector<HTMLButtonElement>('.publish-platform-card-top > button.publish-platform-card-refresh')!
+    // A sibling of the selection button, never inside it.
+    expect(head.contains(refresh)).toBe(false)
+    expect(head.querySelector('button')).toBeNull()
+    expect(refresh.getAttribute('aria-label')).toBe('Trendyol yayın durumunu yenile')
+    expect(refresh.title).toBe('Platformdaki mevcut durumu yeniden sorgula')
+    await act(async () => { refresh.click(); await new Promise(resolve => setTimeout(resolve, 10)) })
     expect(apiState.calls).toContain('/products/p1/publication-status/c1/refresh')
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('marks the step a failed job stopped at and moves its reason into the popover', async () => {
@@ -227,7 +237,7 @@ describe('PublishPlatformCard status steps', () => {
     await render({ productChecks: ok, variantLinks: { linked: 0, total: 2, missing: 2 } })
     await answer('p1', { actualStatus: 'LIVE', profileId: 'pr1' })
     expect(steps()).toEqual(['done', 'done', 'done', 'fail'])
-    expect(counts()).toEqual(['2 yok'])
+    expect(counts()).toEqual(['red 2 @3'])
   })
 })
 
