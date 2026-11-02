@@ -1149,6 +1149,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         await db.LegalEntityProfiles.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ReturnClaims.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformCredentials.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.PlatformCapabilities.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ShipmentPackages.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
