@@ -17,6 +17,9 @@ public sealed class HepsiburadaOptions
     // Hepsiburada's catalog guide says production endpoints are the SIT endpoint
     // with "-sit" removed. Deployments can override this for assigned hosts.
     public Uri? ProductionCatalogBaseAddress { get; init; } = new("https://mpop.hepsiburada.com/product/");
+    // Muhasebe (finance) services; production is the SIT host without "-sit", as the finance guide says.
+    public Uri StageFinanceBaseAddress { get; init; } = new("https://mpfinance-external-sit.hepsiburada.com/");
+    public Uri ProductionFinanceBaseAddress { get; init; } = new("https://mpfinance-external.hepsiburada.com/");
     public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(30);
     public int PageSize { get; init; } = 10;
 }

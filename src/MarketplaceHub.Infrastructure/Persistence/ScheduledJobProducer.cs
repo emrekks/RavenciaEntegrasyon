@@ -830,16 +830,18 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     internal static bool SupportsShopifyPolicy(string resourceType) =>
         IsShopifyReadPolicy(resourceType) || IsStockReconcilePolicy(resourceType) || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
-    internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "RETURN_LIFECYCLE" or "REFERENCE_DATA" or "QUESTIONS" or ListingVerificationPolicy.ResourceType
+    // FINANCE reads the accounting records (muhasebe, mpfinance-external) of production stores, read only.
+    internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "RETURN_LIFECYCLE" or "REFERENCE_DATA" or "QUESTIONS" or "FINANCE" or ListingVerificationPolicy.ResourceType
         || IsStockReconcilePolicy(resourceType)
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
     // n11 flows join as their integration phases go live. Stock reconciliation carries
     // sales from other channels and panel edits to n11; it only writes while the
     // connection's external writes and its STOCK_WRITE policy are enabled.
+    // FINANCE reads the settlements (hakediş) through the SOAP SettlementService, read only (production stores).
     // RETURNS reads claims through the SOAP ReturnService; RETURN_WRITE sends approvals only.
     internal static bool SupportsN11ScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "REFERENCE_DATA"
-            or "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM" or "ORDER_RECONCILE_DAILY" or "RETURNS" or "QUESTIONS"
+            or "ORDER_RECONCILE_SHORT" or "ORDER_RECONCILE_MEDIUM" or "ORDER_RECONCILE_DAILY" or "RETURNS" or "QUESTIONS" or "FINANCE"
             or "STOCK_RECONCILE_SHORT" or "STOCK_RECONCILE_MEDIUM" or "STOCK_RECONCILE_DAILY" or ListingVerificationPolicy.ResourceType
         || resourceType is MarketplaceExternalWritePolicies.Price or MarketplaceExternalWritePolicies.Stock or MarketplaceExternalWritePolicies.Shipment or MarketplaceExternalWritePolicies.Return;
 
@@ -913,6 +915,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         "FINANCE" when platformCode == "TRENDYOL" => (MarketplaceJobTypes.TrendyolFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         ListingVerificationPolicy.ResourceType => (MarketplaceJobTypes.ListingVerify, $"scheduled:listing-verify:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "FINANCE" when platformCode == "PAZARAMA" => (MarketplaceJobTypes.PazaramaFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
+        "FINANCE" when platformCode == "N11" => (MarketplaceJobTypes.N11SettlementSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
+        "FINANCE" when platformCode == "HEPSIBURADA" => (MarketplaceJobTypes.HepsiburadaFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         _ => null
     };
 

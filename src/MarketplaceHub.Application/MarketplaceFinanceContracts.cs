@@ -48,3 +48,37 @@ public interface ITrendyolFinancePort
     Task<AdapterResult<RemotePayoutOrderPage>> GetPayoutOrdersAsync(AdapterContext context, int page, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteCargoInvoicePage>> GetCargoInvoiceItemsAsync(AdapterContext context, string invoiceSerialNumber, int page, CancellationToken cancellationToken);
 }
+
+// n11's settlement days (GetSettlementList) and a day's order item lines (GetSettlementDetail), as sent. Days are
+// Turkey's calendar days. Status: n11's own word for the day (its values are not documented), also on each day's lines.
+public sealed record RemoteSettlementDay(DateOnly? SettlementDate, DateOnly? RemittanceDate, string? Status, decimal PaymentAmount, decimal DeductionAmount, decimal SettlementAmount);
+
+public sealed record RemoteSettlementDayPage(IReadOnlyList<RemoteSettlementDay> Items, int Page, int PageCount);
+
+// One order item's settlement on a day. Fees hold their VAT; Discount: the seller's discount and coupon. SettlementAmount:
+// what the seller is paid for the line (n11's own figure).
+public sealed record RemoteSettlementItem(string OrderItemId, string? OrderNumber, decimal Commission, decimal ServiceFee, decimal AdFee, decimal CargoPrice, decimal Discount,
+    decimal DeductionAmount, decimal PaymentAmount, decimal SettlementAmount, DateTimeOffset? CompletedAt, DateOnly? SettlementDate, DateOnly? RemittanceDate, DateOnly? PaymentDate, string RawJson);
+
+public sealed record RemoteSettlementItemPage(IReadOnlyList<RemoteSettlementItem> Items, int Page, int PageCount, string? Status);
+
+// n11's SOAP SettlementService, read only.
+public interface IN11SettlementPort
+{
+    Task<AdapterResult<RemoteSettlementDayPage>> GetSettlementDaysAsync(AdapterContext context, DateOnly start, DateOnly end, int page, CancellationToken cancellationToken);
+    Task<AdapterResult<RemoteSettlementItemPage>> GetSettlementItemsAsync(AdapterContext context, DateOnly day, int page, CancellationToken cancellationToken);
+}
+
+// One Hepsiburada accounting record (Kayıt Bazlı Muhasebe), as sent: Status Paid or WillBePaid; Amount and NetAmount
+// as sent (their sign is not documented: IsIncome says whether the record pays the seller or charges them).
+public sealed record RemoteFinanceRecord(string Id, string? TransactionType, string? Category, string? Status, string? OrderNumber, string? PackageNumber, string? InvoiceNumber,
+    string? Sku, decimal? Amount, decimal? NetAmount, string? Currency, bool? IsIncome, DateTimeOffset? OrderDate, DateTimeOffset? InvoiceDate, DateTimeOffset? DueDate,
+    DateTimeOffset? PaymentDate, string RawJson);
+
+public sealed record RemoteFinanceRecordPage(IReadOnlyList<RemoteFinanceRecord> Items, int Count);
+
+// Hepsiburada's accounting service, read only: the records of a status by their due day or their payment day.
+public interface IHepsiburadaFinancePort
+{
+    Task<AdapterResult<RemoteFinanceRecordPage>> GetFinanceRecordsAsync(AdapterContext context, string status, bool byDueDate, DateTimeOffset start, DateTimeOffset end, int offset, CancellationToken cancellationToken);
+}

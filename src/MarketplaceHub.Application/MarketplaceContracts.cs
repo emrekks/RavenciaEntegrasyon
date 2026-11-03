@@ -23,6 +23,8 @@ public static class MarketplaceJobTypes
     public const string TrendyolFinanceSync = "TRENDYOL_FINANCE_SYNC";
     // Pazarama's money movements of each recent order (order/paymentAgreement), for its commission in the reports.
     public const string PazaramaFinanceSync = "PAZARAMA_FINANCE_SYNC";
+    public const string N11SettlementSync = "N11_SETTLEMENT_SYNC";
+    public const string HepsiburadaFinanceSync = "HEPSIBURADA_FINANCE_SYNC";
     public const string OrderReconciliation = "ORDER_RECONCILIATION";
     public const string OrderInvoiceReconciliation = "ORDER_INVOICE_RECONCILIATION";
     public const string ProductSync = "PRODUCT_SYNC";
@@ -103,7 +105,7 @@ public static class MarketplaceJobTypes
         ReturnSync, HepsiburadaReturnSync, ReturnStatusSync, ReturnReconciliation, ReturnAction,
         StockReconciliation,
         WebhookIngest, ShopifyWebhookIngest, HepsiburadaWebhookIngest,
-        QuestionSync, CatalogStructureImport, TrendyolFinanceSync, PazaramaFinanceSync,
+        QuestionSync, CatalogStructureImport, TrendyolFinanceSync, PazaramaFinanceSync, N11SettlementSync, HepsiburadaFinanceSync,
         ListingVerify, ListingLookup, ConnectionFullReset
     ];
 
