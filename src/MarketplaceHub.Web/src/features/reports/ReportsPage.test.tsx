@@ -81,11 +81,28 @@ const withFinance: ReportSales = {
 
 const requests = vi.hoisted(() => [] as string[])
 const fixture = vi.hoisted(() => ({ current: null as ReportSales | null }))
+const payouts = {
+  today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0,
+  next: { key: 'next:2026-11-05', kind: 'DUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
+  lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' },
+  regions: [{ region: 'TR_GULF', expected: 780, records: 2, nextDay: '2026-11-05', nextAmount: 780, unknown: 240 }, { region: 'EUROPE', expected: 400, records: 1, nextDay: '2026-11-12', nextAmount: 400, unknown: 0 }],
+  upcoming: [
+    { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'DUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
+    { key: 'due:store-1:2026-11-12:EUROPE', kind: 'DUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED' }
+  ],
+  past: [{ key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' }],
+  coverage: [{ connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', state: 'READ', lastSyncedAt: '2026-11-04T09:00:00Z' }, { connectionId: 'store-2', platformCode: 'PTTAVM', storeName: 'PTT', state: 'NOT_SUPPORTED', lastSyncedAt: null }]
+}
+const payoutLines = { items: [{ externalId: '725041340', connectionId: 'store-1', platformCode: 'TRENDYOL', transactionType: 'Satış', category: 'SALE', transactionDate: '2026-10-20T10:00:00Z', dueDay: '2026-11-05',
+  orderNumber: '10234', invoiceNumber: 'DCF2026000123', country: 'Türkiye', region: 'TR_GULF', gross: 1000, commission: 200, net: 800, status: 'EXPECTED', paymentOrderId: null }], totalCount: 1, page: 0, pageSize: 100, net: 800 }
+
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string) => {
     requests.push(path)
     if (path.startsWith('/reports/sales?')) return fixture.current
     if (path.startsWith('/reports/stock?')) return inventory
+    if (path.startsWith('/reports/payouts/lines?')) return payoutLines
+    if (path.startsWith('/reports/payouts?')) return payouts
     throw new Error(`Test API fixture does not handle ${path}`)
   })
 }))
@@ -472,6 +489,37 @@ describe('ReportsPage', () => {
     await act(async () => { [...page.querySelectorAll<HTMLButtonElement>('.reports-card-metrics.is-ops button')].find(button => button.textContent?.includes('Stok Riski'))!.click() })
     expect(selectedTab(page)).toContain('Operasyon')
     expect(body(page)).toContain('En Çok Satanların Stoğu')
+  })
+
+  it('opens the payouts tab: estimated figures, the regions, the upcoming and past payments and a payment\'s records', async () => {
+    const page = await open('?view=payouts')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(selectedTab(page)).toContain('Hakediş')
+    expect(requests).toContain('/reports/payouts?')
+    const figures = texts(page, '.reports-kpis > div')
+    expect(figures[0]).toContain('Beklenen Hakediş₺1.180')
+    expect(figures[0]).toContain('Tahmini')
+    expect(figures[3]).toContain('Durumu Bilinmeyen₺240')
+    expect(texts(page, '.reports-payout-region')[0]).toContain('Türkiye, Körfez₺780')
+    const rows = texts(page, '.reports-payout-row')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toContain('Sıradaki Vade')
+    expect(rows[0]).toContain('Tahmini Hesaplanmıştır')
+    expect(rows[1]).toContain('Avrupa')
+    // A region narrows the payments to it.
+    await act(async () => { (page.querySelectorAll('.reports-payout-region')[1] as HTMLButtonElement).click() })
+    expect(texts(page, '.reports-payout-row')).toHaveLength(1)
+    await act(async () => { (page.querySelectorAll('.reports-payout-region')[1] as HTMLButtonElement).click() })
+    // A payment opens its records.
+    await act(async () => { (page.querySelector('.reports-payout-row') as HTMLButtonElement).click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(requests).toContain('/reports/payouts/lines?connectionId=store-1&day=2026-11-05&region=TR_GULF')
+    expect(page.querySelector('.reports-payout-lines')?.textContent).toContain('10234')
+    // The past payments show the marketplace's payout.
+    await act(async () => { ([...page.querySelectorAll('.reports-payout-list [role="tab"]')].find(tab => tab.textContent?.includes('Geçmiş')) as HTMLElement).click() })
+    expect(texts(page, '.reports-payout-row')[0]).toContain('Ödeme Günü')
+    expect(texts(page, '.reports-payout-row')[0]).toContain('Ödendi')
+    expect(page.querySelector('.reports-payout-coverage')?.textContent).toContain('Henüz okunmayanlar: PTT AVM')
   })
 
   it('opens the stock tab with its capital, value, breakdowns and dead stock, asking for the picked platforms', async () => {

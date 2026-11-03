@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
 import { Busy, CardBackgroundIcon, ErrorBox, Modal, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
+import { formatIstanbul } from '../../shared/format-date'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
 import { startViewTransitionSafely } from '../../shared/view-transition'
@@ -14,6 +15,7 @@ import {
 } from './report-format'
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
+import { payoutGap, payoutLinesQuery, payoutsQuery, regionLabels, statusLabels, type PayoutGroup, type PayoutLines, type PayoutRegion, type Payouts } from './payouts'
 import { Columns, CountUp, Donut, Progress, StackedBar, useReveal, type ColumnPoint, type Part } from './report-visuals'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
@@ -22,8 +24,8 @@ import './reports.css'
 // The report as tabs: an overview, then one tab per area with its own breakdown (Ürünler and Operasyon have sub-tabs),
 // A card's "Tümünü Gör" moves to its area's tab (?view=…&sub=…); an older ?detail=… link
 // lands on the same tab.
-type ViewKey = 'overview' | 'geo' | 'products' | 'stock' | 'profit' | 'orders' | 'ops' | 'customers'
-const viewKeys: ViewKey[] = ['overview', 'profit', 'orders', 'products', 'stock', 'ops', 'customers', 'geo']
+type ViewKey = 'overview' | 'geo' | 'products' | 'stock' | 'profit' | 'payouts' | 'orders' | 'ops' | 'customers'
+const viewKeys: ViewKey[] = ['overview', 'profit', 'payouts', 'orders', 'products', 'stock', 'ops', 'customers', 'geo']
 type ProductSub = 'products' | 'brands'
 type OpsSub = 'returns' | 'cancellations' | 'cargo' | 'invoices' | 'stock'
 type DetailKey = 'platforms' | 'cities' | 'products' | 'brands' | 'returns' | 'cancellations' | 'cargo' | 'time' | 'customers' | 'stock' | 'cost' | 'invoices'
@@ -157,6 +159,7 @@ export function ReportsPage() {
             : view === 'geo' ? <Geography data={data} />
             : view === 'products' ? <ProductsView data={data} sub={sub === 'brands' ? 'brands' : 'products'} onSub={next => go('products', next)} />
             : view === 'profit' ? <ProfitView data={data} />
+            : view === 'payouts' ? <PayoutsReport platforms={platforms} />
             : view === 'orders' ? <OrderProfitability from={range.from} to={range.to} platforms={platforms} />
             : view === 'stock' ? <StockReport from={range.from} to={range.to} platforms={platforms} />
             : view === 'ops' ? <OperationsView data={data} sub={isOpsSub(sub) ? sub : 'returns'} onSub={next => go('ops', next)} />
@@ -178,6 +181,7 @@ function reportTabs(data: ReportSales): ReportTab[] {
   return [
     { value: 'overview', label: 'Genel Bakış', icon: 'dashboard' },
     { value: 'profit', label: 'Kârlılık', icon: 'trend', count: formatPercent(margin), warn: margin !== null && margin < 0 },
+    { value: 'payouts', label: 'Hakediş', icon: 'wallet' },
     { value: 'orders', label: 'Sipariş Kârlılığı', icon: 'orders' },
     { value: 'products', label: 'Ürünler', icon: 'products' },
     { value: 'stock', label: 'Stok', icon: 'stock' },
@@ -1779,4 +1783,121 @@ function stockItemColumns(deadDays: number): Column<ReportStockItem>[] {
     { key: 'recent', header: `Son ${deadDays} Gün`, numeric: true, value: row => row.recentSoldUnits, render: row => formatNumber(row.recentSoldUnits) },
     { key: 'cover', header: 'Stok Gün', numeric: true, value: row => row.coverDays, render: row => coverText(row.coverDays) }
   ]
+}
+
+// Hakediş: what the marketplaces will pay, by region and due day, and what they paid; every figure from the stores'
+// accounting records as read, an estimate until it matches the marketplace's own screen.
+function PayoutsReport({ platforms }: { platforms: string[] | null }) {
+  const query = payoutsQuery(platforms)
+  const result = useQuery({ queryKey: ['reports-payouts', query], queryFn: () => hubApi<Payouts>(`/reports/payouts?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
+  const [region, setRegion] = useState<PayoutRegion | null>(null)
+  const [search, setSearch] = useState('')
+  const [applied, setApplied] = useState('')
+  const [open, setOpen] = useState<string | null>(null)
+  const data = result.data
+  if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
+  if (!data) return <Busy text="Hakediş hazırlanıyor…" />
+  const read = data.coverage.filter(store => store.state === 'READ')
+  const day = (value: string) => formatIstanbul(`${value}T12:00:00Z`, { day: '2-digit', month: 'long', year: 'numeric' })
+  const items: Kpi[] = [
+    { key: 'expected', label: 'Beklenen Hakediş', value: data.expected, format: formatTl, note: 'Tahmini',
+      tip: `Teslim edilmiş, ödemesi henüz yapılmamış siparişlerin net hakedişi (komisyon düşülmüş) ve bekleyen kesintiler.\n${formatCount(data.expectedRecords)} kayıt; vadesi bugün ve sonrası. Pazaryeri ekranıyla eşleşene kadar tahmindir; erken ödeme ve henüz kesilmemiş faturalar dahil değildir.` },
+    { key: 'next', label: 'Sıradaki Ödeme', value: data.next?.amount ?? null, format: formatTl, empty: 'Yok', note: data.next ? day(data.next.day) : undefined,
+      tip: 'Vadesi en yakın günün tahmini hakedişi.\nPazaryeri vadesi gelenleri kendi ödeme gününde toplar; ödeme günü vade gününden birkaç gün sonra olabilir.' },
+    { key: 'last', label: 'Son Ödeme', value: data.lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', note: data.lastPaid ? day(data.lastPaid.day) : undefined,
+      tip: 'Pazaryerinin yaptığı son ödeme, kendi bildirdiği tutarla.' },
+    { key: 'unknown', label: 'Durumu Bilinmeyen', value: data.unknown, format: formatTl, tone: data.unknownRecords > 0 ? 'warn' : undefined,
+      tip: `Son ${data.daysBack} günde vadesi geçmiş ama bir ödemeye bağlandığı henüz görülmemiş kayıtlar.\n${formatCount(data.unknownRecords)} kayıt. Ödenmedi demek değildir: ödeme kaydı bir gün sonra okunur, kesintiler sonraki ödemeden düşülür.` },
+    { key: 'early', label: 'Alınan Erken Ödeme', value: data.earlyPaymentsTaken, format: formatTl,
+      tip: `Son ${data.daysBack} günde pazaryerinden erken çekilen hakediş.\n${formatCount(data.earlyPayments)} kayıt. Erken alınabilir tutar pazaryeri API'sinde yok; o tutar yalnız pazaryeri panelinde görünür.` }
+  ]
+  const groups = (tab === 'upcoming' ? data.upcoming : data.past).filter(group => region === null || group.region === region)
+  return <div className="reports-summary reports-payouts">
+    <KpiStrip label="Hakediş özeti" items={items} />
+    <div className="reports-payout-layout">
+      <Panel title="Bölge Detayları" description="Trendyol vitrinleri ödeme bölgesine göre: Türkiye ve Körfez ülkeleri, Avrupa, Azerbaycan. Bir bölgeye tıklayınca ödemeler o bölgeye süzülür." className="reports-payout-regions">
+        <ul>{data.regions.map(item => <li key={item.region}>
+          <button type="button" className="reports-payout-region" aria-pressed={region === item.region} onClick={() => setRegion(region === item.region ? null : item.region)}>
+            <span className="reports-payout-region-name">{regionLabels[item.region]}</span>
+            <strong>{formatTl(item.expected)}</strong>
+            <small>{item.nextDay ? `Sıradaki: ${day(item.nextDay)} · ${formatTl(item.nextAmount)}` : 'Bekleyen ödeme yok'}{item.unknown !== 0 ? ` · Bilinmeyen ${formatTl(item.unknown)}` : ''}</small>
+          </button>
+        </li>)}</ul>
+      </Panel>
+      <Panel title="Ödeme Özeti" className="reports-payout-list"
+        actions={<form className="reports-order-search" onSubmit={event => { event.preventDefault(); setApplied(search) }}>
+          <input type="search" value={search} onChange={event => { setSearch(event.target.value); if (!event.target.value.trim()) setApplied('') }} placeholder="Sipariş / Fatura No İle Ara" aria-label="Sipariş veya fatura numarasıyla ara" />
+          <button type="submit" className="secondary">Ara</button>
+        </form>}>
+        {applied.trim() ? <PayoutLinesTable platforms={platforms} search={applied} />
+          : <>
+            <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
+              items={[{ value: 'upcoming', label: 'Gelecek Ödemeler', icon: 'calendarClock' }, { value: 'past', label: 'Geçmiş Ödemeler', icon: 'circleCheck' }]} />
+            {region && <p className="reports-payout-filter">{regionLabels[region]} gösteriliyor. <button type="button" className="link" onClick={() => setRegion(null)}>Tümünü göster</button></p>}
+            {groups.length === 0 ? <p className="reports-empty">{tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data.daysBack} günde okunmuş ödeme yok.`}</p>
+              : <ul className="reports-payout-rows">{groups.map((group, index) => {
+                const gap = payoutGap(group)
+                const expanded = open === group.key
+                return <li key={group.key} className={expanded ? 'is-open' : undefined}>
+                  <button type="button" className="reports-payout-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : group.key)}>
+                    <span className="reports-payout-amount"><strong>{formatTl(group.amount)}</strong>
+                      <small className={tab === 'upcoming' && index === 0 ? 'is-next' : undefined}>
+                        {tab === 'upcoming' ? `${index === 0 ? 'Sıradaki Vade' : 'Vade'}: ${day(group.day)}` : `Ödeme Günü: ${day(group.day)}`}
+                      </small></span>
+                    <span className="reports-payout-store"><PlatformSquareMark code={group.platformCode} name={platformName(group.platformCode)} />{group.storeName}</span>
+                    <em className="reports-payout-badge is-region">{group.regionName && group.region === 'UNKNOWN' ? group.regionName : regionLabels[group.region]}</em>
+                    <em className={`reports-payout-badge is-${group.status.toLowerCase()}`}>{group.status === 'EXPECTED' ? 'Tahmini Hesaplanmıştır' : statusLabels[group.status]}</em>
+                    <UiIcon name="chevronDown" size={16} />
+                  </button>
+                  {expanded && <div className="reports-payout-detail">
+                    {gap !== null && <p className="reports-payout-gap" role="note">Okunan kayıtların toplamı {formatTl(group.linesAmount)}; ödeme tutarından {formatTl(gap)} farklı (kesinti ya da henüz okunmamış kayıt).</p>}
+                    {group.kind === 'PAYOUT' && group.linesAmount === null && <p className="reports-payout-gap" role="note">Bu ödemenin kayıtları ödemeden bir gün sonra okunur; henüz okunmadı.</p>}
+                    <PayoutLinesTable platforms={platforms} group={group} />
+                  </div>}
+                </li>
+              })}</ul>}
+          </>}
+      </Panel>
+    </div>
+    <p className="reports-payout-coverage" role="note">
+      {read.length > 0 ? `Okunan mağazalar: ${read.map(store => `${platformName(store.platformCode)} · ${store.storeName}${store.lastSyncedAt ? ` (${formatIstanbul(store.lastSyncedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}`).join(', ')}. ` : 'Henüz hiçbir mağazanın hakediş kaydı okunmadı. '}
+      {data.coverage.some(store => store.state === 'NOT_SUPPORTED') && `Henüz okunmayanlar: ${[...new Set(data.coverage.filter(store => store.state === 'NOT_SUPPORTED').map(store => platformName(store.platformCode)))].join(', ')}. `}
+      Tutarlar tahminidir; kesin tutar pazaryeri panelindedir.
+    </p>
+  </div>
+}
+
+// The records of a payout group or of a search, a hundred at a time.
+function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | null; group?: PayoutGroup; search?: string }) {
+  const [page, setPage] = useState(0)
+  const query = payoutLinesQuery({ platforms, group, search, page })
+  const result = useQuery({ queryKey: ['reports-payout-lines', query], queryFn: () => hubApi<PayoutLines>(`/reports/payouts/lines?${query}`), staleTime: 60_000, placeholderData: previous => previous })
+  const data = result.data
+  if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
+  if (!data) return <Busy />
+  if (data.items.length === 0) return <p className="reports-empty">{search ? 'Bu numarayla kayıt bulunamadı.' : 'Kayıt yok.'}</p>
+  const pages = Math.max(1, Math.ceil(data.totalCount / data.pageSize))
+  return <>
+    <div className="reports-table-wrap"><table className="reports-table reports-payout-lines">
+      <thead><tr><th scope="col">İşlem</th><th scope="col">Sipariş / Fatura</th><th scope="col">İşlem Tarihi</th><th scope="col">Vade</th><th scope="col">Bölge</th><th scope="col" className="is-num">Tutar</th><th scope="col" className="is-num">Komisyon</th><th scope="col" className="is-num">Hakediş</th><th scope="col">Durum</th></tr></thead>
+      <tbody>{data.items.map(line => <tr key={`${line.connectionId}:${line.externalId}`}>
+        <th scope="row">{line.transactionType ?? line.category}</th>
+        <td>{line.orderNumber ?? line.invoiceNumber ?? line.externalId}</td>
+        <td>{formatIstanbul(line.transactionDate, { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+        <td>{line.dueDay ? formatIstanbul(`${line.dueDay}T12:00:00Z`, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
+        <td>{line.country ?? regionLabels[line.region]}</td>
+        <td className="is-num">{formatTl(line.gross)}</td>
+        <td className="is-num">{line.commission === null ? '—' : formatTl(line.commission)}</td>
+        <td className={`is-num ${line.net < 0 ? 'is-loss' : ''}`}>{formatTl(line.net)}</td>
+        <td><em className={`reports-payout-badge is-${line.status.toLowerCase()}`}>{statusLabels[line.status]}</em></td>
+      </tr>)}</tbody>
+      <tfoot><tr><th scope="row" colSpan={7}>{formatCount(data.totalCount)} kayıt</th><td className="is-num">{formatTl(data.net)}</td><td /></tr></tfoot>
+    </table></div>
+    {pages > 1 && <div className="reports-order-pager">
+      <button type="button" className="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>Önceki</button>
+      <span>Sayfa {page + 1} / {pages}</span>
+      <button type="button" className="secondary" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>Sonraki</button>
+    </div>}
+  </>
 }

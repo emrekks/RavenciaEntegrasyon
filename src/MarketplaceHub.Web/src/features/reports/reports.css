@@ -771,3 +771,43 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .reports-page .reports-skeleton { animation: none; }
 }
+
+/* Hakediş: regions beside the payment list, the list as expandable rows (Trendyol's Ödeme Özeti layout). */
+.app-shell.stitch-shell main .reports-page .reports-payout-layout { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.app-shell.stitch-shell main .reports-page .reports-payout-regions ul,
+.app-shell.stitch-shell main .reports-page .reports-payout-rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.app-shell.stitch-shell main .reports-page .reports-payout-region { display: grid; gap: 2px; width: 100%; min-height: 0; padding: 12px 14px; color: var(--rv-color-ink); text-align: left; text-transform: none; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-payout-region[aria-pressed="true"] { border-color: var(--rv-color-primary); background: var(--rv-color-primary-soft); }
+.app-shell.stitch-shell main .reports-page .reports-payout-region-name { color: var(--rv-color-muted); font-size: 12px; font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-payout-regions strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-payout-regions small { color: var(--rv-color-subtle); font-size: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-payout-rows > li { border: 1px solid var(--rv-color-border); border-radius: 12px; background: var(--rv-color-surface); }
+.app-shell.stitch-shell main .reports-page .reports-payout-row { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(0, 1fr) auto auto 16px; gap: 12px; align-items: center; width: 100%; min-height: 0; padding: 12px 14px; color: var(--rv-color-ink); text-align: left; text-transform: none; background: transparent; border: 0; border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-payout-row > svg { transition: transform 160ms ease; color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .reports-page .reports-payout-rows > li.is-open .reports-payout-row > svg { transform: rotate(180deg); }
+.app-shell.stitch-shell main .reports-page .reports-payout-amount { display: grid; gap: 2px; }
+.app-shell.stitch-shell main .reports-page .reports-payout-amount strong { font-size: 17px; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .reports-page .reports-payout-amount small { color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-payout-amount small.is-next { color: var(--rv-color-primary); font-weight: 600; }
+.app-shell.stitch-shell main .reports-page .reports-payout-store { display: inline-flex; gap: 8px; align-items: center; min-width: 0; overflow: hidden; color: var(--rv-color-muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-payout-badge { padding: 3px 8px; border-radius: 7px; font-size: 12px; font-style: normal; font-weight: 600; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-payout-badge.is-region { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
+.app-shell.stitch-shell main .reports-page .reports-payout-badge.is-expected { color: var(--rv-color-ink); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .reports-page .reports-payout-badge.is-paid { color: var(--rv-color-success); background: var(--rv-color-surface-soft); }
+.app-shell.stitch-shell main .reports-page .reports-payout-badge.is-unknown { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+.app-shell.stitch-shell main .reports-page .reports-payout-detail { display: grid; gap: 10px; padding: 0 14px 14px; }
+.app-shell.stitch-shell main .reports-page .reports-payout-gap,
+.app-shell.stitch-shell main .reports-page .reports-payout-filter,
+.app-shell.stitch-shell main .reports-page .reports-payout-coverage { margin: 0; color: var(--rv-color-muted); font-size: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-payout-filter { margin-bottom: 8px; }
+.app-shell.stitch-shell main .reports-page .reports-payout-filter button { min-height: 0; padding: 0; color: var(--rv-color-primary); background: none; border: 0; font-size: 12px; text-transform: none; }
+.app-shell.stitch-shell main .reports-page .reports-payout-list .reports-subtabs { margin-bottom: 10px; }
+@media (max-width: 1024px) {
+  .app-shell.stitch-shell main .reports-page .reports-payout-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .app-shell.stitch-shell main .reports-page .reports-payout-row { grid-template-columns: minmax(0, 1fr) 16px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-row > .reports-payout-store,
+  .app-shell.stitch-shell main .reports-page .reports-payout-row > .reports-payout-badge { grid-column: 1; justify-self: start; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-list .reports-order-search input { width: 100%; }
+}

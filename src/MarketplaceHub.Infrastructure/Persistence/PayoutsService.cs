@@ -1,0 +1,287 @@
+using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol;
+using MarketplaceHub.Infrastructure.Jobs.Handlers;
+using Microsoft.EntityFrameworkCore;
+
+namespace MarketplaceHub.Infrastructure.Persistence;
+
+// Hakediş (PayoutContracts.cs): Trendyol's statement records and payouts and Pazarama's payment agreements, read as
+// stored. The rules that turn a record into money and a status are in PayoutBuilder.
+public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) : IPayoutsService
+{
+    internal const int DaysBack = 90;
+    private const int LinesPageSize = 100;
+    private static readonly string[] Platforms = ["TRENDYOL", "PAZARAMA"];
+
+    public async Task<ServiceResult<PayoutView>> SummaryAsync(Guid tenantId, PayoutQuery query, CancellationToken cancellationToken)
+    {
+        var (stores, today) = await ScopeAsync(tenantId, query, cancellationToken);
+        var ids = stores.Keys.Where(id => Platforms.Contains(stores[id].PlatformCode)).ToArray();
+        var since = PayoutBuilder.DayStart(today.AddDays(-DaysBack));
+        var rows = await Rows(tenantId, ids)
+            .Where(x => x.PaymentDate >= since || x.Source == MarketplaceFinanceSources.MoneyMovements && x.TransactionDate >= since
+                || x.PaymentOrderId != null && db.MarketplacePayoutOrders.Any(payout => payout.TenantId == tenantId && payout.ConnectionId == x.ConnectionId
+                    && payout.ExternalId == x.PaymentOrderId && payout.PayoutDate >= since))
+            .ToListAsync(cancellationToken);
+        var payouts = await db.MarketplacePayoutOrders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && x.PayoutDate >= since)
+            .Select(x => new PayoutOrderRow(x.ConnectionId, x.ExternalId, x.Amount, x.PayoutDate, x.RegionCode, x.RegionName))
+            .ToListAsync(cancellationToken);
+        var synced = await db.MarketplaceFinanceSyncStates.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId))
+            .ToDictionaryAsync(x => x.ConnectionId, x => x.LastSyncedAt, cancellationToken);
+        // Pazarama keeps no sync state: a store with records read is read, its last read the newest record's.
+        var pazaramaRead = await db.MarketplaceFinanceTransactions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && x.Source == PazaramaFinanceSyncJobHandler.Source)
+            .GroupBy(x => x.ConnectionId).Select(group => new { group.Key, Last = group.Max(x => x.UpdatedAt) })
+            .ToDictionaryAsync(x => x.Key, x => (DateTimeOffset?)x.Last, cancellationToken);
+        var coverage = stores.Values.OrderBy(x => x.PlatformCode).ThenBy(x => x.StoreName).Select(store =>
+        {
+            if (!Platforms.Contains(store.PlatformCode)) return new PayoutCoverageView(store.Id, store.PlatformCode, store.StoreName, "NOT_SUPPORTED", null);
+            var last = synced.GetValueOrDefault(store.Id) ?? pazaramaRead.GetValueOrDefault(store.Id);
+            return new PayoutCoverageView(store.Id, store.PlatformCode, store.StoreName, last is null ? "NOT_READ" : "READ", last);
+        }).ToList();
+        return ServiceResult<PayoutView>.Ok(PayoutBuilder.Build(rows, payouts, stores, today, DaysBack, coverage));
+    }
+
+    public async Task<ServiceResult<PayoutLinesPage>> LinesAsync(Guid tenantId, PayoutQuery scope, PayoutLinesQuery query, CancellationToken cancellationToken)
+    {
+        var (stores, today) = await ScopeAsync(tenantId, scope, cancellationToken);
+        var ids = stores.Keys.Where(id => Platforms.Contains(stores[id].PlatformCode) && (query.ConnectionId is null || id == query.ConnectionId)).ToArray();
+        var rows = Rows(tenantId, ids);
+        var search = query.Search?.Trim();
+        if (!string.IsNullOrEmpty(search))
+            rows = rows.Where(x => x.OrderNumber == search || x.InvoiceNumber == search || x.ExternalId == search || x.ShipmentPackageId == search);
+        else if (!string.IsNullOrEmpty(query.PayoutId))
+            rows = rows.Where(x => x.PaymentOrderId == query.PayoutId);
+        else if (query.Day is { } day)
+        {
+            var (start, end) = (PayoutBuilder.DayStart(day), PayoutBuilder.DayStart(day.AddDays(1)));
+            rows = rows.Where(x => x.PaymentDate >= start && x.PaymentDate < end && x.PaymentOrderId == null);
+        }
+        else return ServiceResult<PayoutLinesPage>.Fail("PAYOUT_LINES_QUERY_INVALID", "Bir ödeme, bir gün ya da arama gerekir.", 400);
+        var all = (await rows.OrderBy(x => x.TransactionDate).ToListAsync(cancellationToken))
+            .Where(PayoutBuilder.Counts)
+            .Select(row => PayoutBuilder.Line(row, today))
+            .Where(line => query.Region is null || !string.IsNullOrEmpty(search) || line.Region == query.Region)
+            .ToList();
+        var page = Math.Max(0, query.Page);
+        return ServiceResult<PayoutLinesPage>.Ok(new(all.Skip(page * LinesPageSize).Take(LinesPageSize).ToList(), all.Count, page, LinesPageSize, all.Sum(x => x.Net)));
+    }
+
+    private IQueryable<PayoutRow> Rows(Guid tenantId, Guid[] ids) =>
+        db.MarketplaceFinanceTransactions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId))
+            .Select(x => new PayoutRow
+            {
+                ConnectionId = x.ConnectionId,
+                PlatformCode = x.PlatformCode,
+                Source = x.Source,
+                ExternalId = x.ExternalId,
+                RequestedType = x.RequestedType,
+                TransactionType = x.TransactionType,
+                Category = x.Category,
+                TransactionDate = x.TransactionDate,
+                OrderNumber = x.OrderNumber,
+                ShipmentPackageId = x.ShipmentPackageId,
+                InvoiceNumber = x.InvoiceNumber,
+                Debt = x.Debt,
+                Credit = x.Credit,
+                CommissionAmount = x.CommissionAmount,
+                SellerRevenue = x.SellerRevenue,
+                PaymentOrderId = x.PaymentOrderId,
+                PaymentDate = x.PaymentDate,
+                Country = x.Country,
+                Affiliate = x.Affiliate
+            });
+
+    private async Task<(Dictionary<Guid, PayoutStore> Stores, DateOnly Today)> ScopeAsync(Guid tenantId, PayoutQuery query, CancellationToken cancellationToken)
+    {
+        var timezone = DashboardReadService.ResolveTimezone(await db.Tenants.AsNoTracking().Where(x => x.Id == tenantId).Select(x => x.Timezone).SingleOrDefaultAsync(cancellationToken));
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(timeProvider.GetUtcNow(), timezone).DateTime);
+        var excluded = DashboardRevenuePolicy.ExcludedConnectionStatuses;
+        var platforms = query.PlatformCodes?.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToUpperInvariant()).ToHashSet(StringComparer.Ordinal);
+        var connections = query.ConnectionIds?.ToHashSet();
+        var stores = (await db.PlatformConnections.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && !excluded.Contains(x.Status))
+                .Select(x => new { x.Id, x.PlatformCode, x.DisplayName, x.Environment })
+                .ToListAsync(cancellationToken))
+            .Select(x => new PayoutStore(x.Id, x.PlatformCode.Trim().ToUpperInvariant(), x.DisplayName, ReportBuckets.IsTestEnvironment(x.Environment)))
+            .Where(x => query.IncludeTest || !x.IsTest)
+            .Where(x => platforms is not { Count: > 0 } || platforms.Contains(x.PlatformCode))
+            .Where(x => connections is not { Count: > 0 } || connections.Contains(x.Id))
+            .Where(x => x.PlatformCode != "TRENDYOL_EFATURAM")
+            .ToDictionary(x => x.Id);
+        return (stores, today);
+    }
+}
+
+internal sealed record PayoutStore(Guid Id, string PlatformCode, string StoreName, bool IsTest);
+
+internal sealed record PayoutOrderRow(Guid ConnectionId, string ExternalId, decimal Amount, DateTimeOffset? PayoutDate, string? RegionCode, string? RegionName);
+
+internal sealed record PayoutRow
+{
+    public Guid ConnectionId { get; init; }
+    public string PlatformCode { get; init; } = "";
+    public string Source { get; init; } = "";
+    public string ExternalId { get; init; } = "";
+    public string RequestedType { get; init; } = "";
+    public string? TransactionType { get; init; }
+    public string Category { get; init; } = MarketplaceFinanceCategories.Other;
+    public DateTimeOffset TransactionDate { get; init; }
+    public string? OrderNumber { get; init; }
+    public string? ShipmentPackageId { get; init; }
+    public string? InvoiceNumber { get; init; }
+    public decimal Debt { get; init; }
+    public decimal Credit { get; init; }
+    public decimal? CommissionAmount { get; init; }
+    public decimal? SellerRevenue { get; init; }
+    public string? PaymentOrderId { get; init; }
+    public DateTimeOffset? PaymentDate { get; init; }
+    public string? Country { get; init; }
+    public string? Affiliate { get; init; }
+}
+
+// The rules of the payout view, pure so they are tested alone.
+internal static class PayoutBuilder
+{
+    public const string Paid = "PAID";
+    public const string Expected = "EXPECTED";
+    public const string Unknown = "UNKNOWN";
+    public const string TrGulf = "TR_GULF";
+    public const string Europe = "EUROPE";
+    public const string Azerbaijan = "AZ";
+    public const string UnknownRegion = "UNKNOWN";
+
+    private static readonly TimeZoneInfo Istanbul = DashboardReadService.ResolveTimezone("Europe/Istanbul");
+
+    // Trendyol's storefront countries by its payout regions (Türkiye-Körfez, Avrupa, Azerbaycan). A country no rule
+    // names is UNKNOWN, never Türkiye.
+    private static readonly HashSet<string> TrGulfCountries = new(StringComparer.OrdinalIgnoreCase)
+        { "Türkiye", "Turkiye", "Suudi Arabistan", "Birleşik Arap Emirlikleri", "Katar", "Umman", "Kuveyt", "Bahreyn" };
+    private static readonly HashSet<string> EuropeCountries = new(StringComparer.OrdinalIgnoreCase)
+        { "Bulgaristan", "Romanya", "Yunanistan", "Almanya", "Slovakya", "Çekya", "Çek Cumhuriyeti", "Macaristan", "Polonya", "Hırvatistan", "Slovenya", "Avusturya" };
+
+    // The start of a calendar day in Istanbul, as UTC (Trendyol's due days and Hepsiburada's times are Istanbul's).
+    public static DateTimeOffset DayStart(DateOnly day) =>
+        new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), Istanbul.GetUtcOffset(day.ToDateTime(TimeOnly.MinValue))).ToUniversalTime();
+
+    public static DateOnly Day(DateTimeOffset value) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(value, Istanbul).DateTime);
+
+    public static string Region(string platformCode, string? country, string? affiliate)
+    {
+        if (platformCode != "TRENDYOL") return TrGulf;
+        if (string.Equals(affiliate, "TRENDYOLAZJV", StringComparison.OrdinalIgnoreCase)) return Azerbaijan;
+        if (country is null) return UnknownRegion;
+        if (EuropeCountries.Contains(country)) return Europe;
+        return TrGulfCountries.Contains(country) ? TrGulf : UnknownRegion;
+    }
+
+    // Whether a record moves the payout. A commission invoice only documents the commission every sale already paid
+    // through its seller revenue (counting it again took ~288 thousand TL off in Nov 2026); money movements are payouts.
+    public static bool Counts(PayoutRow row) =>
+        row.Source != MarketplaceFinanceSources.MoneyMovements
+        && !(row.Source == TrendyolFinanceRequestContract.OtherFinancials && string.Equals(row.RequestedType, TrendyolFinanceCategorizer.DeductionInvoices, StringComparison.OrdinalIgnoreCase)
+             && row.Category == MarketplaceFinanceCategories.Commission);
+
+    // What a record adds to the payout: a statement line its seller revenue (commission off), signed by its debt or
+    // credit; any other record its credit less its debt. Pazarama's agreement carries the net allowance itself.
+    public static decimal Net(PayoutRow row)
+    {
+        if (row.Source == PazaramaFinanceSyncJobHandler.Source) return row.SellerRevenue ?? row.Credit - row.Debt;
+        if (row.Source == TrendyolFinanceRequestContract.Settlements && row.SellerRevenue is { } revenue)
+            return Math.Sign(row.Credit - row.Debt) * Math.Abs(revenue);
+        return row.Credit - row.Debt;
+    }
+
+    // Paid once a payout carries the record (Pazarama: as it says); expected while its due day is to come; unknown
+    // when the day has passed with no payout seen (the payout may not be read yet: never "unpaid").
+    public static string Status(PayoutRow row, DateOnly today)
+    {
+        if (row.Source == PazaramaFinanceSyncJobHandler.Source)
+        {
+            var text = TrendyolFinanceCategorizer.Fold(row.TransactionType);
+            if (text.Contains("odeme yapildi", StringComparison.Ordinal)) return Paid;
+            if (text.Contains("bekliyor", StringComparison.Ordinal)) return Expected;
+            return Unknown;
+        }
+        if (!string.IsNullOrEmpty(row.PaymentOrderId)) return Paid;
+        return row.PaymentDate is { } due && Day(due) >= today ? Expected : Unknown;
+    }
+
+    public static PayoutLineView Line(PayoutRow row, DateOnly today) =>
+        new(row.ExternalId, row.ConnectionId, row.PlatformCode, row.TransactionType, row.Category, row.TransactionDate, row.PaymentDate is { } due ? Day(due) : null,
+            row.OrderNumber, row.InvoiceNumber, row.Country, Region(row.PlatformCode, row.Country, row.Affiliate), row.Credit - row.Debt, row.CommissionAmount, Net(row), Status(row, today), row.PaymentOrderId);
+
+    public static PayoutView Build(IReadOnlyList<PayoutRow> rows, IReadOnlyList<PayoutOrderRow> payouts, IReadOnlyDictionary<Guid, PayoutStore> stores, DateOnly today, int daysBack,
+        IReadOnlyList<PayoutCoverageView> coverage)
+    {
+        var lines = rows.Where(Counts).Select(row => (Row: row, Line: Line(row, today))).ToList();
+        var expected = lines.Where(x => x.Line.Status == Expected && x.Line.DueDay is not null).ToList();
+        var unknown = lines.Where(x => x.Line.Status == Unknown && x.Line.DueDay is { } due && due >= today.AddDays(-daysBack)).ToList();
+
+        var upcoming = expected
+            .GroupBy(x => (x.Row.ConnectionId, Day: x.Line.DueDay!.Value, x.Line.Region))
+            .Select(group => Group($"due:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}:{group.Key.Region}", "DUE", stores, group.Key.ConnectionId, group.Key.Region, null,
+                group.Key.Day, group.Sum(x => x.Line.Net), null, group.Count(), Expected))
+            .OrderBy(x => x.Day).ThenBy(x => x.PlatformCode).ThenBy(x => x.Region).ToList();
+
+        var paidLines = lines.Where(x => !string.IsNullOrEmpty(x.Row.PaymentOrderId))
+            .GroupBy(x => (x.Row.ConnectionId, x.Row.PaymentOrderId!))
+            .ToDictionary(group => group.Key, group => (Net: group.Sum(x => x.Line.Net), Count: group.Count()));
+        var past = payouts.Where(x => x.PayoutDate is not null && stores.ContainsKey(x.ConnectionId))
+            .Select(payout =>
+            {
+                var read = paidLines.TryGetValue((payout.ConnectionId, payout.ExternalId), out var sum) ? sum : ((decimal Net, int Count)?)null;
+                return Group($"payout:{payout.ConnectionId:N}:{payout.ExternalId}", "PAYOUT", stores, payout.ConnectionId, PayoutRegion(payout.RegionCode, payout.RegionName), payout.RegionName ?? payout.RegionCode,
+                    Day(payout.PayoutDate!.Value), payout.Amount, read?.Net, read?.Count ?? 0, Paid);
+            })
+            // Pazarama's paid agreements, a store's day at a time.
+            .Concat(lines.Where(x => x.Row.Source == PazaramaFinanceSyncJobHandler.Source && x.Line.Status == Paid && x.Line.DueDay is { } day && day >= today.AddDays(-daysBack))
+                .GroupBy(x => (x.Row.ConnectionId, Day: x.Line.DueDay!.Value))
+                .Select(group => Group($"paid:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}", "DUE", stores, group.Key.ConnectionId, TrGulf, null, group.Key.Day,
+                    group.Sum(x => x.Line.Net), group.Sum(x => x.Line.Net), group.Count(), Paid)))
+            .OrderByDescending(x => x.Day).ThenBy(x => x.PlatformCode).ToList();
+
+        var regions = new[] { TrGulf, Europe, Azerbaijan, UnknownRegion }
+            .Select(region =>
+            {
+                var due = expected.Where(x => x.Line.Region == region).ToList();
+                var next = upcoming.Where(x => x.Region == region).GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault();
+                return new PayoutRegionView(region, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
+                    unknown.Where(x => x.Line.Region == region).Sum(x => x.Line.Net));
+            })
+            .Where(x => x.Region != UnknownRegion || x.Records > 0 || x.Unknown != 0)
+            .ToList();
+
+        var early = rows.Where(x => x.Source == MarketplaceFinanceSources.MoneyMovements && string.Equals(x.RequestedType, "CashAdvance", StringComparison.OrdinalIgnoreCase)
+            && Day(x.TransactionDate) >= today.AddDays(-daysBack)).ToList();
+        var nextDay = upcoming.FirstOrDefault()?.Day;
+        var next = nextDay is { } first
+            ? upcoming.Where(x => x.Day == first).GroupBy(x => 1).Select(group => group.First() with { Key = $"next:{first:yyyy-MM-dd}", Amount = group.Sum(x => x.Amount), Records = group.Sum(x => x.Records) }).Single()
+            : null;
+        return new(today, daysBack, expected.Sum(x => x.Line.Net), expected.Count, next, past.FirstOrDefault(x => x.Kind == "PAYOUT") ?? past.FirstOrDefault(),
+            unknown.Sum(x => x.Line.Net), unknown.Count, early.Sum(x => Math.Abs(x.Credit - x.Debt)), early.Count, regions, upcoming, past, coverage);
+    }
+
+    // A payout's region by Trendyol's code or name (documented: "TR" / "Türkiye"; the others are not, so they are
+    // matched by their name); one no rule names stays UNKNOWN and is shown by the name Trendyol gave it.
+    internal static string PayoutRegion(string? code, string? name)
+    {
+        var upper = code?.Trim().ToUpperInvariant();
+        var text = TrendyolFinanceCategorizer.Fold(name);
+        if (upper == "AZ" || text.Contains("azerbaycan", StringComparison.Ordinal)) return Azerbaijan;
+        if (upper is "EU" or "EUR" || text.Contains("avrupa", StringComparison.Ordinal)) return Europe;
+        if (upper == "TR" || text.Contains("turkiye", StringComparison.Ordinal) || text.Contains("korfez", StringComparison.Ordinal)) return TrGulf;
+        return UnknownRegion;
+    }
+
+    private static PayoutGroupView Group(string key, string kind, IReadOnlyDictionary<Guid, PayoutStore> stores, Guid connectionId, string region, string? regionName, DateOnly day,
+        decimal amount, decimal? linesAmount, int records, string status)
+    {
+        var store = stores.GetValueOrDefault(connectionId);
+        return new(key, kind, connectionId, store?.PlatformCode ?? "", store?.StoreName ?? "", region, regionName, day, Math.Round(amount, 2), linesAmount is { } lines ? Math.Round(lines, 2) : null, records, status);
+    }
+}
