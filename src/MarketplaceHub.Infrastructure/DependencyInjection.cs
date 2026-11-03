@@ -168,6 +168,8 @@ public static class DependencyInjection
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.TrendyolFinanceSyncJobHandler>();
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.PazaramaFinanceSyncJobHandler>();
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.N11SettlementSyncJobHandler>();
+        services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.HepsiburadaFinanceSyncJobHandler>();
+        services.AddScoped<IHepsiburadaFinancePort>(provider => provider.GetRequiredService<MarketplaceHub.Infrastructure.Adapters.Hepsiburada.HepsiburadaHttpClient>());
         services.AddScoped<IN11SettlementPort>(provider => provider.GetRequiredService<MarketplaceHub.Infrastructure.Adapters.N11.N11HttpClient>());
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.ConnectionFullResetJobHandler>();
         services.AddScoped<IMarketplaceJobProcessor, MarketplaceJobProcessor>();

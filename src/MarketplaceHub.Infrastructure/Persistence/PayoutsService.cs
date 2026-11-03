@@ -12,7 +12,7 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
 {
     internal const int DaysBack = 90;
     private const int LinesPageSize = 100;
-    private static readonly string[] Platforms = ["TRENDYOL", "PAZARAMA", "N11"];
+    private static readonly string[] Platforms = ["TRENDYOL", "PAZARAMA", "N11", "HEPSIBURADA"];
 
     public async Task<ServiceResult<PayoutView>> SummaryAsync(Guid tenantId, PayoutQuery query, CancellationToken cancellationToken)
     {
@@ -32,9 +32,9 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
         var synced = await db.MarketplaceFinanceSyncStates.AsNoTracking()
             .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId))
             .ToDictionaryAsync(x => x.ConnectionId, x => x.LastSyncedAt, cancellationToken);
-        // Pazarama and n11 keep no sync state: a store with records read is read, its last read the newest record's.
+        // Pazarama, n11 and Hepsiburada keep no sync state: a store with records read is read, its last read the newest record's.
         var pazaramaRead = await db.MarketplaceFinanceTransactions.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && (x.Source == PazaramaFinanceSyncJobHandler.Source || x.Source == N11SettlementSyncJobHandler.Source))
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && (x.Source == PazaramaFinanceSyncJobHandler.Source || x.Source == N11SettlementSyncJobHandler.Source || x.Source == HepsiburadaFinanceSyncJobHandler.Source))
             .GroupBy(x => x.ConnectionId).Select(group => new { group.Key, Last = group.Max(x => x.UpdatedAt) })
             .ToDictionaryAsync(x => x.Key, x => (DateTimeOffset?)x.Last, cancellationToken);
         var coverage = stores.Values.OrderBy(x => x.PlatformCode).ThenBy(x => x.StoreName).Select(store =>
@@ -81,6 +81,7 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
                 Source = x.Source,
                 ExternalId = x.ExternalId,
                 RequestedType = x.RequestedType,
+                TransactionSubType = x.TransactionSubType,
                 TransactionType = x.TransactionType,
                 Category = x.Category,
                 TransactionDate = x.TransactionDate,
@@ -129,6 +130,7 @@ internal sealed record PayoutRow
     public string Source { get; init; } = "";
     public string ExternalId { get; init; } = "";
     public string RequestedType { get; init; } = "";
+    public string? TransactionSubType { get; init; }
     public string? TransactionType { get; init; }
     public string Category { get; init; } = MarketplaceFinanceCategories.Other;
     public DateTimeOffset TransactionDate { get; init; }
@@ -218,6 +220,8 @@ internal static class PayoutBuilder
             // Otherwise its remittance day (havale tarihi, stored as the payment day) tells: past, n11 sent the money.
             return row.PaymentDate is { } remitted && Day(remitted) < today ? Paid : Expected;
         }
+        // Hepsiburada says it: Paid, or WillBePaid (expected until its due day, then overdue).
+        if (row.Source == HepsiburadaFinanceSyncJobHandler.Source && string.Equals(row.TransactionSubType, "Paid", StringComparison.OrdinalIgnoreCase)) return Paid;
         if (!string.IsNullOrEmpty(row.PaymentOrderId)) return Paid;
         return row.PaymentDate is { } due && Day(due) >= today ? Expected : Unknown;
     }
@@ -286,8 +290,8 @@ internal static class PayoutBuilder
                 return Group($"payout:{payout.ConnectionId:N}:{payout.ExternalId}", "PAYOUT", stores, payout.ConnectionId, PayoutRegion(payout.RegionCode, payout.RegionName), payout.RegionName ?? payout.RegionCode,
                     Day(payout.PayoutDate!.Value), payout.Amount, read?.Net, read?.Count ?? 0, Paid);
             })
-            // Pazarama's paid agreements and n11's paid settlement days, a store's day at a time.
-            .Concat(lines.Where(x => x.Row.Source is PazaramaFinanceSyncJobHandler.Source or N11SettlementSyncJobHandler.Source && x.Line.Status == Paid && x.Line.DueDay is { } day && day >= today.AddDays(-daysBack))
+            // Pazarama's paid agreements, n11's and Hepsiburada's paid records, a store's day at a time.
+            .Concat(lines.Where(x => x.Row.Source is PazaramaFinanceSyncJobHandler.Source or N11SettlementSyncJobHandler.Source or HepsiburadaFinanceSyncJobHandler.Source && x.Line.Status == Paid && x.Line.DueDay is { } day && day >= today.AddDays(-daysBack))
                 .GroupBy(x => (x.Row.ConnectionId, Day: x.Line.DueDay!.Value))
                 .Select(group => Group($"paid:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}", "DUE_DAY", stores, group.Key.ConnectionId, TrGulf, null, group.Key.Day,
                     group.Sum(x => x.Line.Net), group.Sum(x => x.Line.Net), group.Count(), Paid)))
