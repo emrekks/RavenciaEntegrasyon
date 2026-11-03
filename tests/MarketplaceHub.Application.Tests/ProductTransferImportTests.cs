@@ -345,6 +345,14 @@ public sealed class ProductTransferImportTests
     }
 
     [Fact]
+    public void AStockCodeAndBarcodeFile_CanWriteTheBarcode_ButABarcodeAloneIsRefused()
+    {
+        var file = ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes("Stok Kodu;Barkod\r\nA-1;869\r\n")));
+        Assert.Equal([ProductTransferFields.Barcode], file.AvailableFields);
+        Assert.Throws<InvalidDataException>(() => ProductTransferFileParser.ParseCsv(new MemoryStream(Encoding.UTF8.GetBytes("Barkod\r\n869\r\n"))));
+    }
+
+    [Fact]
     public void ATitleAndAVatRateAreProductChanges_AndRowsOfOneProductMustAgree()
     {
         var productId = Guid.CreateVersion7();

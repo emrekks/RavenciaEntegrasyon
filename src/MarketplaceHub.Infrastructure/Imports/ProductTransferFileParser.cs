@@ -161,7 +161,8 @@ public static partial class ProductTransferFileParser
         };
         var available = ProductTransferFields.All.Where(field => present[field]).ToList();
         if (sku < 0 && barcode < 0) throw new InvalidDataException("\"Stok Kodu\" ya da \"Barkod\" sütunu bulunamadı; Ravencia'dan indirilen ürün dosyasını kullanın.");
-        if (available.All(field => field == ProductTransferFields.Barcode)) throw new InvalidDataException("Aktarılabilecek bir sütun (ürün adı, model kodu, fiyat, KDV, stok, maliyet, desi ya da mağaza fiyatı) bulunamadı; Ravencia'dan indirilen ürün dosyasını kullanın.");
+        // A barcode column is writable only beside a stock code column (a written barcode is matched by stock code).
+        if (available.Count == 0 || available is [ProductTransferFields.Barcode] && sku < 0) throw new InvalidDataException("Aktarılabilecek bir sütun (ürün adı, model kodu, fiyat, KDV, stok, maliyet, desi ya da mağaza fiyatı) bulunamadı; Ravencia'dan indirilen ürün dosyasını kullanın.");
 
         var result = new List<ProductTransferFileRow>();
         foreach (var (rowNumber, cells, formulas) in rows)
