@@ -264,14 +264,15 @@ function DataTable<T>({ title, description, rows, columns, rowKey, unknown, expa
 
 // Horizontal bars with the value written out; the unknown bucket is muted. The bars fill once, one after another, when
 // the list first comes into view.
-function Bars({ items, format, label }: { items: Array<{ key: string; label: string; value: number; muted?: boolean; note?: string }>; format: (value: number) => string; label: string }) {
+// A value that is not known (null) gets no bar and "—", never a 0% that reads as measured.
+function Bars({ items, format, label }: { items: Array<{ key: string; label: string; value: number | null; muted?: boolean; note?: string }>; format: (value: number) => string; label: string }) {
   const [ref, shown] = useReveal<HTMLUListElement>()
-  const max = Math.max(0, ...items.map(item => item.value))
+  const max = Math.max(0, ...items.map(item => item.value ?? 0))
   if (!items.length || max <= 0) return <p className="reports-empty">Gösterilecek değer yok.</p>
   return <ul ref={ref} className="reports-bars" aria-label={label}>{items.map((item, index) => <li key={item.key} className={item.muted ? 'is-unknown' : undefined}>
     <span className="reports-bar-label" title={item.label}>{item.label}</span>
-    <span className="reports-bar-track" aria-hidden="true"><span style={{ width: shown ? `${Math.max(2, item.value / max * 100)}%` : '0%', transitionDelay: `${index * 60}ms` }} /></span>
-    <span className="reports-bar-value">{format(item.value)}{item.note && <small>{item.note}</small>}</span>
+    <span className="reports-bar-track" aria-hidden="true"><span style={{ width: shown && item.value !== null ? `${Math.max(2, item.value / max * 100)}%` : '0%', transitionDelay: `${index * 60}ms` }} /></span>
+    <span className="reports-bar-value">{item.value === null ? '—' : format(item.value)}{item.note && <small>{item.note}</small>}</span>
   </li>)}</ul>
 }
 
@@ -1387,7 +1388,7 @@ function Cargo({ data }: { data: ReportSales }) {
     ]} /></div>
     <Panel title="Kargo Firmalarının Payı" description="Paket sayısına göre." className="reports-list is-wide">
       <Bars label="Kargo firmalarının payı" format={value => formatPercent(value)} items={[...data.cargo].sort((a, b) => b.packages - a.packages)
-        .map(row => ({ key: row.label, label: row.label, value: row.share ?? 0, note: `${formatCount(row.packages)} paket`, muted: !row.known }))} />
+        .map(row => ({ key: row.label, label: row.label, value: row.share ?? null, note: `${formatCount(row.packages)} paket`, muted: !row.known }))} />
     </Panel>
     <div className="is-wide"><DataTable title="Kargo Firmaları" description="Süreler pazaryerinin bildirdiği durum zamanlarından hesaplanır (yaklaşık); ölçülen paket sayısı yanında. Teslim alma, kargo firmasının paketi okuttuğu andır; satıcının paketi bıraktığı an değildir." csvName="rapor-kargo"
       rows={data.cargo} rowKey={row => row.label} unknown={row => !row.known} initialSort="packages" columns={[

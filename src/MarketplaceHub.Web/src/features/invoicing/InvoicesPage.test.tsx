@@ -13,6 +13,8 @@ const invoiceFixtures = [
 const apiState = vi.hoisted(() => ({ deliveryKeys: [] as string[], uploads: [] as Array<{ path: string; fileName: string | null }>, statusUpdates: [] as Array<{ path: string; status: string; packageIds: string[] }>, pageRequests: [] as string[], orderSyncRequests: [] as Array<{ path: string; body: unknown }>, reconcileRequests: [] as string[], hiddenRequests: [] as Array<{ packageIds: string[]; hidden: boolean }>, totalPages: 1, pageDelayMs: 0 }))
 
 vi.mock('../../shared/api', () => ({
+  // polling reads go through hubPoll; the fixture answers them like any read
+  get hubPoll() { return (this as unknown as { hubApi: unknown }).hubApi },
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
     if (path.startsWith('/invoice-workspace/page?')) {
       apiState.pageRequests.push(path)
@@ -79,12 +81,18 @@ beforeEach(async () => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false }, mutations: { retry: false } } })
   root = createRoot(container)
   await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/invoices?tab=DUE_SOON']}><InvoicesPage /></MemoryRouter></QueryClientProvider>) })
+  // the page waits for the connections (its key carries the provider credential), so it lands one round later
+  await settle()
   await settle()
 })
 
 afterEach(() => { act(() => root?.unmount()); client?.clear(); container.remove() })
 
 describe('InvoicesPage Shopify bulk invoice status', () => {
+  it('reads the page once, after the connections, not again when they arrive (audit 7)', () => {
+    expect(apiState.pageRequests).toHaveLength(1)
+  })
+
   it('shows only the invoice package result count in the table summary', () => {
     const summary = container.querySelector('.invoice-reference-workspace > header p')
     expect(summary?.textContent).toBe('Filtreleme sonuçları: 3 paket')
@@ -120,7 +128,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     act(() => button('Detayları Aç').click())
     await settle()
     const link = Array.from(container.querySelectorAll<HTMLAnchorElement>('.invoice-document-link'))
-      .find(item => item.textContent?.includes('Pazaryerindeki güncel fatura bağlantısını aç'))
+      .find(item => item.textContent?.includes('Pazaryerindeki Güncel Fatura Bağlantısını Aç'))
     expect(link?.href).toBe('https://documents.example.test/current-invoice.pdf')
     expect(link?.rel).toContain('noreferrer')
   })

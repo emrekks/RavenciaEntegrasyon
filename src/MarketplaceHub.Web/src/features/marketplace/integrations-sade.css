@@ -29,7 +29,7 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand { gap: 12px; align-items: center; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { box-shadow: none; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand h2 { margin: 0 0 4px; font-size: 15px; font-weight: 600; line-height: 1.3; }
-.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-muted); background: none; border: 1px solid var(--rv-color-border-strong); border-radius: 6px; font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-muted); background: none; border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 12px; font-weight: 500; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state .cm-glyph { width: 14px; height: 14px; color: var(--rv-color-subtle); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.connected .cm-glyph { color: var(--rv-color-accent); }
 .app-shell.stitch-shell main .integrations-reference-page .reference-menu-trigger { width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; color: var(--rv-color-muted); background: none; border: 1px solid transparent; border-radius: 7px; }
@@ -56,7 +56,7 @@
 .app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { box-sizing: border-box; flex: none; width: 48px; min-width: 48px; height: 48px; margin-top: 2px; align-self: flex-start; object-fit: contain; }
 
 /* Hidden details: the power-off mark (passive) beside the note (its frameless shape is set in the second pass below). */
-.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { border-radius: 5px; }
+.app-shell.stitch-shell main .integrations-reference-page .reference-connection-state { border-radius: 7px; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-provider-logo { border-color: var(--rv-color-border); border-radius: 7px; }
 .app-shell.stitch-shell main .integrations-reference-page :is(button, [role="tab"]) { text-transform: none; }
 .app-shell.stitch-shell main .integrations-reference-page .reference-integration-brand h2 { font-size: 16px; }

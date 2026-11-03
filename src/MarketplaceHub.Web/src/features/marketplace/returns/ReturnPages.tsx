@@ -4,7 +4,7 @@ import { observeUnitPriceAlignment } from '../unit-price-alignment'
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, loadAllPages } from '../../../shared/api'
+import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { CardBackgroundIcon, cargoCarrier, cargoLabel, CountUp, StickyActionBar } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { sendStockDisposition, type PendingDispositionKeys } from './return-disposition-key'
@@ -29,6 +29,7 @@ import { formatMarketplaceBarcode, shouldShowReturnCountdown, type ApprovedRetur
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
 import { formatPackageLabel } from '../../../shared/package-label'
+import { returnLabelContent } from './return-label'
 import { returnListParams, returnSummaryParams, type ReturnFilters, type ReturnRefinements, type ReturnSummary } from './return-list-query'
 import { Connection, Order, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnLine, ReturnNoticeKind, ReturnPlatformPop, type ReturnAmounts, displayOrderNumber, orderDisplayShipment, productLineQuantity, remainingText, returnDateText, returnLineFacts, returnLineFieldValue, returnOptionalValue, returnPlatformName, usableShipmentDueAt } from '../shared'
 
@@ -36,14 +37,15 @@ type ReturnClaim = { id: string; externalClaimId: string; orderNumber: string; s
 type ReturnDetail = Omit<ReturnClaim, 'lines'> & { reasonCode: string | null; allowedActions: string[]; lines: ReturnLine[] | null; stockDispositionAvailable: boolean; externalWritesEnabled: boolean; decisionPending?: boolean }; type ReturnIssueReason = { id: string; name: string; evidenceRequired: boolean }
 function isUrgentReturnDeadline(value: string | null) { const usable = usableShipmentDueAt(value); return usable !== null && new Date(usable).getTime() - Date.now() <= 24 * 60 * 60 * 1000 }
 function printReturnLabel(item: ReturnClaim, lines: OrderLine[]) {
-  const barcodeValue = item.cargoTrackingNumber?.trim() || formatPackageLabel(item.packageNumber)?.trim() || item.externalClaimId
-  const bars = code128Bars(barcodeValue)
+  const label = returnLabelContent(item, lines)
+  const bars = code128Bars(label.barcodeValue)
   const barcode = bars.map((isBar, index) => isBar ? `<rect x="${index}" y="0" width="1" height="48"/>` : '').join('')
   const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)
-  const products = lines.map(line => `<li>${escape(line.title)} · ${productLineQuantity(line)} adet${line.sku ? ` · ${escape(line.sku)}` : ''}</li>`).join('')
+  const products = label.products.map(line => `<li>${escape(line.text)}</li>`).join('')
+  const fields = label.fields.map(([name, value]) => `<div><small>${escape(name)}</small><strong>${escape(value)}</strong></div>`).join('')
   const popup = window.open('', '_blank', 'popup,width=760,height=650')
   if (!popup) return
-  popup.document.write(`<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>İade etiketi #${escape(item.orderNumber)}</title><style>body{font:14px Arial,sans-serif;color:#111;margin:0;padding:24px}.label{width:100%;max-width:680px;margin:auto;border:2px solid #111;padding:20px;box-sizing:border-box}.head{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid #999;padding-bottom:12px}.eyebrow{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#555}h1{font-size:22px;margin:5px 0}.meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}.meta div{display:grid;gap:5px}.meta small{color:#555}.barcode{width:100%;height:70px;margin:16px 0}.barcode rect{fill:#111}.number{text-align:center;font-size:18px;font-weight:700;letter-spacing:2px}.products{border-top:1px solid #999;padding-top:12px}.products ul{padding-left:18px;line-height:1.6}@media print{body{padding:0}.label{max-width:none;min-height:250mm;page-break-inside:avoid}}</style></head><body><main class="label"><div class="head"><div><span class="eyebrow">${escape(item.platformDisplayName)} · İade paketi</span><h1>Sipariş #${escape(item.orderNumber)}</h1></div><strong>${escape(statusLabel(item.status))}</strong></div><div class="meta"><div><small>İade kayıt no</small><strong>${escape(item.externalClaimId)}</strong></div><div><small>Kargo firması</small><strong>${escape(item.cargoProviderName || 'Belirtilmemiş')}</strong></div><div><small>Kargo takip no</small><strong>${escape(item.cargoTrackingNumber || 'Henüz iletilmedi')}</strong></div><div><small>Paket no</small><strong>${escape(formatPackageLabel(item.packageNumber) || '—')}</strong></div></div><svg class="barcode" viewBox="0 0 ${bars.length} 48" role="img" aria-label="${escape(barcodeValue)}">${barcode}</svg><div class="number">${escape(barcodeValue)}</div><section class="products"><strong>Ürünler</strong><ul>${products || '<li>Ürün ayrıntısı yok</li>'}</ul></section></main></body></html>`)
+  popup.document.write(`<!doctype html><html lang="tr"><head><meta charset="utf-8"><title>İade Etiketi ${escape(label.title)}</title><style>body{font:14px Arial,sans-serif;color:#111;margin:0;padding:24px}.label{width:100%;max-width:680px;margin:auto;border:2px solid #111;padding:20px;box-sizing:border-box}.head{display:flex;justify-content:space-between;gap:16px;border-bottom:1px solid #999;padding-bottom:12px}.eyebrow{font-size:11px;letter-spacing:1px;color:#555}h1{font-size:22px;margin:5px 0}.meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}.meta div{display:grid;gap:5px}.meta small{color:#555}.barcode{width:100%;height:70px;margin:16px 0}.barcode rect{fill:#111}.number{text-align:center;font-size:18px;font-weight:700;letter-spacing:2px}.products{border-top:1px solid #999;padding-top:12px}.products ul{padding-left:18px;line-height:1.6}@media print{body{padding:0}.label{max-width:none;min-height:250mm;page-break-inside:avoid}}</style></head><body><main class="label"><div class="head"><div><span class="eyebrow">${escape(label.eyebrow)}</span><h1>${escape(label.title)}</h1></div><strong>${escape(label.status)}</strong></div><div class="meta">${fields}</div><svg class="barcode" viewBox="0 0 ${bars.length} 48" role="img" aria-label="${escape(label.barcodeValue)}">${barcode}</svg><div class="number">${escape(label.barcodeValue)}</div><section class="products"><strong>Ürünler</strong><ul>${products || '<li>Ürün Ayrıntısı Yok</li>'}</ul></section></main></body></html>`)
   popup.document.close()
   popup.focus()
   popup.print()
@@ -67,9 +69,9 @@ function ReturnImagePreview({ title, imageUrl, facts, onClose }: { title: string
   return <RrModal crumb={crumb || undefined} title={title} size="img" onClose={onClose}><div className="rr-img-preview">{imageUrl ? <img src={imageUrl} alt={title} referrerPolicy="no-referrer" /> : <RrIcon name="image" />}</div></RrModal>
 }
 function ReturnLabelPreview({ item, lines, onClose }: { item: ReturnClaim; lines: OrderLine[]; onClose: () => void }) {
-  const track = item.cargoTrackingNumber?.trim() || formatPackageLabel(item.packageNumber)?.trim() || item.externalClaimId
+  const label = returnLabelContent(item, lines)
   return <RrModal crumb="Yazdırma Önizlemesi" title="İade Etiketi Yazdır" desc={`${displayOrderNumber(item.orderNumber)} · Etiket yeni pencerede açılır ve yazdırma başlar.`} size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => { printReturnLabel(item, lines); onClose() }}><RrIcon name="print" />Yazdır</button></>}>
-    <div style={{ display: 'grid', placeItems: 'center' }}><div className="rr-rlabel"><div className="rr-hd"><div><small>{returnPlatformName(item.platformCode)} · İade Paketi</small><h4>Sipariş {displayOrderNumber(item.orderNumber)}</h4></div><b>{titleTr(statusLabel(item.status))}</b></div><div className="rr-mt"><div><small>İade Kayıt No</small><b>{item.externalClaimId}</b></div><div><small>Kargo Firması</small><b>{cargoLabel(item.cargoProviderName)}</b></div><div><small>Kargo Takip No</small><b>{track}</b></div><div><small>Müşteri</small><b>{item.customerName}</b></div></div><div className="rr-bars" /><div className="rr-no">{item.packageNumber ?? track}</div><ul>{lines.map(line => <li key={line.id}>{line.title} · {productLineQuantity(line)} adet{line.sku ? ` · ${line.sku}` : ''}</li>)}</ul></div></div>
+    <div style={{ display: 'grid', placeItems: 'center' }}><div className="rr-rlabel"><div className="rr-hd"><div><small>{label.eyebrow}</small><h4>{label.title}</h4></div><b>{label.status}</b></div><div className="rr-mt">{label.fields.map(([name, value]) => <div key={name}><small>{name}</small><b>{value}</b></div>)}</div><div className="rr-bars" /><div className="rr-no">{label.barcodeValue}</div><ul>{label.products.length ? label.products.map(line => <li key={line.key}>{line.text}</li>) : <li>Ürün Ayrıntısı Yok</li>}</ul></div></div>
   </RrModal>
 }
 // The return's amounts as the marketplace wrote them for the returned lines (Trendyol: Satış, İndirim, Faturalanmış;
@@ -376,8 +378,8 @@ export function ReturnsPage() {
   if (cursorKey !== listKey) { setCursorKey(listKey); setPageCursors({ 1: null }); setPageNumber(1) }
   const cursor = pageNumber > 1 ? pageCursors[pageNumber] ?? null : null
   useListUrlSync({ status: appliedFilters.status, search: appliedFilters.search, from: appliedFilters.from, to: appliedFilters.to, platforms: selectedPlatforms, cargo: cargoFilter, reason: reasonFilter, invoice: invoiceStatusFilter, sort: approvedSort, size: pageSize, page: pageNumber }, { status: 'ALL', cargo: 'ALL', reason: 'ALL', invoice: 'ALL', sort: 'APPROVED_DESC', size: 20, page: 1 })
-  const query = useQuery({ queryKey: ['returns', 'list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor], queryFn: () => hubApi<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
-  const summary = useQuery({ queryKey: ['returns', 'summary', appliedFilters, refinements], queryFn: () => hubApi<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const query = useQuery({ queryKey: ['returns', 'list', appliedFilters, refinements, sort, pageSize, pageNumber, cursor], queryFn: () => hubPoll<Page<ReturnClaim>>(`/returns?${returnListParams(appliedFilters, refinements, { sort, limit: pageSize, after: cursor, page: pageNumber }).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
+  const summary = useQuery({ queryKey: ['returns', 'summary', appliedFilters, refinements], queryFn: () => hubPoll<ReturnSummary>(`/returns/summary?${returnSummaryParams(appliedFilters, refinements).toString()}`), placeholderData: keepPreviousData, refetchInterval: 30_000 })
   const nextCursor = query.data?.nextCursor ?? null
   if (nextCursor && !query.isPlaceholderData && pageCursors[pageNumber + 1] !== nextCursor) setPageCursors(current => ({ ...current, [pageNumber + 1]: nextCursor }))
   const connections = useQuery({ queryKey: ['connections', 'returns'], queryFn: () => loadAllPages<Connection>('/connections') })

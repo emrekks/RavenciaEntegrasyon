@@ -116,8 +116,8 @@
    column heads name those two fields and keep their bulk buttons. The option name used to sit in a 90px box and was cut. */
 .app-shell.stitch-shell main .variant-mobile-groups { display: none; }
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .product-add-page .variant-mobile-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0 0 10px; padding: 3px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 9px; }
-  .app-shell.stitch-shell main .product-add-page .variant-mobile-groups > button { min-width: 0; height: 30px; min-height: 30px; padding: 0 4px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 6px; box-shadow: none; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .app-shell.stitch-shell main .product-add-page .variant-mobile-groups { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 0 0 10px; padding: 3px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+  .app-shell.stitch-shell main .product-add-page .variant-mobile-groups > button { min-width: 0; height: 30px; min-height: 30px; padding: 0 4px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 12px; font-weight: 500; white-space: nowrap; }
   .app-shell.stitch-shell main .product-add-page .variant-mobile-groups > button.is-on { color: var(--rv-color-ink); background: var(--rv-color-surface); box-shadow: inset 0 0 0 1px var(--rv-color-border-strong); }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor { overflow-x: visible; }
   .app-shell.stitch-shell main .product-add-page .variant-table-editor :is(.variant-table-head, .variant-table-row) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); min-width: 0; }
@@ -285,7 +285,7 @@
 @container media-tile (min-width: 0) {
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > * { --media-tile-button: clamp(18px, 25cqi, 24px); }
 }
-.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn) { top: 5px; width: var(--media-tile-button); min-width: 0; height: var(--media-tile-button); min-height: 0; padding: 0; border-radius: 6px; background: rgb(9 20 39 / 72%); box-shadow: none; transition: opacity .15s ease, background-color .15s ease; }
+.app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn) { top: 5px; width: var(--media-tile-button); min-width: 0; height: var(--media-tile-button); min-height: 0; padding: 0; border-radius: 7px; background: rgb(9 20 39 / 72%); box-shadow: none; transition: opacity .15s ease, background-color .15s ease; }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card .image-remove-btn { right: 5px; }
 .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn) { opacity: 1; }
 @media (hover: hover) {

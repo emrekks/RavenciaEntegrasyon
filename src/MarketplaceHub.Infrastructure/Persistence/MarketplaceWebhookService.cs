@@ -53,24 +53,12 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             ? $"{connection.Id:N}:{envelope.ExternalMessageId}"
             : envelope.ExternalMessageId;
         var dedup = $"webhook:{connection.Id}:{envelope.ExternalMessageId}";
-        var inboxExists = await db.InboxMessages.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.Source == source && x.ExternalMessageId == externalMessageId, cancellationToken);
-        var jobExists = await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken);
         var now = timeProvider.GetUtcNow();
-        if (!inboxExists)
-            db.InboxMessages.Add(new InboxMessage { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, Source = source, ExternalMessageId = externalMessageId, PayloadHash = envelope.PayloadHash, ReceivedAt = now });
-        if (!jobExists)
-        {
-            var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, externalMessageId, resourceType = envelope.ResourceType, rawJson = envelope.RawJson });
-            db.IntegrationJobs.Add(new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, TriggerType = "webhook", AvailableAt = now, CorrelationId = correlationId, LockGroup = MarketplaceSyncExecutionLock.WebhookIngestGroup(envelope.ResourceType), Version = 1 });
-        }
-        try { await db.SaveChangesAsync(cancellationToken); }
-        catch (DbUpdateException exception) when (IsDuplicateCandidate(exception))
-        {
-            db.ChangeTracker.Clear();
-            var committed = await db.InboxMessages.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.Source == source && x.ExternalMessageId == externalMessageId, cancellationToken)
-                && await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken);
-            if (!committed) throw;
-        }
+        var payload = JsonSerializer.Serialize(new { connectionId = connection.Id, externalMessageId, resourceType = envelope.ResourceType, rawJson = envelope.RawJson });
+        var inbox = new InboxMessage { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, Source = source, ExternalMessageId = externalMessageId, PayloadHash = envelope.PayloadHash, ReceivedAt = now };
+        var job = new IntegrationJob { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, ConnectionId = connection.Id, JobType = jobType, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))), JobDedupKey = dedup, EffectIdempotencyKey = dedup, TriggerType = "webhook", AvailableAt = now, CorrelationId = correlationId, LockGroup = MarketplaceSyncExecutionLock.WebhookIngestGroup(envelope.ResourceType), Version = 1 };
+        // Either answer is 200: a repeated delivery (Trendyol sends the same package twice, milliseconds apart) is already queued.
+        await WebhookInboxWriter.InsertAsync(db, inbox, job, cancellationToken);
         await db.WebhookSubscriptions.Where(x => x.TenantId == connection.TenantId && x.Id == subscription.Id && x.Status == "ACTIVE").ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastReceivedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }

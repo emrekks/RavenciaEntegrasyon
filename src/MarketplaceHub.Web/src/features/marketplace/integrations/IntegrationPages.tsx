@@ -530,7 +530,7 @@ function HepsiburadaSitPriceStockPanel({ connectionId, connectionReady }: { conn
     <div className="n11-price-stock-send-actions">
       <button type="button" disabled={!connectionReady || send.isPending} onClick={() => send.mutate()}>{send.isPending ? 'Kuyruğa Alınıyor…' : 'Stok ve Fiyat Gönder (SIT)'}</button>
     </div>
-    {jobId && <p>İşlem kimliği: <code>{jobId}</code> · <Link to="/jobs">İşlem Takibi’nde aç</Link></p>}
+    {jobId && <p>İşlem kimliği: <code>{jobId}</code> · <Link to="/jobs">İşlem Takibi’nde Aç</Link></p>}
     <IntegrationFeedbackToast feedback={feedback} connectionId={connectionId} onClose={() => setFeedback(null)} />
   </section>
 }

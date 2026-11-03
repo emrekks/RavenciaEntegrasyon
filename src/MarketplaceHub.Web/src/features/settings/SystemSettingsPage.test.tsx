@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2 }))
 
 vi.mock('../../shared/api', async importOriginal => {
   const respond = async (requestedPath: string, init?: RequestInit) => {
@@ -25,6 +25,12 @@ vi.mock('../../shared/api', async importOriginal => {
     if (path === '/mfa/confirm') return { recoveryCodes: ['ABCD-EFGH-JKMN', 'PQRS-TVWX-YZ01'] }
     if (path === '/settings/shipping-label') return { settings: method === 'PUT' ? JSON.parse(body ?? 'null') : null, version: method === 'PUT' ? 4 : 3 }
     if (path === '/settings/appearance') return { settings: null, version: 0 }
+    if (path === '/settings/alert-email' && method === 'PUT') {
+      const saved = JSON.parse(body ?? '{}') as { senderAddress: string; recipients: string[] }
+      return { senderAddress: saved.senderAddress, recipients: saved.recipients, appPasswordSaved: true, updatedAt: '2026-11-03T20:00:00Z', version: ++apiState.alertVersion }
+    }
+    if (path === '/settings/alert-email') return { senderAddress: 'ravencia.alarm@gmail.com', recipients: ['owner@example.com'], appPasswordSaved: true, updatedAt: '2026-11-03T19:00:00Z', version: 2 }
+    if (path === '/settings/alert-email/test') return { sent: true, recipients: ['owner@example.com'] }
     if (path === '/settings/data-reset' && method === 'GET') return { items: [{ scope: 'PRODUCTS', count: 944 }, { scope: 'CATEGORIES', count: 12 }, { scope: 'CATEGORY_ATTRIBUTES', count: 40 }, { scope: 'BRANDS', count: 3 }, { scope: 'OPTIONS', count: 2 }] }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
@@ -71,6 +77,7 @@ describe('SystemSettingsPage', () => {
   beforeEach(() => {
     apiState.calls = []
     apiState.failShippingSave = null
+    apiState.alertVersion = 2
     localStorage.clear()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -119,7 +126,7 @@ describe('SystemSettingsPage', () => {
     const groups = Array.from(container.querySelectorAll('.ss-gtabs > button')).map(item => item.textContent)
     expect(groups).toEqual(['Güvenlik ve Oturumlar', 'Veri', 'Kargo Ayarları', 'Görünüm'])
     expect(container.querySelector('.ss-gtabs > button.is-on')?.textContent).toBe('Güvenlik ve Oturumlar')
-    expect(Array.from(container.querySelectorAll('.ss-seg > button')).map(item => item.textContent)).toEqual(['Authenticator', 'Oturumlar3'])
+    expect(Array.from(container.querySelectorAll('.ss-seg > button')).map(item => item.textContent)).toEqual(['Authenticator', 'Oturumlar3', 'Alarm BildirimleriAlarmlar'])
     expect(button('Authenticator’ı Etkinleştir')).toBeTruthy()
   })
 
@@ -267,5 +274,39 @@ describe('SystemSettingsPage', () => {
     // never off the paper
     for (let step = 0; step < 30; step += 1) press('ArrowLeft', true)
     expect(at().left).toBe(0)
+  })
+
+  it('keeps the saved alert app password write-only and sends it only when it is changed', async () => {
+    await renderPage('/settings?tab=alerts')
+    expect(paneTitle()).toBe('Alarm Bildirimleri')
+    expect(container.textContent).toContain('Kayıtlı')
+    expect(container.querySelector('input[type="password"]')).toBeNull()
+
+    // A new recipient without touching the password: the save keeps the saved one (appPassword null).
+    click(button('Alıcı Ekle'))
+    input(container.querySelector<HTMLInputElement>('input[aria-label="2. Alıcı"]')!, 'Second@Example.com ')
+    click(button('Ayarları Kaydet'))
+    await settle()
+    const save = apiState.calls.find(call => call.path === '/settings/alert-email' && call.method === 'PUT')!
+    expect(JSON.parse(save.body!)).toEqual({ senderAddress: 'ravencia.alarm@gmail.com', recipients: ['owner@example.com', 'second@example.com'], appPassword: null })
+    expect(save.headers?.['if-match']).toBe('"v2"')
+
+    // "Değiştir" opens the field; the typed password is sent once.
+    apiState.calls = []
+    click(button('Değiştir'))
+    input(container.querySelector<HTMLInputElement>('input[type="password"]')!, 'abcd efgh ijkl mnop')
+    click(button('Ayarları Kaydet'))
+    await settle()
+    const change = apiState.calls.find(call => call.path === '/settings/alert-email' && call.method === 'PUT')!
+    expect(JSON.parse(change.body!).appPassword).toBe('abcd efgh ijkl mnop')
+    expect(container.querySelector('input[type="password"]')).toBeNull()
+  })
+
+  it('sends the alert test e-mail and shows where it went', async () => {
+    await renderPage('/settings?tab=alerts')
+    click(button('Test E-postası Gönder'))
+    await settle()
+    expect(apiState.calls.some(call => call.path === '/settings/alert-email/test' && call.method === 'POST')).toBe(true)
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('Test e-postası gönderildi: owner@example.com')
   })
 })

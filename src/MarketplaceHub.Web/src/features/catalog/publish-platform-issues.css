@@ -14,7 +14,7 @@
 .publish-platform-card .publish-platform-warning p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
 .publish-platform-card .publish-platform-warning ul { display: grid; gap: 8px; margin: 10px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
 .publish-platform-card .publish-platform-warning li { display: block; }
-.publish-platform-card .publish-platform-warning li b { display: inline-block; margin-right: 6px; padding: 1px 8px; color: var(--issue-tone); background: color-mix(in srgb, var(--issue-tone) 14%, transparent); border-radius: 6px; font-size: 12px; font-weight: 600; }
+.publish-platform-card .publish-platform-warning li b { display: inline-block; margin-right: 6px; padding: 1px 8px; color: var(--issue-tone); background: color-mix(in srgb, var(--issue-tone) 14%, transparent); border-radius: 7px; font-size: 12px; font-weight: 600; }
 
 /* The missing items of a card are explained by the status badge itself: hover or focus it. */
 .publish-platform-fact-publication > dd { position: relative; }
@@ -39,7 +39,7 @@
 /* A card whose gap list is open stays above its neighbours even when the pointer moves onto another card (that card is
    raised on hover to 6), so the open list is never covered. */
 .publish-platform-card.publish-platform-card:has(.publish-issue-trigger[aria-expanded="true"]) { position: relative; z-index: 8; }
-.publish-platform-card.publish-platform-card > .publish-platform-card-head, .publish-platform-card.publish-platform-card > .publish-platform-card-top > .publish-platform-card-head { border-radius: 11px 11px 0 0; }
+.publish-platform-card.publish-platform-card > .publish-platform-card-head, .publish-platform-card.publish-platform-card > .publish-platform-card-top > .publish-platform-card-head { border-radius: 12px 12px 0 0; }
 /* The editor card's header: the selection button, and beside it (never inside it) the borderless refresh icon, laid
    over a 32 px gap the button keeps just left of its toggle; pressing the icon never changes the selection. */
 .publish-platform-card-top { position: relative; }
@@ -173,7 +173,7 @@
 .publish-issue-trigger.publish-platform-status:focus-visible { outline: 2px solid var(--rv-color-danger); outline-offset: 2px; }
 .publish-issue-trigger svg { flex: none; opacity: .8; }
 .publish-issue-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
-.publish-issue-count { display: inline-grid; box-sizing: border-box; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; color: #fff; background: var(--rv-color-danger); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+.publish-issue-count { display: inline-grid; box-sizing: border-box; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; color: #fff; background: var(--rv-color-danger); border-radius: 12px; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .publish-issue-badge:hover .publish-issue-tooltip, .publish-issue-tooltip.is-open { display: block; }
 /* While one gap list is open (clicked), the others do not open on hover or focus; only the open one shows. */
 body:has(.publish-issue-tooltip.is-open) .publish-issue-tooltip:not(.is-open) { display: none; }

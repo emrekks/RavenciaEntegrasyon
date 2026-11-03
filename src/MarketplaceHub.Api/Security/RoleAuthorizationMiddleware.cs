@@ -65,6 +65,8 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             "orders" when last is "finance" or "product-image" => WorkingRoles,
             "shipments" when last == "changeable-cargo-companies" => WorkingRoles,
             "returns" when last is "rejection-reasons" or "audits" => WorkingRoles,
+            // Who gets the operator alerts, and from which account, is for the owner and administrators.
+            "settings" when last == "alert-email" => ElevatedRoles,
             _ => null
         };
     }

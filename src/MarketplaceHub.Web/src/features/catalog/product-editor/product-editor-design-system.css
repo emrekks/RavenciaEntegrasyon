@@ -304,7 +304,7 @@
 @layer features {
   /* Eşitle / Arttır / Azalt: one compact segmented control above each bulk field (panel and dialog). */
   .variant-bulk-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; padding: 2px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; }
-  .app-shell.stitch-shell .variant-bulk-modes > button, .variant-bulk-edit-modal .variant-bulk-modes > button { min-width: 0; min-height: 0; height: 28px; padding: 0 4px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 5px; font-size: var(--rv-font-size-xs); font-weight: 750; white-space: nowrap; }
+  .app-shell.stitch-shell .variant-bulk-modes > button, .variant-bulk-edit-modal .variant-bulk-modes > button { min-width: 0; min-height: 0; height: 28px; padding: 0 4px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 7px; font-size: var(--rv-font-size-xs); font-weight: 750; white-space: nowrap; }
   .app-shell.stitch-shell .variant-bulk-modes > button.is-on, .variant-bulk-edit-modal .variant-bulk-modes > button.is-on { color: #fff; background: var(--rv-color-primary-fill); }
   .variant-bulk-edit-modal { width: min(500px, 100%); }
 }
@@ -456,7 +456,7 @@
 }
 
 @layer features {
-  .variant-platform-status { position: relative; display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; padding: 0; color: inherit; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 8px; cursor: pointer; }
+  .variant-platform-status { position: relative; display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; padding: 0; color: inherit; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; cursor: pointer; }
 }
 
 @layer features {

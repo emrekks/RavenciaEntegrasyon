@@ -45,7 +45,7 @@ http://127.0.0.1:8081 {
 	# through loopback, which reaches the container from a Docker bridge address)
 	# and the compose networks. Everyone else gets a plain 404.
 	@health_private_only {
-		path /health/*
+		path /health/* /internal/*
 		not path /health/live
 		not remote_ip private_ranges
 	}
@@ -101,7 +101,8 @@ http://127.0.0.1:8081 {
 	}
 
 	# SignalR negotiation and WebSocket traffic must reach the API, not the SPA fallback.
-	@backend path /api/* /health/* /hubs/*
+	# /internal/* is the host's alert settings sync (private sources only, see above, plus a host token).
+	@backend path /api/* /health/* /hubs/* /internal/*
 	handle @backend {
 		reverse_proxy api:8080
 	}

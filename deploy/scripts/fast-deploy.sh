@@ -289,4 +289,8 @@ if [[ "$previous_app_image" == marketplacehub-app:manual-* && "$previous_app_ima
   echo "Rollback target kept: $previous_app_image / $previous_edge_image (deploy/scripts/rollback.sh ${previous_app_image##*:manual-})"
 fi
 
+# The panel's alert e-mail settings to the host files (or the host file into an empty panel). Never fails the deploy.
+"${sudo_cmd[@]}" bash /usr/local/lib/ravencia/deploy/scripts/alert-settings-sync.sh \
+  || echo "::warning::Alert e-mail settings could not be synchronised with the panel." >&2
+
 echo "Fast deploy completed: $revision"
