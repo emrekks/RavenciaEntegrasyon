@@ -1458,7 +1458,7 @@ internal static class HepsiburadaJsonMapper
         var lineInvoiceFlags = lineItems.Select(item => Boolean(item, "hasInvoice", "HasInvoice")).Distinct().ToArray();
         var invoiceUploaded = Boolean(order, "hasInvoice", "HasInvoice")
             ?? (lineInvoiceFlags.Length == 1 ? lineInvoiceFlags[0] : null);
-        var packages = Packages(order, lines, LineAliases(lineItems, lines), orderedAt.Value, invoiceUploaded);
+        var packages = Packages(order, LineAliases(lineItems, lines), orderedAt.Value, invoiceUploaded);
         var dueAt = Date(order, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt")
             ?? lineItems.Select(item => Date(item, "dueDate", "DueDate", "shipmentDueAt", "ShipmentDueAt")).FirstOrDefault(value => value.HasValue);
         // The common sales model uses the order number for GetAsync lookups. Hepsiburada's
@@ -1536,7 +1536,7 @@ internal static class HepsiburadaJsonMapper
 
     private static readonly string[] LineIdentityNames = ["id", "lineItemId", "orderLineId", "orderItemId"];
 
-    private static IReadOnlyList<RemotePackage> Packages(JsonElement order, IReadOnlyList<RemoteOrderLine> lines, IReadOnlyDictionary<string, string> lineAliases, DateTimeOffset orderDate, bool? orderInvoiceUploaded)
+    private static IReadOnlyList<RemotePackage> Packages(JsonElement order, IReadOnlyDictionary<string, string> lineAliases, DateTimeOffset orderDate, bool? orderInvoiceUploaded)
     {
         var element = Find(order, "packages", "Packages", "shipments", "Shipments");
         if (element.ValueKind != JsonValueKind.Array) return [];
