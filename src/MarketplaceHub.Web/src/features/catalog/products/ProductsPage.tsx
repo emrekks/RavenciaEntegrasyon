@@ -361,7 +361,7 @@ export function ProductQuickEditModal({ products, connections, mode = 'both', on
         })}</div>
       </section>
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{mode === 'stock' ? 'Stok Değerini Düzenle' : mode === 'price' ? 'Fiyat Değerini Düzenle' : 'Fiyat ve Stok Değerini Düzenle'}</div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small></header>
-        {activeSelection.length ? <div className="rr-chips">{variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => <span key={item.variant.id} className="rr-chip">{variantAxisParts(item.variant.optionSignature).map(part => part.value).join(' · ') || item.variant.sku}</span>)}</div> : <p className="rr-lead">Değeri şimdi girebilirsiniz; uygulamak için en az bir varyantı işaretleyin.</p>}
+        {activeSelection.length ? <div className="rr-chips">{selectionChips(variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => item.variant)).map(chip => <span key={chip} className="rr-chip">{chip}</span>)}</div> : <p className="rr-lead">Değeri şimdi girebilirsiniz; uygulamak için en az bir varyantı işaretleyin.</p>}
         {needsPriceConnection && <label className="rr-fld"><small>Fiyat Kanalı</small><select className="rr-in" aria-label="Fiyat kanalı" aria-describedby="quick-price-choice-help" value={priceConnectionId} onChange={event => setPriceConnectionId(event.target.value)}><option value={PANEL_PRICE_CHOICE}>Panel Ana Fiyatı</option>{connections.length > 0 && <optgroup label="Pazaryeri Kanalı">{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName}</option>)}</optgroup>}</select><small className="rr-lead" id="quick-price-choice-help" aria-live="polite">{quickPriceChoiceHelp(priceConnectionId, priceChannelName, followerColumns.map(column => column.label))}</small></label>}
         <div className="rr-dgrid">{mode !== 'stock' && <>{showListPrice && <label className="rr-fld"><small>Liste Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label>}<label className="rr-fld"><small>Satış Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></>}{mode !== 'price' && <><label className="rr-fld"><small>Stok İşlemi</small><select className="rr-in" value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu Sayıya Eşitle</option><option value="ADD">Bu Kadar Ekle (+)</option><option value="SUBTRACT">Bu Kadar Çıkar (−)</option></select></label><label className="rr-fld"><small>Miktar</small><input className="rr-in rr-num" type="number" min="0" step="1" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></>}</div>
       </section>
@@ -715,6 +715,20 @@ function variantAxisParts(signature: string | null | undefined) {
   const parts = variantOptionParts(signature)
   const axes = parts.filter(part => isVariantOptionName(part.name))
   return axes.length ? axes : parts.slice(0, 2)
+}
+
+// The selected variants as one chip per first option, the rest joined: "Bej · L - XL - 2XL" instead of a chip each.
+function selectionChips(variants: Array<Pick<Variant, 'optionSignature' | 'sku'>>) {
+  const groups = new Map<string, string[]>()
+  for (const variant of variants) {
+    const values = variantAxisParts(variant.optionSignature).map(part => part.value)
+    const head = values.length > 1 ? values[0] : values.join(' · ') || variant.sku
+    const rest = values.length > 1 ? values.slice(1).join(' · ') : ''
+    const list = groups.get(head) ?? []
+    if (rest && !list.includes(rest)) list.push(rest)
+    groups.set(head, list)
+  }
+  return [...groups].map(([head, rest]) => rest.length ? `${head} · ${rest.join(' - ')}` : head)
 }
 
 // The variant stock table is placed on the window, not inside the list's scroll box (which cut off every colour past the
