@@ -26,6 +26,10 @@ public sealed class TrendyolFinanceTests
     [InlineData(Others, "DeductionInvoices", null, "Kargo Faturası", null, MarketplaceFinanceCategories.Cargo)]
     [InlineData(Others, "DeductionInvoices", null, "KARGO FATURA", null, MarketplaceFinanceCategories.Cargo)]
     [InlineData(Others, "DeductionInvoices", "PlatformServiceFee", "Platform Hizmet Bedeli", null, MarketplaceFinanceCategories.ServiceFee)]
+    // The service-fee filter also returns cargo and advertising invoices: their own name wins over the mark.
+    [InlineData(Others, "DeductionInvoices", "PlatformServiceFee", "Kargo Fatura", null, MarketplaceFinanceCategories.Cargo)]
+    [InlineData(Others, "DeductionInvoices", "PlatformServiceFee", "Reklam Bedeli", null, MarketplaceFinanceCategories.Advertising)]
+    [InlineData(Others, "DeductionInvoices", "PlatformServiceFee", "Yurtdışı Operasyon Iade Bedeli", null, MarketplaceFinanceCategories.ServiceFee)]
     [InlineData(Others, "DeductionInvoices", null, "Platform Hizmet Bedeli", null, MarketplaceFinanceCategories.ServiceFee)]
     [InlineData(Others, "DeductionInvoices", null, "Erken Ödeme Hizmet Bedeli", null, MarketplaceFinanceCategories.EarlyPayment)]
     [InlineData(Others, "DeductionInvoices", null, "Reklam Hizmet Bedeli", null, MarketplaceFinanceCategories.Advertising)]

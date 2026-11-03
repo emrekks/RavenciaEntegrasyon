@@ -64,7 +64,13 @@ internal static class TrendyolFinanceCategorizer
     public static string Categorize(string source, string requestedType, string? transactionSubType, string? transactionType, string? description)
     {
         if (source == MarketplaceFinanceSources.MoneyMovements) return MarketplaceFinanceCategories.Transfer;
-        if (string.Equals(transactionSubType, PlatformServiceFee, StringComparison.OrdinalIgnoreCase)) return MarketplaceFinanceCategories.ServiceFee;
+        if (string.Equals(transactionSubType, PlatformServiceFee, StringComparison.OrdinalIgnoreCase))
+        {
+            // The PlatformServiceFee filter also returns cargo invoices and advertising charges (live, 3 Nov 2026: 70 "Kargo
+            // Fatura" and 9 "Reklam Bedeli" invoices carried the mark), so a deduction invoice's own name wins over the mark.
+            var named = string.Equals(requestedType, DeductionInvoices, StringComparison.OrdinalIgnoreCase) ? ByKeyword(transactionType, description) : MarketplaceFinanceCategories.Other;
+            return named is MarketplaceFinanceCategories.Other or MarketplaceFinanceCategories.ServiceFee ? MarketplaceFinanceCategories.ServiceFee : named;
+        }
         switch (requestedType)
         {
             case "Sale" or "PayByLink": return MarketplaceFinanceCategories.Sale;
