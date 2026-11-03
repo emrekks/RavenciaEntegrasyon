@@ -40,8 +40,8 @@
     border-top: 1px solid var(--rr-line) !important; border-bottom: 1px solid var(--rr-line) !important;
   }
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td:is([data-l="Fiyat"], [data-l="Stok"], [data-l="Varyant"])::before { display: block !important; margin: 0; color: var(--rr-subtle); font-size: 11.5px; font-weight: 500; content: attr(data-l); }
-  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Fiyat"] { border-left: 1px solid var(--rr-line) !important; border-radius: 10px 0 0 10px; }
-  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Varyant"] { border-right: 1px solid var(--rr-line) !important; border-radius: 0 10px 10px 0; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Fiyat"] { border-left: 1px solid var(--rr-line) !important; border-radius: 12px 0 0 12px; }
+  html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl > tbody > tr > td[data-l="Varyant"] { border-right: 1px solid var(--rr-line) !important; border-radius: 0 12px 12px 0; }
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl :is(.rr-qbtn, .rr-varcell) { justify-items: start; padding: 0; text-align: left; }
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn.rr-qbtn { min-height: 0; margin: 0; padding: 0; }
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn.rr-qbtn:hover { background: none; border-color: transparent; }

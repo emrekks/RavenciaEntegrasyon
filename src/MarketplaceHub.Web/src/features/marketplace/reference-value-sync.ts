@@ -20,6 +20,13 @@ export function isReferenceSyncJobTerminal(status: string | undefined) {
     || status === 'CANCELLED'
 }
 
+// How often the sync job a value list waits on is read again: every second while it runs, never again once it has ended
+// or could not be read (a job that cannot be read would otherwise be asked for every second, forever, with the button locked).
+export function referenceSyncJobPollInterval(status: string | undefined, readFailed: boolean): number | false {
+  if (readFailed || isReferenceSyncJobTerminal(status)) return false
+  return 1000
+}
+
 // Polls value-list sync jobs until each has ended or the time is up; returns the end state of those that ended.
 // A job still running at the deadline is simply missing from the result (its field stays unmatched, nothing guessed).
 export async function waitForReferenceSyncJobs(

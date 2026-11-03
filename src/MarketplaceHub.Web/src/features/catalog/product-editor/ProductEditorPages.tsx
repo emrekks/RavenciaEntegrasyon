@@ -5,7 +5,7 @@ import './product-editor-hydration.css'
 import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
+import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard, StickyActionBar } from '../../../shared/components'
 import { failedWithHttpAnswer, newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { httpsUrlProblem } from '../../../shared/safe-url'
@@ -819,7 +819,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const otherFamilyIds = (familyProductIds ?? []).filter(id => id !== productId)
   const publication = useQuery({
     queryKey: statusKey,
-    queryFn: () => hubApi<PublicationStatus>(`/products/${productId}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
+    queryFn: () => hubPoll<PublicationStatus>(`/products/${productId}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
     enabled: !!productId && card.mode === 'PUBLISH',
     refetchInterval: query => isPublicationStatusJobRunning(query.state.data?.lastJobStatus) ? 3000 : false,
     refetchIntervalInBackground: true,
@@ -879,7 +879,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const familyStatuses = useQueries({
     queries: otherFamilyIds.map(id => ({
       queryKey: ['publication-status', id, card.connection.id],
-      queryFn: () => hubApi<PublicationStatus>(`/products/${id}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
+      queryFn: () => hubPoll<PublicationStatus>(`/products/${id}/publication-status/${card.connection.id}`, { cache: 'no-store' }),
       enabled: card.mode === 'PUBLISH',
       // A sibling's own send or status check is followed until it ends, like this card's.
       refetchInterval: (query: { state: { data?: PublicationStatus } }) => isPublicationStatusJobRunning(query.state.data?.lastJobStatus) ? 3000 : false,
@@ -1153,7 +1153,7 @@ function usePublicationJobInline(jobId: string | null | undefined, productId: st
   const enabled = Boolean(productId && jobId)
   const job = useQuery({
     queryKey,
-    queryFn: () => hubApi<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
+    queryFn: () => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
     enabled,
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error'),
     refetchIntervalInBackground: true,
@@ -1185,7 +1185,7 @@ function useCardRefreshJob(jobId: string | null, onSettled: (job: PublicationJob
   const queryKey = ['publication-job', jobId ?? ''] as const
   const job = useQuery({
     queryKey,
-    queryFn: () => hubApi<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
+    queryFn: () => hubPoll<PublicationJobDetail>(`/jobs/${jobId}`, { cache: 'no-store' }),
     enabled: Boolean(jobId),
     refetchInterval: query => publicationJobPollInterval(query.state.data?.job.status, query.state.status === 'error'),
     refetchIntervalInBackground: true,

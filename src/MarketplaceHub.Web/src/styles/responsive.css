@@ -28,7 +28,7 @@
     max-height: 94dvh;
     margin: 0;
     border-width: 1px 0 0;
-    border-radius: 16px 16px 0 0;
+    border-radius: 14px 14px 0 0;
   }
   html body :is(.rv-modal, .workspace-modal) > header { padding: 14px 16px; }
   html body :is(.rv-modal, .workspace-modal) > footer { flex-wrap: wrap; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }

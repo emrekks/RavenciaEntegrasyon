@@ -69,7 +69,7 @@
   html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-fcard .rr-filters .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
   html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-fcard:not(.rr-fopen) .rr-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-fcard:not(.rr-fopen) .rr-filters > .rr-search { grid-column: 1 / -1; }
-  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-fcount { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 1.5px 5px 0; color: #fff; background: var(--rr-primary); border-radius: 9px; font-size: 11px; font-weight: 700; line-height: 1; }
+  html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-fcount { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 1.5px 5px 0; color: #fff; background: var(--rr-primary); border-radius: 12px; font-size: 11px; font-weight: 700; line-height: 1; }
 
   html body main .rr.rr:is(.rr-orders, .rr-returns) .rr-fopen > .rr-fscrim { position: fixed; inset: 0; z-index: 900; display: block; background: rgb(0 0 0 / 55%); }
   /* Centred by margin, not transform: a transform would become the frame of the option lists, which RrAnchor pins

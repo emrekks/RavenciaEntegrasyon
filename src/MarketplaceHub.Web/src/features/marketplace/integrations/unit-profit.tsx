@@ -2,6 +2,9 @@ import { useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Modal } from '../../../shared/components'
 import '../commission-tariffs.css'
+// One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
+// the tariff table formats thousands of amounts per render.
+const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // What one unit sold at a price pays besides its commission (UnitProfitCostsView on the server): the product cost, the
 // store's cargo tariff, the service fee, the withholding tax and the net VAT, with the VAT rate they were taken at.
@@ -25,8 +28,8 @@ export function unitProfit(price: number, commission: number, cost: number, basi
 // The profit as a share of the product cost (Kâr Oranı).
 export const onCost = (profit: number, costs: UnitProfitCosts | null | undefined) => costs && costs.cost > 0 ? kurus(profit / costs.cost * 100) : null
 
-const money = (value: number) => `${value < 0 ? '−' : ''}${Math.abs(value).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
-const percent = (value: number) => `%${value < 0 ? '−' : ''}${Math.abs(value).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const money = (value: number) => `${value < 0 ? '−' : ''}${twoDecimals.format(Math.abs(value))} ₺`
+const percent = (value: number) => `%${value < 0 ? '−' : ''}${twoDecimals.format(Math.abs(value))}`
 
 // "100,85 ₺ Kâr (%63,03)": the profit and its share of the cost.
 export function profitText(profit: number, costs: UnitProfitCosts | null | undefined) {

@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import './questions-design-system.css'
 import { useRememberedHeight } from '../../shared/remembered-height'
-import { useRememberedTabCounts } from '../../shared/tab-counts'
+import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
 import { Link } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi, loadAllPages } from '../../shared/api'
+import { hubApi, hubPoll, loadAllPages } from '../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { marketplaceProductSearchUrl } from './marketplace-product-link'
@@ -199,8 +199,10 @@ export function QuestionsPage() {
   filters.set('page', String(page)); filters.set('limit', '50')
   // Questions arrive from the marketplaces every few minutes, so the inbox and its counts read the local copy every two
   // minutes (sync states every minute) instead of keeping the server busy.
-  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubApi<QuestionListPage>(`/questions?${filters.toString()}`), refetchInterval: 120_000, staleTime: 10_000 })
-  const countQuery = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
+  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`), refetchInterval: 120_000, staleTime: 10_000 })
+  // A count is keyed by the exact request it makes, so the tab's waiting count and the unfiltered status count (the same
+  // request when no filter is set) share one cache entry and one request instead of two.
+  const countPath = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
     const params = new URLSearchParams({ kind: countKind, status: countStatus, page: '1', limit: '1', sort })
     if (scoped) {
       if (platform !== 'ALL') params.set('platform', platform)
@@ -209,13 +211,14 @@ export function QuestionsPage() {
       if (dateTo) params.set('dateTo', istanbulDayBoundary(dateTo, true))
       if (search.trim()) params.set('search', search.trim())
     }
-    return hubApi<QuestionListPage>(`/questions?${params.toString()}`).then(result => result.totalCount)
+    return `/questions?${params.toString()}`
   }
-  const statusCounts = useQueries({ queries: statusFilters.map(item => ({ queryKey: ['questions', 'count', kind, item.value, platform, connectionId, dateFrom, dateTo, search], queryFn: () => countQuery(kind, item.value, true), enabled: tab !== 'TEMPLATES', refetchInterval: 120_000, staleTime: 10_000 })) })
-  const waitingCounts = useQueries({ queries: (['PRODUCT', 'ORDER'] as const).map(countKind => ({ queryKey: ['questions', 'count', 'waiting', countKind], queryFn: () => countQuery(countKind, 'WAITING', false), refetchInterval: 120_000, staleTime: 10_000 })) })
+  const countQuery = (path: string) => ({ queryKey: ['questions', 'count', path], queryFn: () => hubPoll<QuestionListPage>(path).then(result => result.totalCount), refetchInterval: 120_000, staleTime: 10_000 })
+  const statusCounts = useQueries({ queries: statusFilters.map(item => ({ ...countQuery(countPath(kind, item.value, true)), enabled: tab !== 'TEMPLATES' })) })
+  const waitingCounts = useQueries({ queries: (['PRODUCT', 'ORDER'] as const).map(countKind => countQuery(countPath(countKind, 'WAITING', false))) })
   const formatCount = (value: number | undefined) => value === undefined ? undefined : value.toLocaleString('tr-TR')
   const templates = useQuery({ queryKey: ['question-templates'], queryFn: () => hubApi<Template[]>('/question-templates'), staleTime: 30_000 })
-  const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubApi<SyncState[]>('/questions/sync-state'), refetchInterval: 60_000 })
+  const syncStates = useQuery({ queryKey: ['questions', 'sync-state'], queryFn: () => hubPoll<SyncState[]>('/questions/sync-state'), refetchInterval: 60_000 })
   useEffect(() => { if (syncStates.data) rememberSyncCount(syncStates.data.length) }, [syncStates.data])
   const syncHeight = useRememberedHeight<HTMLElement>('question-sync-chips', syncStates.isLoading)
 
@@ -279,7 +282,7 @@ export function QuestionsPage() {
   const currentStatus = statusFilters.find(item => item.value === status) ?? statusFilters[0]
   const currentStatusIndex = statusFilters.indexOf(currentStatus)
   // The count on the status picker shows the last known number while it loads, so the picker does not shift when it arrives.
-  const [statusCountItem] = useRememberedTabCounts('Soru durumu', [{ value: currentStatus.value, count: formatCount(statusCounts[currentStatusIndex]?.data) }])
+  const [statusCountItem] = useRememberedTabCounts('Soru durumu', [{ value: currentStatus.value, count: statusCounts[currentStatusIndex]?.isError ? unknownCount : formatCount(statusCounts[currentStatusIndex]?.data) }])
   const activeFilterCount = (connectionId !== 'ALL' ? 1 : 0) + (dateFrom || dateTo ? 1 : 0) + (sort !== 'NEWEST' ? 1 : 0)
   const presets = [{ key: 'ALL', label: 'Tümü', title: 'Tüm Tarihler', range: { from: '', to: '' } }, { key: 'TODAY', label: 'Bugün', title: 'Bugün', range: lastDays(1) }, { key: '7', label: '7 Gün', title: 'Son 7 Gün', range: lastDays(7) }, { key: '30', label: '30 Gün', title: 'Son 30 Gün', range: lastDays(30) }]
   const productHrefOf = (row: MarketplaceQuestion) => row.kind === 'PRODUCT' || row.platformCode === 'HEPSIBURADA' ? row.productUrl || marketplaceProductSearchUrl(row.platformCode, row.productBarcode, row.productSku, row.productModelCode, row.productName) : null
@@ -350,7 +353,7 @@ export function QuestionsPage() {
     {notice && <MessageToast message={notice.message} kind={notice.kind} onClose={() => setNotice(null)} />}
     <div className={`qi-inbox${detailOpen ? ' is-detail' : ''}`}>
       <div className="qi-left">
-        <Tabs className="rv-questions-tabs qi-tabs rv-view-tabs" ariaLabel="Soru türü" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); setPlatform('ALL'); setStatus('WAITING'); setSelectedId(null); setDetailOpen(false) }} items={[{ value: 'PRODUCT', label: viewTabLabel('product', 'Ürün Soruları'), count: formatCount(waitingCounts[0].data) }, { value: 'ORDER', label: viewTabLabel('order', 'Sipariş Soruları'), count: formatCount(waitingCounts[1].data) }]} />
+        <Tabs className="rv-questions-tabs qi-tabs rv-view-tabs" ariaLabel="Soru türü" value={tab} onChange={value => { setTab(value as WorkspaceTab); setConnectionId('ALL'); setPlatform('ALL'); setStatus('WAITING'); setSelectedId(null); setDetailOpen(false) }} items={[{ value: 'PRODUCT', label: viewTabLabel('product', 'Ürün Soruları'), count: waitingCounts[0].isError ? unknownCount : formatCount(waitingCounts[0].data) }, { value: 'ORDER', label: viewTabLabel('order', 'Sipariş Soruları'), count: waitingCounts[1].isError ? unknownCount : formatCount(waitingCounts[1].data) }]} />
         <div className="qi-tools" aria-label="Soru filtreleri">
           <div className="qi-tools-row">
             <label className="rv-questions-search qi-search"><UiIcon name="search" size={15} /><input value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder="Soru, ürün, stok kodu veya sipariş no" aria-label="Metin ara" /></label>
@@ -366,7 +369,7 @@ export function QuestionsPage() {
           </div>
           <div className="qi-status" ref={statusRef}>
             <button type="button" className={`qi-status-btn${statusOpen ? ' is-on' : ''}`} aria-haspopup="listbox" aria-expanded={statusOpen} onClick={() => setStatusOpen(value => !value)}><StateGlyph state={currentStatus.glyph} /><b>{currentStatus.label}</b><span className={`qi-count${currentStatus.value === 'WAITING' && statusCounts[currentStatusIndex]?.data ? ' is-warn' : ''}`}>{statusCountItem.count ?? '…'}</span><UiIcon name="chevronDown" size={15} /></button>
-            {statusOpen && <div className="qi-status-menu" role="listbox" aria-label="Soru durumu">{statusFilters.map((item, index) => <button type="button" role="option" aria-selected={status === item.value} className={status === item.value ? 'is-on' : ''} key={item.value} onClick={() => { setStatus(item.value); setStatusOpen(false); setSelectedId(null) }}><span><StateGlyph state={item.glyph} />{item.label}</span><span className={`qi-count${item.value === 'WAITING' && statusCounts[index]?.data ? ' is-warn' : ''}`}>{formatCount(statusCounts[index]?.data) ?? '…'}</span></button>)}</div>}
+            {statusOpen && <div className="qi-status-menu" role="listbox" aria-label="Soru durumu">{statusFilters.map((item, index) => <button type="button" role="option" aria-selected={status === item.value} className={status === item.value ? 'is-on' : ''} key={item.value} onClick={() => { setStatus(item.value); setStatusOpen(false); setSelectedId(null) }}><span><StateGlyph state={item.glyph} />{item.label}</span><span className={`qi-count${item.value === 'WAITING' && statusCounts[index]?.data ? ' is-warn' : ''}`}>{formatCount(statusCounts[index]?.data) ?? (statusCounts[index]?.isError ? unknownCount : '…')}</span></button>)}</div>}
           </div>
         </div>
         <div className="qi-list">
