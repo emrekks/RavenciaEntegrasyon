@@ -39,7 +39,7 @@ Eşzamanlı çalışmalar `production-deploy` concurrency grubu ve sunucudaki `f
 önce durdurulduğu için konteynerler bu sırada çalışır; deploy'un koştuğu SSH oturum kapsamları
 `/etc/systemd/system/session-.scope.d/ravencia-deploy-guard.conf` ile bu birimden sonra durdurulur.
 Sunucuda doğrulama: `systemctl show -p After session-<n>.scope` çıktısında `ravencia-deploy-guard.service`
-görünmeli. AWS durdurmayı kendi süre sınırından sonra zorlarsa bekleme yarıda kalır; elle durdurma sırasında
+görünmeli. Sağlayıcı (Hostinger) durdurmayı kendi süre sınırından sonra zorlarsa bekleme yarıda kalır; elle durdurma sırasında
 süren bir deploy yarıda kesilebilir.
 `releases.tsv` her deploy/geri alma için bir satır tutar (zaman, tür, SHA, imajlar).
 
@@ -175,7 +175,7 @@ SystemMaxUse=2G
 MaxRetentionSec=30day
 ```
 
-(`sudo systemctl restart systemd-journald`.) IAM rolü eklendiğinde `awslogs` sürücüsü düşünülebilir.
+(`sudo systemctl restart systemd-journald`.)
 
 ## Kenar (Caddy)
 
@@ -200,6 +200,145 @@ MaxRetentionSec=30day
   **Canlıda 3 Kasım 2026'dan beri `"userland-proxy": false`** (AAAA kaydı yok, ufw IPv6'da yalnız 22'yi açıyor):
   80/443 IPv6'da hiç dinlenmez; IPv4 istemcilerin adresi Caddy'de olduğu gibi görünür, sunucudaki loopback
   kontrolleri (`--resolve …:127.0.0.1`) köprü ağ geçidi adresiyle gelir ve `/health/ready` onlara 200 döner.
+- `/.well-known/security.txt` (RFC 9116): `Contact: mailto:destek@ravencia.com`, `Preferred-Languages: tr, en`,
+  `Canonical`, `Expires` bir yıl ileri. Süre dolmadan 30 gün önce CI `ops` işi kırmızıya döner; o zaman
+  `Caddyfile.production`'daki `Expires` satırı bir yıl ileri alınır.
+
+## Konteyner sertleştirme (güvenlik planı U3)
+
+| Servis | Kullanıcı | Yetenekler | Kök dosya sistemi | `pids_limit` |
+| --- | --- | --- | --- | --- |
+| `api`, `worker`, `migrate` | imajın `APP_UID` 1654'ü | hiçbiri (`cap_drop: ALL`) | salt okunur; `/tmp` tmpfs 256 MB, iki veri volume'ü yazılabilir | 1024 |
+| `caddy` | `10080:10080` (root değil) | sınır kümesinde yalnız `NET_BIND_SERVICE`; etkin küme boş | salt okunur; `/tmp` tmpfs, `/data` ve `/config` volume | 256 |
+| `caddy-volumes` (tek seferlik) | root | `CHOWN`, `DAC_OVERRIDE`, `DAC_READ_SEARCH`, `FOWNER` | — (ağ yok) | 32 |
+| `postgres` | entrypoint root, sonra `postgres` (gosu) | `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID` | yazılabilir (soket ve kilit dosyaları) | 512 |
+| `backup` (tek seferlik) | root | `DAC_READ_SEARCH` (1654'e ait özel dosyaları okumak için) | yazılabilir | 128 |
+
+Hepsinde `no-new-privileges:true`. Notlar:
+
+- **Caddy root olmadan 80/443'ü** `net.ipv4.ip_unprivileged_port_start=0` ile açar (konteynerin kendi ağ
+  ad alanında; Docker 20.10'dan beri varsayılan, burada açıkça yazılı). `cap_add: NET_BIND_SERVICE` yine de
+  durur: imajdaki `/usr/bin/caddy` dosyası `cap_net_bind_service+ep` dosya yeteneği taşır ve bu yetenek sınır
+  kümesinde yoksa çekirdek dosyayı hiç çalıştırmaz (`exec caddy failed: Operation not permitted`).
+  `no-new-privileges` ve root olmayan kullanıcı yüzünden süreç yeteneği almaz (`CapEff` 0).
+- **`caddy-volumes`**, her Caddy başlangıcından önce `/data` ve `/config`'i 10080'e devreder. Caddy root
+  çalışırken yazılan sertifikalar root'a ait ve 0600'dür; bu adım olmadan Caddy onları okuyamaz, yeni
+  sertifika da yazamaz. İlk deploy'dan sonra bir şey değiştirmez. `rollback.sh` `--no-deps` kullanır;
+  devir zaten yapılmış olduğundan etkilenmez.
+- Bu servislerden birine yeni bir yazma yolu gerekirse (`/tmp` dışında) önce volume ya da tmpfs eklenir;
+  aksi halde süreç `Read-only file system` hatası alır.
+- CI `ops` işi birleştirilmiş Compose'da bu ayarların durduğunu denetler.
+
+## İmaj güvenlik taraması (U4)
+
+- Validate: `image-app` çalışma imajını (`docker build .`), `image-edge` kenar imajını derler ve
+  Trivy ile tarar (`aquasecurity/trivy-action`, SHA sabitli; Trivy v0.70.0). **Yaması yayımlanmış
+  CRITICAL** bir açık (taban imaj paketi ya da NuGet) Validate'i durdurur: digest'i ya da paketi güncelleyin.
+  Yaması olmayanlar (`--ignore-unfixed`) durdurmaz.
+- `Image Scan` iş akışı (`.github/workflows/image-scan.yml`) her Pazartesi 07:00 TR'de `main`'den aynı iki
+  imajı derleyip tarar; bulgu varsa çalışma kırmızı olur ve "Image scan: fixable CRITICAL vulnerabilities
+  in the … image" başlıklı bir issue açılır (açıksa yorum eklenir). Elle: Actions → Image Scan → Run workflow.
+
+## Panel MFA zorunluluğu (H2)
+
+`Security__RequireMfaForElevatedRoles` açıkken doğrulama uygulaması kurulu olmayan OWNER/ADMINISTRATOR
+hesabı giriş yapabilir, okuyabilir ve MFA kurabilir (`/api/v1/auth/*` açık) ama başka hiçbir değiştirme
+isteği (POST/PUT/PATCH/DELETE `/api/v1/*`) yapamaz: `403 MFA_ENROLLMENT_REQUIRED`. Webhook'lar
+(`/api/v1/hooks/*`) ve diğer roller etkilenmez. MFA durumu her istekte oturum sorgusundan okunur; TOTP
+kurulunca kısıt hemen kalkar. Bugün **kapalı** (`compose.production.yaml`, varsayılan `false`).
+
+Açmak (yalnız sahip TOTP'yi kurduktan sonra):
+
+1. Panelde sahip hesabıyla Güvenlik → iki adımlı doğrulamayı kurun, kurtarma kodlarını saklayın. Durum:
+   `select "UserId", "TotpState" from iam.user_security` → sahip için `ENABLED`.
+2. Diğer OWNER/ADMINISTRATOR hesapları da kurmuş olmalı (kurmayan değişiklik yapamaz).
+3. Sunucuda: `echo 'MARKETPLACEHUB_REQUIRE_MFA_FOR_ELEVATED_ROLES=true' | sudo tee -a deploy/secrets/production.env`
+4. Yeniden deploy (Actions → Deploy → Run workflow, `redeploy`) ya da bir sonraki deploy.
+5. Doğrulama: `sudo docker exec marketplacehub-api-1 printenv Security__RequireMfaForElevatedRoles` → `true`;
+   panelde bir ayar kaydı çalışır (sahipte MFA açık).
+6. Kapatmak: satırı `false` yapıp yeniden deploy. Sahip doğrulama cihazını kaybederse:
+   `identity reset-mfa` (RUNBOOK-OLAY.md 2.2).
+
+## Sunucu dışı yedek (Y3, Y4)
+
+`deploy/backup/offsite-copy.sh` en yeni doğrulanmış yedek setini (`SHA256SUMS` tutan) sahibin **age açık
+anahtarıyla** şifreleyip rclone ile `<uzak>:<klasör>/<set>.tar.age` olarak yükler. Akış diskten geçmez
+(tar → age → `rclone rcat`). Sunucu şifreleyebilir ama çözemez: özel anahtar sahipte, sunucu dışında kalır.
+Aynı set ikinci kez yüklenmez; betik uzaktaki hiçbir şeyi silmez. Yapılandırılmadıkça
+`Off-site backup copy is not configured` yazıp 0 ile çıkar.
+
+**1) age anahtar çifti (sahip, kendi bilgisayarında):**
+
+```bash
+# Windows: winget install FiloSottile.age   macOS: brew install age   Linux: apt install age
+age-keygen -o ravencia-yedek-anahtari.txt
+# Çıktıdaki "Public key: age1..." satırı açık anahtardır. ravencia-yedek-anahtari.txt ÖZEL anahtardır:
+# parola yöneticisine ve ayrıca çevrimdışı bir yere (USB / kâğıt) koyun; sunucuya, repoya, sohbete koymayın.
+```
+
+**2) Sunucuya yalnız açık anahtar:**
+
+```bash
+sudo apt-get install -y age rclone
+echo 'age1...' | sudo tee deploy/secrets/backup_age_recipient.txt >/dev/null
+sudo chmod 0600 deploy/secrets/backup_age_recipient.txt
+```
+
+**3) Google Drive yetkisi (sahip yapar).** Sunucuda tarayıcı yok; yetki sahibin bilgisayarında alınır:
+
+```bash
+# Sahibin bilgisayarında (rclone kurulu): Drive hesabıyla giriş, kapsam "drive.file"
+# (rclone yalnız kendi oluşturduğu dosyaları görür, Drive'ın geri kalanına erişemez).
+rclone authorize "drive" --drive-scope drive.file
+# Çıkan JSON token'ı kopyalayın. Sunucuda:
+sudo rclone config --config deploy/secrets/rclone.conf
+#   n (new remote) → name: gdrive → storage: drive → client_id/secret boş → scope: drive.file
+#   → root_folder_id boş → service account boş → advanced: n → auto config: n → token'ı yapıştırın
+sudo chmod 0600 deploy/secrets/rclone.conf
+echo 'gdrive:ravencia-yedek' | sudo tee deploy/secrets/backup_offsite_remote.txt >/dev/null
+sudo bash deploy/backup/offsite-copy.sh    # ilk kopya; "written to gdrive:ravencia-yedek/..." beklenir
+```
+
+`drive.file` kapsamı silmeye de izin verir (yalnız rclone'un yüklediklerini); betik silmez. Saklama:
+Drive'da klasörü sahip elle ya da Google Drive kuralıyla temizler (öneri: son 14 günlük + her ayın ilk
+seti). Silinemez hedef gerekirse ileride Backblaze B2 Object Lock.
+
+**4) Geri açma (sahibin bilgisayarında):**
+
+```bash
+rclone copy gdrive:ravencia-yedek/<set>.tar.age .
+age -d -i ravencia-yedek-anahtari.txt <set>.tar.age | tar -x     # <set>/database.dump, private-volumes.tar.gz
+cd <set> && sha256sum -c SHA256SUMS
+```
+
+Sonra RUNBOOK-GERI-ALMA.md bölüm 3. `deploy/secrets/` emaneti (Y4) aynı anahtarla şifrelenir:
+RUNBOOK-GERI-ALMA.md bölüm 5.
+
+**5) Zamanlayıcı (sonra eklenecek, `deploy/systemd` sahibi kurar).** Gece yedeğinden sonra:
+
+```ini
+# deploy/systemd/ravencia-offsite-copy.service
+[Unit]
+Description=Ravencia off-site encrypted backup copy
+After=docker.service ravencia-backup.service
+OnFailure=ravencia-alert@%n.service
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
+ExecStart=/usr/bin/bash deploy/backup/offsite-copy.sh
+TimeoutStartSec=2h
+# deploy/systemd/ravencia-offsite-copy.timer
+[Timer]
+OnCalendar=*-*-* 09:30:00 UTC
+OnCalendar=*-*-* 21:30:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+[Install]
+WantedBy=timers.target
+```
+
+Birim root olarak çalışır (Docker volume yolunu ve `deploy/secrets`'ı okur). Yapılandırılmamışsa her
+çalışmada yalnız "not configured" satırı yazar; alarm üretmez.
 
 ## İşletim: zamanlayıcılar, alarm, izleme
 
@@ -300,8 +439,10 @@ derin kontroller sunucudaki healthwatch'tadır.
 
 **Metrikler**: imaj yalnızca debugger/profiler eklemeyi kapatır
 (`DOTNET_EnableDiagnostics_Debugger=0`, `DOTNET_EnableDiagnostics_Profiler=0`); tanılama IPC soketi
-açıktır. Örnek: `dotnet-counters` aracını içeren geçici bir konteyneri aynı PID ad alanına ve `/tmp`'ye
-bağlayıp `dotnet-counters monitor -p 1 --counters MarketplaceHub` (araç imajda yoktur).
+açıktır. Örnek: `dotnet-counters` aracını içeren geçici bir konteyneri aynı PID ad alanına bağlayıp
+(`--pid container:marketplacehub-api-1 --user 1654`, soket `/proc/1/root/tmp` altında; `/tmp` artık konteynere özel
+bir tmpfs olduğu için volume olarak paylaşılamaz) `dotnet-counters monitor -p 1 --counters MarketplaceHub`
+(araç imajda yoktur).
 
 ## Elle uygulanacaklar (bu değişikliklerden sonra bir kez)
 
@@ -333,9 +474,9 @@ ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
 
 ## Notlar
 
-- Sunucu IP'si AWS'de Elastic IP değilse durdur/başlat sonrası değişir; `DEPLOY_HOST` ve
-  `DEPLOY_KNOWN_HOSTS` güncellenmelidir.
-- Security group 22. portu GitHub runner'larına açık olmalıdır (IP aralığı değişkendir).
+- Sunucu Hostinger KVM 4, sabit IPv4 `187.126.24.163`; sunucu taşınırsa `DEPLOY_HOST` ve
+  `DEPLOY_KNOWN_HOSTS` (`production` environment secret'ları) güncellenmelidir.
+- Hostinger güvenlik duvarı ve `ufw` 22. portu GitHub runner'larına açık tutmalıdır (IP aralığı değişkendir).
 - `fast-deploy.sh` doğrulama veritabanının anonim volume'ünü `--volumes` ile siler.
 - `appsettings.Development.json` (API) yayın çıktısına ve imaja girmez (`CopyToPublishDirectory=Never`);
   CI `image-app` işi bunu denetler.
