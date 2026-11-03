@@ -637,16 +637,14 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var documentHash = Hash($"{document.DocumentUrl}\n{document.InvoiceNumber}\n{document.IssuedAt:O}");
         if (state is not null && !string.Equals(state.RequestHash, documentHash, StringComparison.Ordinal))
         {
-            SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", "MANUAL_INVOICE_DELIVERY_DOCUMENT_CHANGED", null, timeProvider.GetUtcNow());
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
+            return await StopManualOrderInvoiceDelivery(state, "MANUAL_REVIEW", "MANUAL_INVOICE_DELIVERY_DOCUMENT_CHANGED", null,
+                "Belirsiz önceki teslim başka bir belge sürümüne ait; belge gönderilmedi.", cancellationToken);
         }
 
         if (document.IssuedAt is null)
         {
-            if (state is not null) SetManualInvoiceDeliveryState(state, "FAILED", "MANUAL_INVOICE_ISSUED_AT_REQUIRED", null, timeProvider.GetUtcNow());
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
+            return await StopManualOrderInvoiceDelivery(state, "FAILED", "MANUAL_INVOICE_ISSUED_AT_REQUIRED", null,
+                "Platforma iletim için faturanın tarihi gereklidir; belge gönderilmedi.", cancellationToken);
         }
 
         var platformCode = await db.PlatformConnections.AsNoTracking()
@@ -656,9 +654,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (platformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY")
             || platformCode == "SHOPIFY" && string.IsNullOrWhiteSpace(document.InvoiceNumber))
         {
-            if (state is not null) SetManualInvoiceDeliveryState(state, "FAILED", "MANUAL_INVOICE_PLATFORM_FIELDS_REQUIRED", null, timeProvider.GetUtcNow());
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
+            return await StopManualOrderInvoiceDelivery(state, "FAILED", "MANUAL_INVOICE_PLATFORM_FIELDS_REQUIRED", null,
+                "Pazaryeri bu belgeyi gerekli alanlar (fatura numarası) olmadan almıyor; belge gönderilmedi.", cancellationToken);
         }
 
         var deliveryContext = Context(tenantId, package.ConnectionId, correlationId,
@@ -673,35 +670,29 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var before = await marketplace.QueryDeliveryAsync(deliveryContext, reference, cancellationToken);
         if (!before.IsSuccess)
         {
-            if (state is not null) SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", before.Error!.Code, null, timeProvider.GetUtcNow());
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
+            return await StopManualOrderInvoiceDelivery(state, "MANUAL_REVIEW", before.Error!.Code, null,
+                "Pazaryerindeki fatura durumu okunamadı; belge gönderilmedi.", cancellationToken);
         }
 
         var beforeStatus = MarketplaceInvoiceStatePolicy.FromRemote(before.Value!.RawStatus,
             invoiceNumber: before.Value.VerifiedInvoiceNumber, invoiceUrl: before.Value.VerifiedInvoiceLink);
         if (beforeStatus == MarketplaceInvoiceStatus.Invoiced)
         {
-            if (ManualInvoiceIdentityMatches(document, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink))
-                await ConfirmManualOrderInvoiceDelivery(tenantId, document, package, state, before.Value.ExternalReference, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink, cancellationToken);
-            else
-            {
-                if (state is not null) SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", "MARKETPLACE_HAS_DIFFERENT_OR_UNVERIFIABLE_INVOICE", before.Value.ExternalReference, timeProvider.GetUtcNow());
-                await db.SaveChangesAsync(cancellationToken);
-            }
+            if (!ManualInvoiceIdentityMatches(document, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink))
+                return await StopManualOrderInvoiceDelivery(state, "MANUAL_REVIEW", "MARKETPLACE_HAS_DIFFERENT_OR_UNVERIFIABLE_INVOICE", before.Value.ExternalReference,
+                    "Pazaryerinde farklı veya doğrulanamayan bir fatura var; üzerine yazılmadı.", cancellationToken);
+            await ConfirmManualOrderInvoiceDelivery(tenantId, document, package, state, before.Value.ExternalReference, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink, cancellationToken);
             return true;
         }
         if (beforeStatus != MarketplaceInvoiceStatus.NotInvoiced)
         {
-            if (state is not null) SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", "MARKETPLACE_INVOICE_PRECHECK_NOT_CLEAR", before.Value.ExternalReference, timeProvider.GetUtcNow());
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
+            return await StopManualOrderInvoiceDelivery(state, "MANUAL_REVIEW", "MARKETPLACE_INVOICE_PRECHECK_NOT_CLEAR", before.Value.ExternalReference,
+                "Pazaryeri açık bir 'fatura yok' cevabı vermedi; belge gönderilmedi.", cancellationToken);
         }
         if (inspectionOnly || !ManualInvoiceDeliveryPolicy.CanSubmitAfterPrecheck(state?.Status, beforeStatus))
         {
-            if (state is not null) SetManualInvoiceDeliveryState(state, "MANUAL_REVIEW", "MANUAL_INVOICE_DELIVERY_ABSENCE_REQUIRES_REVIEW", before.Value.ExternalReference, timeProvider.GetUtcNow());
-            await db.SaveChangesAsync(cancellationToken);
-            return true;
+            return await StopManualOrderInvoiceDelivery(state, "MANUAL_REVIEW", "MANUAL_INVOICE_DELIVERY_ABSENCE_REQUIRES_REVIEW", before.Value.ExternalReference,
+                "Önceki iletimin sonucu belirsizdi ve pazaryerinde fatura görünmüyor; yeni gönderim yapılmadı, inceleme gerekiyor.", cancellationToken);
         }
 
         var deliveryPayload = new Dictionary<string, object?>
@@ -764,15 +755,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            SetManualInvoiceDeliveryState(state, "UNKNOWN", "MANUAL_INVOICE_DELIVERY_TIMEOUT", null, timeProvider.GetUtcNow());
-            await db.SaveChangesAsync(CancellationToken.None);
-            return true;
+            return await StopManualOrderInvoiceDelivery(state, "UNKNOWN", "MANUAL_INVOICE_DELIVERY_TIMEOUT", null,
+                "Fatura iletimi zaman aşımına uğradı; sonuç doğrulanmadan yeniden gönderilmedi.", CancellationToken.None);
         }
         catch (Exception)
         {
-            SetManualInvoiceDeliveryState(state, "UNKNOWN", "MANUAL_INVOICE_DELIVERY_RESULT_UNKNOWN", null, timeProvider.GetUtcNow());
-            await db.SaveChangesAsync(CancellationToken.None);
-            return true;
+            return await StopManualOrderInvoiceDelivery(state, "UNKNOWN", "MANUAL_INVOICE_DELIVERY_RESULT_UNKNOWN", null,
+                "Fatura iletiminin sonucu kesinleşmedi; yeniden gönderilmedi.", CancellationToken.None);
         }
 
         if (!submitted.IsSuccess)
@@ -784,13 +773,18 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 InvoiceDeliveryFailureDisposition.Unknown => "UNKNOWN",
                 _ => "FAILED"
             };
-            SetManualInvoiceDeliveryState(state, newState, submitted.Error.Code, submitted.Value?.ExternalReference, timeProvider.GetUtcNow());
-            await db.SaveChangesAsync(cancellationToken);
             if (outcome == InvoiceDeliveryFailureDisposition.Retry)
+            {
+                SetManualInvoiceDeliveryState(state, newState, submitted.Error.Code, submitted.Value?.ExternalReference, timeProvider.GetUtcNow());
+                await db.SaveChangesAsync(cancellationToken);
                 throw new JobProcessingException(JobExecutionResult.Retry(submitted.Error.Code,
                     "Pazaryeri faturayı kesin olarak kabul etmedi; güvenli geçici hata yeniden denenecek.",
                     submitted.Error.RetryAfter ?? TimeSpan.FromSeconds(30), state.IdempotencyKey));
-            return true;
+            }
+            return await StopManualOrderInvoiceDelivery(state, newState, submitted.Error.Code, submitted.Value?.ExternalReference,
+                newState == "FAILED"
+                    ? "Pazaryeri fatura iletimini reddetti; yeniden gönderilmedi."
+                    : "Pazaryerinin fatura iletimine cevabı kesinleşmedi; yeniden gönderilmedi.", cancellationToken);
         }
 
         if (submitted.Value!.SameAttemptVerified)
@@ -814,9 +808,21 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
 
         var readbackCode = !after.IsSuccess ? after.Error!.Code : "MANUAL_INVOICE_DELIVERY_READBACK_UNVERIFIED";
-        SetManualInvoiceDeliveryState(state, "UNKNOWN", readbackCode, submitted.Value.ExternalReference, timeProvider.GetUtcNow());
+        return await StopManualOrderInvoiceDelivery(state, "UNKNOWN", readbackCode, submitted.Value.ExternalReference,
+            "Pazaryeri iletimi kabul etti ancak fatura siparişte doğrulanamadı; yeniden gönderilmedi.", cancellationToken);
+    }
+
+    // A manual-order delivery that did not end in a verified invoice is not a success: the job ends in review, or blocked
+    // when the marketplace refused it or the request cannot be sent, with the delivery state's own code. A job marked
+    // SUCCEEDED for a timeout or a refusal hid the problem from the job list.
+    private async Task<bool> StopManualOrderInvoiceDelivery(ManualOrderInvoiceDeliveryState? state, string status, string errorCode,
+        string? externalReference, string message, CancellationToken cancellationToken)
+    {
+        if (state is not null) SetManualInvoiceDeliveryState(state, status, errorCode, externalReference, timeProvider.GetUtcNow());
         await db.SaveChangesAsync(cancellationToken);
-        return true;
+        throw new JobProcessingException(status == "FAILED"
+            ? JobExecutionResult.Blocked(errorCode, message)
+            : JobExecutionResult.ManualReview(errorCode, message));
     }
 
     private async Task ConfirmManualOrderInvoiceDelivery(Guid tenantId, ManualOrderInvoiceDocument document, ShipmentPackage package,
@@ -872,9 +878,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.InvoiceNotDeliverableCode,
                 "Fatura iptal sürecinde, iptal edilmiş, reddedilmiş veya düzeltme bekliyor; pazaryerine fatura linki gönderilmedi."));
         using var deliveryJobPayload = JsonDocument.Parse(payloadJson);
-        var manualDeliveryRetry = deliveryJobPayload.RootElement.TryGetProperty("manualDeliveryRetry", out var retryValue)
-            && retryValue.ValueKind == JsonValueKind.True
-            && invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
+        var ownerRetry = deliveryJobPayload.RootElement.TryGetProperty("manualDeliveryRetry", out var retryValue)
+            && retryValue.ValueKind == JsonValueKind.True;
+        var manualDeliveryRetry = ownerRetry && invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
+        // The owner sent again a delivery that stopped on another identity: this attempt takes the current one.
+        var ownerRetryAfterIdentityChange = ownerRetry && invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.DeliveryIdentityChanged;
         // Tracked: the delivery reads write the marketplace's invoice state onto the package. Read without tracking,
         // those writes were dropped, so the stored references never caught up and every attempt added the same
         // reference-history row again.
@@ -1280,19 +1288,36 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 .ToListAsync(cancellationToken);
         }
         var payload = JsonSerializer.Serialize(deliveryPayload);
-        var requestHash = Hash(payload);
-        if (state?.Status == "FAILED" && oneTimeAuthorization is not null
-            && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id))
-            state.RequestHash = requestHash;
-        // REVOKED means a read-back proved the platform does not hold the invoice, so sending again cannot duplicate it and the payload may be rebuilt.
-        if (state?.Status == "REVOKED" && !string.Equals(state.RequestHash, requestHash, StringComparison.Ordinal))
+        // The delivery is keyed by its identity (invoice, package, invoice number), not by its payload: the latest document
+        // link, the customer snapshot and the package's current lines change between attempts of the same delivery, and a
+        // payload hash turned every such retry into DELIVERY_RETRY_PAYLOAD_CHANGED.
+        var requestHash = Hash(InvoiceMarketplaceRetryPolicy.DeliveryIdentity(invoice.Id, package.ExternalPackageId, invoice.InvoiceNumber));
+        if (state is not null && !string.Equals(state.RequestHash, requestHash, StringComparison.Ordinal))
         {
+            // A state written before the identity key holds its payload's hash: the same payload is the same delivery.
+            var legacySamePayload = string.Equals(state.RequestHash, Hash(payload), StringComparison.Ordinal);
+            // REVOKED means a read-back proved the platform does not hold the invoice, so sending again cannot duplicate it.
+            var adopt = legacySamePayload
+                || state.Status == "REVOKED"
+                || ownerRetryAfterIdentityChange
+                || state.Status == "FAILED" && oneTimeAuthorization is not null
+                    && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id);
+            if (!adopt)
+            {
+                // Another invoice number or package is on record for this delivery. Nothing is sent; the invoice shows
+                // the stop (it no longer waits silently) and only the owner's "Tekrar Dene" sends it under the new identity.
+                invoice.Status = InvoiceStatus.ManualReview;
+                invoice.LastErrorCode = InvoiceMarketplaceRetryPolicy.DeliveryIdentityChanged;
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                throw new JobProcessingException(JobExecutionResult.ManualReview(InvoiceMarketplaceRetryPolicy.DeliveryIdentityChanged,
+                    "Bu paket için daha önce başka bir fatura numarası veya paketle teslim kaydı var; fatura bağlantısı gönderilmedi. Pazaryeri panelinde kontrol edip faturadan Tekrar Dene ile gönderebilirsiniz."));
+            }
             state.RequestHash = requestHash;
             state.UpdatedAt = timeProvider.GetUtcNow();
             await db.SaveChangesAsync(cancellationToken);
         }
-        if (state is not null && !string.Equals(state.RequestHash, requestHash, StringComparison.Ordinal))
-            throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RETRY_PAYLOAD_CHANGED", "Önceki belirsiz teslim denemesinden sonra fatura bağlantısı payloadı değişti."));
 
         var environments = await db.PlatformConnections.AsNoTracking()
             .Where(connection => connection.TenantId == tenantId && (connection.Id == invoice.ProviderConnectionId || connection.Id == package.ConnectionId))

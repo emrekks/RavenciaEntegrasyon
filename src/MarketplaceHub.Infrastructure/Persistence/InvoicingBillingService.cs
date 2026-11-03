@@ -1518,12 +1518,12 @@ public sealed partial class InvoicingBillingService(
                     InvoiceDeliveryEnvironmentPolicy.DescribeMismatch(providerEnvironment, marketplaceEnvironment), 409);
             if (!await WriteGates(tenantId, connectionId, InvoicingCapabilities.InvoiceDeliver, cancellationToken)) return CapabilityUnknown<Guid>(InvoicingCapabilities.InvoiceDeliver);
         }
-        var manualDeliveryRetry = invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure;
+        var manualDeliveryRetry = InvoiceMarketplaceRetryPolicy.IsOwnerApprovedRetry(invoice.LastErrorCode);
         var packageIds = packages.Select(item => item.Id).ToArray();
         var deliveryStates = await db.MarketplaceDeliveryStates
             .Where(item => item.TenantId == tenantId && item.InvoiceId == id && packageIds.Contains(item.PackageId!.Value))
             .ToListAsync(cancellationToken);
-        if (manualDeliveryRetry)
+        if (invoice.LastErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure)
         {
             foreach (var state in deliveryStates.Where(state => state.Status == "FAILED" && state.ErrorCode == InvoiceMarketplaceRetryPolicy.RepeatedRemoteFailure))
             {
@@ -1621,7 +1621,8 @@ public sealed partial class InvoicingBillingService(
         if ((invoice.Status == InvoiceStatus.Ready || CanRetryPreProviderFailure(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference)) && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceSubmit, cancellationToken)) actions.Add("SUBMIT");
         if (AllowsStageCapabilityProbe(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference, invoice.InvoiceType, connection)) actions.Add("STAGE_CAPABILITY_PROBE");
         if (invoice.Status is (InvoiceStatus.UnknownResult or InvoiceStatus.Submitted) && CanReconcileWithProvider(invoice.Status, invoice.ExternalReference) && await ReadGate(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceStatusRead, cancellationToken)) actions.Add("RECONCILE");
-        if (invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed))
+        // A delivery stopped for the owner's review (InvoiceMarketplaceRetryPolicy.IsDeliveryReview) is sent again only from here.
+        if (invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed) || InvoiceMarketplaceRetryPolicy.IsDeliveryReview(invoice.Status, invoice.LastErrorCode))
         {
             var packageConnections = await db.ShipmentPackages.AsNoTracking()
                 .Where(item => item.TenantId == invoice.TenantId && (invoice.PackageId == null
