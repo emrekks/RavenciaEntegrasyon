@@ -1,4 +1,4 @@
-# Otomatik Deploy (GitHub Actions → AWS Ubuntu)
+# Otomatik Deploy (GitHub Actions → Hostinger Ubuntu)
 
 `main` dalına push → `Validate` workflow'u geçer → `Deploy` workflow'u sunucuda
 `deploy/scripts/fast-deploy.sh` çalıştırır (imaj derleme, taze yedek, migration, health doğrulaması).
@@ -81,11 +81,17 @@ süren bir deploy yarıda kesilebilir.
   sorguları bu ayarlardan etkilenmez. `CREATE INDEX CONCURRENTLY` yazmaları kilitlemediği için bu tür
   migration'lar kendi içinde `lock_timeout`'u kapatabilir. Deploy işinin GitHub süresi 90 dakikadır.
 
-## GitHub Secrets (Settings → Secrets and variables → Actions)
+## GitHub Secrets
 
-| Secret | Değer |
+Deploy secret'ları 3 Kasım 2026'dan beri repo düzeyinde değil, **`production` environment'ında** (Settings →
+Environments → production). Environment yalnız `main` dalından çalışan işlere açık; başka daldan tetiklenen bir iş
+deploy anahtarını göremez. `main` ruleset'i ("main koruması") silmeyi ve force-push'u engeller ve commit'in
+Validate `gate` kontrolünü geçmiş olmasını şart koşar (ship.sh sha'yı önce `codex/*` dalında doğruladığı için
+bu kural ona engel olmaz).
+
+| Secret (`production` environment) | Değer |
 | --- | --- |
-| `DEPLOY_HOST` | Sunucu IP/DNS adresi |
+| `DEPLOY_HOST` | Sunucu IP/DNS adresi (Hostinger KVM 4, `187.126.24.163`) |
 | `DEPLOY_USER` | `ubuntu` |
 | `DEPLOY_SSH_KEY` | Deploy özel anahtarı (ed25519, tüm içerik) |
 | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan` / sunucu host key satırı (`<host> ssh-ed25519 AAAA...`) |
