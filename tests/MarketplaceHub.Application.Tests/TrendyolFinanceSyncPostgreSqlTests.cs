@@ -191,11 +191,18 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
             if (transactionType == "Return" && FailReturnsFrom is { } from && start >= from)
                 return Task.FromResult(AdapterResult<RemoteStatementPage>.Failure(new(AdapterErrorClass.Remote5xx, "REMOTE_SERVER_ERROR", "Platform geçici sunucu hatası verdi.", 503, null, null)));
             var items = transactionType == "Sale"
-                ? Days.Where(day => day >= start && day < end).Select(day => new RemoteStatementRecord($"sale-{day:yyyyMMdd}", TrendyolFinanceRequestContract.Settlements, "Sale", null, "Satış", day, "Satış",
-                    $"order-{day:yyyyMMdd}", null, "BAR-1", 0m, 100m, 21.5m, 21.5m, 78.5m, null, null, $$"""{"id":"sale-{{day:yyyyMMdd}}"}""")).ToArray()
+                ? Days.Where(day => day >= start && day < end).Select(day => SaleRecord(day, payoutsRead && day == PaidDay ? "PO-1" : null)).ToArray()
                 : [];
             return Task.FromResult(AdapterResult<RemoteStatementPage>.Success(new(items, 0, 1, items.Length)));
         }
+
+        // The sale two days before Now is the one PO-1 paid; once the payout is made, every read of it carries the payout id.
+        private static readonly DateTimeOffset PaidDay = Now.AddDays(-2).AddHours(1);
+        private bool payoutsRead;
+
+        private static RemoteStatementRecord SaleRecord(DateTimeOffset day, string? payout) =>
+            new($"sale-{day:yyyyMMdd}", TrendyolFinanceRequestContract.Settlements, "Sale", null, "Satış", day, "Satış", $"order-{day:yyyyMMdd}", null, "BAR-1",
+                0m, 100m, 21.5m, 21.5m, 78.5m, payout, null, $$"""{"id":"sale-{{day:yyyyMMdd}}","paymentOrderId":"{{payout}}"}""", "Bulgaristan", "TRENDYOLTR", "TRY", "CIS-1");
 
         public Task<AdapterResult<RemoteStatementPage>> GetOtherFinancialsAsync(AdapterContext context, string transactionType, string? transactionSubType, DateTimeOffset start, DateTimeOffset end, int page, CancellationToken cancellationToken)
         {
@@ -217,12 +224,11 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
         public Task<AdapterResult<RemoteStatementPage>> GetPayoutRecordsAsync(AdapterContext context, string source, string transactionType, string? transactionSubType, string paymentOrderId, int page, CancellationToken cancellationToken)
         {
             PayoutRecordReads++;
-            var day = Now.AddDays(-2).AddHours(1);
+            payoutsRead = true;
             RemoteStatementRecord[] items = (source, transactionType) switch
             {
-                (TrendyolFinanceRequestContract.Settlements, "Sale") => [new($"sale-{day:yyyyMMdd}", source, "Sale", null, "Satış", day, "Satış", $"order-{day:yyyyMMdd}", null, "BAR-1",
-                    0m, 100m, 21.5m, 21.5m, 78.5m, paymentOrderId, day.AddDays(7), $$"""{"id":"sale-{{day:yyyyMMdd}}","paymentOrderId":"{{paymentOrderId}}"}""", "Bulgaristan", "TRENDYOLTR", "TRY", "CIS-1")],
-                (TrendyolFinanceRequestContract.OtherFinancials, "PaymentOrder") => [new("PAY-1", source, "PaymentOrder", null, "Ödeme", day.AddDays(1), null, null, null, null,
+                (TrendyolFinanceRequestContract.Settlements, "Sale") => [SaleRecord(PaidDay, paymentOrderId)],
+                (MarketplaceFinanceSources.MoneyMovements, "PaymentOrder") => [new("PAY-1", source, "PaymentOrder", null, "Ödeme", PaidDay.AddDays(1), null, null, null, null,
                     78.5m, 0m, null, null, null, paymentOrderId, null, """{"id":"PAY-1"}""")],
                 _ => []
             };
