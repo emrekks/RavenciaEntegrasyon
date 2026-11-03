@@ -1328,7 +1328,7 @@ public sealed partial class ShopifyHttpClient(
     private static RemoteCatalogVariant MapVariant(JsonElement variant, int index, bool productArchived, string? currency)
     {
         var options = variant.GetProperty("selectedOptions").EnumerateArray().ToDictionary(x => x.GetProperty("name").GetString() ?? $"Seçenek {index + 1}", x => x.GetProperty("value").GetString() ?? "", StringComparer.OrdinalIgnoreCase);
-        var inventory = variant.TryGetProperty("inventoryQuantity", out var inventoryElement) && inventoryElement.ValueKind == JsonValueKind.Number && inventoryElement.TryGetDecimal(out var quantity) ? quantity : (decimal?)null;
+        var inventory = DecimalOrNull(variant, "inventoryQuantity");
         var price = DecimalOrNull(variant, "price");
         var compareAt = DecimalOrNull(variant, "compareAtPrice");
         var image = variant.TryGetProperty("image", out var imageElement) && imageElement.ValueKind == JsonValueKind.Object && imageElement.TryGetProperty("url", out var imageUrl) ? imageUrl.GetString() : null;
@@ -1344,9 +1344,7 @@ public sealed partial class ShopifyHttpClient(
                 var quantities = level.TryGetProperty("quantities", out var quantityNodes) && quantityNodes.ValueKind == JsonValueKind.Array
                     ? quantityNodes.EnumerateArray().FirstOrDefault()
                     : default;
-                var quantity = quantities.ValueKind == JsonValueKind.Object && quantities.TryGetProperty("quantity", out var quantityValue) && quantityValue.TryGetDecimal(out var levelQuantity)
-                    ? levelQuantity
-                    : 0m;
+                var quantity = DecimalOrNull(quantities, "quantity") ?? 0m;
                 return new RemoteInventoryLevel(ShortId(location.GetProperty("id").GetString()), location.TryGetProperty("name", out var locationName) ? locationName.GetString() : null, quantity, level.GetRawText());
             }).ToList()
             : [];
@@ -1688,7 +1686,19 @@ public sealed partial class ShopifyHttpClient(
     private static string AddressJson(JsonElement order, string property) => order.TryGetProperty(property, out var address) && address.ValueKind != JsonValueKind.Null ? address.GetRawText() : "{}";
     private static string? TextValue(JsonElement element, string property) => element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
     private static string? JoinName(string? firstName, string? lastName) => string.Join(" ", new[] { firstName, lastName }.Where(value => !string.IsNullOrWhiteSpace(value))).Trim() is { Length: > 0 } name ? name : null;
-    private static decimal? DecimalOrNull(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number) ? number : null;
+    // Shopify's GraphQL Money and Decimal scalars arrive as JSON strings ("2099.0"); Int fields (quantities) as numbers. A
+    // number read only as a JSON number left every price, total, discount and refund of an API read at 0 or unknown.
+    internal static decimal? DecimalOrNull(JsonElement element, string property) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(property, out var value) ? DecimalValue(value) : null;
+
+    // A plain invariant decimal: digits, one point, an optional sign. A thousands separator or an exponent is not
+    // a Shopify amount and stays unknown rather than being read as another number.
+    internal static decimal? DecimalValue(JsonElement value) => value.ValueKind switch
+    {
+        JsonValueKind.Number when value.TryGetDecimal(out var number) => number,
+        JsonValueKind.String when decimal.TryParse(value.GetString()?.Trim(), NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsed) => parsed,
+        _ => null
+    };
 
     internal static IReadOnlyList<RemoteReferenceItem> MapProductTypes(JsonElement productTypes)
     {

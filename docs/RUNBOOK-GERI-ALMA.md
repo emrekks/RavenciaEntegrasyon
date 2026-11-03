@@ -155,7 +155,7 @@ aşağıdakiler olmadan pazaryeri kimlik bilgileri ve Data Protection ile koruna
 | `credential_key.txt` | Oturum, kurtarma kodu ve webhook rota belirteçlerinin HMAC anahtarı (kaybolursa herkes yeniden giriş yapar, kurtarma kodları ve webhook adresleri yenilenir) |
 | `dp_certificate.pfx`, `dp_certificate_password.txt`, `dp_certificate_metadata.txt` | Data Protection anahtar halkasının sertifikası; pazaryeri kimlik bilgileri ve TOTP sırları bu halkayla şifreli, sertifika olmadan **çözülemez** |
 | `postgres_password.txt`, `app_db_connection.txt` | Veritabanı erişimi (yeniden üretilebilir ama dump sahipliğiyle uyum için saklayın) |
-| `production.env`, `alert_webhook_url.txt` | Yapılandırma |
+| `production.env`, `alert_smtp.txt`, `alert_webhook_url.txt` | Yapılandırma |
 
 Emanet kuralı (dosyaları **bu repoya, sohbete ya da şifresiz bir yere koymayın**):
 
