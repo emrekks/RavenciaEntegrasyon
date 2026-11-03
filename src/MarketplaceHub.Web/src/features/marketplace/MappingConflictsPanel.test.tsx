@@ -171,7 +171,11 @@ describe('Kategoriler Arasında Farklı Değer', () => {
       { externalId: 'rahat', name: 'Rahat', version: 0, verifiedAt: null, categories: 1, scopes: [scope('pantolon', 'Pantolon', 3)] }
     ] }] }
     await renderPanel()
-    await chooseAndApply('Relaxed')
+    // a category holding both values still changes: the other value goes
+    await act(async () => { chip('Relaxed').click() })
+    expect(document.querySelector('.mc-choice-preview')?.textContent).toBe('1 kategoride Rahat → Relaxed olacak; yeni kategoriler için şablon olur.')
+    await act(async () => { button('Hepsinde Bunu Kullan')!.click() })
+    await settle()
     await act(async () => { confirmButton().click() })
     await settle()
 
