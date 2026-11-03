@@ -1,5 +1,6 @@
-/* The icon of a metric card, drawn into its background (CardBackgroundIcon): oversized, tilted, cut by the right edge and
-   fading in towards the text. The clipping layer is its own box (overflow hidden, the card's radius), so a tooltip or
+/* The icon of a metric card, drawn into its background (CardBackgroundIcon): large, tilted, anchored to the bottom-right
+   corner and fading in towards the text. Only its top is cut, so the marks glyphs carry in their lower right (the cross,
+   return arrow, tick, clock or pen of a parcel) stay inside the card. The clipping layer is its own box (overflow hidden, the card's radius), so a tooltip or
    popover of the card is not clipped; the card's own content stays above it. Colour follows the tone, grey otherwise.
    --rv-card-bg-size resizes the icon for a card that needs a smaller one. */
 :has(> .rv-card-bg) { position: relative; }
@@ -8,10 +9,10 @@
 .rv-card-bg[data-tone="bad"] { color: var(--rv-color-danger); }
 .rv-card-bg[data-tone="ok"] { color: var(--rv-color-accent); }
 .rv-card-bg[data-tone="info"] { color: var(--rv-color-info); }
-.rv-card-bg > svg { position: absolute; top: 50%; right: -26px; width: var(--rv-card-bg-size, 130px); height: var(--rv-card-bg-size, 130px); opacity: .2; transform: translateY(-50%) rotate(-12deg); -webkit-mask-image: linear-gradient(90deg, transparent, #000 60%); mask-image: linear-gradient(90deg, transparent, #000 60%); }
+.rv-card-bg > svg { position: absolute; right: 6px; bottom: -12px; width: var(--rv-card-bg-size, 104px); height: var(--rv-card-bg-size, 104px); opacity: .24; transform: rotate(-10deg); -webkit-mask-image: linear-gradient(110deg, transparent 8%, #000 55%); mask-image: linear-gradient(110deg, transparent 8%, #000 55%); }
 /* Everything else in the card sits above the icon; a card's own positioned parts (tooltips) keep their rules. */
 .rv-card-bg ~ * { position: relative; z-index: 1; }
 /* Small cards: a smaller icon, so it never reaches the figure. */
 @media (max-width: 760px) {
-  .rv-card-bg > svg { right: -20px; width: min(var(--rv-card-bg-size, 130px), 92px); height: min(var(--rv-card-bg-size, 130px), 92px); opacity: .16; }
+  .rv-card-bg > svg { right: 4px; bottom: -10px; width: min(var(--rv-card-bg-size, 104px), 80px); height: min(var(--rv-card-bg-size, 104px), 80px); opacity: .18; }
 }
