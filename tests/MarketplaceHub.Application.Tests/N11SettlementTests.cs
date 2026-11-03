@@ -66,7 +66,7 @@ public sealed class N11SettlementTests
         Assert.DoesNotContain("alici@example.com", line.RawJson);
         Assert.DoesNotContain("Ad Soyad", line.RawJson);
         Assert.Contains("\"orderItemId\":\"998877\"", line.RawJson);
-        Assert.Equal("05/11/2026", N11HttpClient.SettlementDate(new DateOnly(2026, 11, 5)));
+        Assert.Equal("2026-11-05", N11HttpClient.SettlementDate(new DateOnly(2026, 11, 5)));
         Assert.Equal("998877:20261105", N11SettlementSyncJobHandler.ExternalId("998877", new DateOnly(2026, 11, 5)));
     }
 
