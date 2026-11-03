@@ -83,12 +83,12 @@ const requests = vi.hoisted(() => [] as string[])
 const fixture = vi.hoisted(() => ({ current: null as ReportSales | null }))
 const payouts = {
   today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0,
-  next: { key: 'next:2026-11-05', kind: 'DUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
+  next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
   lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' },
   regions: [{ region: 'TR_GULF', expected: 780, records: 2, nextDay: '2026-11-05', nextAmount: 780, unknown: 240 }, { region: 'EUROPE', expected: 400, records: 1, nextDay: '2026-11-12', nextAmount: 400, unknown: 0 }],
   upcoming: [
-    { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'DUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
-    { key: 'due:store-1:2026-11-12:EUROPE', kind: 'DUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED' }
+    { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
+    { key: 'due:store-1:2026-11-12:EUROPE', kind: 'DUE_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED' }
   ],
   past: [{ key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' }],
   coverage: [{ connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', state: 'READ', lastSyncedAt: '2026-11-04T09:00:00Z' }, { connectionId: 'store-2', platformCode: 'PTTAVM', storeName: 'PTT', state: 'NOT_SUPPORTED', lastSyncedAt: null }]
@@ -497,15 +497,16 @@ describe('ReportsPage', () => {
     expect(selectedTab(page)).toContain('Hakediş')
     expect(requests).toContain('/reports/payouts?')
     const figures = texts(page, '.reports-kpis > div')
-    expect(figures[0]).toContain('Beklenen Hakediş₺1.180')
-    expect(figures[0]).toContain('Tahmini')
-    expect(figures[3]).toContain('Durumu Bilinmeyen₺240')
+    expect(figures[0]).toContain('Toplam Güncel Bakiye₺1.180')
+    expect(figures[1]).toContain('Sıradaki Ödeme₺780')
+    expect(figures[3]).toContain('Vadesi Geçmiş Bekleyen₺240')
     expect(texts(page, '.reports-payout-region')[0]).toContain('Türkiye, Körfez₺780')
     const rows = texts(page, '.reports-payout-row')
     expect(rows).toHaveLength(2)
-    expect(rows[0]).toContain('Sıradaki Vade')
+    expect(rows[0]).toContain('Sıradaki Ödeme')
     expect(rows[0]).toContain('Tahmini Hesaplanmıştır')
     expect(rows[1]).toContain('Avrupa')
+    expect(rows[1]).toContain('Vade:')
     // A region narrows the payments to it.
     await act(async () => { (page.querySelectorAll('.reports-payout-region')[1] as HTMLButtonElement).click() })
     expect(texts(page, '.reports-payout-row')).toHaveLength(1)

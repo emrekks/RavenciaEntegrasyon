@@ -1,8 +1,8 @@
 // Hakediş (PayoutContracts.cs): what the marketplaces will pay and have paid, from their accounting records.
-// Expected is an estimate until it matches the marketplace's own screen; unknown is never "unpaid".
+// Expected is the balance (every record not paid yet); unknown, its overdue part, is never "unpaid".
 export type PayoutRegion = 'TR_GULF' | 'EUROPE' | 'AZ' | 'UNKNOWN'
 export type PayoutStatus = 'PAID' | 'EXPECTED' | 'UNKNOWN'
-export type PayoutGroup = { key: string; kind: 'DUE' | 'PAYOUT'; connectionId: string; platformCode: string; storeName: string; region: PayoutRegion; regionName: string | null
+export type PayoutGroup = { key: string; kind: 'PAYOUT_DAY' | 'DUE_DAY' | 'PAYOUT'; connectionId: string; platformCode: string; storeName: string; region: PayoutRegion; regionName: string | null
   day: string; amount: number; linesAmount: number | null; records: number; status: PayoutStatus }
 export type PayoutRegionSummary = { region: PayoutRegion; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number }
 export type PayoutCoverage = { connectionId: string; platformCode: string; storeName: string; state: 'READ' | 'NOT_READ' | 'NOT_SUPPORTED'; lastSyncedAt: string | null }
@@ -15,7 +15,7 @@ export type PayoutLine = { externalId: string; connectionId: string; platformCod
 export type PayoutLines = { items: PayoutLine[]; totalCount: number; page: number; pageSize: number; net: number }
 
 export const regionLabels: Record<PayoutRegion, string> = { TR_GULF: 'Türkiye, Körfez', EUROPE: 'Avrupa', AZ: 'Azerbaycan', UNKNOWN: 'Bilinmeyen Bölge' }
-export const statusLabels: Record<PayoutStatus, string> = { PAID: 'Ödendi', EXPECTED: 'Tahmini', UNKNOWN: 'Durumu Bilinmiyor' }
+export const statusLabels: Record<PayoutStatus, string> = { PAID: 'Ödendi', EXPECTED: 'Tahmini', UNKNOWN: 'Vadesi Geçti' }
 
 export function payoutsQuery(platforms: string[] | null) {
   const query = new URLSearchParams()

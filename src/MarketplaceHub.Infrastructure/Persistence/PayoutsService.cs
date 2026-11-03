@@ -20,7 +20,8 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
         var ids = stores.Keys.Where(id => Platforms.Contains(stores[id].PlatformCode)).ToArray();
         var since = PayoutBuilder.DayStart(today.AddDays(-DaysBack));
         var rows = await Rows(tenantId, ids)
-            .Where(x => x.PaymentDate >= since || x.Source == MarketplaceFinanceSources.MoneyMovements && x.TransactionDate >= since
+            // Every record not paid yet (the balance), and the last days' payouts with what they paid.
+            .Where(x => x.PaymentOrderId == null || x.PaymentDate >= since || x.Source == MarketplaceFinanceSources.MoneyMovements && x.TransactionDate >= since
                 || x.PaymentOrderId != null && db.MarketplacePayoutOrders.Any(payout => payout.TenantId == tenantId && payout.ConnectionId == x.ConnectionId
                     && payout.ExternalId == x.PaymentOrderId && payout.PayoutDate >= since))
             .ToListAsync(cancellationToken);
@@ -55,15 +56,15 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
             rows = rows.Where(x => x.OrderNumber == search || x.InvoiceNumber == search || x.ExternalId == search || x.ShipmentPackageId == search);
         else if (!string.IsNullOrEmpty(query.PayoutId))
             rows = rows.Where(x => x.PaymentOrderId == query.PayoutId);
-        else if (query.Day is { } day)
-        {
-            var (start, end) = (PayoutBuilder.DayStart(day), PayoutBuilder.DayStart(day.AddDays(1)));
-            rows = rows.Where(x => x.PaymentDate >= start && x.PaymentDate < end && x.PaymentOrderId == null);
-        }
+        // The open records expected on the day (PayoutBuilder.Expect decides the day, so it is applied after reading).
+        else if (query.Day is not null) rows = rows.Where(x => x.PaymentOrderId == null && x.PaymentDate != null);
         else return ServiceResult<PayoutLinesPage>.Fail("PAYOUT_LINES_QUERY_INVALID", "Bir ödeme, bir gün ya da arama gerekir.", 400);
         var all = (await rows.OrderBy(x => x.TransactionDate).ToListAsync(cancellationToken))
             .Where(PayoutBuilder.Counts)
-            .Select(row => PayoutBuilder.Line(row, today))
+            .Select(row => (Row: row, Line: PayoutBuilder.Line(row, today)))
+            .Where(x => !string.IsNullOrEmpty(search) || !string.IsNullOrEmpty(query.PayoutId)
+                || PayoutBuilder.Open(x.Line) && PayoutBuilder.Expect(x.Row, x.Line, today).Day == query.Day)
+            .Select(x => x.Line)
             .Where(line => query.Region is null || !string.IsNullOrEmpty(search) || line.Region == query.Region)
             .ToList();
         var page = Math.Max(0, query.Page);
@@ -215,16 +216,53 @@ internal static class PayoutBuilder
         new(row.ExternalId, row.ConnectionId, row.PlatformCode, row.TransactionType, row.Category, row.TransactionDate, row.PaymentDate is { } due ? Day(due) : null,
             row.OrderNumber, row.InvoiceNumber, row.Country, Region(row.PlatformCode, row.Country, row.Affiliate), row.Credit - row.Debt, row.CommissionAmount, Net(row), Status(row, today), row.PaymentOrderId);
 
+    // Whether a record still waits for its payout: not paid, whatever its due day (Avrupa is paid about monthly, so a
+    // record past its due day may simply wait for the next payout).
+    public static bool Open(PayoutLineView line) => line.Status is Expected or Unknown && line.DueDay is not null;
+
+    // The day an open record is expected to be paid on. Türkiye-Körfez, as Trendyol paid it in October-November 2026:
+    // Monday's payout carries the sales due Monday to Wednesday, Thursday's those due Thursday to Sunday, and a deduction
+    // goes with the first payout on or after its due day. A public holiday moves a payout (29 Oct 2026 to the 30th), so
+    // the day is an estimate. The other regions' payout days are not known: their records stand on their due day.
+    // A day already past moves to the next one to come. Kind: PAYOUT_DAY (estimated payout day) or DUE_DAY.
+    public static (DateOnly Day, string Kind) Expect(PayoutRow row, PayoutLineView line, DateOnly today)
+    {
+        var due = line.DueDay!.Value;
+        if (row.PlatformCode != "TRENDYOL" || line.Region != TrGulf) return (due < today ? today : due, "DUE_DAY");
+        var day = row.Source == TrendyolFinanceRequestContract.Settlements ? PayoutDayOnOrBefore(due) : PayoutDayOnOrAfter(due);
+        return (day < today ? PayoutDayOnOrAfter(today) : day, "PAYOUT_DAY");
+    }
+
+    private static DateOnly PayoutDayOnOrBefore(DateOnly day) => day.DayOfWeek switch
+    {
+        DayOfWeek.Monday or DayOfWeek.Thursday => day,
+        DayOfWeek.Tuesday or DayOfWeek.Friday => day.AddDays(-1),
+        DayOfWeek.Wednesday or DayOfWeek.Saturday => day.AddDays(-2),
+        _ => day.AddDays(-3)
+    };
+
+    private static DateOnly PayoutDayOnOrAfter(DateOnly day) => day.DayOfWeek switch
+    {
+        DayOfWeek.Monday or DayOfWeek.Thursday => day,
+        DayOfWeek.Tuesday => day.AddDays(2),
+        DayOfWeek.Wednesday => day.AddDays(1),
+        DayOfWeek.Friday => day.AddDays(3),
+        DayOfWeek.Saturday => day.AddDays(2),
+        _ => day.AddDays(1)
+    };
+
     public static PayoutView Build(IReadOnlyList<PayoutRow> rows, IReadOnlyList<PayoutOrderRow> payouts, IReadOnlyDictionary<Guid, PayoutStore> stores, DateOnly today, int daysBack,
         IReadOnlyList<PayoutCoverageView> coverage)
     {
         var lines = rows.Where(Counts).Select(row => (Row: row, Line: Line(row, today))).ToList();
-        var expected = lines.Where(x => x.Line.Status == Expected && x.Line.DueDay is not null).ToList();
-        var unknown = lines.Where(x => x.Line.Status == Unknown && x.Line.DueDay is { } due && due >= today.AddDays(-daysBack)).ToList();
+        // The balance: every record not paid yet (Trendyol's "Toplam Güncel Bakiye" is the same sum: 295,540.76 TL on
+        // 4 Nov 2026, to the kuruş). Overdue: its part past the due day, still waiting for a payout.
+        var open = lines.Where(x => Open(x.Line)).Select(x => (x.Row, x.Line, Expect: Expect(x.Row, x.Line, today))).ToList();
+        var overdue = open.Where(x => x.Line.DueDay < today).ToList();
 
-        var upcoming = expected
-            .GroupBy(x => (x.Row.ConnectionId, Day: x.Line.DueDay!.Value, x.Line.Region))
-            .Select(group => Group($"due:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}:{group.Key.Region}", "DUE", stores, group.Key.ConnectionId, group.Key.Region, null,
+        var upcoming = open
+            .GroupBy(x => (x.Row.ConnectionId, x.Expect.Day, x.Line.Region, x.Expect.Kind))
+            .Select(group => Group($"due:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}:{group.Key.Region}", group.Key.Kind, stores, group.Key.ConnectionId, group.Key.Region, null,
                 group.Key.Day, group.Sum(x => x.Line.Net), null, group.Count(), Expected))
             .OrderBy(x => x.Day).ThenBy(x => x.PlatformCode).ThenBy(x => x.Region).ToList();
 
@@ -241,17 +279,17 @@ internal static class PayoutBuilder
             // Pazarama's paid agreements, a store's day at a time.
             .Concat(lines.Where(x => x.Row.Source == PazaramaFinanceSyncJobHandler.Source && x.Line.Status == Paid && x.Line.DueDay is { } day && day >= today.AddDays(-daysBack))
                 .GroupBy(x => (x.Row.ConnectionId, Day: x.Line.DueDay!.Value))
-                .Select(group => Group($"paid:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}", "DUE", stores, group.Key.ConnectionId, TrGulf, null, group.Key.Day,
+                .Select(group => Group($"paid:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}", "DUE_DAY", stores, group.Key.ConnectionId, TrGulf, null, group.Key.Day,
                     group.Sum(x => x.Line.Net), group.Sum(x => x.Line.Net), group.Count(), Paid)))
             .OrderByDescending(x => x.Day).ThenBy(x => x.PlatformCode).ToList();
 
         var regions = new[] { TrGulf, Europe, Azerbaijan, UnknownRegion }
             .Select(region =>
             {
-                var due = expected.Where(x => x.Line.Region == region).ToList();
+                var due = open.Where(x => x.Line.Region == region).ToList();
                 var next = upcoming.Where(x => x.Region == region).GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault();
                 return new PayoutRegionView(region, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
-                    unknown.Where(x => x.Line.Region == region).Sum(x => x.Line.Net));
+                    overdue.Where(x => x.Line.Region == region).Sum(x => x.Line.Net));
             })
             .Where(x => x.Region != UnknownRegion || x.Records > 0 || x.Unknown != 0)
             .ToList();
@@ -262,18 +300,18 @@ internal static class PayoutBuilder
         var next = nextDay is { } first
             ? upcoming.Where(x => x.Day == first).GroupBy(x => 1).Select(group => group.First() with { Key = $"next:{first:yyyy-MM-dd}", Amount = group.Sum(x => x.Amount), Records = group.Sum(x => x.Records) }).Single()
             : null;
-        return new(today, daysBack, expected.Sum(x => x.Line.Net), expected.Count, next, past.FirstOrDefault(x => x.Kind == "PAYOUT") ?? past.FirstOrDefault(),
-            unknown.Sum(x => x.Line.Net), unknown.Count, early.Sum(x => Math.Abs(x.Credit - x.Debt)), early.Count, regions, upcoming, past, coverage);
+        return new(today, daysBack, open.Sum(x => x.Line.Net), open.Count, next, past.FirstOrDefault(x => x.Kind == "PAYOUT") ?? past.FirstOrDefault(),
+            overdue.Sum(x => x.Line.Net), overdue.Count, early.Sum(x => Math.Abs(x.Credit - x.Debt)), early.Count, regions, upcoming, past, coverage);
     }
 
-    // A payout's region by Trendyol's code or name (documented: "TR" / "Türkiye"; the others are not, so they are
-    // matched by their name); one no rule names stays UNKNOWN and is shown by the name Trendyol gave it.
+    // A payout's region by Trendyol's code or name; live since Nov 2026: TR "Türkiye, Körfez", AZ "Azerbaycan",
+    // CEE "Avrupa". One no rule names stays UNKNOWN and is shown by the name Trendyol gave it.
     internal static string PayoutRegion(string? code, string? name)
     {
         var upper = code?.Trim().ToUpperInvariant();
         var text = TrendyolFinanceCategorizer.Fold(name);
         if (upper == "AZ" || text.Contains("azerbaycan", StringComparison.Ordinal)) return Azerbaijan;
-        if (upper is "EU" or "EUR" || text.Contains("avrupa", StringComparison.Ordinal)) return Europe;
+        if (upper is "CEE" or "EU" or "EUR" || text.Contains("avrupa", StringComparison.Ordinal)) return Europe;
         if (upper == "TR" || text.Contains("turkiye", StringComparison.Ordinal) || text.Contains("korfez", StringComparison.Ordinal)) return TrGulf;
         return UnknownRegion;
     }

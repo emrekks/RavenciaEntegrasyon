@@ -1801,14 +1801,14 @@ function PayoutsReport({ platforms }: { platforms: string[] | null }) {
   const read = data.coverage.filter(store => store.state === 'READ')
   const day = (value: string) => formatIstanbul(`${value}T12:00:00Z`, { day: '2-digit', month: 'long', year: 'numeric' })
   const items: Kpi[] = [
-    { key: 'expected', label: 'Beklenen Hakediş', value: data.expected, format: formatTl, note: 'Tahmini',
-      tip: `Teslim edilmiş, ödemesi henüz yapılmamış siparişlerin net hakedişi (komisyon düşülmüş) ve bekleyen kesintiler.\n${formatCount(data.expectedRecords)} kayıt; vadesi bugün ve sonrası. Pazaryeri ekranıyla eşleşene kadar tahmindir; erken ödeme ve henüz kesilmemiş faturalar dahil değildir.` },
+    { key: 'expected', label: 'Toplam Güncel Bakiye', value: data.expected, format: formatTl,
+      tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin net hakedişi (komisyon düşülmüş), bekleyen kesintiler düşülerek.\n${formatCount(data.expectedRecords)} kayıt. Trendyol'un Toplam Güncel Bakiye'siyle aynı hesap (4 Kasım 2026'da kuruşu kuruşuna eşleşti); seçili diğer pazaryerleri de eklenir. Henüz kesilmemiş kesinti faturaları dahil değildir.` },
     { key: 'next', label: 'Sıradaki Ödeme', value: data.next?.amount ?? null, format: formatTl, empty: 'Yok', note: data.next ? day(data.next.day) : undefined,
-      tip: 'Vadesi en yakın günün tahmini hakedişi.\nPazaryeri vadesi gelenleri kendi ödeme gününde toplar; ödeme günü vade gününden birkaç gün sonra olabilir.' },
+      tip: 'En yakın ödeme gününün tahmini tutarı.\nTrendyol Türkiye-Körfez pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder; resmi tatil günü kaydırır. Kesinti faturaları kesildikçe tutar düşer.' },
     { key: 'last', label: 'Son Ödeme', value: data.lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', note: data.lastPaid ? day(data.lastPaid.day) : undefined,
       tip: 'Pazaryerinin yaptığı son ödeme, kendi bildirdiği tutarla.' },
-    { key: 'unknown', label: 'Durumu Bilinmeyen', value: data.unknown, format: formatTl, tone: data.unknownRecords > 0 ? 'warn' : undefined,
-      tip: `Son ${data.daysBack} günde vadesi geçmiş ama bir ödemeye bağlandığı henüz görülmemiş kayıtlar.\n${formatCount(data.unknownRecords)} kayıt. Ödenmedi demek değildir: ödeme kaydı bir gün sonra okunur, kesintiler sonraki ödemeden düşülür.` },
+    { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: data.unknown, format: formatTl,
+      tip: `Bakiyenin vadesi geçmiş ama henüz bir ödemeye bağlanmamış kısmı.\n${formatCount(data.unknownRecords)} kayıt. Ödenmeyecek demek değildir: Avrupa ayda bir ödenir, ödeme kaydı ödemeden bir gün sonra okunur, kesintiler sonraki ödemeden düşülür.` },
     { key: 'early', label: 'Alınan Erken Ödeme', value: data.earlyPaymentsTaken, format: formatTl,
       tip: `Son ${data.daysBack} günde pazaryerinden erken çekilen hakediş.\n${formatCount(data.earlyPayments)} kayıt. Erken alınabilir tutar pazaryeri API'sinde yok; o tutar yalnız pazaryeri panelinde görünür.` }
   ]
@@ -1843,7 +1843,9 @@ function PayoutsReport({ platforms }: { platforms: string[] | null }) {
                   <button type="button" className="reports-payout-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : group.key)}>
                     <span className="reports-payout-amount"><strong>{formatTl(group.amount)}</strong>
                       <small className={tab === 'upcoming' && index === 0 ? 'is-next' : undefined}>
-                        {tab === 'upcoming' ? `${index === 0 ? 'Sıradaki Vade' : 'Vade'}: ${day(group.day)}` : `Ödeme Günü: ${day(group.day)}`}
+                        {tab === 'past' ? `Ödeme Günü: ${day(group.day)}`
+                          : group.kind === 'PAYOUT_DAY' ? `${index === 0 ? 'Sıradaki Ödeme' : 'Ödeme Günü'}: ${day(group.day)}`
+                          : `${index === 0 ? 'Sıradaki Vade' : 'Vade'}: ${day(group.day)}`}
                       </small></span>
                     <span className="reports-payout-store"><PlatformSquareMark code={group.platformCode} name={platformName(group.platformCode)} />{group.storeName}</span>
                     <em className="reports-payout-badge is-region">{group.regionName && group.region === 'UNKNOWN' ? group.regionName : regionLabels[group.region]}</em>
@@ -1863,7 +1865,7 @@ function PayoutsReport({ platforms }: { platforms: string[] | null }) {
     <p className="reports-payout-coverage" role="note">
       {read.length > 0 ? `Okunan mağazalar: ${read.map(store => `${platformName(store.platformCode)} · ${store.storeName}${store.lastSyncedAt ? ` (${formatIstanbul(store.lastSyncedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}`).join(', ')}. ` : 'Henüz hiçbir mağazanın hakediş kaydı okunmadı. '}
       {data.coverage.some(store => store.state === 'NOT_SUPPORTED') && `Henüz okunmayanlar: ${[...new Set(data.coverage.filter(store => store.state === 'NOT_SUPPORTED').map(store => platformName(store.platformCode)))].join(', ')}. `}
-      Tutarlar tahminidir; kesin tutar pazaryeri panelindedir.
+      Gelecek ödemeler tahminidir; kesin tutar ödeme günü pazaryeri panelinde görünür.
     </p>
   </div>
 }
