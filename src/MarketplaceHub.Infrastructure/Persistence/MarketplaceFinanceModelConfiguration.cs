@@ -16,6 +16,8 @@ internal static class MarketplaceFinanceModelConfiguration
             entity.Property(x => x.Category).HasMaxLength(32); entity.Property(x => x.Description).HasMaxLength(1000);
             entity.Property(x => x.OrderNumber).HasMaxLength(128); entity.Property(x => x.ShipmentPackageId).HasMaxLength(128);
             entity.Property(x => x.Barcode).HasMaxLength(160); entity.Property(x => x.PaymentOrderId).HasMaxLength(64);
+            entity.Property(x => x.Country).HasMaxLength(64); entity.Property(x => x.Affiliate).HasMaxLength(32);
+            entity.Property(x => x.Currency).HasMaxLength(8); entity.Property(x => x.InvoiceNumber).HasMaxLength(64);
             foreach (var property in new[] { nameof(MarketplaceFinanceTransaction.Debt), nameof(MarketplaceFinanceTransaction.Credit), nameof(MarketplaceFinanceTransaction.CommissionAmount), nameof(MarketplaceFinanceTransaction.SellerRevenue) })
                 entity.Property(property).HasPrecision(19, 4);
             entity.Property(x => x.CommissionRate).HasPrecision(9, 4);
@@ -23,6 +25,21 @@ internal static class MarketplaceFinanceModelConfiguration
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.Source, x.ExternalId }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.OrderNumber });
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.TransactionDate });
+            // The payout view: what falls due on a day and what a payout paid.
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.PaymentDate });
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.PaymentOrderId });
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MarketplacePayoutOrder>(entity =>
+        {
+            entity.ToTable("marketplace_payout_orders", "sales"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.PlatformCode).HasMaxLength(64); entity.Property(x => x.ExternalId).HasMaxLength(64);
+            entity.Property(x => x.Status).HasMaxLength(32); entity.Property(x => x.PaymentType).HasMaxLength(32);
+            entity.Property(x => x.Currency).HasMaxLength(8); entity.Property(x => x.RegionCode).HasMaxLength(16);
+            entity.Property(x => x.RegionName).HasMaxLength(64); entity.Property(x => x.Amount).HasPrecision(19, 4);
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ExternalId }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.PayoutDate });
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<PlatformConnection>().WithMany().HasForeignKey(x => new { x.TenantId, x.ConnectionId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });

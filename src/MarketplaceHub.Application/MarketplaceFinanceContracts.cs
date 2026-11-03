@@ -20,7 +20,11 @@ public sealed record RemoteStatementRecord(
     decimal? SellerRevenue,
     string? PaymentOrderId,
     DateTimeOffset? PaymentDate,
-    string RawJson);
+    string RawJson,
+    string? Country = null,
+    string? Affiliate = null,
+    string? Currency = null,
+    string? InvoiceNumber = null);
 
 public sealed record RemoteStatementPage(IReadOnlyList<RemoteStatementRecord> Items, int Page, int TotalPages, long TotalElements);
 
@@ -28,10 +32,19 @@ public sealed record RemoteCargoInvoiceItem(string? ShipmentPackageType, string?
 
 public sealed record RemoteCargoInvoicePage(IReadOnlyList<RemoteCargoInvoiceItem> Items, int Page, int TotalPages);
 
+// A payout Trendyol made (payment-order: only paid ones are listed), as sent.
+public sealed record RemotePayoutOrder(string ExternalId, string? Status, string? PaymentType, decimal Amount, DateTimeOffset? PayoutDate, string? RegionCode, string? RegionName, string RawJson);
+
+public sealed record RemotePayoutOrderPage(IReadOnlyList<RemotePayoutOrder> Items, int Page, int TotalPages);
+
 // Trendyol's accounting services (Cari Hesap Ekstresi), read only. A window may span at most 15 days.
 public interface ITrendyolFinancePort
 {
     Task<AdapterResult<RemoteStatementPage>> GetSettlementsAsync(AdapterContext context, string transactionType, DateTimeOffset start, DateTimeOffset end, int page, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteStatementPage>> GetOtherFinancialsAsync(AdapterContext context, string transactionType, string? transactionSubType, DateTimeOffset start, DateTimeOffset end, int page, CancellationToken cancellationToken);
+    // The records of one payout, by its id instead of a date window (source: settlements or other financials).
+    Task<AdapterResult<RemoteStatementPage>> GetPayoutRecordsAsync(AdapterContext context, string source, string transactionType, string? transactionSubType, string paymentOrderId, int page, CancellationToken cancellationToken);
+    // The paid payouts, ten a page.
+    Task<AdapterResult<RemotePayoutOrderPage>> GetPayoutOrdersAsync(AdapterContext context, int page, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteCargoInvoicePage>> GetCargoInvoiceItemsAsync(AdapterContext context, string invoiceSerialNumber, int page, CancellationToken cancellationToken);
 }

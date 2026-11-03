@@ -16,6 +16,27 @@ public sealed partial class TrendyolHttpClient : ITrendyolFinancePort
     public Task<AdapterResult<RemoteStatementPage>> GetOtherFinancialsAsync(AdapterContext context, string transactionType, string? transactionSubType, DateTimeOffset start, DateTimeOffset end, int page, CancellationToken cancellationToken) =>
         FinancePageAsync(context, TrendyolFinanceRequestContract.OtherFinancials, transactionType, transactionSubType, start, end, page, cancellationToken);
 
+    public async Task<AdapterResult<RemoteStatementPage>> GetPayoutRecordsAsync(AdapterContext context, string source, string transactionType, string? transactionSubType, string paymentOrderId, int page, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (authorized is null) return AdapterResult<RemoteStatementPage>.Failure(TrendyolErrorMapper.Configuration());
+        var path = TrendyolFinanceRequestContract.PayoutPath(source, authorized.Connection.ExternalStoreId, transactionType, transactionSubType, paymentOrderId, page);
+        var response = await SendAsync(authorized, HttpMethod.Get, path, null, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<RemoteStatementPage>.Failure(response.Error!, response.RateLimit);
+        try { return AdapterResult<RemoteStatementPage>.Success(TrendyolFinanceMapper.Page(response.Value!, source, transactionType, transactionSubType), response.RateLimit); }
+        catch (JsonException) { return AdapterResult<RemoteStatementPage>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit); }
+    }
+
+    public async Task<AdapterResult<RemotePayoutOrderPage>> GetPayoutOrdersAsync(AdapterContext context, int page, CancellationToken cancellationToken)
+    {
+        var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (authorized is null) return AdapterResult<RemotePayoutOrderPage>.Failure(TrendyolErrorMapper.Configuration());
+        var response = await SendAsync(authorized, HttpMethod.Get, TrendyolFinanceRequestContract.PayoutOrdersPath(authorized.Connection.ExternalStoreId, page), null, cancellationToken);
+        if (!response.IsSuccess) return AdapterResult<RemotePayoutOrderPage>.Failure(response.Error!, response.RateLimit);
+        try { return AdapterResult<RemotePayoutOrderPage>.Success(TrendyolFinanceMapper.PayoutPage(response.Value!), response.RateLimit); }
+        catch (JsonException) { return AdapterResult<RemotePayoutOrderPage>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit); }
+    }
+
     public async Task<AdapterResult<RemoteCargoInvoicePage>> GetCargoInvoiceItemsAsync(AdapterContext context, string invoiceSerialNumber, int page, CancellationToken cancellationToken)
     {
         var authorized = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
@@ -57,6 +78,19 @@ internal static class TrendyolFinanceRequestContract
         return $"finance/che/sellers/{seller}/{resource}?transactionType={Uri.EscapeDataString(transactionType)}{subType}&startDate={start.ToUnixTimeMilliseconds()}&endDate={end.ToUnixTimeMilliseconds()}&page={Math.Max(0, page)}&size={PageSize}&supplierId={seller}";
     }
 
+    // A payout's records: by paymentOrderId, no date window (MoneyMovements are other financials too).
+    public static string PayoutPath(string source, string sellerId, string transactionType, string? transactionSubType, string paymentOrderId, int page)
+    {
+        var seller = Uri.EscapeDataString(sellerId);
+        var resource = source == Settlements ? "settlements" : "otherfinancials";
+        var subType = string.IsNullOrWhiteSpace(transactionSubType) ? "" : $"&transactionSubType={Uri.EscapeDataString(transactionSubType)}";
+        return $"finance/che/sellers/{seller}/{resource}?transactionType={Uri.EscapeDataString(transactionType)}{subType}&paymentOrderId={Uri.EscapeDataString(paymentOrderId)}&page={Math.Max(0, page)}&size={PageSize}&supplierId={seller}";
+    }
+
+    // At most ten payouts a page (the documented maximum).
+    public static string PayoutOrdersPath(string sellerId, int page) =>
+        $"finance/che/sellers/{Uri.EscapeDataString(sellerId)}/payment-order?page={Math.Max(0, page)}&size=10";
+
     public static string CargoInvoiceItemsPath(string sellerId, string invoiceSerialNumber, int page) =>
         $"finance/che/sellers/{Uri.EscapeDataString(sellerId)}/cargo-invoice/{Uri.EscapeDataString(invoiceSerialNumber)}/items?page={Math.Max(0, page)}&size={PageSize}";
 }
@@ -80,11 +114,30 @@ internal static class TrendyolFinanceMapper
                 items.Add(new(id, source, requestedType, transactionSubType, Text(item, "transactionType"), date, Text(item, "description"),
                     Text(item, "orderNumber"), Text(item, "shipmentPackageId"), Text(item, "barcode"),
                     Number(item, "debt") ?? 0m, Number(item, "credit") ?? 0m, Number(item, "commissionRate"), Number(item, "commissionAmount"), Number(item, "sellerRevenue"),
-                    Text(item, "paymentOrderId"), Time(item, "paymentDate"), item.GetRawText()));
+                    Text(item, "paymentOrderId"), Time(item, "paymentDate"), item.GetRawText(),
+                    Text(item, "country"), Text(item, "affiliate"), Text(item, "currency"), Text(item, "commissionInvoiceSerialNumber")));
             }
         else if (root.TryGetProperty("content", out var other) && other.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
             throw new JsonException("Finance page content is not a list.");
         return new(items, Int(root, "page") ?? 0, Int(root, "totalPages") ?? 0, (long)(Number(root, "totalElements") ?? items.Count));
+    }
+
+    // A payout without an id cannot be matched to its records; the page is then a contract error.
+    public static RemotePayoutOrderPage PayoutPage(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) throw new JsonException("Payment order page is not an object.");
+        var items = new List<RemotePayoutOrder>();
+        if (root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+            foreach (var item in content.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) throw new JsonException("Payment order is not an object.");
+                var id = Text(item, "id") ?? throw new JsonException("Payment order has no id.");
+                var amount = Number(item, "amount") ?? throw new JsonException("Payment order has no amount.");
+                items.Add(new(id, Text(item, "status"), Text(item, "paymentType"), amount, Time(item, "payoutDate"), Text(item, "regionCode"), Text(item, "regionName"), item.GetRawText()));
+            }
+        return new(items, Int(root, "page") ?? 0, Int(root, "totalPages") ?? 0);
     }
 
     public static RemoteCargoInvoicePage CargoPage(string json)

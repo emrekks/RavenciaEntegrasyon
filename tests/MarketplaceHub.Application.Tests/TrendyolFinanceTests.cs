@@ -34,6 +34,15 @@ public sealed class TrendyolFinanceTests
     [InlineData(Others, "DeductionInvoices", null, "Yurtdışı Operasyon Iade Bedeli", null, MarketplaceFinanceCategories.OtherDeduction)]
     [InlineData(Others, "FinancialItem", null, "Düzeltme", null, MarketplaceFinanceCategories.Other)]
     [InlineData(Others, "SomethingNew", null, null, null, MarketplaceFinanceCategories.Other)]
+    // Trendyol's own spelling of the types (refused with 400 when spelled ManuelRefund / TYDiscount until 4 Nov 2026).
+    [InlineData(Settlements, "ManualRefund", null, null, null, MarketplaceFinanceCategories.Return)]
+    [InlineData(Settlements, "TyDiscount", null, null, null, MarketplaceFinanceCategories.Discount)]
+    [InlineData(Settlements, "TyCouponCancel", null, null, null, MarketplaceFinanceCategories.Coupon)]
+    [InlineData(Settlements, "PayByLink", null, null, null, MarketplaceFinanceCategories.Sale)]
+    [InlineData(Settlements, "DeliveryFee", null, null, null, MarketplaceFinanceCategories.Other)]
+    // A payout or an early payment taken moves money; it is neither a sale nor a cost.
+    [InlineData(MarketplaceFinanceSources.MoneyMovements, "PaymentOrder", null, "Ödeme", null, MarketplaceFinanceCategories.Transfer)]
+    [InlineData(MarketplaceFinanceSources.MoneyMovements, "CashAdvance", null, "Erken Ödeme", null, MarketplaceFinanceCategories.Transfer)]
     public void A_record_is_sorted_by_its_type_or_its_words_and_an_unknown_one_is_other(string source, string type, string? subType, string? raw, string? description, string expected) =>
         Assert.Equal(expected, TrendyolFinanceCategorizer.Categorize(source, type, subType, raw, description));
 
@@ -266,6 +275,33 @@ public sealed class TrendyolFinanceTests
         Assert.Equal("finance/che/sellers/123456/otherfinancials?transactionType=DeductionInvoices&transactionSubType=PlatformServiceFee&startDate=1760000000000&endDate=1761296000000&page=2&size=500&supplierId=123456", path);
         Assert.StartsWith("finance/che/sellers/123456/settlements?transactionType=Sale&startDate=", TrendyolFinanceRequestContract.Path(Settlements, "123456", "Sale", null, start, start.AddDays(1), 0));
         Assert.Equal("finance/che/sellers/123456/cargo-invoice/DDF2026000001/items?page=0&size=500", TrendyolFinanceRequestContract.CargoInvoiceItemsPath("123456", "DDF2026000001", 0));
+        Assert.Equal("finance/che/sellers/123456/payment-order?page=1&size=10", TrendyolFinanceRequestContract.PayoutOrdersPath("123456", 1));
+        Assert.Equal("finance/che/sellers/123456/otherfinancials?transactionType=PaymentOrder&paymentOrderId=112360&page=0&size=500&supplierId=123456",
+            TrendyolFinanceRequestContract.PayoutPath(MarketplaceFinanceSources.MoneyMovements, "123456", "PaymentOrder", null, "112360", 0));
+    }
+
+    [Fact]
+    public void A_payout_page_and_the_region_fields_of_a_record_are_read_as_sent()
+    {
+        var page = TrendyolFinanceMapper.PayoutPage("""
+            {"page":0,"size":10,"totalPages":3,"totalElements":21,"content":[
+              {"id":112360,"status":"PAID","amount":8754732.06,"payoutDate":1736460000000,"paymentType":"PAYMENT","sellerId":123456,"regionId":1,"regionName":"Türkiye","regionCode":"TR"}]}
+            """);
+        Assert.Equal(3, page.TotalPages);
+        var payout = Assert.Single(page.Items);
+        Assert.Equal("112360", payout.ExternalId);
+        Assert.Equal(8754732.06m, payout.Amount);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1736460000000), payout.PayoutDate);
+        Assert.Equal("TR", payout.RegionCode);
+        Assert.ThrowsAny<JsonException>(() => TrendyolFinanceMapper.PayoutPage("""{"content":[{"amount":1}]}"""));
+
+        var record = Assert.Single(TrendyolFinanceMapper.Page("""
+            {"content":[{"id":1,"transactionDate":1613397671561,"debt":0,"credit":10,"country":"Azerbaycan","affiliate":"TRENDYOLAZJV","currency":"TRY","commissionInvoiceSerialNumber":"DCF2026000123"}]}
+            """, Settlements, "Sale", null).Items);
+        Assert.Equal("Azerbaycan", record.Country);
+        Assert.Equal("TRENDYOLAZJV", record.Affiliate);
+        Assert.Equal("TRY", record.Currency);
+        Assert.Equal("DCF2026000123", record.InvoiceNumber);
     }
 
     [Fact]
@@ -277,7 +313,7 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(JobPriorityPolicy.Reconciliation, JobPriorityPolicy.For(MarketplaceJobTypes.TrendyolFinanceSync, userInitiated: false));
         var defaults = ScheduledJobProducer.DefaultPolicies(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
         var finance = Assert.Single(defaults, policy => policy.ResourceType == "FINANCE");
-        Assert.Equal(86_400, finance.IntervalSeconds);
+        Assert.Equal(21_600, finance.IntervalSeconds);
         Assert.False(ScheduledJobProducer.SupportsHepsiburadaScheduledPolicy("FINANCE"));
         Assert.False(ScheduledJobProducer.SupportsN11ScheduledPolicy("FINANCE"));
         Assert.False(ScheduledJobProducer.SupportsShopifyPolicy("FINANCE"));

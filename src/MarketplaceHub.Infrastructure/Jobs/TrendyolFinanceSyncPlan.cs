@@ -100,8 +100,13 @@ internal static class TrendyolFinanceSyncPlan
             OrderNumber = Short(record.OrderNumber, 128),
             ShipmentPackageId = Short(record.ShipmentPackageId, 128),
             Barcode = Short(record.Barcode, 160),
-            PaymentOrderId = Short(record.PaymentOrderId, 64),
-            PaymentDate = record.PaymentDate?.ToUniversalTime()
+            // A payout id once read is kept: a read that does not carry it (yet) does not take the record out of its payout.
+            PaymentOrderId = Short(record.PaymentOrderId, 64) ?? row.PaymentOrderId,
+            PaymentDate = record.PaymentDate?.ToUniversalTime(),
+            Country = Short(record.Country, 64),
+            Affiliate = Short(record.Affiliate, 32),
+            Currency = Short(record.Currency, 8),
+            InvoiceNumber = Short(record.InvoiceNumber, 64)
         };
         var category = TrendyolFinanceCategorizer.Charged(value.Source, value.RequestedType,
             TrendyolFinanceCategorizer.Categorize(value.Source, value.RequestedType, value.TransactionSubType, value.TransactionType, value.Description), value.Debt, value.Credit);
@@ -109,7 +114,8 @@ internal static class TrendyolFinanceSyncPlan
             || row.Category != category || row.TransactionDate != value.TransactionDate || row.Description != value.Description || row.OrderNumber != value.OrderNumber
             || row.ShipmentPackageId != value.ShipmentPackageId || row.Barcode != value.Barcode || row.Debt != value.Debt || row.Credit != value.Credit
             || row.CommissionRate != value.CommissionRate || row.CommissionAmount != value.CommissionAmount || row.SellerRevenue != value.SellerRevenue
-            || row.PaymentOrderId != value.PaymentOrderId || row.PaymentDate != value.PaymentDate || row.RawJson != value.RawJson;
+            || row.PaymentOrderId != value.PaymentOrderId || row.PaymentDate != value.PaymentDate || row.RawJson != value.RawJson
+            || row.Country != value.Country || row.Affiliate != value.Affiliate || row.Currency != value.Currency || row.InvoiceNumber != value.InvoiceNumber;
         if (!changed) return false;
         row.RequestedType = value.RequestedType;
         row.TransactionSubType = value.TransactionSubType;
@@ -127,6 +133,10 @@ internal static class TrendyolFinanceSyncPlan
         row.SellerRevenue = value.SellerRevenue;
         row.PaymentOrderId = value.PaymentOrderId;
         row.PaymentDate = value.PaymentDate;
+        row.Country = value.Country;
+        row.Affiliate = value.Affiliate;
+        row.Currency = value.Currency;
+        row.InvoiceNumber = value.InvoiceNumber;
         row.RawJson = value.RawJson;
         row.UpdatedAt = now;
         return true;

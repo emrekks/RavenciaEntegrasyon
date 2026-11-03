@@ -97,6 +97,7 @@ public sealed partial class OperationalDataMaintenanceService
                 await ReportFullResetProgressAsync(tenantId, jobId, 3, "Finans hareketleri ve kargo faturası kalemleri siliniyor", cancellationToken);
                 await DeleteInBatchesAsync($"""DELETE FROM sales.marketplace_finance_transactions WHERE "Id" IN (SELECT "Id" FROM sales.marketplace_finance_transactions WHERE "TenantId"={tenantId} AND "ConnectionId"={connectionId} LIMIT {FullResetBatchSize})""", cancellationToken);
                 await DeleteInBatchesAsync($"""DELETE FROM sales.marketplace_cargo_invoice_items WHERE "Id" IN (SELECT "Id" FROM sales.marketplace_cargo_invoice_items WHERE "TenantId"={tenantId} AND "ConnectionId"={connectionId} LIMIT {FullResetBatchSize})""", cancellationToken);
+                await DeleteInBatchesAsync($"""DELETE FROM sales.marketplace_payout_orders WHERE "Id" IN (SELECT "Id" FROM sales.marketplace_payout_orders WHERE "TenantId"={tenantId} AND "ConnectionId"={connectionId} LIMIT {FullResetBatchSize})""", cancellationToken);
                 await ReportFullResetProgressAsync(tenantId, jobId, 4, "Ürün aktarım kayıtları siliniyor", cancellationToken);
                 await DeleteInBatchesAsync($"""DELETE FROM catalog.product_import_staging_records WHERE "Id" IN (SELECT "Id" FROM catalog.product_import_staging_records WHERE "TenantId"={tenantId} AND "ConnectionId"={connectionId} LIMIT {FullResetBatchSize})""", cancellationToken);
                 await ReportFullResetProgressAsync(tenantId, jobId, 5, "Kategori, özellik ve marka listeleri siliniyor", cancellationToken);
@@ -226,7 +227,8 @@ public sealed partial class OperationalDataMaintenanceService
         var linkedProducts = await db.MarketplaceProductLinks.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId).Select(x => x.ProductId).Distinct().CountAsync(cancellationToken);
         var removedProducts = await ImportedProductCountAsync(tenantId, connectionId, cancellationToken);
         var finance = await db.MarketplaceFinanceTransactions.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
-            + await db.MarketplaceCargoInvoiceItems.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+            + await db.MarketplaceCargoInvoiceItems.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
+            + await db.MarketplacePayoutOrders.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         // The current lists' item counts: counting the rows themselves scans millions (CurrentListSizeAsync).
         var references = await db.ReferenceSnapshots.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.IsCurrent).SumAsync(x => x.ItemCount, cancellationToken);
         var mappings = await db.CategoryMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)

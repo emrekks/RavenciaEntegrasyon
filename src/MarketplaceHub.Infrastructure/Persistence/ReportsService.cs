@@ -586,7 +586,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         {
             var numbers = orders.Where(x => x.ConnectionId == storeId && !string.IsNullOrEmpty(x.OrderNumber)).Select(x => x.OrderNumber).Distinct(StringComparer.Ordinal).ToArray();
             var storeRows = await db.MarketplaceFinanceTransactions.AsNoTracking()
-                .Where(x => x.TenantId == tenantId && x.ConnectionId == storeId
+                // Payouts and transfers move money, they are no cost (MarketplaceFinanceSources.MoneyMovements).
+                .Where(x => x.TenantId == tenantId && x.ConnectionId == storeId && x.Source != MarketplaceFinanceSources.MoneyMovements
                     && ((x.OrderNumber != null && numbers.Contains(x.OrderNumber))
                         || (x.TransactionDate >= start && x.TransactionDate < end
                             && (x.OrderNumber == null || !db.Orders.Any(order => order.TenantId == tenantId && order.ConnectionId == storeId && order.OrderNumber == x.OrderNumber)))))

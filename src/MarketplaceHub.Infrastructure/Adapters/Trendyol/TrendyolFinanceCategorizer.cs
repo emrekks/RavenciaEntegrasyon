@@ -15,24 +15,30 @@ internal static class TrendyolFinanceCategorizer
     public const string DeductionInvoices = "DeductionInvoices";
     public const string FinancialItem = "FinancialItem";
 
-    // The settlement types read, one request each (a type Trendyol refuses is skipped and reported, not guessed).
+    // The settlement types read, one request each (a type Trendyol refuses is skipped and reported, not guessed). The
+    // names are Trendyol's own spelling: "ManuelRefund", "TYDiscount" and "TYCoupon" were refused with 400 until 4 Nov 2026.
     public static readonly IReadOnlyList<string> SettlementTypes =
     [
         "Sale", "Return", "Discount", "DiscountCancel", "Coupon", "CouponCancel", "ProvisionPositive", "ProvisionNegative",
-        "ManuelRefund", "ManualRefundCancel", "TYDiscount", "TYDiscountCancel", "TYCoupon", "TYCouponCancel",
+        "ManualRefund", "ManualRefundCancel", "TyDiscount", "TyDiscountCancel", "TyCoupon", "TyCouponCancel",
         "SellerRevenuePositive", "SellerRevenueNegative", "CommissionPositive", "CommissionNegative",
-        "SellerRevenuePositiveCancel", "SellerRevenueNegativeCancel", "CommissionPositiveCancel", "CommissionNegativeCancel"
+        "SellerRevenuePositiveCancel", "SellerRevenueNegativeCancel", "CommissionPositiveCancel", "CommissionNegativeCancel",
+        "DeliveryFee", "DeliveryFeeCancel", "PayByLink"
     ];
 
-    // The other financial types read. Payments and transfers (PaymentOrder, WireTransfer, IncomingTransfer) and early
-    // payment advances (CashAdvance) move money and are not costs, so they are not read at all.
+    // The other financial types read as statement records.
     public static readonly IReadOnlyList<string> OtherFinancialTypes = [DeductionInvoices, "Stoppage", "CommissionAgreementInvoice", FinancialItem, "ReturnInvoice"];
+
+    // Payouts, early payments taken and transfers: money moved, not a cost. Read from the same service under their own
+    // source (MarketplaceFinanceSources.MoneyMovements) for the payout view only.
+    public static readonly IReadOnlyList<string> MoneyMovementTypes = ["PaymentOrder", "CashAdvance", "WireTransfer", "IncomingTransfer"];
 
     // The sign of commissionAmount for the seller, from the documentation's table: +1 the seller pays it, -1 it comes
     // back. Commission corrections are read from debt and credit instead (see CommissionCost).
     private static readonly Dictionary<string, int> CommissionSigns = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Sale"] = 1,
+        ["PayByLink"] = 1,
         ["Return"] = -1,
         ["Discount"] = -1,
         ["DiscountCancel"] = 1,
@@ -45,6 +51,7 @@ internal static class TrendyolFinanceCategorizer
         ["TYCoupon"] = -1,
         ["TYCouponCancel"] = 1,
         ["ManuelRefund"] = -1,
+        ["ManualRefund"] = -1,
         ["ManualRefundCancel"] = 1,
         ["ManuelRefundCancel"] = 1
     };
@@ -56,13 +63,14 @@ internal static class TrendyolFinanceCategorizer
 
     public static string Categorize(string source, string requestedType, string? transactionSubType, string? transactionType, string? description)
     {
+        if (source == MarketplaceFinanceSources.MoneyMovements) return MarketplaceFinanceCategories.Transfer;
         if (string.Equals(transactionSubType, PlatformServiceFee, StringComparison.OrdinalIgnoreCase)) return MarketplaceFinanceCategories.ServiceFee;
         switch (requestedType)
         {
-            case "Sale": return MarketplaceFinanceCategories.Sale;
-            case "Return" or "ManuelRefund" or "ManualRefundCancel" or "ManuelRefundCancel": return MarketplaceFinanceCategories.Return;
-            case "Discount" or "DiscountCancel" or "TYDiscount" or "TYDiscountCancel": return MarketplaceFinanceCategories.Discount;
-            case "Coupon" or "CouponCancel" or "TYCoupon" or "TYCouponCancel": return MarketplaceFinanceCategories.Coupon;
+            case "Sale" or "PayByLink": return MarketplaceFinanceCategories.Sale;
+            case "Return" or "ManuelRefund" or "ManualRefund" or "ManualRefundCancel" or "ManuelRefundCancel": return MarketplaceFinanceCategories.Return;
+            case "Discount" or "DiscountCancel" or "TYDiscount" or "TYDiscountCancel" or "TyDiscount" or "TyDiscountCancel": return MarketplaceFinanceCategories.Discount;
+            case "Coupon" or "CouponCancel" or "TYCoupon" or "TYCouponCancel" or "TyCoupon" or "TyCouponCancel": return MarketplaceFinanceCategories.Coupon;
             case "Stoppage": return MarketplaceFinanceCategories.Stoppage;
         }
         if (CommissionCorrections.Contains(requestedType)) return MarketplaceFinanceCategories.Commission;
