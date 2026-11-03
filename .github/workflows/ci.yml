@@ -152,6 +152,27 @@ jobs:
           # Production services must log to journald (logs survive container re-creation).
           drivers="$("${compose[@]}" config --format json | jq -r '[.services.postgres, .services.api, .services.worker, .services.caddy] | map(.logging.driver) | unique | join(",")')"
           [[ "$drivers" == "journald" ]] || { echo "Production logging drivers are '$drivers', expected journald." >&2; exit 1; }
+          # Container hardening (security plan U3) must survive later Compose edits: every service of the
+          # production stack and the backup job keeps no-new-privileges, drops all capabilities and has a
+          # process cap; API, worker and edge keep a read-only root filesystem and the edge runs as non-root.
+          "${compose[@]}" --profile operations config --format json | jq -e '
+            .services as $s
+            | (["postgres", "migrate", "api", "worker", "caddy-volumes", "caddy", "backup"] | all(. as $n
+                | ($s[$n].security_opt // [] | index("no-new-privileges:true")) != null
+                and ($s[$n].cap_drop // [] | index("ALL")) != null
+                and ($s[$n].pids_limit // 0) > 0))
+            and (["migrate", "api", "worker", "caddy"] | all(. as $n | $s[$n].read_only == true))
+            and ($s.caddy.user // "0" | test("^0(:|$)") | not)
+          ' >/dev/null || { echo "Container hardening (no-new-privileges, cap_drop ALL, pids_limit, read_only, non-root edge) is missing." >&2; exit 1; }
+
+      # RFC 9116: an expired security.txt is treated as absent. Fail 30 days ahead so it gets renewed in time.
+      - name: security.txt is not about to expire
+        run: |
+          set -Eeuo pipefail
+          expires="$(grep -oE 'Expires: [0-9T:.Z-]+' deploy/caddy/Caddyfile.production | cut -d' ' -f2)"
+          [[ -n "$expires" ]] || { echo "No Expires line in deploy/caddy/Caddyfile.production." >&2; exit 1; }
+          (( $(date -u -d "$expires" +%s) - $(date -u +%s) > 30 * 86400 )) \
+            || { echo "security.txt expires on $expires: move Expires one year ahead." >&2; exit 1; }
 
   backend-format:
     needs: plan
@@ -292,6 +313,23 @@ jobs:
             exit 1
           fi
 
+      # The runtime image the server builds from the same Dockerfile (the build stage above is cached).
+      - name: Build application runtime image
+        run: docker build --tag marketplacehub-app:ci-runtime .
+
+      # Security plan U4: a CRITICAL vulnerability with a released fix (base image or NuGet package) stops
+      # Validate; bump the digest or package. Unfixed ones cannot be acted on and are left to the weekly scan.
+      - name: Scan application image (CRITICAL, fixable)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: v0.70.0
+          scan-type: image
+          image-ref: marketplacehub-app:ci-runtime
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
   image-edge:
     needs: plan
     if: needs.plan.outputs.frontend_needed == 'true'
@@ -304,6 +342,17 @@ jobs:
       # Runs the frontend typecheck/tests/build/bundle budget and `caddy adapt` on the Caddyfile.
       - name: Build edge image
         run: docker build --file deploy/caddy/Dockerfile.production --tag marketplacehub-edge:ci-build .
+
+      - name: Scan edge image (CRITICAL, fixable)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          version: v0.70.0
+          scan-type: image
+          image-ref: marketplacehub-edge:ci-build
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
 
   frontend:
     needs: plan

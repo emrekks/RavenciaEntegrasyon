@@ -23,6 +23,10 @@ services:
       FeatureFlags__ExternalWrites: "${MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED:-true}"
       FeatureFlags__InvoiceMarketplaceDeliveryWrites: "${MARKETPLACEHUB_INVOICE_MARKETPLACE_DELIVERY_WRITES_ENABLED:-true}"
       Marketplace__PersistOrderSnapshots: "true"
+      # Owner and administrator accounts without an enabled authenticator may only read and set up MFA
+      # (ElevatedRoleMfaMiddleware). Off until the owner has enrolled TOTP; turned on with
+      # MARKETPLACEHUB_REQUIRE_MFA_FOR_ELEVATED_ROLES=true in production.env and a redeploy (docs/CI-CD-DEPLOY.md).
+      Security__RequireMfaForElevatedRoles: "${MARKETPLACEHUB_REQUIRE_MFA_FOR_ELEVATED_ROLES:-false}"
       DataProtection__CertificatePath: /run/secrets/dp_certificate
       DataProtection__CertificatePassword_FILE: /run/secrets/dp_certificate_password
     secrets: &production_secrets [app_db_connection, credential_key, dp_certificate, dp_certificate_password]
@@ -42,6 +46,12 @@ services:
     build: null
     environment: *production_environment
     secrets: *production_secrets
+    logging: !override
+      driver: journald
+      options: { tag: "{{.Name}}" }
+  caddy-volumes:
+    image: ${MARKETPLACEHUB_EDGE_IMAGE:?set immutable edge image with digest}
+    build: null
     logging: !override
       driver: journald
       options: { tag: "{{.Name}}" }
