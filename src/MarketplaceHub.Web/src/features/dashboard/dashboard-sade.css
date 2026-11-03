@@ -19,8 +19,6 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; color: var(--rr-ink); text-decoration: none; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; outline: none; }
 /* The low stock card is a button (it opens its window here): it keeps the cards' look, not the global button's. */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) button.rr-opcard { width: 100%; min-height: 0; height: auto; justify-content: normal; justify-items: stretch; font: inherit; text-align: left; text-transform: none; letter-spacing: inherit; box-shadow: none; cursor: pointer; }
-/* The card's arrow holds its right edge: the background icon stands just left of it instead of under it. */
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rv-card-bg > svg { right: 40px; }
 /* A bad-toned card with something to warn about (Geciken Siparişler above 0; at 0 it has no tone): a faint red box and a
    dot beside the title that fades slowly in and out; the hover below still wins. */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad { border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); background: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); }
@@ -226,8 +224,6 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--rr-primary); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > small { color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong { font-size: 24px; font-weight: 600; line-height: 1.25; }
-/* The performance cells carry a range bar along their bottom: their icon sits whole in the top-right corner, beside the label and figure, instead of the bottom-right anchoring the other cards use. */
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > .rv-card-bg > svg { top: 10px; bottom: auto; right: 10px; width: var(--rv-card-bg-size, 52px); height: var(--rv-card-bg-size, 52px); opacity: .2; transform: rotate(-8deg); -webkit-mask-image: none; mask-image: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-avg { margin-top: 2px; color: var(--rr-muted); font-size: 12.5px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-avg b { color: var(--rr-ink); font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-krange { display: grid; gap: 4px; }
@@ -312,7 +308,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on { border-color: color-mix(in srgb, var(--pf-accent, var(--rr-primary)) 70%, transparent) !important; background: color-mix(in srgb, var(--pf-accent, var(--rr-primary)) 14%, var(--rr-surface)); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on::after { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong { font-size: 18px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc { --rv-card-bg-size: 40px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc { --rv-card-bg-size: 64px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-trend em, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-avg, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-krange { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-body { padding: 12px; border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-chan { padding: 12px 0 0; }
