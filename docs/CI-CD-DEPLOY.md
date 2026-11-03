@@ -126,9 +126,10 @@ Eski anahtarı `~/.ssh/authorized_keys` içinden silin ve `DEPLOY_SSH_KEY` secre
   (`database pool of 45 (needs at least 40)`), küçükse uyarır. Yeni kurulumda `initialize-deployment.sh`
   dosyayı yazar; **havuz sınırı hiç olmayan eski sunucuda elle eklenir** (bkz. İşletim). Eksikse deploy
   betikleri uyarı basar.
-- PostgreSQL (`compose.yaml`): `max_connections=150`, `shared_buffers=256MB`,
-  `effective_cache_size=1GB`, `work_mem=16MB`, `log_min_duration_statement=2000` (2 sn üstü sorgular
-  loglanır), `shm_size: 256m`. Bu ayar değişikliği ilk deploy'da postgres konteynerini yeniden yaratır
+- PostgreSQL (`compose.yaml`, 16 GB sunucuya göre): `max_connections=150`, `shared_buffers=1536MB`,
+  `effective_cache_size=8GB`, `work_mem=16MB`, `maintenance_work_mem=512MB`, `log_min_duration_statement=2000`
+  (2 sn üstü sorgular loglanır), `shm_size: 1g`; konteyner sınırı 6 GB / 3 CPU. API, Worker ve migrate her biri
+  1,5 GB / 2 CPU. Bu ayar değişikliği ilk deploy'da postgres konteynerini yeniden yaratır
   (birkaç saniyelik bağlantı kesintisi; API/Worker yeniden bağlanır).
 
 ## Loglar (journald)

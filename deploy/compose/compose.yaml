@@ -39,7 +39,7 @@ x-app: &app
     options: { max-size: "10m", max-file: "5" }
   deploy:
     resources:
-      limits: { memory: 768M, cpus: "1.50" }
+      limits: { memory: 1536M, cpus: "2.00" }
 
 services:
   postgres:
@@ -56,23 +56,26 @@ services:
     # Pools: API 25 (app_db_connection.txt), Worker 45 (Database:MaxPoolSize in its
     # appsettings.json overrides the file), each shared rate limiter 5. About 82 in
     # total, so 150 leaves room for LISTEN, migrate, backup and psql sessions.
-    # shared_buffers/effective_cache_size fit the 2 GiB container limit on an 8 GiB host (1 GiB left too little
-    # room for query memory: PostgreSQL was killed by the out-of-memory killer four times on 20 Oct 2026);
-    # statements slower than 2 s are logged.
+    # Sized for the 16 GiB host (Hostinger KVM 4, since 3 Nov 2026): a 6 GiB container limit with 1.5 GiB of
+    # shared_buffers leaves room for query memory (on the 8 GiB host a 1 GiB limit got PostgreSQL killed by the
+    # out-of-memory killer four times on 20 Oct 2026); effective_cache_size counts the host page cache the database
+    # fits in. Statements slower than 2 s are logged.
     command:
       - postgres
       - -c
       - max_connections=150
       - -c
-      - shared_buffers=256MB
+      - shared_buffers=1536MB
       - -c
-      - effective_cache_size=1GB
+      - effective_cache_size=8GB
       - -c
       - work_mem=16MB
       - -c
+      - maintenance_work_mem=512MB
+      - -c
       - log_min_duration_statement=2000
     # Docker's 64 MB /dev/shm breaks parallel hash/sort ("could not resize shared memory").
-    shm_size: 256m
+    shm_size: 1g
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U marketplacehub -d marketplacehub"]
       interval: 10s
@@ -82,7 +85,7 @@ services:
     logging: *local_logging
     deploy:
       resources:
-        limits: { memory: 2048M, cpus: "1.50" }
+        limits: { memory: 6144M, cpus: "3.00" }
 
   migrate:
     <<: *app
