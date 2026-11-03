@@ -19,6 +19,8 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 14px 14px 14px 16px; color: var(--rr-ink); text-decoration: none; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; outline: none; }
 /* The low stock card is a button (it opens its window here): it keeps the cards' look, not the global button's. */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) button.rr-opcard { width: 100%; min-height: 0; height: auto; justify-content: normal; justify-items: stretch; font: inherit; text-align: left; text-transform: none; letter-spacing: inherit; box-shadow: none; cursor: pointer; }
+/* The card's arrow holds its right edge: the background icon stands just left of it instead of under it. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rv-card-bg > svg { right: 40px; }
 /* A bad-toned card with something to warn about (Geciken Siparişler above 0; at 0 it has no tone): a faint red box and a
    dot beside the title that fades slowly in and out; the hover below still wins. */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad { border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); background: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); }
