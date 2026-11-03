@@ -1850,7 +1850,9 @@ function PayoutsReport({ platforms }: { platforms: string[] | null }) {
             <span className="reports-payout-region-name">{regionLabels[item.region]}</span>
             <strong>{formatTl(item.expected)}</strong>
             <span className="reports-payout-region-next">{item.nextDay ? `Sıradaki ${shortDay(item.nextDay, false)} · ${formatTl(item.nextAmount)}` : 'Sıradaki ödeme günü belli değil'}</span>
-            {item.unknown !== 0 && <em className="reports-payout-badge is-quiet">Vadesi Geçmiş {formatTl(item.unknown)}</em>}
+            {/* Overdue sales wait for a payout; an overdue sum below zero is deductions waiting to come off the next one. */}
+            {item.unknown > 0 && <em className="reports-payout-badge is-quiet">Vadesi Geçmiş {formatTl(item.unknown)}</em>}
+            {item.unknown < 0 && <em className="reports-payout-badge is-quiet">Bekleyen Kesinti {formatTl(-item.unknown)}</em>}
           </button>
         </li>)}</ul>
       </Panel>}
