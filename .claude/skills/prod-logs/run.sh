@@ -4,10 +4,13 @@
 # Usage: run.sh status | run.sh logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX]
 #        run.sh errors [--since 30m]
 set -u
-key="${RAVENCIA_SSH_KEY:-C:/Users/emrek/Desktop/İŞ/Ravencia.pem}"
-host="${RAVENCIA_SSH_HOST:-ubuntu@63.180.140.51}"
+host="${RAVENCIA_SSH_HOST:-ubuntu@187.126.24.163}"
+# The host key has a passphrase and lives in the Windows ssh-agent, which only Windows OpenSSH can reach.
+if [ -n "${RAVENCIA_SSH_KEY:-}" ]; then sshx=(ssh -i "$RAVENCIA_SSH_KEY" -o BatchMode=yes)
+elif [ -x /c/Windows/System32/OpenSSH/ssh.exe ]; then sshx=(/c/Windows/System32/OpenSSH/ssh.exe -o BatchMode=yes)
+else sshx=(ssh -o BatchMode=yes); fi
 
-remote() { ssh -i "$key" -o BatchMode=yes "$host" "$1"; }
+remote() { "${sshx[@]}" "$host" "$1"; }
 
 usage() { echo "usage: run.sh status | logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX] | errors [--since 30m]" >&2; exit 2; }
 

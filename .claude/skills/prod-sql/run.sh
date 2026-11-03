@@ -3,8 +3,11 @@
 # default_transaction_read_only=on, so nothing can be written even by mistake.
 # Usage: run.sh --columns schema.table | run.sh -c "SQL" | run.sh file.sql
 set -u
-key="${RAVENCIA_SSH_KEY:-C:/Users/emrek/Desktop/İŞ/Ravencia.pem}"
-host="${RAVENCIA_SSH_HOST:-ubuntu@63.180.140.51}"
+host="${RAVENCIA_SSH_HOST:-ubuntu@187.126.24.163}"
+# The host key has a passphrase and lives in the Windows ssh-agent, which only Windows OpenSSH can reach.
+if [ -n "${RAVENCIA_SSH_KEY:-}" ]; then sshx=(ssh -i "$RAVENCIA_SSH_KEY" -o BatchMode=yes)
+elif [ -x /c/Windows/System32/OpenSSH/ssh.exe ]; then sshx=(/c/Windows/System32/OpenSSH/ssh.exe -o BatchMode=yes)
+else sshx=(ssh -o BatchMode=yes); fi
 
 case "${1:-}" in
   --columns)
@@ -17,7 +20,7 @@ case "${1:-}" in
   *) sql="$(cat "$1")" || exit 2 ;;
 esac
 
-printf 'BEGIN READ ONLY;\n%s\n;\nROLLBACK;\n' "$sql" | ssh -i "$key" -o BatchMode=yes "$host" '
+printf 'BEGIN READ ONLY;\n%s\n;\nROLLBACK;\n' "$sql" | "${sshx[@]}" "$host" '
   user=$(sudo docker exec marketplacehub-postgres-1 printenv POSTGRES_USER)
   db=$(sudo docker exec marketplacehub-postgres-1 printenv POSTGRES_DB)
   sudo docker exec -i -e PGOPTIONS="-c default_transaction_read_only=on" marketplacehub-postgres-1 \

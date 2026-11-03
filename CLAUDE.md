@@ -6,7 +6,7 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 - .NET 10 API and Worker (`src/MarketplaceHub.*`), EF Core with Npgsql on PostgreSQL. Migrations live in
   `src/MarketplaceHub.Infrastructure/Persistence/Migrations`.
 - Web: `src/MarketplaceHub.Web`, React 19, TypeScript, Vite, TanStack Query, vitest.
-- Live: EC2 `63.180.140.51`, Docker containers `marketplacehub-api-1`, `-worker-1`, `-caddy-1`, `-postgres-1`.
+- Live: Hostinger KVM 4 `187.126.24.163` (since 3 Nov 2026; AWS `63.180.140.51` retired), Docker containers `marketplacehub-api-1`, `-worker-1`, `-caddy-1`, `-postgres-1`.
 
 ## Checks
 - Backend: `dotnet build MarketplaceHub.sln`, `dotnet test tests/MarketplaceHub.Application.Tests`,
