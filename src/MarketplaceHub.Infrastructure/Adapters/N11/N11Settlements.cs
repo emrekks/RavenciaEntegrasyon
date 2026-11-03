@@ -7,7 +7,7 @@ namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
 // Hakediş: SOAP SettlementService (https://api.n11.com/ws/SettlementService.wsdl), read only. GetSettlementList gives a
 // day's totals (settlementDate, remittanceDate, status, paymentAmount, deductionAmount, settlementAmount);
-// GetSettlementDetail a day's order item lines. Dates are dd/MM/yyyy, Turkey time, as n11's other SOAP services take them.
+// GetSettlementDetail a day's order item lines. Days are Turkey's calendar days.
 public sealed partial class N11HttpClient : IN11SettlementPort
 {
     private const string SettlementService = "ws/settlementService/";
@@ -32,7 +32,9 @@ public sealed partial class N11HttpClient : IN11SettlementPort
         return AdapterResult<RemoteSettlementItemPage>.Success(N11SettlementMapper.Items(detail.Value!, page));
     }
 
-    internal static string SettlementDate(DateOnly day) => day.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+    // yyyy-MM-dd: n11 refused dd/MM/yyyy here ("startDate alanındaki tarih geçersizdir", 4 Nov 2026), unlike its other
+    // SOAP services; the published PHP client (metineren/n11soap-api) sends yyyy-MM-dd too.
+    internal static string SettlementDate(DateOnly day) => day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static string Paging(int page) =>
         "<pagingData>" + SoapElement("currentPage", Math.Max(0, page).ToString(CultureInfo.InvariantCulture))
