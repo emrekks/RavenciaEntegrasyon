@@ -202,7 +202,8 @@ export function DashboardPage() {
   // The report also names stores that are switched off or wait for new credentials; the live list wins where both have one.
   const channels = new Map([...(performance.data?.channels ?? []), ...(bootstrap.data?.channels ?? [])].map(item => [item.connectionId, item]))
   const data = performance.data
-  const loading = performance.isLoading
+  // The previous period's figures, kept on screen while a new period loads, would show under the new period's name.
+  const loading = performance.isLoading || performance.isPlaceholderData
   const currency = primaryCurrency(data?.current ?? [])
   // A one-day period is drawn and measured hour by hour, up to the hour the day has reached.
   const hourly = Boolean(data && data.from === data.to && data.currentHours)

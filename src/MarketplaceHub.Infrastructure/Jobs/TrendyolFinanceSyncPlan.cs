@@ -100,7 +100,8 @@ internal static class TrendyolFinanceSyncPlan
             OrderNumber = Short(record.OrderNumber, 128),
             ShipmentPackageId = Short(record.ShipmentPackageId, 128),
             Barcode = Short(record.Barcode, 160),
-            PaymentOrderId = Short(record.PaymentOrderId, 64),
+            // A payout id once read is kept: a read that does not carry it (yet) does not take the record out of its payout.
+            PaymentOrderId = Short(record.PaymentOrderId, 64) ?? row.PaymentOrderId,
             PaymentDate = record.PaymentDate?.ToUniversalTime(),
             Country = Short(record.Country, 64),
             Affiliate = Short(record.Affiliate, 32),
