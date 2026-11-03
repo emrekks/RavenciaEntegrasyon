@@ -42,6 +42,8 @@ DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
 builder.Host.UseSerilog((_, configuration) => configuration
     .MinimumLevel.Override("Microsoft.AspNetCore.Hosting.Diagnostics", LogEventLevel.Warning)
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+    // The HttpClient factory logs four Information lines per outbound call; the adapters log their own failures.
+    .MinimumLevel.Override("System.Net.Http.HttpClient", LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .Enrich.With<SecretPathEnricher>()
     .WriteTo.Console(new RenderedCompactJsonFormatter()));

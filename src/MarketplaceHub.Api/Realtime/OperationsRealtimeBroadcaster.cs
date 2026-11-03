@@ -15,7 +15,9 @@ public sealed class OperationsRealtimeBroadcaster(IServiceScopeFactory scopes, I
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan OutboxCleanupInterval = TimeSpan.FromDays(1);
-    private static readonly TimeSpan OutboxCleanupBacklogInterval = TimeSpan.FromMinutes(1);
+    // A full batch means more expired rows wait: the next batch follows soon, still one small delete at a time
+    // (the first passes after a shorter retention drain ~600k rows in about 2.5 hours).
+    private static readonly TimeSpan OutboxCleanupBacklogInterval = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan OutboxCleanupRetryInterval = TimeSpan.FromMinutes(5);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
