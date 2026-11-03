@@ -15,7 +15,7 @@ import {
 } from './report-format'
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
-import { payoutGap, payoutLinesQuery, payoutsQuery, regionLabels, statusLabels, type PayoutGroup, type PayoutLines, type PayoutRegion, type Payouts } from './payouts'
+import { byDay, payoutGap, payoutLinesQuery, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutGroup, type PayoutLines, type PayoutRegion, type Payouts } from './payouts'
 import { Columns, CountUp, Donut, Progress, StackedBar, useReveal, type ColumnPoint, type Part } from './report-visuals'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
@@ -1785,8 +1785,8 @@ function stockItemColumns(deadDays: number): Column<ReportStockItem>[] {
   ]
 }
 
-// Hakediş: what the marketplaces will pay, by region and due day, and what they paid; every figure from the stores'
-// accounting records as read, an estimate until it matches the marketplace's own screen.
+// Hakediş: what the marketplaces will pay, by payout day, and what they paid; every figure from the stores' accounting
+// records as read. The balance matches Trendyol's own (Toplam Güncel Bakiye); the days to come are estimates.
 function PayoutsReport({ platforms }: { platforms: string[] | null }) {
   const query = payoutsQuery(platforms)
   const result = useQuery({ queryKey: ['reports-payouts', query], queryFn: () => hubApi<Payouts>(`/reports/payouts?${query}`), staleTime: 60_000, placeholderData: previous => previous })
@@ -1799,32 +1799,61 @@ function PayoutsReport({ platforms }: { platforms: string[] | null }) {
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
   if (!data) return <Busy text="Hakediş hazırlanıyor…" />
   const read = data.coverage.filter(store => store.state === 'READ')
-  const day = (value: string) => formatIstanbul(`${value}T12:00:00Z`, { day: '2-digit', month: 'long', year: 'numeric' })
   const items: Kpi[] = [
-    { key: 'expected', label: 'Toplam Güncel Bakiye', value: data.expected, format: formatTl,
+    { key: 'expected', label: 'Toplam Güncel Bakiye', value: data.expected, format: formatTl, icon: 'wallet',
       tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin net hakedişi (komisyon düşülmüş), bekleyen kesintiler düşülerek.\n${formatCount(data.expectedRecords)} kayıt. Trendyol'un Toplam Güncel Bakiye'siyle aynı hesap (4 Kasım 2026'da kuruşu kuruşuna eşleşti); seçili diğer pazaryerleri de eklenir. Henüz kesilmemiş kesinti faturaları dahil değildir.` },
-    { key: 'next', label: 'Sıradaki Ödeme', value: data.next?.amount ?? null, format: formatTl, empty: 'Yok', note: data.next ? day(data.next.day) : undefined,
-      tip: 'En yakın ödeme gününün tahmini tutarı.\nTrendyol Türkiye-Körfez pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder; resmi tatil günü kaydırır. Kesinti faturaları kesildikçe tutar düşer.' },
-    { key: 'last', label: 'Son Ödeme', value: data.lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', note: data.lastPaid ? day(data.lastPaid.day) : undefined,
+    { key: 'next', label: 'Sıradaki Ödeme', value: data.next?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'calendarClock', note: data.next ? shortDay(data.next.day) : 'Bekleyen ödeme yok',
+      tip: 'En yakın ödeme gününün tahmini tutarı; vadesi geçip ödeme günü bilinmeyen kayıtlar dahil değildir.\nTrendyol Türkiye-Körfez pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder; resmi tatil günü kaydırır. Kesinti faturaları kesildikçe tutar düşer.' },
+    { key: 'last', label: 'Son Ödeme', value: data.lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'circleCheck', note: data.lastPaid ? shortDay(data.lastPaid.day) : 'Okunmuş ödeme yok',
       tip: 'Pazaryerinin yaptığı son ödeme, kendi bildirdiği tutarla.' },
-    { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: data.unknown, format: formatTl,
-      tip: `Bakiyenin vadesi geçmiş ama henüz bir ödemeye bağlanmamış kısmı.\n${formatCount(data.unknownRecords)} kayıt. Ödenmeyecek demek değildir: Avrupa ayda bir ödenir, ödeme kaydı ödemeden bir gün sonra okunur, kesintiler sonraki ödemeden düşülür.` },
-    { key: 'early', label: 'Alınan Erken Ödeme', value: data.earlyPaymentsTaken, format: formatTl,
-      tip: `Son ${data.daysBack} günde pazaryerinden erken çekilen hakediş.\n${formatCount(data.earlyPayments)} kayıt. Erken alınabilir tutar pazaryeri API'sinde yok; o tutar yalnız pazaryeri panelinde görünür.` }
+    { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: data.unknown, format: formatTl, icon: 'alertTriangle', tone: data.unknownRecords > 0 ? 'warn' : undefined,
+      note: data.unknownRecords > 0 ? `${formatCount(data.unknownRecords)} kayıt` : 'Yok',
+      tip: `Bakiyenin vadesi geçmiş ama henüz bir ödemeye bağlanmamış kısmı.\n${formatCount(data.unknownRecords)} kayıt. Ödenmeyecek demek değildir: Avrupa ayda bir ödenir, ödeme kaydı ödemeden bir gün sonra okunur, kesintiler sonraki ödemeden düşülür.` }
   ]
-  const groups = (tab === 'upcoming' ? data.upcoming : data.past).filter(group => region === null || group.region === region)
+  const regions = data.regions.filter(item => item.region !== 'NONE')
+  const shown = (tab === 'upcoming' ? data.upcoming : data.past).filter(group => region === null || group.region === region)
+  const waiting = shown.filter(group => group.kind === 'OVERDUE')
+  const days = byDay(shown.filter(group => group.kind !== 'OVERDUE'))
+  const nextDay = tab === 'upcoming' ? data.next?.day ?? null : null
+  const row = (group: PayoutGroup) => {
+    const expanded = open === group.key
+    const gap = payoutGap(group)
+    const area = regionLabel(group)
+    return <li key={group.key} className={expanded ? 'is-open' : undefined}>
+      <button type="button" className="reports-payout-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : group.key)}>
+        <strong className="reports-payout-amount">{formatTl(group.amount)}</strong>
+        <span className="reports-payout-store"><PlatformSquareMark code={group.platformCode} name={platformName(group.platformCode)} /><span>{group.storeName}</span></span>
+        <span className="reports-payout-area">{area && <em className="reports-payout-badge is-region">{area}</em>}</span>
+        <span className="reports-payout-state">{group.status !== 'EXPECTED' && <em className={`reports-payout-badge is-${group.status.toLowerCase()}`}>{statusLabels[group.status]}</em>}</span>
+        <UiIcon name="chevronDown" size={16} />
+      </button>
+      {expanded && <div className="reports-payout-detail">
+        {gap !== null && <p className="reports-payout-gap" role="note">Okunan kayıtların toplamı {formatTl(group.linesAmount)}; ödeme tutarından {formatTl(gap)} farklı (kesinti ya da başka ödemede listelenen kayıt).</p>}
+        {group.kind === 'PAYOUT' && group.linesAmount === null && <p className="reports-payout-gap" role="note">Bu ödemenin kayıtları ödemeden bir gün sonra okunur; henüz okunmadı.</p>}
+        <PayoutLinesTable platforms={platforms} group={group} />
+      </div>}
+    </li>
+  }
   return <div className="reports-summary reports-payouts">
     <KpiStrip label="Hakediş özeti" items={items} />
-    <div className="reports-payout-layout">
-      <Panel title="Bölge Detayları" description="Trendyol vitrinleri ödeme bölgesine göre: Türkiye ve Körfez ülkeleri, Avrupa, Azerbaycan. Bir bölgeye tıklayınca ödemeler o bölgeye süzülür." className="reports-payout-regions">
-        <ul>{data.regions.map(item => <li key={item.region}>
+    <p className="reports-payout-early" role="note">
+      <UiIcon name="banknote" size={14} />
+      {data.earlyPayments > 0 ? `Son ${data.daysBack} günde alınan erken ödeme: ${formatTl(data.earlyPaymentsTaken)} (${formatCount(data.earlyPayments)} kayıt).` : `Son ${data.daysBack} günde erken ödeme alınmadı.`}
+      {' '}Erken alınabilir tutar pazaryeri API'sinde yok; yalnız pazaryeri panelinde görünür.
+    </p>
+    <div className={`reports-payout-layout${regions.length ? '' : ' is-single'}`}>
+      {regions.length > 0 && <Panel title="Bölge Detayları" className="reports-payout-regions"
+        description="Trendyol vitrinleri ödeme bölgesine göre: Türkiye ve Körfez ülkeleri, Avrupa, Azerbaycan. Bir bölgeye tıklayınca ödemeler o bölgeye süzülür."
+        actions={region && <button type="button" className="secondary reports-payout-all" onClick={() => setRegion(null)}>Tümü</button>}>
+        <ul>{regions.map(item => <li key={item.region}>
           <button type="button" className="reports-payout-region" aria-pressed={region === item.region} onClick={() => setRegion(region === item.region ? null : item.region)}>
             <span className="reports-payout-region-name">{regionLabels[item.region]}</span>
             <strong>{formatTl(item.expected)}</strong>
-            <small>{item.nextDay ? `Sıradaki: ${day(item.nextDay)} · ${formatTl(item.nextAmount)}` : 'Bekleyen ödeme yok'}{item.unknown !== 0 ? ` · Bilinmeyen ${formatTl(item.unknown)}` : ''}</small>
+            <span className="reports-payout-region-next">{item.nextDay ? `Sıradaki ${shortDay(item.nextDay, false)} · ${formatTl(item.nextAmount)}` : 'Sıradaki ödeme günü belli değil'}</span>
+            {item.unknown !== 0 && <em className="reports-payout-badge is-quiet">Vadesi Geçmiş {formatTl(item.unknown)}</em>}
           </button>
         </li>)}</ul>
-      </Panel>
+      </Panel>}
       <Panel title="Ödeme Özeti" className="reports-payout-list"
         actions={<form className="reports-order-search" onSubmit={event => { event.preventDefault(); setApplied(search) }}>
           <input type="search" value={search} onChange={event => { setSearch(event.target.value); if (!event.target.value.trim()) setApplied('') }} placeholder="Sipariş / Fatura No İle Ara" aria-label="Sipariş veya fatura numarasıyla ara" />
@@ -1834,31 +1863,27 @@ function PayoutsReport({ platforms }: { platforms: string[] | null }) {
           : <>
             <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
               items={[{ value: 'upcoming', label: 'Gelecek Ödemeler', icon: 'calendarClock' }, { value: 'past', label: 'Geçmiş Ödemeler', icon: 'circleCheck' }]} />
-            {region && <p className="reports-payout-filter">{regionLabels[region]} gösteriliyor. <button type="button" className="link" onClick={() => setRegion(null)}>Tümünü göster</button></p>}
-            {groups.length === 0 ? <p className="reports-empty">{tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data.daysBack} günde okunmuş ödeme yok.`}</p>
-              : <ul className="reports-payout-rows">{groups.map((group, index) => {
-                const gap = payoutGap(group)
-                const expanded = open === group.key
-                return <li key={group.key} className={expanded ? 'is-open' : undefined}>
-                  <button type="button" className="reports-payout-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : group.key)}>
-                    <span className="reports-payout-amount"><strong>{formatTl(group.amount)}</strong>
-                      <small className={tab === 'upcoming' && index === 0 ? 'is-next' : undefined}>
-                        {tab === 'past' ? `Ödeme Günü: ${day(group.day)}`
-                          : group.kind === 'PAYOUT_DAY' ? `${index === 0 ? 'Sıradaki Ödeme' : 'Ödeme Günü'}: ${day(group.day)}`
-                          : `${index === 0 ? 'Sıradaki Vade' : 'Vade'}: ${day(group.day)}`}
-                      </small></span>
-                    <span className="reports-payout-store"><PlatformSquareMark code={group.platformCode} name={platformName(group.platformCode)} />{group.storeName}</span>
-                    <em className="reports-payout-badge is-region">{group.regionName && group.region === 'UNKNOWN' ? group.regionName : regionLabels[group.region]}</em>
-                    <em className={`reports-payout-badge is-${group.status.toLowerCase()}`}>{group.status === 'EXPECTED' ? 'Tahmini Hesaplanmıştır' : statusLabels[group.status]}</em>
-                    <UiIcon name="chevronDown" size={16} />
-                  </button>
-                  {expanded && <div className="reports-payout-detail">
-                    {gap !== null && <p className="reports-payout-gap" role="note">Okunan kayıtların toplamı {formatTl(group.linesAmount)}; ödeme tutarından {formatTl(gap)} farklı (kesinti ya da henüz okunmamış kayıt).</p>}
-                    {group.kind === 'PAYOUT' && group.linesAmount === null && <p className="reports-payout-gap" role="note">Bu ödemenin kayıtları ödemeden bir gün sonra okunur; henüz okunmadı.</p>}
-                    <PayoutLinesTable platforms={platforms} group={group} />
-                  </div>}
-                </li>
-              })}</ul>}
+            {region && <p className="reports-payout-filter">Yalnız {regionLabels[region]} gösteriliyor.</p>}
+            {days.length === 0 && waiting.length === 0
+              ? <p className="reports-empty">{tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data.daysBack} günde okunmuş ödeme yok.`}</p>
+              : <div className="reports-payout-days">
+                {days.map(item => <section key={item.day} className={`reports-payout-day${item.day === nextDay ? ' is-next' : ''}`} aria-label={shortDay(item.day)}>
+                  <header>
+                    <span className="reports-payout-day-name">{item.day === nextDay && <em>Sıradaki Ödeme</em>}{shortDay(item.day)}</span>
+                    <strong>{formatTl(item.total)}</strong>
+                    {tab === 'upcoming' && <small>Tahmini</small>}
+                  </header>
+                  <ul className="reports-payout-rows">{item.groups.map(row)}</ul>
+                </section>)}
+                {waiting.length > 0 && <section className="reports-payout-day is-waiting" aria-label="Vadesi geçmiş, ödeme bekleyen">
+                  <header>
+                    <span className="reports-payout-day-name">Vadesi Geçmiş, Ödeme Bekleyen</span>
+                    <strong>{formatTl(waiting.reduce((sum, group) => sum + group.amount, 0))}</strong>
+                    <small>Ödeme günü belli değil</small>
+                  </header>
+                  <ul className="reports-payout-rows">{waiting.map(row)}</ul>
+                </section>}
+              </div>}
           </>}
       </Panel>
     </div>
@@ -1888,7 +1913,7 @@ function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | 
         <td>{line.orderNumber ?? line.invoiceNumber ?? line.externalId}</td>
         <td>{formatIstanbul(line.transactionDate, { day: '2-digit', month: 'short', year: 'numeric' })}</td>
         <td>{line.dueDay ? formatIstanbul(`${line.dueDay}T12:00:00Z`, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
-        <td>{line.country ?? regionLabels[line.region]}</td>
+        <td>{line.country ?? (regionLabels[line.region] || '—')}</td>
         <td className="is-num">{formatTl(line.gross)}</td>
         <td className="is-num">{line.commission === null ? '—' : formatTl(line.commission)}</td>
         <td className={`is-num ${line.net < 0 ? 'is-loss' : ''}`}>{formatTl(line.net)}</td>
