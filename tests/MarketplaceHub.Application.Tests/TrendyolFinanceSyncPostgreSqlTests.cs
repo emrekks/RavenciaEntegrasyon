@@ -128,6 +128,8 @@ public sealed class TrendyolFinanceSyncPostgreSqlTests(PostgreSqlTenantIsolation
                 var paid = await db.MarketplaceFinanceTransactions.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.ExternalId == "PAY-1");
                 Assert.Equal(MarketplaceFinanceSources.MoneyMovements, paid.Source);
                 Assert.Equal(MarketplaceFinanceCategories.Transfer, paid.Category);
+                // Asked by payout id, Trendyol ignores the service-fee filter: it is not sent (4 Nov 2026).
+                Assert.False(port.PayoutReadAskedSubType);
             }
 
             // Ten minutes later: the statement is not read again, the payout's records neither.
@@ -185,6 +187,7 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
         public int CargoReads { get; private set; }
         public int PayoutPageReads { get; private set; }
         public int PayoutRecordReads { get; private set; }
+        public bool PayoutReadAskedSubType { get; private set; }
 
         public Task<AdapterResult<RemoteStatementPage>> GetSettlementsAsync(AdapterContext context, string transactionType, DateTimeOffset start, DateTimeOffset end, int page, CancellationToken cancellationToken)
         {
@@ -224,6 +227,7 @@ Guid tenantId, Guid connectionId, FakeFinancePort port, DateTimeOffset now)
         public Task<AdapterResult<RemoteStatementPage>> GetPayoutRecordsAsync(AdapterContext context, string source, string transactionType, string? transactionSubType, string paymentOrderId, int page, CancellationToken cancellationToken)
         {
             PayoutRecordReads++;
+            PayoutReadAskedSubType |= transactionSubType is not null;
             payoutsRead = true;
             RemoteStatementRecord[] items = (source, transactionType) switch
             {

@@ -59,7 +59,8 @@ public sealed class PayoutBuilderTests
     // A country no rule names is not counted as Türkiye.
     [InlineData("TRENDYOL", "Kazakistan", "TRENDYOLTR", PayoutBuilder.UnknownRegion)]
     [InlineData("TRENDYOL", null, null, PayoutBuilder.UnknownRegion)]
-    [InlineData("PAZARAMA", null, null, PayoutBuilder.TrGulf)]
+    // The other marketplaces pay without regions.
+    [InlineData("PAZARAMA", null, null, PayoutBuilder.NoRegion)]
     public void A_record_falls_in_its_storefront_region(string platform, string? country, string? affiliate, string expected) =>
         Assert.Equal(expected, PayoutBuilder.Region(platform, country, affiliate));
 
@@ -160,8 +161,8 @@ public sealed class PayoutBuilderTests
         var (payoutDay, kind) = PayoutBuilder.Expect(row, PayoutBuilder.Line(row, Today), Today);
         Assert.Equal(DateOnly.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), payoutDay);
         Assert.Equal("PAYOUT_DAY", kind);
-        // Another region's records stand on their due day.
-        Assert.Equal((day < Today ? Today : day, "DUE_DAY"), PayoutBuilder.Expect(row with { Country = "Bulgaristan" }, PayoutBuilder.Line(row with { Country = "Bulgaristan" }, Today), Today));
+        // Another region's records stand on their due day; past it, they wait apart (OVERDUE), out of the next payout.
+        Assert.Equal(day < Today ? (Today, "OVERDUE") : (day, "DUE_DAY"), PayoutBuilder.Expect(row with { Country = "Bulgaristan" }, PayoutBuilder.Line(row with { Country = "Bulgaristan" }, Today), Today));
     }
 
     [Theory]
@@ -171,4 +172,20 @@ public sealed class PayoutBuilderTests
     [InlineData("XX", "Bilinmeyen", PayoutBuilder.UnknownRegion)]
     public void A_payout_region_is_read_from_trendyols_code(string code, string name, string expected) =>
         Assert.Equal(expected, PayoutBuilder.PayoutRegion(code, name));
+
+    [Fact]
+    public void An_overdue_record_without_a_known_payout_day_stays_in_the_balance_but_out_of_the_next_payout()
+    {
+        // Avrupa, paid about monthly: due last week, no payout yet. Türkiye-Körfez is paid on Thursday 5 Nov.
+        PayoutRow[] rows = [Sale("eu", 1000m, 800m, Today.AddDays(-7), country: "Bulgaristan"), Sale("tr", 500m, 400m, Today.AddDays(1))];
+        var view = PayoutBuilder.Build(rows, [], Stores, Today, 90, []);
+        Assert.Equal(1200m, view.Expected);
+        Assert.Equal(800m, view.Unknown);
+        Assert.Equal((Today.AddDays(1), 400m), (view.Next!.Day, view.Next.Amount));
+        var waiting = Assert.Single(view.Upcoming, group => group.Kind == "OVERDUE");
+        Assert.Equal((PayoutBuilder.Europe, 800m), (waiting.Region, waiting.Amount));
+        var europe = Assert.Single(view.Regions, region => region.Region == PayoutBuilder.Europe);
+        Assert.Null(europe.NextDay);
+        Assert.Equal(800m, europe.Unknown);
+    }
 }
