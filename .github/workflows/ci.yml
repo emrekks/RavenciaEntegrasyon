@@ -139,7 +139,7 @@ jobs:
             rmdir deploy/secrets 2>/dev/null || true
           }
           trap cleanup_compose_placeholders EXIT
-          for name in postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt; do
+          for name in postgres_password.txt app_db_connection.txt credential_key.txt dp_certificate.pfx dp_certificate_password.txt alert_sync_token.txt; do
             path="deploy/secrets/$name"
             [[ ! -e "$path" ]] || { echo "Refusing to replace an existing secret file in CI validation." >&2; exit 1; }
             : > "$path"

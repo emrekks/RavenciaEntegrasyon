@@ -62,10 +62,16 @@ send_webhook() {
 }
 
 send_email() {
-  local from="$1" to="$2" password="$3" config subject encoded_subject status=0
+  local from="$1" recipients_line="$2" password="$3" config subject encoded_subject status=0 recipient
   local address_pattern='^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
-  [[ "$from" =~ $address_pattern && "$to" =~ $address_pattern && -n "$password" ]] \
-    || { echo "alert_smtp.txt needs three lines: sender address, recipient address, app password; e-mail alert skipped." >&2; return 1; }
+  local -a recipients rcpt_args=()
+  IFS=',' read -r -a recipients <<<"$recipients_line"
+  for recipient in "${recipients[@]}"; do
+    [[ "$recipient" =~ $address_pattern ]] || { recipients=(); break; }
+    rcpt_args+=(--mail-rcpt "$recipient")
+  done
+  [[ "$from" =~ $address_pattern && ${#recipients[@]} -gt 0 && -n "$password" ]] \
+    || { echo "alert_smtp.txt needs three lines: sender address, recipient address(es) separated by commas, app password; e-mail alert skipped." >&2; return 1; }
   subject="[Ravencia] ${clean_message:0:80}"
   # RFC 2047: the subject may carry Turkish letters.
   encoded_subject="=?UTF-8?B?$(printf '%s' "$subject" | base64 | tr -d '\n')?="
@@ -77,7 +83,7 @@ send_email() {
   printf 'user = "%s"\n' "$user_value" > "$config"
   {
     printf 'From: Ravencia <%s>\n' "$from"
-    printf 'To: <%s>\n' "$to"
+    printf 'To: %s\n' "$(printf '<%s>, ' "${recipients[@]}" | sed 's/, $//')"
     printf 'Subject: %s\n' "$encoded_subject"
     printf 'Date: %s\n' "$(LC_ALL=C date -R)"
     printf 'Message-ID: <%s.%s.ravencia@%s>\n' "$(date -u +%s)" "$$" "$host_name"
@@ -88,13 +94,19 @@ send_email() {
     printf '%s\n' "$message"
     printf '\n-- \n%s, %s\n' "$host_name" "$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
   } | curl --silent --show-error --max-time 30 --retry 2 --retry-delay 5 --ssl-reqd --crlf \
-        --config "$config" --url "$smtp_url" --mail-from "$from" --mail-rcpt "$to" --upload-file - || status=$?
+        --config "$config" --url "$smtp_url" --mail-from "$from" "${rcpt_args[@]}" --upload-file - || status=$?
   rm -f -- "$config"
   (( status == 0 )) || { echo "E-mail alert could not be delivered (curl exit $status)." >&2; return 1; }
 }
 
+# The panel's settings when the API answers (alert-settings-sync.sh also refreshes the host copies), else the cache,
+# else deploy/secrets/alert_smtp.txt. RAVENCIA_ALERT_SKIP_SYNC=true reads the file only (tests).
 smtp_lines=()
-mapfile -t smtp_lines < <(read_secret "$smtp_file" | tr -d '\r' | head -n 3)
+if [[ "${RAVENCIA_ALERT_SKIP_SYNC:-false}" == true ]]; then
+  mapfile -t smtp_lines < <(read_secret "$smtp_file" | tr -d '\r' | head -n 3)
+else
+  mapfile -t smtp_lines < <(RAVENCIA_ALERT_SMTP_FILE="$smtp_file" "$script_dir/alert-settings-sync.sh" --print 2>/dev/null | tr -d '\r' | head -n 3)
+fi
 if ((${#smtp_lines[@]})); then
   channels=$((channels + 1))
   send_email "$(tr -d '[:space:]' <<<"${smtp_lines[0]:-}")" "$(tr -d '[:space:]' <<<"${smtp_lines[1]:-}")" \

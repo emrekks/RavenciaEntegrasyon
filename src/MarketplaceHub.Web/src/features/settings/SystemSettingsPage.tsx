@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi } from '../../shared/api'
+import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
 import { LoadingState, Modal, StickyActionBar } from '../../shared/components'
 import { uiGlyph16, type UiIconName } from '../../shared/components/UiIcon'
 import type { DataResetGroup } from '../../shared/components/DataResetLedger'
@@ -23,14 +23,14 @@ type SessionConfirmation = { action: 'revoke' | 'revoke-others' | 'delete' | 'de
 
 // System settings as a section list (docs/tasarim-onerileri/sistem-ayarlari.html, option 2): the four former tabs are
 // split into ten small sections; the list on the left shows each section's state, the pane on the right shows one.
-type SettingsSectionKey = 'auth' | 'sessions' | 'database' | 'sender' | 'dims' | 'designer' | 'read' | 'palette' | 'themes' | 'notify'
+type SettingsSectionKey = 'auth' | 'sessions' | 'alerts' | 'database' | 'sender' | 'dims' | 'designer' | 'read' | 'palette' | 'themes' | 'notify'
 type ShippingSection = 'sender' | 'dims' | 'designer'
 type AppearanceSection = 'read' | 'palette' | 'themes' | 'notify'
 type SettingsIconName = 'shield' | 'truck' | 'device' | 'phone' | 'db' | 'user' | 'ruler' | 'layout' | 'type' | 'palette' | 'save' | 'bell' | 'lock' | 'info' | 'alert' | 'logout' | 'trash' | 'reset' | 'plus' | 'barcode' | 'sparkle' | 'copy' | 'back' | 'chev' | 'tag'
 type SettingsGlyphState = 'done' | 'pending' | 'none' | 'bad'
 
 const settingsSectionGroups: Array<{ label: string; icon: SettingsIconName; items: Array<{ key: SettingsSectionKey; label: string; short?: string; icon: SettingsIconName }> }> = [
-  { label: 'Güvenlik ve Oturumlar', icon: 'shield', items: [{ key: 'auth', label: 'Authenticator', icon: 'shield' }, { key: 'sessions', label: 'Oturumlar', icon: 'device' }] },
+  { label: 'Güvenlik ve Oturumlar', icon: 'shield', items: [{ key: 'auth', label: 'Authenticator', icon: 'shield' }, { key: 'sessions', label: 'Oturumlar', icon: 'device' }, { key: 'alerts', label: 'Alarm Bildirimleri', short: 'Alarmlar', icon: 'bell' }] },
   { label: 'Veri', icon: 'db', items: [{ key: 'database', label: 'Veritabanı Temizliği', icon: 'db' }] },
   { label: 'Kargo Ayarları', icon: 'truck', items: [{ key: 'sender', label: 'Gönderici ve Yazdırma', short: 'Gönderici', icon: 'user' }, { key: 'dims', label: 'Etiket Ölçüleri', short: 'Ölçüler', icon: 'ruler' }, { key: 'designer', label: 'Etiket Tasarımı', short: 'Tasarım', icon: 'layout' }] },
   { label: 'Görünüm', icon: 'palette', items: [{ key: 'read', label: 'Okunabilirlik ve Tema', short: 'Tema', icon: 'type' }, { key: 'palette', label: 'Renk Paleti', short: 'Renkler', icon: 'palette' }, { key: 'themes', label: 'Kayıtlı Temalar', short: 'Temalar', icon: 'save' }, { key: 'notify', label: 'Bildirimler', icon: 'bell' }] }
@@ -421,7 +421,7 @@ export function SystemSettingsPage() {
 
   return <section className="content ss-page">
     {notice && <SettingsNotice {...notice} />}
-    <header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1><p>Hesap güvenliği, yerel veri, kargo etiketi ve görünüm.</p></header>
+    <header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1><p>Hesap güvenliği, alarm bildirimleri, yerel veri, kargo etiketi ve görünüm.</p></header>
     <div className="ss-gtabs rv-tabs rv-view-tabs" role="tablist" aria-label="Ayar grupları">{settingsSectionGroups.map(group => <button type="button" role="tab" key={group.label} aria-selected={group === activeGroup} className={group === activeGroup ? 'is-on is-active' : undefined} onClick={() => selectSection(group.items[0].key)}><span className="rv-tab-label"><SettingsIcon name={group.icon} /><span className="rv-tab-text" data-text={group.label}>{group.label}</span></span></button>)}</div>
     <div className="ss-card">
       {activeGroup.items.length > 1 && <div className="ss-stabs"><span className="ss-seg rv-tabs rv-view-tabs" role="tablist" aria-label={`${activeGroup.label} bölümleri`}>{activeGroup.items.map(item => <button type="button" role="tab" key={item.key} aria-selected={section === item.key} className={section === item.key ? 'is-on is-active' : undefined} onClick={() => selectSection(item.key)}><span className="rv-tab-label"><SettingsIcon name={item.icon} />{item.short ? <><span className="rv-tab-text ss-lbl-long" data-text={item.label}>{item.label}</span><span className="rv-tab-text ss-lbl-short" data-text={item.short}>{item.short}</span></> : <span className="rv-tab-text" data-text={item.label}>{item.label}</span>}</span>{navMeta(item.key)}</button>)}</span></div>}
@@ -447,6 +447,7 @@ export function SystemSettingsPage() {
             {closedSessions.length ? <><div className="ss-sess-sub">Kapalı <span className="ss-count">{closedSessions.length}</span></div>{closedSessions.map(sessionRow)}</> : null}
           </div>}</div>
         </>}
+        {section === 'alerts' && <AlertEmailSettingsSection />}
         {section === 'database' && <SettingsDataReset groups={resetScopeGroups} counts={resetCounts.data ? Object.fromEntries(resetCounts.data.items.map(entry => [entry.scope, entry.count])) : undefined} countsFailed={resetCounts.isError} picked={resetScopes} onToggle={toggleResetScopes} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
         <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
@@ -1118,3 +1119,93 @@ function ShippingLabelSettingsPanel({ section, settings, saved, dirty, saving, l
 
 // What the designer fills its label with: one realistic order, so a block shows the height a real one needs.
 const shippingPreviewValues: ShippingLabelValues = { trackingNumber: '73300036563130080', packageNumber: '4293901515', orderNumber: '#11771694031', customerName: 'Fehime Mat', address: 'Gümüşsuyu Mah. Selime Hatun Cami Sok. No:3 D:5\nFındıklı / Beyoğlu / İstanbul', cargoProvider: 'Trendyol Express', senderName: 'Ravencia', senderAddress: '403. Cad. No:24/2\nKarşıyaka / İzmir', customerEmail: 'musteri@example.com' }
+
+type AlertEmailSettings = { senderAddress: string | null; recipients: string[]; appPasswordSaved: boolean; updatedAt: string | null; version: number }
+const maximumAlertRecipients = 5
+const alertEmailTestMessage = 'Ravencia alarm testi — e-posta kanalı çalışıyor'
+
+// Settings → Alarm Bildirimleri: the Gmail account that sends the server's and the panel's alerts (security plan Y1).
+// The app password is write-only: the server never returns it, the form shows "Kayıtlı" and "Değiştir". The host
+// keeps a root-only copy for alerts while the panel is down (deploy/scripts/alert-settings-sync.sh).
+function AlertEmailSettingsSection() {
+  const client = useQueryClient()
+  const query = useQuery({ queryKey: ['alert-email-settings'], queryFn: () => hubApi<AlertEmailSettings>('/settings/alert-email'), retry: false })
+  const saved = query.data
+  const [sender, setSender] = useState('')
+  const [recipients, setRecipients] = useState<string[]>([''])
+  const [password, setPassword] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
+  const [busy, setBusy] = useState<'save' | 'test' | null>(null)
+  const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
+  const [testResult, setTestResult] = useState<{ kind: 'done' | 'bad'; message: string } | null>(null)
+  const [loadedVersion, setLoadedVersion] = useState<number | null>(null)
+  // The form starts from the saved settings, and again after a save (a new version).
+  if (saved && loadedVersion !== saved.version) {
+    setLoadedVersion(saved.version)
+    setSender(saved.senderAddress ?? '')
+    setRecipients(saved.recipients.length ? saved.recipients : [''])
+    setPassword('')
+    setChangingPassword(!saved.appPasswordSaved)
+  }
+
+  const cleanRecipients = recipients.map(value => value.trim().toLowerCase()).filter(Boolean)
+  const dirty = !!saved && (sender.trim().toLowerCase() !== (saved.senderAddress ?? '') || cleanRecipients.join(',') !== saved.recipients.join(',') || password.trim().length > 0)
+  const configured = !!saved?.senderAddress && saved.recipients.length > 0 && saved.appPasswordSaved
+
+  async function save() {
+    if (!saved) return
+    setBusy('save'); setNotice(null); setTestResult(null)
+    try {
+      const next = await hubApi<AlertEmailSettings>('/settings/alert-email', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ senderAddress: sender.trim(), recipients: cleanRecipients, appPassword: changingPassword ? password : null }) })
+      client.setQueryData(['alert-email-settings'], next)
+      setNotice({ kind: 'success', message: 'Alarm e-postası ayarları kaydedildi. Sunucu sonraki alarmda bu ayarları kullanır.' })
+    } catch (reason) {
+      setNotice({ kind: 'error', message: reason instanceof Error ? reason.message : 'Alarm e-postası ayarları kaydedilemedi.' })
+    } finally { setBusy(null) }
+  }
+  async function sendTest() {
+    setBusy('test'); setTestResult(null)
+    try {
+      const result = await hubApi<{ sent: boolean; recipients: string[] }>('/settings/alert-email/test', { method: 'POST' })
+      setTestResult({ kind: 'done', message: `Test e-postası gönderildi: ${result.recipients.join(', ')}. Gelen kutusunu (ve spam klasörünü) kontrol edin.` })
+    } catch (reason) {
+      setTestResult({ kind: 'bad', message: reason instanceof Error ? reason.message : 'Test e-postası gönderilemedi.' })
+    } finally { setBusy(null) }
+  }
+
+  const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
+  const bar = <SettingsBar title="Alarm Bildirimleri" dirty={dirty} copy={dirty ? 'Kaydedilmemiş değişiklikler var' : saved?.updatedAt ? `Son kayıt ${formatSettingsDate(saved.updatedAt)}` : 'Henüz kaydedilmedi'}>
+    <button type="button" className="ss-btn is-primary" disabled={!dirty || busy !== null} onClick={() => void save()}><SettingsIcon name="save" />{busy === 'save' ? 'Kaydediliyor…' : 'Ayarları Kaydet'}</button>
+  </SettingsBar>
+
+  return <>
+    {notice && <SettingsNotice {...notice} />}
+    <SettingsPaneHead section="alerts" description="Sağlık izleme, yedek, deploy ve geri alma alarmları bu Gmail hesabından e-postayla gönderilir." />
+    <div className="ss-body">
+      {query.isPending ? <LoadingState>Alarm ayarları yükleniyor…</LoadingState> : forbidden ? <div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Alarm bildirimlerini yalnız hesap sahibi ve yöneticiler görür ve değiştirir.</span></div> : query.isError || !saved ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Alarm ayarları alınamadı.</span></div> : <>
+        <div className="ss-pair">
+          <label className="ss-fld"><small>Gönderen Gmail Adresi</small><input className="ss-in" type="email" inputMode="email" autoComplete="off" spellCheck={false} value={sender} maxLength={254} placeholder="ravencia.alarm@gmail.com" onChange={event => setSender(event.target.value)} /></label>
+          <div className="ss-fld"><small>Uygulama Şifresi</small>{saved.appPasswordSaved && !changingPassword
+            ? <div className="ss-alert-row"><span className="ss-tag is-ink"><SettingsGlyph state="done" />Kayıtlı</span><button type="button" className="ss-btn is-xs" onClick={() => setChangingPassword(true)}>Değiştir</button></div>
+            : <div className="ss-alert-row"><input className="ss-in" type="password" autoComplete="new-password" spellCheck={false} aria-label="Uygulama Şifresi" value={password} maxLength={40} placeholder="abcd efgh ijkl mnop" onChange={event => setPassword(event.target.value)} />{saved.appPasswordSaved && <button type="button" className="ss-btn is-xs" onClick={() => { setPassword(''); setChangingPassword(false) }}>Vazgeç</button>}</div>}
+          </div>
+        </div>
+        <div className="ss-fld" role="group" aria-label="Alıcılar"><small>Alıcılar</small>
+          {recipients.map((recipient, index) => <div key={index} className="ss-alert-row">
+            <input className="ss-in" type="email" inputMode="email" autoComplete="off" spellCheck={false} aria-label={`${index + 1}. Alıcı`} value={recipient} maxLength={254} placeholder="ornek@ravencia.com" onChange={event => setRecipients(current => current.map((value, position) => position === index ? event.target.value : value))} />
+            {recipients.length > 1 && <button type="button" className="ss-btn is-xs is-quiet" aria-label={`${index + 1}. Alıcıyı Kaldır`} onClick={() => setRecipients(current => current.filter((_, position) => position !== index))}><SettingsIcon name="trash" /></button>}
+          </div>)}
+          {recipients.length < maximumAlertRecipients && <div><button type="button" className="ss-btn is-xs" onClick={() => setRecipients(current => [...current, ''])}><SettingsIcon name="plus" />Alıcı Ekle</button></div>}
+        </div>
+        <div className="ss-callout"><SettingsIcon name="info" /><span><b>Gmail uygulama şifresi:</b> Google hesabında <b>İki Adımlı Doğrulama</b> açık olmalı. <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer">myaccount.google.com/apppasswords</a> sayfasında “Ravencia” adıyla bir şifre oluşturun ve gösterilen 16 harfi buraya yapıştırın; boşluklar önemli değil. Google hesap şifrenizi girmeyin.</span></div>
+        <div className="ss-alert-row">
+          <button type="button" className="ss-btn" disabled={!configured || dirty || busy !== null} onClick={() => void sendTest()}><SettingsIcon name="bell" />{busy === 'test' ? 'Gönderiliyor…' : 'Test E-postası Gönder'}</button>
+          {testResult ? <span role="status" className="ss-help"><SettingsGlyph state={testResult.kind} />{testResult.message}</span>
+            : <span className="ss-help">{dirty ? 'Test için önce değişiklikleri kaydedin.' : configured ? `“${alertEmailTestMessage}” iletisi alıcılara gönderilir.` : 'Test için önce gönderen adresi, alıcıları ve uygulama şifresini kaydedin.'}</span>}
+        </div>
+        <p className="ss-help">Panel kapalıyken de sunucu, son kaydedilen ayarlarla alarm göndermeye devam eder.</p>
+      </>}
+    </div>
+    {saved && !forbidden ? bar : null}
+  </>
+}

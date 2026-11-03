@@ -21,9 +21,23 @@ lib_required_secret_files=(postgres_password.txt app_db_connection.txt credentia
 
 require_secret_files() {
   local name
+  ensure_alert_sync_token
   for name in "${lib_required_secret_files[@]}" "$@"; do
     [[ -s "$repository_root/deploy/secrets/$name" ]] || { echo "Required deployment file is missing or empty: deploy/secrets/$name" >&2; exit 1; }
   done
+}
+
+# The host token of the panel's alert settings sync (alert-settings-sync.sh, API Alerts:HostSyncToken through the
+# Compose secret alert_sync_token). Created once, root:1654 0640 like the other secrets the API reads; every script
+# that resolves the production Compose file needs it to exist.
+ensure_alert_sync_token() {
+  local file="$repository_root/deploy/secrets/alert_sync_token.txt" token
+  if [[ -s "$file" ]] || "${sudo_cmd[@]}" test -s "$file" 2>/dev/null; then return 0; fi
+  token="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+  [[ ${#token} -eq 64 ]] || { echo "Could not generate the alert sync token." >&2; return 1; }
+  # The value goes through stdin, never a command line.
+  printf '%s\n' "$token" | "${sudo_cmd[@]}" sh -c 'umask 027 && cat > "$1" && chown root:1654 "$1" && chmod 0640 "$1"' sh "$file"
+  echo "Created deploy/secrets/alert_sync_token.txt (alert settings sync)."
 }
 
 # Prints the value of an exact key in production.env; fails when the key is absent.

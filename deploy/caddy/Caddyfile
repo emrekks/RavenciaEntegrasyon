@@ -34,7 +34,7 @@ http://127.0.0.1:8081 {
 
   # /health/live is public; readiness and queue state answer only to private sources.
   @health_private_only {
-    path /health/*
+    path /health/* /internal/*
     not path /health/live
     not remote_ip private_ranges
   }
@@ -54,7 +54,7 @@ http://127.0.0.1:8081 {
   }
 
   # SignalR negotiation and WebSocket traffic must reach the API, not the SPA fallback.
-  @backend path /api/* /health/* /hubs/*
+  @backend path /api/* /health/* /hubs/* /internal/*
   handle @backend {
     reverse_proxy api:8080
   }

@@ -18,6 +18,20 @@ mkdir -p "$bin" "$calls"
 cat > "$bin/curl" <<'STUB'
 #!/usr/bin/env bash
 set -eu
+# The panel sync (alert-settings-sync.sh) is answered from $FAKE_PANEL_FILE (200) or with 204, and logged apart.
+if printf '%s\n' "$@" | grep -q '/internal/alert-settings'; then
+  out=""; previous=""
+  for arg in "$@"; do
+    [[ "$previous" != --output ]] || out="$arg"
+    [[ "$previous" != --data-binary ]] || cp -- "${arg#@}" "$FAKE_CURL_DIR/../imported.txt"
+    [[ "$previous" != --config ]] || cp -- "$arg" "$FAKE_CURL_DIR/../sync-config.txt"
+    previous="$arg"
+  done
+  printf '%s\n' "$*" >> "$FAKE_CURL_DIR/../sync.log"
+  if printf '%s\n' "$@" | grep -q '/import$'; then printf '201'; exit 0; fi
+  if [[ -n "${FAKE_PANEL_FILE:-}" ]]; then cp -- "$FAKE_PANEL_FILE" "$out"; printf '200'; else printf '204'; fi
+  exit 0
+fi
 n=$(find "$FAKE_CURL_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l)
 dir="$FAKE_CURL_DIR/$n"
 mkdir -p "$dir"
@@ -45,6 +59,8 @@ run_alert() {
   local status=0
   rm -rf -- "${calls:?}"/*
   output="$(PATH="$bin:$PATH" FAKE_CURL_DIR="$calls" RAVENCIA_ALERT_SMTP_FILE="$smtp" RAVENCIA_ALERT_URL_FILE="$webhook" \
+    RAVENCIA_ALERT_CACHE_FILE="$work/cache/alert_smtp.txt" RAVENCIA_ALERT_TOKEN_FILE="$work/alert_sync_token.txt" \
+    RAVENCIA_ALERT_SYNC_URL="https://panel.example.invalid/internal/alert-settings" \
     bash "$script" "$1" 2>&1)" || status=$?
   exit_code="$status"
   call_count="$(find "$calls" -mindepth 1 -maxdepth 1 -type d | wc -l)"
@@ -101,5 +117,42 @@ rm -f -- "$webhook"
 run_alert "Broken file"
 assert_eq 1 "$exit_code" "malformed alert_smtp.txt: exit 1"
 assert_eq 0 "$call_count" "malformed alert_smtp.txt: curl not called"
+
+echo "panel sync"
+token="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+printf '%s\n' "$token" > "$work/alert_sync_token.txt"
+printf 'host@gmail.com\nowner@example.com\n%s\n' "$password" > "$smtp"
+
+# The panel has no settings yet: the host file is used and offered to the panel once.
+run_alert "Import"
+assert_eq 0 "$exit_code" "panel empty: exit 0"
+assert_contains "$(cat "$work/sync.log")" "/internal/alert-settings/import" "panel empty: host file imported"
+assert_eq "$(cat "$smtp")" "$(cat "$work/imported.txt")" "panel empty: the import body is the host file"
+assert_contains "$(cat "$calls/0/argv")" "owner@example.com" "panel empty: sent with the host file"
+assert_not_contains "$(cat "$work/sync.log")" "$token" "panel sync: token not on the command line"
+assert_contains "$(cat "$work/sync-config.txt")" "X-Ravencia-Host-Token: $token" "panel sync: token in the curl config"
+
+# The panel has settings: they win, two recipients get the mail, and the cache and host file follow them.
+printf 'panel@gmail.com\nfirst@example.com,second@example.com\nqrstuvwxyzabcdef\n' > "$work/panel.txt"
+export FAKE_PANEL_FILE="$work/panel.txt"
+run_alert "From the panel"
+assert_eq 0 "$exit_code" "panel settings: exit 0"
+argv="$(cat "$calls/0/argv")"
+assert_contains "$argv" "panel@gmail.com" "panel settings: panel sender"
+assert_contains "$argv" "first@example.com" "panel settings: first recipient"
+assert_contains "$argv" "second@example.com" "panel settings: second recipient"
+assert_contains "$(cat "$calls/0/stdin")" "To: <first@example.com>, <second@example.com>" "panel settings: both recipients in To"
+assert_eq "$(cat "$work/panel.txt")" "$(cat "$work/cache/alert_smtp.txt")" "panel settings: cache refreshed"
+assert_eq "$(cat "$work/panel.txt")" "$(cat "$smtp")" "panel settings: host file refreshed"
+assert_eq 600 "$(stat -c '%a' "$work/cache/alert_smtp.txt")" "panel settings: cache is 0600"
+assert_not_contains "$output" "qrstuvwxyzabcdef" "panel settings: password not printed"
+unset FAKE_PANEL_FILE
+
+# The API is down (no token answer): the cache, i.e. the panel's last settings, is used.
+rm -f -- "$work/alert_sync_token.txt"
+printf 'host@gmail.com\nowner@example.com\n%s\n' "$password" > "$smtp"
+run_alert "API down"
+assert_eq 0 "$exit_code" "API down: exit 0"
+assert_contains "$(cat "$calls/0/argv")" "panel@gmail.com" "API down: cached panel settings used"
 
 finish "send-alert"

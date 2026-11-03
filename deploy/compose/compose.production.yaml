@@ -36,8 +36,12 @@ services:
   api:
     image: ${MARKETPLACEHUB_APP_IMAGE:?set immutable application image with digest}
     build: null
-    environment: *production_environment
-    secrets: *production_secrets
+    environment:
+      <<: *production_environment
+      # Host sync of the panel's alert e-mail settings (deploy/scripts/alert-settings-sync.sh); the file is
+      # created by deploy/scripts/lib.sh (ensure_alert_sync_token) before Compose reads this file.
+      Alerts__HostSyncToken_FILE: /run/secrets/alert_sync_token
+    secrets: [app_db_connection, credential_key, dp_certificate, dp_certificate_password, alert_sync_token]
     logging: !override
       driver: journald
       options: { tag: "{{.Name}}" }
@@ -67,3 +71,4 @@ services:
 secrets:
   dp_certificate: { file: ../secrets/dp_certificate.pfx }
   dp_certificate_password: { file: ../secrets/dp_certificate_password.txt }
+  alert_sync_token: { file: ../secrets/alert_sync_token.txt }

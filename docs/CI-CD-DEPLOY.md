@@ -422,8 +422,26 @@ Disk kullanımı: `df -h /` ve `sudo docker run --rm -v marketplacehub_backup_st
 
 **Alarm kanalları** (`send-alert.sh`; ikisi de varsa ikisine birden gönderilir, biri başarısızsa çıkış 1):
 
-- **E-posta (güvenlik planı Y1)**: `deploy/secrets/alert_smtp.txt` (root:root 600), üç satır: gönderen Gmail
-  adresi, alıcı adresi, 16 karakterlik Gmail uygulama şifresi (boşluksuz). Gönderen bir **@gmail.com** adresi
+- **E-posta (güvenlik planı Y1)**: ayarlar panelde, **Ayarlar → Güvenlik ve Oturumlar → Alarm Bildirimleri**
+  (yalnız sahip ve yönetici; gönderen Gmail, 1–5 alıcı, uygulama şifresi, "Test E-postası Gönder"). Tasarım:
+  - Panel doğruluk kaynağıdır: kiracı başına `tenant_settings` `alert-email` satırı; uygulama şifresi Data Protection
+    ile şifreli (`MarketplaceHub.AlertEmail.v1`), tarayıcıya hiç dönmez (alan "Kayıtlı" + "Değiştir"), her kayıt ve
+    test `audit_logs`'a yazılır (`ALERT_EMAIL_*`). Sunucu tek şirkete hizmet ettiği için host, en eski etkin kiracının
+    (sahibin) ayarını kullanır.
+  - Test düğmesi API'den Gmail'e `smtp.gmail.com:465` (örtük TLS) ile, host alarmlarıyla aynı sunucu, hesap ve ileti
+    biçimiyle gönderir.
+  - Host, API kapalıyken de gönderebilmek için kendi kopyasını tutar: `send-alert.sh` her alarmda
+    `alert-settings-sync.sh --print` ile önce paneli sorar (`GET /internal/alert-settings`, loopback üzerinden;
+    Caddy ve API bunu yalnız sunucunun kendi ağlarına ve `deploy/secrets/alert_sync_token.txt`'teki belirteçle
+    açar), cevap gelirse `/var/lib/ravencia-alerts/alert_smtp.txt` önbelleğini yeniler; gelmezse önbelleği, o da yoksa
+    `deploy/secrets/alert_smtp.txt`'i kullanır. Her deploy de eşitlemeyi çalıştırır ve secrets dosyasını panelle
+    aynı yapar. Panel boşsa ve secrets dosyası varsa (ör. `sudo ravencia-alarm-eposta` ile yazılmışsa) ilk eşitleme onu
+    panele aktarır (`ALERT_EMAIL_SETTINGS_IMPORTED`); panel dolduktan sonra dosyayı elle değiştirmek kalıcı olmaz.
+  - Belirteç (`alert_sync_token.txt`, root:1654 0640) yoksa `lib.sh` (`ensure_alert_sync_token`) ilk deploy'da üretir;
+    API onu `Alerts__HostSyncToken_FILE` Compose secret'ıyla okur.
+
+  Host dosyası `deploy/secrets/alert_smtp.txt` (root:root 600), üç satır: gönderen Gmail adresi, alıcı adresleri
+  (virgülle), 16 karakterlik Gmail uygulama şifresi (boşluksuz). Gönderen bir **@gmail.com** adresi
   olmalı (`@ravencia.com` adına gönderim SPF/DMARC yüzünden spama düşer). `curl --ssl-reqd` ile
   `smtps://smtp.gmail.com:465`'e RFC 5322 ileti (From, To, `[Ravencia] <ilk 80 karakter>` konusu, Date, UTF-8
   gövde) gider. Şifre hiçbir zaman yazdırılmaz ve komut satırına girmez: curl'e 0600 geçici bir config dosyasıyla

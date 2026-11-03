@@ -81,6 +81,8 @@ builder.Services.AddHttpClient(PublicNetwork.ClientName, client =>
 }).ConfigurePrimaryHttpMessageHandler(PublicNetwork.Handler);
 // Sign-in, the steps after it, a per-network ceiling and the webhook limits (see RateLimitPolicies).
 builder.Services.AddRateLimiter(options => RateLimitPolicies.Configure(options, builder.Configuration));
+builder.Services.AddScoped<MarketplaceHub.Infrastructure.Alerts.AlertEmailSettingsService>();
+builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Alerts.IAlertEmailSender, MarketplaceHub.Infrastructure.Alerts.GmailSmtpAlertSender>();
 builder.Services.AddScoped<IWebhookRouteGate, WebhookRouteGate>();
 builder.Services.AddSingleton<WebhookConnectionQuota>();
 
@@ -142,6 +144,7 @@ app.MapMarketplaceEndpoints();
 app.MapQuestionEndpoints();
 app.MapInvoicingEndpoints();
 app.MapSettingsEndpoints();
+app.MapAlertEmailEndpoints();
 app.MapHub<OperationsHub>("/hubs/operations");
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

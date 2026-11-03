@@ -501,3 +501,7 @@
 .ss-page .ss-callout.is-warning > .ss-icon { color: var(--rv-color-warning, #d97706); }
 .ss-page .ss-dz-issues { margin-top: 12px; }
 .ss-page .ss-dz-issues > span { display: grid; gap: 2px; }
+/* Alarm Bildirimleri: a field with its small action beside it (password state, recipient remove, test button). */
+.ss-page .ss-alert-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.ss-page .ss-alert-row > .ss-in { flex: 1 1 220px; min-width: 0; }
+.ss-page .ss-alert-row > .ss-help { display: inline-flex; align-items: center; gap: 6px; }
