@@ -11,12 +11,12 @@ x-app: &app
   # Hardening (security plan U3): no privilege gain through setuid binaries or file capabilities, no Linux
   # capabilities at all (the app runs as the image's non-root APP_UID 1654 and binds 8080), a read-only root
   # filesystem with only /tmp writable (worker heartbeat, .NET diagnostics socket) next to the two data
-  # volumes, and a process cap (threads count too; a busy API or worker stays at a few hundred at most).
+  # volumes, and a process cap (deploy.resources.limits.pids below; threads count too, a busy API or worker
+  # stays at a few hundred at most). Compose refuses pids_limit next to deploy.resources.limits.
   security_opt: [no-new-privileges:true]
   cap_drop: [ALL]
   read_only: true
   tmpfs: ["/tmp:size=256m,mode=1777"]
-  pids_limit: 1024
   environment:
     ASPNETCORE_ENVIRONMENT: Production
     MARKETPLACEHUB_ENVIRONMENT: PILOT_LOCAL
@@ -48,7 +48,7 @@ x-app: &app
     options: { max-size: "10m", max-file: "5" }
   deploy:
     resources:
-      limits: { memory: 1536M, cpus: "2.00" }
+      limits: { memory: 1536M, cpus: "2.00", pids: 1024 }
 
 services:
   postgres:
@@ -68,8 +68,6 @@ services:
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
-    # One process per connection (max_connections 150) plus background and parallel workers.
-    pids_limit: 512
     # Pools: API 25 (app_db_connection.txt), Worker 45 (Database:MaxPoolSize in its
     # appsettings.json overrides the file), each shared rate limiter 5. About 82 in
     # total, so 150 leaves room for LISTEN, migrate, backup and psql sessions.
@@ -102,7 +100,8 @@ services:
     logging: *local_logging
     deploy:
       resources:
-        limits: { memory: 6144M, cpus: "3.00" }
+        # pids: one process per connection (max_connections 150) plus background and parallel workers.
+        limits: { memory: 6144M, cpus: "3.00", pids: 512 }
 
   migrate:
     <<: *app
@@ -178,7 +177,6 @@ services:
     sysctls: { net.ipv4.ip_unprivileged_port_start: "0" }
     read_only: true
     tmpfs: ["/tmp:size=64m,mode=1777"]
-    pids_limit: 256
     # IPv6 visitors (G3, see ClientNetwork.cs and docs/CI-CD-DEPLOY.md "Kenar"): the edge network is IPv4 only,
     # so a connection that reaches the host over IPv6 is accepted by Docker's userland proxy (docker-proxy) and
     # arrives here from the bridge gateway's private IPv4 address. Every IPv6 visitor then looks like one private
@@ -201,7 +199,7 @@ services:
     logging: *local_logging
     deploy:
       resources:
-        limits: { memory: 256M, cpus: "0.50" }
+        limits: { memory: 256M, cpus: "0.50", pids: 256 }
 
   backup:
     image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336

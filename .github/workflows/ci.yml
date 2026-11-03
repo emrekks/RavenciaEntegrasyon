@@ -160,7 +160,7 @@ jobs:
             | (["postgres", "migrate", "api", "worker", "caddy-volumes", "caddy", "backup"] | all(. as $n
                 | ($s[$n].security_opt // [] | index("no-new-privileges:true")) != null
                 and ($s[$n].cap_drop // [] | index("ALL")) != null
-                and ($s[$n].pids_limit // 0) > 0))
+                and ($s[$n].pids_limit // $s[$n].deploy.resources.limits.pids // 0 | tonumber) > 0))
             and (["migrate", "api", "worker", "caddy"] | all(. as $n | $s[$n].read_only == true))
             and ($s.caddy.user // "0" | test("^0(:|$)") | not)
           ' >/dev/null || { echo "Container hardening (no-new-privileges, cap_drop ALL, pids_limit, read_only, non-root edge) is missing." >&2; exit 1; }
