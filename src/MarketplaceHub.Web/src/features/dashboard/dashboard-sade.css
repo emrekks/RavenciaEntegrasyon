@@ -30,13 +30,15 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:hover,
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:focus-visible { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-ico:last-child { color: var(--rr-subtle); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-ic { display: grid; flex: none; place-items: center; width: 24px; height: 24px; color: var(--rr-muted); background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 7px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-warn .rr-op-ic { color: var(--rr-warn); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad .rr-op-ic { color: var(--rr-bad); }
+/* The card icon is drawn into the background: oversized, tilted, cut by the right edge and fading in towards the text. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; border-radius: inherit; color: var(--rr-subtle); pointer-events: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-bg .rr-ico { position: absolute; right: -26px; top: 50%; width: 130px; height: 130px; opacity: .2; stroke-width: 1.1; transform: translateY(-50%) rotate(-12deg); -webkit-mask-image: linear-gradient(90deg, transparent, #000 60%); mask-image: linear-gradient(90deg, transparent, #000 60%); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-warn .rr-op-bg { color: var(--rr-warn); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad .rr-op-bg { color: var(--rr-bad); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > :is(.rr-op-t, .rr-ico) { position: relative; z-index: 1; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t { display: grid; gap: 2px; min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t strong { font-size: 24px; font-weight: 600; line-height: 1.2; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t small { display: flex; align-items: center; gap: 8px; color: var(--rr-muted); font-size: 13px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-ic .rr-ico { width: 14px; height: 14px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t small { color: var(--rr-muted); font-size: 13px; }
 /* The second figure a card carries beside its number (İptaller: "sipariş · 5 ürün · 1 kısmi"). */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-x { margin-left: 6px; color: var(--rr-muted); font-size: 13px; font-weight: 500; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-sep { color: var(--rr-line-strong); }
@@ -105,7 +107,6 @@ main .rr.rr-dashboard > * { min-width: 0; }
 @media (max-width: 760px) {
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { grid-template-columns: minmax(0, 1fr) auto; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-ic { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chan { grid-template-columns: 1fr; justify-items: center; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-clist { width: 100%; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctools { width: 100%; }
@@ -301,7 +302,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header p { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { gap: 8px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard { grid-template-columns: minmax(0, 1fr); padding: 10px 12px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-ico, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-op-ic { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-ico { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t { display: flex; flex-direction: column; gap: 1px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t small { font-size: 12px; line-height: 1.35; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t strong { font-size: 20px; }
