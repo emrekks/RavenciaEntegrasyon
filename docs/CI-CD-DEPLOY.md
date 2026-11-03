@@ -190,7 +190,7 @@ MaxRetentionSec=30day
 | Servis | Kullanıcı | Yetenekler | Kök dosya sistemi | `pids_limit` |
 | --- | --- | --- | --- | --- |
 | `api`, `worker`, `migrate` | imajın `APP_UID` 1654'ü | hiçbiri (`cap_drop: ALL`) | salt okunur; `/tmp` tmpfs 256 MB, iki veri volume'ü yazılabilir | 1024 |
-| `caddy` | `10080:10080` (root değil) | hiçbiri | salt okunur; `/tmp` tmpfs, `/data` ve `/config` volume | 256 |
+| `caddy` | `10080:10080` (root değil) | sınır kümesinde yalnız `NET_BIND_SERVICE`; etkin küme boş | salt okunur; `/tmp` tmpfs, `/data` ve `/config` volume | 256 |
 | `caddy-volumes` (tek seferlik) | root | `CHOWN`, `DAC_OVERRIDE`, `DAC_READ_SEARCH`, `FOWNER` | — (ağ yok) | 32 |
 | `postgres` | entrypoint root, sonra `postgres` (gosu) | `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID` | yazılabilir (soket ve kilit dosyaları) | 512 |
 | `backup` (tek seferlik) | root | `DAC_READ_SEARCH` (1654'e ait özel dosyaları okumak için) | yazılabilir | 128 |
@@ -198,9 +198,10 @@ MaxRetentionSec=30day
 Hepsinde `no-new-privileges:true`. Notlar:
 
 - **Caddy root olmadan 80/443'ü** `net.ipv4.ip_unprivileged_port_start=0` ile açar (konteynerin kendi ağ
-  ad alanında; Docker 20.10'dan beri varsayılan, burada açıkça yazılı). `cap_add: NET_BIND_SERVICE`
-  kullanılmadı: root olmayan bir süreç bu yeteneği ancak dosya yeteneğiyle alır, `no-new-privileges` ise
-  bunu engeller.
+  ad alanında; Docker 20.10'dan beri varsayılan, burada açıkça yazılı). `cap_add: NET_BIND_SERVICE` yine de
+  durur: imajdaki `/usr/bin/caddy` dosyası `cap_net_bind_service+ep` dosya yeteneği taşır ve bu yetenek sınır
+  kümesinde yoksa çekirdek dosyayı hiç çalıştırmaz (`exec caddy failed: Operation not permitted`).
+  `no-new-privileges` ve root olmayan kullanıcı yüzünden süreç yeteneği almaz (`CapEff` 0).
 - **`caddy-volumes`**, her Caddy başlangıcından önce `/data` ve `/config`'i 10080'e devreder. Caddy root
   çalışırken yazılan sertifikalar root'a ait ve 0600'dür; bu adım olmadan Caddy onları okuyamaz, yeni
   sertifika da yazamaz. İlk deploy'dan sonra bir şey değiştirmez. `rollback.sh` `--no-deps` kullanır;
