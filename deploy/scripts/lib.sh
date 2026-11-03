@@ -35,7 +35,8 @@ ensure_alert_sync_token() {
   if [[ -s "$file" ]] || "${sudo_cmd[@]}" test -s "$file" 2>/dev/null; then return 0; fi
   token="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
   [[ ${#token} -eq 64 ]] || { echo "Could not generate the alert sync token." >&2; return 1; }
-  # The value goes through stdin, never a command line.
+  # The value goes through stdin, never a command line. "$1" belongs to the inner sh.
+  # shellcheck disable=SC2016
   printf '%s\n' "$token" | "${sudo_cmd[@]}" sh -c 'umask 027 && cat > "$1" && chown root:1654 "$1" && chmod 0640 "$1"' sh "$file"
   echo "Created deploy/secrets/alert_sync_token.txt (alert settings sync)."
 }
