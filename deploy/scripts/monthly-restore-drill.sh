@@ -8,7 +8,8 @@ set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 repository_root="$(cd -- "$script_dir/../.." && pwd -P)"
-sudo_cmd=(sudo -n)
+# The systemd units run this as root (NoNewPrivileges, no sudo); by hand it escalates with sudo.
+if (( EUID == 0 )); then sudo_cmd=(); else sudo_cmd=(sudo -n); fi
 # shellcheck source=/dev/null
 source "$script_dir/lib.sh"
 require_secret_files

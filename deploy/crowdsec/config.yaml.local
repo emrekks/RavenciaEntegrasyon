@@ -1,0 +1,10 @@
+# Installed as /etc/crowdsec/config.yaml.local by deploy/scripts/install-crowdsec.sh.
+# During the 7-day simulation (security plan B6) the community blocklist is not pulled
+# either: simulation mode does not apply to it, and its decisions would be enforced by the
+# bouncer at once. Switch both on together (see docs/CI-CD-DEPLOY.md "CrowdSec").
+api:
+  server:
+    online_client:
+      pull:
+        community: false
+        blocklists: false

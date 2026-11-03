@@ -7,10 +7,29 @@ OnFailure=ravencia-alert@%n.service
 
 [Service]
 Type=oneshot
-User=ubuntu
+User=root
 WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
 ExecStart=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/monthly-restore-drill.sh
 TimeoutStartSec=60min
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
+# Runs as root (no sudo, so NoNewPrivileges holds) and drives Docker through its socket.
+# The repository stays readable; the host system and home directories are read-only here.
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+# No PrivateTmp: restore-drill.sh bind-mounts files from its mktemp directory into containers,
+# and dockerd resolves those paths in the host namespace.

@@ -1,0 +1,22 @@
+# Installed as /etc/crowdsec/bouncers/crowdsec-firewall-bouncer.yaml.local (merged over the
+# package's file, which keeps the generated API key).
+# nftables, IPv4 and IPv6. The "input" hook covers the host (SSH); "forward" covers the
+# traffic Docker forwards to the published ports 80/443 - the nftables counterpart of
+# iptables' DOCKER-USER chain. Priority -10 runs before Docker's and ufw's filter rules.
+mode: nftables
+nftables:
+  ipv4:
+    enabled: true
+    set-only: false
+    table: crowdsec
+    chain: crowdsec-chain
+    priority: -10
+  ipv6:
+    enabled: true
+    set-only: false
+    table: crowdsec6
+    chain: crowdsec6-chain
+    priority: -10
+nftables_hooks:
+  - input
+  - forward

@@ -12,7 +12,8 @@ environment_file="$repository_root/deploy/secrets/production.env"
 base_compose="$repository_root/deploy/compose/compose.yaml"
 production_compose="$repository_root/deploy/compose/compose.production.yaml"
 
-sudo_cmd=(sudo -n)
+# The systemd units run this as root (NoNewPrivileges, no sudo); by hand it escalates with sudo.
+if (( EUID == 0 )); then sudo_cmd=(); else sudo_cmd=(sudo -n); fi
 # shellcheck source=/dev/null
 source "$script_dir/lib.sh"
 require_secret_files

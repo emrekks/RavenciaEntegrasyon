@@ -1,0 +1,7 @@
+{
+  "live-restore": true,
+  "no-new-privileges": true,
+  "userland-proxy": false,
+  "log-driver": "journald",
+  "log-opts": { "tag": "{{.Name}}" }
+}

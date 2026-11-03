@@ -6,9 +6,27 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-User=ubuntu
+User=root
 WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
 ExecStart=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/healthwatch.sh
 # Failure counters and alert throttling survive between runs here.
 StateDirectory=ravencia-healthwatch
 TimeoutStartSec=4min
+# Runs as root (no sudo, so NoNewPrivileges holds) and drives Docker through its socket.
+# The repository stays readable; the host system and home directories are read-only here.
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+PrivateTmp=yes

@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh CrowdSec allowlists once a day
+
+[Timer]
+OnCalendar=*-*-* 03:17:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+Unit=ravencia-crowdsec-allowlist.service
+
+[Install]
+WantedBy=timers.target
