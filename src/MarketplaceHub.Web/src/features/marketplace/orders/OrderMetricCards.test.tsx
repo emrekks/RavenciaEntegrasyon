@@ -93,7 +93,7 @@ describe('order summary cards', () => {
   it('lists the processing orders\' products per store on hover like Yeni Sipariş', () => {
     const { host } = render(<OrderMetricCards {...props()} />)
     const processing = card(host, 'İşleme Alınan')
-    expect(processing.className).toBe('rr-metric-tipped')
+    expect(processing.className).toBe('rr-warn rr-metric-tipped')
     expect(Array.from(processing.querySelectorAll('.rr-metric-tip-r')).map(row => row.textContent)).toEqual(['Pazarama2 adet'])
     cleanup()
     expect(card(render(<OrderMetricCards {...props({ processingRows: [] })} />).host, 'İşleme Alınan').className).toBe('')
@@ -144,7 +144,7 @@ describe('order summary cards', () => {
     const { host } = render(<OrderMetricCards {...props({ microExport: metric(0), microCountries: {} })} />)
     expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-tip')).toBeNull()
     // Without the panel a native title says what it counts.
-    expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Kargoya verilmemiş mikro ihracat siparişleri')
+    expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Bugün gelen mikro ihracat siparişleri')
   })
 
   it('lists the stores of Geciken, İptal and Yeniden Gönderim on hover while they count any', () => {

@@ -3,9 +3,9 @@
 // (each line's ordered quantity less what was cancelled of it); hovering lists the products per store.
 // "İşleme Alınan" is the same set as the "İşleme Alınanlar" tab (taken into processing, not yet handed to the carrier)
 // and reads and hovers the same way as Yeni Sipariş.
-// "Geciken" turns red and pulses softly while there is any. "Mikro İhracat Sipariş" counts the pending micro-export
-// orders, whatever the list's filters are: the orders the row's flag icon marks that are not yet handed to the carrier
-// (New and İşleme Alınan, the overview's Bekleyen set, any day); hovering lists their countries. "İptal" shows today (the
+// "Geciken" turns red and pulses softly while there is any. "Mikro İhracat Sipariş" counts today's micro-export
+// orders (placed on the Istanbul day, whatever the list's filters are: the orders the row's flag icon marks); hovering
+// lists their countries. "İptal" shows today (the
 // Istanbul day): "N Paket" for the orders cancelled whole as the Genel Bakış card counts them, and while
 // orders were cancelled in part a chip "N Kısmi İptal | M Adet" (the units cancelled of them) that pulses like Geciken.
 // "Yeniden Gönderim" counts the resends that have not been handed to the carrier yet.
@@ -86,7 +86,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
   const resentStores = stores(resent, resentRows)
   return <div className="rr-metrics rr-metrics-6">
     <UnitsCard title="Yeni Sipariş" icon="orders" tone="warn" packages={newOrders} units={newUnits} rows={newRows} />
-    <UnitsCard title="İşleme Alınan" icon="packagePen" packages={processing} units={processingUnits} rows={processingRows} />
+    <UnitsCard title="İşleme Alınan" icon="packagePen" tone="warn" packages={processing} units={processingUnits} rows={processingRows} />
     <article className={tipped(positive(late) && 'rr-bad rr-alert', lateStores.length > 0 && 'rr-metric-tipped')} tabIndex={lateStores.length > 0 ? 0 : undefined}>
       <CardBackgroundIcon name="clock" tone={positive(late) ? 'bad' : undefined} />
       <small>Geciken</small><Packages packages={late} units={undefined} />
@@ -94,7 +94,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
     </article>
     <article className="rr-metric-link rr-metric-tipped">
       <CardBackgroundIcon name="globe" />
-      <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Kargoya verilmemiş mikro ihracat siparişleri'} onClick={() => onOpenDay('micro')}><small>Mikro İhracat Sipariş</small><Packages packages={microExport} units={undefined} /></button>
+      <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Bugün gelen mikro ihracat siparişleri'} onClick={() => onOpenDay('micro')}><small>Mikro İhracat Sipariş</small><Packages packages={microExport} units={undefined} /></button>
       {countries.length > 0 && <div className="rr-metric-tip" role="tooltip">{countries.map(([code, value]) => <div className="rr-metric-tip-r" key={code || 'unknown'}>{code ? <Flag code={code} /> : <span className="rr-metric-tip-none" aria-hidden="true" />}<span>{code ? countryName(code) : 'Ülke Bilinmiyor'}</span><b className="rr-num">{count(value)}</b></div>)}</div>}
     </article>
     <article className={tipped(positive(cancelled) && 'rr-bad', 'rr-metric-link', partial > 0 && 'rr-metric-chipped', cancelStores.length > 0 && 'rr-metric-tipped')}>

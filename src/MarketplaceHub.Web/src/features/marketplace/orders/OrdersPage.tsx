@@ -38,7 +38,7 @@ import { recordShippingLabelsPrinted } from './label-printed'
 import { applyFilterPatch } from './order-filter-apply'
 import { OrderRowMarkIcons } from './order-row-marks'
 import { isCancelTab, tabDateFilters, tabKind } from './order-date-filters'
-import { cancellationStores, dailyCancellationCounts, dayCardFilters, microPendingParams, resentPendingParams, storeCounts, storeUnits, type DailyCancellationRow, type DashboardBootstrap, type DayCard } from './daily-cards'
+import { cancellationStores, dailyCancellationCounts, dayCardFilters, microDayParams, resentPendingParams, storeCounts, storeUnits, type DailyCancellationRow, type DashboardBootstrap, type DayCard } from './daily-cards'
 import { isPartlyCancelled, lineCancel, partialQuantityText, remainingText, rowLines } from './order-line-cancel'
 import { Connection, IntegrationFeedback, Order, OrderAddress, OrderLine, Page, ProductTitleLink, RETURN_NO_PLATFORM, ReturnColumnPop, ReturnFactLines, ReturnHeadCell, ReturnInvoiceRing, ReturnPlatformPop, Shipment, displayOrderNumber, orderDisplayShipment, productLineQuantity, returnDateText, returnLineFacts, returnPlatformName } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
@@ -858,7 +858,7 @@ export function OrdersPage() {
   // The resends that have not been handed to the carrier, counted as the Yeniden Gönderimler list counts them, per store.
   const resentNotShipped = useQuery({ queryKey: ['orders', 'summary', 'resent-not-shipped'], queryFn: () => hubPoll<OrderSummary>(`/orders/summary?${resentPendingParams()}`), staleTime: 30_000, refetchInterval: 60_000 })
   // The micro-export card: the pending micro-export orders (not yet handed to the carrier, any day) and their countries.
-  const microPending = useQuery({ queryKey: ['orders', 'summary', 'micro-pending'], queryFn: () => hubPoll<OrderSummary>(`/orders/summary?${microPendingParams()}`), staleTime: 30_000, refetchInterval: 60_000 })
+  const microPending = useQuery({ queryKey: ['orders', 'summary', 'micro-day', istanbulDateKey()], queryFn: () => hubPoll<OrderSummary>(`/orders/summary?${microDayParams(istanbulDateKey())}`), staleTime: 30_000, refetchInterval: 60_000 })
   const cancellationsToday = useQuery({ queryKey: ['dashboard', 'cancellations', day], queryFn: () => hubPoll<{ stores: DailyCancellationRow[] }>(`/dashboard/cancellations?day=${day}`), staleTime: 30_000, refetchInterval: 60_000 })
   const todayCancellations = dailyCancellationCounts(cancellationsToday.data?.stores)
   const summary = useQuery({ queryKey: ['orders', 'summary', 'filtered', summaryParams], queryFn: () => hubApi<OrderSummary>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary'), placeholderData: keepPreviousData })
