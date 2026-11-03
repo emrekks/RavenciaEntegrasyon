@@ -21,7 +21,7 @@ export function liveClassTest(source, web) {
 }
 
 // Classes a selector needs on some element for any match: top-level ones (outside parentheses).
-export function requiredClasses(selector) {
+function requiredClasses(selector) {
   const outer = selector.replace(/\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)/g, '')
   return [...outer.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map(match => match[1])
 }
