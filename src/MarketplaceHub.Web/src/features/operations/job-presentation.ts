@@ -61,6 +61,7 @@ const catalogue: Record<string, JobPresentation> = {
   PAZARAMA_FINANCE_SYNC: job('Finans', 'invoice', READ, 'Sipariş Finans Hareketlerini Çekme', 'Son siparişlerin satış, iade ve komisyon hareketleri okunarak komisyon satış raporuna işlenir. Platforma veri gönderilmez.'),
   TRENDYOL_FINANCE_SYNC: job('Finans', 'invoice', READ, 'Cari Hesap Ekstresi Çekme', 'Platformun cari hesap ekstresi ve ödemeleri okunarak komisyon, kargo ve diğer kesintiler satış raporuna, hakediş ve ödemeler Hakediş ekranına işlenir. Platforma veri gönderilmez.'),
   N11_SETTLEMENT_SYNC: job('Finans', 'invoice', READ, 'Hakediş Kayıtlarını Çekme', 'N11 hakediş günleri ve sipariş kalemi dökümleri okunarak Hakediş ekranına işlenir. Platforma veri gönderilmez.'),
+  HEPSIBURADA_FINANCE_SYNC: job('Finans', 'invoice', READ, 'Muhasebe Kayıtlarını Çekme', 'Ödenecek ve ödenmiş muhasebe kayıtları okunarak Hakediş ekranına işlenir. Platforma veri gönderilmez.'),
   INVOICE_SUBMIT: job('Fatura', 'invoice', SEND, 'Fatura Oluşturma', 'Sipariş için hazırlanan e-Fatura veya e-Arşiv faturası E-Faturam’a gönderilerek kesilir.'),
   INVOICE_RECONCILE: job('Fatura', 'invoice', READ, 'Fatura Durumu Sorgulama', 'Gönderilen faturanın E-Faturam’daki onay ve iletim durumu sorgulanır.'),
   INVOICE_DOCUMENT_FETCH: job('Fatura', 'invoice', READ, 'Fatura Belgesi Alma', 'Kesilen faturanın PDF belgesi E-Faturam’dan alınarak saklanır.'),
