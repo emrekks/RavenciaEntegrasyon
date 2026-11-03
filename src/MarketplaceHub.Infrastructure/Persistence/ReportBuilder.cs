@@ -400,7 +400,7 @@ internal static class ReportBuilder
             products.OrderByDescending(x => x.SoldQuantity).ThenBy(x => x.Title, StringComparer.Ordinal).Take(TopCount).ToList(),
             products.Where(x => x.ReturnedQuantity > 0).OrderByDescending(x => x.ReturnedQuantity).ThenBy(x => x.Title, StringComparer.Ordinal).Take(TopCount).ToList(),
             brands, categories, reasons,
-            Cancellations(orders, cancelled, input),
+            Cancellations(orders, cancelled),
             Cargo(orders, input.Packages),
             Heatmap(orders, input.Timezone),
             Customers(orders),
@@ -647,7 +647,7 @@ internal static class ReportBuilder
             .ToList();
     }
 
-    private static ReportCancellationView Cancellations(IReadOnlyList<OrderFact> orders, IReadOnlyList<CancelledFact> cancelled, ReportInput input)
+    private static ReportCancellationView Cancellations(IReadOnlyList<OrderFact> orders, IReadOnlyList<CancelledFact> cancelled)
     {
         decimal PartlyCancelled(IEnumerable<OrderFact> rows) => rows.SelectMany(x => x.Lines).Sum(x => Math.Max(0m, x.Row.CancelledQuantity));
         var platforms = orders.Select(x => x.PlatformCode).Concat(cancelled.Select(x => x.PlatformCode)).Distinct(StringComparer.Ordinal)

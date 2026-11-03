@@ -93,7 +93,6 @@ public sealed partial class MarketplaceJobProcessor
         var full = ReadBoolean(payloadJson, "forceFull") || cursor.LastSuccessAt is null;
         var wide = PttAvmReturnReadPolicy.WideReadDue(full, wideCursor.LastSuccessAt, now);
         var startDay = PttAvmOrderHistoryPolicy.StartDay(wide, cursor.LastModifiedWatermark, now);
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var (windowStart, windowEnd) in PttAvmOrderHistoryPolicy.Windows(startDay, now))
         {
             if (cancellationToken.IsCancellationRequested) return false;
@@ -107,7 +106,7 @@ public sealed partial class MarketplaceJobProcessor
             foreach (var claim in result.Value!.Items)
             {
                 TrackReceived();
-                await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+                await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
             }
         }
         if (wide)

@@ -83,12 +83,14 @@ const requests = vi.hoisted(() => [] as string[])
 const fixture = vi.hoisted(() => ({ current: null as ReportSales | null }))
 const payouts = {
   today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0,
-  next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
+  next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 880, linesAmount: null, records: 2, status: 'EXPECTED' },
   lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' },
   regions: [{ region: 'TR_GULF', expected: 780, records: 2, nextDay: '2026-11-05', nextAmount: 780, unknown: 240 }, { region: 'EUROPE', expected: 400, records: 1, nextDay: '2026-11-12', nextAmount: 400, unknown: 0 }],
   upcoming: [
     { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
-    { key: 'due:store-1:2026-11-12:EUROPE', kind: 'DUE_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED' }
+    { key: 'due:store-3:2026-11-05:NONE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-3', platformCode: 'PAZARAMA', storeName: 'Pazarama', region: 'NONE', regionName: null, day: '2026-11-05', amount: 100, linesAmount: null, records: 1, status: 'EXPECTED' },
+    { key: 'due:store-1:2026-11-12:EUROPE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-12', amount: 400, linesAmount: null, records: 1, status: 'EXPECTED' },
+    { key: 'due:store-1:2026-11-04:EUROPE:OVERDUE', kind: 'OVERDUE', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'EUROPE', regionName: null, day: '2026-11-04', amount: 240, linesAmount: null, records: 1, status: 'EXPECTED' }
   ],
   past: [{ key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' }],
   coverage: [{ connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', state: 'READ', lastSyncedAt: '2026-11-04T09:00:00Z' }, { connectionId: 'store-2', platformCode: 'PTTAVM', storeName: 'PTT', state: 'NOT_SUPPORTED', lastSyncedAt: null }]
@@ -498,27 +500,34 @@ describe('ReportsPage', () => {
     expect(requests).toContain('/reports/payouts?')
     const figures = texts(page, '.reports-kpis > div')
     expect(figures[0]).toContain('Toplam Güncel Bakiye₺1.180')
-    expect(figures[1]).toContain('Sıradaki Ödeme₺780')
+    expect(figures[1]).toContain('Sıradaki Ödeme₺880')
     expect(figures[3]).toContain('Vadesi Geçmiş Bekleyen₺240')
     expect(texts(page, '.reports-payout-region')[0]).toContain('Türkiye, Körfez₺780')
+    // The days to come, each with its total; the next one is marked, a Pazarama row carries no Trendyol region.
+    const days = texts(page, '.reports-payout-day > header')
+    expect(days[0]).toContain('Sıradaki Ödeme05 Kas 2026 Per₺880,00')
+    expect(days[1]).toContain('12 Kas 2026 Per₺400,00')
+    // The overdue records wait apart, out of the next payout.
+    expect(days[2]).toContain('Vadesi Geçmiş, Ödeme Bekleyen₺240,00')
     const rows = texts(page, '.reports-payout-row')
-    expect(rows).toHaveLength(2)
-    expect(rows[0]).toContain('Sıradaki Ödeme')
-    expect(rows[0]).toContain('Tahmini Hesaplanmıştır')
-    expect(rows[1]).toContain('Avrupa')
-    expect(rows[1]).toContain('Vade:')
+    expect(rows).toHaveLength(4)
+    expect(rows[0]).toContain('Türkiye, Körfez')
+    expect(rows[0]).not.toContain('Tahmini')
+    expect(rows[1]).toContain('Pazarama')
+    expect(page.querySelectorAll('.reports-payout-row')[1].querySelector('.is-region')).toBeNull()
     // A region narrows the payments to it.
     await act(async () => { (page.querySelectorAll('.reports-payout-region')[1] as HTMLButtonElement).click() })
-    expect(texts(page, '.reports-payout-row')).toHaveLength(1)
-    await act(async () => { (page.querySelectorAll('.reports-payout-region')[1] as HTMLButtonElement).click() })
+    expect(texts(page, '.reports-payout-row')).toHaveLength(2)
+    await act(async () => { (page.querySelector('.reports-payout-all') as HTMLButtonElement).click() })
+    expect(texts(page, '.reports-payout-row')).toHaveLength(4)
     // A payment opens its records.
     await act(async () => { (page.querySelector('.reports-payout-row') as HTMLButtonElement).click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
-    expect(requests).toContain('/reports/payouts/lines?connectionId=store-1&day=2026-11-05&region=TR_GULF')
+    expect(requests).toContain('/reports/payouts/lines?connectionId=store-1&day=2026-11-05&region=TR_GULF&kind=PAYOUT_DAY')
     expect(page.querySelector('.reports-payout-lines')?.textContent).toContain('10234')
-    // The past payments show the marketplace's payout.
+    // The past payments show the marketplace's payout, under its day.
     await act(async () => { ([...page.querySelectorAll('.reports-payout-list [role="tab"]')].find(tab => tab.textContent?.includes('Geçmiş')) as HTMLElement).click() })
-    expect(texts(page, '.reports-payout-row')[0]).toContain('Ödeme Günü')
+    expect(texts(page, '.reports-payout-day > header')[0]).toContain('29 Eki 2026 Per')
     expect(texts(page, '.reports-payout-row')[0]).toContain('Ödendi')
     expect(page.querySelector('.reports-payout-coverage')?.textContent).toContain('Henüz okunmayanlar: PTT AVM')
   })
