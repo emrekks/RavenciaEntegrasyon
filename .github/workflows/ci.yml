@@ -175,9 +175,11 @@ jobs:
       - name: Verify .NET format
         run: dotnet format MarketplaceHub.sln --verify-no-changes --no-restore --verbosity diagnostic
 
-  # The backend tests run as two parallel jobs that together cover every test:
-  # "Category=PostgreSql" (the trait [PostgreSqlFact] / [PostgreSqlTheory] always set)
-  # against a PostgreSQL service, and "Category!=PostgreSql" (everything else).
+  # The backend tests run in parallel jobs whose filters together cover every test:
+  # "Category!=PostgreSql" here, and in backend-postgres "Category=PostgreSql" (the trait
+  # [PostgreSqlFact] / [PostgreSqlTheory] always set) split by PostgreSqlLane, which only
+  # those attributes set. The one serial PostgreSQL collection takes ~3 min, half of it the
+  # 100k-row invoice load test, so that test runs in its own lane.
   backend:
     needs: plan
     if: needs.plan.outputs.backend_needed == 'true'
@@ -219,6 +221,14 @@ jobs:
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: main
+            filter: Category=PostgreSql&PostgreSqlLane!=Load
+          - lane: load
+            filter: PostgreSqlLane=Load
     services:
       postgres:
         # Same digest as deploy/compose/compose.yaml.
@@ -238,15 +248,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # The throwaway test database needs no crash safety; queries, locks and
-      # transactions behave the same, commits only skip the disk flush.
-      - name: Turn off PostgreSQL durability for the test database
-        run: |
-          set -Eeuo pipefail
-          docker exec "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U marketplacehub -d marketplacehub_test \
-            -c "ALTER SYSTEM SET fsync = off" -c "ALTER SYSTEM SET synchronous_commit = off" \
-            -c "ALTER SYSTEM SET full_page_writes = off" -c "SELECT pg_reload_conf()"
-
       - name: Setup .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -260,11 +261,12 @@ jobs:
       - name: Build backend
         run: dotnet build MarketplaceHub.sln --no-restore --configuration Release
 
-      - name: Test backend (PostgreSQL integration)
+      - name: Test backend (PostgreSQL integration, ${{ matrix.lane }} lane)
         env:
           MARKETPLACEHUB_TEST_CONNECTION: "Host=localhost;Port=5432;Database=marketplacehub_test;Username=marketplacehub;Password=development-only"
           FeatureFlags__ExternalWrites: "false"
-        run: dotnet test MarketplaceHub.sln --no-build --configuration Release --filter "Category=PostgreSql" --logger "console;verbosity=normal"
+          TEST_FILTER: ${{ matrix.filter }}
+        run: dotnet test MarketplaceHub.sln --no-build --configuration Release --filter "$TEST_FILTER"
 
   # The production images are built on the server during deploy; building them
   # here first means a Dockerfile/project-layout break turns Validate red instead

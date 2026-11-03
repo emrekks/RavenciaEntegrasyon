@@ -6621,7 +6621,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
-    [PostgreSqlFact]
+    [PostgreSqlFact(Lane = PostgreSqlLane.Load)]
     public async Task InvoiceWorkspacePage_ProcessesOneHundredThousandCandidatesWithUnknownStatusSnapshotsAndReturnsOnlyOnePage()
     {
         const int candidateCount = 100_000;
@@ -9323,8 +9323,10 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
     public Task DisposeAsync() => Task.CompletedTask;
 }
 
-// Every PostgreSQL test carries the trait Category=PostgreSql through its attribute, so CI can run
-// "Category=PostgreSql" and "Category!=PostgreSql" as two parallel jobs that together cover every test.
+// Every PostgreSQL test carries the trait Category=PostgreSql through its attribute, and a test that
+// sets Lane also carries PostgreSqlLane=<lane>. CI splits the tests with complementary filters
+// ("Category!=PostgreSql", "Category=PostgreSql&PostgreSqlLane!=Load", "PostgreSqlLane=Load"), so
+// together the jobs always run every test whatever the traits say.
 public sealed class PostgreSqlTraitDiscoverer : Xunit.Sdk.ITraitDiscoverer
 {
     public const string TypeName = "MarketplaceHub.Application.Tests.PostgreSqlTraitDiscoverer";
@@ -9333,12 +9335,23 @@ public sealed class PostgreSqlTraitDiscoverer : Xunit.Sdk.ITraitDiscoverer
     public IEnumerable<KeyValuePair<string, string>> GetTraits(IAttributeInfo traitAttribute)
     {
         yield return new KeyValuePair<string, string>("Category", "PostgreSql");
+        var lane = traitAttribute.GetNamedArgument<string>(nameof(PostgreSqlFactAttribute.Lane));
+        if (!string.IsNullOrWhiteSpace(lane))
+            yield return new KeyValuePair<string, string>("PostgreSqlLane", lane);
     }
+}
+
+public static class PostgreSqlLane
+{
+    // Long seeding/load tests; CI runs them in their own job beside the other PostgreSQL tests.
+    public const string Load = "Load";
 }
 
 [Xunit.Sdk.TraitDiscoverer(PostgreSqlTraitDiscoverer.TypeName, PostgreSqlTraitDiscoverer.AssemblyName)]
 public sealed class PostgreSqlFactAttribute : FactAttribute, Xunit.Sdk.ITraitAttribute
 {
+    public string? Lane { get; set; }
+
     public PostgreSqlFactAttribute()
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")))
@@ -9349,6 +9362,8 @@ public sealed class PostgreSqlFactAttribute : FactAttribute, Xunit.Sdk.ITraitAtt
 [Xunit.Sdk.TraitDiscoverer(PostgreSqlTraitDiscoverer.TypeName, PostgreSqlTraitDiscoverer.AssemblyName)]
 public sealed class PostgreSqlTheoryAttribute : TheoryAttribute, Xunit.Sdk.ITraitAttribute
 {
+    public string? Lane { get; set; }
+
     public PostgreSqlTheoryAttribute()
     {
         if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("MARKETPLACEHUB_TEST_CONNECTION")))
