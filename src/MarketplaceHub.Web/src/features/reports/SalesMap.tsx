@@ -22,7 +22,7 @@ const loaders: Record<Scope, () => Promise<MapData>> = {
 
 const metricLabels: Record<Metric, string> = { revenue: 'Ciro', orders: 'Sipariş', basket: 'Sepet Ort.' }
 const metricOptions: Array<SwitchOption<Metric>> = [
-  { key: 'revenue', text: 'Ciro', icon: 'trend' }, { key: 'orders', text: 'Sipariş', icon: 'orders' }, { key: 'basket', text: 'Sepet Ort.', icon: 'cart' }
+  { key: 'revenue', text: 'Ciro', icon: 'lira' }, { key: 'orders', text: 'Sipariş', icon: 'orders' }, { key: 'basket', text: 'Sepet Ort.', icon: 'bag' }
 ]
 const lira = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 })
 // The map's labels: whole liras, thousands kept short ("₺913", "₺55 B") so they fit their area.

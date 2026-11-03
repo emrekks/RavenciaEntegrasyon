@@ -1,3 +1,4 @@
+import { useId } from 'react'
 import { uiIconBody, type UiIconName } from './UiIcon'
 import './card-background-icon.css'
 
@@ -12,7 +13,8 @@ export type CardTone = 'warn' | 'bad' | 'ok' | 'info'
 export type CardIconName = UiIconName
 
 export function CardBackgroundIcon({ name, tone }: { name: CardIconName; tone?: CardTone }) {
+  const maskId = `cbi-${useId().replace(/:/g, '')}`
   return <i className="rv-card-bg" data-tone={tone} aria-hidden="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" focusable="false">{uiIconBody(name)}</svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" focusable="false">{uiIconBody(name, maskId)}</svg>
   </i>
 }
