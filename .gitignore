@@ -42,6 +42,14 @@ Ravencia_Entegrasyon_v*_Nihai_Uygulama_Surumu.pdf
 .claude/worktrees/
 .claude/settings.local.json
 
+# Working notes, audits and plans that stay local (this repository is public)
+GUVENLIK-PLANI-SUNUCU.md
+DENETIM-RAPORU-*.md
+TASIMA-PLANI-*.md
+KART-TASARIM.html
+YAYIN-DURUMU-TASARIM*.html
+IS-TAKIBI-RAPORU-*.md
+
 # Browser automation snapshots (Playwright MCP) and TypeScript incremental build info
 .playwright-mcp/
 *.tsbuildinfo

@@ -50,8 +50,8 @@ docker_target="$(docker info --format '{{.OSType}}/{{.Architecture}}')"
 [[ "$docker_target" == "linux/x86_64" || "$docker_target" == "linux/amd64" ]] || { echo "Linux/amd64 Docker Engine is required; detected $docker_target." >&2; exit 1; }
 
 compose_path="${DOCKER_CONFIG:-$HOME/.docker}/cli-plugins/docker-compose"
-compose_url="https://github.com/docker/compose/releases/download/v2.40.2/docker-compose-linux-x86_64"
-compose_sha256="6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88"
+compose_url="https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-x86_64"
+compose_sha256="f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959"
 if [[ -e "$compose_path" ]]; then
   actual="$(sha256sum "$compose_path" | awk '{print $1}')"
   [[ "$actual" == "$compose_sha256" ]] || { echo "Existing user Compose plugin has an unexpected checksum and was not overwritten." >&2; exit 1; }
@@ -66,10 +66,10 @@ else
   mv -- "$download" "$compose_path"
   trap - EXIT
 fi
-[[ "$(docker compose version --short)" == "2.40.2" ]] || { echo "Docker CLI did not select exact Compose 2.40.2." >&2; exit 1; }
+[[ "$(docker compose version --short)" == "5.3.1" ]] || { echo "Docker CLI did not select exact Compose 5.3.1." >&2; exit 1; }
 
 if [[ "$host_only" == true ]]; then
-  echo "Host validation is complete: Ubuntu 26.04, linux/amd64 Docker Engine, systemd and exact Compose 2.40.2 are ready."
+  echo "Host validation is complete: Ubuntu 26.04, linux/amd64 Docker Engine, systemd and exact Compose 5.3.1 are ready."
   exit 0
 fi
 

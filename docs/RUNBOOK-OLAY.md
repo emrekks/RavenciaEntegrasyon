@@ -148,8 +148,11 @@ GitHub hesabı ya da deploy anahtarı şüpheliyse sunucu da şüphelidir (GitHu
 1. GitHub hesabında şifre ve 2FA'yı yenileyin, oturumları kapatın, tanımadığınız PAT / SSH anahtarı /
    OAuth uygulamasını silin.
 2. Repo → Settings → Environments → `production`: deploy secret'larını (SSH özel anahtarı, known_hosts)
-   yenileyin; sunucuda `~/.ssh/authorized_keys` içindeki eski deploy anahtarı satırını silip yenisini
-   ekleyin (yeni anahtar `command=` kısıtlı biçimde; CI-CD-DEPLOY.md "Anahtarı yenileme / kurulum").
+   yenileyin; sunucuda anahtar 3 Kasım 2026'dan beri `ubuntu`'da değil, `deploy` kullanıcısında
+   (`/home/deploy/.ssh/authorized_keys`, root'a ait). Yenisini ubuntu olarak
+   `bash deploy/scripts/install-ci-deploy.sh "$(cat deploy_key.pub)"` ile kurun: dosyayı yalnız yeni anahtarla
+   yeniden yazar, eskisi kendiliğinden düşer. `~ubuntu/.ssh/authorized_keys`'te deploy anahtarı kalmadığını da kontrol
+   edin (anahtar `restrict,command=` kısıtlı biçimde yazılır; CI-CD-DEPLOY.md "Anahtarı yenileme / kurulum").
 3. `git log origin/main` ile son commit'leri inceleyin; tanımadığınız commit varsa `main`'i
    iyi bilinen commit'e geri getiren yeni bir commit atın (force-push yok) ve deploy edin.
 4. Yeniden kurulana kadar otomatik deploy'u durdurmak için Actions → Deploy iş akışını **Disable** edin.

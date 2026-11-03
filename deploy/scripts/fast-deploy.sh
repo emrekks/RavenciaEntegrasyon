@@ -114,14 +114,17 @@ previous_edge_image="$(running_service_image caddy)"
 #   always / never  regardless. RAVENCIA_MIGRATION_REHEARSAL, else production.env's
 #                   MARKETPLACEHUB_MIGRATION_REHEARSAL, else auto.
 # A failed or timed-out rehearsal (RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS,
-# default 1200) stops the deploy before production is touched. It is skipped
-# with a warning when the root disk is above 80%: the restore needs a second
-# copy of the database.
+# default 1200) stops the deploy before production is touched. When the root disk
+# is above 80% (the restore needs a second copy of the database) the deploy stops
+# if the migrations changed (or the running release is unknown); an "always"
+# rehearsal of unchanged migrations is only skipped with a warning.
 migration_rehearsal="${RAVENCIA_MIGRATION_REHEARSAL:-$(read_env_or MARKETPLACEHUB_MIGRATION_REHEARSAL auto)}"
 rehearsal_timeout="${RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS:-1200}"
 [[ "$migration_rehearsal" =~ ^(auto|always|never)$ ]] || { echo "Migration rehearsal must be auto, always or never (got '$migration_rehearsal')." >&2; exit 1; }
 [[ "$rehearsal_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "RAVENCIA_MIGRATION_REHEARSAL_TIMEOUT_SECONDS must be a positive integer." >&2; exit 1; }
 rehearse=false
+# true when the migrations changed since the running release, or that release is unknown
+migrations_changed=false
 case "$migration_rehearsal" in
   always) rehearse=true ;;
   never) echo "Migration rehearsal skipped (never)." ;;
@@ -130,9 +133,11 @@ case "$migration_rehearsal" in
     [[ "$previous_app_image" != marketplacehub-app:manual-* ]] || running_revision="${previous_app_image##*:manual-}"
     if [[ -z "$running_revision" ]] || ! running_full="$(git rev-parse --verify --quiet "$running_revision^{commit}")"; then
       echo "Migration rehearsal: the running release is unknown (${previous_app_image:-none}); rehearsing."
+      migrations_changed=true
       rehearse=true
     elif ! git diff --quiet "$running_full" "$full_revision" -- src/MarketplaceHub.Infrastructure/Persistence/Migrations; then
       echo "Migration rehearsal: migrations changed since $running_revision; rehearsing."
+      migrations_changed=true
       rehearse=true
     else
       echo "Migration rehearsal skipped: no migration changed since $running_revision."
@@ -144,6 +149,11 @@ esac
 if [[ "$rehearse" == true ]]; then
   root_disk_percent="$(df --output=pcent / | tail -n 1 | tr -dc '0-9')"
   if (( ${root_disk_percent:-100} > 80 )); then
+    if [[ "$migrations_changed" == true ]]; then
+      # Changed migrations would meet real rows for the first time in production: stop instead.
+      echo "Migration rehearsal is needed (the migrations changed) but the root disk is ${root_disk_percent:-?}% full and the restore needs a second database copy; production was not migrated. Free disk space, or deploy by hand with RAVENCIA_MIGRATION_REHEARSAL=never after checking the migration." >&2
+      exit 1
+    fi
     echo "::warning::Migration rehearsal skipped: the root disk is ${root_disk_percent:-?}% full and the restore needs a second database copy."
   else
     app_image_id="$(sudo -n docker image inspect --format '{{.Id}}' "$app_image")"

@@ -14,7 +14,10 @@
 #
 # Each set is uploaded once, as <folder>/<set>.tar.age (tar of the set directory, encrypted), streamed straight
 # from the backup volume to the remote without a plaintext or ciphertext copy on disk. The script never deletes
-# anything on the remote: retention there is the owner's rule, so a stolen server token cannot erase copies.
+# anything on the remote; retention there is the owner's rule. This does NOT protect the copies from a stolen
+# server: rclone.conf holds a Drive token whose drive.file scope can delete or overwrite every file this app
+# uploaded, so whoever controls the server can erase the off-site copies too. Only a destination the server
+# cannot delete from (e.g. Backblaze B2 with Object Lock, or a separately owned copy) closes that gap.
 # Restore (on the owner's computer): rclone copy <remote>:<folder>/<set>.tar.age . && age -d -i key.txt
 # <set>.tar.age | tar -x, then deploy/backup/restore-drill.sh or docs/RUNBOOK-GERI-ALMA.md section 3.
 #

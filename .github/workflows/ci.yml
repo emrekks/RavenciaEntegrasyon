@@ -108,18 +108,18 @@ jobs:
           done
 
       # Production requires exactly the Compose release install-marketplacehub.sh pins.
-      - name: Install pinned Docker Compose 2.40.2
+      - name: Install pinned Docker Compose 5.3.1
         run: |
           set -Eeuo pipefail
           plugin_dir="$HOME/.docker/cli-plugins"
           mkdir -p "$plugin_dir"
           curl --fail --silent --show-error --location \
-            https://github.com/docker/compose/releases/download/v2.40.2/docker-compose-linux-x86_64 \
+            https://github.com/docker/compose/releases/download/v5.3.1/docker-compose-linux-x86_64 \
             --output "$plugin_dir/docker-compose"
-          echo "6c964d9655cd629ef43c5dc75d9612c2da319237debee54a7aef217e9f362b88  $plugin_dir/docker-compose" | sha256sum -c -
+          echo "f9ebc6ebdb19d769b793c245a736caaeb198c62587f13b25c660c13b4987f959  $plugin_dir/docker-compose" | sha256sum -c -
           chmod 0755 "$plugin_dir/docker-compose"
           version="$(docker compose version --short)"
-          [[ "$version" == "2.40.2" ]] || { echo "Docker CLI selected Compose $version, not the pinned 2.40.2." >&2; exit 1; }
+          [[ "$version" == "5.3.1" ]] || { echo "Docker CLI selected Compose $version, not the pinned 5.3.1." >&2; exit 1; }
 
       - name: Validate merged Compose manifests
         env:
