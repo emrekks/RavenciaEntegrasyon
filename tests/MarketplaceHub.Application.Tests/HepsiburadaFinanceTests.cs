@@ -78,7 +78,7 @@ public sealed class HepsiburadaFinanceTests
         Assert.Equal(1180m, PayoutBuilder.Net(View(rows[0])));
         Assert.Equal(PayoutBuilder.Paid, PayoutBuilder.Status(View(rows[1]), today));
         Assert.Equal(-177m, PayoutBuilder.Net(View(rows[1])));
-        Assert.Contains("Offset=200&Limit=100&Status=WillBePaid&DueDateStart=2026-11-01T00%3A00%3A00",
+        Assert.Contains("Offset=200&Limit=100&Status=WillBePaid&DueDateStart=2026-11-01&DueDateEnd=2026-12-01",
             HepsiburadaFinanceRequestContract.Path("m-1", "WillBePaid", true, new DateTimeOffset(2026, 10, 31, 21, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 11, 30, 21, 0, 0, TimeSpan.Zero), 200));
     }
 }

@@ -32,7 +32,8 @@ internal static class HepsiburadaFinanceRequestContract
             + $"&{range}Start={Uri.EscapeDataString(Local(start))}&{range}End={Uri.EscapeDataString(Local(end))}";
     }
 
-    private static string Local(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(3)).ToString("yyyy-MM-ddTHH:mm:ss", CultureInfo.InvariantCulture);
+    // Istanbul calendar days, as the guide's example (dueDateStart=2021-08-01&dueDateEnd=2021-08-31); a date-time was refused (400).
+    private static string Local(DateTimeOffset value) => value.ToOffset(TimeSpan.FromHours(3)).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 }
 
 public static class HepsiburadaFinanceMapper
