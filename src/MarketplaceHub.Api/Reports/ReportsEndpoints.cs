@@ -54,7 +54,7 @@ public static class ReportsEndpoints
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
         // The records of one payout, of a store's due day in a region, or of a search by order, invoice or record number.
-        api.MapGet("/reports/payouts/lines", async (HttpContext http, IPayoutsService service, string? platformCodes, Guid? connectionId, string? payoutId, string? day, string? region, string? q, int? page) =>
+        api.MapGet("/reports/payouts/lines", async (HttpContext http, IPayoutsService service, string? platformCodes, Guid? connectionId, string? payoutId, string? day, string? region, string? kind, string? q, int? page) =>
         {
             if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
             DateOnly? due = null;
@@ -64,10 +64,10 @@ public static class ReportsEndpoints
                     return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REPORT_RANGE_INVALID", "Tarihler yyyy-AA-gg biçiminde olmalıdır.", 400);
                 due = parsed;
             }
-            if (page is < 0 or > 10_000 || q?.Length > 64 || payoutId?.Length > 64 || region?.Length > 16)
+            if (page is < 0 or > 10_000 || q?.Length > 64 || payoutId?.Length > 64 || region?.Length > 16 || kind is not (null or "" or "PAYOUT_DAY" or "DUE_DAY" or "OVERDUE"))
                 return MarketplaceHub.Api.Security.ApiProblems.Of(http, "PAYOUT_LINES_QUERY_INVALID", "Sorgu geçersiz.", 400);
             var result = await service.LinesAsync(tenant.TenantId, new PayoutQuery(Split(platformCodes), null, false),
-                new PayoutLinesQuery(connectionId, payoutId, due, region, q, page ?? 0), http.RequestAborted);
+                new PayoutLinesQuery(connectionId, payoutId, due, region, q, page ?? 0, string.IsNullOrEmpty(kind) ? null : kind), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
         return endpoints;

@@ -63,7 +63,7 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
             .Where(PayoutBuilder.Counts)
             .Select(row => (Row: row, Line: PayoutBuilder.Line(row, today)))
             .Where(x => !string.IsNullOrEmpty(search) || !string.IsNullOrEmpty(query.PayoutId)
-                || PayoutBuilder.Open(x.Line) && PayoutBuilder.Expect(x.Row, x.Line, today).Day == query.Day)
+                || PayoutBuilder.Open(x.Line) && PayoutBuilder.Expect(x.Row, x.Line, today) is var expect && expect.Day == query.Day && (query.Kind is null || expect.Kind == query.Kind))
             .Select(x => x.Line)
             .Where(line => query.Region is null || !string.IsNullOrEmpty(search) || line.Region == query.Region)
             .ToList();
@@ -157,6 +157,8 @@ internal static class PayoutBuilder
     public const string Europe = "EUROPE";
     public const string Azerbaijan = "AZ";
     public const string UnknownRegion = "UNKNOWN";
+    // The other marketplaces pay without regions; their records carry none.
+    public const string NoRegion = "NONE";
 
     private static readonly TimeZoneInfo Istanbul = DashboardReadService.ResolveTimezone("Europe/Istanbul");
 
@@ -175,7 +177,7 @@ internal static class PayoutBuilder
 
     public static string Region(string platformCode, string? country, string? affiliate)
     {
-        if (platformCode != "TRENDYOL") return TrGulf;
+        if (platformCode != "TRENDYOL") return NoRegion;
         if (string.Equals(affiliate, "TRENDYOLAZJV", StringComparison.OrdinalIgnoreCase)) return Azerbaijan;
         if (country is null) return UnknownRegion;
         if (EuropeCountries.Contains(country)) return Europe;
@@ -242,7 +244,9 @@ internal static class PayoutBuilder
     public static (DateOnly Day, string Kind) Expect(PayoutRow row, PayoutLineView line, DateOnly today)
     {
         var due = line.DueDay!.Value;
-        if (row.PlatformCode != "TRENDYOL" || line.Region != TrGulf) return (due < today ? today : due, "DUE_DAY");
+        // A record past its due day with no payout day known (Avrupa is paid about monthly, Pazarama when it says) waits
+        // apart, OVERDUE, never in the next payout's estimate.
+        if (row.PlatformCode != "TRENDYOL" || line.Region != TrGulf) return due < today ? (today, "OVERDUE") : (due, "DUE_DAY");
         var day = row.Source == TrendyolFinanceRequestContract.Settlements ? PayoutDayOnOrBefore(due) : PayoutDayOnOrAfter(due);
         return (day < today ? PayoutDayOnOrAfter(today) : day, "PAYOUT_DAY");
     }
@@ -276,7 +280,7 @@ internal static class PayoutBuilder
 
         var upcoming = open
             .GroupBy(x => (x.Row.ConnectionId, x.Expect.Day, x.Line.Region, x.Expect.Kind))
-            .Select(group => Group($"due:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}:{group.Key.Region}", group.Key.Kind, stores, group.Key.ConnectionId, group.Key.Region, null,
+            .Select(group => Group($"due:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}:{group.Key.Region}:{group.Key.Kind}", group.Key.Kind, stores, group.Key.ConnectionId, group.Key.Region, null,
                 group.Key.Day, group.Sum(x => x.Line.Net), null, group.Count(), Expected))
             .OrderBy(x => x.Day).ThenBy(x => x.PlatformCode).ThenBy(x => x.Region).ToList();
 
@@ -293,7 +297,7 @@ internal static class PayoutBuilder
             // Pazarama's paid agreements, n11's and Hepsiburada's paid records, a store's day at a time.
             .Concat(lines.Where(x => x.Row.Source is PazaramaFinanceSyncJobHandler.Source or N11SettlementSyncJobHandler.Source or HepsiburadaFinanceSyncJobHandler.Source && x.Line.Status == Paid && x.Line.DueDay is { } day && day >= today.AddDays(-daysBack))
                 .GroupBy(x => (x.Row.ConnectionId, Day: x.Line.DueDay!.Value))
-                .Select(group => Group($"paid:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}", "DUE_DAY", stores, group.Key.ConnectionId, TrGulf, null, group.Key.Day,
+                .Select(group => Group($"paid:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}", "DUE_DAY", stores, group.Key.ConnectionId, NoRegion, null, group.Key.Day,
                     group.Sum(x => x.Line.Net), group.Sum(x => x.Line.Net), group.Count(), Paid)))
             .OrderByDescending(x => x.Day).ThenBy(x => x.PlatformCode).ToList();
 
@@ -301,7 +305,7 @@ internal static class PayoutBuilder
             .Select(region =>
             {
                 var due = open.Where(x => x.Line.Region == region).ToList();
-                var next = upcoming.Where(x => x.Region == region).GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault();
+                var next = upcoming.Where(x => x.Region == region && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault();
                 return new PayoutRegionView(region, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
                     overdue.Where(x => x.Line.Region == region).Sum(x => x.Line.Net));
             })
@@ -310,9 +314,10 @@ internal static class PayoutBuilder
 
         var early = rows.Where(x => x.Source == MarketplaceFinanceSources.MoneyMovements && string.Equals(x.RequestedType, "CashAdvance", StringComparison.OrdinalIgnoreCase)
             && Day(x.TransactionDate) >= today.AddDays(-daysBack)).ToList();
-        var nextDay = upcoming.FirstOrDefault()?.Day;
+        // The next payout: the first day to come with an estimate, the waiting overdue records left out.
+        var nextDay = upcoming.FirstOrDefault(x => x.Kind != "OVERDUE")?.Day;
         var next = nextDay is { } first
-            ? upcoming.Where(x => x.Day == first).GroupBy(x => 1).Select(group => group.First() with { Key = $"next:{first:yyyy-MM-dd}", Amount = group.Sum(x => x.Amount), Records = group.Sum(x => x.Records) }).Single()
+            ? upcoming.Where(x => x.Day == first && x.Kind != "OVERDUE").GroupBy(x => 1).Select(group => group.First() with { Key = $"next:{first:yyyy-MM-dd}", Amount = group.Sum(x => x.Amount), Records = group.Sum(x => x.Records) }).Single()
             : null;
         return new(today, daysBack, open.Sum(x => x.Line.Net), open.Count, next, past.FirstOrDefault(x => x.Kind == "PAYOUT") ?? past.FirstOrDefault(),
             overdue.Sum(x => x.Line.Net), overdue.Count, early.Sum(x => Math.Abs(x.Credit - x.Debt)), early.Count, regions, upcoming, past, coverage);

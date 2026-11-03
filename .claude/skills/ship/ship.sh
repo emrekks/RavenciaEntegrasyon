@@ -78,7 +78,8 @@ validate || exit 1
 
 # 2. Queue for main.
 acquire
-git fetch -q origin
+# Only main is needed here; a plain fetch also pulls the ~200 codex/** branches every ship.
+git fetch -q origin main
 if ! git merge-base --is-ancestor origin/main "$full"; then
   echo "main moved: merging origin/main"
   git log --oneline -3 origin/main
@@ -90,7 +91,7 @@ if ! git merge-base --is-ancestor origin/main "$full"; then
   full=$(git rev-parse HEAD)
   echo "sha=$full"
   validate || { echo "not pushed: the merge with main failed Validate"; exit 1; }
-  git fetch -q origin
+  git fetch -q origin main
   git merge-base --is-ancestor origin/main "$full" || { echo "not pushed: main moved outside ship"; git log --oneline -3 origin/main; exit 1; }
 fi
 git push -q origin "$full:refs/heads/main" && echo "pushed" || { echo "not pushed"; exit 1; }
