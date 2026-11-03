@@ -65,7 +65,7 @@ public static class JobPriorityPolicy
         MarketplaceJobTypes.OrderReconciliation or MarketplaceJobTypes.ShopifyOrderReconciliation
             or MarketplaceJobTypes.ReturnReconciliation or MarketplaceJobTypes.StockReconciliation
             or MarketplaceJobTypes.ProductArchive or MarketplaceJobTypes.ProductApprovalReconcile
-            or MarketplaceJobTypes.TrendyolFinanceSync or MarketplaceJobTypes.PazaramaFinanceSync => Reconciliation,
+            or MarketplaceJobTypes.TrendyolFinanceSync or MarketplaceJobTypes.PazaramaFinanceSync or MarketplaceJobTypes.N11SettlementSync => Reconciliation,
 
         MarketplaceJobTypes.ProductSync or MarketplaceJobTypes.ShopifyProductSync or MarketplaceJobTypes.HepsiburadaProductSync
             or MarketplaceJobTypes.ReferenceSync or MarketplaceJobTypes.HepsiburadaReferenceSync or MarketplaceJobTypes.N11ReferenceSync or MarketplaceJobTypes.PazaramaReferenceSync or MarketplaceJobTypes.PttAvmReferenceSync

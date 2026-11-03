@@ -167,6 +167,8 @@ public static class DependencyInjection
         services.AddScoped<ITrendyolFinancePort>(provider => provider.GetRequiredService<TrendyolHttpClient>());
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.TrendyolFinanceSyncJobHandler>();
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.PazaramaFinanceSyncJobHandler>();
+        services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.N11SettlementSyncJobHandler>();
+        services.AddScoped<IN11SettlementPort>(provider => provider.GetRequiredService<MarketplaceHub.Infrastructure.Adapters.N11.N11HttpClient>());
         services.AddScoped<IJobHandler, MarketplaceHub.Infrastructure.Jobs.Handlers.ConnectionFullResetJobHandler>();
         services.AddScoped<IMarketplaceJobProcessor, MarketplaceJobProcessor>();
         services.Configure<TrendyolEFaturamOptions>(configuration.GetSection(TrendyolEFaturamOptions.SectionName));

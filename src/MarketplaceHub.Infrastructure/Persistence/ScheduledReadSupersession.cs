@@ -24,7 +24,7 @@ public static class ScheduledReadSupersession
         MarketplaceJobTypes.OrderInvoiceReconciliation, MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation, MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation,
         MarketplaceJobTypes.ReturnSync, MarketplaceJobTypes.HepsiburadaReturnSync, MarketplaceJobTypes.ReturnStatusSync, MarketplaceJobTypes.ReturnReconciliation,
         MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.HepsiburadaReferenceSync, MarketplaceJobTypes.N11ReferenceSync, MarketplaceJobTypes.PazaramaReferenceSync, MarketplaceJobTypes.PttAvmReferenceSync,
-        MarketplaceJobTypes.QuestionSync, MarketplaceJobTypes.TrendyolFinanceSync, MarketplaceJobTypes.PazaramaFinanceSync
+        MarketplaceJobTypes.QuestionSync, MarketplaceJobTypes.TrendyolFinanceSync, MarketplaceJobTypes.PazaramaFinanceSync, MarketplaceJobTypes.N11SettlementSync
     };
 
     public static bool IsScheduledRead(string jobType, string dedupKey) =>

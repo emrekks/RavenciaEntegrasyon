@@ -315,7 +315,7 @@ public sealed class TrendyolFinanceTests
         var finance = Assert.Single(defaults, policy => policy.ResourceType == "FINANCE");
         Assert.Equal(21_600, finance.IntervalSeconds);
         Assert.False(ScheduledJobProducer.SupportsHepsiburadaScheduledPolicy("FINANCE"));
-        Assert.False(ScheduledJobProducer.SupportsN11ScheduledPolicy("FINANCE"));
+        Assert.True(ScheduledJobProducer.SupportsN11ScheduledPolicy("FINANCE"));
         Assert.False(ScheduledJobProducer.SupportsShopifyPolicy("FINANCE"));
     }
 
