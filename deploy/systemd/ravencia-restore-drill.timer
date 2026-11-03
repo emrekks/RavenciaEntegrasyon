@@ -2,8 +2,8 @@
 Description=Run the Ravencia restore drill once a month
 
 [Timer]
-# First Sunday of the month, 22:00 Istanbul: quiet hours, after the evening
-# work and before the 23:30 nightly backup.
+# First Sunday of the month, 22:00 Istanbul: quiet hours, after the evening work. It restores the
+# newest set, normally the 11:59 Istanbul backup (08:59 UTC); the next one runs at 23:59 (20:59 UTC).
 OnCalendar=Sun *-*-01..07 19:00:00 UTC
 Persistent=true
 RandomizedDelaySec=10m

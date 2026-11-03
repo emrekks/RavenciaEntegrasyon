@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
 import { errorText, RetryRing } from '../../shared/components/AsyncState'
 import { useDialogSurface } from '../../shared/components/DesignSystem'
+import { uiIconBody, type UiIconName } from '../../shared/components/UiIcon'
 import { autoRetryLine, useAutoRetry } from '../../shared/hooks/useAutoRetry'
 import './returns-sade.css'
 import { lockPageScroll } from '../../shared/hooks/useScrollLock'
@@ -54,9 +55,20 @@ const iconPaths: Record<IconName, [ReactNode, number]> = {
   sortv: [<path d="M5 3v10M2.8 10.8 5 13l2.2-2.2M11 13V3M8.8 5.2 11 3l2.2 2.2" />, 14],
 }
 
+// The glyphs this set shares with the panel's main icon set (UiIcon: the sidebar's and the buttons'), drawn from that
+// set's geometry (24 box) scaled into this set's 16 box, so a concept is one glyph everywhere; the rest stay as drawn here.
+const sharedGlyphs: Partial<Record<IconName, UiIconName>> = {
+  search: 'search', check: 'check', close: 'close', alert: 'alert', refresh: 'refresh', upload: 'upload', copy: 'copy', dup: 'copy', edit: 'edit',
+  trash: 'trash', plus: 'plus', truck: 'truck', clock: 'clock', cal: 'calendar', box: 'orders', stock: 'stock', export: 'download', import: 'import',
+  ban: 'cancel', chev: 'chevronDown', left: 'chevronLeft', right: 'chevronRight', arrowR: 'arrowRight', open: 'externalLink', image: 'image',
+  play: 'play', on: 'circleCheck', price: 'tag'
+}
+
 export function RrIcon({ name, size, className, style }: { name: IconName; size?: number; className?: string; style?: CSSProperties }) {
   const [paths, base] = iconPaths[name]
   const s = size ?? base
+  const shared = sharedGlyphs[name]
+  if (shared) return <svg className={['rr-ico', className].filter(Boolean).join(' ')} style={style} width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><g transform="scale(.6667)">{uiIconBody(shared)}</g></svg>
   return <svg className={['rr-ico', className].filter(Boolean).join(' ')} style={style} width={s} height={s} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths}</svg>
 }
 

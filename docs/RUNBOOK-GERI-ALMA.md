@@ -52,7 +52,8 @@ Betik:
 6. Readiness, Worker sağlığı ve ön yüzü doğrular; `releases.tsv`'ye `rollback` satırı yazar,
    `.last-success`'i geri alınan SHA'ya çeker ve önceki HEAD'i `~/deploy-logs/.hold`'a yazar.
 
-**`.hold` neden önemli**: Deploy her sabah 06:20 UTC'de son yeşil SHA'yı yeniden dener. `.hold`
+**`.hold` neden önemli**: Zamanlanmış sabah deploy'u 27 Ekim 2026'da kaldırıldı, ama elle başlatılan Deploy son
+yeşil SHA'yı yeniden dener ve `main`'e gelen her push deploy edilir. `.hold`
 dosyası, geri alınan sürümün (ve atalarının) otomatik olarak geri gelmesini engeller. `main`'e yeni bir
 commit (düzeltme) geldiğinde o commit normal şekilde deploy olur ve `.hold` kalkar. Bozuk sürümü bilerek
 yeniden açmak için: `rm ~/deploy-logs/.hold` ve Actions → Deploy → Run workflow (`redeploy` işaretli).
@@ -73,7 +74,9 @@ bilinçlidir — sonraki düzeltme commit'i fast-forward ile gelir.
 
 Yedekler `marketplacehub_backup_staging` volume'ündedir (`<UTC zaman damgası>/database.dump`,
 `private-volumes.tar.gz`, `SHA256SUMS`). Her deploy ve geri alma öncesinde taze set alınır; saklama:
-son 72 saat tümü, 7 gün günlük, 4 hafta haftalık. Disk %85'i geçecekse en eski haftalık setler önce
+son 72 saatin en yeni 5 seti + son 7 günün her yarım gününün en yeni seti + daha eski 4 haftanın ve 6 ayın
+her birinin en yeni seti; en yeni set her durumda kalır (`deploy/backup/backup.sh`, `BACKUP_KEEP_*`). Disk
+%85'i geçecekse en eski haftalık setler önce
 silinir — yani bir haftadan eski bir noktaya dönüş her zaman garanti değildir.
 
 1. **Hangi set?** Bozan deploy'un hemen öncesindeki set: `releases.tsv`'deki deploy zamanından hemen

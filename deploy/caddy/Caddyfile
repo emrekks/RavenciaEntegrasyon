@@ -3,6 +3,13 @@
   auto_https disable_redirects
 }
 
+# Container healthcheck only (compose: wget http://127.0.0.1:8081/healthz); kept in step with Caddyfile.production.
+http://127.0.0.1:8081 {
+  bind 127.0.0.1
+  respond /healthz "ok" 200
+  respond 404
+}
+
 {$MARKETPLACEHUB_SITE_ADDRESS:https://localhost} {
   # Kept in step with Caddyfile.production: API/SignalR responses are not compressed (BREACH class).
   @compressible not path /api/* /hubs/*

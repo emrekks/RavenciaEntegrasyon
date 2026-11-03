@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 # Keeps CrowdSec's allowlists current (security plan B5); runs daily as root from a
-# root-owned copy (/usr/local/sbin/ravencia-crowdsec-allowlist, ravencia-crowdsec-allowlist.timer):
+# root-owned copy (/usr/local/lib/ravencia/deploy/scripts, ravencia-crowdsec-allowlist.timer):
 #   github-actions    GitHub Actions runner ranges, key "actions" of https://api.github.com/meta
 #                     (the Deploy workflow connects from them; a ban would stop deploys)
 #   ravencia-private  loopback, private and link-local ranges (Docker bridges, the host)

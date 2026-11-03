@@ -1,7 +1,7 @@
 ---
 name: prod-logs
-description: Reads the live containers on EC2 (marketplacehub-api-1, -worker-1, -caddy-1, -postgres-1) without changing anything - which image and sha each one runs, its state and health, and its recent logs filtered by time or a pattern. Use to check a deploy reached live, to see why a job or request failed, or to look for errors after a change.
-argument-hint: "[status | logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX] | errors [--since 30m] | journal <service> [--since 30m] [--grep REGEX]]"
+description: Reads the live Hostinger server without changing anything - which image and sha each container (marketplacehub-api-1, -worker-1, -caddy-1, -postgres-1) runs, its state and health, its recent logs filtered by time or a pattern, and the host itself (disk, timers, failed units, backup sets, CrowdSec). Use to check a deploy reached live, to see why a job or request failed, or to look for errors after a change.
+argument-hint: "[status | host [--since 6h] | logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX] | errors [--since 30m] | journal <service> [--since 30m] [--grep REGEX]]"
 ---
 
 # Read-only logs and state on live
@@ -13,6 +13,10 @@ The live server is read-only for us: never restart, edit or write anything there
 ```bash
 # Image (sha tag), state, health, start time and restart count of every container:
 bash "$CLAUDE_PROJECT_DIR/.claude/skills/prod-logs/run.sh" status
+
+# The host: disk, ravencia-* timers and their journal, failed units, backup sets with sizes, CrowdSec
+# simulation state, alerts, decisions and parsed lines (--since applies to the journal part, default 6h):
+bash "$CLAUDE_PROJECT_DIR/.claude/skills/prod-logs/run.sh" host --since 12h
 
 # One container's logs; --since takes 30m, 2h or an ISO time, --grep an extended regex (case-insensitive):
 bash "$CLAUDE_PROJECT_DIR/.claude/skills/prod-logs/run.sh" logs worker --since 2h --grep 'Trendyol|cursor'
