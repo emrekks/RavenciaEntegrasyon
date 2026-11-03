@@ -13,7 +13,7 @@
 # shellcheck disable=SC2154
 
 if ! declare -p sudo_cmd >/dev/null 2>&1; then
-  sudo_cmd=(sudo -n)
+  if (( EUID == 0 )); then sudo_cmd=(); else sudo_cmd=(sudo -n); fi
 fi
 
 # Every production script needs these files; callers may pass extra names.

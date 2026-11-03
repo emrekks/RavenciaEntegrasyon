@@ -23,7 +23,8 @@ environment_file="$repository_root/deploy/secrets/production.env"
 state_dir="${STATE_DIRECTORY:-${RAVENCIA_HEALTHWATCH_STATE:-$HOME/.local/state/ravencia-healthwatch}}"
 mkdir -p -- "$state_dir"
 
-sudo_cmd=(sudo -n)
+# The systemd units run this as root (NoNewPrivileges, no sudo); by hand it escalates with sudo.
+if (( EUID == 0 )); then sudo_cmd=(); else sudo_cmd=(sudo -n); fi
 # shellcheck source=/dev/null
 source "$script_dir/lib.sh"
 

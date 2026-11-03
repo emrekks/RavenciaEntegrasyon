@@ -1,0 +1,25 @@
+[Unit]
+Description=Monthly Ravencia maintenance: OS and kernel updates, reboot only when required
+Documentation=file:///home/ubuntu/RavenciaEntegrasyon/docs/CI-CD-DEPLOY.md
+After=network-online.target
+Wants=network-online.target
+OnFailure=ravencia-alert@%n.service
+
+[Service]
+Type=oneshot
+# Root: apt, apt-mark and the reboot. The script is a root-owned copy installed by
+# install-backup-timer.sh, not the repository file. Docker Engine stays on hold unless
+# RAVENCIA_MAINTENANCE_DOCKER=allow is set here (see the script header).
+EnvironmentFile=-/etc/default/ravencia-maintenance
+Environment=RAVENCIA_DEPLOY_LOCK=/home/ubuntu/deploy-logs/.lock
+ExecStart=/usr/local/sbin/ravencia-maintenance
+# Up to 60 minutes waiting for a deploy plus the upgrade itself.
+TimeoutStartSec=120min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+# apt and dpkg write all over the system; only the kernel-facing switches are closed.
+ProtectClock=yes
+ProtectHostname=yes
+RestrictRealtime=yes
+LockPersonality=yes

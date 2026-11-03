@@ -5,9 +5,12 @@
 # merges origin/main, validates that merge and pushes it; no other ship can move main meanwhile.
 # Read-only on the server (docker inspect). Usage: ship.sh [topic]
 set -u
-host="${RAVENCIA_SSH_HOST:-ubuntu@187.126.24.163}"
-# The host key has a passphrase and lives in the Windows ssh-agent, which only Windows OpenSSH can reach.
-if [ -n "${RAVENCIA_SSH_KEY:-}" ]; then sshx=(ssh -i "$RAVENCIA_SSH_KEY" -o BatchMode=yes)
+host="${RAVENCIA_SSH_HOST:-ravencia-ro@187.126.24.163}"
+# Default: the read-only ravencia-ro login (key without passphrase, forced command on the server).
+# RAVENCIA_SSH_KEY picks another key; another RAVENCIA_SSH_HOST without a key uses the Windows ssh-agent,
+# which only Windows OpenSSH can reach (the request then runs through the same ravencia-ro command).
+if [ -n "${RAVENCIA_SSH_KEY:-}" ] || [[ "$host" == ravencia-ro@* ]]; then
+  sshx=(ssh -i "${RAVENCIA_SSH_KEY:-$HOME/.ssh/ravencia_ro}" -o IdentitiesOnly=yes -o BatchMode=yes)
 elif [ -x /c/Windows/System32/OpenSSH/ssh.exe ]; then sshx=(/c/Windows/System32/OpenSSH/ssh.exe -o BatchMode=yes)
 else sshx=(ssh -o BatchMode=yes); fi
 topic="${1:-$(git rev-parse --abbrev-ref HEAD)}"
@@ -95,7 +98,7 @@ release
 
 images=""
 for _ in $(seq 1 80); do
-  images=$("${sshx[@]}" "$host" "sudo docker inspect -f '{{.Config.Image}}' marketplacehub-caddy-1 marketplacehub-api-1 marketplacehub-worker-1" 2>/dev/null | tr '\n' ' ')
+  images=$("${sshx[@]}" "$host" "ravencia-ro images" 2>/dev/null | tr '\n' ' ')
   [ "$(echo "$images" | grep -o "${full:0:12}" | wc -l)" = "3" ] && { echo "live: $images"; exit 0; }
   sleep 30
 done

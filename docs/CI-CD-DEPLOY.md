@@ -92,16 +92,30 @@ bu kural ona engel olmaz).
 | Secret (`production` environment) | Değer |
 | --- | --- |
 | `DEPLOY_HOST` | Sunucu IP/DNS adresi (Hostinger KVM 4, `187.126.24.163`) |
-| `DEPLOY_USER` | `ubuntu` |
+| `DEPLOY_USER` | `deploy` (3 Kasım 2026'dan beri; ayrı, kısıtlı kullanıcı, bkz. Güvenlik modeli) |
 | `DEPLOY_SSH_KEY` | Deploy özel anahtarı (ed25519, tüm içerik) |
 | `DEPLOY_KNOWN_HOSTS` | `ssh-keyscan` / sunucu host key satırı (`<host> ssh-ed25519 AAAA...`) |
 | `ALERT_WEBHOOK_URL` | *(isteğe bağlı)* Validate (main) veya Deploy başarısız olunca bildirim; sunucudaki `alert_webhook_url.txt` ile aynı biçim |
 
 ## Güvenlik modeli
 
-- Deploy anahtarı `authorized_keys` içinde `restrict,command="/usr/local/bin/ravencia-ci-deploy"` ile
-  kısıtlıdır: shell, port yönlendirme ve başka komut çalıştıramaz. Script root'a aittir; repo pull'u
-  bu anahtarın yetkisini değiştiremez.
+- Deploy anahtarı yalnız **`deploy`** kullanıcısında, `/home/deploy/.ssh/authorized_keys` içinde
+  `restrict,command="/usr/local/bin/ravencia-ci-deploy"` ile kısıtlıdır: shell, port yönlendirme ve başka komut
+  çalıştıramaz. Hem anahtar dosyası hem script root'a aittir; repo pull'u ya da `deploy` kullanıcısı bu yetkiyi
+  değiştiremez. `deploy`'un şifresi kilitli ve tek `sudo` hakkı bu scripti repo sahibi olarak çalıştırmaktır
+  (`/etc/sudoers.d/ravencia-deploy`: `deploy ALL=(ubuntu) NOPASSWD: /usr/local/bin/ravencia-ci-deploy`). Script
+  `deploy` olarak başlayınca isteği doğrular ve `sudo -n -u ubuntu` ile kendini yeniden çalıştırır; repo,
+  `~/deploy-logs` ve kilit `ubuntu`'da kalır. sshd `AllowUsers ubuntu deploy ravencia-ro`.
+  Not: deploy zinciri (`fast-deploy.sh`) bugün `ubuntu`'nun şifresiz `sudo`'suyla Docker'ı yönetir; güvenlik
+  planındaki A4 (`ubuntu`'dan `NOPASSWD` kaldırma) bu zincir root'a taşınmadan yapılamaz.
+- **Salt okunur erişim (`ravencia-ro`)**: Claude'un `/prod-sql`, `/prod-logs` ve `ship.sh` kontrolleri ayrı bir
+  kullanıcıyla ve parolasız ayrı bir anahtarla (`~/.ssh/ravencia_ro`, yalnız bu iş için) girer. Zorunlu komut
+  `/usr/local/bin/ravencia-ro` (`deploy/scripts/readonly-entrypoint.sh`, root'a ait) yalnız şunları kabul eder:
+  `sql` (stdin; `BEGIN READ ONLY … ROLLBACK`, `default_transaction_read_only=on`, 5 dk `statement_timeout`; yalnız
+  SELECT/WITH/VALUES/TABLE/EXPLAIN/SHOW, `\echo` ve `\x` dışında psql komutu yok, blok yorum ve string içinde
+  ters bölü yok, yan etkili sunucu fonksiyonları yok), `status`, `images`, `logs`, `errors`, `journal`. Tek `sudo`
+  hakkı bu scripti root olarak çalıştırmaktır (`/etc/sudoers.d/ravencia-ro`). Kurulum/yenileme:
+  `bash deploy/scripts/install-readonly-access.sh ["$(cat ravencia_ro.pub)"]`.
 - Sunucu host key'i `StrictHostKeyChecking=yes` ile sabitlenir.
 - Deploy işi repo kodunu çalıştırmaz; yalnızca SSH ile SHA gönderir.
 - Actions'lar commit SHA ile sabitlenmiştir (yorumda sürüm). `.github/dependabot.yml` haftalık
@@ -113,11 +127,13 @@ bu kural ona engel olmaz).
 
 ```bash
 ssh-keygen -t ed25519 -N "" -C github-actions-ravencia-deploy -f deploy_key
-# sunucuda, repo kökünden:
+# sunucuda, ubuntu olarak repo kökünden (deploy kullanıcısını, sudoers kuralını ve AllowUsers'ı da kurar;
+# /home/deploy/.ssh/authorized_keys'i bu tek anahtarla yeniden yazar):
 bash deploy/scripts/install-ci-deploy.sh "$(cat deploy_key.pub)"
 ```
 
-Eski anahtarı `~/.ssh/authorized_keys` içinden silin ve `DEPLOY_SSH_KEY` secret'ını güncelleyin.
+`DEPLOY_SSH_KEY` secret'ını güncelleyin (`DEPLOY_USER` = `deploy`). Anahtar `ubuntu`'nun `authorized_keys`'inde
+durmamalıdır. Argümansız `install-ci-deploy.sh` yalnız `/usr/local/bin/ravencia-ci-deploy` kopyasını yeniler.
 
 ## Veritabanı bağlantısı ve PostgreSQL
 
@@ -181,6 +197,9 @@ MaxRetentionSec=30day
   kaydı kaldırılmalıdır. Canlıda bir IPv6 istemciden istek atıp Caddy erişim
   kaydındaki `remote_ip` değerinin istemcinin adresi olduğu doğrulanmalıdır. Sunucunun AAAA kaydı yoksa
   bu durum oluşmaz. Bkz. `deploy/compose/compose.yaml` içindeki `caddy` notu.
+  **Canlıda 3 Kasım 2026'dan beri `"userland-proxy": false`** (AAAA kaydı yok, ufw IPv6'da yalnız 22'yi açıyor):
+  80/443 IPv6'da hiç dinlenmez; IPv4 istemcilerin adresi Caddy'de olduğu gibi görünür, sunucudaki loopback
+  kontrolleri (`--resolve …:127.0.0.1`) köprü ağ geçidi adresiyle gelir ve `/health/ready` onlara 200 döner.
 
 ## İşletim: zamanlayıcılar, alarm, izleme
 
@@ -191,8 +210,51 @@ MaxRetentionSec=30day
 | `ravencia-backup.timer` | 08:59 ve 20:59 UTC (11:59 ve 23:59 TR), `Persistent=true` | `daily-backup.sh`: api/caddy konteynerlerini 5 dk'ya kadar bekler, taze yedek + doğrulama |
 | `ravencia-restore-drill.timer` | ayın ilk Pazar'ı 19:00 UTC (22:00 TR) | `monthly-restore-drill.sh`: en yeni seti izole konteynerlere geri yükler, migration/API/Worker sağlığını doğrular |
 | `ravencia-healthwatch.timer` | 5 dakikada bir, günün her saati | `healthwatch.sh`: `/health/ready`, `/health/queues`, Worker sağlığı; sağlıksız API'yi yeniden başlatır |
-| `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
+| `ravencia-maintenance.timer` | ayın ilk Pazar'ı 01:00 UTC (04:00 TR), kaçan pencere sonradan yapılmaz | `/usr/local/sbin/ravencia-maintenance` (`monthly-maintenance.sh`'ın root'a ait kopyası): deploy kilidini bekler ve tutar, `apt-get full-upgrade`; yalnız `/var/run/reboot-required` varsa yeniden başlatır |
+| `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat, bakım) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
 | `ravencia-deploy-guard.service` | açılışta etkin, iş kapanışta | `wait-for-deploy-lock.sh`: süren deploy'un kilidini en çok 23 dk bekler |
+
+Yedek, tatbikat, healthwatch, bakım ve alarm birimleri 3 Kasım 2026'dan beri `ubuntu` değil **root** olarak
+çalışır (`sudo` kullanmazlar; `NoNewPrivileges`, `ProtectSystem=full`, `ProtectHome=read-only`, çekirdek
+ayarlarına/modüllerine erişim kapalı vb.). Betikler root iken `sudo_cmd` boş kalır, elle (ubuntu) çalıştırılınca
+`sudo -n` kullanır. Tatbikat biriminde `PrivateTmp` yoktur: `restore-drill.sh` geçici dizindeki dosyaları
+konteynerlere bağlar. Yalnız deploy-guard `ubuntu` olarak kalır.
+
+**Aylık bakım (`/etc/default/ravencia-maintenance`):** `RAVENCIA_MAINTENANCE_DOCKER=hold` (varsayılan) Docker
+Engine/containerd'yi apt hold'da tutar; bir sonraki pencerede güncellenmeleri için `allow` yazılır (daemon
+`live-restore` ile çalıştığından konteynerler yeniden başlamaz; pencereden sonra yine `hold`'a çekilmesi önerilir).
+`docker-compose-plugin` her durumda hold'da kalır (deploy davranışı ona bağlı). `RAVENCIA_MAINTENANCE_REBOOT=never`
+yeniden başlatmayı kapatır. Elle deneme: `sudo systemctl start ravencia-maintenance.service`.
+
+**Docker daemon (`deploy/docker/daemon.json` → `/etc/docker/daemon.json`, elle kurulur):** `live-restore`,
+varsayılan `no-new-privileges`, `userland-proxy: false` (IPv6'da 80/443 artık dinlenmez; IPv4 istemci adresi
+Caddy'ye olduğu gibi ulaşır, loopback'ten gelen sağlık kontrolü köprü ağ geçidi adresiyle özel aralıkta kalır),
+varsayılan log sürücüsü journald (`tag {{.Name}}`, compose ile aynı).
+
+## CrowdSec (güvenlik planı B1–B8)
+
+`deploy/scripts/install-crowdsec.sh` (ubuntu olarak, bir kez; tekrar çalıştırılabilir): CrowdSec'in kendi apt
+deposu (`noble` paketi), journald kaynakları (`deploy/crowdsec/acquis-ravencia.yaml`: sshd ve Caddy JSON erişim
+logu), koleksiyonlar `linux`, `sshd`, `caddy`, `http-cve`, `base-http-scenarios` ve `whitelists` ayrıştırıcısı,
+nftables firewall bouncer (IPv4 + IPv6, `input` ve `forward` kancaları, öncelik -10: Docker'a giden 80/443
+trafiği `forward`'dan geçer, iptables'taki `DOCKER-USER` karşılığı). İzin listeleri (`cscli allowlists`):
+`github-actions` (api.github.com/meta `actions`, `ravencia-crowdsec-allowlist.timer` ile her gün) ve
+`ravencia-private`. Kontrol: `sudo cscli metrics show acquisition parsers`, `sudo cscli alerts list`.
+
+İlk kurulum **simülasyon modunda** başlar (3 Kasım 2026): uyarılar kaydedilir, hiçbir IP banlanmaz ve topluluk
+blok listesi çekilmez (`/etc/crowdsec/config.yaml.local`). fail2ban bu süre boyunca çalışmaya devam eder.
+**7 gün sonra banı açmak** (yanlış pozitifler `sudo cscli alerts list` ile gözden geçirildikten sonra):
+
+```bash
+sudo cscli simulation disable --global
+# topluluk blok listesi: deploy/crowdsec/config.yaml.local'da pull değerlerini true yapıp yeniden kurun
+# (ya da /etc/crowdsec/config.yaml.local'ı silin)
+sudo systemctl reload crowdsec
+sudo cscli decisions list            # bundan sonra banlar nftables'a gider
+sudo systemctl disable --now fail2ban   # CrowdSec banları doğrulandıktan sonra
+```
+
+Yanlış ban: `sudo cscli decisions delete --ip <IP>` (gerekirse VNC konsolundan).
 
 **Yedek saklama** (`deploy/backup/backup.sh`): son 72 saatin en yeni **5** seti + son **7 günün** her yarım
 gününün en yeni seti + daha eski 4 haftanın her birinin ve 6 ayın her birinin en yeni seti; en yeni set her

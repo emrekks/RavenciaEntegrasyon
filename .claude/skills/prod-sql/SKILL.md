@@ -19,6 +19,10 @@ bash "$CLAUDE_PROJECT_DIR/.claude/skills/prod-sql/run.sh" path/to/query.sql
 
 - The SQL runs inside `BEGIN READ ONLY; … ROLLBACK;` on a session opened with `default_transaction_read_only=on`,
   so a stray write fails instead of applying. Do not add `BEGIN`, `COMMIT` or `ROLLBACK` yourself.
+- The script logs in as the read-only `ravencia-ro` user (key `~/.ssh/ravencia_ro`); the server adds the wrapper and
+  refuses, before running anything: statements other than SELECT / WITH / VALUES / TABLE / EXPLAIN / SHOW, psql
+  commands other than `\echo` and `\x`, `/* */` comments, backslashes inside strings (write `[0-9]`, not `\d`) and
+  side-effect functions such as `pg_terminate_backend` or `set_config`. Statements time out after 5 minutes.
 - The first error stops the run; check the column names with `--columns` instead of guessing.
 - Useful tables: `sales.orders`, `sales.order_lines`, `sales.shipment_packages`, `sales.return_claims`,
   `integration.jobs`, `integration.job_attempts`, `integration.sync_cursors`, `integration.connection_sync_policies`,

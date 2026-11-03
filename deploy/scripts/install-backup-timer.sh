@@ -6,9 +6,13 @@ set -Eeuo pipefail
 #   ravencia-backup.timer         verified backup twice a day (08:59 and 20:59 UTC)
 #   ravencia-restore-drill.timer  monthly isolated restore drill
 #   ravencia-healthwatch.timer    5-minute health watch + API self-heal
+#   ravencia-maintenance.timer    monthly OS/kernel updates, reboot only when required
+#                                 (script copied root-owned to /usr/local/sbin)
 #   ravencia-alert@.service       alert sender used by OnFailure= and the watch
 #   ravencia-deploy-guard.service holds a host shutdown while a deploy holds its lock
 #                                 (with the session-.scope.d ordering drop-in)
+# Backup, restore drill, health watch, maintenance and alerts run as root with systemd
+# hardening (no sudo); only the deploy guard runs as ubuntu.
 # Alerts are delivered only after deploy/secrets/alert_webhook_url.txt exists.
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -22,13 +26,26 @@ units=(
   ravencia-restore-drill.timer
   ravencia-healthwatch.service
   ravencia-healthwatch.timer
+  ravencia-maintenance.service
+  ravencia-maintenance.timer
   ravencia-deploy-guard.service
 )
-timers=(ravencia-backup.timer ravencia-restore-drill.timer ravencia-healthwatch.timer)
+timers=(ravencia-backup.timer ravencia-restore-drill.timer ravencia-healthwatch.timer ravencia-maintenance.timer)
 
 for unit in "${units[@]}"; do
   sudo -n install -m 0644 "$unit_dir/$unit" "/etc/systemd/system/$unit"
 done
+sudo -n install -o root -g root -m 0755 -- "$script_dir/monthly-maintenance.sh" /usr/local/sbin/ravencia-maintenance
+# Operator switches for the maintenance window; kept when it already exists.
+if ! sudo -n test -e /etc/default/ravencia-maintenance; then
+  printf '%s\n' \
+    '# Read by ravencia-maintenance.service (deploy/scripts/monthly-maintenance.sh).' \
+    '# hold: Docker Engine/containerd stay on apt hold. allow: upgrade them in the next window.' \
+    'RAVENCIA_MAINTENANCE_DOCKER=hold' \
+    '# auto: reboot when /var/run/reboot-required exists. never: only report it.' \
+    'RAVENCIA_MAINTENANCE_REBOOT=auto' \
+    | sudo -n tee /etc/default/ravencia-maintenance >/dev/null
+fi
 sudo -n install -d -m 0755 /etc/systemd/system/session-.scope.d
 sudo -n install -m 0644 "$unit_dir/session-.scope.d/ravencia-deploy-guard.conf" /etc/systemd/system/session-.scope.d/ravencia-deploy-guard.conf
 sudo -n systemctl daemon-reload

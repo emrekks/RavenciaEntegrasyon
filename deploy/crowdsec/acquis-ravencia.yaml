@@ -1,0 +1,19 @@
+# Installed as /etc/crowdsec/acquis.d/ravencia.yaml by deploy/scripts/install-crowdsec.sh.
+# Both sources come from journald (the host has no auth.log; containers log with the
+# journald driver, see compose.production.yaml).
+#
+# sshd: syslog-style lines (journalctl's default short output) for the syslog parser.
+source: journalctl
+journalctl_filter:
+  - "_SYSTEMD_UNIT=ssh.service"
+labels:
+  type: syslog
+---
+# Caddy JSON access log: "-o cat" passes the bare JSON line, which the caddy-logs parser
+# reads when the event type is "caddy".
+source: journalctl
+journalctl_filter:
+  - "--output=cat"
+  - "CONTAINER_NAME=marketplacehub-caddy-1"
+labels:
+  type: caddy

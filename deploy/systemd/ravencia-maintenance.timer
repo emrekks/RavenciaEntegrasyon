@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the Ravencia maintenance window once a month
+
+[Timer]
+# First Sunday of the month, 04:00 Istanbul (01:00 UTC): the quietest hour, away from
+# the backups (08:59 and 20:59 UTC) and the restore drill (first Sunday 19:00 UTC).
+# Not Persistent: a missed window is not caught up at a random time after a boot.
+OnCalendar=Sun *-*-01..07 01:00:00 UTC
+AccuracySec=1min
+Unit=ravencia-maintenance.service
+
+[Install]
+WantedBy=timers.target

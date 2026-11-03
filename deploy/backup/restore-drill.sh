@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Already root (the restore-drill unit runs with NoNewPrivileges, where sudo cannot be used): run the commands directly.
+if (( EUID == 0 )); then
+  sudo() { "$@"; }
+fi
+
 usage() {
   echo "usage: restore-drill.sh [--migration-only] BACKUP_SET APP_IMAGE [SECRETS_ROOT] [BACKUP_VOLUME]" >&2
   exit 2

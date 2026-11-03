@@ -15,11 +15,24 @@ set -Eeuo pipefail
 # A dropped SSH session must not interrupt a deployment in the middle of a migration.
 trap '' HUP
 
-request="${SSH_ORIGINAL_COMMAND:-}"
+# The key logs in as the dedicated "deploy" user (install-ci-deploy.sh), whose only sudo
+# right is to run this script as the repository owner; there the request arrives as $1.
+request="${SSH_ORIGINAL_COMMAND:-${1:-}}"
 [[ "$request" =~ ^([0-9a-f]{40})(\ redeploy)?$ ]] || { echo "Usage: ssh <host> '<40-character commit SHA> [redeploy]'" >&2; exit 2; }
 revision="${BASH_REMATCH[1]}"
 redeploy=false
 [[ -z "${BASH_REMATCH[2]}" ]] || redeploy=true
+
+ssh_user="${RAVENCIA_CI_DEPLOY_SSH_USER:-deploy}"
+run_as="${RAVENCIA_CI_DEPLOY_RUN_AS:-ubuntu}"
+if [[ "$(id -un)" == "$ssh_user" ]]; then
+  exec sudo -n -u "$run_as" /usr/local/bin/ravencia-ci-deploy "$request"
+fi
+# After the sudo hop, HOME is the repository owner's own (the repository and deploy-logs live there).
+if [[ -n "${SUDO_USER:-}" ]]; then
+  HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
+  export HOME
+fi
 
 repository_root="${RAVENCIA_REPOSITORY_ROOT:-$HOME/RavenciaEntegrasyon}"
 log_dir="$HOME/deploy-logs"
