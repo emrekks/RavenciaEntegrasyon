@@ -172,7 +172,9 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
         foreach (var payout in pending.Take(perSlice))
         {
             var records = new List<RemoteStatementRecord>();
-            foreach (var query in Queries(rejected))
+            // Not the service-fee filter: asked by payout id, Trendyol ignores transactionSubType and answers every deduction
+            // invoice of the payout (4 Nov 2026: 95 cargo invoices came back marked as platform service fees).
+            foreach (var query in Queries(rejected).Where(query => query.SubType is null))
             {
                 for (var page = 0; page < MaximumPages; page++)
                 {

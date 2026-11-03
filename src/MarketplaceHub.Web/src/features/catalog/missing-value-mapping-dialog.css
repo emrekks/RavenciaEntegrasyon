@@ -146,37 +146,3 @@
 .missing-value-mapping > footer > button.secondary { color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: var(--rv-color-border-strong); }
 .missing-value-mapping > footer > button.secondary:hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .missing-value-mapping > footer > button:disabled { cursor: not-allowed; opacity: .55; }
-
-/* The publish card's entry point: a compact secondary control with the number of open values. */
-:is(.app-shell.stitch-shell main, body) .publish-platform-card .publish-platform-fix-mappings {
-  display: inline-flex;
-  align-items: center;
-  justify-self: start;
-  gap: 8px;
-  height: 36px;
-  min-height: 0;
-  margin: 4px 16px 12px;
-  padding: 0 12px;
-  color: var(--rv-color-primary);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 600;
-  background: var(--rv-color-surface);
-  border: 1px solid color-mix(in srgb, var(--rv-color-primary) 40%, var(--rv-color-border-strong));
-  border-radius: 7px;
-  box-shadow: none;
-  cursor: pointer;
-}
-:is(.app-shell.stitch-shell main, body) .publish-platform-card .publish-platform-fix-mappings:hover { background: var(--rv-color-primary-soft, color-mix(in srgb, var(--rv-color-primary) 10%, transparent)); }
-.publish-platform-fix-mappings .publish-platform-fix-count {
-  display: inline-grid;
-  min-width: 20px;
-  height: 20px;
-  place-items: center;
-  padding: 0 6px;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--rv-color-primary-fill, var(--rv-color-primary));
-  border-radius: 7px;
-}

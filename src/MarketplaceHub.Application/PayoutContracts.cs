@@ -6,7 +6,8 @@ namespace MarketplaceHub.Application;
 public sealed record PayoutQuery(IReadOnlyList<string>? PlatformCodes, IReadOnlyList<Guid>? ConnectionIds, bool IncludeTest);
 
 // The records of one group (a store's due day in a region, or one payout), or every record matching a search.
-public sealed record PayoutLinesQuery(Guid? ConnectionId, string? PayoutId, DateOnly? Day, string? Region, string? Search, int Page);
+// Kind: the group's kind (PAYOUT_DAY, DUE_DAY, OVERDUE) when a day is asked; null takes them all.
+public sealed record PayoutLinesQuery(Guid? ConnectionId, string? PayoutId, DateOnly? Day, string? Region, string? Search, int Page, string? Kind = null);
 
 // Expected: the balance, every record not paid yet (Trendyol's "Toplam Güncel Bakiye" is the same sum). Unknown: its
 // part whose due day has passed with no payout seen yet (not "unpaid": Avrupa is paid about monthly, and a payout is
@@ -31,9 +32,11 @@ public sealed record PayoutView(
 public sealed record PayoutRegionView(string Region, decimal Expected, int Records, DateOnly? NextDay, decimal? NextAmount, decimal Unknown);
 
 // Kind PAYOUT_DAY: a store's open records expected on an estimated payout day in a region (Trendyol Türkiye-Körfez);
-// DUE_DAY: on their due day (the other regions and marketplaces; Status EXPECTED, an estimate; for Pazarama's paid
-// agreements Status PAID). Kind PAYOUT: a payout the marketplace made (Status PAID); Amount is the marketplace's own figure, LinesAmount what
-// the records it paid add up to (null when none was read yet). RegionName: as the marketplace named the payout's region.
+// DUE_DAY: on their due day (the other regions and marketplaces; Status EXPECTED, an estimate; for paid agreements and
+// records of the other marketplaces Status PAID); OVERDUE: past their due day with no payout day known (left out of the
+// next payout). Region NONE: a marketplace that pays without regions. Kind PAYOUT: a payout the marketplace made (Status
+// PAID); Amount is the marketplace's own figure, LinesAmount what the records it paid add up to (null when none was read
+// yet). RegionName: as the marketplace named the payout's region.
 public sealed record PayoutGroupView(string Key, string Kind, Guid ConnectionId, string PlatformCode, string StoreName, string Region, string? RegionName,
     DateOnly Day, decimal Amount, decimal? LinesAmount, int Records, string Status);
 
