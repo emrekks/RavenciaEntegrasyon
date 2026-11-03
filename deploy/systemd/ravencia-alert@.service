@@ -5,8 +5,8 @@ Description=Send a Ravencia operator alert for the failed unit %i
 [Service]
 Type=oneshot
 User=root
-WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
-ExecStart=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/send-alert.sh "%i failed; see: journalctl -u %i -n 100"
+WorkingDirectory=/usr/local/lib/ravencia
+ExecStart=/usr/local/lib/ravencia/deploy/scripts/send-alert.sh "%i failed; see: journalctl -u %i -n 100"
 TimeoutStartSec=2min
 # Runs as root (no sudo, so NoNewPrivileges holds) and drives Docker through its socket.
 # The repository stays readable; the host system and home directories are read-only here.

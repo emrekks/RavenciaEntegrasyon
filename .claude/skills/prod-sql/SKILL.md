@@ -1,6 +1,6 @@
 ---
 name: prod-sql
-description: Runs read-only SQL against the live PostgreSQL (EC2, docker marketplacehub-postgres-1) - wrapped in BEGIN READ ONLY ... ROLLBACK on a read-only session - and lists a table's real column names before a query is written. Use to check live data, sync cursors, jobs or report numbers.
+description: Runs read-only SQL against the live PostgreSQL (Hostinger server, docker marketplacehub-postgres-1, as the read-only role ravencia_ro) - wrapped in BEGIN READ ONLY ... ROLLBACK on a read-only session - and lists a table's real column names before a query is written. Use to check live data, sync cursors, jobs or report numbers.
 argument-hint: "[--columns schema.table | -c \"SQL\" | file.sql]"
 ---
 

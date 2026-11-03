@@ -7,12 +7,12 @@ OnFailure=ravencia-alert@%n.service
 
 [Service]
 Type=oneshot
-# Root: apt, apt-mark and the reboot. The script is a root-owned copy installed by
+# Root: apt, apt-mark and the reboot. The script is the root-owned copy (/usr/local/lib/ravencia) installed by
 # install-backup-timer.sh, not the repository file. Docker Engine stays on hold unless
 # RAVENCIA_MAINTENANCE_DOCKER=allow is set here (see the script header).
 EnvironmentFile=-/etc/default/ravencia-maintenance
 Environment=RAVENCIA_DEPLOY_LOCK=/home/ubuntu/deploy-logs/.lock
-ExecStart=/usr/local/sbin/ravencia-maintenance
+ExecStart=/usr/local/lib/ravencia/deploy/scripts/monthly-maintenance.sh
 # Up to 60 minutes waiting for a deploy plus the upgrade itself.
 TimeoutStartSec=120min
 Nice=10

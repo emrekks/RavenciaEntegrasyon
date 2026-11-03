@@ -107,6 +107,14 @@ export type UiIconName =
   | 'warehouse'
   | 'equal'
   | 'promotion'
+  | 'cancel'
+  | 'ordersOff'
+  | 'send'
+  | 'banknote'
+  | 'percent'
+  | 'key'
+  | 'activity'
+  | 'tag'
 
 type UiIconProps = {
   name: UiIconName
@@ -226,10 +234,30 @@ const paths: Record<UiIconName, ReactNode> = {
   target: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>,
   warehouse: <><path d="M18 21V10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1v11" /><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 1.132-1.803l7.95-3.974a2 2 0 0 1 1.837 0l7.948 3.974A2 2 0 0 1 22 8z" /><path d="M6 13h12" /><path d="M6 17h12" /></>,
   equal: <><line x1="5" x2="19" y1="9" y2="9" /><line x1="5" x2="19" y1="15" y2="15" /></>,
+  // The same lucide-style geometry as the rest: cancelled / blocked, a parcel that is gone, sent, money, rate, credential, pulse, label.
+  cancel: <><circle cx="12" cy="12" r="9" /><path d="m5.6 5.6 12.8 12.8" /></>,
+  ordersOff: <><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14" /><path d="m7.5 4.27 9 5.15" /><path d="m3.29 7 8.71 5 8.71-5" /><path d="M12 22V12" /><path d="m17 13 5 5m-5 0 5-5" /></>,
+  send: <><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z" /><path d="m21.854 2.147-10.94 10.939" /></>,
+  banknote: <><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></>,
+  percent: <><path d="M19 5 5 19" /><circle cx="6.5" cy="6.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" /></>,
+  key: <><circle cx="7.5" cy="15.5" r="4.5" /><path d="m10.7 12.3 9.8-9.8M16 7l3 3M14 9l2 2" /></>,
+  activity: <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />,
+  tag: <><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z" /><circle cx="7.5" cy="7.5" r=".5" fill="currentColor" /></>,
   // A scalloped badge with a percent sign: discounts and campaigns.
   promotion: <><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" /><path d="m15 9-6 6" /><path d="M9 9h.01" /><path d="M15 15h.01" /></>,
 }
 
 export function UiIcon({ name, className, size = 16, title }: UiIconProps) {
   return <svg className={`ui-icon ui-icon-${name}${className ? ` ${className}` : ''}`} viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" shapeRendering="geometricPrecision" preserveAspectRatio="xMidYMid meet" focusable="false" aria-hidden={title ? undefined : true} role={title ? 'img' : undefined}>{title && <title>{title}</title>}{paths[name]}</svg>
+}
+
+// A glyph of the main set drawn into a 16 box (scaled 2/3) with the weight given in 16-box units (default 1.6),
+// for the sets that were drawn on a 16 box: their rules for size and colour keep working, the glyph is the main set's.
+export function uiGlyph16(name: UiIconName, weight = 1.6): ReactNode {
+  return <g transform="scale(.6667)" fill="none" stroke="currentColor" strokeWidth={weight * 1.5} strokeLinecap="round" strokeLinejoin="round">{paths[name]}</g>
+}
+
+// The glyph geometry of an icon, for sets that draw it at their own size and weight (RrIcon, the cards' background icons).
+export function uiIconBody(name: UiIconName): ReactNode {
+  return paths[name]
 }

@@ -200,7 +200,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src b > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src-ok { display: inline-grid; place-items: center; flex: none; width: 16px; height: 16px; color: #fff; background: var(--rr-ok); border-radius: 50%; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src-ok .rr-ico { width: 11px; height: 11px; stroke-width: 2.2; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-src-ok .rr-ico { width: 11px; height: 11px; stroke-width: 3.3; }
 @media (max-width: 760px) {
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns.rr-conns { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-conns .rr-src { gap: 7px; padding: 9px 8px; }

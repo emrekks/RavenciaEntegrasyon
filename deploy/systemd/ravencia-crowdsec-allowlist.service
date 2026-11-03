@@ -3,12 +3,13 @@ Description=Refresh CrowdSec allowlists (GitHub Actions ranges, private ranges)
 Requires=crowdsec.service
 After=crowdsec.service network-online.target
 Wants=network-online.target
+OnFailure=ravencia-alert@%n.service
 
 [Service]
 Type=oneshot
 User=root
-# Root-owned copy installed by deploy/scripts/install-crowdsec.sh.
-ExecStart=/usr/local/sbin/ravencia-crowdsec-allowlist
+# Root-owned copy refreshed by every deploy (install-backup-timer.sh).
+ExecStart=/usr/local/lib/ravencia/deploy/scripts/crowdsec-allowlist-refresh.sh
 TimeoutStartSec=30min
 NoNewPrivileges=yes
 ProtectSystem=full

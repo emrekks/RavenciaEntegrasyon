@@ -4,6 +4,7 @@ set -Eeuo pipefail
 # Server setup for the read-only "ravencia-ro" login used by Claude's /prod-sql, /prod-logs and
 # ship.sh (security plan A2/H6). Run as ubuntu:
 #   - installs readonly-entrypoint.sh root-owned at /usr/local/bin/ravencia-ro;
+#   - creates/refreshes the PostgreSQL role ravencia_ro (install-readonly-db-role.sh);
 #   - with a public key line: creates ravencia-ro (no password), whose root-owned
 #     authorized_keys runs nothing but that script, and whose only sudo right is running it
 #     as root (/etc/sudoers.d/ravencia-ro); adds ravencia-ro to sshd AllowUsers.
@@ -15,6 +16,8 @@ entrypoint=/usr/local/bin/ravencia-ro
 ro_user=ravencia-ro
 sudo -n install -o root -g root -m 0755 -- "$script_dir/readonly-entrypoint.sh" "$entrypoint"
 echo "Read-only entrypoint refreshed: $entrypoint"
+# The `sql` request runs as this database role; it is the real read-only boundary.
+"$script_dir/install-readonly-db-role.sh"
 [[ -n "$public_key" ]] || exit 0
 
 [[ "$public_key" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+(\ [^[:space:]\"]+)?$ ]] || { echo "Public key must be a single ssh-ed25519 line." >&2; exit 2; }
