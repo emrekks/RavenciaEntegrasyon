@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../shared/api'
 import { LoadingState, Modal, StickyActionBar } from '../../shared/components'
+import { uiGlyph16, type UiIconName } from '../../shared/components/UiIcon'
 import type { DataResetGroup } from '../../shared/components/DataResetLedger'
 import { NoticeToast, type NoticeToastKind } from '../../shared/components/NoticeToast'
 import { defaultShippingLabelBlockPosition, defaultShippingLabelSettings, labelBlockContentHeight, normalizeShippingLabelSettings, overflowingLabelBlocks, ShippingLabelBlockBody, shippingLabelBlockCatalog, shippingLabelFields, ShippingLabelFit, shippingLabelLayoutIssues, shippingLabelSizeMm, shippingLabelTextSize, shippingLabelTextSizes, stackShippingLabelLayout, useShippingLabelSettings, type ShippingLabelBlock, type ShippingLabelBlockKind, type ShippingLabelField, type ShippingLabelSettings, type ShippingLabelValues } from '../shipping'
@@ -77,8 +78,15 @@ const settingsIconPaths: Record<SettingsIconName, ReactNode> = {
   tag: <><path d="M2.5 8.2V3.2a.7.7 0 0 1 .7-.7h5l5.3 5.3a1 1 0 0 1 0 1.4l-4.3 4.3a1 1 0 0 1-1.4 0z" /><circle cx="5.5" cy="5.5" r=".9" /></>
 }
 
+// The icons that mean what a glyph of the panel's main icon set means draw that glyph.
+const sharedSettingsGlyphs: Partial<Record<SettingsIconName, UiIconName>> = {
+  shield: 'shield', truck: 'truck', lock: 'lock', bell: 'bell', alert: 'alert', logout: 'logout', trash: 'trash', plus: 'plus', copy: 'copy', save: 'save',
+  tag: 'tag', sparkle: 'sparkle', device: 'monitor', layout: 'layout', back: 'chevronLeft', chev: 'chevronDown'
+}
+
 function SettingsIcon({ name, size = 16 }: { name: SettingsIconName; size?: number }) {
-  return <svg className="ss-icon" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{settingsIconPaths[name]}</svg>
+  const shared = sharedSettingsGlyphs[name]
+  return <svg className="ss-icon" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{shared ? uiGlyph16(shared) : settingsIconPaths[name]}</svg>
 }
 
 function SettingsGlyph({ state }: { state: SettingsGlyphState }) {

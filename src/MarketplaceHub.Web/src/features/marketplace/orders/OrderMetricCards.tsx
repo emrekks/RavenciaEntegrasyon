@@ -85,8 +85,8 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
   const cancelStores = stores(cancelled, cancelledRows, partial > 0)
   const resentStores = stores(resent, resentRows)
   return <div className="rr-metrics rr-metrics-6">
-    <UnitsCard title="Yeni Sipariş" icon="box" tone="warn" packages={newOrders} units={newUnits} rows={newRows} />
-    <UnitsCard title="İşleme Alınan" icon="cycle" packages={processing} units={processingUnits} rows={processingRows} />
+    <UnitsCard title="Yeni Sipariş" icon="orders" tone="warn" packages={newOrders} units={newUnits} rows={newRows} />
+    <UnitsCard title="İşleme Alınan" icon="sync" packages={processing} units={processingUnits} rows={processingRows} />
     <article className={tipped(positive(late) && 'rr-bad rr-alert', lateStores.length > 0 && 'rr-metric-tipped')} tabIndex={lateStores.length > 0 ? 0 : undefined}>
       <CardBackgroundIcon name="clock" tone={positive(late) ? 'bad' : undefined} />
       <small>Geciken</small><Packages packages={late} units={undefined} />
@@ -104,7 +104,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
       {cancelStores.length > 0 && <StoreTip rows={cancelStores.map(row => ({ ...row, value: cancelRowText(row) }))} />}
     </article>
     <article className={tipped('rr-metric-link', resentStores.length > 0 && 'rr-metric-tipped')}>
-      <CardBackgroundIcon name="repeat" />
+      <CardBackgroundIcon name="refresh" />
       <button type="button" className="rr-metric-open" title={resentStores.length > 0 ? undefined : 'Kargoya verilmemiş yeniden gönderimler'} onClick={() => onOpenDay('resent')}><small>Yeniden Gönderim</small><Packages packages={resent} units={undefined} /></button>
       {resentStores.length > 0 && <StoreTip rows={packageTip(resentStores)} />}
     </article>
