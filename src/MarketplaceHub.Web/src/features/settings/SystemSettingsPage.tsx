@@ -9,7 +9,8 @@ import { defaultShippingLabelBlockPosition, defaultShippingLabelSettings, labelB
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontFamilyOptions, appearanceFontScale, appearanceFontSizeOptions, defaultAppearanceColorTheme, defaultAppearanceSettings, grafitAppearanceColorTheme, matchingColorThemeId, defaultLightPalette, useAppearanceSettings, type AppearanceColorThemeProfile, type AppearancePalette, type AppearanceSettings } from './appearance-settings'
 import { SettingsNotice, type SettingsNoticeState } from './SettingsNotifications'
 import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChangeEvent, type VisualTheme } from './visual-theme'
-import { useRememberedTabCounts } from '../../shared/tab-counts'
+import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
+import { dataResetSummary, type DataResetResult } from './data-reset-summary'
 import './settings-sade.css'
 import '../../shared/view-tabs.css'
 import { formatIstanbul } from '../../shared/format-date'
@@ -271,7 +272,7 @@ export function SystemSettingsPage() {
   // Through hubApi: a session that ended shows the sign-in screen instead of an error box.
   const status = useQuery({ queryKey: ['security'], queryFn: () => hubApi<SecurityStatus>('/auth/security-status') })
   const sessions = useQuery({ queryKey: ['sessions'], queryFn: () => hubApi<SecuritySession[]>('/auth/sessions') })
-  const [sessionCount] = useRememberedTabCounts('Ayarlar oturumlar', [{ value: 'sessions', count: sessions.data?.length }])
+  const [sessionCount] = useRememberedTabCounts('Ayarlar oturumlar', [{ value: 'sessions', count: sessions.isError ? unknownCount : sessions.data?.length }])
   const [mfaStep, setMfaStep] = useState<'closed' | 'password' | 'verify' | 'recovery'>('closed')
   const [setup, setSetup] = useState<MfaSetup | null>(null)
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
@@ -300,8 +301,8 @@ export function SystemSettingsPage() {
     if (!resetScopes.length || resetConfirmation.trim() !== resetConfirmWord) return
     setResetBusy(true); setNotice(null)
     try {
-      const result = await hubApi<{ products: number; orders: number; returns: number; invoices: number; categories: number; categoryAttributes: number; brands: number; options: number }>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation.trim() }) })
-      succeed(`Temizlik tamamlandı: ${result.products} ürün, ${result.categories} kategori, ${result.categoryAttributes} kategori özelliği, ${result.brands} marka, ${result.options} ürün seçeneği.`)
+      const result = await hubApi<DataResetResult>('/settings/data-reset', { method: 'POST', headers: { 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ scopes: resetScopes, confirmation: resetConfirmation.trim() }) })
+      succeed(dataResetSummary(result, resetScopes))
       setResetScopes([]); setResetConfirmation('')
       await client.invalidateQueries()
     } catch (reason) { fail(reason instanceof Error ? reason.message : 'Seçili veriler sıfırlanamadı.') } finally { setResetBusy(false) }

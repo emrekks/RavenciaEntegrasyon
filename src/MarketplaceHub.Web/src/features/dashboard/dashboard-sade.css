@@ -210,8 +210,8 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-h p { color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-date { width: 240px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--rr-bg); border: 1px solid var(--rr-line-strong); border-radius: 9px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-seg > button { height: 28px; min-height: 0; padding: 0 10px; color: var(--rr-muted); background: none; border: 1px solid transparent; border-radius: 6px; font: inherit; font-size: 12.5px; font-weight: 500 !important; cursor: pointer; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--rr-bg); border: 1px solid var(--rr-line-strong); border-radius: 12px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-seg > button { height: 28px; min-height: 0; padding: 0 10px; color: var(--rr-muted); background: none; border: 1px solid transparent; border-radius: 7px; font: inherit; font-size: 12.5px; font-weight: 500 !important; cursor: pointer; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-seg > button:hover { color: var(--rr-ink); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-seg > button.rr-on { color: var(--rr-ink); background: var(--rr-raised); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--rr-line); border-bottom: 1px solid var(--rr-line); }
@@ -242,7 +242,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ftag button { display: grid; place-items: center; width: 16px; height: 16px; min-height: 0; padding: 0; color: var(--rr-muted); background: none; border: 0; border-radius: 50%; cursor: pointer; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ftag button:hover { color: var(--rr-ink); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ftag button .rr-ico { width: 12px; height: 12px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-stack { display: flex; height: 10px; overflow: hidden; border-radius: 5px; background: var(--rr-line); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-stack { display: flex; height: 10px; overflow: hidden; border-radius: 7px; background: var(--rr-line); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-stack i { display: block; height: 100%; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crows { display: grid; gap: 2px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; width: 100%; min-height: 0; padding: 8px 10px; color: var(--rr-ink); text-align: left; background: none; border: 1px solid transparent; border-radius: 7px; font: inherit; font-size: 13px; font-weight: 400 !important; cursor: pointer; justify-content: stretch; }

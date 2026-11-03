@@ -2,7 +2,7 @@
 // stay. The reset runs as a background job; the panel shows what it removes and, once it started, how far it is.
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { hubApi } from '../../../shared/api'
+import { hubApi, hubPoll } from '../../../shared/api'
 import { UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { failureNotice } from '../../../shared/notifications'
@@ -35,7 +35,7 @@ export function ConnectionFullResetPanel({ item, onFeedback, onFinished, onCance
   const client = useQueryClient()
   const [confirmation, setConfirmation] = useState('')
   const queryKey = connectionFullResetQueryKey(item.id)
-  const view = useQuery({ queryKey, queryFn: () => hubApi<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), staleTime: 0, refetchInterval: query => connectionFullResetRunning(query.state.data?.job?.status) ? 3000 : false })
+  const view = useQuery({ queryKey, queryFn: () => hubPoll<ConnectionFullResetView>(`/connections/${item.id}/full-reset`), staleTime: 0, refetchInterval: query => connectionFullResetRunning(query.state.data?.job?.status) ? 3000 : false })
   const job = view.data?.job ?? null
   const running = connectionFullResetRunning(job?.status)
   // When the reset this panel watched ends, the lists that showed the removed records are read again.

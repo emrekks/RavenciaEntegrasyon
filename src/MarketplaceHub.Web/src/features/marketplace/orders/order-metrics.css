@@ -10,7 +10,7 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link:hover { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open { display: grid; gap: 2px; width: 100%; min-height: 0; height: auto; padding: 0; margin: 0; color: inherit; text-align: left; font: inherit; background: none; border: 0; border-radius: 0; box-shadow: none; cursor: pointer; justify-content: normal; justify-items: start; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open strong { font-size: 24px; font-weight: 600; }
-:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, .rr-metric-chip, .rr-metric-tipped):focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 2px; border-radius: 6px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, .rr-metric-chip, .rr-metric-tipped):focus-visible { outline: 2px solid var(--rr-primary); outline-offset: 2px; border-radius: 7px; }
 /* "N Paket | M Adet Ürün" (Yeni Sipariş, İptal): the package count big, the words and the units smaller on its line,
    in the muted ink so the number keeps the card's tone. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-pk .rr-metric-sub { color: var(--rr-muted); font-size: 13px; font-weight: 500; white-space: nowrap; }

@@ -9,6 +9,9 @@ import { amountRange, FilterActions, FilterField, FilterRange, priceRange, Produ
 import { onCost, profitText, ProfitBadge, type UnitProfitCosts } from './unit-profit'
 import { UiIcon } from '../../../shared/components'
 import '../commission-tariffs.css'
+// One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
+// the tariff table formats thousands of amounts per render.
+const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // Trendyol's promotion offers the seller uploads (PromotionOfferContracts.cs): the Plus commission tariff, the advantage
 // product label and flash products. Each offered price is shown with its commission and what it leaves after the
@@ -37,7 +40,7 @@ const promotionHelp: Record<PromotionKind, string> = {
 }
 const pageSize = 50
 
-const money = (value: number) => `${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
+const money = (value: number) => `${twoDecimals.format(value)} ₺`
 const signed = (value: number) => `${value < 0 ? '− ' : ''}${money(Math.abs(value))}`
 
 // A price's profit with its share of the cost; a range when a model's variants' costs differ.

@@ -12,6 +12,7 @@ vi.mock('../../shared/api', () => ({
     { id: 'ty-store', platformCode: 'TRENDYOL', displayName: 'Trendyol Mağazası', status: 'ACTIVE' },
     { id: 'hb-store', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada Mağazası', status: 'ACTIVE' },
   ], nextCursor: null, hasMore: false })),
+  get hubPoll() { return (this as unknown as { hubApi: unknown }).hubApi },
   hubApi: vi.fn(async (path: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET'
     const body = typeof init?.body === 'string' ? init.body : undefined

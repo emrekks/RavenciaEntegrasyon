@@ -17,7 +17,8 @@ vi.mock('../../../shared/api', async importOriginal => {
     }
     return apiState.view
   }
-  return { ...original, hubApi: vi.fn(respond) }
+  const api = vi.fn(respond)
+  return { ...original, hubApi: api, hubPoll: api }
 })
 
 import { ConnectionFullResetPanel, fullResetFinishedFeedback, fullResetStatusText } from './ConnectionFullResetPanel'

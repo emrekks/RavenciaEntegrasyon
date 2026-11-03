@@ -73,13 +73,15 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   const [stockUnits, setStockUnits] = useState<Record<string, number>>({})
   const groupSignature = groups.map(group => `${group.key}:${group.rows.length}`).join('|')
 
+  // Reset to "everything picked" whenever the dialog opens, its products change, or it shows another claim (two claims
+  // with the same product lines would otherwise keep the previous claim's choices).
   useEffect(() => {
     setSelected(groups.map(group => group.key))
     setCounts(Object.fromEntries(groups.map(group => [group.key, group.rows.length])))
     setStockKeys([])
     setStockUnits({})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupSignature, open])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `groupSignature` stands for `groups`
+  }, [groupSignature, open, claimId])
 
   // The lines that will actually be approved: the first N of each selected product.
   const chosenByGroup = groups

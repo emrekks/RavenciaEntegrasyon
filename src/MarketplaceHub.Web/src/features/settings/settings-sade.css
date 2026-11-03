@@ -25,8 +25,8 @@
 .app-shell.stitch-shell main .ss-page .ss-gtabs > button.is-on { color: var(--rv-color-ink); border-bottom-color: var(--rv-color-primary); }
 .ss-page .ss-card { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .ss-page .ss-stabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 0 0; }
-.ss-page .ss-seg { display: inline-flex; gap: 3px; max-width: 100%; padding: 3px; overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 9px; scrollbar-width: none; }
-.app-shell.stitch-shell main .ss-page .ss-seg > button { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 30px; min-height: 30px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; }
+.ss-page .ss-seg { display: inline-flex; gap: 3px; max-width: 100%; padding: 3px; overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; scrollbar-width: none; }
+.app-shell.stitch-shell main .ss-page .ss-seg > button { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 30px; min-height: 30px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; }
 .app-shell.stitch-shell main .ss-page .ss-seg > button:hover { color: var(--rv-color-ink); background: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg > button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
 .ss-page .ss-seg .ss-count { min-width: 18px; height: 16px; font-size: 10px; }
@@ -50,9 +50,9 @@
 .ss-page .ss-st.is-bad { color: var(--rv-color-danger); }
 
 /* Counts and tags */
-.ss-page .ss-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-color-ink); background: var(--rv-color-border-strong); border-radius: 5px; font-size: 11px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+.ss-page .ss-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-color-ink); background: var(--rv-color-border-strong); border-radius: 7px; font-size: 11px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
 .ss-page .ss-count.is-warn { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, var(--rv-color-border-strong)); }
-.ss-page .ss-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.ss-page .ss-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .ss-page .ss-tag:has(.ss-st) { padding-left: 5px; }
 .ss-page .ss-tag .ss-st { width: 13px; height: 13px; }
 .ss-page .ss-tag.is-ink { color: var(--rv-color-ink); }
@@ -197,7 +197,7 @@
 .ss-page .ss-dr-note { display: grid; gap: 6px; }
 .ss-page .ss-dr-note p { display: flex; align-items: flex-start; gap: 10px; }
 .ss-page .ss-dr-note p > .ss-icon { margin-top: 2px; color: var(--rv-color-subtle); }
-.ss-page .ss-dr-note p.is-warn { margin: 0 -4px; padding: 6px 10px 6px 8px; color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-warning) 10%, var(--rv-color-surface-raised)); border-left: 2px solid var(--rv-color-warning); border-radius: 5px; }
+.ss-page .ss-dr-note p.is-warn { margin: 0 -4px; padding: 6px 10px 6px 8px; color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-warning) 10%, var(--rv-color-surface-raised)); border-left: 2px solid var(--rv-color-warning); border-radius: 7px; }
 .ss-page .ss-dr-note p.is-warn > .ss-icon { color: var(--rv-color-warning); }
 .ss-page .ss-dr-sum { flex: 1 1 320px; display: grid; gap: 6px; min-width: 0; }
 .ss-page .ss-dr-sum-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
@@ -225,8 +225,8 @@
 .ss-page .ss-dz { display: grid; }
 .ss-page .ss-dz-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .ss-page .ss-dz-template { width: 190px; }
-.ss-page .ss-seg2 { display: inline-flex; gap: 3px; padding: 3px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 9px; }
-.app-shell.stitch-shell main .ss-page .ss-seg2 button { display: inline-flex; align-items: center; gap: 6px; height: 26px; min-height: 26px; padding: 0 10px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 6px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; text-transform: none; }
+.ss-page .ss-seg2 { display: inline-flex; gap: 3px; padding: 3px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; }
+.app-shell.stitch-shell main .ss-page .ss-seg2 button { display: inline-flex; align-items: center; gap: 6px; height: 26px; min-height: 26px; padding: 0 10px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button small { color: var(--rv-color-subtle); font-size: 12px; font-weight: 400; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button:hover { color: var(--rv-color-ink); background: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
@@ -294,7 +294,7 @@
 .ss-page .ss-pick-opt small { display: block; color: var(--rv-color-muted); font-size: 12px; }
 .ss-page .ss-pick-opt .ss-st { color: var(--ss-violet); }
 .ss-page .ss-pick-sep { height: 1px; margin: 4px 6px; background: var(--rv-color-border); }
-.ss-page .ss-sws { display: inline-flex; flex: none; overflow: hidden; border: 1px solid var(--rv-color-border-strong); border-radius: 5px; }
+.ss-page .ss-sws { display: inline-flex; flex: none; overflow: hidden; border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
 .ss-page .ss-sws i { display: block; width: 10px; height: 18px; }
 .ss-page .ss-sws.is-lg i { width: 16px; height: 26px; }
 .ss-page .ss-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
@@ -327,7 +327,7 @@
 .ss-page .ss-pv-btn, .ss-page .ss-pv-btn2 { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 7px; font-size: .93em; }
 .ss-page .ss-pv-btn { color: #fff; background: var(--p-primary); font-weight: 500; }
 .ss-page .ss-pv-btn2 { color: var(--p-ink); background: var(--p-surface); border: 1px solid var(--p-borderStrong); }
-.ss-page .ss-pv-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 5px; font-size: .85em; font-weight: 500; }
+.ss-page .ss-pv-tag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 7px; font-size: .85em; font-weight: 500; }
 .ss-page .ss-pv-tag.is-sel { color: var(--p-primary); background: var(--p-primarySoft); }
 .ss-page .ss-pv-tag.is-ok { color: var(--p-accent); background: var(--p-accentSoft); }
 .ss-page .ss-pv-tag.is-warn { color: var(--p-warning); background: var(--p-warningSoft); }
@@ -374,7 +374,7 @@
 .app-shell.stitch-shell main .ss-page .ss-otp input { box-sizing: border-box; width: 40px; height: 44px; min-height: 44px; padding: 0; color: var(--rv-color-ink); text-align: center; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; outline: none; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .ss-page .ss-otp input:focus { border-color: var(--rv-color-primary); box-shadow: var(--ss-focus); }
 .ss-page .ss-codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 12px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.ss-page .ss-codes code { padding: 6px 10px; color: var(--rv-color-ink); text-align: center; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 6px; font: 500 13px/1.4 ui-monospace, Consolas, monospace; letter-spacing: .06em; }
+.ss-page .ss-codes code { padding: 6px 10px; color: var(--rv-color-ink); text-align: center; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; font: 500 13px/1.4 ui-monospace, Consolas, monospace; letter-spacing: .06em; }
 
 /* The designer drops its library below the paper when the pane is narrow, keeping room for the paper. */
 @container ss-pane (max-width: 1000px) {
