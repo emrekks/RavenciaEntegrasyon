@@ -226,7 +226,7 @@ const paths: Record<UiIconName, ReactNode | ((id: string) => ReactNode)> = {
   upload: <><path d="M12 20V9m-4 4 4-4 4 4" /><path d="M5 4h14" /></>,
   dashboard: <><rect x="3.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="13.5" y="3.5" width="7" height="7" rx="1.8" /><rect x="3.5" y="13.5" width="7" height="7" rx="1.8" /><rect x="13.5" y="13.5" width="7" height="7" rx="1.8" /></>,
   products: g_shirt,
-  questions: <><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z" /><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" /></>,
+  questions: <><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><path d="M7 8h10" /><path d="M7 12h6" /></>,
   orders: g_package,
   returns: g_packageReturn,
   /*

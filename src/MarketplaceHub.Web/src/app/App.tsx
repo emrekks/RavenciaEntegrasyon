@@ -168,7 +168,7 @@ function Shell({ me }: { me: Me }) {
   }
   function handleSidebarMouseEnter() { if (!sidebarPinned) setSidebarHoverExpanded(true) }
   function handleSidebarMouseLeave() { if (!sidebarPinned) setSidebarHoverExpanded(false) }
-  const icon = (name: UiIconName) => <span className="nav-icon-slot" aria-hidden="true"><UiIcon className="nav-icon" name={name} size={24} /></span>
+  const icon = (name: UiIconName) => <span className="nav-icon-slot" aria-hidden="true"><UiIcon className="nav-icon" name={name} size={22} /></span>
   const navigationCounts = navigationSummary.data?.metrics
   const item = (to: string, iconName: UiIconName, label: string, end = false, count?: number, showZeroCount = false, countNoun = 'bildirim', warnWhenPositive = false) => {
     const hasCount = typeof count === 'number' && (count > 0 || showZeroCount)
