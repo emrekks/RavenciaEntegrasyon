@@ -700,7 +700,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         new("REFERENCE_DATA", configuration.GetValue("MarketplaceSync:ReferenceData:IntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:ReferenceData:JitterSeconds", 60)),
         new("QUESTIONS", configuration.GetValue("MarketplaceSync:Questions:IntervalSeconds", 120), 0, 0),
         // Trendyol's accounting records and Pazarama's order money movements (production stores only, see EnqueueDueAsync).
-        new("FINANCE", configuration.GetValue("MarketplaceSync:TrendyolFinance:IntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:TrendyolFinance:JitterSeconds", 900)),
+        // Every six hours since 4 Nov 2026: the payout view shows what is due, a day old was too stale.
+        new("FINANCE", configuration.GetValue("MarketplaceSync:TrendyolFinance:IntervalSeconds", 21_600), 0, configuration.GetValue("MarketplaceSync:TrendyolFinance:JitterSeconds", 900)),
         new("STOCK_RECONCILE_SHORT", configuration.GetValue("MarketplaceSync:StockReconciliation:ShortIntervalSeconds", 900), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:ShortJitterSeconds", 30)),
         new("STOCK_RECONCILE_MEDIUM", configuration.GetValue("MarketplaceSync:StockReconciliation:MediumIntervalSeconds", 3600), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:MediumJitterSeconds", 120)),
         new("STOCK_RECONCILE_DAILY", configuration.GetValue("MarketplaceSync:StockReconciliation:DailyIntervalSeconds", 86_400), 0, configuration.GetValue("MarketplaceSync:StockReconciliation:DailyJitterSeconds", 900)),
@@ -768,7 +769,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 : (current.IntervalSeconds == 900 || platformCode == "SHOPIFY" && current.IntervalSeconds == ScheduledOrderPollingCadencePolicy.ShopifyInvoiceReconciliationIntervalSeconds)
                     && (current.JitterSeconds == 0 || current.JitterSeconds == 30)),
             "REFERENCE_DATA" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 60),
-            "FINANCE" => current.IntervalSeconds == 86_400 && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
+            "FINANCE" => (current.IntervalSeconds == 86_400 || current.IntervalSeconds == 21_600) && current.OverlapSeconds == 0 && (current.JitterSeconds == 0 || current.JitterSeconds == 900),
             ListingVerificationPolicy.ResourceType => current.IntervalSeconds == ListingVerificationPolicy.DefaultIntervalSeconds && current.OverlapSeconds == 0 && current.JitterSeconds == ListingVerificationPolicy.DefaultJitterSeconds,
             _ => false
         };
