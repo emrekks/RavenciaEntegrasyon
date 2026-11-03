@@ -38,13 +38,3 @@
 .bulk-publish-vat { display: flex; align-items: flex-start; gap: var(--rv-space-2); margin-bottom: var(--rv-space-3); padding: var(--rv-space-3) var(--rv-space-4); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); }
 .bulk-publish-vat > svg { flex: none; width: 16px; height: 16px; margin-top: 1px; color: var(--rv-color-warning); }
 .bulk-publish-vat > small { flex: 1 1 auto; min-width: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.4; }
-
-/* A store card's records with required gaps: the product (opens in a new tab to fix it) and its first gap; the rest of
-   its gaps on hover. */
-.app-shell.stitch-shell main .bulk-publish-blocked { display: grid; gap: 6px; margin: 0 16px 12px; padding: 10px 12px; background: color-mix(in srgb, var(--rv-color-danger) 6%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--rv-color-danger) 30%, var(--rv-color-border)); border-radius: 7px; }
-.app-shell.stitch-shell main .bulk-publish-blocked > strong { font-size: 12.5px; }
-.app-shell.stitch-shell main .bulk-publish-blocked ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.app-shell.stitch-shell main .bulk-publish-blocked li { display: grid; gap: 1px; min-width: 0; }
-.app-shell.stitch-shell main .bulk-publish-blocked li > a { overflow: hidden; color: var(--rv-color-ink); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell main .bulk-publish-blocked li > a:hover { color: var(--rv-color-primary); text-decoration: underline; }
-.app-shell.stitch-shell main .bulk-publish-blocked small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }

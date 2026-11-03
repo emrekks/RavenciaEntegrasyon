@@ -14,7 +14,6 @@
   .connection-auth-alert .connection-auth-alert-test { width: 100%; }
 }
 
-
 /* The card's state chip for a refused connection: the "Pasif" chip's shape (integrations-sade.css) with a coloured dot,
    and the reason in the same pop-up as the returns and invoices "why" tips (rr-reason-pop). */
 /* As wide as its text, like the Pasif chip, not stretched to the card title above it. */
