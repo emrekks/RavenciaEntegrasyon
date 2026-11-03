@@ -274,8 +274,11 @@ ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
 
 ## Hız
 
-- `Validate` paralel çalışır: `plan`, `ops`, `backend-format`, `backend`, `image-app`, `image-edge`,
-  `frontend`, sonda `gate`. İşlerin süre sınırı 5 ya da 15 dakika (`timeout-minutes`).
+- `Validate` paralel çalışır: `plan`, `ops`, `backend-format`, `backend`, `backend-postgres` (iki şerit),
+  `image-app`, `image-edge`, `frontend`, sonda `gate`. Backend testleri tamamlayıcı filtrelerle bölünür:
+  `backend` PostgreSQL'siz testleri (`Category!=PostgreSql`), `backend-postgres (main)` diğer PostgreSQL
+  testlerini, `backend-postgres (load)` `[PostgreSqlFact(Lane = PostgreSqlLane.Load)]` ile işaretli uzun
+  yük testini koşar; filtreler birlikte her testi kapsar. İşlerin süre sınırı 5 ya da 15 dakika (`timeout-minutes`).
 - Backend ve frontend işleri, **aynı içerik** (git tree hash) daha önce geçtiyse atlanır; geçen içerik
   için Actions cache'ine `validated-backend-*` / `validated-frontend-*` işareti yazılır. Hash'ler
   Dockerfile'ları ve `deploy/caddy`'yi de kapsar; imaj işi de geçmeden işaret yazılmaz.
