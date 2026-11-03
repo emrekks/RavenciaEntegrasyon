@@ -175,7 +175,46 @@ jobs:
       - name: Verify .NET format
         run: dotnet format MarketplaceHub.sln --verify-no-changes --no-restore --verbosity diagnostic
 
+  # The backend tests run as two parallel jobs that together cover every test:
+  # "Category=PostgreSql" (the trait [PostgreSqlFact] / [PostgreSqlTheory] always set)
+  # against a PostgreSQL service, and "Category!=PostgreSql" (everything else).
   backend:
+    needs: plan
+    if: needs.plan.outputs.backend_needed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.302
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
+
+      - name: Restore backend
+        run: dotnet restore MarketplaceHub.sln --locked-mode
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Build backend
+        run: dotnet build MarketplaceHub.sln --no-restore --configuration Release
+
+      - name: Test backend (without PostgreSQL)
+        env:
+          FeatureFlags__ExternalWrites: "false"
+        run: dotnet test MarketplaceHub.sln --no-build --configuration Release --filter "Category!=PostgreSql"
+
+      - name: Verify EF model has no pending migration
+        run: dotnet tool run dotnet-ef migrations has-pending-model-changes --project src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj --startup-project src/MarketplaceHub.Api/MarketplaceHub.Api.csproj --no-build --configuration Release
+
+      - name: Audit NuGet dependencies
+        run: dotnet list MarketplaceHub.sln package --vulnerable --include-transitive
+
+  backend-postgres:
     needs: plan
     if: needs.plan.outputs.backend_needed == 'true'
     runs-on: ubuntu-latest
@@ -199,6 +238,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The throwaway test database needs no crash safety; queries, locks and
+      # transactions behave the same, commits only skip the disk flush.
+      - name: Turn off PostgreSQL durability for the test database
+        run: |
+          set -Eeuo pipefail
+          docker exec "${{ job.services.postgres.id }}" psql -v ON_ERROR_STOP=1 -U marketplacehub -d marketplacehub_test \
+            -c "ALTER SYSTEM SET fsync = off" -c "ALTER SYSTEM SET synchronous_commit = off" \
+            -c "ALTER SYSTEM SET full_page_writes = off" -c "SELECT pg_reload_conf()"
+
       - name: Setup .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
@@ -209,23 +257,14 @@ jobs:
       - name: Restore backend
         run: dotnet restore MarketplaceHub.sln --locked-mode
 
-      - name: Restore .NET tools
-        run: dotnet tool restore
-
       - name: Build backend
         run: dotnet build MarketplaceHub.sln --no-restore --configuration Release
 
-      - name: Test backend
+      - name: Test backend (PostgreSQL integration)
         env:
           MARKETPLACEHUB_TEST_CONNECTION: "Host=localhost;Port=5432;Database=marketplacehub_test;Username=marketplacehub;Password=development-only"
           FeatureFlags__ExternalWrites: "false"
-        run: dotnet test MarketplaceHub.sln --no-build --configuration Release
-
-      - name: Verify EF model has no pending migration
-        run: dotnet tool run dotnet-ef migrations has-pending-model-changes --project src/MarketplaceHub.Infrastructure/MarketplaceHub.Infrastructure.csproj --startup-project src/MarketplaceHub.Api/MarketplaceHub.Api.csproj --no-build --configuration Release
-
-      - name: Audit NuGet dependencies
-        run: dotnet list MarketplaceHub.sln package --vulnerable --include-transitive
+        run: dotnet test MarketplaceHub.sln --no-build --configuration Release --filter "Category=PostgreSql" --logger "console;verbosity=normal"
 
   # The production images are built on the server during deploy; building them
   # here first means a Dockerfile/project-layout break turns Validate red instead
@@ -311,7 +350,7 @@ jobs:
   # Single required result for the Deploy workflow: skipped jobs count as passed,
   # failed or cancelled ones do not. Markers are written only for content that passed.
   gate:
-    needs: [plan, ops, backend-format, backend, image-app, image-edge, frontend]
+    needs: [plan, ops, backend-format, backend, backend-postgres, image-app, image-edge, frontend]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -322,7 +361,7 @@ jobs:
           echo ok > .ci-marker/validated
 
       - name: Remember passed backend
-        if: needs.backend.result == 'success' && needs.backend-format.result == 'success' && needs.image-app.result == 'success'
+        if: needs.backend.result == 'success' && needs.backend-postgres.result == 'success' && needs.backend-format.result == 'success' && needs.image-app.result == 'success'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-marker

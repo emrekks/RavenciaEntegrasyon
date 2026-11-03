@@ -9323,7 +9323,21 @@ public sealed class PostgreSqlTenantIsolationFixture : IAsyncLifetime
     public Task DisposeAsync() => Task.CompletedTask;
 }
 
-public sealed class PostgreSqlFactAttribute : FactAttribute
+// Every PostgreSQL test carries the trait Category=PostgreSql through its attribute, so CI can run
+// "Category=PostgreSql" and "Category!=PostgreSql" as two parallel jobs that together cover every test.
+public sealed class PostgreSqlTraitDiscoverer : Xunit.Sdk.ITraitDiscoverer
+{
+    public const string TypeName = "MarketplaceHub.Application.Tests.PostgreSqlTraitDiscoverer";
+    public const string AssemblyName = "MarketplaceHub.Application.Tests";
+
+    public IEnumerable<KeyValuePair<string, string>> GetTraits(IAttributeInfo traitAttribute)
+    {
+        yield return new KeyValuePair<string, string>("Category", "PostgreSql");
+    }
+}
+
+[Xunit.Sdk.TraitDiscoverer(PostgreSqlTraitDiscoverer.TypeName, PostgreSqlTraitDiscoverer.AssemblyName)]
+public sealed class PostgreSqlFactAttribute : FactAttribute, Xunit.Sdk.ITraitAttribute
 {
     public PostgreSqlFactAttribute()
     {
@@ -9332,7 +9346,8 @@ public sealed class PostgreSqlFactAttribute : FactAttribute
     }
 }
 
-public sealed class PostgreSqlTheoryAttribute : TheoryAttribute
+[Xunit.Sdk.TraitDiscoverer(PostgreSqlTraitDiscoverer.TypeName, PostgreSqlTraitDiscoverer.AssemblyName)]
+public sealed class PostgreSqlTheoryAttribute : TheoryAttribute, Xunit.Sdk.ITraitAttribute
 {
     public PostgreSqlTheoryAttribute()
     {
