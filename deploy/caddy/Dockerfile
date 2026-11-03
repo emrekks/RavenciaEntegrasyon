@@ -7,7 +7,7 @@ RUN npm install --global npm@11.12.1 \
 COPY src/MarketplaceHub.Web/ ./
 RUN npm run build
 
-FROM caddy:2.11.7@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af
+FROM caddy:2.11.7@sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e
 COPY deploy/caddy/Caddyfile /etc/caddy/Caddyfile
 RUN caddy adapt --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
 COPY --from=web /web/dist /srv
