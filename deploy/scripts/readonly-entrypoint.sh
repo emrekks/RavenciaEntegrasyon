@@ -61,7 +61,7 @@ case "$verb" in
       [[ "$token" == '\echo' || "$token" == '\x' ]] || fail "psql meta-command $token is not allowed"
     done < <(printf '%s\n' "$sql" | grep -oE '\\[A-Za-z!?]+' || true)
     [[ "$sql" != *'/*'* ]] || fail "block comments are not allowed"
-    body="$(printf '%s\n' "$sql" | sed -E 's/--.*$//' | grep -vE '^[[:space:]]*\\' || true)"
+    body="$(printf '%s\n' "$sql" | sed -E 's/--.*$//' | grep -vE "^[[:space:]]*[\\\\]" || true)"
     if printf '%s' "$body" | grep -qiE '(pg_terminate_backend|pg_cancel_backend|pg_reload_conf|pg_rotate_logfile|pg_promote|pg_switch_wal|pg_create_restore_point|pg_logical_emit_message|pg_file_write|pg_advisory|set_config|lo_[a-z]+|dblink)[[:space:]]*\('; then
       fail "server functions with side effects are not allowed"
     fi
