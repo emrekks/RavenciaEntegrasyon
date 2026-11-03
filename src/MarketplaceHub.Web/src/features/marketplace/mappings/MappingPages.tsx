@@ -5,7 +5,7 @@ import { createContext, Fragment, useCallback, useContext, useEffect, useEffectE
 import { createPortal } from 'react-dom'
 import { Link, useSearchParams } from 'react-router'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ApiRequestError, hubApi, loadAllPages } from '../../../shared/api'
+import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { Busy, ErrorBox, Modal, Pagination, UiIcon, useConfirmDialog, DialogSurface } from '../../../shared/components'
 import { isStaleMappingError, mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from './mapping-refresh'
 import { ValuePicker, pickerOptions } from './ValuePicker'
@@ -25,7 +25,7 @@ import { offersProductFields, showsProductFields, parseProductFieldOption, produ
 import { MappingConflictsPanel } from '../MappingConflictsPanel'
 import { autoMatchScore, canonicalKey, valueMatchScore } from '../../../shared/value-matching'
 import { attributeValueMappingNeedsSave, isTemplateFilledRow, suggestValueMappings, type ValueMappingSuggestion, visiblePanelValues, normalizeReferenceValueLabel, planDirectReferenceValues, planMissingReferencePanelValues, planReferencePanelMappings, togglePanelValueReferenceSelection, updatePanelValueReferenceSelection, valueMappingRowClassName } from '../attribute-value-mapping'
-import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues, waitForReferenceSyncJobs } from '../reference-value-sync'
+import { isReferenceSyncJobTerminal, referenceSyncJobPollInterval, shouldAutoSyncHepsiburadaValues, waitForReferenceSyncJobs } from '../reference-value-sync'
 import { activeMappingConnectionsForPlatform, mappingPlatformDefinitions, mappingPlatformLabel, type MappingPlatformCode } from '../mapping-platforms'
 import { suggestCategoryMappings } from '../category-suggestions'
 import { viewTabLabel } from '../../../shared/view-tabs'
@@ -1450,7 +1450,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   const nameHints = useQuery({ queryKey: ['marketplace-name-hints', attribute.id, connectionId], queryFn: () => hubApi<{ attributeNames: string[]; valueNames: Record<string, string[]> }>(`/mappings/name-hints?attributeId=${encodeURIComponent(attribute.id)}&connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 5 * 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const usedValues = useQuery({ queryKey: ['attribute-used-values', attribute.id], queryFn: () => hubApi<string[]>(`/catalog/attributes/${attribute.id}/used-values`), retry: false, staleTime: 60_000, enabled: !customPanelColorValues && !marketplaceAllowsFreeText })
   const sync = useMutation({ mutationFn: () => hubApi<{ jobId: string }>(`/connections/${connectionId}/reference-sync-jobs?resourceType=ATTRIBUTE_VALUES&parentExternalId=${encodeURIComponent(valueScope)}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }), onSuccess: result => { setSyncJobId(result.jobId); setNotice(`${platformLabel} değer listesi salt-okunur olarak eşitleniyor…`) }, onError: reason => setNotice(reason instanceof Error ? reason.message : 'Değer eşitleme başlatılamadı.') })
-  const syncJob = useQuery({ queryKey: ['reference-value-sync-job', syncJobId], queryFn: () => hubApi<{ job: { status: string; lastErrorCode: string | null; lastErrorSummary: string | null } }>(`/jobs/${syncJobId}`, { cache: 'no-store' }), enabled: Boolean(syncJobId), refetchInterval: query => query.state.data && isReferenceSyncJobTerminal(query.state.data.job.status) ? false : 1000, refetchIntervalInBackground: true, retry: 1 })
+  const syncJob = useQuery({ queryKey: ['reference-value-sync-job', syncJobId], queryFn: () => hubPoll<{ job: { status: string; lastErrorCode: string | null; lastErrorSummary: string | null } }>(`/jobs/${syncJobId}`, { cache: 'no-store' }), enabled: Boolean(syncJobId), refetchInterval: query => referenceSyncJobPollInterval(query.state.data?.job.status, query.state.status === 'error'), refetchIntervalInBackground: true, retry: 1 })
   const syncBusy = sync.isPending || Boolean(syncJobId)
   const startValueSync = sync.mutate
   useEffect(() => {
@@ -1481,6 +1481,13 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
     }
     setNotice(`${platformLabel} değer eşitlemesi ${job.status.toLocaleLowerCase('tr-TR')} durumunda tamamlandı${job.lastErrorSummary ? `: ${job.lastErrorSummary}` : job.lastErrorCode ? ` (${job.lastErrorCode})` : '.'}`)
   }, [client, connectionId, platformLabel, valueScope, syncJob.data?.job, syncJobId])
+  // The job could not be read (gone, refused, network): stop following it, unlock the button and say so.
+  const syncJobReadFailed = syncJob.isError
+  useEffect(() => {
+    if (!syncJobId || !syncJobReadFailed) return
+    setSyncJobId(null)
+    setNotice(`${platformLabel} eşitleme işinin durumu okunamadı; iş kaydını İşlem Takibi’nden kontrol edin.`)
+  }, [syncJobId, syncJobReadFailed, platformLabel])
   const mappingConnection = useMappingNotificationConnection(connectionId)
   useEffect(() => {
     if (!notice) return
@@ -1698,7 +1705,7 @@ function AttributeValueMappingEditor({ connectionId, categoryScope, attribute, e
   }
   const closeQuickValueModal = () => { if (quickValueSaving) return; setQuickValueOpen(false); setEditingQuickValue(null) }
   const quickValueModal = quickValueOpen && createPortal(<div className="panel-attribute-modal value-mapping-quick-value-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) closeQuickValueModal() }}><DialogSurface as="section" onClose={() => { closeQuickValueModal() }} className="panel-attribute-modal-card panel-attribute-quick-modal-card" aria-labelledby="mapping-quick-value-title" onMouseDown={event => event.stopPropagation()}><header><div><strong id="mapping-quick-value-title">{attribute.name}</strong><small>Panel özelliği · bu başlığa yeni değer ekleyin</small></div><button type="button" aria-label="Değer ekleme penceresini kapat" onClick={closeQuickValueModal} disabled={quickValueSaving}><UiIcon name="close" /></button></header><form className="panel-attribute-add-value panel-attribute-quick-add-value" onSubmit={event => { event.preventDefault(); void addQuickValues() }}><input data-autofocus value={quickValueDraft} onChange={event => setQuickValueDraft(event.target.value)} placeholder="Yeni değerleri virgülle yazın" aria-label={`${attribute.name} için yeni değerler`} /><button type="submit" disabled={quickValueSaving || !quickValueDraft.trim()}>{quickValueSaving ? 'Ekleniyor…' : '+ Değer Ekle'}</button></form><div className="panel-attribute-value-editor">{localValues.length ? localValues.map(value => <div key={value.id}>{editingQuickValue?.id === value.id ? <input ref={focusOnMount} value={editingQuickValue.value} aria-label={`${value.value} değerini düzenle`} onChange={event => setEditingQuickValue({ id: value.id, value: event.target.value })} /> : <span>{value.value}</span>}<div>{editingQuickValue?.id === value.id ? <><button type="button" aria-label={`${value.value} değerini kaydet`} disabled={quickValueSaving} onClick={() => void updateQuickValue(value.id, editingQuickValue.value, value.sortOrder)}><UiIcon name="check" /></button><button type="button" aria-label="Değer düzenlemeyi iptal et" disabled={quickValueSaving} onClick={() => setEditingQuickValue(null)}><UiIcon name="close" /></button></> : <><button type="button" aria-label={`${value.value} değerini düzenle`} disabled={quickValueSaving} onClick={() => setEditingQuickValue({ id: value.id, value: value.value })}><UiIcon name="edit" /></button><button type="button" aria-label={`${value.value} değerini sil`} disabled={quickValueSaving} onClick={() => void removeQuickValue(value.id)}><UiIcon name="close" /></button></>}</div></div>) : <span className="panel-value-empty">Henüz değer eklenmedi.</span>}</div><footer><button type="button" className="secondary" onClick={closeQuickValueModal} disabled={quickValueSaving}>Kapat</button></footer></DialogSurface></div>, document.body)
-  if (references.isError) return <div className="unknown"><strong>Güncel özellik değerleri listesi yok</strong><p>Seçili kategori ve özellik için pazar yerinin salt-okunur değer listesini eşitleyin.</p>{notice && <p role="status">{notice}</p>}{syncJob.isError && <p role="alert">Eşitleme işi durumu okunamadı; işlem takibinden iş kaydını kontrol edin.</p>}<div className="value-mapping-heading-actions"><button type="button" className="secondary" disabled={quickValueSaving} onClick={() => setQuickValueOpen(true)}>Hızlı Değer Oluştur</button><button type="button" disabled={syncBusy} onClick={() => sync.mutate()}>{syncBusy ? 'Eşitleniyor…' : `${platformLabel} Değerlerini Eşitle`}</button></div>{quickValueModal}</div>
+  if (references.isError) return <div className="unknown"><strong>Güncel özellik değerleri listesi yok</strong><p>Seçili kategori ve özellik için pazar yerinin salt-okunur değer listesini eşitleyin.</p>{notice && <p role="status">{notice}</p>}<div className="value-mapping-heading-actions"><button type="button" className="secondary" disabled={quickValueSaving} onClick={() => setQuickValueOpen(true)}>Hızlı Değer Oluştur</button><button type="button" disabled={syncBusy} onClick={() => sync.mutate()}>{syncBusy ? 'Eşitleniyor…' : `${platformLabel} Değerlerini Eşitle`}</button></div>{quickValueModal}</div>
   if (references.isLoading || mappings.isLoading) return <Busy text="Özellik değerleri ve mevcut eşlemeler yükleniyor…" />
   if (mappings.isError) return <ErrorBox error={mappings.error} onRetry={() => void mappings.refetch()} />
   return <div className="mapping-step nested value-mapping-editor">

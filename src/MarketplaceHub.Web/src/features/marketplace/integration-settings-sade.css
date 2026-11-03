@@ -23,7 +23,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-grow { flex: 1; }
 .cs-workspace .cs-title-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
 .cs-workspace .cs-tags-row { display: flex; flex-wrap: wrap; gap: 6px; }
-.cs-workspace .cs-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.cs-workspace .cs-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-muted); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .cs-workspace .cs-tag.is-on { color: var(--rv-color-ink); }
 .cs-workspace .cs-tag:not(:has(.cm-glyph)) { padding-left: 8px; }
 .cs-workspace .cs-tag .cm-glyph { width: 14px; height: 14px; color: var(--rv-color-subtle); }
@@ -44,7 +44,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-sec-head p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 
 /* Counts and chips */
-.cs-workspace .cs-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-color-ink); background: var(--rv-color-border-strong); border-radius: 5px; font-size: 11px; font-weight: 600; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
+.cs-workspace .cs-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-color-ink); background: var(--rv-color-border-strong); border-radius: 7px; font-size: 11px; font-weight: 600; line-height: 1; text-align: center; font-variant-numeric: tabular-nums; }
 .cs-workspace .cs-count.is-warn { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); }
 .cs-workspace .cs-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .app-shell.stitch-shell main .cs-workspace .cs-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; min-height: 28px; padding: 0 10px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; text-transform: none; }
@@ -112,7 +112,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main .cs-workspace .cs-pane .eyebrow { display: none; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane :is(.panel, .integration-detail-write-panel) h2 { margin: 0; font-size: 16px; font-weight: 600; text-transform: none; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane :is(.panel, .integration-detail-write-panel) > p, .app-shell.stitch-shell main .cs-workspace .cs-pane :is(.integration-detail-write-heading, .connection-settings-section) p { color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
-.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-status { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--rv-color-muted); background: none; border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-status { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; color: var(--rv-color-muted); background: none; border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-detail-write-status.is-enabled { color: var(--rv-color-ink); }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle { display: flex; align-items: center; gap: 14px; padding: 14px 0 0; border-top: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > input { order: 2; flex: none; width: 34px; height: 20px; margin: 0; appearance: none; background: var(--rv-color-border-strong); border-radius: 99px; cursor: pointer; position: relative; }

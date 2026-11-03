@@ -4,7 +4,7 @@
 .qi-page .qi-glyph { display: block; flex: none; width: 15px; height: 15px; color: var(--rv-color-muted); }
 .qi-page .qi-glyph.is-done { color: var(--rv-color-ink); }
 .qi-page .qi-glyph.is-bad { color: var(--rv-color-danger); }
-.qi-page .qi-count, .qi-templates-modal .qi-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-radius: 5px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.qi-page .qi-count, .qi-templates-modal .qi-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rv-color-muted); background: var(--rv-color-surface-soft); border-radius: 7px; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .qi-page .qi-count.is-warn { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 14%, transparent); }
 .app-shell.stitch-shell main .qi-page .qi-link { display: inline-flex; align-items: center; gap: 6px; height: 28px; min-height: 28px; padding: 0 8px; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .qi-page .qi-link:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
@@ -116,7 +116,7 @@
 .qi-page .qi-facts dd { margin: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .qi-page .qi-facts dd.is-urgent { color: var(--rv-color-warning); }
 .qi-page .qi-facts dd a { color: var(--rv-color-ink); }
-.qi-page .qi-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-ink); border: 1px solid var(--rv-color-border-strong); border-radius: 5px; font-size: 12px; font-weight: 500; }
+.qi-page .qi-tag { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 8px 0 6px; color: var(--rv-color-ink); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 12px; font-weight: 500; }
 .qi-page .qi-tag .qi-glyph { width: 13px; height: 13px; }
 .app-shell.stitch-shell main .qi-page .qi-detail-body { display: grid; flex: 1; align-content: start; gap: 12px; min-height: 0; margin: 0; padding: 20px; overflow-y: auto; background: none; border: 0; }
 .app-shell.stitch-shell main .qi-page .qi-detail-body .rv-question-conversation { display: grid; gap: 12px; margin: 0; padding: 0; border: 0; }
@@ -244,7 +244,7 @@
 .qi-page .qi-popover.rv-questions-filter-grid { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
 
 /* Count boxes match the view tab counts exactly. */
-.qi-page .qi-count, .qi-templates-modal .qi-count { display: inline-grid; box-sizing: border-box; min-width: 22px; height: 22px; place-items: center; padding: 0 6px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft, #22222a); border: 1px solid var(--rv-color-border-strong); border-radius: 6px; font-size: 11.5px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+.qi-page .qi-count, .qi-templates-modal .qi-count { display: inline-grid; box-sizing: border-box; min-width: 22px; height: 22px; place-items: center; padding: 0 6px; color: var(--rv-color-ink); background: var(--rv-color-surface-soft, #22222a); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 11.5px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
 .qi-page .qi-count.is-warn { color: var(--rv-color-warning); background: var(--rv-color-surface-soft, #22222a); }
 
 /* Phones (mobil-tum-sayfalar.html): the marketplace import status takes two compact columns instead of four tall rows. */

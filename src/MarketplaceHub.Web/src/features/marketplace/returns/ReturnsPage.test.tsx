@@ -26,6 +26,7 @@ const summary = {
 
 vi.mock('../../../shared/api', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../shared/api')>()),
+  get hubPoll() { return (this as unknown as { hubApi: unknown }).hubApi },
   hubApi: vi.fn(async (path: string) => {
     api.paths.push(path)
     const params = new URLSearchParams(path.split('?')[1])

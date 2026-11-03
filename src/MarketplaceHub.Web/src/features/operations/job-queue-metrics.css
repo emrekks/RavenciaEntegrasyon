@@ -1,7 +1,7 @@
 .job-queue-metrics {
   background: var(--rv-color-surface);
   border: 1px solid var(--rv-color-border);
-  border-radius: 10px;
+  border-radius: 12px;
 }
 
 .job-queue-metrics > summary {

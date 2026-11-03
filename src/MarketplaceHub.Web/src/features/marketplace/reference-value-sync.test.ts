@@ -1,5 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { isReferenceSyncJobTerminal, shouldAutoSyncHepsiburadaValues, waitForReferenceSyncJobs } from './reference-value-sync'
+import { isReferenceSyncJobTerminal, referenceSyncJobPollInterval, shouldAutoSyncHepsiburadaValues, waitForReferenceSyncJobs } from './reference-value-sync'
+
+describe('following a value-list sync job', () => {
+  it('reads every second while the job runs or has not answered yet', () => {
+    expect(referenceSyncJobPollInterval(undefined, false)).toBe(1000)
+    expect(referenceSyncJobPollInterval('RUNNING', false)).toBe(1000)
+  })
+
+  it('stops once the job has ended', () => {
+    expect(referenceSyncJobPollInterval('SUCCEEDED', false)).toBe(false)
+    expect(referenceSyncJobPollInterval('DEAD', false)).toBe(false)
+  })
+
+  it('stops when the job cannot be read, so it is not asked for every second forever', () => {
+    expect(referenceSyncJobPollInterval(undefined, true)).toBe(false)
+    expect(referenceSyncJobPollInterval('RUNNING', true)).toBe(false)
+  })
+})
 
 describe('waiting for value-list syncs', () => {
   it('polls until every job has ended and leaves a job still running at the deadline out', async () => {

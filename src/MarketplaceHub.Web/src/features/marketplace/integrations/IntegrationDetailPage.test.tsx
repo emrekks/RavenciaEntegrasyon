@@ -20,7 +20,8 @@ vi.mock('../../../shared/api', async importOriginal => {
     if (path === '/connections/c1/full-reset') return { items: [{ scope: 'ORDERS', count: 3 }], keptProducts: 0, job: null }
     return []
   }
-  return { ...original, hubApi: vi.fn(respond), loadAllPages: vi.fn(async () => ({ items: [connection()], nextCursor: null, hasMore: false })) }
+  const api = vi.fn(respond)
+  return { ...original, hubApi: api, hubPoll: api, loadAllPages: vi.fn(async () => ({ items: [connection()], nextCursor: null, hasMore: false })) }
 })
 
 import { IntegrationDetailPage, IntegrationsPage } from './IntegrationPages'

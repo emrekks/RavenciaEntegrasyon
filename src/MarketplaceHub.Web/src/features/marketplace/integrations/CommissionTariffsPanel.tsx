@@ -9,6 +9,9 @@ import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import { kurus, onCost, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
 import { useDismissable } from '../../../shared/hooks/useDismissable'
 import '../commission-tariffs.css'
+// One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
+// the tariff table formats thousands of amounts per render.
+const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 // The marketplaces whose commission tariff export the panel reads (CommissionTariffPlatforms on the server).
 export const commissionTariffPlatforms = new Set(['TRENDYOL'])
@@ -175,7 +178,7 @@ export function groupByModel(rows: CommissionTariffRow[]): Array<[string, Commis
 // A stock as the file gives it; unknown in a tariff uploaded before stock was read.
 export const stockText = (stock: number | null | undefined) => stock == null ? '—' : stock.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
 
-const amount = (value: number) => value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const amount = (value: number) => twoDecimals.format(value)
 // "752,64 – 791,01 ₺", or one price when all are the same.
 export function priceRange(values: number[]) {
   const low = Math.min(...values), high = Math.max(...values)
@@ -237,8 +240,9 @@ const productImage = (row: CommissionTariffRow) =>
 
 type UploadResult = { tariffs: CommissionTariff[]; importedRows: number; skippedRows: number; alreadyUploaded: boolean; warnings: string[] }
 
-const money = (value: number) => `${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`
-export const rateText = (rate: number) => `%${rate.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`
+const money = (value: number) => `${twoDecimals.format(value)} ₺`
+const upToTwoDecimals = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 })
+export const rateText = (rate: number) => `%${upToTwoDecimals.format(rate)}`
 
 // The marketplace's own "Güncel Komisyon" is shown beside the band the panel computes; a difference is flagged, never hidden.
 export function rateDisagrees(row: Pick<CommissionTariffRow, 'currentRate' | 'currentBandRate'>) {
@@ -369,6 +373,8 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
 
 type PanelMessage = { kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] }
 const tiers = [1, 2, 3, 4]
+// Model rows drawn at once in the tariff table (see TariffPlanBody).
+export const modelsPerView = 25
 // Which rows the list shows: by the band their price is in now, and whether their cost is entered.
 export type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without'; name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string; sort?: TariffSort; dir?: 'asc' | 'desc'
   // Fiyat Aralığı: a band and what its price leaves after commission and cost, in lira and as a share of the price.
@@ -708,6 +714,19 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   // The models whose variants are shown: a model starts folded, its row alone, so a page of 50 models (each colour with
   // all its sizes and their band cards) does not draw thousands of cards at once.
   const [opened, setOpened] = useState<Set<string>>(() => new Set())
+  // A server page holds up to 50 model codes, which with their colours came to ~140 model rows, each with four band cards
+  // and switches (~1,400 buttons, ~7,400 nodes): drawing them took ~260 ms and every click re-drew them all. The model
+  // rows are shown 25 at a time; what each row shows is unchanged.
+  const modelGroups = useMemo(() => rows ? groupByModel(rows.items) : [], [rows])
+  const groupPageCount = Math.max(1, Math.ceil(modelGroups.length / modelsPerView))
+  const [groupPageOf, setGroupPageOf] = useState<{ rows: RowPage | undefined; page: number }>({ rows, page: 0 })
+  const groupPage = groupPageOf.rows === rows ? Math.min(groupPageOf.page, groupPageCount - 1) : 0
+  const shownGroups = modelGroups.slice(groupPage * modelsPerView, (groupPage + 1) * modelsPerView)
+  const tableTop = useRef<HTMLDivElement>(null)
+  const showGroupPage = (next: number) => {
+    setGroupPageOf({ rows, page: next })
+    tableTop.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }
   const facets = useQuery({ queryKey: ['commission-tariff-facets', connectionId, tariff.id], queryFn: () => hubApi<{ categories: string[]; brands: string[] }>(`/connections/${connectionId}/commission-tariffs/${tariff.id}/facets`) })
   const ownPicks = [...picks.values()].filter(pick => pick.tier !== null || pick.price !== null).length
   // A file with more than one period: the picks are the open period's, and the Excel carries every period's.
@@ -757,9 +776,9 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     {loading && <Busy />}
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
     {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
-    {rows && rows.items.length > 0 && <div className="commission-table-wrap"><table className={`commission-table is-plan${partner ? ' is-week' : ''}`}>
+    {rows && rows.items.length > 0 && <div ref={tableTop} className="commission-table-wrap"><table className={`commission-table is-plan${partner ? ' is-week' : ''}`}>
       <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><th scope="col" className="commission-stock">Stok</th><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Fiyat Aralığı`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
-      <tbody>{groupByModel(rows.items).map(([key, group]) => {
+      <tbody>{shownGroups.map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
         const variantRow = (row: CommissionTariffRow, nested: boolean) => {
           const pick = picks.get(row.id)
@@ -868,6 +887,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
         </Fragment>
       })}</tbody>
     </table></div>}
+    {groupPageCount > 1 && <div className="commission-pager" role="group" aria-label="Model sayfaları"><button type="button" className="secondary" disabled={groupPage === 0} onClick={() => showGroupPage(groupPage - 1)}>Önceki</button><span>{(groupPage * modelsPerView + 1).toLocaleString('tr-TR')}–{Math.min(modelGroups.length, (groupPage + 1) * modelsPerView).toLocaleString('tr-TR')} / {modelGroups.length.toLocaleString('tr-TR')} Model</span><button type="button" className="secondary" disabled={groupPage + 1 >= groupPageCount} onClick={() => showGroupPage(groupPage + 1)}>Sonraki</button></div>}
     {rows && pageCount > 1 && <div className="commission-pager"><button type="button" className="secondary" disabled={page === 0} onClick={() => onPage(page - 1)}>Önceki</button><span>{(page + 1).toLocaleString('tr-TR')} / {pageCount.toLocaleString('tr-TR')}</span><button type="button" className="secondary" disabled={page + 1 >= pageCount} onClick={() => onPage(page + 1)}>Sonraki</button></div>}
   </div>
 }

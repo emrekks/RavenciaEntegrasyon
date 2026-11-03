@@ -48,9 +48,16 @@ export function useDialogSurface<T extends HTMLElement = HTMLElement>(open: bool
       }
       const first = focusable[0]
       const last = focusable[focusable.length - 1]
-      if (event.shiftKey && document.activeElement === first) {
+      // The surface itself takes focus when the window opens: Shift+Tab from there would leave the window, so it wraps to
+      // the last control like Shift+Tab from the first; focus that has got outside the window is brought back too.
+      const active = document.activeElement
+      const outside = !surfaceRef.current?.contains(active)
+      if (event.shiftKey && (active === first || active === surfaceRef.current || outside)) {
         event.preventDefault()
         last.focus()
+      } else if (!event.shiftKey && outside) {
+        event.preventDefault()
+        first.focus()
       } else if (!event.shiftKey && document.activeElement === last) {
         event.preventDefault()
         first.focus()

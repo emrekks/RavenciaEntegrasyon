@@ -20,7 +20,7 @@
     justify-content: space-between;
     min-height: 42px;
     padding: 0 12px;
-    border-radius: 8px;
+    border-radius: 7px;
   }
   .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) :is(.order-column-filter-trigger, .platform-multi-select-trigger) {
     position: absolute;
@@ -33,7 +33,7 @@
     padding: 0 12px;
     background: transparent;
     border: 0;
-    border-radius: 8px;
+    border-radius: 7px;
   }
   .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) :is(.platform-multi-select-field, .platform-multi-select) { position: static; }
   .app-shell.stitch-shell main :is(.order-reference-head, .return-reference-head, .invoice-reference-head) .platform-multi-select-label { display: none; }
