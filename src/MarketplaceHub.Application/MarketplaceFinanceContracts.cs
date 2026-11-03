@@ -68,3 +68,17 @@ public interface IN11SettlementPort
     Task<AdapterResult<RemoteSettlementDayPage>> GetSettlementDaysAsync(AdapterContext context, DateOnly start, DateOnly end, int page, CancellationToken cancellationToken);
     Task<AdapterResult<RemoteSettlementItemPage>> GetSettlementItemsAsync(AdapterContext context, DateOnly day, int page, CancellationToken cancellationToken);
 }
+
+// One Hepsiburada accounting record (Kayıt Bazlı Muhasebe), as sent: Status Paid or WillBePaid; Amount and NetAmount
+// as sent (their sign is not documented: IsIncome says whether the record pays the seller or charges them).
+public sealed record RemoteFinanceRecord(string Id, string? TransactionType, string? Category, string? Status, string? OrderNumber, string? PackageNumber, string? InvoiceNumber,
+    string? Sku, decimal? Amount, decimal? NetAmount, string? Currency, bool? IsIncome, DateTimeOffset? OrderDate, DateTimeOffset? InvoiceDate, DateTimeOffset? DueDate,
+    DateTimeOffset? PaymentDate, string RawJson);
+
+public sealed record RemoteFinanceRecordPage(IReadOnlyList<RemoteFinanceRecord> Items, int Count);
+
+// Hepsiburada's accounting service, read only: the records of a status by their due day or their payment day.
+public interface IHepsiburadaFinancePort
+{
+    Task<AdapterResult<RemoteFinanceRecordPage>> GetFinanceRecordsAsync(AdapterContext context, string status, bool byDueDate, DateTimeOffset start, DateTimeOffset end, int offset, CancellationToken cancellationToken);
+}

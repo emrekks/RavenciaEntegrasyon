@@ -830,7 +830,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
     internal static bool SupportsShopifyPolicy(string resourceType) =>
         IsShopifyReadPolicy(resourceType) || IsStockReconcilePolicy(resourceType) || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
-    internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "RETURN_LIFECYCLE" or "REFERENCE_DATA" or "QUESTIONS" or ListingVerificationPolicy.ResourceType
+    // FINANCE reads the accounting records (muhasebe, mpfinance-external) of production stores, read only.
+    internal static bool SupportsHepsiburadaScheduledPolicy(string resourceType) => resourceType is "ORDERS" or "ORDER_RECOVERY" or "ORDER_LIFECYCLE" or "ORDER_INVOICE_RECONCILIATION" or "RETURNS" or "RETURN_LIFECYCLE" or "REFERENCE_DATA" or "QUESTIONS" or "FINANCE" or ListingVerificationPolicy.ResourceType
         || IsStockReconcilePolicy(resourceType)
         || MarketplaceExternalWritePolicies.IsPolicy(resourceType);
 
@@ -915,6 +916,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         ListingVerificationPolicy.ResourceType => (MarketplaceJobTypes.ListingVerify, $"scheduled:listing-verify:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "FINANCE" when platformCode == "PAZARAMA" => (MarketplaceJobTypes.PazaramaFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         "FINANCE" when platformCode == "N11" => (MarketplaceJobTypes.N11SettlementSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
+        "FINANCE" when platformCode == "HEPSIBURADA" => (MarketplaceJobTypes.HepsiburadaFinanceSync, $"scheduled:finance:{connectionId:N}", JsonSerializer.Serialize(new { connectionId })),
         _ => null
     };
 
