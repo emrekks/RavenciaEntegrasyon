@@ -1,7 +1,8 @@
 # Geri Alma Runbook'u
 
 Bir deploy sonrası panel bozulduğunda ne yapılacağı. Komutlar sunucuda, `~/RavenciaEntegrasyon`
-kökünden çalıştırılır. Genel deploy akışı: [CI-CD-DEPLOY.md](CI-CD-DEPLOY.md).
+kökünden çalıştırılır. Genel deploy akışı: [CI-CD-DEPLOY.md](CI-CD-DEPLOY.md). Güvenlik olayı
+(sızıntı, yetkisiz erişim) şüphesinde önce [RUNBOOK-OLAY.md](RUNBOOK-OLAY.md).
 
 ## 0. Önce karar: yalnız kod mu, veritabanı da mı?
 
@@ -148,20 +149,25 @@ aşağıdakiler olmadan pazaryeri kimlik bilgileri ve Data Protection ile koruna
 
 | Dosya | Neden |
 | --- | --- |
-| `credential_key.txt` | Pazaryeri kimlik bilgilerinin şifreleme anahtarı |
-| `dp_certificate.pfx`, `dp_certificate_password.txt`, `dp_certificate_metadata.txt` | Data Protection anahtar halkasının sertifikası |
+| `credential_key.txt` | Oturum, kurtarma kodu ve webhook rota belirteçlerinin HMAC anahtarı (kaybolursa herkes yeniden giriş yapar, kurtarma kodları ve webhook adresleri yenilenir) |
+| `dp_certificate.pfx`, `dp_certificate_password.txt`, `dp_certificate_metadata.txt` | Data Protection anahtar halkasının sertifikası; pazaryeri kimlik bilgileri ve TOTP sırları bu halkayla şifreli, sertifika olmadan **çözülemez** |
 | `postgres_password.txt`, `app_db_connection.txt` | Veritabanı erişimi (yeniden üretilebilir ama dump sahipliğiyle uyum için saklayın) |
 | `production.env`, `alert_webhook_url.txt` | Yapılandırma |
 
 Emanet kuralı (dosyaları **bu repoya, sohbete ya da şifresiz bir yere koymayın**):
 
-1. Sahip, kendi bilgisayarında `age` anahtarı üretir; özel anahtar parola yöneticisinde kalır.
-2. Sunucuda: `sudo tar -C deploy -czf - secrets | age -r <age-public-key> > ~/ravencia-secrets-$(date +%F).tar.gz.age`
-3. Şifreli dosyayı sunucu dışına (sahip bilgisayarı / ayrı bir hesapta S3) taşı ve sunucudan sil.
+1. Sahip, kendi bilgisayarında `age` anahtar çifti üretir; özel anahtar parola yöneticisinde ve sunucu
+   dışında kalır, sunucuya yalnız açık anahtar (`deploy/secrets/backup_age_recipient.txt`) konur
+   ([CI-CD-DEPLOY.md](CI-CD-DEPLOY.md) "Sunucu dışı yedek").
+2. Sunucuda: `sudo tar -C deploy -czf - secrets | age -R deploy/secrets/backup_age_recipient.txt > ~/ravencia-secrets-$(date +%F).tar.gz.age`
+3. Şifreli dosyayı sunucu dışına (sahibin bilgisayarı ve parola yöneticisi / Google Drive) taşı ve
+   sunucudan sil: `scp ubuntu@187.126.24.163:ravencia-secrets-*.tar.gz.age .` sonra `rm ~/ravencia-secrets-*.tar.gz.age`.
 4. Her anahtar/sertifika değişiminde tekrarla; yılda bir kez açıp `restore-drill.sh` ile dene.
 
-Not: yedek setleri şu anda yalnızca aynı sunucudadır; disk ya da instance kaybına karşı setlerin de
-şifreli bir dış hedefe kopyalanması ayrı bir karardır (IAM rolü gerekir).
+Yedek setlerinin kendisi de sunucu dışına şifreli kopyalanır: `deploy/backup/offsite-copy.sh` en yeni
+doğrulanmış seti aynı açık anahtarla şifreleyip rclone ile Google Drive'a yükler (yapılandırılana kadar
+"not configured" yazıp hiçbir şey yapmaz). Kurulum ve geri açma: [CI-CD-DEPLOY.md](CI-CD-DEPLOY.md)
+"Sunucu dışı yedek". Sunucu kaybında geri yükleme için hem sunucu dışı set hem bu emanet gerekir.
 
 ## 6. Aylık tatbikat
 

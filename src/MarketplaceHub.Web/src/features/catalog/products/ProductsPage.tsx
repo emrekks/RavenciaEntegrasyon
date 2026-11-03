@@ -239,7 +239,7 @@ export function ProductQuickEditModal({ products, connections, mode = 'both', on
     if (!priceRequested && !stockRequested) { const message = 'Uygulanacak fiyat veya stok değerini girin.'; setNotice(message); onResult?.('Değer Girilmedi', message, 'error'); return }
     const list = !showListPrice ? (salePrice === '' ? null : Number(salePrice)) : listPrice === '' ? null : Number(listPrice); const sale = salePrice === '' ? null : Number(salePrice); const amount = stockAmount === '' ? null : Number(stockAmount)
     if ((list != null && (!Number.isFinite(list) || list < 0 || !hasAtMostTwoDecimals(list))) || (sale != null && (!Number.isFinite(sale) || sale <= 0 || !hasAtMostTwoDecimals(sale))) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) { const message = 'Değerleri kontrol edin; satış fiyatı sıfırdan büyük olmalı, negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.'; setNotice(message); onResult?.('Geçersiz Değer', message, 'error'); return }
-    setSaving(true); setNotice('Seçilen varyantlar güncelleniyor…')
+    setSaving(true); setNotice('')
     // Every selected variant is attempted; a failure is recorded and the rest still go out. Stock is sent as an
     // absolute value against the stock this dialog opened with, so a change made meanwhile is refused, not undone.
     const failures: Array<{ sku: string; message: string }> = []

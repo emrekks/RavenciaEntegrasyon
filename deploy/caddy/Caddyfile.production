@@ -43,6 +43,20 @@
 		respond 404
 	}
 
+	# RFC 9116 contact for security reports. A single-path handle sorts before the named-matcher handles below.
+	# Expires must stay in the future: the CI ops job fails 30 days before it, renew it then (one year ahead).
+	handle /.well-known/security.txt {
+		header Content-Type "text/plain; charset=utf-8"
+		header Cache-Control "public, max-age=86400"
+		respond <<SECURITYTXT
+			Contact: mailto:destek@ravencia.com
+			Expires: 2027-11-03T00:00:00.000Z
+			Preferred-Languages: tr, en
+			Canonical: {$MARKETPLACEHUB_SITE_ADDRESS}/.well-known/security.txt
+			
+			SECURITYTXT 200
+	}
+
 	# Scanner paths (dotfiles, PHP, WordPress, CGI, vendor folders) get a plain 404 instead of the SPA shell,
 	# so probes are visible as 404s to the ban rules. /.well-known stays open for ACME.
 	@probe {

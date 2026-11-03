@@ -8,6 +8,15 @@ x-app: &app
   restart: unless-stopped
   init: true
   networks: [backend]
+  # Hardening (security plan U3): no privilege gain through setuid binaries or file capabilities, no Linux
+  # capabilities at all (the app runs as the image's non-root APP_UID 1654 and binds 8080), a read-only root
+  # filesystem with only /tmp writable (worker heartbeat, .NET diagnostics socket) next to the two data
+  # volumes, and a process cap (deploy.resources.limits.pids below; threads count too, a busy API or worker
+  # stays at a few hundred at most). Compose refuses pids_limit next to deploy.resources.limits.
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  read_only: true
+  tmpfs: ["/tmp:size=256m,mode=1777"]
   environment:
     ASPNETCORE_ENVIRONMENT: Production
     MARKETPLACEHUB_ENVIRONMENT: PILOT_LOCAL
@@ -39,7 +48,7 @@ x-app: &app
     options: { max-size: "10m", max-file: "5" }
   deploy:
     resources:
-      limits: { memory: 1536M, cpus: "2.00" }
+      limits: { memory: 1536M, cpus: "2.00", pids: 1024 }
 
 services:
   postgres:
@@ -53,6 +62,12 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets: [postgres_password]
     volumes: [pg_data:/var/lib/postgresql]
+    # Hardening (U3). The official entrypoint starts as root, fixes ownership and modes of the data and socket
+    # directories (CHOWN, DAC_OVERRIDE, FOWNER) and then drops to the postgres user with gosu (SETUID, SETGID);
+    # nothing else is kept. The root filesystem stays writable: PostgreSQL keeps its socket and lock files there.
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
     # Pools: API 25 (app_db_connection.txt), Worker 45 (Database:MaxPoolSize in its
     # appsettings.json overrides the file), each shared rate limiter 5. About 82 in
     # total, so 150 leaves room for LISTEN, migrate, backup and psql sessions.
@@ -85,7 +100,8 @@ services:
     logging: *local_logging
     deploy:
       resources:
-        limits: { memory: 6144M, cpus: "3.00" }
+        # pids: one process per connection (max_connections 150) plus background and parallel workers.
+        limits: { memory: 6144M, cpus: "3.00", pids: 512 }
 
   migrate:
     <<: *app
@@ -122,6 +138,25 @@ services:
       retries: 4
       start_period: 20s
 
+  # One-shot before every edge start: hands the certificate and config volumes to the non-root edge user.
+  # Volumes written while Caddy still ran as root hold root-owned 0600 files; this makes them Caddy's again
+  # and changes nothing afterwards. Root with only the capabilities a recursive chown needs, no network.
+  caddy-volumes:
+    build:
+      context: ../..
+      dockerfile: deploy/caddy/Dockerfile
+    image: marketplacehub-edge:f1-local
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    command: ["chown", "-R", "10080:10080", "/data", "/config"]
+    volumes: [caddy_data:/data, caddy_config:/config]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, DAC_READ_SEARCH, FOWNER]
+    pids_limit: 32
+    logging: *local_logging
+
   caddy:
     build:
       context: ../..
@@ -130,6 +165,20 @@ services:
     restart: unless-stopped
     init: true
     networks: [edge, backend]
+    # Hardening (U3): Caddy runs as uid 10080 instead of the image's root. Ports 80 and 443 are opened through
+    # ip_unprivileged_port_start=0 (the container's own network namespace; Docker's default since 20.10, set
+    # here explicitly), not through a capability. NET_BIND_SERVICE stays in the bounding set only because the
+    # image's /usr/bin/caddy carries the file capability cap_net_bind_service+ep: without it in the bounding
+    # set the kernel refuses to exec such a binary ("exec caddy failed: Operation not permitted"). With
+    # no-new-privileges and a non-root user the process never gains it (CapEff 0). Certificates and the
+    # autosaved config live in /data and /config (handed over by caddy-volumes); everything else is read-only.
+    user: "10080:10080"
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    sysctls: { net.ipv4.ip_unprivileged_port_start: "0" }
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
     # IPv6 visitors (G3, see ClientNetwork.cs and docs/CI-CD-DEPLOY.md "Kenar"): the edge network is IPv4 only,
     # so a connection that reaches the host over IPv6 is accepted by Docker's userland proxy (docker-proxy) and
     # arrives here from the bridge gateway's private IPv4 address. Every IPv6 visitor then looks like one private
@@ -142,6 +191,7 @@ services:
     environment: { MARKETPLACEHUB_SITE_ADDRESS: "${MARKETPLACEHUB_SITE_ADDRESS:-https://localhost}" }
     volumes: [caddy_data:/data, caddy_config:/config]
     depends_on:
+      caddy-volumes: { condition: service_completed_successfully }
       api: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "caddy", "version"]
@@ -151,7 +201,7 @@ services:
     logging: *local_logging
     deploy:
       resources:
-        limits: { memory: 256M, cpus: "0.50" }
+        limits: { memory: 256M, cpus: "0.50", pids: 256 }
 
   backup:
     image: postgres:18.6@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
@@ -164,6 +214,12 @@ services:
       PGUSER: marketplacehub
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets: [postgres_password]
+    # Hardening (U3): runs as root (it writes the root-owned staging volume) and may only read past file modes,
+    # which the API's private files and Data Protection keys (uid 1654) need.
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [DAC_READ_SEARCH]
+    pids_limit: 128
     volumes:
       - backup_staging:/backup
       - ../backup/backup.sh:/opt/marketplacehub/backup.sh:ro
