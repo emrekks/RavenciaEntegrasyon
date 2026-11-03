@@ -1,4 +1,5 @@
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -23,6 +24,21 @@ public static class DashboardSnapshotRefreshPolicy
         updatedAt is not { } updated
         || now - updated >= Reconciliation
         || (changedSinceUpdate && now - updated >= Debounce);
+
+    // Whether IsDue depends on a change since the snapshot: only between the debounce and the reconciliation age.
+    // Outside that window the outbox need not be read at all.
+    public static bool NeedsChangeCheck(DateTimeOffset? updatedAt, DateTimeOffset now) =>
+        updatedAt is { } updated && now - updated >= Debounce && now - updated < Reconciliation;
+
+    // The data changes since the snapshot, with its time written into the SQL as a constant. A correlated
+    // "CreatedAt > snapshot.UpdatedAt" (and a generic plan for a "CreatedAt > $1" parameter) got a fixed
+    // one-third row estimate and a sequential scan of the whole outbox (~90 ms every tick on live); a known time
+    // is estimated from the column statistics and read on the (TenantId, CreatedAt) index (~0.05 ms).
+    public static IQueryable<IntegrationOutboxEvent> ChangesSince(AppDbContext db, Guid tenantId, DateTimeOffset updatedAt) =>
+        db.IntegrationOutboxEvents.AsNoTracking().Where(change => change.TenantId == tenantId
+            && change.CreatedAt > EF.Constant(updatedAt)
+            && change.AggregateType != JobAggregateType
+            && change.AggregateType != SnapshotAggregateType);
 }
 
 // Runs in the worker: the API only announces changes. Each tenant is rebuilt in its own scope and its own
@@ -55,13 +71,15 @@ public sealed class DashboardSnapshotRefresher(IServiceScopeFactory scopes, Time
                                  select new
                                  {
                                      tenant.Id,
-                                     UpdatedAt = snapshot == null ? (DateTimeOffset?)null : snapshot.UpdatedAt,
-                                     Changed = snapshot != null && db.IntegrationOutboxEvents.Any(change => change.TenantId == tenant.Id
-                                         && change.CreatedAt > snapshot.UpdatedAt
-                                         && change.AggregateType != DashboardSnapshotRefreshPolicy.JobAggregateType
-                                         && change.AggregateType != DashboardSnapshotRefreshPolicy.SnapshotAggregateType)
+                                     UpdatedAt = snapshot == null ? (DateTimeOffset?)null : snapshot.UpdatedAt
                                  }).ToListAsync(cancellationToken);
-            due = tenants.Where(x => DashboardSnapshotRefreshPolicy.IsDue(x.UpdatedAt, x.Changed, now)).Select(x => x.Id).ToList();
+            due = [];
+            foreach (var tenant in tenants)
+            {
+                var changed = DashboardSnapshotRefreshPolicy.NeedsChangeCheck(tenant.UpdatedAt, now)
+                    && await DashboardSnapshotRefreshPolicy.ChangesSince(db, tenant.Id, tenant.UpdatedAt!.Value).AnyAsync(cancellationToken);
+                if (DashboardSnapshotRefreshPolicy.IsDue(tenant.UpdatedAt, changed, now)) due.Add(tenant.Id);
+            }
         }
 
         var rebuilt = 0;

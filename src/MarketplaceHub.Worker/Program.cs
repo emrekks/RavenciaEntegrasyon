@@ -15,6 +15,9 @@ DependencyInjection.ApplyFileBackedSecrets(builder.Configuration);
 // so incident logs were gone before anyone could read them. Failed commands are still logged as errors.
 builder.Services.AddSerilog(configuration => configuration
     .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
+    // The HttpClient factory logged four Information lines per marketplace call (~77% of all worker lines). The
+    // adapters log their own failures under their own categories, and these categories still log warnings.
+    .MinimumLevel.Override("System.Net.Http.HttpClient", LogEventLevel.Warning)
     // Log scopes (the job, its type, connection and correlation id) become properties of every line.
     .Enrich.FromLogContext()
     .WriteTo.Console(new RenderedCompactJsonFormatter()));

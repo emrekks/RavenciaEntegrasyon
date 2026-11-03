@@ -268,4 +268,36 @@ public sealed class DashboardPerformanceTests
         DateTimeOffset? updated = secondsSinceUpdate is { } seconds ? Now.AddSeconds(-seconds) : null;
         Assert.Equal(due, DashboardSnapshotRefreshPolicy.IsDue(updated, changed, Now));
     }
+
+    // The outbox is read only when the answer can change IsDue, and the result is the same as when it is always read.
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(-5, false)]
+    [InlineData(10, false)]
+    [InlineData(30, true)]
+    [InlineData(299, true)]
+    [InlineData(300, false)]
+    [InlineData(3600, false)]
+    public void Snapshot_change_check_runs_only_inside_the_debounce_window(int? secondsSinceUpdate, bool needsCheck)
+    {
+        DateTimeOffset? updated = secondsSinceUpdate is { } seconds ? Now.AddSeconds(-seconds) : null;
+        Assert.Equal(needsCheck, DashboardSnapshotRefreshPolicy.NeedsChangeCheck(updated, Now));
+        if (!needsCheck)
+            Assert.Equal(DashboardSnapshotRefreshPolicy.IsDue(updated, true, Now), DashboardSnapshotRefreshPolicy.IsDue(updated, false, Now));
+    }
+
+    // The snapshot time is a constant in the SQL, not a correlated column or a parameter: both of those were
+    // planned as a sequential scan of the whole outbox.
+    [Fact]
+    public void Snapshot_change_check_writes_the_snapshot_time_into_the_query()
+    {
+        using var db = DashboardOrderVisibilityTests.MetadataOnlyContext();
+        var sql = DashboardSnapshotRefreshPolicy.ChangesSince(db, Guid.NewGuid(), Now.AddMinutes(-1)).ToQueryString();
+
+        Assert.DoesNotContain("dashboard.snapshot", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Matches(@"""CreatedAt"" > TIMESTAMPTZ '2026-10-20[ T]07:29:00", sql);
+        Assert.Matches(@"""TenantId"" = @\w+", sql);
+        Assert.Contains("'IntegrationJob'", sql, StringComparison.Ordinal);
+        Assert.Contains("'DashboardSnapshot'", sql, StringComparison.Ordinal);
+    }
 }

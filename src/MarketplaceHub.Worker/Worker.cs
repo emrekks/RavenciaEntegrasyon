@@ -12,7 +12,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     // The lanes (and the job types each takes) are defined in WorkerLanes, shared with the queue metrics.
     internal static readonly string[] OrderStatusLaneJobTypes = [.. MarketplaceHub.Infrastructure.Jobs.WorkerLanes.OrderStatusJobTypes];
     private readonly string healthFile = configuration["Worker:HealthFile"] ?? "/tmp/marketplacehub-worker-heartbeat";
-    private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 5), 1, 30));
+    private readonly TimeSpan schedulerScanInterval = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:SchedulerScanSeconds", 10), 1, 30));
     private readonly int hotPriorityCeiling = Math.Clamp(configuration.GetValue("Worker:HotPriorityCeiling", 2), 0, 5);
     private readonly TimeSpan healthStaleAfter = TimeSpan.FromSeconds(Math.Clamp(configuration.GetValue("Worker:HealthStaleAfterSeconds", 120), 30, 900));
     private readonly bool schedulerEnabled = configuration.GetValue("Worker:EnableScheduler", true);
@@ -21,6 +21,9 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
     private readonly string? singleJobType = string.IsNullOrWhiteSpace(configuration["Worker:SingleJobType"]) ? null : configuration["Worker:SingleJobType"]!.Trim();
     private long lastDatabaseContactUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     private readonly JobWakeSignal wakeSignal = new();
+    // Asks the due-time wake to read the next due moment again (a scheduler pass enqueued jobs).
+    private readonly JobWakeSignal dueRecheck = new();
+    private static readonly TimeSpan DueRecheckDebounce = TimeSpan.FromSeconds(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -54,6 +57,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         loops.Add(RunHealthWatchdogAsync(stoppingToken));
         loops.Add(RunLeaseReaperAsync(stoppingToken));
         loops.Add(RunJobNotificationListenerAsync(stoppingToken));
+        loops.Add(RunDueJobWakeAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunSchedulerAsync(stoppingToken));
         if (schedulerEnabled) loops.Add(RunPolicyMaintenanceAsync(stoppingToken));
         if (schedulerEnabled && configuration.GetValue("Worker:JobRetention:Enabled", true)) loops.Add(RunJobRetentionAsync(stoppingToken));
@@ -187,7 +191,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
 
     private async Task RunLeaseLaneAsync(string lane, int? maximumPriority, int? minimumPriority, CancellationToken stoppingToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)
     {
-        var idleDelay = TimeSpan.FromSeconds(1);
+        var idleDelay = JobIdleWait.First;
         while (!stoppingToken.IsCancellationRequested)
         {
             var wake = wakeSignal.Current;
@@ -201,7 +205,7 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
                 {
                     RecordQueueWait(job, lane);
                     await ExecuteLeasedJobAsync(job, stoppingToken);
-                    idleDelay = TimeSpan.FromSeconds(1);
+                    idleDelay = JobIdleWait.First;
                     continue;
                 }
             }
@@ -209,14 +213,15 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
             catch (Exception exception)
             {
                 logger.LogError(exception, "Worker {Lane} lease loop failed", lane);
-                idleDelay = TimeSpan.FromSeconds(1);
+                idleDelay = JobIdleWait.First;
             }
 
             if (!stoppingToken.IsCancellationRequested)
             {
-                // Polling stays as the fallback; a notification for a runnable job ends the wait early.
+                // Polling stays as the fallback; a notification for a runnable job, or the due-time wake when a
+                // waiting job's time comes, ends the wait early.
                 var woken = await JobWakeSignal.WaitAsync(wake, idleDelay, stoppingToken);
-                idleDelay = woken ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(Math.Min(3_000, idleDelay.TotalMilliseconds * 2));
+                idleDelay = JobIdleWait.Next(idleDelay, woken);
             }
         }
     }
@@ -242,7 +247,63 @@ public sealed class Worker(IServiceScopeFactory scopeFactory, ILogger<Worker> lo
         await using var scope = scopeFactory.CreateAsyncScope();
         var producer = scope.ServiceProvider.GetRequiredService<IScheduledJobProducer>();
         var count = await producer.EnqueueDueAsync(cancellationToken);
-        if (count > 0) logger.LogInformation("Enqueued {Count} scheduled integration jobs", count);
+        if (count > 0)
+        {
+            logger.LogInformation("Enqueued {Count} scheduled integration jobs", count);
+            dueRecheck.Pulse();
+        }
+    }
+
+    // A job that becomes runnable only because time passes (a retry's or deferred job's AvailableAt, the end of
+    // its connection's quota backoff) changes no row at that moment, so no notification announces it. This loop
+    // reads the next such moment and wakes the lanes then. It reads again after every notification (debounced)
+    // and scheduler pass that enqueued jobs, and at least every JobIdleWait.Maximum, so the lanes' idle wait can
+    // be long without a due job waiting for it.
+    private async Task RunDueJobWakeAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            var recheck = Task.WhenAny(wakeSignal.Current, dueRecheck.Current);
+            DateTimeOffset? nextDue = null;
+            var delay = JobIdleWait.Maximum;
+            try
+            {
+                var now = DateTimeOffset.UtcNow;
+                nextDue = await NextDueAsync(now, stoppingToken);
+                delay = JobIdleWait.UntilDue(nextDue, now);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+            catch (Exception exception)
+            {
+                logger.LogWarning(exception, "Next due job time could not be read; lanes keep polling");
+            }
+
+            try
+            {
+                if (await JobWakeSignal.WaitAsync(recheck, delay, stoppingToken))
+                    await Task.Delay(DueRecheckDebounce, stoppingToken);
+                // Pulsed whether the wait ended by time or by a notification: the moment read above has passed
+                // either way, and the next read only looks at later ones.
+                if (nextDue is { } due && due <= DateTimeOffset.UtcNow + JobIdleWait.MinimumDueWait)
+                    wakeSignal.Pulse();
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+        }
+    }
+
+    // The earliest future moment a queued job becomes leasable: its AvailableAt, or the end of a quota backoff
+    // that may hold jobs of that connection back.
+    private async Task<DateTimeOffset?> NextDueAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.Database.SqlQuery<DateTimeOffset?>($"""
+            SELECT LEAST(
+                (SELECT min(job."AvailableAt") FROM integration.jobs job
+                 WHERE job."Status" IN ('PENDING', 'RETRY_SCHEDULED') AND job."AvailableAt" > {now}
+                   AND job."AttemptCount" < job."MaxAttempts"),
+                (SELECT min(backoff."Until") FROM integration.connection_backoffs backoff WHERE backoff."Until" > {now})) AS "Value"
+            """).SingleAsync(cancellationToken);
     }
 
     private async Task<LeasedJob?> LeaseNextAsync(int? maximumPriority, int? minimumPriority, CancellationToken cancellationToken, string? onlyJobType = null, bool reapExpiredLeases = false, string[]? includedJobTypes = null, string[]? excludedJobTypes = null)

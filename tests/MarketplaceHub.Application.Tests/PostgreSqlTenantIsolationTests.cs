@@ -298,16 +298,19 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
     {
         var tenant = NewTenant("outbox-retention");
         var now = fixture.Now;
+        // Just past the retention, and just inside it.
+        var expired = now - OperationsRealtimeOutboxRetention.RetentionPeriod - TimeSpan.FromHours(1);
+        var retained = now - OperationsRealtimeOutboxRetention.RetentionPeriod + TimeSpan.FromHours(1);
         await using (var db = fixture.CreateContext())
         {
             db.Tenants.Add(tenant);
             await db.SaveChangesAsync();
 
             var oldPublished = Enumerable.Range(0, OperationsRealtimeOutboxRetention.BatchSize + 2)
-                .Select(_ => NewOutboxEvent(tenant.Id, now, now.AddDays(-31)))
+                .Select(_ => NewOutboxEvent(tenant.Id, now, expired))
                 .ToArray();
             db.IntegrationOutboxEvents.AddRange(oldPublished);
-            db.IntegrationOutboxEvents.Add(NewOutboxEvent(tenant.Id, now, now.AddDays(-29)));
+            db.IntegrationOutboxEvents.Add(NewOutboxEvent(tenant.Id, now, retained));
             db.IntegrationOutboxEvents.Add(NewOutboxEvent(tenant.Id, now, publishedAt: null));
             await db.SaveChangesAsync();
         }
@@ -318,8 +321,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             var deletedFirstBatch = await OperationsRealtimeOutboxRetention.DeleteExpiredPublishedBatchAsync(db, now, CancellationToken.None);
             Assert.Equal(OperationsRealtimeOutboxRetention.BatchSize, deletedFirstBatch);
 
-            var remainingOldPublished = await db.IntegrationOutboxEvents.CountAsync(row => row.TenantId == tenant.Id && row.PublishedAt < now.AddDays(-30));
-            var recentPublished = await db.IntegrationOutboxEvents.CountAsync(row => row.TenantId == tenant.Id && row.PublishedAt == now.AddDays(-29));
+            var remainingOldPublished = await db.IntegrationOutboxEvents.CountAsync(row => row.TenantId == tenant.Id && row.PublishedAt < now - OperationsRealtimeOutboxRetention.RetentionPeriod);
+            var recentPublished = await db.IntegrationOutboxEvents.CountAsync(row => row.TenantId == tenant.Id && row.PublishedAt == retained);
             var unpublished = await db.IntegrationOutboxEvents.CountAsync(row => row.TenantId == tenant.Id && row.PublishedAt == null);
             Assert.Equal(2, remainingOldPublished);
             Assert.Equal(1, recentPublished);
