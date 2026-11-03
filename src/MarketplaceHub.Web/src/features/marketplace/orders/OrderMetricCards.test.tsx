@@ -62,7 +62,8 @@ describe('order summary cards', () => {
     const { host } = render(<OrderMetricCards {...props()} />)
     const cancelled = card(host, 'İptal')
     expect(cancelled.classList.contains('rr-metric-chipped')).toBe(true)
-    expect(Array.from(cancelled.children).map(child => child.className)).toEqual(['rr-metric-open', 'rr-metric-chip rr-metric-chip-alert'])
+    // The decorative background icon comes first, then the open button and the chip.
+    expect(Array.from(cancelled.children).map(child => child.className)).toEqual(['rv-card-bg', 'rr-metric-open', 'rr-metric-chip rr-metric-chip-alert'])
     cleanup()
 
     const plain = render(<OrderMetricCards {...props({ partiallyCancelled: metric(0) })} />).host

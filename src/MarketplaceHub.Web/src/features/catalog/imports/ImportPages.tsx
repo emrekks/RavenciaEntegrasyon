@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
+import { CardBackgroundIcon, type CardIconName, type CardTone } from '../../../shared/components/CardBackgroundIcon'
 import { ErrorToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { Page, Tag, Versioned } from '../shared'
@@ -97,9 +98,9 @@ export function ImportDetailPage() {
     })
   }
   if (!session.data) return <Page title="İçe Aktarım" eyebrow="Katalog" className="catalog-list-page"><ErrorToast title="İçe Aktarım Yüklenemedi" error={session.error} /><p>Yükleniyor…</p></Page>
-  const metrics: Array<[string, string | number]> = [['Durum', statusLabel(session.data.status)], ['Toplam', session.data.totalRows], ['Geçerli', session.data.validRows], ['Hatalı', session.data.errorRows]]
+  const metrics: Array<[string, string | number, CardIconName, CardTone?]> = [['Durum', statusLabel(session.data.status), 'pulse'], ['Toplam', session.data.totalRows, 'layers'], ['Geçerli', session.data.validRows, 'check', 'ok'], ['Hatalı', session.data.errorRows, 'alert', session.data.errorRows > 0 ? 'bad' : undefined]]
   return <Page title={`İçe Aktarım ${session.data.id.slice(0, 8)}`} eyebrow="Katalog" className="catalog-list-page">
-    <div className="metrics">{metrics.map(([label, value]) => <article key={label}><small>{label}</small><strong>{value}</strong></article>)}</div>
+    <div className="metrics">{metrics.map(([label, value, icon, tone]) => <article key={label}><CardBackgroundIcon name={icon} tone={tone} /><small>{label}</small><strong>{value}</strong></article>)}</div>
     <ErrorToast title="İçe Aktarım İşlemi Başarısız" error={error} />
     {session.data.status === 'CREATED' && <div className="detail-grid">
       <form className="panel" onSubmit={upload}><h2>1. Dosya</h2><input name="file" type="file" accept=".csv,.xlsx" required /><button disabled={pending.isPending}>Yükle</button></form>
