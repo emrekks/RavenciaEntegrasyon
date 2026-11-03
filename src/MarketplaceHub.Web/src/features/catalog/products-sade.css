@@ -364,6 +364,8 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Every card starts its label, figure and note on the same lines: grid rows no longer stretch to fill the card, and the
    Düşük Stoklu button no longer centres its content (measured live: labels sat 0-3px apart, figures 6px). */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > * { align-content: start; }
+/* Narrow cards: the background icon runs a little past the right edge, as the first card design had it. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > * > .rv-card-bg > svg { right: -6px; }
 @media (max-width: 1024px) {
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics.rr-metrics-5 > * { grid-column: span 2; }
