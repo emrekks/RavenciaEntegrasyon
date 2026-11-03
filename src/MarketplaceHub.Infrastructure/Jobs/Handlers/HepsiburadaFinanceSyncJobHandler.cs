@@ -17,6 +17,7 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
     // A guard against a paging answer that never ends: 300 pages of 100.
     private const int MaximumPages = 300;
     private const int PageSize = Adapters.Hepsiburada.HepsiburadaHttpClient.FinancePageSize;
+    private const int WindowDays = 30;
 
     public bool Handles(string jobType) => jobType == MarketplaceJobTypes.HepsiburadaFinanceSync;
 
@@ -38,13 +39,18 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
         var records = new Dictionary<string, RemoteFinanceRecord>(StringComparer.Ordinal);
         foreach (var (status, byDueDate, start, end) in new[] { ("WillBePaid", true, back, now.AddDays(Setting("AheadDays", 90, 1, 365))), ("Paid", false, back, now.AddDays(1)) })
         {
-            for (var page = 0; page < MaximumPages; page++)
+            // A month at most per query, as the guide's example asks: consecutive windows of WindowDays calendar days.
+            for (var from = start; from < end; from = from.AddDays(WindowDays))
             {
-                requests++;
-                var result = await finance.GetFinanceRecordsAsync(context, status, byDueDate, start, end, page * PageSize, cancellationToken);
-                if (!result.IsSuccess) return await FailAsync(request, result.Error!, now, new(requests, records.Count, 0, 0, 0, 1), cancellationToken);
-                foreach (var item in result.Value!.Items) records[item.Id] = item;
-                if (result.Value.Items.Count < PageSize || (page + 1) * PageSize >= result.Value.Count) break;
+                var to = from.AddDays(WindowDays - 1) < end ? from.AddDays(WindowDays - 1) : end;
+                for (var page = 0; page < MaximumPages; page++)
+                {
+                    requests++;
+                    var result = await finance.GetFinanceRecordsAsync(context, status, byDueDate, from, to, page * PageSize, cancellationToken);
+                    if (!result.IsSuccess) return await FailAsync(request, result.Error!, now, new(requests, records.Count, 0, 0, 0, 1), cancellationToken);
+                    foreach (var item in result.Value!.Items) records[item.Id] = item;
+                    if (result.Value.Items.Count < PageSize || (page + 1) * PageSize >= result.Value.Count) break;
+                }
             }
         }
 
