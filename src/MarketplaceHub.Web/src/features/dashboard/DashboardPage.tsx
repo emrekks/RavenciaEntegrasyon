@@ -41,13 +41,13 @@ const poll = { headers: backgroundPollHeaders }
 
 const icon = (body: ReactNode, size = 18) => <svg className="rr-ico" width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{body}</svg>
 const ICONS = {
-  cart: icon(<><path d="M1.5 2.5h2l1.6 7.4a1 1 0 0 0 1 .8h5.6a1 1 0 0 0 1-.8L14.5 5.5H4.4" /><circle cx="6.5" cy="13.3" r=".9" /><circle cx="12" cy="13.3" r=".9" /></>),
-  late: icon(<><path d="M13.6 9.3A5.8 5.8 0 1 1 9.3 2.4" /><path d="M8 5v3.2l2 1.3" /><path d="M12.6 2.6v2.6M12.6 7.1v.1" /></>),
-  ret: icon(<><path d="M5.5 4 2.5 7l3 3" /><path d="M2.5 7h7a4 4 0 0 1 0 8H7" /></>),
-  invoice: icon(<><path d="M4 2h5l3 3v9H4z" /><path d="M9 2v3h3M6 8.5h4M6 11h3" /></>),
+  cart: icon(<><path d="M8 1.8 13.8 4.8v6.4L8 14.2 2.2 11.2V4.8z" /><path d="M2.2 4.8 8 7.8l5.8-3M8 7.8v6.4M5.1 3.3l5.8 3" /></>),
+  late: icon(<><circle cx="8" cy="8.8" r="5" /><path d="M8 6.3v2.6l1.7 1M2.6 3.4 4.4 1.9M13.4 3.4l-1.8-1.5" /></>),
+  ret: icon(<><path d="M3 6.5h7.5a3 3 0 0 1 0 6H6" /><path d="M5.8 3.7 3 6.5l2.8 2.8" /></>),
+  invoice: icon(<><path d="M3.5 1.8h9v12.4l-1.5-1-1.5 1-1.5-1-1.5 1-1.5-1-1.5 1z" /><path d="M6 5.5h4M6 8h4M6 10.5h2.5" /></>),
   due: icon(<><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 6.5h11M5.5 2v3M10.5 2v3M8 9v2" /></>),
-  cancel: icon(<><circle cx="8" cy="8" r="5.8" /><path d="M5.9 5.9l4.2 4.2M10.1 5.9l-4.2 4.2" /></>),
-  lowst: icon(<><path d="M2.5 5 8 2.2 13.5 5v6L8 13.8 2.5 11z" /><path d="M2.5 5 8 7.8 13.5 5M8 7.8v6" /></>),
+  cancel: icon(<><circle cx="8" cy="8" r="5.8" /><path d="M3.9 3.9l8.2 8.2" /></>),
+  lowst: icon(<><path d="M2.5 13.5h11" /><rect x="3" y="4" width="2.4" height="7.5" rx=".5" /><rect x="6.8" y="7" width="2.4" height="4.5" rx=".5" /><rect x="10.6" y="9.5" width="2.4" height="2" rx=".5" /></>),
   up: icon(<path d="M4 10l4-4 4 4" />, 12),
   down: icon(<path d="M4 6l4 4 4-4" />, 12),
 }
@@ -315,7 +315,7 @@ export function DashboardPage() {
     </div></div>
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
     <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
-      const body = <><span className="rr-op-ic">{ICONS[kind]}</span><span className="rr-op-t"><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong><small>{label}</small></span><RrIcon name="arrowR" /><Breakdown rows={Array.isArray(byConnection) ? byConnection : breakdown(byConnection)} /></>
+      const body = <><span className="rr-op-t"><small><span className="rr-op-ic">{ICONS[kind]}</span>{label}</small><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong></span><RrIcon name="arrowR" /><Breakdown rows={Array.isArray(byConnection) ? byConnection : breakdown(byConnection)} /></>
       const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}`
       // Low stock opens its window here instead of taking the user to the products page.
       return kind === 'lowst'
