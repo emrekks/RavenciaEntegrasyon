@@ -45,11 +45,47 @@ public static class ReportsEndpoints
             var result = await service.StockAsync(tenant.TenantId, new ReportStockQuery(start, end, Split(platformCodes), includeTest ?? false), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
+        // Hakediş: what the marketplaces will pay and have paid, now (no period: due days and payouts of the last days).
+        api.MapGet("/reports/payouts", async (HttpContext http, IPayoutsService service, string? platformCodes, string? connectionIds, bool? includeTest) =>
+        {
+            if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            if (!TryIds(connectionIds, out var ids)) return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REPORT_CONNECTION_INVALID", "Mağaza kimliği geçersiz.", 400);
+            var result = await service.SummaryAsync(tenant.TenantId, new PayoutQuery(Split(platformCodes), ids, includeTest ?? false), http.RequestAborted);
+            return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
+        });
+        // The records of one payout, of a store's due day in a region, or of a search by order, invoice or record number.
+        api.MapGet("/reports/payouts/lines", async (HttpContext http, IPayoutsService service, string? platformCodes, Guid? connectionId, string? payoutId, string? day, string? region, string? q, int? page) =>
+        {
+            if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            DateOnly? due = null;
+            if (!string.IsNullOrEmpty(day))
+            {
+                if (!MarketplaceHub.Api.Dashboard.DashboardEndpoints.TryDay(day, out var parsed) || parsed is null)
+                    return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REPORT_RANGE_INVALID", "Tarihler yyyy-AA-gg biçiminde olmalıdır.", 400);
+                due = parsed;
+            }
+            if (page is < 0 or > 10_000 || q?.Length > 64 || payoutId?.Length > 64 || region?.Length > 16)
+                return MarketplaceHub.Api.Security.ApiProblems.Of(http, "PAYOUT_LINES_QUERY_INVALID", "Sorgu geçersiz.", 400);
+            var result = await service.LinesAsync(tenant.TenantId, new PayoutQuery(Split(platformCodes), null, false),
+                new PayoutLinesQuery(connectionId, payoutId, due, region, q, page ?? 0), http.RequestAborted);
+            return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
+        });
         return endpoints;
     }
 
     private static List<string> Split(string? value) =>
         string.IsNullOrWhiteSpace(value) ? [] : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(50).ToList();
+
+    private static bool TryIds(string? value, out List<Guid> ids)
+    {
+        ids = [];
+        foreach (var item in Split(value))
+        {
+            if (!Guid.TryParse(item, out var id)) return false;
+            ids.Add(id);
+        }
+        return true;
+    }
 
     private static TenantContext? Tenant(HttpContext http) => http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
 }
