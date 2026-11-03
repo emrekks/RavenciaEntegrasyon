@@ -96,7 +96,7 @@ describe('order summary cards', () => {
     expect(processing.className).toBe('rr-warn rr-metric-tipped')
     expect(Array.from(processing.querySelectorAll('.rr-metric-tip-r')).map(row => row.textContent)).toEqual(['Pazarama2 adet'])
     cleanup()
-    expect(card(render(<OrderMetricCards {...props({ processingRows: [] })} />).host, 'İşleme Alınan').className).toBe('')
+    expect(card(render(<OrderMetricCards {...props({ processingRows: [] })} />).host, 'İşleme Alınan').className).toBe('rr-warn')
   })
 
   it('lists the new orders\' products per store on hover, and draws no panel without them', () => {
