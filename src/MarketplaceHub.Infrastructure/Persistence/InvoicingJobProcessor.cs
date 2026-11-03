@@ -681,7 +681,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             if (!ManualInvoiceIdentityMatches(document, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink))
                 return await StopManualOrderInvoiceDelivery(state, "MANUAL_REVIEW", "MARKETPLACE_HAS_DIFFERENT_OR_UNVERIFIABLE_INVOICE", before.Value.ExternalReference,
                     "Pazaryerinde farklı veya doğrulanamayan bir fatura var; üzerine yazılmadı.", cancellationToken);
-            await ConfirmManualOrderInvoiceDelivery(tenantId, document, package, state, before.Value.ExternalReference, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink, cancellationToken);
+            await ConfirmManualOrderInvoiceDelivery(tenantId, package, state, before.Value.ExternalReference, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink, cancellationToken);
             return true;
         }
         if (beforeStatus != MarketplaceInvoiceStatus.NotInvoiced)
@@ -789,7 +789,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
         if (submitted.Value!.SameAttemptVerified)
         {
-            await ConfirmManualOrderInvoiceDelivery(tenantId, document, package, state,
+            await ConfirmManualOrderInvoiceDelivery(tenantId, package, state,
                 submitted.Value.ExternalReference,
                 submitted.Value.VerifiedInvoiceNumber,
                 submitted.Value.VerifiedInvoiceLink,
@@ -802,7 +802,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 invoiceNumber: after.Value.VerifiedInvoiceNumber, invoiceUrl: after.Value.VerifiedInvoiceLink) == MarketplaceInvoiceStatus.Invoiced
             && ManualInvoiceIdentityMatches(document, after.Value.VerifiedInvoiceNumber, after.Value.VerifiedInvoiceLink))
         {
-            await ConfirmManualOrderInvoiceDelivery(tenantId, document, package, state, after.Value.ExternalReference,
+            await ConfirmManualOrderInvoiceDelivery(tenantId, package, state, after.Value.ExternalReference,
                 after.Value.VerifiedInvoiceNumber, after.Value.VerifiedInvoiceLink, cancellationToken);
             return true;
         }
@@ -825,7 +825,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             : JobExecutionResult.ManualReview(errorCode, message));
     }
 
-    private async Task ConfirmManualOrderInvoiceDelivery(Guid tenantId, ManualOrderInvoiceDocument document, ShipmentPackage package,
+    private async Task ConfirmManualOrderInvoiceDelivery(Guid tenantId, ShipmentPackage package,
         ManualOrderInvoiceDeliveryState? state, string? externalReference, string? verifiedInvoiceNumber, string? verifiedInvoiceLink,
         CancellationToken cancellationToken)
     {

@@ -9289,14 +9289,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     foreach (var claimElement in HepsiburadaJsonMapper.ClaimPackageClaims(document.RootElement))
                     {
                         var claim = HepsiburadaJsonMapper.ReturnClaim(claimElement);
-                        await UpsertReturn(tenantId, connectionId, correlationId, claim, new Dictionary<string, string?>(StringComparer.Ordinal), cancellationToken);
+                        await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
                     }
                 }
                 else
                 {
                     var claim = HepsiburadaJsonMapper.ReturnClaim(document.RootElement);
                     TrackReceived();
-                    await UpsertReturn(tenantId, connectionId, correlationId, claim, new Dictionary<string, string?>(StringComparer.Ordinal), cancellationToken);
+                    await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
                 }
             }
             catch (JsonException) { return false; }
@@ -11340,7 +11340,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // twice. (The run used to restart from the three-month baseline after any failure; the failure count
         // it looked at is the telemetry of the same "RETURNS" row, so one quota error meant a full re-read.)
         var state = ReadReturnSyncState(cursor, timeProvider.GetUtcNow(), overlap, ReadBoolean(payloadJson, "forceFull"));
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         var pagesThisSlice = 0;
         do
         {
@@ -11388,7 +11387,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 throw JobProcessingException.FromAdapter(result.Error!);
             }
             foreach (var _ in result.Value!.Items) TrackReceived();
-            foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+            foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
             pagesThisSlice++;
             state = state with { PermanentFailures = 0 };
             var nextStorefront = false;
@@ -11440,14 +11439,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var modifiedAfter = forceFull ? now.AddDays(-180) : watermark?.AddMinutes(-15);
             state = new(ShopifyReturnSyncStateVersion, null, modifiedAfter, now);
         }
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         while (!cancellationToken.IsCancellationRequested)
         {
             TrackRequest();
             var page = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"shopify-return-sync:{state.Cursor ?? "first"}"), new(state.ModifiedAfter, state.Anchor), new(state.Cursor, 100), cancellationToken);
             if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
             foreach (var _ in page.Value!.Items) TrackReceived();
-            foreach (var claim in page.Value.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+            foreach (var claim in page.Value.Items) await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
             if (page.Value.HasMore)
             {
                 if (string.IsNullOrWhiteSpace(page.Value.NextCursor) || string.Equals(page.Value.NextCursor, state.Cursor, StringComparison.Ordinal))
@@ -11487,7 +11485,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var wideCursor = await Cursor(tenantId, connectionId, ReturnRereadPolicy.WideCursorResource, cancellationToken);
         var lookbackDays = ReturnRereadPolicy.LookbackDays(full, PazaramaReturnInitialLookbackDays, PazaramaReturnLookbackDays, wideCursor.LastSuccessAt, now);
         var from = now.AddDays(-lookbackDays);
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         for (var windowStart = from; windowStart < now && !cancellationToken.IsCancellationRequested; windowStart = windowStart.AddDays(PazaramaReturnWindowDays))
         {
             var windowEnd = windowStart.AddDays(PazaramaReturnWindowDays) < now ? windowStart.AddDays(PazaramaReturnWindowDays) : now;
@@ -11502,7 +11499,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     TrackReceived();
                     var resolved = await ResolvePazaramaReturnOrderLinesAsync(tenantId, connectionId, correlationId, claim, cancellationToken);
-                    await UpsertReturn(tenantId, connectionId, correlationId, resolved, productSnapshots, cancellationToken);
+                    await UpsertReturn(tenantId, connectionId, resolved, cancellationToken);
                 }
                 if (!result.Value.HasMore) break;
                 page = int.TryParse(result.Value.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) && next > page ? next : page + 1;
@@ -11589,7 +11586,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var wideCursor = await Cursor(tenantId, connectionId, ReturnRereadPolicy.WideCursorResource, cancellationToken);
         var lookbackDays = ReturnRereadPolicy.LookbackDays(full, N11ReturnInitialLookbackDays, N11ReturnLookbackDays, wideCursor.LastSuccessAt, now);
         var window = new ReturnPollWindow(now.AddDays(-lookbackDays), now);
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         var page = 0;
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -11600,7 +11596,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 TrackReceived();
                 var resolved = await ResolveN11ReturnOrderLinesAsync(tenantId, connectionId, correlationId, claim, cancellationToken);
-                await UpsertReturn(tenantId, connectionId, correlationId, resolved, productSnapshots, cancellationToken);
+                await UpsertReturn(tenantId, connectionId, resolved, cancellationToken);
             }
             if (!result.Value.HasMore) break;
             page = int.TryParse(result.Value.NextCursor, NumberStyles.None, CultureInfo.InvariantCulture, out var next) && next > page ? next : page + 1;
@@ -11788,7 +11784,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // The local record date can be days after the claim was opened on Hepsiburada; the whole history window is listed.
         var windowStart = now - HepsiburadaReturnHistoryPolicy.InitialLookback;
         var seen = new Dictionary<string, List<string>>(StringComparer.Ordinal);
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var status in HepsiburadaClaimFollowUpStatuses)
         {
             if (pending.Count == 0) break;
@@ -11815,7 +11810,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     if (!pending.TryGetValue(claim.ExternalClaimId, out var localStatus)) { TrackSkipped(); continue; }
                     // The same claim can be listed under its old status a moment longer; keep the local one.
                     if (string.Equals(status, localStatus, StringComparison.Ordinal)) { pending.Remove(claim.ExternalClaimId); continue; }
-                    await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+                    await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
                     await db.SaveChangesAsync(cancellationToken);
                     pending.Remove(claim.ExternalClaimId);
                 }
@@ -11861,7 +11856,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
         }
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         while (!cancellationToken.IsCancellationRequested)
         {
             var status = HepsiburadaClaimStatuses[state.StatusIndex];
@@ -11903,7 +11897,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     continue;
                 }
                 await ResolveIssue(tenantId, $"hepsiburada-return:{connectionId}:{status}:{claim.ExternalClaimId}", cancellationToken);
-                await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+                await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
             }
 
             if (pageResult.HasMore)
@@ -11993,7 +11987,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
         }
 
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var (claimId, externalClaimId, cursor) in openClaims)
         {
             cursor.OpaqueCursor = claimId.ToString("D");
@@ -12023,7 +12016,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
             TrackReceived();
 
-            await UpsertReturn(tenantId, connectionId, correlationId, result.Value!, productSnapshots, cancellationToken);
+            await UpsertReturn(tenantId, connectionId, result.Value!, cancellationToken);
             await ResolveIssue(tenantId, $"return-lifecycle:{connectionId}:{externalClaimId}", cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
         }
@@ -12070,7 +12063,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 3, 1, 90);
         var end = timeProvider.GetUtcNow();
-        var productSnapshots = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var storefront in TrendyolReadStorefronts.ReturnCodes)
         {
             var page = 0;
@@ -12080,7 +12072,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-reconcile:{lookbackDays}:{storefront}:{page}"), new(end.AddDays(-lookbackDays), end, storefront), new(page.ToString(), 200), cancellationToken);
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
                 foreach (var _ in result.Value!.Items) TrackReceived();
-                foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, correlationId, claim, productSnapshots, cancellationToken);
+                foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
                 if (!result.Value.HasMore) break;
                 page = int.TryParse(result.Value.NextCursor, out var parsed) ? parsed : page + 1;
             } while (!cancellationToken.IsCancellationRequested);
@@ -12229,7 +12221,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static string SerializeReturnSyncState(ReturnSyncState state) => JsonSerializer.Serialize(state);
     private static ReturnSyncState InitialReturnWindow(DateTimeOffset now) => new(ReturnSyncStateVersion, 0, 0, false, now.AddMonths(-3), now);
 
-    private async Task UpsertReturn(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim remote, Dictionary<string, string?> productSnapshots, CancellationToken cancellationToken)
+    private async Task UpsertReturn(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
     {
         var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
         var claimLevelTarget = MarketplaceReturnStatus.Canonicalize(remote.RawStatus, remote.CargoTrackingLink);
@@ -12647,7 +12639,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             TrackRequest();
             var check = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:verify"), claim.ExternalClaimId, cancellationToken);
-            if (check.IsSuccess) { TrackReceived(); await UpsertReturn(tenantId, connectionId, correlationId, check.Value!, new(StringComparer.Ordinal), cancellationToken); }
+            if (check.IsSuccess) { TrackReceived(); await UpsertReturn(tenantId, connectionId, check.Value!, cancellationToken); }
             else TrackResultFailure(check.Error);
             if (decision.Status == "SUCCEEDED") return true;
             throw new JobProcessingException(JobExecutionResult.ManualReview("EXTERNAL_EFFECT_UNRESOLVED", "Önceki iade aksiyonunun sonucu doğrulanamadan kapatıldı; tekrar gönderilmedi. Pazaryeri panelinden kontrol edin."));
@@ -12658,7 +12650,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             TrackRequest();
             var readback = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:readback"), claim.ExternalClaimId, cancellationToken);
             if (readback.IsSuccess) TrackReceived();
-            if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, correlationId, readback.Value!, new(StringComparer.Ordinal), cancellationToken);
+            if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, readback.Value!, cancellationToken);
             else { await RecordIssue(tenantId, $"return-readback:{connectionId}:{claim.ExternalClaimId}:{decision.Action}", "RETURN_ACTION_READBACK_PENDING", "İade aksiyonu daha önce kabul edildi ancak read-back tamamlanamadı; planlı return sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
             return true;
         }
@@ -12674,7 +12666,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             TrackRequest();
             var readback = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{decision.IdempotencyKey}:readback"), claim.ExternalClaimId, cancellationToken);
             if (readback.IsSuccess) TrackReceived();
-            if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, correlationId, readback.Value!, new(StringComparer.Ordinal), cancellationToken);
+            if (readback.IsSuccess) await UpsertReturn(tenantId, connectionId, readback.Value!, cancellationToken);
             else { await RecordIssue(tenantId, $"return-readback:{connectionId}:{claim.ExternalClaimId}:{decision.Action}", "RETURN_ACTION_READBACK_PENDING", "İade aksiyonu kabul edildi ancak anlık read-back tamamlanamadı; planlı return sync kesinleştirecek.", cancellationToken); await db.SaveChangesAsync(cancellationToken); }
             return true;
         }

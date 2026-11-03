@@ -165,7 +165,7 @@ const physical = name => name
   .replace(/-inline-start/, '-left').replace(/-inline-end/, '-right').replace(/-block-start/, '-top').replace(/-block-end/, '-bottom')
   .replace(/^inset-inline-start$/, 'left').replace(/^inset-inline-end$/, 'right').replace(/^inset-block-start$/, 'top').replace(/^inset-block-end$/, 'bottom')
 const families = { font: ['line-height'], inset: ['top', 'right', 'bottom', 'left', 'inset-inline', 'inset-block'], 'inset-inline': ['left', 'right'], 'inset-block': ['top', 'bottom'], gap: ['row-gap', 'column-gap'], 'grid-gap': ['row-gap', 'column-gap', 'gap'], 'place-items': ['align-items', 'justify-items'], 'place-content': ['align-content', 'justify-content'], 'place-self': ['align-self', 'justify-self'], 'grid-area': ['grid-row', 'grid-column', 'grid-row-start', 'grid-row-end', 'grid-column-start', 'grid-column-end'], 'padding-inline': ['padding-left', 'padding-right'], 'padding-block': ['padding-top', 'padding-bottom'], 'margin-inline': ['margin-left', 'margin-right'], 'margin-block': ['margin-top', 'margin-bottom'], 'border-inline': ['border-left', 'border-right'], 'border-block': ['border-top', 'border-bottom'], overflow: ['overflow-x', 'overflow-y'], 'text-decoration': ['text-decoration-line', 'text-decoration-color', 'text-decoration-style', 'text-decoration-thickness'] }
-export function propertiesOverlap(a, b) {
+function propertiesOverlap(a, b) {
   if (a === 'all' || b === 'all') return true
   if (a.startsWith('--') || b.startsWith('--')) return a === b
   const x = physical(a)

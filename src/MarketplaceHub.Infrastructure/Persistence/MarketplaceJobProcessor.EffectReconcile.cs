@@ -116,7 +116,7 @@ public sealed partial class MarketplaceJobProcessor
         var remote = await returns.GetAsync(Context(tenantId, connectionId, correlationId, $"{effect.IdempotencyKey}:verify"), claim.ExternalClaimId, cancellationToken);
         if (!remote.IsSuccess) { TrackResultFailure(remote.Error); return EffectVerdict.Unknown; }
         TrackReceived();
-        await UpsertReturn(tenantId, connectionId, correlationId, remote.Value!, new Dictionary<string, string?>(StringComparer.Ordinal), cancellationToken);
+        await UpsertReturn(tenantId, connectionId, remote.Value!, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         // A decision on some of the claim's lines is judged by those lines: the claim stays actionable while its other
         // lines wait for their own decision.
