@@ -298,6 +298,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
    shade lighter than the pane like the other key/value boxes; cards use phone padding. */
 @media (max-width: 760px) {
   .cs-workspace .cs-stats { background: var(--rv-color-surface-raised); }
+  .cs-workspace .cs-stats .rv-card-bg { display: none; }
   .cs-workspace .cs-stats > div { grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 12px; padding: 10px 14px; }
   .cs-workspace .cs-stats > div > small { grid-column: 1; grid-row: 1; }
   .cs-workspace .cs-stats > div > b { grid-column: 2; grid-row: 1; font-size: 14px; text-align: right; }

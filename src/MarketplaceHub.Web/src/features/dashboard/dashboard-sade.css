@@ -30,12 +30,6 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:hover,
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:focus-visible { background: var(--rv-hover, var(--rr-hover)); border-color: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > .rr-ico:last-child { color: var(--rr-subtle); }
-/* The card icon is drawn into the background: oversized, tilted, cut by the right edge and fading in towards the text. */
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; border-radius: inherit; color: var(--rr-subtle); pointer-events: none; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-bg .rr-ico { position: absolute; right: -26px; top: 50%; width: 130px; height: 130px; opacity: .2; stroke-width: 1.1; transform: translateY(-50%) rotate(-12deg); -webkit-mask-image: linear-gradient(90deg, transparent, #000 60%); mask-image: linear-gradient(90deg, transparent, #000 60%); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-warn .rr-op-bg { color: var(--rr-warn); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad .rr-op-bg { color: var(--rr-bad); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard > :is(.rr-op-t, .rr-ico) { position: relative; z-index: 1; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t { display: grid; gap: 2px; min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t strong { font-size: 24px; font-weight: 600; line-height: 1.2; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t small { color: var(--rr-muted); font-size: 13px; }
@@ -314,6 +308,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on { border-color: color-mix(in srgb, var(--pf-accent, var(--rr-primary)) 70%, transparent) !important; background: color-mix(in srgb, var(--pf-accent, var(--rr-primary)) 14%, var(--rr-surface)); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on::after { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong { font-size: 18px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc { --rv-card-bg-size: 64px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-trend em, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-avg, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-krange { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-body { padding: 12px; border-top: 1px solid var(--rr-line); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-chan { padding: 12px 0 0; }

@@ -12,7 +12,7 @@
 // Geciken, İptal and Yeniden Gönderim list their stores on hover while they count any.
 // The cancellation, micro-export and resend cards open the list on what they counted.
 import type { ReactNode } from 'react'
-import { CountUp } from '../../../shared/components'
+import { CardBackgroundIcon, CountUp, type CardIconName, type CardTone } from '../../../shared/components'
 import { RrLogo } from '../returns-ui'
 import { countryName, Flag } from './order-row-marks'
 import type { DayCard } from './daily-cards'
@@ -62,9 +62,10 @@ function StoreTip({ rows }: { rows: TipRow[] }) {
 const tipped = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ') || undefined
 
 // A card that reads "N Paket | M Adet Ürün" and lists the products per store on hover or focus (no panel without them).
-function UnitsCard({ title, tone, packages, units, rows }: { title: string; tone?: string; packages: Metric; units: number | undefined; rows: UnitRow[] | undefined }) {
+function UnitsCard({ title, icon, tone, packages, units, rows }: { title: string; icon: CardIconName; tone?: CardTone; packages: Metric; units: number | undefined; rows: UnitRow[] | undefined }) {
   const stores = packages.loading ? [] : rows ?? []
-  return <article className={tipped(tone, stores.length > 0 && 'rr-metric-tipped')} tabIndex={stores.length > 0 ? 0 : undefined}>
+  return <article className={tipped(tone && `rr-${tone}`, stores.length > 0 && 'rr-metric-tipped')} tabIndex={stores.length > 0 ? 0 : undefined}>
+    <CardBackgroundIcon name={icon} tone={tone} />
     <small>{title}</small><Packages packages={packages} units={units} />
     {stores.length > 0 && <StoreTip rows={stores.map(row => ({ ...row, value: `${count(row.units)} adet` }))} />}
   </article>
@@ -84,22 +85,27 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
   const cancelStores = stores(cancelled, cancelledRows, partial > 0)
   const resentStores = stores(resent, resentRows)
   return <div className="rr-metrics rr-metrics-6">
-    <UnitsCard title="Yeni Sipariş" tone="rr-warn" packages={newOrders} units={newUnits} rows={newRows} />
-    <UnitsCard title="İşleme Alınan" packages={processing} units={processingUnits} rows={processingRows} />
+    <UnitsCard title="Yeni Sipariş" icon="box" tone="warn" packages={newOrders} units={newUnits} rows={newRows} />
+    <UnitsCard title="İşleme Alınan" icon="cycle" packages={processing} units={processingUnits} rows={processingRows} />
     <article className={tipped(positive(late) && 'rr-bad rr-alert', lateStores.length > 0 && 'rr-metric-tipped')} tabIndex={lateStores.length > 0 ? 0 : undefined}>
+      <CardBackgroundIcon name="clock" tone={positive(late) ? 'bad' : undefined} />
       <small>Geciken</small><Packages packages={late} units={undefined} />
       {lateStores.length > 0 && <StoreTip rows={packageTip(lateStores)} />}
     </article>
     <article className="rr-metric-link rr-metric-tipped">
+      <CardBackgroundIcon name="globe" />
       <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Kargoya verilmemiş mikro ihracat siparişleri'} onClick={() => onOpenDay('micro')}><small>Mikro İhracat Sipariş</small><Packages packages={microExport} units={undefined} /></button>
       {countries.length > 0 && <div className="rr-metric-tip" role="tooltip">{countries.map(([code, value]) => <div className="rr-metric-tip-r" key={code || 'unknown'}>{code ? <Flag code={code} /> : <span className="rr-metric-tip-none" aria-hidden="true" />}<span>{code ? countryName(code) : 'Ülke Bilinmiyor'}</span><b className="rr-num">{count(value)}</b></div>)}</div>}
     </article>
     <article className={tipped(positive(cancelled) && 'rr-bad', 'rr-metric-link', partial > 0 && 'rr-metric-chipped', cancelStores.length > 0 && 'rr-metric-tipped')}>
+      <CardBackgroundIcon name="cancel" tone={positive(cancelled) ? 'bad' : undefined} />
       <button type="button" className="rr-metric-open" title={cancelStores.length > 0 ? undefined : 'Bugün iptal edilen siparişler'} onClick={() => onOpenDay('cancelled')}><small>İptal</small><Packages packages={cancelled} units={undefined} /></button>
       {partial > 0 && <button type="button" className="rr-metric-chip rr-metric-chip-alert" title={cancelStores.length > 0 ? undefined : `Bugün kısmen iptal edilen ${count(partial)} sipariş`} onClick={() => onOpenDay('partial')}>{count(partial)} Kısmi İptal{partialUnits !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(partialUnits)} Adet</>}</button>}
       {cancelStores.length > 0 && <StoreTip rows={cancelStores.map(row => ({ ...row, value: cancelRowText(row) }))} />}
     </article>
-    <article className={tipped('rr-metric-link', resentStores.length > 0 && 'rr-metric-tipped')}><button type="button" className="rr-metric-open" title={resentStores.length > 0 ? undefined : 'Kargoya verilmemiş yeniden gönderimler'} onClick={() => onOpenDay('resent')}><small>Yeniden Gönderim</small><Packages packages={resent} units={undefined} /></button>
+    <article className={tipped('rr-metric-link', resentStores.length > 0 && 'rr-metric-tipped')}>
+      <CardBackgroundIcon name="repeat" />
+      <button type="button" className="rr-metric-open" title={resentStores.length > 0 ? undefined : 'Kargoya verilmemiş yeniden gönderimler'} onClick={() => onOpenDay('resent')}><small>Yeniden Gönderim</small><Packages packages={resent} units={undefined} /></button>
       {resentStores.length > 0 && <StoreTip rows={packageTip(resentStores)} />}
     </article>
   </div>

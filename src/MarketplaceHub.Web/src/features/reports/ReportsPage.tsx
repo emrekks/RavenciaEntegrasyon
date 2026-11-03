@@ -3,7 +3,7 @@ import { flushSync } from 'react-dom'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
-import { Busy, ErrorBox, Modal, UiIcon, type UiIconName } from '../../shared/components'
+import { Busy, CardBackgroundIcon, ErrorBox, Modal, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
@@ -446,8 +446,17 @@ function Figure({ value, format, shown }: { value: number; format: (value: numbe
 // previous value under it, and how it is worked out, shown under the pointer.
 type Kpi = {
   key: string; label: string; value: number | null; format?: (value: number) => string; text?: string; empty?: string
-  delta?: Change | null; invert?: boolean; note?: string; tip: string; tone?: 'good' | 'bad' | 'warn'
+  delta?: Change | null; invert?: boolean; note?: string; tip: string; tone?: 'good' | 'bad' | 'warn'; icon?: CardIconName
 }
+
+// The icon drawn into a figure's background, from what it measures (its label), unless the figure names one.
+const kpiIcons: Array<[RegExp, CardIconName]> = [
+  [/fatura/u, 'invoice'], [/müşteri/u, 'users'], [/iptal/u, 'cancel'], [/iade/u, 'return'], [/kargo|teslim|paket/u, 'truck'],
+  [/stoksuz|biten|ölü|kırığı|eksik/u, 'alert'], [/stok|envanter|sermaye|varyant/u, 'layers'],
+  [/oran|marj|roas|kapsam|komisyon|indirim/u, 'percent'], [/kâr|zarar/u, 'trend'], [/marka/u, 'tag'], [/sipariş|adet/u, 'box'],
+  [/ciro|tutar|satış|maliyet|masraf|kdv|stopaj|kesinti|ceza|bedel|ödeme|reklam|harcama|değer/u, 'coin']
+]
+const kpiIcon = (item: Kpi): CardIconName => item.icon ?? kpiIcons.find(([pattern]) => pattern.test(item.label.toLocaleLowerCase('tr')))?.[1] ?? 'grid'
 
 // A strip of figures divided by hairlines (a figure without a note shows its label and value only); the figures count
 // up once when the strip first comes into view. In a strip that compares, a figure without a previous value keeps the
@@ -476,6 +485,7 @@ function KpiStrip({ label, items }: { label: string; items: Kpi[] }) {
       const format = item.format === formatTl ? formatTlWhole : item.format ?? (Number.isInteger(item.value) ? (value: number) => formatNumber(Math.round(value)) : formatNumber)
       return <div key={item.key} className={`${missing && empty !== '—' ? 'is-missing' : ''}${item.text !== undefined ? ' is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}${open?.key === item.key ? ' is-open' : ''}`.trim() || undefined}
         onMouseEnter={event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
+        <CardBackgroundIcon name={kpiIcon(item)} tone={item.tone === 'good' ? 'ok' : item.tone} />
         <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={id}
           onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}</button>
         <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>

@@ -1,0 +1,17 @@
+/* The icon of a metric card, drawn into its background (CardBackgroundIcon): oversized, tilted, cut by the right edge and
+   fading in towards the text. The clipping layer is its own box (overflow hidden, the card's radius), so a tooltip or
+   popover of the card is not clipped; the card's own content stays above it. Colour follows the tone, grey otherwise.
+   --rv-card-bg-size resizes the icon for a card that needs a smaller one. */
+:has(> .rv-card-bg) { position: relative; }
+.rv-card-bg { position: absolute; inset: 0; z-index: 0; display: block; overflow: hidden; border-radius: inherit; color: var(--rv-color-subtle); font-style: normal; pointer-events: none; }
+.rv-card-bg[data-tone="warn"] { color: var(--rv-color-warning); }
+.rv-card-bg[data-tone="bad"] { color: var(--rv-color-danger); }
+.rv-card-bg[data-tone="ok"] { color: var(--rv-color-accent); }
+.rv-card-bg[data-tone="info"] { color: var(--rv-color-info); }
+.rv-card-bg > svg { position: absolute; top: 50%; right: -26px; width: var(--rv-card-bg-size, 130px); height: var(--rv-card-bg-size, 130px); opacity: .2; transform: translateY(-50%) rotate(-12deg); -webkit-mask-image: linear-gradient(90deg, transparent, #000 60%); mask-image: linear-gradient(90deg, transparent, #000 60%); }
+/* Everything else in the card sits above the icon; a card's own positioned parts (tooltips) keep their rules. */
+.rv-card-bg ~ * { position: relative; z-index: 1; }
+/* Small cards: a smaller icon, so it never reaches the figure. */
+@media (max-width: 760px) {
+  .rv-card-bg > svg { right: -20px; width: min(var(--rv-card-bg-size, 130px), 92px); height: min(var(--rv-card-bg-size, 130px), 92px); opacity: .16; }
+}
