@@ -53,7 +53,7 @@ const icons: Record<ViewTabIconName, ReactNode> = {
 
 // A tab that means what a glyph of the panel's main icon set means draws that glyph (the sidebar's, the buttons').
 const sharedGlyphs: Partial<Record<ViewTabIconName, UiIconName>> = {
-  processing: 'sync', shipping: 'truck', done: 'circleCheck', cancelled: 'cancel', resend: 'refresh', attention: 'alert', order: 'orders',
+  processing: 'packing', shipping: 'truck', done: 'circleCheck', cancelled: 'cancel', resend: 'refresh', attention: 'alert', order: 'orders',
   product: 'products', price: 'tag', invoice: 'invoice', return: 'returns', hidden: 'eyeOff', connected: 'link', waiting: 'clock', review: 'search', category: 'grid'
 }
 

@@ -86,7 +86,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
   const resentStores = stores(resent, resentRows)
   return <div className="rr-metrics rr-metrics-6">
     <UnitsCard title="Yeni Sipariş" icon="orders" tone="warn" packages={newOrders} units={newUnits} rows={newRows} />
-    <UnitsCard title="İşleme Alınan" icon="sync" packages={processing} units={processingUnits} rows={processingRows} />
+    <UnitsCard title="İşleme Alınan" icon="packing" packages={processing} units={processingUnits} rows={processingRows} />
     <article className={tipped(positive(late) && 'rr-bad rr-alert', lateStores.length > 0 && 'rr-metric-tipped')} tabIndex={lateStores.length > 0 ? 0 : undefined}>
       <CardBackgroundIcon name="clock" tone={positive(late) ? 'bad' : undefined} />
       <small>Geciken</small><Packages packages={late} units={undefined} />
