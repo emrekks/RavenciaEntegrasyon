@@ -31,6 +31,7 @@ jobs:
       frontend_hash: ${{ steps.hash.outputs.frontend }}
       backend_needed: ${{ steps.prior-run.outputs.validated != 'true' && steps.backend-marker.outputs.cache-hit != 'true' }}
       frontend_needed: ${{ steps.prior-run.outputs.validated != 'true' && steps.frontend-marker.outputs.cache-hit != 'true' }}
+      prior_validated: ${{ steps.prior-run.outputs.validated == 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -187,8 +188,15 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
-          cache: true
-          cache-dependency-path: '**/packages.lock.json'
+
+      # Read-only on branches: only main writes the NuGet cache (job nuget-cache), and every
+      # branch can read main's caches, so no branch fills the 10 GB quota with its own copy.
+      - name: Restore NuGet cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '.config/dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore backend
         run: dotnet restore MarketplaceHub.sln --locked-mode
@@ -214,8 +222,15 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
-          cache: true
-          cache-dependency-path: '**/packages.lock.json'
+
+      # Read-only on branches: only main writes the NuGet cache (job nuget-cache), and every
+      # branch can read main's caches, so no branch fills the 10 GB quota with its own copy.
+      - name: Restore NuGet cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '.config/dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore backend
         run: dotnet restore MarketplaceHub.sln --locked-mode
@@ -273,8 +288,15 @@ jobs:
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: 10.0.302
-          cache: true
-          cache-dependency-path: '**/packages.lock.json'
+
+      # Read-only on branches: only main writes the NuGet cache (job nuget-cache), and every
+      # branch can read main's caches, so no branch fills the 10 GB quota with its own copy.
+      - name: Restore NuGet cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '.config/dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore backend
         run: dotnet restore MarketplaceHub.sln --locked-mode
@@ -288,6 +310,44 @@ jobs:
           FeatureFlags__ExternalWrites: "false"
           TEST_FILTER: ${{ matrix.filter }}
         run: dotnet test MarketplaceHub.sln --no-build --configuration Release --filter "$TEST_FILTER"
+
+  # Fills main's NuGet cache, which every branch reads, once per lock-file set. Not a check:
+  # gate does not wait for it and a failure here cannot hold back Validate or Deploy.
+  nuget-cache:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Look up NuGet cache
+        id: lookup
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '.config/dotnet-tools.json') }}
+          lookup-only: true
+
+      - name: Setup .NET
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Restore backend and tools
+        if: steps.lookup.outputs.cache-hit != 'true'
+        run: |
+          dotnet restore MarketplaceHub.sln --locked-mode
+          dotnet tool restore
+
+      - name: Save NuGet cache
+        if: steps.lookup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/packages.lock.json', '.config/dotnet-tools.json') }}
 
   # The production images are built on the server during deploy; building them
   # here first means a Dockerfile/project-layout break turns Validate red instead
@@ -411,15 +471,22 @@ jobs:
           mkdir -p .ci-marker
           echo ok > .ci-marker/validated
 
+      # Caches are scoped to the branch that wrote them; a branch reads its own and main's. A main
+      # push of an already validated commit records its markers in main's scope too, so the next
+      # codex/** branch cut from main skips the checks its unchanged half already passed.
       - name: Remember passed backend
-        if: needs.backend.result == 'success' && needs.backend-postgres.result == 'success' && needs.backend-format.result == 'success' && needs.image-app.result == 'success'
+        if: >-
+          (needs.backend.result == 'success' && needs.backend-postgres.result == 'success' && needs.backend-format.result == 'success' && needs.image-app.result == 'success') ||
+          (needs.plan.outputs.prior_validated == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled'))
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-marker
           key: validated-backend-${{ needs.plan.outputs.backend_hash }}
 
       - name: Remember passed frontend
-        if: needs.frontend.result == 'success' && needs.image-edge.result == 'success'
+        if: >-
+          (needs.frontend.result == 'success' && needs.image-edge.result == 'success') ||
+          (needs.plan.outputs.prior_validated == 'true' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled'))
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .ci-marker
