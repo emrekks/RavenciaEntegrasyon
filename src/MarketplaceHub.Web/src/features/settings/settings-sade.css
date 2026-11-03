@@ -272,7 +272,6 @@
 .ss-page .ss-rng-hd { display: flex; justify-content: space-between; color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
 .ss-page .ss-rng output { color: var(--rv-color-ink); font-variant-numeric: tabular-nums; }
 .app-shell.stitch-shell main .ss-page .ss-rng input[type="range"] { width: 100%; height: auto; min-height: 0; margin: 0; padding: 0; background: none; border: 0; box-shadow: none; accent-color: var(--rv-color-primary); }
-.ss-page .ss-rng-scale { display: flex; justify-content: space-between; color: var(--rv-color-subtle); font-size: 11px; }
 .ss-page .ss-rot { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .app-shell.stitch-shell main .ss-page .ss-rot .ss-btn { padding: 0 6px; }
 .app-shell.stitch-shell main .ss-page .ss-blk-del { justify-self: start; }

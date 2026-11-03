@@ -78,7 +78,6 @@
   .app-shell.stitch-shell main .commission-tariffs :is(.commission-dropzone, .commission-period, .commission-choice), .app-shell.stitch-shell main .commission-tariffs .commission-table tbody tr { transition: none; }
 }
 
-
 /* The plan:a bar to pick for every row and download, then each band of a product as a card to pick. */
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-plan-count { flex: 1 1 160px; color: var(--rv-color-muted); font-size: 13px; }

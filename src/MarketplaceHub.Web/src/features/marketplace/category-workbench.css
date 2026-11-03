@@ -451,9 +451,6 @@
 .cm-card .cm-product-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, transparent); border-radius: 7px; font-size: 11px; font-weight: 600; vertical-align: middle; white-space: nowrap; }
 /* The values (colours) a product still needs mapped: a count and their names above the list, each marked in it; once
    none is left a short green line. */
-.cm-card .cm-need-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 10px; padding: 8px 12px; color: var(--rv-color-ink); font-size: 13px; line-height: 1.4; background: color-mix(in srgb, var(--rv-color-warning) 10%, transparent); border: 1px solid color-mix(in srgb, var(--rv-color-warning) 35%, transparent); border-radius: 7px; }
-.cm-card .cm-need-summary > b { color: var(--rv-color-warning); font-weight: 600; }
-.cm-card .cm-need-summary.is-done { color: var(--rv-color-success); background: color-mix(in srgb, var(--rv-color-success) 9%, transparent); border-color: color-mix(in srgb, var(--rv-color-success) 30%, transparent); }
 .app-shell.stitch-shell main .cm-webcolor .web-color-panel-value.needs-mapping, .cm-card .web-color-panel-value.needs-mapping { background: color-mix(in srgb, var(--rv-color-warning) 12%, transparent); border-color: color-mix(in srgb, var(--rv-color-warning) 55%, transparent); }
 .cm-card .web-color-panel-value .cm-need-tag { flex: none; margin-left: auto; color: var(--rv-color-warning); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 
