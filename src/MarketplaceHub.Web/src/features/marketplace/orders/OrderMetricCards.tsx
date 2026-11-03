@@ -86,7 +86,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
   const resentStores = stores(resent, resentRows)
   return <div className="rr-metrics rr-metrics-6">
     <UnitsCard title="Yeni Sipariş" icon="orders" tone="warn" packages={newOrders} units={newUnits} rows={newRows} />
-    <UnitsCard title="İşleme Alınan" icon="sync" packages={processing} units={processingUnits} rows={processingRows} />
+    <UnitsCard title="İşleme Alınan" icon="packagePen" packages={processing} units={processingUnits} rows={processingRows} />
     <article className={tipped(positive(late) && 'rr-bad rr-alert', lateStores.length > 0 && 'rr-metric-tipped')} tabIndex={lateStores.length > 0 ? 0 : undefined}>
       <CardBackgroundIcon name="clock" tone={positive(late) ? 'bad' : undefined} />
       <small>Geciken</small><Packages packages={late} units={undefined} />
@@ -98,7 +98,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
       {countries.length > 0 && <div className="rr-metric-tip" role="tooltip">{countries.map(([code, value]) => <div className="rr-metric-tip-r" key={code || 'unknown'}>{code ? <Flag code={code} /> : <span className="rr-metric-tip-none" aria-hidden="true" />}<span>{code ? countryName(code) : 'Ülke Bilinmiyor'}</span><b className="rr-num">{count(value)}</b></div>)}</div>}
     </article>
     <article className={tipped(positive(cancelled) && 'rr-bad', 'rr-metric-link', partial > 0 && 'rr-metric-chipped', cancelStores.length > 0 && 'rr-metric-tipped')}>
-      <CardBackgroundIcon name="cancel" tone={positive(cancelled) ? 'bad' : undefined} />
+      <CardBackgroundIcon name="packageX" tone={positive(cancelled) ? 'bad' : undefined} />
       <button type="button" className="rr-metric-open" title={cancelStores.length > 0 ? undefined : 'Bugün iptal edilen siparişler'} onClick={() => onOpenDay('cancelled')}><small>İptal</small><Packages packages={cancelled} units={undefined} /></button>
       {partial > 0 && <button type="button" className="rr-metric-chip rr-metric-chip-alert" title={cancelStores.length > 0 ? undefined : `Bugün kısmen iptal edilen ${count(partial)} sipariş`} onClick={() => onOpenDay('partial')}>{count(partial)} Kısmi İptal{partialUnits !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(partialUnits)} Adet</>}</button>}
       {cancelStores.length > 0 && <StoreTip rows={cancelStores.map(row => ({ ...row, value: cancelRowText(row) }))} />}

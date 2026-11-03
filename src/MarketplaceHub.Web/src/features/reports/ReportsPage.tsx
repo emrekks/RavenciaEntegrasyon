@@ -451,10 +451,10 @@ type Kpi = {
 
 // The icon drawn into a figure's background, from what it measures (its label), unless the figure names one.
 const kpiIcons: Array<[RegExp, CardIconName]> = [
-  [/fatura/u, 'invoice'], [/müşteri/u, 'users'], [/iptal/u, 'cancel'], [/iade/u, 'returns'], [/kargo|teslim|paket/u, 'truck'],
-  [/stoksuz|biten|ölü|kırığı|eksik/u, 'alert'], [/stok|envanter|sermaye|varyant/u, 'stock'],
-  [/oran|marj|roas|kapsam|komisyon|indirim/u, 'percent'], [/kâr|zarar/u, 'trend'], [/marka/u, 'tag'], [/sipariş|adet/u, 'orders'],
-  [/ciro|tutar|satış|maliyet|masraf|kdv|stopaj|kesinti|ceza|bedel|ödeme|reklam|harcama|değer/u, 'banknote']
+  [/fatura/u, 'invoice'], [/müşteri/u, 'users'], [/iptal/u, 'packageX'], [/iade/u, 'returns'], [/kargo|teslim|paket/u, 'truck'],
+  [/stoksuz|biten|ölü/u, 'shirtX'], [/kırığı|eksik/u, 'alertTriangle'], [/stok|envanter|sermaye|varyant/u, 'stock'],
+  [/oran|marj|roas|kapsam|komisyon|indirim|maliyete göre/u, 'percent'], [/kâr|zarar/u, 'wallet'], [/marka/u, 'tag'], [/adet/u, 'shirt'], [/sipariş/u, 'orders'],
+  [/ciro|tutar|satış|maliyet|masraf|kdv|stopaj|kesinti|ceza|bedel|ödeme|reklam|harcama|değer/u, 'lira']
 ]
 const kpiIcon = (item: Kpi): CardIconName => item.icon ?? kpiIcons.find(([pattern]) => pattern.test(item.label.toLocaleLowerCase('tr')))?.[1] ?? 'grid'
 

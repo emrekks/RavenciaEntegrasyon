@@ -9,7 +9,7 @@ import './view-tabs.css'
 // the label and a boxed count, a violet underline on the active one. Tabs that mean the same thing share one icon,
 // whichever page they are on ("all", "waiting", "done", "cancelled", "paused"...).
 export type ViewTabIconName =
-  | 'all' | 'new' | 'processing' | 'shipping' | 'done' | 'cancelled' | 'partial' | 'resend' | 'paused'
+  | 'all' | 'delivered' | 'new' | 'processing' | 'shipping' | 'done' | 'cancelled' | 'partial' | 'resend' | 'paused'
   | 'waiting' | 'unread' | 'due' | 'attention' | 'review' | 'disputed' | 'hidden' | 'connected'
   | 'order' | 'product' | 'price' | 'invoice' | 'invoiceMissing' | 'invoiceDone' | 'return' | 'category' | 'brand' | 'attribute' | 'log' | 'more'
 
@@ -19,6 +19,7 @@ const page = <>{line('M4 2h5l3 3v9H4z')}{line('M9 2v3h3')}</>
 
 const icons: Record<ViewTabIconName, ReactNode> = {
   all: <>{line('M2.5 3.5h11v9h-11z')}{line('M2.5 6.5h11')}</>,
+  delivered: <>{circle}{line('m5.5 8.2 1.7 1.7 3.4-3.6')}</>,
   new: <>{circle}{line('M8 5.4v5.2M5.4 8h5.2')}</>,
   processing: <>{line('M2.5 5.2 8 2.5l5.5 2.7v5.6L8 13.5l-5.5-2.7z')}{line('M2.5 5.2 8 8l5.5-2.8M8 8v5.5')}</>,
   shipping: <>{line('M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5')}<circle cx="4.5" cy="11.8" r="1.2" fill="none" stroke="currentColor" strokeWidth={1.3} /><circle cx="11.8" cy="11.8" r="1.2" fill="none" stroke="currentColor" strokeWidth={1.3} /></>,
@@ -53,8 +54,8 @@ const icons: Record<ViewTabIconName, ReactNode> = {
 
 // A tab that means what a glyph of the panel's main icon set means draws that glyph (the sidebar's, the buttons').
 const sharedGlyphs: Partial<Record<ViewTabIconName, UiIconName>> = {
-  processing: 'sync', shipping: 'truck', done: 'circleCheck', cancelled: 'cancel', resend: 'refresh', attention: 'alert', order: 'orders',
-  product: 'products', price: 'tag', invoice: 'invoice', return: 'returns', hidden: 'eyeOff', connected: 'link', waiting: 'clock', review: 'search', category: 'grid'
+  all: 'list', new: 'package', processing: 'packagePen', shipping: 'truck', delivered: 'packageCheck', done: 'circleCheck', cancelled: 'packageX', resend: 'refresh', attention: 'alert', order: 'orders',
+  product: 'products', price: 'tag', invoice: 'invoice', invoiceMissing: 'invoicePending', invoiceDone: 'fileCheck', due: 'calendarClock', return: 'returns', hidden: 'eyeOff', connected: 'link', waiting: 'clock', review: 'search', category: 'grid'
 }
 
 export function ViewTabIcon({ name }: { name: ViewTabIconName }) {
