@@ -505,3 +505,11 @@
 .ss-page .ss-alert-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .ss-page .ss-alert-row > .ss-in { flex: 1 1 220px; min-width: 0; }
 .ss-page .ss-alert-row > .ss-help { display: inline-flex; align-items: center; gap: 6px; }
+.ss-page .ss-alert-row > .ss-help:empty { display: none; }
+/* A saved app password reads as a filled, read-only field: masked dots, a Kayıtlı mark and Değiştir inside the same 36px box. */
+.app-shell.stitch-shell main .ss-page .ss-in.ss-secret { display: flex; align-items: center; gap: 10px; padding: 0 4px 0 12px; background: var(--rv-color-surface-muted, var(--rv-color-surface)); }
+.ss-page .ss-secret-dots { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-muted); letter-spacing: 2px; white-space: nowrap; }
+.ss-page .ss-secret-state { display: inline-flex; flex: none; align-items: center; gap: 5px; color: var(--rv-color-success, var(--rv-color-ink)); font-size: 12.5px; font-weight: 500; }
+.ss-page .ss-secret-state .ss-st { width: 14px; height: 14px; }
+.ss-page .ss-secret .ss-btn.is-xs { flex: none; }
+.ss-page .ss-secret-edit > .ss-in { flex: 1 1 auto; }

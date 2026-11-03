@@ -1123,7 +1123,6 @@ const shippingPreviewValues: ShippingLabelValues = { trackingNumber: '7330003656
 
 type AlertEmailSettings = { senderAddress: string | null; recipients: string[]; appPasswordSaved: boolean; updatedAt: string | null; version: number }
 const maximumAlertRecipients = 5
-const alertEmailTestMessage = 'Ravencia alarm testi — e-posta kanalı çalışıyor'
 
 // Settings → Alarm Bildirimleri: the Gmail account that sends the server's and the panel's alerts (security plan Y1).
 // The app password is write-only: the server never returns it, the form shows "Kayıtlı" and "Değiştir". The host
@@ -1187,8 +1186,8 @@ function AlertEmailSettingsSection() {
         <div className="ss-pair">
           <label className="ss-fld"><small>Gönderen Gmail Adresi</small><input className="ss-in" type="email" inputMode="email" autoComplete="off" spellCheck={false} value={sender} maxLength={254} placeholder="ravencia.alarm@gmail.com" onChange={event => setSender(event.target.value)} /></label>
           <div className="ss-fld"><small>Uygulama Şifresi</small>{saved.appPasswordSaved && !changingPassword
-            ? <div className="ss-alert-row"><span className="ss-tag is-ink"><SettingsGlyph state="done" />Kayıtlı</span><button type="button" className="ss-btn is-xs" onClick={() => setChangingPassword(true)}>Değiştir</button></div>
-            : <div className="ss-alert-row"><input className="ss-in" type="password" autoComplete="new-password" spellCheck={false} aria-label="Uygulama Şifresi" value={password} maxLength={40} placeholder="abcd efgh ijkl mnop" onChange={event => setPassword(event.target.value)} />{saved.appPasswordSaved && <button type="button" className="ss-btn is-xs" onClick={() => { setPassword(''); setChangingPassword(false) }}>Vazgeç</button>}</div>}
+            ? <div className="ss-in ss-secret"><span className="ss-secret-dots" aria-hidden="true">••••••••••••••••</span><span className="ss-secret-state"><SettingsGlyph state="done" />Kayıtlı</span><button type="button" className="ss-btn is-xs" onClick={() => setChangingPassword(true)}>Değiştir</button></div>
+            : <div className="ss-alert-row ss-secret-edit"><input className="ss-in" type="password" autoComplete="new-password" spellCheck={false} aria-label="Uygulama Şifresi" value={password} maxLength={40} placeholder="abcd efgh ijkl mnop" onChange={event => setPassword(event.target.value)} />{saved.appPasswordSaved && <button type="button" className="ss-btn is-xs" onClick={() => { setPassword(''); setChangingPassword(false) }}>Vazgeç</button>}</div>}
           </div>
         </div>
         <div className="ss-fld" role="group" aria-label="Alıcılar"><small>Alıcılar</small>
@@ -1202,9 +1201,8 @@ function AlertEmailSettingsSection() {
         <div className="ss-alert-row">
           <button type="button" className="ss-btn" disabled={!configured || dirty || busy !== null} onClick={() => void sendTest()}><SettingsIcon name="bell" />{busy === 'test' ? 'Gönderiliyor…' : 'Test E-postası Gönder'}</button>
           {testResult ? <span role="status" className="ss-help"><SettingsGlyph state={testResult.kind} />{testResult.message}</span>
-            : <span className="ss-help">{dirty ? 'Test için önce değişiklikleri kaydedin.' : configured ? `“${alertEmailTestMessage}” iletisi alıcılara gönderilir.` : 'Test için önce gönderen adresi, alıcıları ve uygulama şifresini kaydedin.'}</span>}
+            : <span className="ss-help">{dirty ? 'Test için önce değişiklikleri kaydedin.' : configured ? '' : 'Test için önce gönderen adresi, alıcıları ve uygulama şifresini kaydedin.'}</span>}
         </div>
-        <p className="ss-help">Panel kapalıyken de sunucu, son kaydedilen ayarlarla alarm göndermeye devam eder.</p>
       </>}
     </div>
     {saved && !forbidden ? bar : null}
