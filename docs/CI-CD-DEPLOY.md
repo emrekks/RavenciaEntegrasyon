@@ -111,11 +111,18 @@ bu kural ona engel olmaz).
 - **Salt okunur erişim (`ravencia-ro`)**: Claude'un `/prod-sql`, `/prod-logs` ve `ship.sh` kontrolleri ayrı bir
   kullanıcıyla ve parolasız ayrı bir anahtarla (`~/.ssh/ravencia_ro`, yalnız bu iş için) girer. Zorunlu komut
   `/usr/local/bin/ravencia-ro` (`deploy/scripts/readonly-entrypoint.sh`, root'a ait) yalnız şunları kabul eder:
-  `sql` (stdin; `BEGIN READ ONLY … ROLLBACK`, `default_transaction_read_only=on`, 5 dk `statement_timeout`; yalnız
-  SELECT/WITH/VALUES/TABLE/EXPLAIN/SHOW, `\echo` ve `\x` dışında psql komutu yok, blok yorum ve string içinde
-  ters bölü yok, yan etkili sunucu fonksiyonları yok), `status`, `images`, `logs`, `errors`, `journal`. Tek `sudo`
-  hakkı bu scripti root olarak çalıştırmaktır (`/etc/sudoers.d/ravencia-ro`). Kurulum/yenileme:
+  `sql`, `status`, `images`, `host` (disk, `ravencia-*` zamanlayıcıları ve journal'ı, başarısız birimler, yedek
+  setleri ve boyutları, CrowdSec durumu), `logs`, `errors`, `journal`. Tek `sudo` hakkı bu scripti root olarak
+  çalıştırmaktır (`/etc/sudoers.d/ravencia-ro`). Kurulum/yenileme:
   `bash deploy/scripts/install-readonly-access.sh ["$(cat ravencia_ro.pub)"]`.
+  **`sql` sınırı veritabanı rolüdür:** psql `ravencia_ro` rolüyle bağlanır (`install-readonly-db-role.sh`, aynı
+  kurulumda çalışır): süper kullanıcı değil, yalnız `pg_read_all_data` üyesi, rol ayarı olarak
+  `default_transaction_read_only=on` ve 60 sn `statement_timeout`, şifresiz (yalnız konteynerin unix soketinden,
+  yani root gerektiren `docker exec` ile girer; ağdan scram şifresi gerekir). Yazma, `COPY … TO PROGRAM` ve sunucu
+  dosyası okuma rol izniyle reddedilir. İkinci katman olarak betik SQL'i `BEGIN READ ONLY … ROLLBACK` içine alır ve
+  SELECT/WITH/VALUES/TABLE/EXPLAIN/SHOW dışındaki ifadeleri, `\echo`/`\x` dışındaki psql komutlarını, yalnız
+  kendi satırında olmayan `--` yorumlarını, blok yorumları, string içinde ters bölüyü ve yan etkili fonksiyonları
+  baştan reddeder.
 - Sunucu host key'i `StrictHostKeyChecking=yes` ile sabitlenir.
 - Deploy işi repo kodunu çalıştırmaz; yalnızca SSH ile SHA gönderir.
 - Actions'lar commit SHA ile sabitlenmiştir (yorumda sürüm). `.github/dependabot.yml` haftalık
@@ -349,7 +356,7 @@ Birim root olarak çalışır (Docker volume yolunu ve `deploy/secrets`'ı okur)
 | `ravencia-backup.timer` | 08:59 ve 20:59 UTC (11:59 ve 23:59 TR), `Persistent=true` | `daily-backup.sh`: api/caddy konteynerlerini 5 dk'ya kadar bekler, taze yedek + doğrulama |
 | `ravencia-restore-drill.timer` | ayın ilk Pazar'ı 19:00 UTC (22:00 TR) | `monthly-restore-drill.sh`: en yeni seti izole konteynerlere geri yükler, migration/API/Worker sağlığını doğrular |
 | `ravencia-healthwatch.timer` | 5 dakikada bir, günün her saati | `healthwatch.sh`: `/health/ready`, `/health/queues`, Worker sağlığı; sağlıksız API'yi yeniden başlatır |
-| `ravencia-maintenance.timer` | ayın ilk Pazar'ı 01:00 UTC (04:00 TR), kaçan pencere sonradan yapılmaz | `/usr/local/sbin/ravencia-maintenance` (`monthly-maintenance.sh`'ın root'a ait kopyası): deploy kilidini bekler ve tutar, `apt-get full-upgrade`; yalnız `/var/run/reboot-required` varsa yeniden başlatır |
+| `ravencia-maintenance.timer` | ayın ilk Pazar'ı 01:00 UTC (04:00 TR), kaçan pencere sonradan yapılmaz | `monthly-maintenance.sh` (root'a ait kopyadan, `/usr/local/lib/ravencia`): deploy kilidini bekler ve tutar, `apt-get full-upgrade`; yalnız `/var/run/reboot-required` varsa yeniden başlatır |
 | `ravencia-alert@.service` | `OnFailure=` (yedek, tatbikat, bakım) ve healthwatch | `send-alert.sh` ile tek satırlık bildirim |
 | `ravencia-deploy-guard.service` | açılışta etkin, iş kapanışta | `wait-for-deploy-lock.sh`: süren deploy'un kilidini en çok 23 dk bekler |
 
@@ -358,6 +365,11 @@ Yedek, tatbikat, healthwatch, bakım ve alarm birimleri 3 Kasım 2026'dan beri `
 ayarlarına/modüllerine erişim kapalı vb.). Betikler root iken `sudo_cmd` boş kalır, elle (ubuntu) çalıştırılınca
 `sudo -n` kullanır. Tatbikat biriminde `PrivateTmp` yoktur: `restore-drill.sh` geçici dizindeki dosyaları
 konteynerlere bağlar. Yalnız deploy-guard `ubuntu` olarak kalır.
+Root birimleri repodaki dosyaları değil, **root'a ait kopyayı** çalıştırır: `install-backup-timer.sh` her deploy'da
+`deploy/{scripts,backup,compose}`'u `/usr/local/lib/ravencia/deploy/` altına bütün olarak yeniden kopyalar (root,
+yazma yalnız root); `deploy/secrets` orada repodaki root'a ait gizli klasöre bir bağlantıdır. Böylece `ubuntu`
+deploy'lar arasında repoyu değiştirse bile root'un çalıştırdığı kod değişmez. Kalan açık: deploy zincirinin kendisi
+hâlâ `ubuntu`'nun şifresiz `sudo`'suyla çalışır (A4 için önce bu zincir taşınmalı).
 
 **Aylık bakım (`/etc/default/ravencia-maintenance`):** `RAVENCIA_MAINTENANCE_DOCKER=hold` (varsayılan) Docker
 Engine/containerd'yi apt hold'da tutar; bir sonraki pencerede güncellenmeleri için `allow` yazılır (daemon
@@ -465,7 +477,7 @@ Birimler bir sonraki deploy'da otomatik kurulur; beklemeden kurmak için
 
 ## GHCR seçeneği (sonraki adım)
 
-Bugün imajlar sunucuda (2 vCPU) derlenir; CI aynı Dockerfile'ları yalnızca derleyip doğrular
+Bugün imajlar sunucuda (Hostinger KVM 4: 4 vCPU, 16 GB) derlenir; CI aynı Dockerfile'ları yalnızca derleyip doğrular
 (`image-app`, `image-edge`), itmez. Sonraki adım: Validate'te `docker/build-push-action` + `cache-to:
 type=gha` ile `ghcr.io/<owner>/ravencia-{app,edge}:<sha>` itmek (`permissions: packages: write`),
 Deploy'da digest'i SSH ile göndermek ve sunucuda `deploy.sh` yolunu (digest'li `pull`) kullanmak.
@@ -494,7 +506,9 @@ ve sunucu yükü düşer, CI'da test edilen imaj birebir üretime gider.
 - `ops` işi deploy betiklerini `bash -n` + `shellcheck` ile denetler ve `tests/ops/run.sh`'ı çalıştırır:
   çerçevesiz bash testleri (yedek saklama kuralları, `ci-entrypoint.sh` karar tablosu,
   kapanış kilidi beklemesi). Yerelde: `bash tests/ops/run.sh` (GNU coreutils, git, flock gerekir).
-- `ops` işi, sunucunun gerektirdiği Docker Compose 2.40.2'yi checksum'la kurup sürümü doğrular,
+- `ops` işi, sunucudaki Docker Compose sürümünü (5.3.1; sunucuda apt'ten gelir ve hold'dadır, ikili dosyanın
+  sha256'sı GitHub sürümüyle aynı) checksum'la kurup sürümü doğrular; `deploy.sh` ve `install-marketplacehub.sh`
+  de 5.3.1 ister. Sunucuda Compose güncellenirse bu üç yer birlikte değişir. Ayrıca
   birleşik compose dosyalarını ve journald sürücüsünü, systemd takvim ifadelerini denetler.
 - Ön yüz `npm run lint` adımı her zaman çalışır.
 - CI'dan gelen deploy'da (`DEPLOY_REVISION`) sunucudaki test tekrarı atlanır; elle çalıştırılan

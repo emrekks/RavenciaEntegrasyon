@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 # Monthly maintenance window (ravencia-maintenance.timer, first Sunday of the month
 # 01:00 UTC = 04:00 Istanbul). Runs as root from a root-owned copy
-# (/usr/local/sbin/ravencia-maintenance, installed by install-backup-timer.sh):
+# (/usr/local/lib/ravencia/deploy/scripts/, installed by install-backup-timer.sh):
 #   1. waits for a running deploy to release ~ubuntu/deploy-logs/.lock and holds the
 #      lock itself, so no deploy starts while packages change;
 #   2. apt-get update + full-upgrade (kernel, OS, security);

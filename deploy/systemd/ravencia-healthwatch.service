@@ -7,8 +7,8 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
-WorkingDirectory=/home/ubuntu/RavenciaEntegrasyon
-ExecStart=/home/ubuntu/RavenciaEntegrasyon/deploy/scripts/healthwatch.sh
+WorkingDirectory=/usr/local/lib/ravencia
+ExecStart=/usr/local/lib/ravencia/deploy/scripts/healthwatch.sh
 # Failure counters and alert throttling survive between runs here.
 StateDirectory=ravencia-healthwatch
 TimeoutStartSec=4min

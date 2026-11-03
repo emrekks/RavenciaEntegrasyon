@@ -2,6 +2,14 @@
 	admin off
 }
 
+# Container healthcheck only (compose: wget http://127.0.0.1:8081/healthz): loopback inside the
+# container, never published, not logged.
+http://127.0.0.1:8081 {
+	bind 127.0.0.1
+	respond /healthz "ok" 200
+	respond 404
+}
+
 {$MARKETPLACEHUB_SITE_ADDRESS} {
 	# API and SignalR responses are not compressed: compressing secrets (CSRF
 	# token, session-bound data) next to attacker-influenced input in the same
@@ -9,7 +17,9 @@
 	@compressible not path /api/* /hubs/*
 	encode @compressible zstd gzip
 	header {
+		# Deletions are deferred, so they also strip what reverse_proxy adds to API responses.
 		-Server
+		-Via
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "no-referrer"
@@ -57,10 +67,21 @@
 			SECURITYTXT 200
 	}
 
-	# Scanner paths (dotfiles, PHP, WordPress, CGI, vendor folders) get a plain 404 instead of the SPA shell,
-	# so probes are visible as 404s to the ban rules. /.well-known stays open for ACME.
+	# The panel is a private application: nothing here is for search engines.
+	handle /robots.txt {
+		header Content-Type "text/plain; charset=utf-8"
+		header Cache-Control "public, max-age=86400"
+		respond <<ROBOTSTXT
+			User-agent: *
+			Disallow: /
+
+			ROBOTSTXT 200
+	}
+
+	# Scanner paths (dotfiles, PHP, WordPress, CGI, vendor folders, API explorers, metrics) get a plain 404
+	# instead of the SPA shell, so probes are visible as 404s to the ban rules. /.well-known stays open for ACME.
 	@probe {
-		path /.* *.php /wp-* /wp/* /cgi-bin/* /vendor/* /phpmyadmin* /xmlrpc* /actuator* /server-status*
+		path /.* *.php /wp-* /wp/* /cgi-bin/* /vendor/* /phpmyadmin* /xmlrpc* /actuator* /server-status* /swagger* /openapi* /metrics*
 		not path /.well-known/*
 	}
 	handle @probe {

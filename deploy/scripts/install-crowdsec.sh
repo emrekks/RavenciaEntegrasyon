@@ -71,7 +71,9 @@ if [[ "$first_install" == true ]]; then
   echo "First installation: global simulation mode enabled (nothing is banned)."
 fi
 
-sudo -n install -o root -g root -m 0755 -- "$script_dir/crowdsec-allowlist-refresh.sh" /usr/local/sbin/ravencia-crowdsec-allowlist
+# The units run the root-owned copy in /usr/local/lib/ravencia that install-backup-timer.sh keeps current.
+bash "$script_dir/install-backup-timer.sh" >/dev/null
+sudo -n rm -f /usr/local/sbin/ravencia-crowdsec-allowlist
 for unit in ravencia-crowdsec-allowlist.service ravencia-crowdsec-allowlist.timer; do
   sudo -n install -m 0644 "$unit_dir/$unit" "/etc/systemd/system/$unit"
 done

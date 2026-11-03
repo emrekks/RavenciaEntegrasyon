@@ -55,7 +55,7 @@ unset credential_key connection
 compose=(sudo env "MARKETPLACEHUB_EXTERNAL_WRITES_ENABLED=$external_writes_enabled" docker compose --env-file "$environment_file" -f "$base_compose" -f "$production_compose")
 
 compose_version="$(sudo docker compose version --short)"
-[[ "$compose_version" == "2.40.2" ]] || { echo "Exact Docker Compose 2.40.2 is required; detected $compose_version." >&2; exit 1; }
+[[ "$compose_version" == "5.3.1" ]] || { echo "Exact Docker Compose 5.3.1 is required; detected $compose_version." >&2; exit 1; }
 "${compose[@]}" config --quiet
 warn_on_unbounded_connection_pool
 warn_when_alerts_unconfigured

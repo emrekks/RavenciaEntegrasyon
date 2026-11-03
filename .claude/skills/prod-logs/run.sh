@@ -3,7 +3,7 @@
 # Requests go to the server's ravencia-ro command (fixed docker ps / inspect / logs and journalctl reads);
 # nothing on the server is changed.
 # Usage: run.sh status | run.sh logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX]
-#        run.sh errors [--since 30m] | run.sh journal <api|worker|caddy|postgres> [--since 30m] [--grep REGEX]
+#        run.sh host [--since 6h] | run.sh errors [--since 30m] | run.sh journal <api|worker|caddy|postgres> [--since 30m] [--grep REGEX]
 set -u
 host="${RAVENCIA_SSH_HOST:-ravencia-ro@187.126.24.163}"
 # Default: the read-only ravencia-ro login (key without passphrase, forced command on the server).
@@ -16,7 +16,7 @@ else sshx=(ssh -o BatchMode=yes); fi
 
 remote() { "${sshx[@]}" "$host" "ravencia-ro $*"; }
 
-usage() { echo "usage: run.sh status | logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX] | errors [--since 30m] | journal <service> [--since 30m] [--grep REGEX]" >&2; exit 2; }
+usage() { echo "usage: run.sh status | host [--since 6h] | logs <api|worker|caddy|postgres> [--since 30m] [--tail N] [--grep REGEX] | errors [--since 30m] | journal <service> [--since 30m] [--grep REGEX]" >&2; exit 2; }
 
 since="30m"; tail_n="-"; pattern=""
 parse_opts() {
@@ -36,6 +36,10 @@ encoded_pattern() { [ -z "$pattern" ] || printf '%s' "$pattern" | base64 -w0; }
 
 case "${1:-}" in
   status) remote status ;;
+  host)
+    shift; since="6h"; parse_opts "$@"
+    remote host "$since"
+    ;;
   logs)
     svc="${2:-}"; shift 2 2>/dev/null || usage
     case "$svc" in api|worker|caddy|postgres) ;; *) usage ;; esac
