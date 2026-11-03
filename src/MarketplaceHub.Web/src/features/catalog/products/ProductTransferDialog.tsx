@@ -1,6 +1,8 @@
 // Ürün içe / dışa aktarma: the products export download and the upload that is previewed before anything is saved.
-// The seller picks which fields an upload writes (cost, desi, stock, store prices); a change of the pick previews the
-// same file again. Stock is saved like the product editor saves it, so it reaches the stores with stock sends on.
+// The seller picks which exported columns an upload writes, in groups (product information, price and VAT, stock and
+// logistics, cost, store prices); a change of the pick previews the same file again. Rows are matched by stock code
+// (then barcode); the stock code itself is never written. Stock is saved like the product editor saves it, so it
+// reaches the stores with stock sends on; every other field is a panel write that sends nothing by itself.
 import { useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
@@ -10,7 +12,7 @@ import { RrIcon, RrModal } from '../../marketplace/returns-ui'
 import './product-transfer.css'
 
 export type ProductTransferSummary = { variantCount: number; missingCostCount: number; missingDesiCount: number }
-export type ProductTransferField = 'COST' | 'DESI' | 'STOCK' | 'PRICES'
+export type ProductTransferField = 'TITLE' | 'BARCODE' | 'MODEL_CODE' | 'PANEL_PRICES' | 'VAT' | 'COST' | 'DESI' | 'STOCK' | 'PRICES'
 export type ProductTransferOutcome = 'UPDATE' | 'UNCHANGED' | 'SKIPPED' | 'UNMATCHED' | 'AMBIGUOUS' | 'ERROR'
 export type ProductTransferFieldChange = 'SET' | 'CLEAR' | null
 export type ProductTransferPrice = { connectionId: string; storeName: string; oldSalePrice: number; newSalePrice: number; oldListPrice: number; newListPrice: number }
@@ -21,28 +23,57 @@ export type ProductTransferRow = {
   oldStock: number | null; newStock: number | null; stockChange: ProductTransferFieldChange
   prices: ProductTransferPrice[]
   outcome: ProductTransferOutcome; message: string | null
+  newTitle?: string | null; titleChange?: ProductTransferFieldChange
+  oldBarcode?: string | null; newBarcode?: string | null; barcodeChange?: ProductTransferFieldChange
+  oldModelCode?: string | null; newModelCode?: string | null; modelCodeChange?: ProductTransferFieldChange
+  oldPanelSalePrice?: number | null; newPanelSalePrice?: number | null; oldPanelListPrice?: number | null; newPanelListPrice?: number | null; panelPriceChange?: ProductTransferFieldChange
+  oldVatRate?: number | null; newVatRate?: number | null; vatChange?: ProductTransferFieldChange
 }
 export type ProductTransferChange = {
   variantId: string; version: number; setCost: boolean; cost: number | null; setDesi: boolean; desi: number | null
   stock?: { expectedOnHand: number; onHand: number } | null
   prices?: Array<{ offerId: string; version: number; salePrice: number; listPrice: number }> | null
+  barcode?: string | null; setModelCode?: boolean; modelCode?: string | null
+  panelPrice?: { salePrice: number; listPrice: number } | null
 }
+export type ProductTransferProductChange = { productId: string; version: number; title: string | null; vatRate: number | null }
 export type ProductTransferPreview = {
   fileName: string; availableFields: ProductTransferField[]; fields: ProductTransferField[]; stores: Array<{ connectionId: string; name: string }>
   totalRows: number; updates: number; costUpdates: number; costClears: number; desiUpdates: number; desiClears: number; stockUpdates: number; priceUpdates: number
   unchanged: number; skipped: number; unmatched: number; ambiguous: number; errors: number
   rows: ProductTransferRow[]; rowsTruncated: boolean; changes: ProductTransferChange[]
+  productChanges?: ProductTransferProductChange[] | null
+  titleUpdates?: number; barcodeUpdates?: number; modelCodeUpdates?: number; modelCodeClears?: number; panelPriceUpdates?: number; vatUpdates?: number
 }
-export type ProductTransferApplyResult = { variants: number; costsUpdated: number; costsCleared: number; desiUpdated: number; desiCleared: number; stocksUpdated: number; pricesUpdated: number; products: number }
+export type ProductTransferApplyResult = {
+  variants: number; costsUpdated: number; costsCleared: number; desiUpdated: number; desiCleared: number; stocksUpdated: number; pricesUpdated: number; products: number
+  titlesUpdated?: number; barcodesUpdated?: number; modelCodesUpdated?: number; modelCodesCleared?: number; panelPricesUpdated?: number; vatUpdated?: number
+}
 export type ProductTransferExportFilter = 'all' | 'cost' | 'desi'
 
 export const productTransferSummaryKey = ['products', 'transfer-summary'] as const
-const allFields: ProductTransferField[] = ['COST', 'DESI', 'STOCK', 'PRICES']
-const fieldLabels: Record<ProductTransferField, string> = { COST: 'Maliyet', DESI: 'Desi', STOCK: 'Stok', PRICES: 'Mağaza Fiyatları' }
+// The exported columns an upload can write, grouped as the seller thinks of them. A group of one field is that field.
+export const productTransferFieldGroups: ReadonlyArray<{ label: string; fields: ProductTransferField[] }> = [
+  { label: 'Ürün Bilgileri', fields: ['TITLE', 'BARCODE', 'MODEL_CODE'] },
+  { label: 'Fiyat ve Vergi', fields: ['PANEL_PRICES', 'VAT'] },
+  { label: 'Stok ve Lojistik', fields: ['STOCK', 'DESI'] },
+  { label: 'Maliyet', fields: ['COST'] },
+  { label: 'Mağaza Fiyatları', fields: ['PRICES'] }
+]
+// The order the server lists the fields in (ProductTransferFields.All); a pick is sent in it.
+const allFields: ProductTransferField[] = ['TITLE', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES']
+const fieldLabels: Record<ProductTransferField, string> = { TITLE: 'Ürün Adı', BARCODE: 'Barkod', MODEL_CODE: 'Model Kodu', PANEL_PRICES: 'Panel Fiyatı', VAT: 'KDV Oranı', COST: 'Maliyet', DESI: 'Desi', STOCK: 'Stok', PRICES: 'Mağaza Fiyatları' }
 const defaultFields: ProductTransferField[] = ['COST', 'DESI']
 
 export function productTransferExportHref(filter: ProductTransferExportFilter) {
   return `/api/v1/products/transfer/export.xlsx${filter === 'all' ? '' : `?missing=${filter}`}`
+}
+
+// The fields picked after a group's select-all: every available field of the group on, or all of them off.
+export function toggleProductTransferGroup(picked: readonly ProductTransferField[], group: readonly ProductTransferField[], available?: readonly ProductTransferField[]) {
+  const usable = group.filter(field => available == null || available.includes(field))
+  const allOn = usable.length > 0 && usable.every(field => picked.includes(field))
+  return allFields.filter(field => group.includes(field) ? !allOn && usable.includes(field) : picked.includes(field))
 }
 
 const outcomeLabels: Record<ProductTransferOutcome, [string, 'ok' | 'warn' | 'bad' | 'info' | 'muted']> = {
@@ -56,6 +87,8 @@ const outcomeLabels: Record<ProductTransferOutcome, [string, 'ok' | 'warn' | 'ba
 
 const count = (value: number) => value.toLocaleString('tr-TR')
 const formatNumber = (value: number | null) => value == null ? '—' : value.toLocaleString('tr-TR', { maximumFractionDigits: 2 })
+const formatVat = (value: number | null) => value == null ? '—' : `%${value.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`
+const formatText = (value: string | null) => value ?? '—'
 
 export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
   const client = useQueryClient()
@@ -81,8 +114,8 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
     onSuccess: () => { previewId.current = newIdempotencyKey() }
   })
   const apply = useMutation({
-    mutationFn: (changes: ProductTransferChange[]) => {
-      const body = JSON.stringify({ changes })
+    mutationFn: ({ changes, productChanges }: { changes: ProductTransferChange[]; productChanges: ProductTransferProductChange[] }) => {
+      const body = JSON.stringify(productChanges.length ? { changes, productChanges } : { changes })
       const key = versionedIdempotencyKey('product-transfer', previewId.current ?? newIdempotencyKey(), 1, body)
       return sendWithVersionedIdempotencyKey(key, idempotencyKey => hubApi<ProductTransferApplyResult>('/products/transfer/apply', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, body }))
     },
@@ -105,45 +138,50 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
     apply.reset()
     preview.mutate({ upload: chosen, picked: fields })
   }
-  const toggleField = (field: ProductTransferField) => {
-    const next = fields.includes(field) ? fields.filter(item => item !== field) : allFields.filter(item => item === field || fields.includes(item))
+  const pick = (next: ProductTransferField[]) => {
     setFields(next)
     if (file && next.length > 0) { apply.reset(); preview.mutate({ upload: file, picked: next }) }
   }
+  const toggleField = (field: ProductTransferField) => pick(fields.includes(field) ? fields.filter(item => item !== field) : allFields.filter(item => item === field || fields.includes(item)))
+  const toggleGroup = (group: readonly ProductTransferField[]) => pick(toggleProductTransferGroup(fields, group, preview.data?.availableFields))
   const onDrop = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]) }
   const restart = () => { preview.reset(); apply.reset(); setFile(null); setFileError(null) }
 
   const result = preview.data
   const done = apply.data
-  const writeCount = result && fields.length > 0 ? result.changes.length : 0
+  const productChanges = result?.productChanges ?? []
+  const writeCount = result && fields.length > 0 && (result.changes.length > 0 || productChanges.length > 0) ? result.updates : 0
   const problemCount = result ? result.unmatched + result.ambiguous + result.errors : 0
   const busy = preview.isPending || apply.isPending
   const missingCost = summary.data?.missingCostCount ?? 0
   const missingDesi = summary.data?.missingDesiCount ?? 0
-  const picker = <FieldPicker fields={fields} available={result?.availableFields} disabled={busy} onToggle={toggleField} />
+  const picker = <FieldPicker fields={fields} available={result?.availableFields} disabled={busy} onToggle={toggleField} onToggleGroup={toggleGroup} />
 
-  const foot = done
-    ? <button type="button" className="rr-btn rr-primary" onClick={onClose}>Kapat</button>
-    : result
-      ? <>
-        <button type="button" className="rr-btn" disabled={busy} onClick={restart}>Başka Dosya Yükle</button>
-        <button type="button" className="rr-btn rr-primary" disabled={busy || writeCount === 0} onClick={() => apply.mutate(result.changes)}><RrIcon name="check" />{apply.isPending ? 'Kaydediliyor…' : `Değişiklikleri Kaydet (${count(writeCount)})`}</button>
-      </>
-      : <button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button>
+  // As in the other windows: a spacer note on the left, the actions on the right.
+  const foot = <>
+    <span className="rr-note" />
+    {done
+      ? <button type="button" className="rr-btn rr-primary" onClick={onClose}>Kapat</button>
+      : result
+        ? <>
+          <button type="button" className="rr-btn" disabled={busy} onClick={restart}>Başka Dosya Yükle</button>
+          <button type="button" className="rr-btn rr-primary" disabled={busy || writeCount === 0} onClick={() => apply.mutate({ changes: result.changes, productChanges })}><RrIcon name="check" />{apply.isPending ? 'Kaydediliyor…' : `Değişiklikleri Kaydet (${count(writeCount)})`}</button>
+        </>
+        : <button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button>}
+  </>
 
   return <RrModal crumb="Ürünler" title="Ürünleri İçe / Dışa Aktar" desc="Ürünlerinizi Excel'e aktarın, düzenleyip geri yükleyin ve hangi alanların panele yazılacağını seçin. Değişiklikler önce önizlenir; siz kaydetmeden hiçbir şey değişmez." size="lg" onClose={onClose} locked={apply.isPending} foot={foot} modalClass="pci-modal">
     {done ? <div className="pci-done" role="status">
       <span className="pci-done-mark"><RrIcon name="check" size={20} /></span>
-      <strong>{done.variants === 0 ? 'Değerler zaten güncel' : 'Değişiklikler kaydedildi'}</strong>
-      <p>{done.variants === 0 ? 'Dosyadaki değerler panelde zaten aynıydı; hiçbir şey değişmedi.' : appliedText(done)}</p>
+      <strong>{appliedTotal(done) === 0 ? 'Değerler zaten güncel' : 'Değişiklikler kaydedildi'}</strong>
+      <p>{appliedTotal(done) === 0 ? 'Dosyadaki değerler panelde zaten aynıydı; hiçbir şey değişmedi.' : appliedText(done)}</p>
     </div> : result ? <PreviewView preview={result} picker={picker} problemCount={problemCount} pending={preview.isPending} error={apply.error ?? preview.error} /> : <>
-      {summary.data && (missingCost > 0 || missingDesi > 0) && <div className="pci-hint" role="note"><RrIcon name="info" /><span>Toplam {count(summary.data.variantCount)} varyantın <b>{count(missingCost)} tanesinde maliyet</b>, <b>{count(missingDesi)} tanesinde desi</b> eksik. Kâr ve kargo hesabı bu değerlerle yapılır.</span></div>}
       <ol className="pci-steps">
         <li className="pci-step">
           <span className="pci-step-n" aria-hidden="true">1</span>
           <div className="pci-step-b">
             <strong>Ürünleri Dışa Aktarın</strong>
-            <p>Her varyant bir satırdır: stok kodu, barkod, ürün adı, varyant, satış fiyatı, KDV oranı, <b>stok</b>, <b>maliyet</b>, <b>desi</b> ve her mağazanın <b>satış ve liste fiyatı</b>. Boş hücre değişmez; bir maliyeti ya da desiyi silmek için <b>-</b> yazın.</p>
+            <p>Her varyant bir satırdır: ürün adı, varyant, stok kodu, barkod, model kodu, panel fiyatı, KDV oranı, <b>stok</b>, <b>maliyet</b>, <b>desi</b> ve her mağazanın <b>satış ve liste fiyatı</b>. Boş hücre değişmez; maliyeti, desiyi ya da model kodunu silmek için <b>-</b> yazın.</p>
             <div className="pci-step-acts">
               <label className="pci-field"><span>Varyantlar</span>
                 <select className="pci-select" value={filter} onChange={event => setFilter(event.target.value as ProductTransferExportFilter)}>
@@ -176,23 +214,51 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
   </RrModal>
 }
 
-function FieldPicker({ fields, available, disabled, onToggle }: { fields: ProductTransferField[]; available?: ProductTransferField[]; disabled: boolean; onToggle: (field: ProductTransferField) => void }) {
+function FieldCheck({ field, label, fields, available, disabled, onToggle }: { field: ProductTransferField; label: string; fields: ProductTransferField[]; available?: ProductTransferField[]; disabled: boolean; onToggle: (field: ProductTransferField) => void }) {
+  const missing = available != null && !available.includes(field)
+  return <label className={`pci-check${missing ? ' is-missing' : ''}`} title={missing ? 'Dosyada bu sütun yok' : undefined}>
+    <input type="checkbox" checked={fields.includes(field)} disabled={disabled || missing} onChange={() => onToggle(field)} />{label}
+  </label>
+}
+
+function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: { fields: ProductTransferField[]; available?: ProductTransferField[]; disabled: boolean; onToggle: (field: ProductTransferField) => void; onToggleGroup: (group: readonly ProductTransferField[]) => void }) {
   return <fieldset className="pci-fields">
     <legend>Panele Aktarılacak Alanlar</legend>
-    <div className="pci-field-list">{allFields.map(field => {
-      const missing = available != null && !available.includes(field)
-      return <label key={field} className={`pci-check${missing ? ' is-missing' : ''}`} title={missing ? 'Dosyada bu sütun yok' : undefined}>
-        <input type="checkbox" checked={fields.includes(field)} disabled={disabled || missing} onChange={() => onToggle(field)} />{fieldLabels[field]}
-      </label>
+    <div className="pci-groups">{productTransferFieldGroups.map(group => {
+      if (group.fields.length === 1) return <div key={group.label} className="pci-group" role="group" aria-label={group.label}>
+        <FieldCheck field={group.fields[0]} label={group.label} fields={fields} available={available} disabled={disabled} onToggle={onToggle} />
+      </div>
+      const usable = group.fields.filter(field => available == null || available.includes(field))
+      const on = usable.filter(field => fields.includes(field)).length
+      return <div key={group.label} className="pci-group" role="group" aria-label={group.label}>
+        <label className={`pci-check pci-group-all${usable.length === 0 ? ' is-missing' : ''}`}>
+          <input type="checkbox" checked={usable.length > 0 && on === usable.length} ref={element => { if (element) element.indeterminate = on > 0 && on < usable.length }} disabled={disabled || usable.length === 0} onChange={() => onToggleGroup(group.fields)} aria-label={`${group.label}: tümünü seç`} />{group.label}
+        </label>
+        <div className="pci-field-list">{group.fields.map(field => <FieldCheck key={field} field={field} label={fieldLabels[field]} fields={fields} available={available} disabled={disabled} onToggle={onToggle} />)}</div>
+      </div>
     })}</div>
     {fields.length === 0 && <p className="pci-error" role="alert">En az bir alan seçin.</p>}
+    <p className="pci-note" role="note">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; stok kodu değiştirilemez. Varyant, marka, kategori ve durum sütunları yalnız bilgi içindir.</p>
+    {fields.includes('TITLE') && <p className="pci-note" role="note"><b>Ürün adı</b> ürüne aittir: bir ürünün tüm satırlarına aynı adı yazın.</p>}
+    {fields.includes('BARCODE') && <p className="pci-note" role="note"><b>Barkod</b> aktarılırken satırlar yalnız stok kodu ile eşleştirilir; bir barkod tek bir varyantta olabilir ve silinemez.</p>}
+    {(fields.includes('PANEL_PRICES') || fields.includes('VAT')) && <p className="pci-note" role="note"><b>Panel fiyatı ve KDV oranı</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez ve mağaza fiyatları değişmez.</p>}
     {fields.includes('STOCK') && <p className="pci-note" role="note"><b>Stok</b>, ürün sayfasındaki stok değişikliği gibi kaydedilir: stok gönderimi açık mağazalara yeni stok gönderilir.</p>}
     {fields.includes('PRICES') && <p className="pci-note" role="note"><b>Mağaza fiyatları</b> panele kaydedilir; bu işlem kendisi fiyat göndermez, ancak sonraki stok ya da fiyat gönderimi yeni fiyatı mağazaya taşır. Yalnız fiyat kaydı olan mağazalar güncellenir.</p>}
   </fieldset>
 }
 
+function appliedTotal(done: ProductTransferApplyResult) {
+  return done.variants + (done.titlesUpdated ?? 0) + (done.vatUpdated ?? 0)
+}
+
 function appliedText(done: ProductTransferApplyResult) {
   const parts = [
+    done.titlesUpdated ? `${count(done.titlesUpdated)} ürün adı güncellendi` : '',
+    done.barcodesUpdated ? `${count(done.barcodesUpdated)} barkod güncellendi` : '',
+    done.modelCodesUpdated ? `${count(done.modelCodesUpdated)} model kodu güncellendi` : '',
+    done.modelCodesCleared ? `${count(done.modelCodesCleared)} model kodu silindi` : '',
+    done.panelPricesUpdated ? `${count(done.panelPricesUpdated)} panel fiyatı güncellendi` : '',
+    done.vatUpdated ? `${count(done.vatUpdated)} ürünün KDV oranı güncellendi` : '',
     done.costsUpdated ? `${count(done.costsUpdated)} maliyet güncellendi` : '',
     done.costsCleared ? `${count(done.costsCleared)} maliyet silindi` : '',
     done.desiUpdated ? `${count(done.desiUpdated)} desi güncellendi` : '',
@@ -203,10 +269,18 @@ function appliedText(done: ProductTransferApplyResult) {
   return `${count(done.variants)} varyant kaydedildi (${count(done.products)} ürün): ${parts.join(', ')}.`
 }
 
-function FieldCell({ change, oldValue, newValue, format }: { change: ProductTransferFieldChange; oldValue: number | null; newValue: number | null; format: (value: number | null) => string }) {
-  if (change === 'SET') return <><span className="pci-old">{format(oldValue)}</span><span className="pci-arrow" aria-label="yeni değer">→</span><b>{format(newValue)}</b></>
-  if (change === 'CLEAR') return <><span className="pci-old">{format(oldValue)}</span><span className="pci-arrow" aria-label="yeni değer">→</span><b className="pci-clear">Silinecek</b></>
+function FieldCell<T>({ change, oldValue, newValue, format }: { change: ProductTransferFieldChange | undefined; oldValue: T | null | undefined; newValue: T | null | undefined; format: (value: T | null) => string }) {
+  if (change === 'SET') return <><span className="pci-old">{format(oldValue ?? null)}</span><span className="pci-arrow" aria-label="yeni değer">→</span><b>{format(newValue ?? null)}</b></>
+  if (change === 'CLEAR') return <><span className="pci-old">{format(oldValue ?? null)}</span><span className="pci-arrow" aria-label="yeni değer">→</span><b className="pci-clear">Silinecek</b></>
   return <span className="pci-same">{oldValue == null ? '—' : format(oldValue)}</span>
+}
+
+function PanelPriceCell({ row }: { row: ProductTransferRow }) {
+  if (row.panelPriceChange !== 'SET') return <span className="pci-same">{row.oldPanelSalePrice == null ? '—' : formatMoney(row.oldPanelSalePrice)}</span>
+  return <span className="pci-price">
+    {row.oldPanelSalePrice !== row.newPanelSalePrice && <span><span className="pci-old">{row.oldPanelSalePrice == null ? '—' : formatMoney(row.oldPanelSalePrice)}</span><span className="pci-arrow" aria-label="yeni satış fiyatı">→</span><b>{formatMoney(row.newPanelSalePrice ?? null)}</b></span>}
+    {row.oldPanelListPrice !== row.newPanelListPrice && <span>Liste: <span className="pci-old">{row.oldPanelListPrice == null ? '—' : formatMoney(row.oldPanelListPrice)}</span><span className="pci-arrow" aria-label="yeni liste fiyatı">→</span><b>{formatMoney(row.newPanelListPrice ?? null)}</b></span>}
+  </span>
 }
 
 function PricesCell({ prices }: { prices: ProductTransferPrice[] }) {
@@ -221,29 +295,45 @@ function PricesCell({ prices }: { prices: ProductTransferPrice[] }) {
 function PreviewView({ preview, picker, problemCount, pending, error }: { preview: ProductTransferPreview; picker: ReactNode; problemCount: number; pending: boolean; error: unknown }) {
   const picked = new Set(preview.fields)
   const changed = (value: number) => value ? 'ok' : 'muted'
+  const stat = (field: ProductTransferField, label: string, value: number): Array<[string, number, string]> => picked.has(field) ? [[label, value, changed(value)]] : []
+  const modelCodeChanges = (preview.modelCodeUpdates ?? 0) + (preview.modelCodeClears ?? 0)
   const stats: Array<[string, number, string]> = [
     ['Güncellenecek Varyant', preview.updates, 'ok'],
-    ...(picked.has('COST') ? [['Maliyet Değişen', preview.costUpdates + preview.costClears, changed(preview.costUpdates + preview.costClears)] as [string, number, string]] : []),
-    ...(picked.has('DESI') ? [['Desi Değişen', preview.desiUpdates + preview.desiClears, changed(preview.desiUpdates + preview.desiClears)] as [string, number, string]] : []),
-    ...(picked.has('STOCK') ? [['Stok Değişen', preview.stockUpdates, changed(preview.stockUpdates)] as [string, number, string]] : []),
-    ...(picked.has('PRICES') ? [['Fiyat Değişen', preview.priceUpdates, changed(preview.priceUpdates)] as [string, number, string]] : []),
+    ...stat('TITLE', 'Ürün Adı Değişen', preview.titleUpdates ?? 0),
+    ...stat('BARCODE', 'Barkod Değişen', preview.barcodeUpdates ?? 0),
+    ...stat('MODEL_CODE', 'Model Kodu Değişen', modelCodeChanges),
+    ...stat('PANEL_PRICES', 'Panel Fiyatı Değişen', preview.panelPriceUpdates ?? 0),
+    ...stat('VAT', 'KDV Değişen', preview.vatUpdates ?? 0),
+    ...stat('COST', 'Maliyet Değişen', preview.costUpdates + preview.costClears),
+    ...stat('DESI', 'Desi Değişen', preview.desiUpdates + preview.desiClears),
+    ...stat('STOCK', 'Stok Değişen', preview.stockUpdates),
+    ...stat('PRICES', 'Fiyat Değişen', preview.priceUpdates),
     ['Değişmiyor', preview.unchanged, 'muted'],
     ['Boş / Atlanan', preview.skipped, 'muted'],
     ['Eşleşmedi', preview.unmatched, preview.unmatched ? 'warn' : 'muted'],
     ['Belirsiz', preview.ambiguous, preview.ambiguous ? 'bad' : 'muted'],
     ['Hatalı', preview.errors, preview.errors ? 'bad' : 'muted']
   ]
-  const clears = (picked.has('COST') ? preview.costClears : 0) + (picked.has('DESI') ? preview.desiClears : 0)
+  const clearParts = [
+    picked.has('COST') && preview.costClears ? `${count(preview.costClears)} varyantın maliyeti` : '',
+    picked.has('DESI') && preview.desiClears ? `${count(preview.desiClears)} varyantın desisi` : '',
+    picked.has('MODEL_CODE') && preview.modelCodeClears ? `${count(preview.modelCodeClears)} varyantın model kodu` : ''
+  ].filter(Boolean)
   return <div className="pci-preview" aria-busy={pending}>
     <p className="pci-file"><RrIcon name="doc" /><span><b>{preview.fileName}</b> · {count(preview.totalRows)} satır okundu{pending ? ' · yeniden önizleniyor…' : ''}</span></p>
     <div className="pci-stats" role="list" aria-label="Önizleme özeti">{stats.map(([label, value, tone]) => <div key={label} role="listitem" className={`pci-stat is-${tone}`}><small>{label}</small><strong>{count(value)}</strong></div>)}</div>
     {picker}
-    {clears > 0 && <p className="pci-note" role="note">{[picked.has('COST') && preview.costClears ? `${count(preview.costClears)} varyantın maliyeti` : '', picked.has('DESI') && preview.desiClears ? `${count(preview.desiClears)} varyantın desisi` : ''].filter(Boolean).join(' ve ')} silinecek.</p>}
+    {clearParts.length > 0 && <p className="pci-note" role="note">{clearParts.join(', ')} silinecek.</p>}
     {problemCount > 0 && <p className="pci-note" role="note">Eşleşmeyen, belirsiz ve hatalı satırlar kaydedilmez. Düzeltmek için dosyayı değiştirip yeniden yükleyin; diğer satırları şimdi kaydedebilirsiniz.</p>}
     {error ? <p className="pci-error" role="alert">{error instanceof Error ? error.message : 'Değişiklikler kaydedilemedi.'}</p> : null}
     {preview.rows.length === 0 ? <p className="pci-empty">Seçtiğiniz alanlarda dolu satır yok; kaydedilecek bir şey bulunmadı.</p> : <div className="pci-tblwrap"><table className="pci-tbl">
       <thead><tr>
         <th scope="col">Satır</th><th scope="col">Ürün</th>
+        {picked.has('TITLE') && <th scope="col">Ürün Adı</th>}
+        {picked.has('BARCODE') && <th scope="col">Barkod</th>}
+        {picked.has('MODEL_CODE') && <th scope="col">Model Kodu</th>}
+        {picked.has('PANEL_PRICES') && <th scope="col">Panel Fiyatı</th>}
+        {picked.has('VAT') && <th scope="col">KDV</th>}
         {picked.has('COST') && <th scope="col">Maliyet</th>}
         {picked.has('DESI') && <th scope="col">Desi</th>}
         {picked.has('STOCK') && <th scope="col">Stok</th>}
@@ -256,6 +346,11 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
         return <tr key={`${row.rowNumber}-${row.outcome}`}>
           <td className="pci-num">{row.rowNumber}</td>
           <td><span className="pci-title">{row.productTitle ?? row.sku ?? row.barcode ?? '—'}</span><small>{[row.variantLabel, row.sku, row.barcode].filter(Boolean).join(' · ') || '—'}</small></td>
+          {picked.has('TITLE') && <td className="pci-text">{matched ? <FieldCell change={row.titleChange} oldValue={row.productTitle} newValue={row.newTitle} format={formatText} /> : formatText(row.newTitle ?? null)}</td>}
+          {picked.has('BARCODE') && <td className="pci-money">{matched ? <FieldCell change={row.barcodeChange} oldValue={row.oldBarcode} newValue={row.newBarcode} format={formatText} /> : formatText(row.newBarcode ?? null)}</td>}
+          {picked.has('MODEL_CODE') && <td className="pci-money">{matched ? <FieldCell change={row.modelCodeChange} oldValue={row.oldModelCode} newValue={row.newModelCode} format={formatText} /> : formatText(row.newModelCode ?? null)}</td>}
+          {picked.has('PANEL_PRICES') && <td className="pci-prices">{matched ? <PanelPriceCell row={row} /> : formatMoney(row.newPanelSalePrice ?? null)}</td>}
+          {picked.has('VAT') && <td className="pci-money">{matched ? <FieldCell change={row.vatChange} oldValue={row.oldVatRate} newValue={row.newVatRate} format={formatVat} /> : formatVat(row.newVatRate ?? null)}</td>}
           {picked.has('COST') && <td className="pci-money">{matched ? <FieldCell change={row.costChange} oldValue={row.oldCost} newValue={row.newCost} format={formatMoney} /> : formatMoney(row.newCost)}</td>}
           {picked.has('DESI') && <td className="pci-money">{matched ? <FieldCell change={row.desiChange} oldValue={row.oldDesi} newValue={row.newDesi} format={formatNumber} /> : formatNumber(row.newDesi)}</td>}
           {picked.has('STOCK') && <td className="pci-money">{matched ? <FieldCell change={row.stockChange} oldValue={row.oldStock} newValue={row.newStock} format={formatNumber} /> : formatNumber(row.newStock)}</td>}
@@ -264,6 +359,6 @@ function PreviewView({ preview, picker, problemCount, pending, error }: { previe
         </tr>
       })}</tbody>
     </table></div>}
-    {preview.rowsTruncated && <p className="pci-more">İlk {count(preview.rows.length)} satır gösteriliyor; sorunlu satırlar listenin başında. Kaydet düğmesi tüm {count(preview.changes.length)} değişikliği kaydeder.</p>}
+    {preview.rowsTruncated && <p className="pci-more">İlk {count(preview.rows.length)} satır gösteriliyor; sorunlu satırlar listenin başında. Kaydet düğmesi tüm {count(preview.updates)} satırın değişikliğini kaydeder.</p>}
   </div>
 }

@@ -22,6 +22,21 @@ export function updateVariantGroupSelection(currentIds: readonly string[], group
   return checked ? [...retained, ...groupIds] : retained
 }
 
+// The Renk / Beden pickers are selection shortcuts, not filters: the variants they name are ticked. Colours and sizes
+// are intersected (Bej + XL ticks Bej XL only); only one of them chosen ticks every variant of it; none chosen ticks
+// nothing. The ticked checkboxes stay the one selection: a hand-made change afterwards clears the pickers.
+export function variantShortcutSelection<T>(items: readonly T[], colors: readonly string[], sizes: readonly string[], colorOf: (item: T) => string, sizeOf: (item: T) => string, idOf: (item: T) => string) {
+  if (!colors.length && !sizes.length) return []
+  return items.filter(item => (!colors.length || colors.includes(colorOf(item))) && (!sizes.length || sizes.includes(sizeOf(item)))).map(idOf)
+}
+
+// A picker's label: "Seçiniz" while nothing is chosen, "Tümü" when every option is, else the count.
+export function variantShortcutLabel(chosen: readonly string[], options: readonly string[]) {
+  if (!chosen.length) return 'Seçiniz'
+  if (options.length > 0 && options.every(option => chosen.includes(option))) return 'Tümü'
+  return `${chosen.length} Seçili`
+}
+
 // List and sale price are compared on save, not here: a sale price typed before the list price is accepted.
 export function variantBulkEditIssue(field: VariantBulkEditField, value: number) {
   if (!Number.isFinite(value) || value < 0) return 'Sıfır veya daha büyük geçerli bir değer girin.'

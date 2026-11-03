@@ -13,7 +13,12 @@ vi.mock('../../../shared/api', async importOriginal => {
     apiState.calls.push({ path, method, headers: Object.fromEntries(new Headers(init?.headers).entries()), body: init?.body })
     if (path === '/products/transfer/summary') return { variantCount: 3718, missingCostCount: 3666, missingDesiCount: 3646 }
     const blank = { oldStock: null, newStock: null, stockChange: null, prices: [] }
-    const base = { fileName: 'urunler.xlsx', availableFields: ['COST', 'DESI', 'STOCK', 'PRICES'], stores: [{ connectionId: 'c1', name: 'Trendyol' }], totalRows: 5, unchanged: 1, skipped: 1, unmatched: 1, ambiguous: 0, errors: 0, rowsTruncated: false }
+    const base = { fileName: 'urunler.xlsx', availableFields: ['TITLE', 'BARCODE', 'MODEL_CODE', 'PANEL_PRICES', 'VAT', 'COST', 'DESI', 'STOCK', 'PRICES'], stores: [{ connectionId: 'c1', name: 'Trendyol' }], totalRows: 5, unchanged: 1, skipped: 1, unmatched: 1, ambiguous: 0, errors: 0, rowsTruncated: false }
+    if (path === '/products/transfer/import' && (init?.body as FormData).get('fields') === 'TITLE,BARCODE,MODEL_CODE,COST,DESI') return {
+      ...base, fields: ['TITLE', 'BARCODE', 'MODEL_CODE', 'COST', 'DESI'], updates: 1, costUpdates: 0, costClears: 0, desiUpdates: 0, desiClears: 0, stockUpdates: 0, priceUpdates: 0, titleUpdates: 1, barcodeUpdates: 0, modelCodeUpdates: 0, modelCodeClears: 0,
+      rows: [{ rowNumber: 2, sku: 'ABC-01', barcode: '869', variantId: 'v1', productTitle: 'Gömlek', variantLabel: 'Beden: M', oldCost: null, newCost: null, costChange: null, oldDesi: 1, newDesi: null, desiChange: null, ...blank, newTitle: 'Yeni Gömlek', titleChange: 'SET', oldBarcode: '869', newBarcode: '869', barcodeChange: null, outcome: 'UPDATE', message: null }],
+      changes: [], productChanges: [{ productId: 'p1', version: 3, title: 'Yeni Gömlek', vatRate: null }]
+    }
     if (path === '/products/transfer/import' && (init?.body as FormData).get('fields') === 'STOCK,PRICES') return {
       ...base, fields: ['STOCK', 'PRICES'], updates: 1, costUpdates: 0, costClears: 0, desiUpdates: 0, desiClears: 0, stockUpdates: 1, priceUpdates: 1,
       rows: [{ rowNumber: 2, sku: 'ABC-01', barcode: '869', variantId: 'v1', productTitle: 'Gömlek', variantLabel: 'Beden: M', oldCost: null, newCost: null, costChange: null, oldDesi: 1, newDesi: null, desiChange: null, oldStock: 3, newStock: 8, stockChange: 'SET', prices: [{ connectionId: 'c1', storeName: 'Trendyol', oldSalePrice: 400, newSalePrice: 450, oldListPrice: 500, newListPrice: 500 }], outcome: 'UPDATE', message: null }],
@@ -28,6 +33,7 @@ vi.mock('../../../shared/api', async importOriginal => {
       ],
       changes: [{ variantId: 'v1', version: 2, setCost: true, cost: 123.45, setDesi: true, desi: 2.5 }, { variantId: 'v2', version: 4, setCost: true, cost: null, setDesi: false, desi: null }]
     }
+    if (path === '/products/transfer/apply' && JSON.parse(init?.body as string).productChanges) return { variants: 0, costsUpdated: 0, costsCleared: 0, desiUpdated: 0, desiCleared: 0, stocksUpdated: 0, pricesUpdated: 0, products: 1, titlesUpdated: 1 }
     if (path === '/products/transfer/apply') return JSON.parse(init?.body as string).changes.length === 1
       ? { variants: 1, costsUpdated: 0, costsCleared: 0, desiUpdated: 0, desiCleared: 0, stocksUpdated: 1, pricesUpdated: 1, products: 1 }
       : { variants: 2, costsUpdated: 1, costsCleared: 1, desiUpdated: 1, desiCleared: 0, stocksUpdated: 0, pricesUpdated: 0, products: 1 }
@@ -84,11 +90,12 @@ describe('ProductTransferDialog', () => {
     expect(productTransferExportHref('desi')).toBe('/api/v1/products/transfer/export.xlsx?missing=desi')
   })
 
-  it('shows how many variants lack a cost or a desi and exports the chosen set', async () => {
+  it('counts the variants lacking a cost or a desi in the export choice, with no separate note', async () => {
     await renderDialog()
 
-    expect(document.body.textContent).toContain('3.666 tanesinde maliyet')
-    expect(document.body.textContent).toContain('3.646 tanesinde desi')
+    expect(document.body.querySelector('.pci-hint')).toBeNull()
+    expect(document.body.textContent).toContain('Maliyeti Eksik Olanlar (3.666)')
+    expect(document.body.textContent).toContain('Desisi Eksik Olanlar (3.646)')
     expect(exportLink().getAttribute('href')).toBe('/api/v1/products/transfer/export.xlsx')
     const select = document.body.querySelector<HTMLSelectElement>('.pci-select')!
     await act(async () => {
@@ -96,6 +103,46 @@ describe('ProductTransferDialog', () => {
       select.dispatchEvent(new Event('change', { bubbles: true }))
     })
     expect(exportLink().getAttribute('href')).toBe('/api/v1/products/transfer/export.xlsx?missing=desi')
+  })
+
+  it('puts Vazgeç on the right of the footer and groups the fields with a select-all each', async () => {
+    const onClose = vi.fn()
+    await renderDialog(onClose)
+
+    const foot = document.body.querySelector('footer.rr-m-foot')!
+    // The spacer note comes first, so the button sits on the right as in the other windows.
+    expect(Array.from(foot.children).map(child => child.className)).toEqual(['rr-note', 'rr-btn'])
+    expect(foot.lastElementChild!.textContent).toBe('Vazgeç')
+    await act(async () => { (foot.lastElementChild as HTMLButtonElement).click() })
+    expect(onClose).toHaveBeenCalled()
+
+    const groups = Array.from(document.body.querySelectorAll('.pci-group')).map(group => group.getAttribute('aria-label'))
+    expect(groups).toEqual(['Ürün Bilgileri', 'Fiyat ve Vergi', 'Stok ve Lojistik', 'Maliyet', 'Mağaza Fiyatları'])
+    const all = (label: string) => document.body.querySelector<HTMLInputElement>(`input[aria-label="${label}: tümünü seç"]`)!
+    expect(all('Stok ve Lojistik').indeterminate).toBe(true)
+    await act(async () => { all('Stok ve Lojistik').click() })
+    expect(all('Stok ve Lojistik').checked).toBe(true)
+    await act(async () => { all('Stok ve Lojistik').click() })
+    expect(all('Stok ve Lojistik').checked).toBe(false)
+    expect(document.body.textContent).toContain('Stok Kodu ile, yoksa Barkod ile eşleştirilir')
+  })
+
+  it('previews and saves a product title chosen through its group', async () => {
+    await renderDialog()
+    await chooseFile('urunler.xlsx')
+    await act(async () => { document.body.querySelector<HTMLInputElement>('input[aria-label="Ürün Bilgileri: tümünü seç"]')!.click() })
+    await settle()
+
+    expect((apiState.calls.filter(call => call.path === '/products/transfer/import').at(-1)!.body as FormData).get('fields')).toBe('TITLE,BARCODE,MODEL_CODE,COST,DESI')
+    expect(document.body.querySelector('.pci-tbl thead')!.textContent).toContain('Ürün Adı')
+    expect(document.body.querySelector('.pci-tbl tbody tr')!.textContent).toContain('Yeni Gömlek')
+    expect(document.body.textContent).toContain('yalnız stok kodu ile eşleştirilir')
+
+    await act(async () => { button('Değişiklikleri Kaydet (1)')!.click() })
+    await settle()
+    const applied = apiState.calls.find(call => call.path === '/products/transfer/apply')!
+    expect(JSON.parse(applied.body as string)).toEqual({ changes: [], productChanges: [{ productId: 'p1', version: 3, title: 'Yeni Gömlek', vatRate: null }] })
+    expect(document.body.textContent).toContain('1 ürün adı güncellendi')
   })
 
   it('refuses a file that is neither .xlsx nor .csv without uploading it', async () => {

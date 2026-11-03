@@ -2,11 +2,6 @@
 @layer features {
   .pci-modal .rr-m-body { display: grid; gap: var(--rv-space-3); min-width: 0; }
 
-  .pci-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; color: var(--rv-color-ink); background: var(--rv-color-warning-soft); border-radius: 12px; font-size: 13px; }
-  .pci-hint > .rr-ico { flex: none; color: var(--rv-color-warning); }
-  .pci-hint > span { flex: 1 1 260px; min-width: 0; }
-  .pci-hint b { font-weight: 600; }
-
   .pci-steps { display: grid; gap: var(--rv-space-3); margin: 0; padding: 0; list-style: none; }
   .pci-step { display: flex; gap: 12px; min-width: 0; padding: 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 14px; }
   .pci-step-n { display: inline-grid; flex: none; place-items: center; width: 26px; height: 26px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 999px; font-size: 13px; font-weight: 700; }
@@ -22,7 +17,13 @@
 
   .pci-fields { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 12px 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
   .pci-fields legend { float: left; width: 100%; margin: 0 0 2px; padding: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
-  .pci-field-list { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .pci-field-list { display: flex; flex-wrap: wrap; gap: 0 18px; }
+  .pci-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; min-width: 0; }
+  .pci-group { display: grid; align-content: start; gap: 0; min-width: 0; padding: 6px 12px 8px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+  .pci-group .pci-field-list { padding-left: 24px; }
+  .pci-group-all { font-weight: 600; }
+  .pci-note b { color: var(--rv-color-ink); font-weight: 600; }
+  .pci-text { min-width: 180px; overflow-wrap: anywhere; }
   .pci-check { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--rv-color-ink); font-size: 13px; cursor: pointer; }
   .pci-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--rv-color-primary); }
   .pci-check.is-missing { color: var(--rv-color-muted); cursor: not-allowed; }

@@ -6,13 +6,14 @@ namespace MarketplaceHub.Infrastructure.Imports;
 
 public enum ProductTransferValueKind { Empty, Set, Clear, Invalid }
 
-// What a cell asks for: nothing (Empty), a value (Set, rounded to two decimals), removing the stored value (Clear) or
-// a value that cannot be used (Invalid, Error says why).
-public readonly record struct ProductTransferValue(ProductTransferValueKind Kind, decimal? Amount, string? Error)
+// What a cell asks for: nothing (Empty), a value (Set: Amount rounded to two decimals, or Text for a text field),
+// removing the stored value (Clear) or a value that cannot be used (Invalid, Error says why).
+public readonly record struct ProductTransferValue(ProductTransferValueKind Kind, decimal? Amount, string? Error, string? Text = null)
 {
     public static ProductTransferValue Empty => new(ProductTransferValueKind.Empty, null, null);
     public static ProductTransferValue Clear => new(ProductTransferValueKind.Clear, null, null);
     public static ProductTransferValue Set(decimal amount) => new(ProductTransferValueKind.Set, amount, null);
+    public static ProductTransferValue SetText(string text) => new(ProductTransferValueKind.Set, null, null, text);
     public static ProductTransferValue Invalid(string error) => new(ProductTransferValueKind.Invalid, null, error);
 }
 
@@ -20,7 +21,22 @@ public readonly record struct ProductTransferValue(ProductTransferValueKind Kind
 public sealed record ProductTransferStorePrice(Guid ConnectionId, ProductTransferValue Sale, ProductTransferValue List);
 
 // CodeError: the row's stock code or barcode cannot be read (a formula), so the row is an error whatever it asks for.
-public sealed record ProductTransferFileRow(int RowNumber, string? Sku, string? Barcode, ProductTransferValue Cost, ProductTransferValue Desi, ProductTransferValue Stock = default, IReadOnlyList<ProductTransferStorePrice>? Prices = null, string? CodeError = null)
+// Barcode is the code the row is matched by; NewBarcode is the same cell read as a value to write (BARCODE field).
+public sealed record ProductTransferFileRow(
+    int RowNumber,
+    string? Sku,
+    string? Barcode,
+    ProductTransferValue Cost,
+    ProductTransferValue Desi,
+    ProductTransferValue Stock = default,
+    IReadOnlyList<ProductTransferStorePrice>? Prices = null,
+    string? CodeError = null,
+    ProductTransferValue Title = default,
+    ProductTransferValue NewBarcode = default,
+    ProductTransferValue ModelCode = default,
+    ProductTransferValue PanelSale = default,
+    ProductTransferValue PanelList = default,
+    ProductTransferValue Vat = default)
 {
     public IReadOnlyList<ProductTransferStorePrice> StorePrices => Prices ?? [];
 }
@@ -32,14 +48,31 @@ public sealed record ProductTransferFile(IReadOnlyList<ProductTransferFileRow> R
 public sealed record ProductTransferOffer(Guid ConnectionId, Guid OfferId, long Version, decimal SalePrice, decimal ListPrice);
 
 // A variant the uploaded rows can name, as the catalog holds it now. OnHand is null when it has no main stock record.
-public sealed record ProductTransferCandidate(Guid VariantId, Guid ProductId, long Version, string Sku, string? Barcode, string ProductTitle, string? VariantLabel, decimal? CostPrice, decimal? Desi, decimal? OnHand = null, IReadOnlyList<ProductTransferOffer>? Offers = null)
+// PanelSalePrice / PanelListPrice are the variant's default prices, else its product's (what the panel price shows).
+public sealed record ProductTransferCandidate(
+    Guid VariantId,
+    Guid ProductId,
+    long Version,
+    string Sku,
+    string? Barcode,
+    string ProductTitle,
+    string? VariantLabel,
+    decimal? CostPrice,
+    decimal? Desi,
+    decimal? OnHand = null,
+    IReadOnlyList<ProductTransferOffer>? Offers = null,
+    long ProductVersion = 1,
+    string? ModelCode = null,
+    decimal? PanelSalePrice = null,
+    decimal? PanelListPrice = null,
+    decimal? VatRate = null)
 {
     public IReadOnlyList<ProductTransferOffer> StoreOffers => Offers ?? [];
 }
 
 // Reads the product export back (the .xlsx it was downloaded as, or a CSV saved from it), and the cost template of the
 // earlier "Maliyet Excel". Columns are found by their header text, whatever the order: at least one of "Stok Kodu" and
-// "Barkod", and at least one of "Maliyet", "Desi", "Stok" and a store's price columns. Every other column is ignored.
+// "Barkod", and at least one writable column (ProductTransferFields). Every other column is ignored.
 public static partial class ProductTransferFileParser
 {
     public const int MaximumRows = 20_000;
@@ -47,6 +80,16 @@ public static partial class ProductTransferFileParser
     public const decimal MaximumDesi = 10_000m;
     public const decimal MaximumStock = 1_000_000_000m;
     public const decimal MaximumPrice = 10_000_000m;
+    public const int MaximumTitleLength = 320;
+    public const int MaximumCodeLength = 160;
+    public const string PanelSaleHeader = "Panel Satış Fiyatı";
+    public const string PanelListHeader = "Panel Liste Fiyatı";
+
+    private static readonly string[] TitleHeaders = ["URUNADI"];
+    private static readonly string[] ModelCodeHeaders = ["MODELKODU"];
+    private static readonly string[] PanelSaleHeaders = ["PANELSATISFIYATI"];
+    private static readonly string[] PanelListHeaders = ["PANELLISTEFIYATI"];
+    private static readonly string[] VatHeaders = ["KDVORANI", "KDV"];
 
     private static readonly string[] SkuHeaders = ["STOKKODU", "SKU", "STOKKODUSKU", "SATICISTOKKODU", "URUNSTOKKODU"];
     private static readonly string[] BarcodeHeaders = ["BARKOD", "BARCODE", "URUNBARKODU"];
@@ -94,18 +137,31 @@ public static partial class ProductTransferFileParser
         var desi = Column(keys, NewDesiHeaders);
         if (desi < 0) desi = Column(keys, DesiHeaders);
         var stock = Column(keys, StockHeaders);
+        var title = Column(keys, TitleHeaders);
+        var modelCode = Column(keys, ModelCodeHeaders);
+        var panelSale = Column(keys, PanelSaleHeaders);
+        var panelList = Column(keys, PanelListHeaders);
+        var vat = Column(keys, VatHeaders);
         var storeColumns = stores
             .Select(store => (store.ConnectionId, Headers: StorePriceHeaders(store.Name)))
             .Select(store => (store.ConnectionId, Sale: Column(keys, [HeaderKey(store.Headers.Sale)]), List: Column(keys, [HeaderKey(store.Headers.List)])))
             .Where(store => store.Sale >= 0 || store.List >= 0)
             .ToList();
-        var available = new List<string>();
-        if (cost >= 0) available.Add(ProductTransferFields.Cost);
-        if (desi >= 0) available.Add(ProductTransferFields.Desi);
-        if (stock >= 0) available.Add(ProductTransferFields.Stock);
-        if (storeColumns.Count > 0) available.Add(ProductTransferFields.Prices);
-        if (available.Count == 0) throw new InvalidDataException("\"Maliyet\", \"Desi\", \"Stok\" ya da mağaza fiyatı sütunu bulunamadı; Ravencia'dan indirilen ürün dosyasını kullanın.");
+        var present = new Dictionary<string, bool>(StringComparer.Ordinal)
+        {
+            [ProductTransferFields.Title] = title >= 0,
+            [ProductTransferFields.Barcode] = barcode >= 0,
+            [ProductTransferFields.ModelCode] = modelCode >= 0,
+            [ProductTransferFields.PanelPrices] = panelSale >= 0 || panelList >= 0,
+            [ProductTransferFields.Vat] = vat >= 0,
+            [ProductTransferFields.Stock] = stock >= 0,
+            [ProductTransferFields.Desi] = desi >= 0,
+            [ProductTransferFields.Cost] = cost >= 0,
+            [ProductTransferFields.Prices] = storeColumns.Count > 0
+        };
+        var available = ProductTransferFields.All.Where(field => present[field]).ToList();
         if (sku < 0 && barcode < 0) throw new InvalidDataException("\"Stok Kodu\" ya da \"Barkod\" sütunu bulunamadı; Ravencia'dan indirilen ürün dosyasını kullanın.");
+        if (available.All(field => field == ProductTransferFields.Barcode)) throw new InvalidDataException("Aktarılabilecek bir sütun (ürün adı, model kodu, fiyat, KDV, stok, maliyet, desi ya da mağaza fiyatı) bulunamadı; Ravencia'dan indirilen ürün dosyasını kullanın.");
 
         var result = new List<ProductTransferFileRow>();
         foreach (var (rowNumber, cells, formulas) in rows)
@@ -122,8 +178,16 @@ public static partial class ProductTransferFileParser
                 .Select(store => new ProductTransferStorePrice(store.ConnectionId, Read(store.Sale, ParsePrice), Read(store.List, ParsePrice)))
                 .Where(price => price.Sale.Kind != ProductTransferValueKind.Empty || price.List.Kind != ProductTransferValueKind.Empty)
                 .ToList();
-            if (skuText is null && barcodeText is null && costValue.Kind == ProductTransferValueKind.Empty && desiValue.Kind == ProductTransferValueKind.Empty && stockValue.Kind == ProductTransferValueKind.Empty && prices.Count == 0) continue;
-            result.Add(new ProductTransferFileRow(rowNumber, skuText, barcodeText, costValue, desiValue, stockValue, prices, codeFormula ? FormulaError.Error : null));
+            var titleValue = Read(title, ParseTitle);
+            var barcodeValue = Read(barcode, ParseBarcode);
+            var modelCodeValue = Read(modelCode, ParseModelCode);
+            var panelSaleValue = Read(panelSale, ParsePanelPrice);
+            var panelListValue = Read(panelList, ParsePanelPrice);
+            var vatValue = Read(vat, ParseVat);
+            ProductTransferValue[] values = [costValue, desiValue, stockValue, titleValue, modelCodeValue, panelSaleValue, panelListValue, vatValue];
+            if (skuText is null && barcodeText is null && values.All(value => value.Kind == ProductTransferValueKind.Empty) && prices.Count == 0) continue;
+            result.Add(new ProductTransferFileRow(rowNumber, skuText, barcodeText, costValue, desiValue, stockValue, prices, codeFormula ? FormulaError.Error : null,
+                titleValue, barcodeValue, modelCodeValue, panelSaleValue, panelListValue, vatValue));
 
             ProductTransferValue Read(int column, Func<string, bool, ProductTransferValue> parse) =>
                 column < 0 ? ProductTransferValue.Empty
@@ -157,6 +221,48 @@ public static partial class ProductTransferFileParser
     {
         var value = ParseNumber(text, fromCsv, "Fiyat", MaximumPrice, "10.000.000 ₺", zeroAllowed: false);
         return value.Kind == ProductTransferValueKind.Clear ? ProductTransferValue.Invalid("Mağaza fiyatı silinemez; hücreyi boş bırakırsanız fiyat değişmez.") : value;
+    }
+
+    // The panel sale or list price in TL: above 0; it cannot be removed.
+    public static ProductTransferValue ParsePanelPrice(string text, bool fromCsv)
+    {
+        var value = ParseNumber(text, fromCsv, "Panel fiyatı", MaximumPrice, "10.000.000 ₺", zeroAllowed: false);
+        return value.Kind == ProductTransferValueKind.Clear ? ProductTransferValue.Invalid("Panel fiyatı silinemez; hücreyi boş bırakırsanız fiyat değişmez.") : value;
+    }
+
+    // The product card's VAT rate, as the export writes it ("%10") or a plain number: 0 to 100; it cannot be removed.
+    public static ProductTransferValue ParseVat(string text, bool fromCsv)
+    {
+        var trimmed = text.Trim();
+        var number = trimmed.StartsWith('%') ? trimmed[1..] : trimmed.EndsWith('%') ? trimmed[..^1] : trimmed;
+        if (trimmed.Length > 0 && number.Trim().Length == 0) return ProductTransferValue.Invalid("KDV oranı için bir sayı yazın.");
+        var value = ParseNumber(number, fromCsv, "KDV oranı", 100m, "100", zeroAllowed: true);
+        return value.Kind == ProductTransferValueKind.Clear ? ProductTransferValue.Invalid("KDV oranı silinemez; hücreyi boş bırakırsanız değişmez.") : value;
+    }
+
+    // The product title: text up to 320 characters; it cannot be removed.
+    public static ProductTransferValue ParseTitle(string text, bool fromCsv) =>
+        ParseText(text, "Ürün adı", MaximumTitleLength, clearable: false, requireKey: false);
+
+    // A barcode to write: up to 160 characters with at least one letter or digit; it cannot be removed.
+    public static ProductTransferValue ParseBarcode(string text, bool fromCsv) =>
+        ParseText(text, "Barkod", MaximumCodeLength, clearable: false, requireKey: true);
+
+    // A model code: up to 160 characters; "-" or "sil" removes it.
+    public static ProductTransferValue ParseModelCode(string text, bool fromCsv) =>
+        ParseText(text, "Model kodu", MaximumCodeLength, clearable: true, requireKey: true);
+
+    // Text that starts like a formula is refused in .xlsx too: the value would turn into one in a later CSV export.
+    private static ProductTransferValue ParseText(string text, string label, int maximum, bool clearable, bool requireKey)
+    {
+        var trimmed = text.Trim();
+        if (trimmed.Length == 0) return ProductTransferValue.Empty;
+        if (trimmed is "-" or "–" or "—" || CatalogKeyNormalizer.Key(trimmed) == "SIL")
+            return clearable ? ProductTransferValue.Clear : ProductTransferValue.Invalid($"{label} silinemez; hücreyi boş bırakırsanız değişmez.");
+        if (ImportFileReader.LooksLikeFormula(trimmed)) return ProductTransferValue.Invalid($"{label}: formül benzeri içerik kabul edilmez.");
+        if (trimmed.Length > maximum) return ProductTransferValue.Invalid($"{label} en fazla {maximum} karakter olabilir.");
+        if (requireKey && CatalogKeyNormalizer.Key(trimmed).Length == 0) return ProductTransferValue.Invalid($"{label} en az bir harf ya da rakam içermelidir.");
+        return ProductTransferValue.SetText(trimmed);
     }
 
     // "123,45", "123.45", "1.234,56", "1234", "₺ 99,90", "99,90 TL" are numbers; "-" or "sil" removes the value; an empty
@@ -230,31 +336,46 @@ public static partial class ProductTransferFileParser
     private static partial Regex ExponentNumber();
 }
 
-// Turns the parsed rows into the preview: which variant each row names (stock code first, then barcode), what changes
-// in the fields the seller picked, and why a row is left out. Pure, so the same rules hold in tests and on the server.
+/// Turns the parsed rows into the preview: which variant each row names (stock code first, then barcode; stock code
+// only while the barcode is being written), what changes in the fields the seller picked, and why a row is left out.
+// Pure, so the same rules hold in tests and on the server.
 public static class ProductTransferImportPlanner
 {
     public const int PreviewRowLimit = 200;
 
     private readonly record struct FieldPlan(string? Change, decimal? Value);
+    private readonly record struct TextPlan(string? Change, string? Value);
+    private readonly record struct PanelPlan(string? Change, decimal? Sale, decimal? List);
 
-    private sealed record RowPlan(FieldPlan Cost, FieldPlan Desi, FieldPlan Stock, IReadOnlyList<ProductTransferPriceView> PriceViews, IReadOnlyList<ProductTransferPriceChange> PriceChanges, string? Error)
+    private sealed record RowPlan(FieldPlan Cost, FieldPlan Desi, FieldPlan Stock, IReadOnlyList<ProductTransferPriceView> PriceViews, IReadOnlyList<ProductTransferPriceChange> PriceChanges, string? Error,
+        TextPlan Title = default, TextPlan Barcode = default, TextPlan ModelCode = default, PanelPlan Panel = default, FieldPlan Vat = default)
     {
         public static readonly RowPlan None = new(default, default, default, [], [], null);
-        public bool Changes => Cost.Change is not null || Desi.Change is not null || Stock.Change is not null || PriceChanges.Count > 0;
+        public bool ChangesVariant => Cost.Change is not null || Desi.Change is not null || Stock.Change is not null || PriceChanges.Count > 0 || Barcode.Change is not null || ModelCode.Change is not null || Panel.Change is not null;
+        public bool Changes => ChangesVariant || Title.Change is not null || Vat.Change is not null;
     }
+
+    // Rows of one product that ask for different product-level values (title, VAT): the rows and the message they get.
+    private sealed record ProductConflicts(Dictionary<Guid, string> Title, Dictionary<Guid, string> Vat);
 
     public static ProductTransferImportPreview Plan(string fileName, IReadOnlyList<ProductTransferFileRow> rows, IReadOnlyList<ProductTransferCandidate> variants, IReadOnlyCollection<string>? fields = null, IReadOnlyList<ProductTransferStoreView>? stores = null, IReadOnlyList<string>? availableFields = null)
     {
         var picked = (fields ?? [ProductTransferFields.Cost, ProductTransferFields.Desi]).ToHashSet(StringComparer.Ordinal);
         var storeNames = (stores ?? []).ToDictionary(store => store.ConnectionId, store => store.Name);
+        var barcodePicked = picked.Contains(ProductTransferFields.Barcode);
         // A field the seller did not pick is read as if its column were empty.
         var masked = rows.Select(row => row with
         {
             Cost = picked.Contains(ProductTransferFields.Cost) ? row.Cost : ProductTransferValue.Empty,
             Desi = picked.Contains(ProductTransferFields.Desi) ? row.Desi : ProductTransferValue.Empty,
             Stock = picked.Contains(ProductTransferFields.Stock) ? row.Stock : ProductTransferValue.Empty,
-            Prices = picked.Contains(ProductTransferFields.Prices) ? row.StorePrices : []
+            Prices = picked.Contains(ProductTransferFields.Prices) ? row.StorePrices : [],
+            Title = picked.Contains(ProductTransferFields.Title) ? row.Title : ProductTransferValue.Empty,
+            NewBarcode = barcodePicked ? row.NewBarcode : ProductTransferValue.Empty,
+            ModelCode = picked.Contains(ProductTransferFields.ModelCode) ? row.ModelCode : ProductTransferValue.Empty,
+            PanelSale = picked.Contains(ProductTransferFields.PanelPrices) ? row.PanelSale : ProductTransferValue.Empty,
+            PanelList = picked.Contains(ProductTransferFields.PanelPrices) ? row.PanelList : ProductTransferValue.Empty,
+            Vat = picked.Contains(ProductTransferFields.Vat) ? row.Vat : ProductTransferValue.Empty
         }).ToList();
 
         var bySku = variants.GroupBy(variant => CatalogKeyNormalizer.Key(variant.Sku)).Where(group => group.Key.Length > 0).ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
@@ -265,15 +386,27 @@ public static class ProductTransferImportPlanner
         foreach (var row in masked)
         {
             if (IsEmpty(row)) { skipped++; continue; }
-            var (variant, outcome, message) = Match(row, bySku, byBarcode);
+            var (variant, outcome, message) = Match(row, bySku, byBarcode, barcodePicked);
             if (variant is not null && InvalidMessage(row) is { } error) (outcome, message) = ("ERROR", error);
             resolved.Add((row, variant, outcome ?? "PENDING", message));
         }
+
+        var pendingRows = resolved.Where(item => item.Outcome == "PENDING").Select(item => (item.Row, Variant: item.Variant!)).ToList();
+        var conflicts = new ProductConflicts(
+            Disagreements(pendingRows, row => row.Title, "ürün adı"),
+            Disagreements(pendingRows, row => row.Vat, "KDV oranı"));
+        // A barcode asked for by more than one variant in the file cannot be given to any of them.
+        var barcodeClaims = pendingRows
+            .Where(item => item.Row.NewBarcode.Kind == ProductTransferValueKind.Set && !string.Equals(item.Row.NewBarcode.Text, item.Variant.Barcode?.Trim(), StringComparison.Ordinal))
+            .GroupBy(item => CatalogKeyNormalizer.Key(item.Row.NewBarcode.Text))
+            .Where(group => group.Select(item => item.Variant.VariantId).Distinct().Count() > 1)
+            .ToDictionary(group => group.Key, group => string.Join(", ", group.Select(item => item.Row.RowNumber)), StringComparer.Ordinal);
 
         // A variant named by more than one row is written only when every row asks for the same thing; otherwise none
         // of its rows is used, since which one the seller meant cannot be told.
         var views = new List<ProductTransferRowView>(resolved.Count);
         var changes = new List<ProductTransferChange>();
+        var productChanges = new Dictionary<Guid, ProductTransferProductChange>();
         foreach (var group in resolved.GroupBy(item => item.Variant?.VariantId ?? Guid.Empty))
         {
             var items = group.ToList();
@@ -292,21 +425,31 @@ public static class ProductTransferImportPlanner
             }
             var first = pending[0];
             var variant = first.Variant!;
-            var plan = PlanRow(first.Row, variant, storeNames);
+            var plan = PlanRow(first.Row, variant, storeNames, byBarcode, barcodeClaims, conflicts);
             if (plan.Error is not null) views.Add(View(first.Row, variant, "ERROR", plan.Error, RowPlan.None));
             else if (!plan.Changes) views.Add(View(first.Row, variant, "UNCHANGED", null, plan));
             else
             {
                 views.Add(View(first.Row, variant, "UPDATE", null, plan));
-                changes.Add(new ProductTransferChange(
-                    variant.VariantId,
-                    variant.Version,
-                    plan.Cost.Change is not null,
-                    plan.Cost.Value,
-                    plan.Desi.Change is not null,
-                    plan.Desi.Value,
-                    plan.Stock.Change is null ? null : new ProductTransferStockChange(variant.OnHand!.Value, plan.Stock.Value!.Value),
-                    plan.PriceChanges.Count == 0 ? null : plan.PriceChanges));
+                if (plan.ChangesVariant)
+                    changes.Add(new ProductTransferChange(
+                        variant.VariantId,
+                        variant.Version,
+                        plan.Cost.Change is not null,
+                        plan.Cost.Value,
+                        plan.Desi.Change is not null,
+                        plan.Desi.Value,
+                        plan.Stock.Change is null ? null : new ProductTransferStockChange(variant.OnHand!.Value, plan.Stock.Value!.Value),
+                        plan.PriceChanges.Count == 0 ? null : plan.PriceChanges,
+                        plan.Barcode.Value,
+                        plan.ModelCode.Change is not null,
+                        plan.ModelCode.Value,
+                        plan.Panel.Change is null ? null : new ProductTransferPanelPriceChange(plan.Panel.Sale!.Value, plan.Panel.List!.Value)));
+                if (plan.Title.Change is not null || plan.Vat.Change is not null)
+                {
+                    var known = productChanges.GetValueOrDefault(variant.ProductId) ?? new ProductTransferProductChange(variant.ProductId, variant.ProductVersion, null, null);
+                    productChanges[variant.ProductId] = known with { Title = plan.Title.Value ?? known.Title, VatRate = plan.Vat.Value ?? known.VatRate };
+                }
             }
             foreach (var repeat in pending.Skip(1))
                 views.Add(View(repeat.Row, variant, "SKIPPED", $"Aynı varyant {first.Row.RowNumber}. satırda aynı değerle var.", RowPlan.None));
@@ -334,18 +477,32 @@ public static class ProductTransferImportPlanner
             Count("ERROR"),
             ordered.Take(PreviewRowLimit).ToList(),
             ordered.Count > PreviewRowLimit,
-            changes);
+            changes,
+            productChanges.Values.ToList(),
+            productChanges.Values.Count(change => change.Title is not null),
+            changes.Count(change => change.Barcode is not null),
+            changes.Count(change => change.SetModelCode && change.ModelCode is not null),
+            changes.Count(change => change.SetModelCode && change.ModelCode is null),
+            changes.Count(change => change.PanelPrice is not null),
+            productChanges.Values.Count(change => change.VatRate is not null));
     }
 
+    // The products whose rows ask for more than one value of a product-level field, with the message their rows get.
+    private static Dictionary<Guid, string> Disagreements(IEnumerable<(ProductTransferFileRow Row, ProductTransferCandidate Variant)> rows, Func<ProductTransferFileRow, ProductTransferValue> value, string label) =>
+        rows.Where(item => value(item.Row).Kind == ProductTransferValueKind.Set)
+            .GroupBy(item => item.Variant.ProductId)
+            .Where(group => group.Select(item => Key(value(item.Row))).Distinct(StringComparer.Ordinal).Count() > 1)
+            .ToDictionary(group => group.Key, group => $"Aynı ürünün satırlarında farklı {label} var (satır {string.Join(", ", group.Select(item => item.Row.RowNumber))}); ürünün tüm satırlarına aynı değeri yazın.");
+
     private static bool IsEmpty(ProductTransferFileRow row) =>
-        row.Cost.Kind == ProductTransferValueKind.Empty && row.Desi.Kind == ProductTransferValueKind.Empty && row.Stock.Kind == ProductTransferValueKind.Empty && row.StorePrices.Count == 0;
+        new[] { row.Cost, row.Desi, row.Stock, row.Title, row.NewBarcode, row.ModelCode, row.PanelSale, row.PanelList, row.Vat }.All(value => value.Kind == ProductTransferValueKind.Empty) && row.StorePrices.Count == 0;
 
     private static string Signature(ProductTransferFileRow row) =>
-        string.Join("|", new[] { row.Cost, row.Desi, row.Stock }.Select(Key).Concat(row.StorePrices.OrderBy(price => price.ConnectionId).Select(price => $"{price.ConnectionId:N}:{Key(price.Sale)}:{Key(price.List)}")));
+        string.Join("|", new[] { row.Cost, row.Desi, row.Stock, row.Title, row.NewBarcode, row.ModelCode, row.PanelSale, row.PanelList, row.Vat }.Select(Key).Concat(row.StorePrices.OrderBy(price => price.ConnectionId).Select(price => $"{price.ConnectionId:N}:{Key(price.Sale)}:{Key(price.List)}")));
 
-    private static string Key(ProductTransferValue value) => $"{value.Kind}:{value.Amount?.ToString("0.##", CultureInfo.InvariantCulture)}";
+    private static string Key(ProductTransferValue value) => $"{value.Kind}:{value.Amount?.ToString("0.##", CultureInfo.InvariantCulture)}:{value.Text}";
 
-    private static RowPlan PlanRow(ProductTransferFileRow row, ProductTransferCandidate variant, IReadOnlyDictionary<Guid, string> storeNames)
+    private static RowPlan PlanRow(ProductTransferFileRow row, ProductTransferCandidate variant, IReadOnlyDictionary<Guid, string> storeNames, Dictionary<string, ProductTransferCandidate[]> byBarcode, Dictionary<string, string> barcodeClaims, ProductConflicts conflicts)
     {
         var cost = PlanField(row.Cost, variant.CostPrice);
         var desi = PlanField(row.Desi, variant.Desi);
@@ -369,7 +526,43 @@ public static class ProductTransferImportPlanner
             priceViews.Add(new ProductTransferPriceView(price.ConnectionId, store, offer.SalePrice, sale, offer.ListPrice, list));
             priceChanges.Add(new ProductTransferPriceChange(offer.OfferId, offer.Version, sale, list));
         }
-        return new RowPlan(cost, desi, stock, priceViews, priceChanges, null);
+
+        // Product-level fields: every row of the product must ask for the same value.
+        if (row.Title.Kind == ProductTransferValueKind.Set && conflicts.Title.TryGetValue(variant.ProductId, out var titleConflict)) return RowPlan.None with { Error = titleConflict };
+        if (row.Vat.Kind == ProductTransferValueKind.Set && conflicts.Vat.TryGetValue(variant.ProductId, out var vatConflict)) return RowPlan.None with { Error = vatConflict };
+        var title = row.Title.Kind == ProductTransferValueKind.Set && !string.Equals(row.Title.Text, variant.ProductTitle.Trim(), StringComparison.Ordinal)
+            ? new TextPlan(ProductTransferFieldChange.Set, row.Title.Text) : default;
+        var vat = row.Vat.Kind == ProductTransferValueKind.Set && (variant.VatRate is not decimal storedVat || Rounded(storedVat) != row.Vat.Amount)
+            ? new FieldPlan(ProductTransferFieldChange.Set, row.Vat.Amount) : default;
+
+        TextPlan barcode = default;
+        if (row.NewBarcode.Kind == ProductTransferValueKind.Set && !string.Equals(row.NewBarcode.Text, variant.Barcode?.Trim(), StringComparison.Ordinal))
+        {
+            var key = CatalogKeyNormalizer.Key(row.NewBarcode.Text);
+            if (barcodeClaims.TryGetValue(key, out var claimRows)) return RowPlan.None with { Error = $"\"{row.NewBarcode.Text}\" barkodu dosyada birden çok varyanta yazılmış (satır {claimRows})." };
+            if (byBarcode.TryGetValue(key, out var holders) && holders.FirstOrDefault(holder => holder.VariantId != variant.VariantId) is { } holder)
+                return RowPlan.None with { Error = $"\"{row.NewBarcode.Text}\" barkodu başka bir varyantta ({holder.Sku}) kayıtlı; bir barkod tek varyantta olabilir." };
+            barcode = new TextPlan(ProductTransferFieldChange.Set, row.NewBarcode.Text);
+        }
+        var modelCode = row.ModelCode.Kind switch
+        {
+            ProductTransferValueKind.Set when !string.Equals(row.ModelCode.Text, variant.ModelCode?.Trim(), StringComparison.Ordinal) => new TextPlan(ProductTransferFieldChange.Set, row.ModelCode.Text),
+            ProductTransferValueKind.Clear when !string.IsNullOrWhiteSpace(variant.ModelCode) => new TextPlan(ProductTransferFieldChange.Clear, null),
+            _ => default
+        };
+
+        PanelPlan panel = default;
+        if (row.PanelSale.Kind == ProductTransferValueKind.Set || row.PanelList.Kind == ProductTransferValueKind.Set)
+        {
+            var sale = row.PanelSale.Amount ?? (variant.PanelSalePrice is decimal storedSale ? Rounded(storedSale) : null);
+            if (sale is not decimal newSale) return RowPlan.None with { Error = "Bu varyantın panel satış fiyatı yok; \"Panel Satış Fiyatı\" hücresini de doldurun." };
+            // No list price stored or given: the list price is the sale price (shown in the preview before saving).
+            var list = row.PanelList.Amount ?? (variant.PanelListPrice is decimal storedList ? Rounded(storedList) : newSale);
+            if (list < newSale) return RowPlan.None with { Error = "Panel liste fiyatı panel satış fiyatından küçük olamaz." };
+            var same = variant.PanelSalePrice is decimal currentSale && Rounded(currentSale) == newSale && variant.PanelListPrice is decimal currentList && Rounded(currentList) == list;
+            if (!same) panel = new PanelPlan(ProductTransferFieldChange.Set, newSale, list);
+        }
+        return new RowPlan(cost, desi, stock, priceViews, priceChanges, null, title, barcode, modelCode, panel, vat);
     }
 
     // A stored value with more than two decimals (the product editor keeps four) is the same as the file's value when it
@@ -385,16 +578,24 @@ public static class ProductTransferImportPlanner
 
     private static string? InvalidMessage(ProductTransferFileRow row)
     {
-        var values = new[] { row.Cost, row.Desi, row.Stock }.Concat(row.StorePrices.SelectMany(price => new[] { price.Sale, price.List }));
+        var values = new[] { row.Cost, row.Desi, row.Stock, row.Title, row.NewBarcode, row.ModelCode, row.PanelSale, row.PanelList, row.Vat }.Concat(row.StorePrices.SelectMany(price => new[] { price.Sale, price.List }));
         var errors = values.Where(value => value.Kind == ProductTransferValueKind.Invalid).Select(value => value.Error).Distinct().ToList();
         return errors.Count == 0 ? null : string.Join(" ", errors);
     }
 
-    private static (ProductTransferCandidate? Variant, string? Outcome, string? Message) Match(ProductTransferFileRow row, Dictionary<string, ProductTransferCandidate[]> bySku, Dictionary<string, ProductTransferCandidate[]> byBarcode)
+    private static (ProductTransferCandidate? Variant, string? Outcome, string? Message) Match(ProductTransferFileRow row, Dictionary<string, ProductTransferCandidate[]> bySku, Dictionary<string, ProductTransferCandidate[]> byBarcode, bool skuOnly)
     {
         var skuKey = CatalogKeyNormalizer.Key(row.Sku);
         var barcodeKey = CatalogKeyNormalizer.Key(row.Barcode);
         if (row.CodeError is not null) return (null, "ERROR", row.CodeError);
+        // The barcode is being written: it is a new value, not a code that names the variant.
+        if (skuOnly)
+        {
+            if (skuKey.Length == 0) return (null, "ERROR", "Barkod aktarılırken satır Stok Kodu ile eşleştirilir; bu satırda stok kodu yok.");
+            var matches = bySku.TryGetValue(skuKey, out var found) ? found : [];
+            if (matches.Length > 1) return (null, "AMBIGUOUS", $"\"{row.Sku}\" stok kodu {matches.Length} varyantta var.");
+            return matches.Length == 1 ? (matches[0], null, null) : (null, "UNMATCHED", "Stok kodu katalogda yok.");
+        }
         if (skuKey.Length == 0 && barcodeKey.Length == 0) return (null, "ERROR", "Stok kodu ya da barkod yok.");
         var skuMatches = skuKey.Length > 0 && bySku.TryGetValue(skuKey, out var foundBySku) ? foundBySku : [];
         var barcodeMatches = barcodeKey.Length > 0 && byBarcode.TryGetValue(barcodeKey, out var foundByBarcode) ? foundByBarcode : [];
@@ -429,7 +630,23 @@ public static class ProductTransferImportPlanner
         plan.Stock.Change,
         plan.PriceViews,
         outcome,
-        message);
+        message,
+        row.Title.Kind == ProductTransferValueKind.Set ? row.Title.Text : null,
+        plan.Title.Change,
+        variant?.Barcode,
+        row.NewBarcode.Kind == ProductTransferValueKind.Set ? row.NewBarcode.Text : null,
+        plan.Barcode.Change,
+        variant?.ModelCode,
+        row.ModelCode.Kind == ProductTransferValueKind.Set ? row.ModelCode.Text : null,
+        plan.ModelCode.Change,
+        variant?.PanelSalePrice,
+        plan.Panel.Change is null ? row.PanelSale.Amount : plan.Panel.Sale,
+        variant?.PanelListPrice,
+        plan.Panel.Change is null ? row.PanelList.Amount : plan.Panel.List,
+        plan.Panel.Change,
+        variant?.VatRate,
+        row.Vat.Kind == ProductTransferValueKind.Set ? row.Vat.Amount : null,
+        plan.Vat.Change);
 
     // Problems first so the seller sees them within the shown rows, then what will be written.
     private static int OutcomeRank(string outcome) => outcome switch

@@ -64,7 +64,7 @@ internal static class ProductTransferEndpoints
         var extension = Path.GetExtension(Path.GetFileName(file.FileName));
         if (!string.Equals(extension, ".xlsx", StringComparison.OrdinalIgnoreCase) && !string.Equals(extension, ".csv", StringComparison.OrdinalIgnoreCase))
             return Problem(http, new("PRODUCT_TRANSFER_EXTENSION_INVALID", "Yalnız .xlsx ya da .csv dosyası kabul edilir.", 415));
-        // fields: the fields to write, comma separated (COST, DESI, STOCK, PRICES); cost and desi when not given.
+        // fields: the fields to write, comma separated (ProductTransferFields.All); cost and desi when not given.
         string[] fields = string.IsNullOrWhiteSpace(form["fields"])
             ? [ProductTransferFields.Cost, ProductTransferFields.Desi]
             : form["fields"].ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(field => field.ToUpperInvariant()).Distinct().ToArray();
