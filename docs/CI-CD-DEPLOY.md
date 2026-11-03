@@ -420,15 +420,24 @@ hesaplanır. %85'i (`BACKUP_DISK_LIMIT_PERCENT`) geçecekse önce **en eski haft
 doldurmasın): gece yedeği başarısız olur (`OnFailure` alarmı), deploy yedeksiz ilerlemez.
 Disk kullanımı: `df -h /` ve `sudo docker run --rm -v marketplacehub_backup_staging:/b alpine du -sh /b/*`.
 
-**Alarm kanalı**: `deploy/secrets/alert_webhook_url.txt` (tek satır, root:root 600). Dosya yoksa alarm
-gönderilmez; `send-alert.sh` mesajı stderr'e (journal) yazar ve her deploy
+**Alarm kanalları** (`send-alert.sh`; ikisi de varsa ikisine birden gönderilir, biri başarısızsa çıkış 1):
+
+- **E-posta (güvenlik planı Y1)**: `deploy/secrets/alert_smtp.txt` (root:root 600), üç satır: gönderen Gmail
+  adresi, alıcı adresi, 16 karakterlik Gmail uygulama şifresi (boşluksuz). Gönderen bir **@gmail.com** adresi
+  olmalı (`@ravencia.com` adına gönderim SPF/DMARC yüzünden spama düşer). `curl --ssl-reqd` ile
+  `smtps://smtp.gmail.com:465`'e RFC 5322 ileti (From, To, `[Ravencia] <ilk 80 karakter>` konusu, Date, UTF-8
+  gövde) gider. Şifre hiçbir zaman yazdırılmaz ve komut satırına girmez: curl'e 0600 geçici bir config dosyasıyla
+  verilir (`ps`'te görünmez). Test: `tests/ops/test-send-alert.sh` (sahte curl).
+- **Sohbet webhook'u**: `deploy/secrets/alert_webhook_url.txt` (tek satır, root:root 600):
+  Telegram `https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>` ya da Slack (Slack uyumlu; Discord
+  için webhook URL'sinin sonuna `/slack`) `https://hooks.slack.com/services/...`.
+
+İkisi de yoksa alarm gönderilmez; `send-alert.sh` mesajı stderr'e (journal) yazar ve her deploy
 `::warning::No alert channel is configured` uyarısı basar (Actions çalışmasında da görünür). Kanal
 kurulmadan healthwatch, yedek ve otomatik geri alma alarmları kimseye ulaşmaz.
 
-- Telegram: `https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>`
-- Slack (ya da Slack uyumlu; Discord için webhook URL'sinin sonuna `/slack`): `https://hooks.slack.com/services/...`
-
-Deneme: `bash deploy/scripts/send-alert.sh "test"`.
+Deneme (gerçek birim yoluyla, root'a ait kopyadan): `sudo systemctl start ravencia-alert@deneme.service` ve
+`journalctl -u ravencia-alert@deneme.service`; ya da `sudo bash deploy/scripts/send-alert.sh "test"`.
 
 **Healthwatch**: bir sorun iki ardışık kontrolde (≈10 dk) sürerse alarm, sürdükçe saatte bir tekrar,
 düzelince "Recovered" mesajı. Docker'ın `unhealthy` dediği API konteyneri iki ardışık kontrolde öyle
@@ -463,8 +472,10 @@ cd ~/RavenciaEntegrasyon
 # 1) Bağlantı havuzu sınırı (dosya sonunda yeni satır yok; ';' ile eklenir)
 sudo grep -q 'Maximum Pool Size' deploy/secrets/app_db_connection.txt || \
   sudo sh -c 'printf ";Maximum Pool Size=25;Timeout=15;Command Timeout=120" >> deploy/secrets/app_db_connection.txt'
-# 2) Alarm kanalı (isteğe bağlı)
-sudo install -m 600 -o root -g root /dev/null deploy/secrets/alert_webhook_url.txt
+# 2) Alarm kanalı: e-posta (üç satır: gönderen Gmail, alıcı, uygulama şifresi) ve/veya webhook
+sudo install -m 600 -o root -g root /dev/null deploy/secrets/alert_smtp.txt
+sudo nano deploy/secrets/alert_smtp.txt
+sudo install -m 600 -o root -g root /dev/null deploy/secrets/alert_webhook_url.txt   # isteğe bağlı
 sudo nano deploy/secrets/alert_webhook_url.txt
 # 3) Yeni ci-entrypoint (root'a ait kopya)
 bash deploy/scripts/install-ci-deploy.sh "$(cat ~/deploy_key.pub)"   # ya da aynı public key satırı
