@@ -183,11 +183,11 @@ function JobsIcon({ name }: { name: JobsIconName }) {
     filter: 'listSortAscending',
     refresh: 'refresh',
     search: 'search',
-    price: 'box',
+    price: 'tag',
     order: 'orders',
     invoice: 'invoice',
     return: 'returns',
-    product: 'bag',
+    product: 'products',
     connection: 'connect',
     generic: 'spark',
   }

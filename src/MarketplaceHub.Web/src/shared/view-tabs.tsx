@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode }
 import { useRememberedTabCounts } from './tab-counts'
 import { useDismissable } from './hooks/useDismissable'
 import { createPortal } from 'react-dom'
+import { uiGlyph16, type UiIconName } from './components/UiIcon'
 import './view-tabs.css'
 
 // View tabs across the panel (docs/tasarim-onerileri/faturalar-sekmeler-2.html, option 12): unframed tabs with an icon,
@@ -50,8 +51,15 @@ const icons: Record<ViewTabIconName, ReactNode> = {
   attribute: <>{line('M2.5 4h11M2.5 8h11M2.5 12h11')}<circle cx="5.5" cy="4" r="1.3" fill="var(--rv-color-surface)" stroke="currentColor" strokeWidth={1.4} /><circle cx="10.5" cy="8" r="1.3" fill="var(--rv-color-surface)" stroke="currentColor" strokeWidth={1.4} /><circle cx="7" cy="12" r="1.3" fill="var(--rv-color-surface)" stroke="currentColor" strokeWidth={1.4} /></>,
 }
 
+// A tab that means what a glyph of the panel's main icon set means draws that glyph (the sidebar's, the buttons').
+const sharedGlyphs: Partial<Record<ViewTabIconName, UiIconName>> = {
+  processing: 'sync', shipping: 'truck', done: 'circleCheck', cancelled: 'cancel', resend: 'refresh', attention: 'alert', order: 'orders',
+  product: 'products', price: 'tag', invoice: 'invoice', return: 'returns', hidden: 'eyeOff', connected: 'link', waiting: 'clock', review: 'search', category: 'grid'
+}
+
 export function ViewTabIcon({ name }: { name: ViewTabIconName }) {
-  return <svg className="rv-view-tab-icon" viewBox="0 0 16 16" aria-hidden="true">{icons[name]}</svg>
+  const shared = sharedGlyphs[name]
+  return <svg className="rv-view-tab-icon" viewBox="0 0 16 16" aria-hidden="true">{shared ? uiGlyph16(shared, 1.4) : icons[name]}</svg>
 }
 
 // Shorthand for a Tabs item: the label with its icon in front. A text label keeps the width of its selected (heavier)
