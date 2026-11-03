@@ -70,11 +70,11 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-hl { stroke: var(--rr-line-strong); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-hp { fill: var(--rr-surface); stroke: var(--rr-violet); stroke-width: 2; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart .rr-hp.rr-hp-prev { stroke: var(--rr-muted); stroke-dasharray: 2 2; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip { position: absolute; z-index: var(--rv-z-tooltip); top: 0; left: 0; width: 290px; padding: 10px 12px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); font-size: 12.5px; pointer-events: none; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip > b { display: block; margin-bottom: 6px; font-weight: 600; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip { position: absolute; z-index: var(--rv-z-tooltip); top: 0; left: 0; width: 250px; padding: 7px 10px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); font-size: 12px; line-height: 1.35; pointer-events: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip > b { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip table { width: 100%; border-collapse: collapse; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th { color: var(--rr-ink); font-size: 11.5px; font-weight: 600; text-align: right; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td { padding: 3px 0; color: var(--rr-ink); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th { color: var(--rr-muted); font-size: 11px; font-weight: 600; text-align: right; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td { padding: 2px 0; color: var(--rr-ink); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td + td { color: var(--rr-ink); text-align: right; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td:last-child { color: var(--rr-muted); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-legend { display: flex; gap: 18px; color: var(--rr-muted); font-size: 12.5px; }
@@ -288,9 +288,9 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-tools .rr-date .date-range-picker-trigger { height: 36px; min-height: 36px; font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf .rr-kbar { background: linear-gradient(90deg, color-mix(in srgb, var(--pf-accent, var(--rr-violet)) 25%, transparent), color-mix(in srgb, var(--pf-accent, var(--rr-violet)) 75%, transparent)); }
 /* chart tooltip: headings and row names stay on one line, the box takes its content's width */
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip { width: max-content; min-width: 260px; max-width: calc(100vw - 32px); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip { width: max-content; min-width: 0; max-width: calc(100vw - 32px); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td { white-space: nowrap; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th + th, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td + td { padding-left: 16px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip th + th, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-ctip td + td { padding-left: 12px; }
 /* ---------- phones (mobil-tum-sayfalar.html): compact operation cards, metrics as a sideways strip, three data types per row ---------- */
 @media (max-width: 760px) {
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header p { display: none; }

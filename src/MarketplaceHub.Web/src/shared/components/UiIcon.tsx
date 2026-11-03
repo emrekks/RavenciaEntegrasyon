@@ -51,6 +51,7 @@ export type UiIconName =
   | 'shield'
   | 'slidersHorizontal'
   | 'sparkle'
+  | 'packing'
   | 'sync'
   | 'trash'
   | 'textColor'
