@@ -552,6 +552,10 @@
   .searchable-select-search { display: flex; min-width: 0; align-items: center; gap: var(--rv-space-2); padding: 0 var(--rv-space-3); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); }
   .searchable-select-search .ui-icon { width: 16px; height: 16px; flex: 0 0 16px; color: var(--rv-color-muted); }
   .app-shell.stitch-shell main .searchable-select-search input { min-width: 0; min-height: 38px; padding: 0; background: transparent; border: 0; }
+  /* The menu search is one box: the wrapper draws the border, the input inside stays bare (a field rule gave it a second frame). */
+  .app-shell.stitch-shell main .searchable-select-menu .searchable-select-search { height: 36px; border-radius: 7px; }
+  .app-shell.stitch-shell main .searchable-select-menu .searchable-select-search > input, .app-shell.stitch-shell main .searchable-select-menu .searchable-select-search > input:focus { flex: 1 1 auto; width: auto; height: 34px; min-height: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; outline: 0; }
+  .app-shell.stitch-shell main .searchable-select-menu .searchable-select-search:focus-within { border-color: var(--rv-color-primary); }
   .searchable-select-options > button { display: grid; width: 100%; min-width: 0; min-height: 42px; align-content: center; justify-items: start; gap: 2px; padding: var(--rv-space-2) var(--rv-space-3); color: var(--rv-color-ink); background: transparent; border: 0; border-radius: var(--rv-radius-sm); text-align: left; }
   .searchable-select-options > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
   .searchable-select-options > button[aria-selected="true"] { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
