@@ -120,3 +120,8 @@
   :root body :is(.rr-modal > .rr-m-body, .workspace-modal > .invoice-detail-body, .workspace-modal > .workspace-modal-body) > :is(section, article, fieldset, .rr-step, [class*="-card"], [class*="-sec"]):last-child { margin-bottom: 0 !important; border-bottom-color: transparent !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
   :root body :is(.rr-modal > .rr-m-body, .workspace-modal > .invoice-detail-body, .workspace-modal > .workspace-modal-body):has(> :is(section, article, fieldset, .rr-step, [class*="-card"], [class*="-sec"]):last-child) + :is(.rr-m-foot, .invoice-detail-footer, footer) { margin: 0 var(--m-pad) var(--m-pad) !important; padding: 10px 12px !important; border: 1px solid var(--rv-color-border) !important; border-radius: 0 0 14px 14px !important; }
 }
+/* Eşleştirme Ayarları on phones: no rule and no 20px padding under its heading's buttons, so the heading, the tabs and
+   the cards follow each other at the page's one gap, as on every other page (owner, 5 Nov 2026). */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main section.mapping-page > .mapping-reference-heading { padding-bottom: 0; border-bottom: 0; }
+}
