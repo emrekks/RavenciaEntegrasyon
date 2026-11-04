@@ -1222,3 +1222,8 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .app-shell.stitch-shell main .product-add-page .variant-option-cell > .variant-option-edit-button { width: 22px; height: 22px; }
   html body .app-shell.stitch-shell main .product-add-page .variant-option-cell > .variant-option-edit-button svg { width: 13px; height: 13px; }
 }
+/* Phones: the stuck variant table head touches the top bar (the bar is 62px high there, while --rv-topbar-height
+   still says 70px and left an 8px band). */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell:not(:has(.rv-topbar.is-hidden)) main .product-add-page .variant-table-editor > .variant-table-head { top: 61px; }
+}
