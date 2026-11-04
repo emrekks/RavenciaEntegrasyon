@@ -128,7 +128,9 @@ export function sortRequirements(requirements: CategoryRequirement[] | undefined
 // MZ068BT showed "Web Color" as missing while all seven colours had verified mappings), and it names what the server
 // would refuse: rows without a Renk, and Renk values with no catalog colour (sent without a Web Color, the server stops
 // on REQUIRED_ATTRIBUTE_MISSING).
-function autoWebColorIssues(draft: PublicationReadinessDraft, colorOptionRequirement: CategoryRequirement | undefined): string[] {
+// Exported for the editor's save check too, so saving and the publish checks read Renk the same way (owner, 5 Nov 2026:
+// a card whose rows all carry a Renk was refused on save because the form's option group was not synced).
+export function autoWebColorIssues(draft: Pick<PublicationReadinessDraft, 'variantRows' | 'variantAttributeIds' | 'attributeSelections'>, colorOptionRequirement: CategoryRequirement | undefined): string[] {
   const syncHint = 'Web Color otomatik aktarımı için Renk seçeneğini eşitleyip değer seçin.'
   if (!colorOptionRequirement) return [syncHint]
   const colorId = colorOptionRequirement.attributeId

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { publicationProductChecks, type CategoryRequirement, type PublicationReadinessDraft, type ReadinessRow } from './publication-readiness'
+import { autoWebColorIssues, publicationProductChecks, type CategoryRequirement, type PublicationReadinessDraft, type ReadinessRow } from './publication-readiness'
 
 // Live 2026-11-02, MZ068BT (Tunik): the Trendyol card showed "Web Color" as a required gap while all seven colours had
 // verified Web Color mappings and the server sent the 28 variants with them. Automatic Web Color is built from each
@@ -35,5 +35,17 @@ describe('automatic Web Color check', () => {
   it('keeps the old rule for a product without variant rows', () => {
     expect(webColor(draft([])).ok).toBe(false)
     expect(webColor(draft([], { attributeSelections: { renk: ['bej'] } })).ok).toBe(true)
+  })
+})
+
+// Live 2026-11-05: an indigo blouse whose rows all read "Renk: Bordo / Haki" was refused on save ("Web Color otomatik
+// aktarımı için Renk seçeneğini seçin…") because the save check wanted the form's synced Renk group. Saving now asks
+// the same question as the publish check.
+describe('automatic Web Color on save', () => {
+  it('lets a card whose rows carry a known Renk save without a synced option group', () => {
+    expect(autoWebColorIssues({ variantRows: [row('Bej'), row('Mürdüm')], variantAttributeIds: [], attributeSelections: {} }, renk)).toEqual([])
+  })
+  it('still stops a row without a Renk', () => {
+    expect(autoWebColorIssues({ variantRows: [row('Bej'), row(null)], variantAttributeIds: [], attributeSelections: {} }, renk)).toEqual(['Web Color otomatik aktarımı için 1 varyantta Renk seçilmemiş.'])
   })
 })
