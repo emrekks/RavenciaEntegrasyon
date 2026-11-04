@@ -56,15 +56,25 @@
   animation: rv-motion-fade var(--rv-motion-modal) var(--rv-ease-enter) backwards, rv-motion-zoom var(--rv-motion-modal) var(--rv-ease-modal) backwards;
 }
 
-/* Menus and lists that open over the page grow from their trigger's corner (top left, or top right for a menu held to
+/* THE RULE FOR EVERY PAGE (owner, 5 Nov 2026: "tüm projeye ortak kural"): anything that opens over the page moves with
+   kit "A · iOS Yay". By role it needs nothing: a modal window ([role=dialog][aria-modal]) springs open, a menu or option
+   list ([role=menu], [role=listbox]) and a small non-modal window ([role=dialog] without aria-modal: a filter or picker
+   panel) grow from their trigger. A new floating element without such a role takes data-motion="menu" (top left),
+   "menu-right" (held to the right of its trigger), "menu-up" (opens above it), "sheet" (slides up from the bottom
+   edge) or "window"; the names below are the panel's older floating parts that predate the attribute.
+   Menus and lists that open over the page grow from their trigger's corner (top left, or top right for a menu held to
    the right of its trigger) as they fade in; the rows of an action menu follow one another. Option lists (listbox)
    come in as one, so a list of hundreds does not start hundreds of animations. */
-:where([role="menu"], [role="listbox"], .rv-popover, .rr-menu, .rr-pop, .rv-view-tabs-menu, .order-column-filter-popover, .jobs-reference-range-menu, .qi-popover, .ss-pick-menu, .invoice-reference-actions-popover, .date-range-picker-popover, .platform-multi-select-menu) {
+:where([role="menu"], [role="listbox"], [role="dialog"]:not([aria-modal="true"]), [data-motion^="menu"], .rv-popover, .rr-menu, .rr-pop, .rr-psize-pop, .rv-view-tabs-menu, .order-column-filter-popover, .row-menu > div, .jobs-reference-range-menu, .qi-popover, .ss-pick-menu, .psl-menu, .vp-menu, .mam-more, .bulk-action-menu, .appearance-theme-menu, .product-platform-filter-menu, .reference-menu-popover, .variant-header-action-menu, .invoice-reference-actions-popover, .date-range-picker-popover, .platform-multi-select-menu) {
   animation: rv-motion-fade var(--rv-motion-menu) ease-out backwards, rv-motion-pop var(--rv-motion-menu) var(--rv-ease-menu) backwards;
   transform-origin: top left;
 }
-:where(.rr-pop.rr-right, .rr-actcell .rr-menu, .rr-vt-wrap > .rr-menu, .invoice-reference-actions-popover, .platform-multi-select-menu:not(.is-start)) { transform-origin: top right; }
-:where(.rr-bulk-menu > .rr-menu) { transform-origin: bottom right; }
+:where([data-motion="menu-right"], .rr-pop.rr-right, .rr-actcell .rr-menu, .rr-vt-wrap > .rr-menu, .row-menu > div, .order-column-filter-popover, .rr-psize-pop, .mam-more, .appearance-theme-menu, .product-platform-filter-menu, .variant-header-action-menu, .integration-filter-menu, .qi-status-menu, .searchable-select-menu, .category-attribute-dropdown-menu, .variant-filter-dropdown-menu, .jobs-reference-filter-panel, .invoice-reference-actions-popover, .platform-multi-select-menu:not(.is-start)) { transform-origin: top right; }
+:where([data-motion="menu-up"], .rr-bulk-menu > .rr-menu, .reference-menu-popover) { transform-origin: bottom right; }
+/* Sheets that slide up from the bottom edge (a phone's bottom sheets): they start heavy and stop softly. */
+@keyframes rv-motion-sheet-up { from { translate: 0 100%; } }
+:where([data-motion="sheet"], .rr-sheet) { animation: rv-motion-sheet-up var(--rv-motion-sheet) var(--rv-ease-sheet) backwards; }
+:where([data-motion="window"]) { animation: rv-motion-fade var(--rv-motion-modal) var(--rv-ease-enter) backwards, rv-motion-zoom var(--rv-motion-modal) var(--rv-ease-modal) backwards; }
 :where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"])) { animation: rv-motion-item var(--rv-motion-menu) var(--rv-ease-enter) backwards; }
 :where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"]):nth-child(2)) { animation-delay: calc(var(--rv-motion-item-stagger) * .5); }
 :where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"]):nth-child(3)) { animation-delay: calc(var(--rv-motion-item-stagger) * 1); }
