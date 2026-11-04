@@ -393,3 +393,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td[data-l="Webhook"] { grid-row: 4; grid-column: 1; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act { grid-row: 4; grid-column: 1; justify-self: end; align-self: start; text-align: right; }
 }
+/* Phones: the operation cards are a little taller (14px above and below their figures). */
+@media (max-width: 760px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard { padding-block: 14px; }
+}
