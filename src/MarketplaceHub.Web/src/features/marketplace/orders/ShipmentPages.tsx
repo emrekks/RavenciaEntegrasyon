@@ -3,7 +3,7 @@ import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
-import { Busy, ErrorBox, Pagination, UiIcon, useConfirmDialog } from '../../../shared/components'
+import { Busy, ErrorBox, Pagination, TitleHint, UiIcon, useConfirmDialog } from '../../../shared/components'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { MessageToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
@@ -36,8 +36,7 @@ function PazaramaFinancePanel({ orderId }: { orderId: string }) {
   const money = (value: number) => formatMoney(value, 'TRY')
   const day = (value: string | null) => value ? formatDate(value) : '—'
   return <article className="panel">
-    <h2>Pazarama Finans</h2>
-    <p>Komisyon, hakediş ve aktarım tarihi Pazarama’dan o anda okunur; panelde saklanmaz.</p>
+    <h2>Pazarama Finans<TitleHint label="Pazarama Finans">Komisyon, hakediş ve aktarım tarihi Pazarama’dan o anda okunur; panelde saklanmaz.</TitleHint></h2>
     {!requested && <button type="button" onClick={() => setRequested(true)}>Finans Bilgisini Getir</button>}
     {requested && finance.isLoading && <Busy />}
     {requested && finance.isError && <ErrorBox error={finance.error} onRetry={() => void finance.refetch()} />}

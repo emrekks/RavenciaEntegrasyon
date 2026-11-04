@@ -33,7 +33,7 @@
 .ss-page .ss-seg .ss-st { width: 14px; height: 14px; }
 .ss-page .ss-seg > button.is-on .ss-st:not(.is-done) { color: var(--ss-violet); }
 .ss-page .ss-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; container: ss-pane / inline-size; }
-.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 20px 0 16px; }
+.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 20px 0 16px; }
 .ss-page .ss-head > div:first-child { flex: 1 1 260px; min-width: 0; }
 .ss-page .ss-head h2 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .ss-page .ss-head p { color: var(--rv-color-muted); font-size: 13px; }
