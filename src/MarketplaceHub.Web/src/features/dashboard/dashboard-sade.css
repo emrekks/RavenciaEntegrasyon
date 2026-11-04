@@ -364,3 +364,12 @@ main .rr.rr-dashboard > * { min-width: 0; }
 /* Every operation card is the same size: rows share one height and each card fills its cell. */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { grid-auto-rows: 1fr; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard { height: 100%; min-height: 0; box-sizing: border-box; }
+
+/* Phones: the Entegrasyon Durumu head stacks, the title on one line and the status pill under it; a store card's
+   İncele link sits beside its name instead of on a row of its own. */
+@media (max-width: 760px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-panel > .rr-panel-h:has(> .rr-hpill) { flex-direction: column; align-items: flex-start; gap: 10px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-panel > .rr-panel-h:has(> .rr-hpill) h2 { white-space: nowrap; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td:first-child { grid-row: 1; grid-column: 1 / 3; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act { grid-row: 1; grid-column: 3; align-self: start; text-align: right; }
+}
