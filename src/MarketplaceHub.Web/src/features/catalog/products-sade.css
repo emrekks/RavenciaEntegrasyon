@@ -471,7 +471,6 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Phones: the variant stock table opens on a tap and closes on a second tap or a tap elsewhere; it never opens on a
    hover, which on a touch screen sticks after the finger lifts. The product card does not light up under the finger. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover:not(:focus-within) > .rr-vtip { display: none; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl tbody tr:not(.rr-sel):hover { background: var(--rr-surface); }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl tbody tr.rr-sel:hover { background: color-mix(in srgb, var(--rr-primary-soft) 45%, var(--rr-surface)); }
   /* five summary cards: two per row, the last one full width (the tablet's span rules no longer leak in) */
@@ -500,4 +499,11 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Phones: the page-size picker is as wide as "100" needs. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .rr .rr-psize .rr-psize-btn { width: 70px; min-width: 0; padding: 0 8px 0 10px; }
+}
+/* Phones: the variant table opens only by the shared tap handler (touch-tips) and appears at once in its fitted place,
+   without a fade or rise (it showed first unfitted, then jumped). The price and stock buttons are as wide as their
+   figure and word, so only a tap on them opens the quick edit. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip { transition: none !important; animation: none !important; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn { display: inline-flex; width: fit-content; max-width: 100%; justify-self: start; align-self: start; }
 }
