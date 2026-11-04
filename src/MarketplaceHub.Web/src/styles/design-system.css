@@ -292,6 +292,8 @@
   .app-shell.stitch-shell > aside .nav-label { min-width: 0; max-width: 190px; overflow: hidden; opacity: 1; text-overflow: ellipsis; white-space: nowrap; transition: max-width 180ms ease, opacity 120ms ease; }
   .app-shell.stitch-shell.sidebar-collapsed .brand.wordmark { display: none; }
   .app-shell.stitch-shell.sidebar-collapsed .nav-label { max-width: 0; opacity: 0; visibility: hidden; }
+  /* The phone menu drawer always shows the names; the collapsed-sidebar rule above is for the sidebar only. */
+  .app-shell.stitch-shell.stitch-shell .rv-mobile-navigation .nav-label { display: inline; max-width: none; opacity: 1; visibility: visible; }
   .app-shell.stitch-shell.sidebar-collapsed .sidebar-brand-row { display: flex; min-height: 48px; align-content: initial; justify-content: center; justify-items: initial; padding: 0 0 var(--rv-space-3); }
   .app-shell.stitch-shell.sidebar-collapsed .sidebar-pin-toggle { display: none; }
   .app-shell.stitch-shell > aside nav, .app-shell.stitch-shell > aside .settings-nav { display: grid; gap: var(--rv-space-4); }

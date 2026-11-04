@@ -99,7 +99,7 @@
    active one is larger in its state's colour and moves (the clock's hands turn, the plane glides, the page shakes, the
    store hops), the steps ahead are faint. */
 .publish-step { position: relative; display: grid; box-sizing: border-box; flex: none; width: 22px; height: 22px; place-items: center; color: var(--ps-idle-ink); background: none; border-radius: 50%; opacity: .45; }
-.publish-step > svg { position: relative; display: block; width: 18px; height: 18px; overflow: visible; will-change: transform; backface-visibility: hidden; transform: translateZ(0); }
+.publish-step > svg { position: relative; display: block; width: 18px; height: 18px; overflow: visible; }
 .publish-step.is-done, .publish-step.is-half { color: var(--ps-ok); opacity: 1; }
 .publish-step.is-next, .publish-step.is-now, .publish-step.is-fail { opacity: 1; }
 .publish-step.is-next { color: var(--rv-color-warning); }
