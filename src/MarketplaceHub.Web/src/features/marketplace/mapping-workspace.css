@@ -595,3 +595,9 @@
   .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list > span { width: auto; }
   .app-shell.stitch-shell main section.mapping-page .mapping-section-heading h2 { font-size: 14.5px; letter-spacing: -.1px; white-space: nowrap; }
 }
+/* Phones: long lists show five rows and scroll inside their frame (panel categories in two columns; option and
+   attribute records one per row, 56px each with 8px between). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list { max-height: calc(5 * 36px + 4 * 8px); overflow-y: auto; overscroll-behavior: contain; }
+  .app-shell.stitch-shell main section.mapping-page .panel-attribute-records { max-height: calc(5 * 56px + 4 * 8px + 2px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+}
