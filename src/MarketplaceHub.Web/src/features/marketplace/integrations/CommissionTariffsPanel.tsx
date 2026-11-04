@@ -47,6 +47,36 @@ export function groupRangeText(periods: CommissionTariff[]) {
   const end = periods.reduce((last, period) => Date.parse(period.periodEnd) > Date.parse(last) ? period.periodEnd : last, periods[0].periodEnd)
   return `${shortDay(periods[0].periodStart, true)} – ${shortDay(lastMinute(end), true)}`
 }
+// An instant's Istanbul calendar day as a date field holds it ("2026-10-29").
+const istanbulDayFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' })
+export const istanbulDay = (value: string | number) => istanbulDayFormat.format(new Date(value))
+// The validity days the seller picks (Geçerlilik Başlangıcı / Bitişi): Istanbul days, both included.
+export type ValidityDays = { from: string; to: string }
+// The days a file's periods cover, as its "Tarihleri Değiştir" fields open on: the first period's start day and the day
+// of the last period's last moment (the stored end is exclusive).
+export function validityDays(periods: CommissionTariff[]): ValidityDays {
+  const end = periods.reduce((last, period) => Date.parse(period.periodEnd) > last ? Date.parse(period.periodEnd) : last, Date.parse(periods[0].periodEnd))
+  return { from: istanbulDay(periods[0].periodStart), to: istanbulDay(end - 1) }
+}
+// Why the picked days cannot be used yet; null when both are picked and in order.
+export function validityProblem(days: ValidityDays): string | null {
+  if (!days.from || !days.to) return 'Önce geçerlilik başlangıcı ve bitişini seçin.'
+  if (days.from > days.to) return 'Geçerlilik başlangıcı, bitişten sonra olamaz.'
+  return null
+}
+// The report queries (sales, order profitability, stock, payouts…): a tariff's days change which orders take its rate.
+const isReportQuery = (key: readonly unknown[]) => typeof key[0] === 'string' && key[0].startsWith('report')
+
+// Two date fields for the days a tariff is valid for.
+function ValidityFields({ days, onChange, disabled, idPrefix }: { days: ValidityDays; onChange: (days: ValidityDays) => void; disabled?: boolean; idPrefix: string }) {
+  return <div className="commission-validity">
+    <label htmlFor={`${idPrefix}-from`}><span>Geçerlilik Başlangıcı</span>
+      <input id={`${idPrefix}-from`} type="date" value={days.from} max={days.to || undefined} disabled={disabled} onChange={event => onChange({ ...days, from: event.target.value })} /></label>
+    <label htmlFor={`${idPrefix}-to`}><span>Geçerlilik Bitişi</span>
+      <input id={`${idPrefix}-to`} type="date" value={days.to} min={days.from || undefined} disabled={disabled} onChange={event => onChange({ ...days, to: event.target.value })} /></label>
+  </div>
+}
+
 // A period's length in whole days (3 for 29 Ekim 08.00 – 1 Kasım 07.59).
 export const periodDays = (period: Pick<CommissionTariff, 'periodStart' | 'periodEnd'>) => Math.max(1, Math.round((Date.parse(period.periodEnd) - Date.parse(period.periodStart)) / 86_400_000))
 // A period's short name: the file's ("3 Gün"), else its length in days.
@@ -264,6 +294,10 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const [filter, setFilter] = useState<TariffFilter>(noFilter)
   const [page, setPage] = useState(0)
   const [message, setMessage] = useState<{ kind: 'success' | 'error' | 'info'; text: string; warnings?: string[] } | null>(null)
+  // The days the next upload is valid for, and the file whose days are being changed.
+  const [uploadDays, setUploadDays] = useState<ValidityDays>({ from: '', to: '' })
+  const uploadProblem = validityProblem(uploadDays)
+  const [editing, setEditing] = useState<{ groupId: string; days: ValidityDays } | null>(null)
   const [confirm, confirmDialog] = useConfirmDialog()
   const tariffs = useQuery({ queryKey: ['commission-tariffs', connectionId], queryFn: () => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs`) })
   // The list shows a file once; its periods are the tabs over the table. The open period is the one picked, else the
@@ -282,9 +316,11 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     enabled: active !== null
   })
   const upload = useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: ({ file, days }: { file: File; days: ValidityDays }) => {
       const body = new FormData()
       body.append('file', file)
+      body.append('validFrom', days.from)
+      body.append('validTo', days.to)
       return hubApi<UploadResult>(`/connections/${connectionId}/commission-tariffs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff') }, body })
     },
     onSuccess: async result => {
@@ -292,9 +328,9 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
       setWeek(false)
       setPage(0)
       setMessage(result.alreadyUploaded
-        ? { kind: 'info', text: 'Bu dosya bu dönem için daha önce yüklenmiş; mevcut tarife gösteriliyor.' }
+        ? { kind: 'info', text: 'Bu dosya bu dönem için daha önce yüklenmiş; mevcut tarife gösteriliyor.', warnings: result.warnings }
         : { kind: result.skippedRows ? 'info' : 'success', text: `${result.importedRows.toLocaleString('tr-TR')} ürünün tarifesi yüklendi${result.skippedRows ? `; ${result.skippedRows.toLocaleString('tr-TR')} satır okunamadı` : ''}.`, warnings: result.warnings })
-      await client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] })
+      await Promise.all([client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] }), client.invalidateQueries({ predicate: query => isReportQuery(query.queryKey) })])
     },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Tarife yüklenemedi.' })
   })
@@ -307,11 +343,24 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Tarife silinemedi.' })
   })
+  // A file's days changed: every period of it (wholeFile), the boundaries between its periods kept.
+  const changeDays = useMutation({
+    mutationFn: ({ tariffId, days }: { tariffId: string; days: ValidityDays }) => hubApi<CommissionTariff[]>(`/connections/${connectionId}/commission-tariffs/${tariffId}/period`, {
+      method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey('commission-tariff-period') }, body: JSON.stringify({ validFrom: days.from, validTo: days.to, wholeFile: true })
+    }),
+    onSuccess: async () => {
+      setEditing(null)
+      setMessage({ kind: 'success', text: 'Tarifenin geçerlilik tarihleri değiştirildi.' })
+      await Promise.all([client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] }), client.invalidateQueries({ predicate: query => isReportQuery(query.queryKey) })])
+    },
+    onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Tarihler değiştirilemedi.' })
+  })
   const choose = (file: File | undefined) => {
     if (!file) return
+    if (uploadProblem) { setMessage({ kind: 'error', text: uploadProblem }); return }
     if (!file.name.toLowerCase().endsWith('.xlsx')) { setMessage({ kind: 'error', text: 'Yalnız pazaryerinden indirilen .xlsx tarife dosyası yüklenebilir.' }); return }
     setMessage(null)
-    upload.mutate(file)
+    upload.mutate({ file, days: uploadDays })
   }
   const onDrop = (event: DragEvent<HTMLDivElement>) => { event.preventDefault(); setDragging(false); choose(event.dataTransfer.files[0]) }
   // A file goes with all its periods (the server deletes them together).
@@ -324,11 +373,13 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const pageCount = rows.data ? Math.max(1, Math.ceil(rows.data.totalCount / rows.data.pageSize)) : 1
 
   return <section className="panel commission-tariffs" aria-labelledby="commission-tariffs-title">
-    <div className="cs-sec-head"><h3 id="commission-tariffs-title">Komisyon Tarifeleri</h3><p>{platformName}’un haftalık komisyon tarifesi dosyasını yükleyin. Siparişte komisyon bilgisi yoksa satışın tarihine ve fiyatına göre komisyon bu tarifeden bulunur; fiyatınızın hangi banda düştüğünü ve bir alt banda inmek için gereken fiyatı görürsünüz. Pazaryerine hiçbir şey gönderilmez.</p></div>
+    <div className="cs-sec-head"><h3 id="commission-tariffs-title">Komisyon Tarifeleri</h3><p>{platformName}’un komisyon tarifesi dosyasını, geçerli olduğu günleri seçerek yükleyin. Seçtiğiniz günlerdeki siparişlerden komisyonu finanstan gelmeyenlerin komisyonu, satış fiyatının düştüğü banda göre bu tarifenin oranından tahmin edilir; fiyatınızın hangi banda düştüğünü ve bir alt banda inmek için gereken fiyatı görürsünüz. Pazaryerine hiçbir şey gönderilmez.</p></div>
     <div className={`commission-dropzone${dragging ? ' is-dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
+      <ValidityFields idPrefix="commission-upload" days={uploadDays} onChange={setUploadDays} disabled={upload.isPending} />
       <strong>{upload.isPending ? 'Tarife okunuyor…' : 'Tarife dosyasını buraya bırakın'}</strong>
       <span>{platformName} satıcı panelinden indirilen .xlsx dosyası · en fazla 10 MiB</span>
-      <button type="button" className="secondary" disabled={upload.isPending} onClick={() => input.current?.click()}>Dosya Seç</button>
+      <button type="button" className="secondary" disabled={upload.isPending || uploadProblem !== null} onClick={() => input.current?.click()}>Dosya Seç</button>
+      {uploadProblem && <small className="commission-validity-hint">{uploadProblem}</small>}
       <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={event => { choose(event.target.files?.[0]); event.target.value = '' }} />
     </div>
     {message && <div className={`commission-message is-${message.kind}`} role={message.kind === 'error' ? 'alert' : 'status'}><p>{message.text}</p>{message.warnings?.length ? <ul>{message.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul> : null}</div>}
@@ -346,7 +397,23 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
             <span className="commission-period-title">{periodLabel(group.periods)}{group.periods.some(period => period.isCurrent) && <em className="commission-badge is-current">Geçerli</em>}</span>
             <small>{many ? `${group.periods.length.toLocaleString('tr-TR')} dönem (${group.periods.map(period => period.periodLabel?.trim() || period.periodText).join(', ')}) · ` : ''}{first.rowCount.toLocaleString('tr-TR')} ürün · {first.matchedRowCount.toLocaleString('tr-TR')} panelde eşleşti · {first.fileName} · {formatIstanbul(first.uploadedAt, { dateStyle: 'medium', timeStyle: 'short' })}</small>
           </button>
-          <button type="button" className="secondary commission-period-delete" disabled={remove.isPending} onClick={() => void askDelete(group)} aria-label={`${group.periods.map(period => period.periodText).join(' ve ')} tarifesini sil`}>Sil</button>
+          <div className="commission-period-actions">
+            <button type="button" className="secondary commission-period-days" aria-expanded={editing?.groupId === group.id} disabled={changeDays.isPending}
+              onClick={() => setEditing(editing?.groupId === group.id ? null : { groupId: group.id, days: validityDays(group.periods) })}>Tarihleri Değiştir</button>
+            <button type="button" className="secondary commission-period-delete" disabled={remove.isPending} onClick={() => void askDelete(group)} aria-label={`${group.periods.map(period => period.periodText).join(' ve ')} tarifesini sil`}>Sil</button>
+          </div>
+          {editing?.groupId === group.id && (() => {
+            const problem = validityProblem(editing.days)
+            return <form className="commission-period-edit" aria-label="Geçerlilik Tarihleri" onSubmit={event => { event.preventDefault(); if (!problem) changeDays.mutate({ tariffId: first.id, days: editing.days }) }}>
+              <ValidityFields idPrefix={`commission-edit-${group.id}`} days={editing.days} onChange={days => setEditing({ groupId: group.id, days })} disabled={changeDays.isPending} />
+              <div className="commission-period-edit-actions">
+                <button type="submit" disabled={changeDays.isPending || problem !== null}>{changeDays.isPending ? 'Kaydediliyor…' : 'Kaydet'}</button>
+                <button type="button" className="secondary" disabled={changeDays.isPending} onClick={() => setEditing(null)}>Vazgeç</button>
+              </div>
+              {problem && <small className="commission-validity-hint">{problem}</small>}
+              {many && <small className="commission-validity-note">Dosyanın {group.periods.length.toLocaleString('tr-TR')} dönemi var; seçilen günler ilk dönemin başlangıcını ve son dönemin bitişini değiştirir, dönemler arasındaki sınır aynı kalır.</small>}
+            </form>
+          })()}
         </div>
       })}
     </div>}

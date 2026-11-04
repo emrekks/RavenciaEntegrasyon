@@ -30,6 +30,81 @@ public sealed class ReportsTests
         Assert.Null(tariffs.Rate(connection, "OTHER", null, sale, 519.75m));
     }
 
+    // A tariff the seller set to 2-8 Kasım by hand: an order of 5 Kasım with no commission from the marketplace or its
+    // finance takes the tariff's band, one of 10 Kasım (outside the picked days) gets none.
+    [Fact]
+    public void An_order_inside_the_tariffs_picked_days_takes_its_rate_and_one_outside_does_not()
+    {
+        var store = Guid.NewGuid();
+        var (start, end) = Infrastructure.Imports.CommissionTariffValidity.Bounds(new DateOnly(2026, 11, 2), new DateOnly(2026, 11, 8));
+        var tariff = new CommissionTariff { ConnectionId = store, PlatformCode = "TRENDYOL", PeriodStart = start, PeriodEnd = end, PeriodText = "29 Ekim 08.00-1 Kasım 07.59", FileName = "t.xlsx", FileHash = "H", UploadedAt = start };
+        var row = new CommissionTariffRow { Barcode = "RYP00101", Tier1Min = 470.64m, Tier2Max = 470.63m, Tier2Min = 435.98m, Rate1 = 21.5m, Rate2 = 20.6m };
+        var tariffs = new ReportCommissionTariffs([(tariff, row)]);
+        var istanbul = TimeSpan.FromHours(3);
+        var inside = new DateTimeOffset(2026, 11, 5, 12, 0, 0, istanbul);
+        var outside = new DateTimeOffset(2026, 11, 10, 12, 0, 0, istanbul);
+        // The picked days run from 2 Kasım 00:00 to the midnight after 8 Kasım, Istanbul time.
+        Assert.Equal(21.5m, tariffs.Rate(store, "RYP00101", null, new DateTimeOffset(2026, 11, 2, 0, 0, 0, istanbul), 500m));
+        Assert.Equal(21.5m, tariffs.Rate(store, "RYP00101", null, new DateTimeOffset(2026, 11, 8, 23, 59, 0, istanbul), 500m));
+        Assert.Null(tariffs.Rate(store, "RYP00101", null, new DateTimeOffset(2026, 11, 9, 0, 0, 0, istanbul), 500m));
+        Assert.Null(tariffs.Rate(store, "RYP00101", null, new DateTimeOffset(2026, 11, 1, 23, 59, 0, istanbul), 500m));
+
+        var day = new DateOnly(2026, 11, 1);
+        var periodStart = new DateTimeOffset(2026, 10, 31, 21, 0, 0, TimeSpan.Zero);
+        var period = new ReportPeriod(day, day.AddDays(9), periodStart, periodStart.AddDays(10));
+        Guid insideOrder = Guid.NewGuid(), outsideOrder = Guid.NewGuid();
+        var input = new ReportInput(period, ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
+            new Dictionary<Guid, ReportChannelView> { [store] = new(store, "TRENDYOL", "Trendyol", false) },
+            [
+                new() { Id = insideOrder, ConnectionId = store, OrderNumber = "1", DerivedStatus = "DELIVERED", Amount = 500m, ListAmount = 500m, LineValue = 500m, RealAt = inside, OrderedAt = inside },
+                new() { Id = outsideOrder, ConnectionId = store, OrderNumber = "2", DerivedStatus = "DELIVERED", Amount = 500m, ListAmount = 500m, LineValue = 500m, RealAt = outside, OrderedAt = outside }
+            ],
+            new Dictionary<Guid, ReportOrderExtra>(),
+            [
+                new() { Id = Guid.NewGuid(), OrderId = insideOrder, Title = "Bluz", Sku = "SKU-1", Barcode = "RYP00101", UnitPrice = 500m, OrderedQuantity = 1m },
+                new() { Id = Guid.NewGuid(), OrderId = outsideOrder, Title = "Bluz", Sku = "SKU-1", Barcode = "RYP00101", UnitPrice = 500m, OrderedQuantity = 1m }
+            ],
+            new Dictionary<Guid, ReportLineExtra>(), [], [],
+            new ReportCatalogNames(new Dictionary<Guid, string>(), new Dictionary<Guid, string>()), false, tariffs);
+        var previous = input with { Period = new ReportPeriod(day.AddDays(-10), day.AddDays(-1), periodStart.AddDays(-10), periodStart), Orders = [], Lines = [] };
+
+        var report = ReportBuilder.Build(input, previous, new Dictionary<Guid, decimal>());
+
+        Assert.Equal(1000m, report.Summary.NetRevenue);
+        Assert.Equal(500m, report.Commission.CoveredRevenue);
+        Assert.Equal(107.50m, report.Commission.EstimatedCommission);
+    }
+
+    // The picked days as stored instants, as text, and a file's periods with the picked days as their outer bounds.
+    [Fact]
+    public void Picked_validity_days_are_whole_istanbul_days_and_keep_a_files_inner_boundaries()
+    {
+        var (start, end) = Infrastructure.Imports.CommissionTariffValidity.Bounds(new DateOnly(2026, 10, 29), new DateOnly(2026, 11, 5));
+        Assert.Equal(new DateTimeOffset(2026, 10, 28, 21, 0, 0, TimeSpan.Zero), start);
+        Assert.Equal(new DateTimeOffset(2026, 11, 5, 21, 0, 0, TimeSpan.Zero), end);
+        Assert.Equal(TimeSpan.Zero, start.Offset);
+        Assert.Equal((new DateOnly(2026, 10, 29), new DateOnly(2026, 11, 5)), Infrastructure.Imports.CommissionTariffValidity.Days(start, end));
+        Assert.Equal("29 Ekim – 5 Kasım 2026", Infrastructure.Imports.CommissionTariffValidity.Text(new DateOnly(2026, 10, 29), new DateOnly(2026, 11, 5)));
+        Assert.Equal("29 Aralık 2026 – 2 Ocak 2027", Infrastructure.Imports.CommissionTariffValidity.Text(new DateOnly(2026, 12, 29), new DateOnly(2027, 1, 2)));
+        Assert.Equal("5 Kasım 2026", Infrastructure.Imports.CommissionTariffValidity.Text(new DateOnly(2026, 11, 5), new DateOnly(2026, 11, 5)));
+        Assert.Equal("COMMISSION_TARIFF_PERIOD_INVALID", Infrastructure.Imports.CommissionTariffValidity.Invalid(new DateOnly(2026, 11, 5), new DateOnly(2026, 11, 4))?.Code);
+        Assert.Null(Infrastructure.Imports.CommissionTariffValidity.Invalid(new DateOnly(2026, 11, 5), new DateOnly(2026, 11, 5)));
+
+        // A file of two periods, 29 Ekim 08.00 – 1 Kasım 07.59 and 1 Kasım 08.00 – 5 Kasım 07.59.
+        var istanbul = TimeSpan.FromHours(3);
+        var boundary = new DateTimeOffset(2026, 11, 1, 8, 0, 0, istanbul).ToUniversalTime();
+        IReadOnlyList<(DateTimeOffset, DateTimeOffset)> periods = [(new DateTimeOffset(2026, 10, 29, 8, 0, 0, istanbul).ToUniversalTime(), boundary), (boundary, new DateTimeOffset(2026, 11, 5, 8, 0, 0, istanbul).ToUniversalTime())];
+        var outer = Infrastructure.Imports.CommissionTariffValidity.Outer(periods, new DateOnly(2026, 10, 28), new DateOnly(2026, 11, 6));
+        Assert.True(outer.Succeeded);
+        Assert.Equal([(new DateTimeOffset(2026, 10, 27, 21, 0, 0, TimeSpan.Zero), boundary), (boundary, new DateTimeOffset(2026, 11, 6, 21, 0, 0, TimeSpan.Zero))], outer.Value!);
+        // Days that leave the boundary between the periods outside are refused.
+        Assert.Equal("COMMISSION_TARIFF_PERIOD_INVALID", Infrastructure.Imports.CommissionTariffValidity.Outer(periods, new DateOnly(2026, 11, 2), new DateOnly(2026, 11, 6)).Error?.Code);
+        Assert.Equal("COMMISSION_TARIFF_PERIOD_INVALID", Infrastructure.Imports.CommissionTariffValidity.Outer(periods, new DateOnly(2026, 10, 28), new DateOnly(2026, 10, 31)).Error?.Code);
+        // One period moved alone may not overlap the other.
+        Assert.True(Infrastructure.Imports.CommissionTariffValidity.Single(new DateOnly(2026, 10, 27), new DateOnly(2026, 10, 31), [periods[1]]).Succeeded);
+        Assert.Equal("COMMISSION_TARIFF_PERIOD_INVALID", Infrastructure.Imports.CommissionTariffValidity.Single(new DateOnly(2026, 10, 27), new DateOnly(2026, 11, 1), [periods[1]]).Error?.Code);
+    }
+
     [Theory]
     [InlineData("İSTANBUL", "İstanbul")]
     [InlineData("istanbul", "İstanbul")]

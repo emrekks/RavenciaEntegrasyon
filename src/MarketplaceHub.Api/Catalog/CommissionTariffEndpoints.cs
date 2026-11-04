@@ -14,6 +14,8 @@ internal static class CommissionTariffEndpoints
         api.MapPost("/connections/{connectionId:guid}/commission-tariffs", UploadAsync).DisableAntiforgery();
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/rows", RowsAsync);
         api.MapDelete("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}", DeleteAsync);
+        // The days a tariff is valid for, picked by the seller (operational roles, as the upload and delete).
+        api.MapPut("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/period", UpdatePeriodAsync);
         api.MapGet("/connections/{connectionId:guid}/commission-tariffs/{tariffId:guid}/facets", FacetsAsync);
         // The seller's band picks as an Excel file. It writes nothing; as a POST under /connections it takes the operational
         // roles, as the upload does.
@@ -118,9 +120,30 @@ internal static class CommissionTariffEndpoints
         if (file.Length > CommissionTariffService.MaximumFileBytes) return Problem(http, new("COMMISSION_TARIFF_FILE_SIZE", "Tarife dosyası en fazla 10 MiB olabilir.", 413));
         if (!string.Equals(Path.GetExtension(Path.GetFileName(file.FileName)), ".xlsx", StringComparison.OrdinalIgnoreCase))
             return Problem(http, new("COMMISSION_TARIFF_EXTENSION_INVALID", "Yalnız pazaryerinden indirilen .xlsx tarife dosyası kabul edilir.", 415));
+        // Optional validity days (yyyy-MM-dd, Istanbul days, both included): both or neither.
+        var validFrom = form["validFrom"].ToString().Trim();
+        var validTo = form["validTo"].ToString().Trim();
+        CommissionTariffValidDays? validDays = null;
+        if (validFrom.Length > 0 || validTo.Length > 0)
+        {
+            if (Day(validFrom) is not { } from || Day(validTo) is not { } to)
+                return Problem(http, new("COMMISSION_TARIFF_PERIOD_INVALID", "Geçerlilik başlangıcı ve bitişini birlikte, geçerli tarihler olarak seçin.", 400));
+            validDays = new(from, to);
+        }
         await using var input = file.OpenReadStream();
-        return Result(await service.UploadAsync(tenant.TenantId, tenant.UserId, connectionId, file.FileName, input, http.TraceIdentifier, http.RequestAborted));
+        return Result(await service.UploadAsync(tenant.TenantId, tenant.UserId, connectionId, file.FileName, input, validDays, http.TraceIdentifier, http.RequestAborted));
     }
+
+    private static async Task<IResult> UpdatePeriodAsync(Guid connectionId, Guid tariffId, CommissionTariffPeriodRequest request, HttpContext http, ICommissionTariffService service)
+    {
+        if (Tenant(http) is not { } tenant) return Unauthorized(http);
+        if (request.ValidFrom is not { } from || request.ValidTo is not { } to)
+            return Problem(http, new("COMMISSION_TARIFF_PERIOD_INVALID", "Geçerlilik başlangıcı ve bitişini birlikte seçin.", 400));
+        return Result(await service.UpdatePeriodAsync(tenant.TenantId, tenant.UserId, connectionId, tariffId, new(from, to), request.WholeFile, http.TraceIdentifier, http.RequestAborted));
+    }
+
+    private static DateOnly? Day(string value) =>
+        DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day) ? day : null;
 
     private static async Task<IResult> FacetsAsync(Guid connectionId, Guid tariffId, HttpContext http, ICommissionTariffService service)
     {

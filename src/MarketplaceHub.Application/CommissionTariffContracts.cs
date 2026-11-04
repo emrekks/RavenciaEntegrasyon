@@ -105,12 +105,24 @@ public sealed record CommissionTariffSelectionView(string? Bulk, int? Tier, deci
 // A page of models: Items are every variant of the page's models; TotalCount and PageSize count models.
 public sealed record CommissionTariffRowPage(IReadOnlyList<CommissionTariffRowView> Items, int TotalCount, int Page, int PageSize);
 
+// The days a tariff is valid for, picked by the seller: whole Istanbul calendar days, From and To both included.
+public sealed record CommissionTariffValidDays(DateOnly From, DateOnly To);
+
+// PUT …/commission-tariffs/{id}/period: the tariff's new validity days. WholeFile moves the outer bounds of every period
+// of the tariff's file (its first period's start and its last one's end, as an upload with dates does); without it only
+// this period moves, and it may not overlap the file's other periods.
+public sealed record CommissionTariffPeriodRequest(DateOnly? ValidFrom, DateOnly? ValidTo, bool WholeFile = false);
+
 // The rate a sale pays by the tariff in force at `At`, from the band its commission-basis price falls in.
 public sealed record CommissionTariffMatch(decimal Rate, int Tier, Guid TariffId, DateTimeOffset PeriodStart, DateTimeOffset PeriodEnd);
 
 public interface ICommissionTariffService
 {
-    Task<ServiceResult<CommissionTariffUploadResult>> UploadAsync(Guid tenantId, Guid? userId, Guid connectionId, string fileName, Stream content, string correlationId, CancellationToken cancellationToken);
+    // With validDays the file's periods cover those days (the outer bounds of a file with several periods) instead of
+    // the dates the file gives; the same file uploaded again with days moves the stored tariff to them.
+    Task<ServiceResult<CommissionTariffUploadResult>> UploadAsync(Guid tenantId, Guid? userId, Guid connectionId, string fileName, Stream content, CommissionTariffValidDays? validDays, string correlationId, CancellationToken cancellationToken);
+    // Moves the tariff (or with wholeFile its file's outer bounds) to the picked days; answers the file's periods.
+    Task<ServiceResult<IReadOnlyList<CommissionTariffView>>> UpdatePeriodAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, CommissionTariffValidDays validDays, bool wholeFile, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CommissionTariffView>>> ListAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<CommissionTariffRowPage>> RowsAsync(Guid tenantId, Guid connectionId, Guid tariffId, string? search, int page, int pageSize, CommissionTariffRowFilter filter, CancellationToken cancellationToken);
     // Deletes the tariff with every other period of its file.
