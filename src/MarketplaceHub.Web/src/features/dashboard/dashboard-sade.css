@@ -361,3 +361,6 @@ main .rr.rr-dashboard > * { min-width: 0; }
   :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x { font-size: 11px; }
   :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-sep { margin-inline: 3px; }
 }
+/* Every operation card is the same size: rows share one height and each card fills its cell. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { grid-auto-rows: 1fr; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard { height: 100%; min-height: 0; box-sizing: border-box; }
