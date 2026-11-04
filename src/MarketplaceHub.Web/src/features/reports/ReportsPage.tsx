@@ -1812,6 +1812,17 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const [draft, setDraft] = useState({ ...applied, platforms, search })
   const [tab, setTab] = useState<'upcoming' | 'past'>(() => applied.state === 'PAID' ? 'past' : 'upcoming')
   const [open, setOpen] = useState<string | null>(null)
+  // Trendyol's regions open under its card: on hover with a mouse, on a tap of its Bölgeler button on touch screens.
+  const [regionsOpen, setRegionsOpen] = useState(false)
+  const regionsRef = useRef<HTMLLIElement>(null)
+  useEffect(() => {
+    if (!regionsOpen) return
+    const away = (event: PointerEvent) => { if (!regionsRef.current?.contains(event.target as Node)) setRegionsOpen(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setRegionsOpen(false) }
+    document.addEventListener('pointerdown', away)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', escape) }
+  }, [regionsOpen])
   useListUrlSync({ hp: platforms, hr: applied.region, hs: applied.state, hf: applied.from, ht: applied.to, hmin: applied.min, hmax: applied.max, hq: search, ho: applied.sort },
     { hp: [], hr: 'ALL', hs: 'ALL', hf: '', ht: '', hmin: '', hmax: '', hq: '', ho: 'date' })
   const none = platforms.includes(RETURN_NO_PLATFORM)
@@ -1832,17 +1843,26 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   // The marketplaces' cards stay all in view while one is picked: they come from the unfiltered answer then.
   const platformCards = none ? [] : (platforms.length ? everything.data?.platforms : result.data?.platforms) ?? []
   // A summary card in the metric card language: its mark and name, its balance, the next payout, its overdue part.
-  const summaryCard = (key: string, name: string, mark: string, icon: UiIconName, item: { expected: number; nextDay: string | null; nextAmount: number | null; unknown: number }, pressed: boolean, pick: () => void) =>
-    <li key={key}><button type="button" className="reports-payout-region" aria-pressed={pressed} onClick={pick}>
-      <CardBackgroundIcon name={icon} />
-      <span className="reports-payout-region-name"><PlatformSquareMark code={mark} name={platformName(mark)} />{name}</span>
-      <strong>{formatTl(item.expected)}</strong>
-      <span className="reports-payout-region-next">{item.nextDay ? `Sıradaki ${shortDay(item.nextDay, false)} · ${formatTl(item.nextAmount)}` : 'Sıradaki ödeme günü belli değil'}</span>
-      {/* Overdue sales wait for a payout; an overdue sum below zero is deductions waiting to come off the next one. */}
-      {/* Phones show the short form (Gecikmiş / Kesinti, whole liras) so the chip fits the card. */}
-      {item.unknown > 0 && <em className="reports-payout-chip is-overdue"><span className="reports-payout-chip-long">Vadesi Geçmiş {formatTl(item.unknown)}</span><span className="reports-payout-chip-short">Gecikmiş {formatTlWhole(item.unknown)}</span></em>}
-      {item.unknown < 0 && <em className="reports-payout-chip is-deduction"><span className="reports-payout-chip-long">Bekleyen Kesinti {formatTl(-item.unknown)}</span><span className="reports-payout-chip-short">Kesinti {formatTlWhole(-item.unknown)}</span></em>}
-    </button></li>
+  type CardItem = { expected: number; nextDay: string | null; nextAmount: number | null; unknown: number }
+  const nextText = (item: CardItem) => item.nextDay ? `Sıradaki ${shortDay(item.nextDay, false)} · ${formatTl(item.nextAmount)}` : 'Sıradaki ödeme günü belli değil'
+  // Overdue sales wait for a payout; an overdue sum below zero is deductions waiting to come off the next one.
+  // Phones show the short form (Gecikmiş / Kesinti, whole liras) so the chip fits the card.
+  const overdueChip = (item: CardItem) => <>
+    {item.unknown > 0 && <em className="reports-payout-chip is-overdue"><span className="reports-payout-chip-long">Vadesi Geçmiş {formatTl(item.unknown)}</span><span className="reports-payout-chip-short">Gecikmiş {formatTlWhole(item.unknown)}</span></em>}
+    {item.unknown < 0 && <em className="reports-payout-chip is-deduction"><span className="reports-payout-chip-long">Bekleyen Kesinti {formatTl(-item.unknown)}</span><span className="reports-payout-chip-short">Kesinti {formatTlWhole(-item.unknown)}</span></em>}
+  </>
+  const summaryCard = (key: string, name: string, mark: string, icon: UiIconName, item: CardItem, pressed: boolean, pick: () => void, extra?: { tag?: string; children: ReactNode }) =>
+    <li key={key} ref={extra ? regionsRef : undefined} className={extra ? `reports-payout-has-regions${regionsOpen ? ' is-open' : ''}` : undefined}>
+      <button type="button" className="reports-payout-region" aria-pressed={pressed} onClick={pick}>
+        <CardBackgroundIcon name={icon} />
+        <span className="reports-payout-region-name"><PlatformSquareMark code={mark} name={platformName(mark)} />{name}
+          {extra?.tag && <em className="reports-payout-chip is-region">{extra.tag}</em>}</span>
+        <strong>{formatTl(item.expected)}</strong>
+        <span className="reports-payout-region-next">{nextText(item)}</span>
+        {overdueChip(item)}
+      </button>
+      {extra?.children}
+    </li>
   const clear = () => apply({ ...emptyPayoutFilters, platforms: [], search: '' })
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
@@ -1872,7 +1892,10 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
       tip: 'Pazaryerinin yaptığı son ödeme, kendi bildirdiği tutarla.' },
     { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: overdue, format: formatTl, icon: 'alertTriangle', tone: overdue > 0 ? 'warn' : undefined,
       note: overdue < 0 ? 'Bekleyen kesinti' : overdue > 0 ? 'Ödeme bekliyor' : 'Yok',
-      tip: 'Bakiyenin vadesi geçmiş ama henüz bir ödemeye bağlanmamış kısmı; eksi ise sıradaki ödemeden düşülecek kesintilerdir.\nÖdenmeyecek demek değildir: Avrupa ayda bir ödenir, ödeme kaydı ödemeden bir gün sonra okunur.' }
+      tip: 'Bakiyenin vadesi geçmiş ama henüz bir ödemeye bağlanmamış kısmı; eksi ise sıradaki ödemeden düşülecek kesintilerdir.\nÖdenmeyecek demek değildir: Avrupa ayda bir ödenir, ödeme kaydı ödemeden bir gün sonra okunur.' },
+    { key: 'early', label: 'Erken Ödeme', value: none ? 0 : data?.earlyPaymentsTaken ?? 0, format: formatTl, icon: 'banknote',
+      note: (data?.earlyPayments ?? 0) > 0 ? `Son ${data?.daysBack ?? 90} gün · ${formatCount(data?.earlyPayments ?? 0)} kayıt` : `Son ${data?.daysBack ?? 90} günde alınmadı`,
+      tip: `Son ${data?.daysBack ?? 90} günde alınan erken ödemelerin toplamı.\nErken alınabilir tutar pazaryeri API'sinde yok; yalnız pazaryeri panelinde görünür.` }
   ]
   // A group netting to nothing pays nothing and is left out; one below zero (a marketplace's deductions) is no payout day:
   // the marketplace takes it off a later payout, so it waits apart, as the overdue records do.
@@ -1916,11 +1939,6 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
     : groups.some(group => group.status === 'PAID') ? ['Kısmen Ödendi', 'is-paid'] as const : ['Tahmini', 'is-expected'] as const
   return <div className="reports-summary reports-payouts">
     <KpiStrip label="Hakediş özeti" items={items} marks />
-    <p className="reports-payout-early" role="note">
-      <UiIcon name="banknote" size={14} />
-      {(data?.earlyPayments ?? 0) > 0 ? `Son ${data?.daysBack} günde alınan erken ödeme: ${formatTl(data?.earlyPaymentsTaken)} (${formatCount(data?.earlyPayments ?? 0)} kayıt).` : `Son ${data?.daysBack ?? 90} günde erken ödeme alınmadı.`}
-      {' '}Erken alınabilir tutar pazaryeri API'sinde yok; yalnız pazaryeri panelinde görünür.
-    </p>
     <Panel title="Ödeme Özeti" description="Kartlar pazaryeri ve bölge filtresine göre; durum, tarih ve tutar filtreleri yalnız listeyi süzer." className="reports-payout-list">
       <div className="rr reports-payout-filters">
         <RrFilterCard active={activeCount}><div className="rr-filters reports-payout-filterbar">
@@ -1942,16 +1960,28 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
           <div className="rr-fbtns"><button type="button" className="rr-btn" onClick={clear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => apply(draft)}>Filtrele</button></div>
         </div></RrFilterCard>
       </div>
-      {/* Every marketplace's total first (a card sets the platform filter), then Trendyol's payout regions (a card sets
-          the region filter); the marketplaces' totals add up to the balance. */}
+      {/* Every marketplace's total (a card sets the platform filter; the totals add up to the balance). Trendyol's card
+          holds its payout regions in a list that opens under it; a region sets the region filter. */}
       {!search.trim() && platformCards.length > 0 && <div className="reports-payout-regions is-platforms" role="group" aria-label="Pazaryeri Toplamları">
-        <ul>{platformCards.map(item => summaryCard(item.platformCode, platformName(item.platformCode), item.platformCode, 'wallet', item,
-          platforms.length === 1 && platforms[0] === item.platformCode, () => pickPlatform(item.platformCode)))}</ul>
-        {platforms.length > 0 && <button type="button" className="secondary reports-payout-all" onClick={() => pickPlatform(null)}>Tümü</button>}
-      </div>}
-      {regions.length > 0 && !search.trim() && <div className="reports-payout-regions is-sub" role="group" aria-label="Trendyol Bölgeleri">
-        <ul>{regions.map(item => summaryCard(item.region, regionLabels[item.region], 'TRENDYOL', 'globe', item, region === item.region, () => pickRegion(region === item.region ? 'ALL' : item.region)))}</ul>
-        {region !== 'ALL' && <button type="button" className="secondary reports-payout-all" onClick={() => pickRegion('ALL')}>Tümü</button>}
+        <ul>{platformCards.map(item => {
+          const withRegions = item.platformCode === 'TRENDYOL' && regions.length > 0
+          return summaryCard(item.platformCode, platformName(item.platformCode), item.platformCode, 'wallet', item,
+            (platforms.length === 1 && platforms[0] === item.platformCode) || (withRegions && region !== 'ALL'), () => pickPlatform(item.platformCode),
+            withRegions ? { tag: region !== 'ALL' ? regionLabels[region] : undefined, children: <>
+              <button type="button" className="reports-payout-region-more" aria-expanded={regionsOpen} aria-controls="reports-payout-regionpop"
+                onClick={() => setRegionsOpen(!regionsOpen)}>{regions.length} Bölge<UiIcon name="chevronDown" size={13} /></button>
+              <div id="reports-payout-regionpop" className="reports-payout-regionpop" role="group" aria-label="Trendyol Bölgeleri">
+                <button type="button" className="reports-payout-regionpop-all" aria-pressed={region === 'ALL'} onClick={() => { pickRegion('ALL'); setRegionsOpen(false) }}>
+                  <span>Tüm Bölgeler</span><strong>{formatTl(item.expected)}</strong></button>
+                {regions.map(entry => <button key={entry.region} type="button" aria-pressed={region === entry.region}
+                  onClick={() => { pickRegion(region === entry.region ? 'ALL' : entry.region); setRegionsOpen(false) }}>
+                  <span>{regionLabels[entry.region]}</span><strong>{formatTl(entry.expected)}</strong>
+                  <small>{nextText(entry)}</small>{overdueChip(entry)}
+                </button>)}
+              </div>
+            </> } : undefined)
+        })}</ul>
+        {(platforms.length > 0 || region !== 'ALL') && <button type="button" className="secondary reports-payout-all" onClick={() => apply({ ...draft, ...applied, search, platforms: [], region: 'ALL' })}>Tümü</button>}
       </div>}
       {search.trim() ? <PayoutLinesTable platforms={platforms.length ? platforms : null} search={search} />
         : <>

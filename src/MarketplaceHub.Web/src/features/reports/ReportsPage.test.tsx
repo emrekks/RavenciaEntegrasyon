@@ -503,12 +503,12 @@ describe('ReportsPage', () => {
     expect(figures[0]).toContain('Toplam Güncel Bakiye₺1.180')
     expect(figures[1]).toContain('Sıradaki Ödeme₺880')
     expect(figures[3]).toContain('Vadesi Geçmiş Bekleyen₺240')
-    // Every marketplace's total first, adding up to the balance, then Trendyol's regions.
+    // Every marketplace's total, adding up to the balance; Trendyol's regions in the list under its card.
     expect(texts(page, '.is-platforms .reports-payout-region')).toEqual([expect.stringContaining('Trendyol₺1.080'), expect.stringContaining('Pazarama₺100')])
-    expect(texts(page, '.is-sub .reports-payout-region')[0]).toContain('Türkiye, Körfez₺780')
-    expect(texts(page, '.is-sub .reports-payout-region')[0]).toContain('Vadesi Geçmiş ₺240,00')
+    expect(texts(page, '.reports-payout-regionpop > button')[1]).toContain('Türkiye, Körfez₺780')
+    expect(texts(page, '.reports-payout-regionpop > button')[1]).toContain('Vadesi Geçmiş ₺240,00')
     // Deductions waiting below zero are named as such, not as an overdue minus.
-    expect(texts(page, '.is-sub .reports-payout-region')[1]).toContain('Bekleyen Kesinti ₺50,00')
+    expect(texts(page, '.reports-payout-regionpop > button')[2]).toContain('Bekleyen Kesinti ₺50,00')
     // The days to come, each with its total; the next one is marked, a Pazarama row carries no Trendyol region.
     const days = texts(page, '.reports-payout-day > header')
     expect(days[0]).toContain('05 Kas Per2026Sıradaki ÖdemeTahmini₺880,00')
@@ -521,11 +521,11 @@ describe('ReportsPage', () => {
     expect(rows[0]).not.toContain('Tahmini')
     expect(rows[1]).toContain('Pazarama')
     expect(page.querySelectorAll('.reports-payout-row')[1].querySelector('.is-region')).toBeNull()
-    // A region card sets the region filter: the payments and the figures narrow to it, and the address keeps it.
-    await act(async () => { (page.querySelectorAll('.is-sub .reports-payout-region')[1] as HTMLButtonElement).click() })
+    // A region in the list sets the region filter: the payments and the figures narrow to it, and the address keeps it.
+    await act(async () => { (page.querySelectorAll('.reports-payout-regionpop > button')[2] as HTMLButtonElement).click() })
     expect(texts(page, '.reports-payout-row')).toHaveLength(2)
     expect(texts(page, '.reports-kpis > div')[0]).toContain('Toplam Güncel Bakiye₺400')
-    await act(async () => { (page.querySelector('.is-sub .reports-payout-all') as HTMLButtonElement).click() })
+    await act(async () => { (page.querySelector('.reports-payout-regionpop-all') as HTMLButtonElement).click() })
     expect(texts(page, '.reports-payout-row')).toHaveLength(4)
     // A marketplace card sets the platform filter: the server is asked for it, the other cards stay in view.
     await act(async () => { (page.querySelectorAll('.is-platforms .reports-payout-region')[1] as HTMLButtonElement).click() })
