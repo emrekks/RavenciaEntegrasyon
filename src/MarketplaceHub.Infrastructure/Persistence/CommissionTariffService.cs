@@ -12,8 +12,13 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
     private const long MaximumExpandedBytes = 64 * 1024 * 1024;
     private const string LikeEscape = "\\";
 
-    public async Task<ServiceResult<CommissionTariffUploadResult>> UploadAsync(Guid tenantId, Guid? userId, Guid connectionId, string fileName, Stream content, string correlationId, CancellationToken cancellationToken)
+    public Task<ServiceResult<CommissionTariffUploadResult>> UploadAsync(Guid tenantId, Guid? userId, Guid connectionId, string fileName, Stream content, string correlationId, CancellationToken cancellationToken) =>
+        UploadAsync(tenantId, userId, connectionId, fileName, content, null, correlationId, cancellationToken);
+
+    public async Task<ServiceResult<CommissionTariffUploadResult>> UploadAsync(Guid tenantId, Guid? userId, Guid connectionId, string fileName, Stream content, CommissionTariffValidDays? validDays, string correlationId, CancellationToken cancellationToken)
     {
+        if (validDays is not null && CommissionTariffValidity.Invalid(validDays.From, validDays.To) is { } invalidDays)
+            return ServiceResult<CommissionTariffUploadResult>.Fail(invalidDays.Code, invalidDays.Message, invalidDays.Status);
         var connection = await ConnectionAsync(tenantId, connectionId, cancellationToken);
         if (connection is null) return ServiceResult<CommissionTariffUploadResult>.Fail("RESOURCE_NOT_FOUND", "Bağlantı bulunamadı.", 404);
         if (!CommissionTariffPlatforms.Supports(connection.PlatformCode))
@@ -39,18 +44,42 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
 
         var safeName = Path.GetFileName(fileName);
         if (safeName.Length > 260) safeName = safeName[..260];
+        // The file's periods, the earliest first, with the days the seller picked as their outer bounds.
+        var ordered = parsed.Tariffs.OrderBy(x => x.PeriodStart).ToList();
+        var bounds = ordered.Select(x => (x.PeriodStart, x.PeriodEnd)).ToList();
+        if (validDays is not null)
+        {
+            var picked = CommissionTariffValidity.Outer(bounds, validDays.From, validDays.To);
+            if (!picked.Succeeded) return ServiceResult<CommissionTariffUploadResult>.Fail(picked.Error!.Code, picked.Error.Message, picked.Error.Status);
+            bounds = picked.Value!.ToList();
+        }
+        var warnings = parsed.Warnings.ToList();
         var created = new List<CommissionTariff>();
+        var moved = new List<string>();
         var alreadyUploaded = true;
         var imported = 0;
         var backfilled = 0;
-        foreach (var period in parsed.Tariffs)
+        for (var index = 0; index < ordered.Count; index++)
         {
-            var existing = await db.CommissionTariffs.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == hash && x.PeriodStart == period.PeriodStart)
-                .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
+            var period = ordered[index];
+            var (periodStart, periodEnd) = bounds[index];
+            var periodText = period.PeriodText.Length > 120 ? period.PeriodText[..120] : period.PeriodText;
+            // A period stored before is found by the file's own period text too: its days may have been changed since.
+            var existing = await db.CommissionTariffs.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == hash
+                    && (x.PeriodStart == period.PeriodStart || x.PeriodText == periodText))
+                .Select(x => new { x.Id, x.PeriodStart, x.PeriodEnd }).FirstOrDefaultAsync(cancellationToken);
             // The same file again fills the category, brand and stock of rows stored before they were read, and keeps the
             // file itself when a tariff stored before files were kept has none.
-            if (existing is { } existingId)
+            if (existing is not null)
             {
+                var existingId = existing.Id;
+                // The same file with days picked moves the stored period to them.
+                if (validDays is not null && (existing.PeriodStart != periodStart || existing.PeriodEnd != periodEnd))
+                {
+                    await db.CommissionTariffs.Where(x => x.TenantId == tenantId && x.Id == existingId)
+                        .ExecuteUpdateAsync(set => set.SetProperty(x => x.PeriodStart, periodStart).SetProperty(x => x.PeriodEnd, periodEnd), cancellationToken);
+                    moved.Add($"{CommissionTariffValidity.Text(existing.PeriodStart, existing.PeriodEnd)} → {CommissionTariffValidity.Text(periodStart, periodEnd)}");
+                }
                 backfilled += await FillFactsAsync(tenantId, existingId, period.Rows, cancellationToken);
                 // The period's name ("3 Gün") for a tariff stored before it was read.
                 if (period.Label is { } label)
@@ -70,9 +99,9 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
                 TenantId = tenantId,
                 ConnectionId = connectionId,
                 PlatformCode = connection.PlatformCode.ToUpperInvariant(),
-                PeriodStart = period.PeriodStart,
-                PeriodEnd = period.PeriodEnd,
-                PeriodText = period.PeriodText.Length > 120 ? period.PeriodText[..120] : period.PeriodText,
+                PeriodStart = periodStart,
+                PeriodEnd = periodEnd,
+                PeriodText = periodText,
                 PeriodLabel = period.Label,
                 FileName = safeName,
                 FileHash = hash,
@@ -87,9 +116,16 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             created.Add(tariff);
             imported += period.Rows.Count;
         }
+        if (moved.Count > 0)
+        {
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "COMMISSION_TARIFF_PERIOD_CHANGED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = Reason($"{safeName}: {string.Join(", ", moved)}"), CorrelationId = correlationId, CreatedAt = now });
+            backfilled++;
+            warnings.Add($"Bu dosya daha önce yüklenmişti; geçerlilik tarihleri seçilen günlere ({CommissionTariffValidity.Text(validDays!.From, validDays.To)}) taşındı.");
+        }
         if (created.Count > 0)
         {
-            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "COMMISSION_TARIFF_UPLOADED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = $"{safeName}: {imported} satır, {string.Join(", ", created.Select(x => x.PeriodText))}", CorrelationId = correlationId, CreatedAt = now });
+            var days = validDays is null ? string.Empty : $" (geçerlilik {CommissionTariffValidity.Text(validDays.From, validDays.To)})";
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "COMMISSION_TARIFF_UPLOADED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = Reason($"{safeName}: {imported} satır, {string.Join(", ", created.Select(x => x.PeriodText))}{days}"), CorrelationId = correlationId, CreatedAt = now });
             try { await db.SaveChangesAsync(cancellationToken); }
             catch (DbUpdateException)
             {
@@ -100,13 +136,62 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             }
         }
         else if (backfilled > 0) await db.SaveChangesAsync(cancellationToken);
-        var periodStarts = parsed.Tariffs.Select(x => x.PeriodStart).ToArray();
+        // Every period of the file (all of one file's periods are stored together).
         var tariffs = await db.CommissionTariffs.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == hash && periodStarts.Contains(x.PeriodStart))
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == hash)
             .OrderBy(x => x.PeriodStart)
             .ToListAsync(cancellationToken);
-        return ServiceResult<CommissionTariffUploadResult>.Ok(new(await ViewsAsync(tenantId, connectionId, tariffs, now, cancellationToken), imported, parsed.SkippedRows, alreadyUploaded, parsed.Warnings));
+        return ServiceResult<CommissionTariffUploadResult>.Ok(new(await ViewsAsync(tenantId, connectionId, tariffs, now, cancellationToken), imported, parsed.SkippedRows, alreadyUploaded, warnings));
     }
+
+    // The days a tariff is valid for, picked by the seller: the period alone (it may not overlap the file's other
+    // periods), or with wholeFile the outer bounds of every period of its file. The file's own period text is kept (the
+    // Excel of the picks matches the file's rows by it).
+    public async Task<ServiceResult<IReadOnlyList<CommissionTariffView>>> UpdatePeriodAsync(Guid tenantId, Guid? userId, Guid connectionId, Guid tariffId, CommissionTariffValidDays validDays, bool wholeFile, string correlationId, CancellationToken cancellationToken)
+    {
+        if (CommissionTariffValidity.Invalid(validDays.From, validDays.To) is { } invalid)
+            return ServiceResult<IReadOnlyList<CommissionTariffView>>.Fail(invalid.Code, invalid.Message, invalid.Status);
+        var tariff = await db.CommissionTariffs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Id == tariffId, cancellationToken);
+        if (tariff is null) return ServiceResult<IReadOnlyList<CommissionTariffView>>.Fail("RESOURCE_NOT_FOUND", "Komisyon tarifesi bulunamadı.", 404);
+        var periods = await db.CommissionTariffs.Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == tariff.FileHash)
+            .OrderBy(x => x.PeriodStart).ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        var before = periods.Select(x => (x.Id, x.PeriodStart, x.PeriodEnd)).ToList();
+        if (wholeFile || periods.Count == 1)
+        {
+            var picked = CommissionTariffValidity.Outer(periods.Select(x => (x.PeriodStart, x.PeriodEnd)).ToList(), validDays.From, validDays.To);
+            if (!picked.Succeeded) return ServiceResult<IReadOnlyList<CommissionTariffView>>.Fail(picked.Error!.Code, picked.Error.Message, picked.Error.Status);
+            for (var index = 0; index < periods.Count; index++) (periods[index].PeriodStart, periods[index].PeriodEnd) = picked.Value![index];
+        }
+        else
+        {
+            var own = periods.Single(x => x.Id == tariffId);
+            var picked = CommissionTariffValidity.Single(validDays.From, validDays.To, periods.Where(x => x.Id != tariffId).Select(x => (x.PeriodStart, x.PeriodEnd)));
+            if (!picked.Succeeded) return ServiceResult<IReadOnlyList<CommissionTariffView>>.Fail(picked.Error!.Code, picked.Error.Message, picked.Error.Status);
+            (own.PeriodStart, own.PeriodEnd) = picked.Value;
+        }
+        var now = timeProvider.GetUtcNow();
+        var changes = before.Zip(periods, (old, current) => (Old: old, Current: current)).Where(x => x.Old.PeriodStart != x.Current.PeriodStart || x.Old.PeriodEnd != x.Current.PeriodEnd)
+            .Select(x => $"{CommissionTariffValidity.Text(x.Old.PeriodStart, x.Old.PeriodEnd)} → {CommissionTariffValidity.Text(x.Current.PeriodStart, x.Current.PeriodEnd)}").ToList();
+        if (changes.Count > 0)
+        {
+            db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "COMMISSION_TARIFF_PERIOD_CHANGED", TargetType = "PlatformConnection", TargetId = connectionId.ToString("D"), Reason = Reason($"{tariff.FileName}: {string.Join(", ", changes)}"), CorrelationId = correlationId, CreatedAt = now });
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        db.ChangeTracker.Clear();
+        var stored = await db.CommissionTariffs.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.FileHash == tariff.FileHash)
+            .OrderBy(x => x.PeriodStart).ToListAsync(cancellationToken);
+        return ServiceResult<IReadOnlyList<CommissionTariffView>>.Ok(await ViewsAsync(tenantId, connectionId, stored, now, cancellationToken));
+    }
+
+    private static string Reason(string text) => text.Length > 512 ? text[..512] : text;
+
+    // A period's length as the file gives it ("3 Günlük Fiyat" in the Excel of the picks), read from the file's own
+    // period text: the seller may have changed the days the tariff is valid for. The stored days stand in when the text
+    // does not read.
+    private static int FileDays(CommissionTariff tariff) =>
+        CommissionTariffFileParser.TryParsePeriod(tariff.PeriodText, tariff.UploadedAt, out var start, out var end)
+            ? TrendyolTariffWorkbook.PeriodDays(start, end)
+            : TrendyolTariffWorkbook.PeriodDays(tariff.PeriodStart, tariff.PeriodEnd);
 
     // The tariffs as listed, each with the file it came from: the periods of one file share the Id of its first period.
     private async Task<List<CommissionTariffView>> ViewsAsync(Guid tenantId, Guid connectionId, IReadOnlyList<CommissionTariff> tariffs, DateTimeOffset now, CancellationToken cancellationToken)
@@ -321,11 +406,11 @@ public sealed class CommissionTariffService(AppDbContext db, TimeProvider timePr
             var periodRows = await db.CommissionTariffRows.AsNoTracking().Where(x => x.TenantId == tenantId && x.TariffId == period.Id)
                 .OrderBy(x => x.ProductName).ThenBy(x => x.Barcode).ToListAsync(cancellationToken);
             if (own) rows = periodRows;
-            var days = TrendyolTariffWorkbook.PeriodDays(period.PeriodStart, period.PeriodEnd);
+            var days = FileDays(period);
             foreach (var (row, price) in await ChosenAsync(tenantId, connectionId, periodRows, periodRequest, cancellationToken))
                 picks.Add(new(row.Barcode, period.PeriodText, days, price, own));
         }
-        var tariffDays = TrendyolTariffWorkbook.PeriodDays(tariff.PeriodStart, tariff.PeriodEnd);
+        var tariffDays = FileDays(tariff);
         var name = $"komisyon-tarifesi-secimler-{periods[0].PeriodStart.ToOffset(CommissionTariffFileParser.TurkeyOffset):yyyyMMdd}.xlsx";
         var periodIds = periods.Select(x => x.Id).ToArray();
         // The periods of a file keep the same file; the exported tariff's own copy first.
