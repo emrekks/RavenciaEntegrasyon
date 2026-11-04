@@ -91,3 +91,14 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell.stitch-shell main .rv-action-bar.rv-action-bar, .app-shell.stitch-shell main .rv-action-bar.rv-action-bar.is-leaving { animation: none; }
 }
+
+/* Phones, as on a computer: a page's own bar sticks to the bottom edge while the page scrolls and, at the end of the
+   page, joins the last card above it (no gap, the card's bottom corners square, the bar's top rule the divider, no
+   shadow). The page's 8px block gap is taken back; the product form has its own rule (products-responsive.css). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar,
+  .app-shell.stitch-shell > main > .content > form:not(.product-add-workspace) > .rv-action-bar.rv-action-bar { margin-top: calc(-1 * var(--m-gap, 8px)); border-radius: 0 0 var(--rv-bar-bottom-r) var(--rv-bar-bottom-r); }
+  .app-shell.stitch-shell > main > .content > .rv-action-bar.rv-action-bar[data-docked="true"],
+  .app-shell.stitch-shell > main > .content > form > .rv-action-bar.rv-action-bar[data-docked="true"] { box-shadow: none; }
+  .app-shell.stitch-shell main .content > :has(+ .rv-action-bar[data-docked="true"]:not(.is-leaving)) { border-bottom-color: transparent !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+}
