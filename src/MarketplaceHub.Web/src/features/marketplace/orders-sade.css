@@ -283,3 +283,8 @@
   .app-shell.stitch-shell main :is(.rr.rr-orders, .rr.rr-returns) .rr-tbl tbody .rr-pline > .rr-thumb { align-self: start; width: 92px; height: auto; aspect-ratio: 2 / 3; margin: 0; }
   .app-shell.stitch-shell main :is(.rr.rr-orders, .rr.rr-returns) .rr-tbl tbody .rr-pline > .rr-thumb > img { width: 100%; height: 100%; object-fit: cover; }
 }
+/* Phones, order cards: the product lines start the same 10px under the buyer as the cargo box sits under them (the
+   buyer row's pulled-up cell left a 20px band). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rr.rr-orders .rr-tbl tbody tr > td.rr-wide:has(> .rr-plines) { margin-top: -10px; }
+}
