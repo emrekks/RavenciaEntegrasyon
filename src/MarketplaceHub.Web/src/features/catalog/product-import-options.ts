@@ -17,7 +17,7 @@ export function productImportOptionVisibility(options: {
   supportsPendingApproval: boolean
 }): ProductImportOptionVisibility {
   const isBulk = options.method === 'BULK'
-  if (options.mode === 'OPTIONS_ONLY') {
+  if (isBulk && options.mode === 'OPTIONS_ONLY') {
     return {
       showUpdateExisting: false,
       showHepsiburadaReadOnlyNote: false,
@@ -26,12 +26,13 @@ export function productImportOptionVisibility(options: {
       showOptionsSection: false
     }
   }
-  const showUpdateExisting = isBulk && options.mode === 'EXISTING_ONLY' && !options.onlyHepsiburada
+  // A single product (Tek Ürün Aktarımı) offers the same choices as an update of existing products (owner, 5 Nov 2026).
+  const showUpdateExisting = (isBulk ? options.mode === 'EXISTING_ONLY' : true) && !options.onlyHepsiburada
   const showHepsiburadaReadOnlyNote = isBulk && options.hasHepsiburada && options.mode !== 'MAPPING_ONLY'
-  const showArchived = isBulk && options.mode !== 'MAPPING_ONLY'
+  const showArchived = isBulk ? options.mode !== 'MAPPING_ONLY' : true
   const showPendingApproval = isBulk && options.supportsPendingApproval
 
-  const hasVisibleOptions = showHepsiburadaReadOnlyNote || showArchived || showPendingApproval
+  const hasVisibleOptions = showUpdateExisting || showHepsiburadaReadOnlyNote || showArchived || showPendingApproval
 
   return {
     showUpdateExisting,

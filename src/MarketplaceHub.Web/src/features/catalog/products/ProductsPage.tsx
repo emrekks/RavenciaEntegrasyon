@@ -892,7 +892,7 @@ export function ProductsPage() {
     if (productImportMethod === 'SINGLE' && !productImportLookup.trim()) { showProductToast('Ürün Bilgisi Gerekli', `Tek ürün aktarımı için ${singleLookupLabel} girin.`, 'error'); return }
     // Decision D: the panel is the stock master; taking the marketplace's prices and stock over the panel's is a
     // deliberate step, confirmed here.
-    const overwriteConfirmation = productImportMethod === 'BULK' && productImportMode === 'EXISTING_ONLY' && !selectedImportOnlyHepsiburada ? productImportOverwriteConfirmation(productImportUpdatePrices, productImportUpdateStock) : null
+    const overwriteConfirmation = (productImportMethod === 'SINGLE' || productImportMode === 'EXISTING_ONLY') && !selectedImportOnlyHepsiburada ? productImportOverwriteConfirmation(productImportUpdatePrices, productImportUpdateStock) : null
     if (overwriteConfirmation) {
       const accepted = await confirmImport({ ...overwriteConfirmation, confirmLabel: 'Pazaryeri Değerlerini Al', destructive: true })
       if (!accepted) return
@@ -909,8 +909,8 @@ export function ProductsPage() {
         const connection = connections.find(item => item.id === connectionId)
         const platformCode = connection?.platformCode.trim().toUpperCase()
         const isHepsiburada = platformCode === 'HEPSIBURADA'
-        const updateExistingProducts = productImportMethod === 'BULK' && !mappingOnly && (full || existingOnly) && !isHepsiburada ? productImportUpdateExistingProducts : false
-        const priceStockAllowed = productImportMethod === 'BULK' && existingOnly && !isHepsiburada
+        const updateExistingProducts = (productImportMethod === 'SINGLE' || !mappingOnly && (full || existingOnly)) && !isHepsiburada ? productImportUpdateExistingProducts : false
+        const priceStockAllowed = (productImportMethod === 'SINGLE' || existingOnly) && !isHepsiburada
         const updatePrices = priceStockAllowed && productImportUpdatePrices
         const updateStock = priceStockAllowed && productImportUpdateStock
         const query = new URLSearchParams({ full: String(productImportMethod === 'BULK' && full), newOnly: String(productImportMethod === 'BULK' && newOnly), existingOnly: String(productImportMethod === 'BULK' && existingOnly), mappingOnly: String(productImportMethod === 'BULK' && mappingOnly), optionsOnly: String(productImportMethod === 'BULK' && optionsOnly), includeArchived: String(productImportIncludeArchived), includeDrafts: String(productImportMethod === 'BULK' && productImportIncludeArchived && platformCode === 'SHOPIFY'), includePendingApproval: String(includePendingApproval && platformCode === 'TRENDYOL'), updateExistingProducts: String(updateExistingProducts), updatePrices: String(updatePrices), updateStock: String(updateStock) })
@@ -922,7 +922,7 @@ export function ProductsPage() {
       const contentLabel = productImportMethod === 'BULK' && (full || existingOnly) ? selectedImportHasHepsiburada
         ? selectedImportOnlyHepsiburada ? ' · Hepsiburada ürün içeriği korunacak' : productImportUpdateExistingProducts ? ' · Hepsiburada içeriği korunacak, desteklenen platform içerikleri güncellenecek' : ' · mevcut ürün içerikleri korunacak'
         : productImportUpdateExistingProducts ? ' · mevcut ürün bilgileri güncellenecek' : ' · mevcut ürün bilgileri korunacak' : ''
-       const priceStockLabel = productImportMethod === 'BULK' && existingOnly && !selectedImportOnlyHepsiburada ? productImportPriceStockLabel(productImportUpdatePrices, productImportUpdateStock) : ''
+       const priceStockLabel = (productImportMethod === 'SINGLE' || existingOnly) && !selectedImportOnlyHepsiburada ? productImportPriceStockLabel(productImportUpdatePrices, productImportUpdateStock) : ''
        showProductToast('Ürün Aktarımı Kuyruğa Alındı', `${productImportConnectionIds.length} bağlantı için ${modeLabel} aktarımı kuyruğa alındı${productImportIncludeArchived ? selectedImportHasShopify ? ' · arşiv ve taslak ürünler dahil' : ' · arşiv ürünleri dahil' : ''}${includePendingApproval ? ' · onay bekleyen ürünler dahil' : ''}${contentLabel}${priceStockLabel}.`, 'info')
       void productSyncJobsQuery.refetch()
       void client.invalidateQueries({ queryKey: ['jobs'] })

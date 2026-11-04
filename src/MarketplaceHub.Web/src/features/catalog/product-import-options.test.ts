@@ -65,14 +65,20 @@ describe('product import options', () => {
     })
   })
 
-  it('does not render bulk options in single-product mode', () => {
+  it('offers the update and archive choices for a single product, not the bulk-only pending approval', () => {
     expect(productImportOptionVisibility({
       method: 'SINGLE',
       mode: 'FULL',
-      onlyHepsiburada: true,
-      hasHepsiburada: true,
+      onlyHepsiburada: false,
+      hasHepsiburada: false,
       supportsPendingApproval: true
-    }).showOptionsSection).toBe(false)
+    })).toEqual({ showUpdateExisting: true, showHepsiburadaReadOnlyNote: false, showArchived: true, showPendingApproval: false, showOptionsSection: true })
+  })
+
+  it('keeps Hepsiburada single products read only: no update choices, the archive choice stays', () => {
+    const visibility = productImportOptionVisibility({ method: 'SINGLE', mode: 'FULL', onlyHepsiburada: true, hasHepsiburada: true, supportsPendingApproval: false })
+    expect(visibility.showUpdateExisting).toBe(false)
+    expect(visibility.showArchived).toBe(true)
   })
 
   it('keeps the Trendyol option-only repair free of unrelated import switches', () => {

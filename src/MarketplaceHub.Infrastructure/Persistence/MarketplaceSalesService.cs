@@ -1472,7 +1472,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             updateStock = false;
             optionsOnly = false;
         }
-        var priceStockAllowed = (full || existingOnly) && !newOnly && !mappingOnly && !optionsOnly && !string.Equals(platform, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "N11", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PTTAVM", StringComparison.OrdinalIgnoreCase);
+        // A single product looked up by its code may take its marketplace price and stock too (owner, 5 Nov 2026).
+        var priceStockAllowed = (full || existingOnly || !string.IsNullOrWhiteSpace(productLookup)) && !newOnly && !mappingOnly && !optionsOnly && !string.Equals(platform, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "N11", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PAZARAMA", StringComparison.OrdinalIgnoreCase) && !string.Equals(platform, "PTTAVM", StringComparison.OrdinalIgnoreCase);
         updatePrices = updatePrices && priceStockAllowed;
         updateStock = updateStock && priceStockAllowed;
         var type = MarketplaceJobTypes.ForPlatform(platform, MarketplaceJobTypes.ProductSync);
