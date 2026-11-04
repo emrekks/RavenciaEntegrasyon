@@ -643,7 +643,7 @@ function VariantFilterDropdown({
     {open && <div className="variant-filter-dropdown-menu" style={menuStyle} role="listbox" aria-label={`${group.name} filtre değerleri`}>
       <div className="variant-filter-dropdown-tools">
         <input ref={touchScreen ? undefined : focusOnMount} value={search} onChange={event => setSearch(event.target.value)} placeholder="Değer ara..." aria-label={`${group.name} değerlerinde ara`} />
-        <button type="button" className="variant-filter-clear-selection" onClick={onClear} disabled={selected.length === 0} tabIndex={selected.length === 0 ? -1 : undefined} aria-hidden={selected.length === 0 ? true : undefined}>Seçimi Temizle</button>
+        <button type="button" className="variant-filter-clear-selection" onClick={onClear} disabled={selected.length === 0} tabIndex={selected.length === 0 ? -1 : undefined} aria-hidden={selected.length === 0 ? true : undefined} aria-label="Seçimi Temizle" title="Seçimi Temizle"><UiIcon name="close" /></button>
       </div>
       <div className="variant-filter-dropdown-options">
         {filteredValues.length ? filteredValues.map(value => {
