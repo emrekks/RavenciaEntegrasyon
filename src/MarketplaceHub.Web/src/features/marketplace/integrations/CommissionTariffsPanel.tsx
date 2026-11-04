@@ -2,13 +2,14 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Chang
 import { DateRangePicker } from '../../../shared/DateRangePicker'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
-import { Busy, ErrorBox, TitleHint, UiIcon, useConfirmDialog } from '../../../shared/components'
+import { Busy, ErrorBox, StickyActionBar, TitleHint, UiIcon, useConfirmDialog } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues, ImageLightboxModal } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import { kurus, onCost, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
 import { useDismissable } from '../../../shared/hooks/useDismissable'
+import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import '../commission-tariffs.css'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
@@ -440,7 +441,9 @@ export const modelsPerView = 25
 // Which rows the list shows: by the band their price is in now, and whether their cost is entered.
 export type TariffFilter = { tier: '' | '1' | '2' | '3' | '4'; cost: '' | 'with' | 'without'; name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string; sort?: TariffSort; dir?: 'asc' | 'desc'
   // Fiyat Aralığı: a band and what its price leaves after commission and cost, in lira and as a share of the price.
-  profitTier?: '' | '1' | '2' | '3' | '4'; minProfit?: string; maxProfit?: string; minShare?: string; maxShare?: string }
+  profitTier?: '' | '1' | '2' | '3' | '4'; minProfit?: string; maxProfit?: string; minShare?: string; maxShare?: string
+  // The phone's search box: the name, barcode, seller SKU and model code at once (the server's search).
+  search?: string }
 export const noFilter: TariffFilter = { tier: '', cost: '', name: '', barcode: '', model: '', minStock: '', maxStock: '', category: '', brand: '' }
 // A header's order: by name, by the current price, or by what a band leaves.
 export type TariffSort = 'name' | 'price' | 'tier1' | 'tier2' | 'tier3' | 'tier4'
@@ -470,6 +473,7 @@ export function filterQuery(filter: TariffFilter): Record<string, string> {
     if (ranged) query.profitTier = filter.profitTier
   }
   if (filter.sort) { query.sort = filter.sort; query.dir = filter.dir ?? 'asc' }
+  if (filter.search?.trim()) query.search = filter.search.trim()
   return query
 }
 
@@ -501,6 +505,29 @@ export function FilterActions({ onClear }: { onClear: () => void }) {
   </div>
 }
 
+// Phones: the filter card and the Toplu Seçim popover open as bottom sheets over a dimmed page (the scrim closes them),
+// a grab handle and their title on top; on wider screens the scrim and the head are not shown.
+export const phoneQuery = '(max-width: 760px)'
+export function SheetScrim({ onClose }: { onClose: () => void }) {
+  return <span className="commission-sheet-scrim" aria-hidden="true" onClick={event => { event.stopPropagation(); onClose() }} />
+}
+export function SheetHead({ title }: { title: string }) {
+  return <span className="commission-sheet-head" aria-hidden="true"><i className="commission-sheet-grab" /><b>{title}</b></span>
+}
+
+// The phone's search box over a list: the list follows the typing after a short pause.
+export function PhoneSearch({ value, onSearch }: { value: string; onSearch: (value: string) => void }) {
+  const [text, setText] = useState(value)
+  const latest = useRef(onSearch)
+  useEffect(() => { latest.current = onSearch })
+  useEffect(() => {
+    if (text === value) return undefined
+    const timer = window.setTimeout(() => latest.current(text), 350)
+    return () => window.clearTimeout(timer)
+  }, [text, value])
+  return <input type="search" className="commission-search" aria-label="Ürün ara" placeholder="Ürün, barkod veya model kodu" value={text} onChange={event => setText(event.target.value)} />
+}
+
 // Which products the list shows: the fields are typed first and applied with Filtrele (Enter too); Temizle
 // empties them and shows every product again.
 function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets: { categories: string[]; brands: string[] } | undefined; onApply: (filter: TariffFilter) => void }) {
@@ -511,13 +538,16 @@ function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets
   const activeCount = [value.name, value.barcode, value.model, value.minStock || value.maxStock, value.category, value.brand,
     value.profitTier ? 'tier' : '', value.sort ?? ''].filter(Boolean).length
   const apply = (event?: FormEvent) => { event?.preventDefault(); onApply(draft); setOpen(false) }
-  const clear = () => { setDraft(noFilter); onApply(noFilter); setOpen(false) }
+  // Temizle empties the fields; the phone's search box keeps its text.
+  const clear = () => { setDraft(noFilter); onApply(value.search ? { ...noFilter, search: value.search } : noFilter); setOpen(false) }
   const noFacts = facets !== undefined && facets.categories.length === 0 && facets.brands.length === 0
   return <div className="commission-filter-wrap">
     <button type="button" className="secondary commission-filter-toggle" aria-expanded={open} onClick={() => setOpen(current => !current)}>
       <UiIcon name="filter" />Filtre{activeCount > 0 && <em>{activeCount}</em>}
     </button>
+    {open && <SheetScrim onClose={() => setOpen(false)} />}
   <form className={`commission-filters is-collapsible${open ? ' is-open' : ''}`} onSubmit={apply} aria-label="Ürün filtreleri">
+    <SheetHead title="Filtre" />
     <FilterField label="Ürün Adı"><input type="search" value={draft.name} onChange={set('name')} /></FilterField>
     <FilterField label="Barkod"><input type="search" value={draft.barcode} onChange={set('barcode')} /></FilterField>
     <FilterField label="Model Kodu"><input type="search" value={draft.model} onChange={set('model')} /></FilterField>
@@ -542,9 +572,9 @@ function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets
 }
 
 // A column's header with its order beside it: up (A–Z, low to high), down, then none. A band orders by what it leaves.
-function SortHeader({ label, sort, filter, onFilter }: { label: string; sort: TariffSort; filter: TariffFilter; onFilter: (filter: TariffFilter) => void }) {
+function SortHeader({ label, sort, filter, onFilter, className }: { label: string; sort: TariffSort; filter: TariffFilter; onFilter: (filter: TariffFilter) => void; className?: string }) {
   const on = filter.sort === sort ? filter.dir ?? 'asc' : null
-  return <th scope="col" aria-sort={on === 'asc' ? 'ascending' : on === 'desc' ? 'descending' : 'none'}>
+  return <th scope="col" className={className} aria-sort={on === 'asc' ? 'ascending' : on === 'desc' ? 'descending' : 'none'}>
     <button type="button" className={`commission-sort${on ? ' is-on' : ''}`} onClick={() => onFilter(nextSort(filter, sort))}
       title={on === null ? 'Artan sırala' : on === 'asc' ? 'Azalan sırala' : 'Sıralamayı kaldır'}>
       {label}<span aria-hidden="true">{on === 'asc' ? '↑' : on === 'desc' ? '↓' : '↕'}</span>
@@ -582,7 +612,9 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
     <button type="button" className={`commission-bulk-trigger${active ? ' is-active' : ''}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen(value => !value)}>
       {active && <em>Filtre Aktif</em>}Toplu Seçim <UiIcon name="chevronDown" size={14} />
     </button>
+    {open && <SheetScrim onClose={() => setOpen(false)} />}
     {open && <div className="commission-bulk-popover" role="dialog" aria-label="Toplu seçim">
+      <SheetHead title="Toplu Seçim" />
       <label><span>Kolon</span>
         <select value={column} onChange={event => setColumn(event.target.value)}>
           <option value="">Kolon Seçimi</option>
@@ -702,6 +734,9 @@ function writeTableZoom(value: number) { try { localStorage.setItem(tableZoomKey
 
 function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading, error, onRetry, filter, onFilter, page, pageCount, onPage, onMessage, saved, partnerSaved }: TariffPlanProps & { saved: TariffSelection; partnerSaved?: TariffSelection }) {
   const [picks, setPicks] = useState<Map<string, TariffPick>>(() => selectionState(saved).picks)
+  // Phones show each product as a card (its bands a row of cards that slides sideways) instead of the wide table; the
+  // picks, the filter and the saves are the same state either way.
+  const phone = useMediaQuery(phoneQuery)
   // The table's size (100 % to 70 %), kept for this browser, so more of the wide band table fits the screen.
   const [tableZoom, setTableZoom] = useState(readTableZoom)
   // The pick for every row, set in the Toplu Seçim popover.
@@ -836,39 +871,178 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   const conditionText = applied.minRate !== null ? `, kâr oranı %${applied.minRate.toLocaleString('tr-TR')} üstü` : applied.minAmount !== null ? `, kâr ${money(applied.minAmount)} üstü`
     : applied.maxRate != null ? `, kâr oranı %${applied.maxRate.toLocaleString('tr-TR')} altı` : applied.maxAmount != null ? `, kâr ${money(applied.maxAmount)} altı` : ''
   const summary = bulkOn ? `${bulkLabel(applied)} tüm ürünlerde${conditionText}${picks.size ? `; ${picks.size.toLocaleString('tr-TR')} ürün elle değişti` : ''}` : `${ownPicks.toLocaleString('tr-TR')} ürün seçildi`
+  const savingNote = savingStatus === 'saving' ? <small> · Kaydediliyor…</small> : savingStatus === 'error' ? <small className="commission-warn"> · Seçimler kaydedilemedi</small> : null
+  const downloadButton = <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0 && !manyPeriods) || download.isPending} onClick={() => download.mutate()}>
+    <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}
+  </button>
+
+  // What a variant shows, in the table and on a phone alike: its own pick, the band it counts as picked, a note when the
+  // 7-day view's second period is picked otherwise, and the bands leaving the most.
+  const rowState = (row: CommissionTariffRow) => {
+    const pick = picks.get(row.id)
+    const chosen = pickedTier(row, pick, applied)
+    // In the 7-day view, a product picked differently in the second period (on its own tab) says so.
+    const other = partner ? partnerBy.get(row.barcode) : undefined
+    const otherChosen = other ? pickedTier(other, partnerPicks.get(other.id), partnerBulk) : chosen
+    const differs = partner && other && otherChosen !== chosen
+      ? <small className="commission-warn">{periodName(partner)} seçimi farklı: {otherChosen === null ? 'seçilmedi' : otherChosen === 'own' ? 'kendi fiyatı' : `${otherChosen}. fiyat aralığı`}</small> : null
+    const best = bestTiers(tiers.map(tier => [tier, tierProfit([row], tier)]))
+    return { pick, chosen, differs, best }
+  }
+  // Over a model, a band's profit is the most its variants leave in it (the top of the badge's range).
+  const modelBest = (group: CommissionTariffRow[]) => bestTiers(tiers.map(tier => [tier, tierProfit(group.filter(row => row.choices?.some(item => item.tier === tier)), tier)]))
+  // On a phone a band's card is headed by its number, and the band the price is in now is tagged Şu An.
+  const phoneHead = (tier: number, current: boolean) => <>
+    <span className="commission-seg-n">{tier}. Aralık</span>
+    {current && <em className="commission-now-tag">Şu An</em>}
+  </>
+  // A variant's band as a card to pick: a table cell's, or one of a phone card's row. Null when the row has no such band.
+  const variantChoice = (row: CommissionTariffRow, tier: number, chosen: number | 'own' | null, best: Set<number>, onPhone = false) => {
+    const choice = row.choices?.find(item => item.tier === tier)
+    if (!choice) return null
+    const band = row.bands.find(item => item.tier === tier)
+    const picked = chosen === tier
+    const current = onPhone && row.currentTier === tier
+    return <div key={tier} className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}${current ? ' is-current' : ''}`}>
+      {onPhone && phoneHead(tier, current)}
+      {best.has(tier) && <i className="commission-best" role="img" title="En kârlı aralık" aria-label="En kârlı aralık">★</i>}
+      {/* The card's headline is its band limit; the price the row would get stays in the badge's breakdown. */}
+      <strong title={bandLimitHint([band])}>{bandLimitText([band]) ?? money(choice.price)}</strong>
+      {partner ? weekLines([row], tier, `${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`) : <>
+        <span>{rateText(choice.rate)} komisyon</span>
+        <ProfitBadge price={choice} compact={!onPhone} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`} tag={`${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
+      </>}
+      <button type="button" className="commission-switch" aria-pressed={picked} aria-label={onPhone ? `${tier}. Fiyat Aralığı ${picked ? 'seçili' : 'seç'}` : undefined} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>
+    </div>
+  }
+  // A model's band over all its variants: picking it picks the band for every variant that has it (Tüm Varyantlarını Seç).
+  const modelChoice = (group: CommissionTariffRow[], first: CommissionTariffRow, tier: number, best: Set<number>, onPhone = false) => {
+    const choices = group.flatMap(row => row.choices?.filter(item => item.tier === tier) ?? [])
+    if (!choices.length) return null
+    const owners = group.filter(row => row.choices?.some(item => item.tier === tier))
+    const all = owners.every(row => pickedTier(row, picks.get(row.id), applied) === tier)
+    const rates = [...new Set(choices.map(item => item.rate))]
+    const lefts = choices.flatMap(item => item.remaining === null ? [] : [item.remaining])
+    // The badge shows and opens the variant leaving the most; when the variants differ, its breakdown names it.
+    const most = mostProfit(choices)
+    const mostRow = most && group.find(row => row.choices?.includes(most))
+    const ranged = lefts.length > 0 && Math.min(...lefts) !== Math.max(...lefts)
+    const current = onPhone && group.some(row => row.currentTier === tier)
+    return <div key={tier} className={`commission-choice is-model${all ? ' is-picked' : ''}${!most ? ' is-unknown' : most.remaining! < 0 ? ' is-loss' : ''}${current ? ' is-current' : ''}`}>
+      {onPhone && phoneHead(tier, current)}
+      {best.has(tier) && <i className="commission-best" role="img" title="En kârlı aralık (bedenlerin en yüksek kârına göre)" aria-label="En kârlı aralık">★</i>}
+      <strong title={bandLimitHint(owners.map(row => row.bands.find(item => item.tier === tier)))}>{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier))) ?? priceRange(choices.map(item => item.price))}</strong>
+      {partner ? weekLines(owners, tier, first.productName ?? first.barcode) : <>
+        <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
+        <ProfitBadge price={most ?? choices[0]} compact={!onPhone} title={first.productName ?? first.barcode} tag={`${tier}. Fiyat Aralığı`}
+          aside={ranged ? `En çok kâr bırakan beden: ${mostRow?.size ?? mostRow?.barcode ?? '—'} · bedenlerde ${amountRange(lefts)}` : undefined} missing="Maliyet girilmemiş" />
+      </>}
+      {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın kârı hesaplanamadı</small>}
+      <button type="button" className="commission-switch" aria-pressed={all} aria-label={`${tier}. Fiyat Aralığı: ${all ? 'tüm varyantlar seçili' : 'tüm varyantlarını seç'}`} title={all ? undefined : 'Tüm Varyantlarını Seç'} onClick={() => pickModel(owners, tier, all)}><span />{all ? 'Tümü Seçili' : onPhone ? 'Tüm Varyantlarını Seç' : 'Tüm Varyantlar'}</button>
+    </div>
+  }
+  // Kendi Fiyatın as the last card of a phone card's row.
+  const ownCard = (content: ReactNode) => <div className="commission-choice commission-own-card"><span className="commission-seg-n">Kendi Fiyatın</span>{content}</div>
+  const unmatchedNote = <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>
+  const costText = (row: CommissionTariffRow) => row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'
+  const nowRate = (rows: CommissionTariffRow[]) => {
+    const rates = [...new Set(rows.flatMap(row => { const rate = row.currentBandRate ?? row.currentRate; return rate === null ? [] : [rate] }))]
+    return rates.length === 0 ? null : rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`
+  }
+  // A product on a phone: its picture, name, codes and stock, its price now with the rate it pays now, its bands as a row
+  // of cards that slides sideways (picking one is the table's pick), Kendi Fiyatın last; a model opens onto its sizes,
+  // each with its own price, stock and row of bands.
+  const phoneCard = ([key, group]: [string, CommissionTariffRow[]]) => {
+    const single = group.length === 1
+    const first = single ? group[0] : group.find(row => row.imageUrl) ?? group[0]
+    const open = opened.has(key)
+    const prices = group.flatMap(row => row.basisPrice === null ? [] : [row.basisPrice])
+    const stock = group.some(row => row.stock != null) ? group.reduce((sum, row) => sum + (row.stock ?? 0), 0) : null
+    const meta = [group[0].modelCode, first.color, single ? first.size : null, `Stok ${stockText(stock)}`].filter(Boolean).join(' · ')
+    const rate = nowRate(group)
+    const name = first.productName ?? first.barcode
+    const state = single ? rowState(first) : null
+    const unit = first.color ? 'beden' : 'varyant'
+    return <article key={key} className={`commission-card${(state ? state.chosen !== null : group.some(row => pickedTier(row, picks.get(row.id), applied) !== null)) ? ' is-picked' : ''}`}>
+      <div className="commission-card-head">
+        {productImage(first)}
+        <span>
+          <span className="commission-card-name">{name}</span>
+          <small>{meta}</small>
+          {single && <small className="technical-text">{first.barcode}{first.sellerSku && first.sellerSku !== first.barcode ? ` · ${first.sellerSku}` : ''} · {costText(first)}</small>}
+          {single && !first.matchesPanel && unmatchedNote}
+          {state?.differs}
+        </span>
+      </div>
+      <div className="commission-card-now">
+        <span>Güncel <b>{prices.length ? priceRange(prices) : '—'}</b></span>
+        {rate && <em>Şu an {rate}</em>}
+      </div>
+      {single && rateDisagrees(first) && <small className="commission-warn">Dosyadaki güncel komisyon {rateText(first.currentRate!)}, fiyatın bandından farklı.</small>}
+      <div className="commission-ruler" role="group" aria-label={`${name} fiyat aralıkları`}>
+        {state ? tiers.map(tier => variantChoice(first, tier, state.chosen, state.best, true)) : tiers.map(tier => modelChoice(group, first, tier, modelBest(group), true))}
+        {ownCard(state
+          ? <OwnPrice row={first} pick={state.pick} picked={state.chosen === 'own'} onPick={price => setRowPicks([first], price === null ? null : { tier: null, price })} />
+          : <ModelOwnPrice rows={group} picks={picks} onPick={price => setRowPicks(group, price === null ? null : { tier: null, price })} />)}
+      </div>
+      {!single && open && <div className="commission-sizes">
+        {group.map(row => {
+          const { pick, chosen, differs, best } = rowState(row)
+          return <div key={row.id} className="commission-size">
+            <span className="commission-size-head"><b>{row.size ?? row.productName ?? row.barcode}</b><span>{row.basisPrice === null ? '—' : money(row.basisPrice)} · Stok {stockText(row.stock)}</span></span>
+            <small className="technical-text">{row.barcode} · {costText(row)}</small>
+            {!row.matchesPanel && unmatchedNote}
+            {differs}
+            <div className="commission-ruler" role="group" aria-label={`${row.size ?? row.barcode} fiyat aralıkları`}>
+              {tiers.map(tier => variantChoice(row, tier, chosen, best, true))}
+              {ownCard(<OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setRowPicks([row], price === null ? null : { tier: null, price })} />)}
+            </div>
+          </div>
+        })}
+      </div>}
+      {!single && <button type="button" className="secondary commission-sizes-toggle" aria-expanded={open}
+        onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}>
+        {open ? (first.color ? 'Bedenleri Gizle' : 'Varyantları Gizle') : `${group.length.toLocaleString('tr-TR')} ${unit === 'beden' ? 'Bedeni' : 'Varyantı'} Ayrı Seç`}
+      </button>}
+    </article>
+  }
 
   return <div className="commission-rows">
     <div className="commission-rows-head">
       <strong>{partner ? `${weekTabLabel([tariff, partner])} · ${periodName(tariff)} ve ${periodName(partner)} Bantları` : `${tariff.periodLabel?.trim() ? `${tariff.periodLabel.trim()} · ` : ''}${tariff.periodText} Bantları`}{partner ? <TitleHint label="Bantlar">Bant sınırları iki dönemde aynı, komisyon oranları farklı. Her kartta iki dönemin komisyonu ve kârı ile gün sayısına göre ağırlıklı ({periodDays(tariff)}/{periodDays(tariff) + periodDays(partner)} ve {periodDays(partner)}/{periodDays(tariff) + periodDays(partner)}) ortalama kâr görünür. Burada yaptığınız seçim iki döneme birden kaydedilir; Excel İndir bu ürünlere “{periodDays(tariff) + periodDays(partner)} Günlük Fiyat” yazar. Toplu Seçim’in kâr koşulu her dönemde ayrı uygulanır; koşulu yalnız bir dönemde sağlayan ürüne o dönemin fiyatı yazılır.</TitleHint> : manyPeriods ? <TitleHint label="Bantlar">Seçimler her dönem için ayrı kaydedilir. Excel İndir tüm dönemlerin seçimlerini Trendyol dosyasına birlikte yazar: iki dönemde aynı fiyatı seçtiğiniz ürüne “7 Günlük Fiyat”, tek dönemde seçtiğiniz ürüne o dönemin fiyatı yazılır. Bir ürüne iki dönemde farklı fiyat seçtiyseniz dosya ürün başına tek fiyat taşıdığı için Excel’i indirdiğiniz sekmenin ({openName}) fiyatı yazılır.</TitleHint> : null}</strong>
     </div>
+    {/* Phones: the search over the whole width, Filtre and Toplu Seçim under it, each opening as a bottom sheet. */}
+    {phone ? <div className="commission-phone-toolbar">
+      <PhoneSearch value={filter.search ?? ''} onSearch={search => onFilter({ ...filter, search })} />
+      <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} onApply={onFilter} />
+      <BulkPicker bulk={bulk} onApply={applyBulk} onClearColumn={clearColumn} onClearAll={clearAll} />
+    </div> : <>
     {/* Which products the list shows. */}
     <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} onApply={onFilter} />
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
-      <span className="commission-plan-count" role="status">{summary}{savingStatus === 'saving' ? <small> · Kaydediliyor…</small> : savingStatus === 'error' ? <small className="commission-warn"> · Seçimler kaydedilemedi</small> : null}</span>
+      <span className="commission-plan-count" role="status">{summary}{savingNote}</span>
       <label className="commission-zoom"><span>Tablo Boyutu</span><select aria-label="Tablo boyutu" value={tableZoom} onChange={event => { const next = Number(event.target.value); setTableZoom(next); writeTableZoom(next) }}>
         {tableZoomSteps.map(step => <option key={step} value={step}>%{step}</option>)}</select></label>
       <BulkPicker bulk={bulk} onApply={applyBulk} onClearColumn={clearColumn} onClearAll={clearAll} />
-      <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0 && !manyPeriods) || download.isPending} onClick={() => download.mutate()}>
-        <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}
-      </button>
+      {downloadButton}
     </div>
+    </>}
     {loading && <Busy />}
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
     {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
-    {rows && rows.items.length > 0 && <div ref={tableTop} className="commission-table-wrap" style={tableZoom === 100 ? undefined : { zoom: tableZoom / 100 }}><table className={`commission-table is-plan${partner ? ' is-week' : ''}`}>
-      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><th scope="col" className="commission-stock">Stok</th><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Fiyat Aralığı`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
+    {phone && rows && rows.items.length > 0 && <div ref={tableTop} className="commission-cards">{shownGroups.map(phoneCard)}</div>}
+    {/* Phones: the count and Excel İndir in a bar on the screen's bottom edge, joining the last card at the list's end. */}
+    {phone && <StickyActionBar label="Seçimler" className="commission-phone-bar">
+      <span className="commission-plan-count" role="status">{summary}{savingNote}</span>
+      {downloadButton}
+    </StickyActionBar>}
+    {!phone && rows && rows.items.length > 0 && <div ref={tableTop} className="commission-table-wrap" style={tableZoom === 100 ? undefined : { zoom: tableZoom / 100 }}><table className={`commission-table is-plan${partner ? ' is-week' : ''}`}>
+      <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} className="commission-now-col" />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Fiyat Aralığı`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
       <tbody>{shownGroups.map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
         const variantRow = (row: CommissionTariffRow, nested: boolean) => {
-          const pick = picks.get(row.id)
-          const chosen = pickedTier(row, pick, applied)
-          // In the 7-day view, a product picked differently in the second period (on its own tab) says so.
-          const other = partner ? partnerBy.get(row.barcode) : undefined
-          const otherChosen = other ? pickedTier(other, partnerPicks.get(other.id), partnerBulk) : chosen
-          const differs = partner && other && otherChosen !== chosen
-            ? <small className="commission-warn">{periodName(partner)} seçimi farklı: {otherChosen === null ? 'seçilmedi' : otherChosen === 'own' ? 'kendi fiyatı' : `${otherChosen}. fiyat aralığı`}</small> : null
-          const best = bestTiers(tiers.map(tier => [tier, tierProfit([row], tier)]))
+          const { pick, chosen, differs, best } = rowState(row)
           return <tr key={row.id} className={`${nested ? 'is-variant' : ''}${chosen !== null ? ' is-picked' : ''}`.trim() || undefined}>
             <td className="commission-expand" />
             <th scope="row">{nested
@@ -876,6 +1050,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
                 <span className="commission-product">{row.size ?? row.productName ?? row.barcode}</span>
                 <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
                 <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
+                <small className="commission-stock-line">Stok {stockText(row.stock)}</small>
                 {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
                 {differs}
               </span>
@@ -885,32 +1060,18 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
                   <span className="commission-product">{row.productName ?? row.barcode}{row.size ? ` · ${row.size}` : ''}</span>
                   <small className="technical-text">{row.barcode}{row.sellerSku && row.sellerSku !== row.barcode ? ` · ${row.sellerSku}` : ''}</small>
                   <small>{row.costPrice ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</small>
+                  <small className="commission-stock-line">Stok {stockText(row.stock)}</small>
                   {!row.matchesPanel && <small className="commission-unmatched">Panelde bu barkodla ürün yok</small>}
                   {differs}
                 </span>
               </span>}</th>
-            <td className="commission-stock">{stockText(row.stock)}</td>
-            <td>
+            <td className="commission-now-col">
               <span className="commission-price">{row.basisPrice === null ? '—' : money(row.basisPrice)}</span>
               {rateDisagrees(row) && <small className="commission-warn" title="Pazaryerinin dosyadaki güncel komisyonu, fiyatın bandından farklı.">Dosyada {rateText(row.currentRate!)}</small>}
             </td>
             {tiers.map(tier => {
-              const choice = row.choices?.find(item => item.tier === tier)
-              if (!choice) return <td key={tier} className="commission-choice-none">—</td>
-              const band = row.bands.find(item => item.tier === tier)
-              const picked = chosen === tier
-              return <td key={tier}>
-                <div className={`commission-choice${picked ? ' is-picked' : ''}${choice.remaining === null ? ' is-unknown' : choice.remaining < 0 ? ' is-loss' : ''}`}>
-                  {best.has(tier) && <i className="commission-best" role="img" title="En kârlı aralık" aria-label="En kârlı aralık">★</i>}
-                  {/* The card's headline is its band limit; the price the row would get stays in the badge's breakdown. */}
-                  <strong title={bandLimitHint([band])}>{bandLimitText([band]) ?? money(choice.price)}</strong>
-                  {partner ? weekLines([row], tier, `${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`) : <>
-                    <span>{rateText(choice.rate)} komisyon</span>
-                    <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`} tag={`${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
-                  </>}
-                  <button type="button" className="commission-switch" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>
-                </div>
-              </td>
+              const card = variantChoice(row, tier, chosen, best)
+              return card ? <td key={tier}>{card}</td> : <td key={tier} className="commission-choice-none">—</td>
             })}
             <td><OwnPrice row={row} pick={pick} picked={chosen === 'own'} onPick={price => setRowPicks([row], price === null ? null : { tier: null, price })} /></td>
           </tr>
@@ -919,8 +1080,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
         const first = group.find(row => row.imageUrl) ?? group[0]
         const open = opened.has(key)
         const prices = group.flatMap(row => row.basisPrice === null ? [] : [row.basisPrice])
-        // Over a model, a band's profit is the most its variants leave in it (the top of the badge's range).
-        const best = bestTiers(tiers.map(tier => [tier, tierProfit(group.filter(row => row.choices?.some(item => item.tier === tier)), tier)]))
+        const best = modelBest(group)
         // The model's row: its picture, name and code, how many variants it has, and each band over all of them.
         return <Fragment key={key}>
           <tr className="is-model">
@@ -931,35 +1091,14 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
               <span>
                 <span className="commission-product">{first.productName ?? first.barcode}</span>
                 <small className="technical-text">{group[0].modelCode}{first.color ? ` · ${first.color}` : ''}</small>
+                <small className="commission-stock-line">Stok {stockText(group.some(row => row.stock != null) ? group.reduce((sum, row) => sum + (row.stock ?? 0), 0) : null)}</small>
                 <small className="commission-model-count">{group.length.toLocaleString('tr-TR')} {first.color ? 'beden' : 'varyant'}</small>
               </span>
             </span></th>
-            <td className="commission-stock">{stockText(group.some(row => row.stock != null) ? group.reduce((sum, row) => sum + (row.stock ?? 0), 0) : null)}</td>
-            <td><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span></td>
+            <td className="commission-now-col"><span className="commission-price">{prices.length ? priceRange(prices) : '—'}</span></td>
             {tiers.map(tier => {
-              const choices = group.flatMap(row => row.choices?.filter(item => item.tier === tier) ?? [])
-              if (!choices.length) return <td key={tier} className="commission-choice-none">—</td>
-              const owners = group.filter(row => row.choices?.some(item => item.tier === tier))
-              const all = owners.every(row => pickedTier(row, picks.get(row.id), applied) === tier)
-              const rates = [...new Set(choices.map(item => item.rate))]
-              const lefts = choices.flatMap(item => item.remaining === null ? [] : [item.remaining])
-              // The badge shows and opens the variant leaving the most; when the variants differ, its breakdown names it.
-              const most = mostProfit(choices)
-              const mostRow = most && group.find(row => row.choices?.includes(most))
-              const ranged = lefts.length > 0 && Math.min(...lefts) !== Math.max(...lefts)
-              return <td key={tier}>
-                <div className={`commission-choice is-model${all ? ' is-picked' : ''}${!most ? ' is-unknown' : most.remaining! < 0 ? ' is-loss' : ''}`}>
-                  {best.has(tier) && <i className="commission-best" role="img" title="En kârlı aralık (bedenlerin en yüksek kârına göre)" aria-label="En kârlı aralık">★</i>}
-                  <strong title={bandLimitHint(owners.map(row => row.bands.find(item => item.tier === tier)))}>{bandLimitText(owners.map(row => row.bands.find(item => item.tier === tier))) ?? priceRange(choices.map(item => item.price))}</strong>
-                  {partner ? weekLines(owners, tier, first.productName ?? first.barcode) : <>
-                    <span>{rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`} komisyon</span>
-                    <ProfitBadge price={most ?? choices[0]} title={first.productName ?? first.barcode} tag={`${tier}. Fiyat Aralığı`}
-                      aside={ranged ? `En çok kâr bırakan beden: ${mostRow?.size ?? mostRow?.barcode ?? '—'} · bedenlerde ${amountRange(lefts)}` : undefined} missing="Maliyet girilmemiş" />
-                  </>}
-                  {lefts.length > 0 && lefts.length < choices.length && <small>{(choices.length - lefts.length).toLocaleString('tr-TR')} varyantın kârı hesaplanamadı</small>}
-                  <button type="button" className="commission-switch" aria-pressed={all} onClick={() => pickModel(owners, tier, all)}><span />{all ? 'Tümü Seçili' : 'Tüm Varyantlarını Seç'}</button>
-                </div>
-              </td>
+              const card = modelChoice(group, first, tier, best)
+              return card ? <td key={tier}>{card}</td> : <td key={tier} className="commission-choice-none">—</td>
             })}
             <td><ModelOwnPrice rows={group} picks={picks} onPick={price => setRowPicks(group, price === null ? null : { tier: null, price })} /></td>
           </tr>
@@ -1000,6 +1139,6 @@ function OwnPrice({ row, pick, picked, onPick }: { row: CommissionTariffRow; pic
   return <div className={`commission-own${picked ? ' is-picked' : ''}`}>
     <input type="text" inputMode="decimal" placeholder="Fiyat girin" value={text} aria-label={`${row.productName ?? row.barcode} için kendi fiyatın`}
       onChange={event => { setText(event.target.value); onPick(parse(event.target.value)) }} />
-    {text.trim() !== '' && (choice ? <small>{choice.tier}. fiyat aralığı · {rateText(choice.rate)}<ProfitBadge price={choice} title={row.productName ?? row.barcode} tag="Kendi Fiyatın" missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} /></small> : <small className="commission-warn">Hiçbir fiyat aralığına düşmüyor</small>)}
+    {text.trim() !== '' && (choice ? <small>{choice.tier}. fiyat aralığı · {rateText(choice.rate)}<ProfitBadge price={choice} compact title={row.productName ?? row.barcode} tag="Kendi Fiyatın" missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} /></small> : <small className="commission-warn">Hiçbir fiyat aralığına düşmüyor</small>)}
   </div>
 }
