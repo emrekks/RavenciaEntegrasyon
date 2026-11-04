@@ -652,8 +652,8 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-invcell .rr-m,
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-invcell .rr-reason-tip { max-width: 100%; min-width: 0; }
 }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-buyer-inline { color: var(--rr-muted); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-buyer-inline b { color: var(--rr-subtle); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-buyer-inline { color: var(--rr-ink); font-weight: 600; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-buyer-inline b { color: var(--rr-muted); font-weight: 400; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-prod { width: 27%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-status { width: 13%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-no-buyer col.rr-c-act { width: 13%; }
