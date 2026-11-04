@@ -16,6 +16,15 @@
   :root .app-shell.stitch-shell main :is(.rv-page-head, .rr-ph, .page-heading, .qi-head) { gap: var(--m-gap) !important; }
   :root .app-shell.stitch-shell main .product-add-page :is(.product-layout-grid, .product-main-stack, .product-side-stack, .attribute-builder-list) { gap: var(--m-gap) !important; row-gap: var(--m-gap) !important; }
 
+  /* A page heading has no divider and no padding under it, and the page's blocks carry no margin of their own: the one
+     gap above is all that separates them (Ürünler, Promosyon, Raporlar, Ürün Soruları used to add 12-69px more). */
+  :root .app-shell.stitch-shell main section.content > .page-heading { margin: 0 !important; padding-bottom: 0 !important; border-bottom: 0 !important; }
+  :root .app-shell.stitch-shell main section.content:is(.rr-products, .reports-page, .rv-questions-page) { display: grid; align-content: start; grid-auto-rows: auto; }
+  :root .app-shell.stitch-shell main section.content:is(.rr-products, .reports-page, .rv-questions-page) > * { margin-block: 0 !important; }
+  :root .app-shell.stitch-shell main section.content.rr-products > .rr-fshell { padding-block: 0 !important; }
+  :root .app-shell.stitch-shell main section.content.reports-page .reports-tariffs { gap: var(--m-gap) !important; }
+  :root .app-shell.stitch-shell main section.content.rv-questions-page > :is(.qi-sync, .qi-inbox, .qi-head) { margin: 0 !important; padding-bottom: 0; }
+
   /* Metric tiles */
   :root .app-shell.stitch-shell main :is(.rr-metrics > *, .invoice-reference-metrics > article) { padding: 10px var(--m-pad) !important; }
 

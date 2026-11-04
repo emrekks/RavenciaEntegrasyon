@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { loadAllPages } from '../../shared/api'
@@ -29,6 +30,14 @@ export function PromotionsPage() {
   const [params, setParams] = useSearchParams()
   const section = sectionOf(params.get('tab'))
   const connections = useQuery({ queryKey: ['connections', 'promotions'], queryFn: () => loadAllPages<Connection>('/connections') })
+  const tabsRef = useRef<HTMLDivElement>(null)
+  // On a phone the tabs slide sideways: the open one is brought into view (sideways only, the page does not move).
+  useEffect(() => {
+    const row = tabsRef.current
+    const on = row?.querySelector<HTMLElement>('[aria-pressed="true"]')
+    if (!row || !on || row.scrollWidth <= row.clientWidth) return
+    row.scrollTo({ left: row.scrollLeft + on.getBoundingClientRect().left - row.getBoundingClientRect().left - (row.clientWidth - on.offsetWidth) / 2, behavior: 'auto' })
+  }, [section, connections.data])
   const stores = promotionStores(connections.data?.items ?? [])
   const store = stores.find(item => item.id === params.get('store')) ?? stores[0]
   const go = (next: { tab?: Section; store?: string }) => {
@@ -59,7 +68,7 @@ export function PromotionsPage() {
           </select>
         </label>}
       </div>
-      <div className="reports-segmented reports-promotion-tabs" role="group" aria-label="Promosyon sayfaları">
+      <div ref={tabsRef} className="reports-segmented reports-promotion-tabs" role="group" aria-label="Promosyon sayfaları">
         {sections.map(([key, label]) => <button key={key} type="button" aria-pressed={key === section} onClick={() => go({ tab: key })}>{label}</button>)}
       </div>
       {section === 'TARIFF' ? <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />

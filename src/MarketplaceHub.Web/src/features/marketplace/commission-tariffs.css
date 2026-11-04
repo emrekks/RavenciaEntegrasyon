@@ -271,9 +271,28 @@
    is shown on the icon instead. */
 .app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand > .commission-model-toggle:active { scale: none; }
 .app-shell.stitch-shell main .commission-tariffs .commission-table td.commission-expand > .commission-model-toggle:active svg { scale: var(--rv-motion-press); }
-/* On a phone the Toplu Seçim popover opens under the whole plan bar, inside the page's gutters. */
+/* Phones: Toplu Seçim opens as a sheet from the bottom of the screen (kept in view, never detached over the table). */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .commission-tariffs .commission-plan-bar { position: relative; }
-  .app-shell.stitch-shell main .commission-tariffs .commission-bulk { position: static; }
-  .app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover { right: 0; left: 0; width: auto; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-bulk-popover { position: fixed; z-index: 901; top: auto; right: 0; bottom: 0; left: 0; box-sizing: border-box; width: auto; max-height: 86dvh; overflow-y: auto; padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px)); border-bottom: 0; border-radius: 14px 14px 0 0; box-shadow: 0 -12px 40px rgb(0 0 0 / 28%); }
+}
+
+/* Phones: the band table's filter card hides behind a Filtre button (the number of filters applied beside it) and opens
+   as a block under it; on wider screens the toggle is gone and the card stays open. */
+.app-shell.stitch-shell main .commission-tariffs .commission-filter-toggle { display: none; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .commission-tariffs .commission-filter-wrap { display: grid; gap: var(--m-gap, 10px); }
+  .app-shell.stitch-shell main .commission-tariffs .commission-filter-toggle { display: inline-flex; align-items: center; justify-content: center; justify-self: start; gap: 6px; box-sizing: border-box; min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 500; text-transform: none; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-filter-toggle[aria-expanded='true'] { color: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+  .app-shell.stitch-shell main .commission-tariffs .commission-filter-toggle em { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; color: #fff; background: var(--rv-color-primary-fill); border-radius: 12px; font-size: 11px; font-style: normal; font-weight: 700; line-height: 1; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-filters.is-collapsible:not(.is-open) { display: none; }
+}
+
+/* Phones: a period card in edit mode keeps its form inside, full width under the actions, and fits its content. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .commission-tariffs .commission-period { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 0; overflow: hidden; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-period-main { flex: none; min-height: 0; height: auto; align-self: start; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-period-actions { margin: 0 12px 10px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-period-edit { box-sizing: border-box; flex-basis: auto; width: 100%; min-width: 0; justify-items: stretch; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-period-edit .commission-validity { width: 100%; min-width: 0; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-period-edit-actions button { flex: 1 1 0; }
 }
