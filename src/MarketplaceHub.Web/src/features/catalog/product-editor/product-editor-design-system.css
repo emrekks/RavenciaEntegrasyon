@@ -1173,3 +1173,7 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .app-shell.stitch-shell main .product-add-page .media-preview-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); justify-content: normal; gap: 8px; }
   html body .app-shell.stitch-shell main .product-add-page .media-preview-strip > :is(.image-preview-card, .media-add-tile) { width: 100%; }
 }
+/* Phones: the variant table's head follows its frame's rounded top corners (its square background hid them). */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { border-radius: 11px 11px 0 0; }
+}
