@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { loadAllPages } from '../../shared/api'
-import { Busy, ErrorBox, TitleHint } from '../../shared/components'
+import { Busy, ErrorBox } from '../../shared/components'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
 import { PromotionOffersPanel, promotionTitles, type PromotionKind } from '../marketplace/integrations/PromotionOffersPanel'
@@ -41,7 +41,7 @@ export function PromotionsPage() {
   const sameStores = store ? stores.filter(item => item.platformCode === store.platformCode) : []
   return <section className="content reports-page promotions-page">
     <div className="page-heading reports-heading">
-      <div><p className="eyebrow">Analiz</p><h1>Promosyon Kârlılık Analizi<TitleHint label="Promosyon Kârlılık Analizi">Komisyon tarifesi bantları, Plus, Avantajlı Ürün Etiketi ve Flash fiyatlarında komisyon ve maliyet düştükten sonra ürün başına ne kaldığı.</TitleHint></h1></div>
+      <div><p className="eyebrow">Analiz</p><h1>Promosyon Kârlılık Analizi</h1></div>
     </div>
     {connections.isLoading && <Busy />}
     {connections.isError && <ErrorBox error={connections.error} onRetry={() => void connections.refetch()} />}
