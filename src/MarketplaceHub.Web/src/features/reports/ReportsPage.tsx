@@ -475,7 +475,8 @@ const kpiIcon = (item: Kpi): CardIconName => item.icon ?? kpiIcons.find(([patter
 // change's line empty, so every note starts on one line.
 // The explanation of the figure under the pointer (or the focus) opens as a card under the strip, level with its cell
 // and kept inside the strip's width; each cell keeps its explanation as text for screen readers too.
-function KpiStrip({ label, items }: { label: string; items: Kpi[] }) {
+// marks: each label carries the round question mark and the explanation opens from the label only (Hakediş).
+function KpiStrip({ label, items, marks = false }: { label: string; items: Kpi[]; marks?: boolean }) {
   const [ref, shown] = useReveal<HTMLDivElement>()
   const tip = useId()
   const [open, setOpen] = useState<{ key: string; left: number; top: number; width: number } | null>(null)
@@ -496,10 +497,11 @@ function KpiStrip({ label, items }: { label: string; items: Kpi[] }) {
       // Whole counts stay whole while they count up; money shows whole liras (the kuruş rounded) in a strip.
       const format = item.format === formatTl ? formatTlWhole : item.format ?? (Number.isInteger(item.value) ? (value: number) => formatNumber(Math.round(value)) : formatNumber)
       return <div key={item.key} className={`${missing && empty !== '—' ? 'is-missing' : ''}${item.text !== undefined ? ' is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}${open?.key === item.key ? ' is-open' : ''}`.trim() || undefined}
-        onMouseEnter={event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
+        onMouseEnter={marks ? undefined : event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
         <CardBackgroundIcon name={kpiIcon(item)} tone={item.tone === 'good' ? 'ok' : item.tone} />
         <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={id}
-          onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}</button>
+          onMouseEnter={marks ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined}
+          onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}{marks && <TipMark />}</button>
         <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && <Delta delta={item.delta} invert={item.invert} />}</span>}
         {item.note !== undefined && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
@@ -1913,7 +1915,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const dayState = (groups: PayoutGroup[]) => groups.every(group => group.status === 'PAID') ? ['Ödendi', 'is-paid'] as const
     : groups.some(group => group.status === 'PAID') ? ['Kısmen Ödendi', 'is-paid'] as const : ['Tahmini', 'is-expected'] as const
   return <div className="reports-summary reports-payouts">
-    <KpiStrip label="Hakediş özeti" items={items} />
+    <KpiStrip label="Hakediş özeti" items={items} marks />
     <p className="reports-payout-early" role="note">
       <UiIcon name="banknote" size={14} />
       {(data?.earlyPayments ?? 0) > 0 ? `Son ${data?.daysBack} günde alınan erken ödeme: ${formatTl(data?.earlyPaymentsTaken)} (${formatCount(data?.earlyPayments ?? 0)} kayıt).` : `Son ${data?.daysBack ?? 90} günde erken ödeme alınmadı.`}

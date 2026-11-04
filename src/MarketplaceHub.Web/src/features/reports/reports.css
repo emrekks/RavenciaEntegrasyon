@@ -903,3 +903,7 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-payout-chip-long { display: none; }
   .app-shell.stitch-shell main .reports-page .reports-payout-chip-short { display: inline; }
 }
+@media (max-width: 760px) {
+  /* A Hakediş figure's label wraps onto a second line instead of being cut. */
+  .app-shell.stitch-shell main .reports-page .reports-payouts .reports-kpi-label { overflow: visible; text-overflow: clip; white-space: normal; text-align: left; }
+}
