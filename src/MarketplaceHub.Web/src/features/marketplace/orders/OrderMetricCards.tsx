@@ -51,7 +51,7 @@ function Packages({ packages, units }: { packages: Metric; units: number | undef
   return <strong className="rr-metric-pk">
     <CountUp value={metricText(packages)} />
     {!packages.loading && ' '}
-    {!packages.loading && <span className="rr-metric-sub">Paket{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} Adet Ürün</>}</span>}
+    {!packages.loading && <span className="rr-metric-sub">Paket{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} <span className="rr-metric-adet">Adet </span>Ürün</>}</span>}
   </strong>
 }
 

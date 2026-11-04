@@ -68,3 +68,9 @@
   .app-shell.stitch-shell main :is(.rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, article) .rr-metric-pk .rr-metric-sub { font-size: 12px; font-weight: 500; }
 }
 .app-shell.stitch-shell main :is(.rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open .rr-metric-pk .rr-metric-sub { font-weight: 500; }
+/* Phones: every card's figure on one line, so the cards keep one height ("12 Paket | 15 Ürün": the word "Adet" is left
+   out and nothing wraps, even with the iPhone's wider type). */
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-pk { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-adet { display: none; }
+}
