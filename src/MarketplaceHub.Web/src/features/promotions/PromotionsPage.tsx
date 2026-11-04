@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router'
 import { loadAllPages } from '../../shared/api'
 import { Busy, ErrorBox } from '../../shared/components'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
+import { TabSlidePanel } from '../../shared/tab-slide'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
 import { PromotionOffersPanel, promotionTitles, type PromotionKind } from '../marketplace/integrations/PromotionOffersPanel'
 import { bySalesChannel, platformName } from '../reports/report-format'
@@ -15,6 +16,7 @@ type Connection = { id: string; platformCode: string; displayName: string; statu
 // (?tab=…) so a refresh or a shared link lands on it.
 type Section = 'TARIFF' | PromotionKind
 const sections: Array<[Section, string]> = [['TARIFF', 'Ürün Komisyon Tarifesi'], ...(Object.entries(promotionTitles) as Array<[PromotionKind, string]>)]
+const sectionOrder = sections.map(([key]) => key)
 const tabKeys: Record<Section, string> = { TARIFF: 'tariff', PLUS: 'plus', ADVANTAGE: 'advantage', FLASH: 'flash' }
 export const sectionOf = (tab: string | null): Section => sections.find(([key]) => tabKeys[key] === tab)?.[0] ?? 'TARIFF'
 
@@ -71,8 +73,9 @@ export function PromotionsPage() {
       <div ref={tabsRef} className="reports-segmented reports-promotion-tabs" role="group" aria-label="Promosyon sayfaları">
         {sections.map(([key, label]) => <button key={key} type="button" aria-pressed={key === section} onClick={() => go({ tab: key })}>{label}</button>)}
       </div>
-      {section === 'TARIFF' ? <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
-        : <PromotionOffersPanel key={`${store.id}-${section}`} connectionId={store.id} kind={section} />}
+      {/* A page slides in from its side and starts the page from its top (shared/tab-slide.tsx). */}
+      <TabSlidePanel active={section} order={sectionOrder} className="rv-tab-slide-grid">{section === 'TARIFF' ? <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />
+        : <PromotionOffersPanel key={`${store.id}-${section}`} connectionId={store.id} kind={section} />}</TabSlidePanel>
     </div>}
   </section>
 }

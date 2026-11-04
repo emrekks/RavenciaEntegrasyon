@@ -27,6 +27,7 @@ import { canPrintReturnLabel } from '../return-label-visibility'
 import { ReturnMarketplaceHistory, acceptDetailText } from './ReturnMarketplaceHistory'
 import { formatMarketplaceBarcode, shouldShowReturnCountdown, type ApprovedReturnSort } from '../return-reference-presentation'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
+import { useTabSlide } from '../../../shared/tab-slide'
 import { formatMoney } from '../../../shared/format-money'
 import { formatPackageLabel } from '../../../shared/package-label'
 import { returnLabelContent } from './return-label'
@@ -432,6 +433,8 @@ export function ReturnsPage() {
   const sheetField = (label: string, current: string, options: Array<{ value: string; label: string }>, pick: (value: string) => void, right?: boolean) => <div className="rr-fld rr-sheet-only"><small>{label}</small><RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} onClick={toggle}><span>{options.find(option => option.value === current)?.label ?? options[0]?.label}</span><RrIcon name="chev" /></button>}>{close => <ReturnColumnPop label={label} options={options} value={current} right={right} onPick={value => { pick(value); close() }} />}</RrAnchor></div>
   const selectColumn = bulkItems.length > 0
   const tabLabel = tabs.find(tab => tab[0] === status)?.[1] ?? 'Tüm İadeler'
+  // A status tab slides the list in from its side and starts the page from its top (shared/tab-slide.tsx).
+  const statusSlide = useTabSlide(status, tabs.map(([value]) => value))
   return <section className="content f3 rr rr-returns">
     <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>İadeler</h1></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={returnConnections.length === 0 || sync.isPending} onClick={() => sync.mutate()}><RrIcon name="refresh" />{sync.isPending ? 'Eşitleniyor…' : 'İade Senkronizasyonu'}</button></div></div>
     <div className="rr-metrics"><article className="rr-warn"><CardBackgroundIcon name="packageReturn" tone="warn" /><small>Aksiyon Bekleyen</small><strong><CountUp value={metric('ACTION_REQUIRED')} /></strong></article><article><CardBackgroundIcon name="truck" /><small>Kargoya Verilen</small><strong><CountUp value={metric('SHIPPING')} /></strong></article><article className={rejectedAwaiting > 0 ? 'rr-metric-alarm' : undefined}><CardBackgroundIcon name="cancel" tone={rejectedAwaiting > 0 ? 'bad' : undefined} /><small>Kargolanmayı Bekleyen Red</small><strong><CountUp value={metricValue(metrics?.rejectedAwaitingCargo)} /></strong>{metrics?.rejectedCargoUnknown ? <span>{`${metrics.rejectedCargoUnknown.toLocaleString('tr-TR')} iadede kargo durumu bilinmiyor`}</span> : null}</article><article><CardBackgroundIcon name="circleCheck" /><small>Onaylanan / Reddedilen</small><strong><span className="rr-metric-ok"><CountUp value={metricValue(metrics?.todayApproved)} /></span> / <span className="rr-metric-bad"><CountUp value={metricValue(metrics?.todayRejected)} /></span></strong><span>Onay / Red · bugün 00:00'dan beri</span></article></div>
@@ -450,7 +453,7 @@ export function ReturnsPage() {
       </div></RrFilterCard>
     </div>
     {notice && <NoticeToast key={`${noticeKind}:${notice}`} kind={noticeKind} message={notice} onClose={() => setNoticeState('')} durationMs={noticeSticky ? undefined : noticeKind === 'info' ? 7000 : 5500} />}
-    <div className="rr-panel"><div className="rr-panel-h"><div><h2>{tabLabel}</h2><p>Toplam {totalCount.toLocaleString('tr-TR')} iade bilgisi</p></div><RrPageSize value={pageSize} sizes={[20, 50, 100, 200]} onChange={setPageSize} /></div>
+    <div key={statusSlide.key} className={`rr-panel${statusSlide.className ? ` ${statusSlide.className}` : ''}`}><div className="rr-panel-h"><div><h2>{tabLabel}</h2><p>Toplam {totalCount.toLocaleString('tr-TR')} iade bilgisi</p></div><RrPageSize value={pageSize} sizes={[20, 50, 100, 200]} onChange={setPageSize} /></div>
       <div className={`rr-tblwrap${query.isPlaceholderData ? ' is-stale-data' : ''}`} aria-busy={query.isPlaceholderData || undefined}>{query.isLoading ? <RrLoading /> : query.isError ? <RrError error={query.error} onRetry={() => void query.refetch()} /> : <table className={`rr-tbl${selectColumn ? ' rr-has-select' : ''}${noBuyer ? ' rr-no-buyer' : ''}`}>
         <colgroup><col className="rr-c-order" />{!noBuyer && <col className="rr-c-buyer" />}<col className="rr-c-prod" /><col className="rr-c-price" /><col className="rr-c-cargo" /><col className="rr-c-inv" /><col className="rr-c-reason" /><col className="rr-c-status" /><col className="rr-c-act" /></colgroup>
         <thead><tr>

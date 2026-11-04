@@ -88,7 +88,6 @@
 .app-shell.stitch-shell main .reports-page .reports-lists { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 20px; }
 .app-shell.stitch-shell main .reports-page .reports-lists.is-pairs { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
 /* The tabs: "Tümünü Gör" scrolls here, clear of the sticky top bar; a tab's sub-tabs sit flush on its first panel. */
-.app-shell.stitch-shell main .reports-page .reports-tabs-anchor { scroll-margin-top: 80px; }
 .app-shell.stitch-shell main .reports-page .reports-subtabs { margin-bottom: -4px; }
 
 .app-shell.stitch-shell main .reports-page .reports-summary .reports-panel > header h2 { font-size: 14px; }

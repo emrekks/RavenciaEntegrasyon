@@ -16,6 +16,7 @@ import './settings-sade.css'
 import '../../shared/view-tabs.css'
 import { formatIstanbul } from '../../shared/format-date'
 import { useDismissable } from '../../shared/hooks/useDismissable'
+import { useTabSlideInPlace } from '../../shared/tab-slide'
 
 type SecurityStatus = { totpState: string; recoveryCodesRemaining: number }
 type SecuritySession = { id: string; state: string; current: boolean; issuedAt: string; lastSeenAt: string; expiresAt: string }
@@ -37,6 +38,7 @@ const settingsSectionGroups: Array<{ label: string; icon: SettingsIconName; item
   { label: 'Görünüm', icon: 'palette', items: [{ key: 'read', label: 'Okunabilirlik ve Tema', short: 'Tema', icon: 'type' }, { key: 'palette', label: 'Renk Paleti', short: 'Renkler', icon: 'palette' }, { key: 'themes', label: 'Kayıtlı Temalar', short: 'Temalar', icon: 'save' }, { key: 'notify', label: 'Bildirimler', icon: 'bell' }] }
 ]
 const settingsSections = settingsSectionGroups.flatMap(group => group.items.map(item => ({ ...item, group: group.label })))
+const settingsSectionOrder = settingsSections.map(item => item.key)
 // Links from before the section list still open the matching first section.
 const legacySettingsSections: Record<string, SettingsSectionKey> = { security: 'auth', shipping: 'sender', appearance: 'read' }
 const shippingSections: SettingsSectionKey[] = ['sender', 'dims', 'designer']
@@ -417,6 +419,10 @@ export function SystemSettingsPage() {
   const activeGroup = settingsSectionGroups.find(group => group.items.some(item => item.key === section)) ?? settingsSectionGroups[0]
   const isShipping = shippingSections.includes(section)
   const isAppearance = appearanceSections.includes(section)
+  // A group or section tab slides the pane in from its side and starts the page from its top (shared/tab-slide.tsx).
+  // The pane stays mounted (the shipping and appearance forms keep their drafts), so the slide plays in place.
+  const paneRef = useRef<HTMLDivElement>(null)
+  useTabSlideInPlace(paneRef, section, settingsSectionOrder)
 
   return <section className="content ss-page">
     {notice && <SettingsNotice {...notice} />}
@@ -424,7 +430,7 @@ export function SystemSettingsPage() {
     <div className="ss-gtabs rv-tabs rv-view-tabs" role="tablist" aria-label="Ayar grupları">{settingsSectionGroups.map(group => <button type="button" role="tab" key={group.label} aria-selected={group === activeGroup} className={group === activeGroup ? 'is-on is-active' : undefined} onClick={() => selectSection(group.items[0].key)}><span className="rv-tab-label"><SettingsIcon name={group.icon} /><span className="rv-tab-text" data-text={group.label}>{group.label}</span></span></button>)}</div>
     <div className="ss-card">
       {activeGroup.items.length > 1 && <div className="ss-stabs"><span className="ss-seg rv-tabs rv-view-tabs" role="tablist" aria-label={`${activeGroup.label} bölümleri`}>{activeGroup.items.map(item => <button type="button" role="tab" key={item.key} aria-selected={section === item.key} className={section === item.key ? 'is-on is-active' : undefined} onClick={() => selectSection(item.key)}><span className="rv-tab-label"><SettingsIcon name={item.icon} />{item.short ? <><span className="rv-tab-text ss-lbl-long" data-text={item.label}>{item.label}</span><span className="rv-tab-text ss-lbl-short" data-text={item.short}>{item.short}</span></> : <span className="rv-tab-text" data-text={item.label}>{item.label}</span>}</span>{navMeta(item.key)}</button>)}</span></div>}
-      <div className="ss-pane">
+      <div ref={paneRef} className="ss-pane">
         {section === 'auth' && <>
           <SettingsPaneHead section="auth" description="İki adımlı doğrulama ile girişte telefonunuzdaki kod da istenir." />
           <div className="ss-body">{status.isLoading ? <LoadingState>Güvenlik durumu yükleniyor…</LoadingState> : status.isError || !status.data ? <div role="alert" className="ss-callout is-danger"><SettingsIcon name="alert" /><span>Güvenlik durumu alınamadı.</span></div> : <>
