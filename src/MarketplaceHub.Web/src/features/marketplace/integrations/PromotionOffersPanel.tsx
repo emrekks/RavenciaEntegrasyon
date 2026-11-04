@@ -5,9 +5,10 @@ import { Busy, ErrorBox, TitleHint, useConfirmDialog } from '../../../shared/com
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
-import { amountRange, FilterActions, FilterField, FilterRange, priceRange, ProductImage, rateText } from './CommissionTariffsPanel'
+import { amountRange, FilterActions, FilterField, FilterRange, PhoneSearch, phoneQuery, priceRange, ProductImage, rateText, SheetHead, SheetScrim } from './CommissionTariffsPanel'
 import { onCost, profitText, ProfitBadge, type UnitProfitCosts } from './unit-profit'
 import { UiIcon } from '../../../shared/components'
+import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import '../commission-tariffs.css'
 // One formatter per format, made once: toLocaleString with options builds a new Intl.NumberFormat on every call, and
 // the tariff table formats thousands of amounts per render.
@@ -70,10 +71,19 @@ export function matches(row: Product & { barcode?: string; barcodes?: string[]; 
   return [row.productName, row.modelCode, row.barcode, row.sellerSku, ...(row.barcodes ?? [])].some(value => value?.toLocaleLowerCase('tr').includes(term))
 }
 
-function PriceCard({ price, label, highlight }: { price: PromotionPrice; label?: ReactNode; highlight?: boolean }) {
+// On a phone a price's card is headed by its column (heading), and the one the product is in now is tagged Şu An.
+function PhoneHead({ heading, current }: { heading?: string; current?: boolean }) {
+  return <>
+    {heading && <span className="commission-seg-n">{heading}</span>}
+    {current && <em className="commission-now-tag">Şu An</em>}
+  </>
+}
+
+function PriceCard({ price, label, highlight, heading, current }: { price: PromotionPrice; label?: ReactNode; highlight?: boolean; heading?: string; current?: boolean }) {
   const loss = price.remaining !== null && price.remaining < 0
   const unknown = price.rate === null || price.remaining === null
-  return <div className={`commission-choice is-static${highlight ? ' is-picked' : ''}${loss ? ' is-loss' : ''}${unknown ? ' is-unknown' : ''}`}>
+  return <div className={`commission-choice is-static${highlight ? ' is-picked' : ''}${loss ? ' is-loss' : ''}${unknown ? ' is-unknown' : ''}${current ? ' is-current' : ''}`}>
+    <PhoneHead heading={heading} current={current} />
     <strong>{money(price.price)}</strong>
     {label && <small>{label}</small>}
     <span>{price.rate === null ? 'Komisyon oranı bilinmiyor' : `${rateText(price.rate)} komisyon · ${money(price.commission ?? 0)}`}</span>
@@ -175,7 +185,9 @@ export function groupOffers<T extends { modelCode: string | null; color: string 
 
 // The filter of a promotion page, as the commission tariff's: name, barcode, model code, a stock range, category and
 // brand, and a column (an offered price) with a range of what it leaves in lira and as a share of the price.
-export type OfferFilter = { name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string; column: string; minProfit: string; maxProfit: string; minShare: string; maxShare: string }
+export type OfferFilter = { name: string; barcode: string; model: string; minStock: string; maxStock: string; category: string; brand: string; column: string; minProfit: string; maxProfit: string; minShare: string; maxShare: string
+  // The phone's search box: the name, model code, seller SKU or a barcode at once.
+  search?: string }
 export const noOfferFilter: OfferFilter = { name: '', barcode: '', model: '', minStock: '', maxStock: '', category: '', brand: '', column: '', minProfit: '', maxProfit: '', minShare: '', maxShare: '' }
 type OfferRow = Product & { barcode?: string; barcodes?: string[]; sellerSku?: string | null }
 
@@ -189,6 +201,7 @@ const has = (value: string | null | undefined, term: string) => !term.trim() || 
 // Whether a row passes the filter; prices(row, column) are the offered prices of the picked column (a model's sizes may
 // leave different amounts: the least counts). A profit range needs a known commission and cost.
 export function keepOffer<T extends OfferRow>(row: T, filter: OfferFilter, prices: (row: T, column: string) => PromotionPrice[]): boolean {
+  if (filter.search && !matches(row, filter.search)) return false
   if (!has(row.productName, filter.name) || !has(row.modelCode, filter.model)) return false
   if (filter.barcode.trim() && ![row.barcode, row.sellerSku, ...(row.barcodes ?? [])].some(code => code && has(code, filter.barcode))) return false
   if (filter.category && row.category !== filter.category) return false
@@ -212,8 +225,18 @@ function OfferFilters({ value, rows, columns, onApply }: { value: OfferFilter; r
   const set = (key: keyof OfferFilter) => (event: { target: { value: string } }) => setDraft(current => ({ ...current, [key]: event.target.value }))
   const categories = useMemo(() => [...new Set(rows.flatMap(row => row.category ? [row.category] : []))].sort((a, b) => a.localeCompare(b, 'tr')), [rows])
   const brands = useMemo(() => [...new Set(rows.flatMap(row => row.brand ? [row.brand] : []))].sort((a, b) => a.localeCompare(b, 'tr')), [rows])
-  const apply = (event?: FormEvent) => { event?.preventDefault(); onApply(draft) }
-  return <form className="commission-filters" onSubmit={apply} aria-label="Ürün filtreleri">
+  // On phones the fields stay closed behind a Filtre button (with the number of filters applied) and open as a sheet.
+  const [open, setOpen] = useState(false)
+  const activeCount = [value.name, value.barcode, value.model, value.minStock || value.maxStock, value.category, value.brand,
+    value.column && (value.minProfit || value.maxProfit || value.minShare || value.maxShare)].filter(Boolean).length
+  const apply = (event?: FormEvent) => { event?.preventDefault(); onApply(draft); setOpen(false) }
+  return <div className="commission-filter-wrap">
+    <button type="button" className="secondary commission-filter-toggle" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+      <UiIcon name="filter" />Filtre{activeCount > 0 && <em>{activeCount}</em>}
+    </button>
+    {open && <SheetScrim onClose={() => setOpen(false)} />}
+  <form className={`commission-filters is-collapsible${open ? ' is-open' : ''}`} onSubmit={apply} aria-label="Ürün filtreleri">
+    <SheetHead title="Filtre" />
     <FilterField label="Ürün Adı"><input type="search" value={draft.name} onChange={set('name')} /></FilterField>
     <FilterField label="Barkod"><input type="search" value={draft.barcode} onChange={set('barcode')} /></FilterField>
     <FilterField label="Model Kodu"><input type="search" value={draft.model} onChange={set('model')} /></FilterField>
@@ -232,8 +255,9 @@ function OfferFilters({ value, rows, columns, onApply }: { value: OfferFilter; r
       <FilterRange label="Kâr Oranı (%)" inputMode="decimal" min={draft.minShare} max={draft.maxShare} onMin={set('minShare')} onMax={set('maxShare')} minLabel="En az kâr oranı (%)" maxLabel="En çok kâr oranı (%)" />
     </div>}
     {rows.length > 0 && !categories.length && !brands.length && <p className="commission-filter-note">Kategori ve marka bu dosyada okunmadı: dosya önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
-    <FilterActions onClear={() => { setDraft(noOfferFilter); onApply(noOfferFilter) }} />
+    <FilterActions onClear={() => { setDraft(noOfferFilter); onApply(value.search ? { ...noOfferFilter, search: value.search } : noOfferFilter); setOpen(false) }} />
   </form>
+  </div>
 }
 
 // The filter and a page of 50 model groups over a list.
@@ -249,19 +273,76 @@ function useGroupedListing<T extends OfferRow>(rows: T[], prices: (row: T, colum
 type Listing = { page: number; pageCount: number; onPage: (page: number) => void }
 
 // The panel and the line of counts over a table.
-function ListingHead<T extends OfferRow>({ listing, rows, columns, summary }: { listing: { filter: OfferFilter; onFilter: (filter: OfferFilter) => void }; rows: T[]; columns: Array<[string, string]>; summary: string }) {
+// Phones: the search box over the whole width and the Filtre button under it, opening the filter as a bottom sheet.
+function ListingHead<T extends OfferRow>({ listing, rows, columns, summary, phone }: { listing: { filter: OfferFilter; onFilter: (filter: OfferFilter) => void }; rows: T[]; columns: Array<[string, string]>; summary: string; phone: boolean }) {
+  const filters = <OfferFilters key={JSON.stringify(listing.filter)} value={listing.filter} rows={rows} columns={columns} onApply={listing.onFilter} />
   return <>
-    <OfferFilters key={JSON.stringify(listing.filter)} value={listing.filter} rows={rows} columns={columns} onApply={listing.onFilter} />
+    {phone ? <div className="commission-phone-toolbar is-single">
+      <PhoneSearch value={listing.filter.search ?? ''} onSearch={search => listing.onFilter({ ...listing.filter, search })} />
+      {filters}
+    </div> : filters}
     <div className="commission-plan-bar"><span className="commission-plan-count" role="status">{summary}</span></div>
   </>
 }
 
+// What a price leaves over Plus against now: one product's difference, or the range of a model's sizes.
+const gainBadge = (gain: number) => <em className={`promotion-gain ${gain > 0 ? 'is-up' : 'is-down'}`}>{gain > 0 ? '+ ' : ''}{signed(gain)}</em>
+const gainsBadge = (gains: number[]) => <em className={`promotion-gain ${Math.max(...gains) > 0 ? 'is-up' : 'is-down'}`}>{amountRange(gains)}</em>
+// The difference as the last card of a phone card's row.
+const gainCard = (badge: ReactNode) => <div className="commission-choice is-static promotion-gain-card"><span className="commission-seg-n">Fark</span>{badge}</div>
+
+// The products of a page on a phone: a card each with its picture, name, codes and stock, its price now with the rate it
+// pays now, and its offered prices as a row of cards that slides sideways; a model opens onto its rows (sizes, or a
+// flash offer's days), each with its own price, stock and cards.
+function OfferCards<T extends Product>({ groups, label, now, stocks, nowNote, cards, groupCards }: {
+  groups: Array<[string, T[]]>; label: RowLabel<T>; now: (row: T) => PromotionPrice | null; stocks: (rows: T[]) => Array<number | null>
+  nowNote?: (rows: T[]) => ReactNode; cards: (row: T) => ReactNode; groupCards: (rows: T[]) => ReactNode
+}) {
+  const [opened, setOpened] = useState<Set<string>>(() => new Set())
+  if (!groups.length) return <p className="cs-empty">Filtreye uyan ürün yok.</p>
+  const stockText = (values: Array<number | null>) => values.some(stock => stock != null) ? values.reduce<number>((sum, stock) => sum + (stock ?? 0), 0).toLocaleString('tr-TR', { maximumFractionDigits: 0 }) : '—'
+  const priceText = (rows: T[]) => { const known = rows.flatMap(row => { const price = now(row)?.price; return price == null ? [] : [price] }); return known.length ? priceRange(known) : '—' }
+  return <div className="commission-cards">{groups.map(([key, rows]) => {
+    const single = rows.length === 1
+    const first = single ? rows[0] : rows.find(row => row.imageUrl) ?? rows[0]
+    const open = opened.has(key)
+    const rates = [...new Set(rows.flatMap(row => { const rate = now(row)?.rate; return rate == null ? [] : [rate] }))]
+    const name = first.productName ?? '—'
+    return <article key={key} className="commission-card">
+      <div className="commission-card-head">
+        <ProductImage url={first.imageUrl} title={name} initial={(first.productName ?? '?').slice(0, 1)} />
+        <span>
+          <span className="commission-card-name">{name}</span>
+          <small>{modelLine(first)}{single ? <> · {label.title(first)}</> : null} · Stok {stockText(stocks(rows))}</small>
+          <small className="promotion-code">{single ? label.code(first) : `${rows.length.toLocaleString('tr-TR')} ${label.unit}`}</small>
+        </span>
+      </div>
+      <div className="commission-card-now">
+        <span>Güncel <b>{priceText(rows)}</b></span>
+        {rates.length > 0 && <em>Şu an {rates.length === 1 ? rateText(rates[0]) : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))}`}</em>}
+      </div>
+      {nowNote?.(rows)}
+      <div className="commission-ruler" role="group" aria-label={`${name} teklifleri`}>{single ? cards(first) : groupCards(rows)}</div>
+      {!single && open && <div className="commission-sizes">{rows.map(row => <div key={label.key(row)} className="commission-size">
+        <span className="commission-size-head"><b>{label.title(row)}</b><span>{priceText([row])} · Stok {stockText([row.stock])}</span></span>
+        <small className="promotion-code">{label.code(row)}</small>
+        <div className="commission-ruler" role="group" aria-label={`${label.key(row)} teklifleri`}>{cards(row)}</div>
+      </div>)}</div>}
+      {!single && <button type="button" className="secondary commission-sizes-toggle" aria-expanded={open}
+        onClick={() => setOpened(current => { const next = new Set(current); if (open) next.delete(key); else next.add(key); return next })}>
+        {open ? label.less : label.more(rows.length)}
+      </button>}
+    </article>
+  })}</div>
+}
+
 // A model's prices in one card: the range of its sizes' prices, rates and what they leave.
-function RangeCard({ prices, label }: { prices: PromotionPrice[]; label?: ReactNode }) {
+function RangeCard({ prices, label, heading, current }: { prices: PromotionPrice[]; label?: ReactNode; heading?: string; current?: boolean }) {
   const rates = [...new Set(prices.flatMap(price => price.rate === null ? [] : [price.rate]))]
   const lefts = prices.flatMap(price => price.remaining === null ? [] : [price.remaining, ...(price.remainingHigh != null ? [price.remainingHigh] : [])])
   const unknown = rates.length === 0 || lefts.length === 0
-  return <div className={`commission-choice is-static is-model${unknown ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}`}>
+  return <div className={`commission-choice is-static is-model${unknown ? ' is-unknown' : Math.min(...lefts) < 0 ? ' is-loss' : ''}${current ? ' is-current' : ''}`}>
+    <PhoneHead heading={heading} current={current} />
     <strong>{priceRange(prices.map(price => price.price))}</strong>
     {label && <small>{label}</small>}
     <span>{rates.length === 0 ? 'Komisyon oranı bilinmiyor' : rates.length === 1 ? `${rateText(rates[0])} komisyon` : `${rateText(Math.min(...rates))} – ${rateText(Math.max(...rates))} komisyon`}</span>
@@ -283,7 +364,8 @@ const priceCell = (prices: Array<number | null | undefined>, extra?: ReactNode) 
 }
 
 // How a row of a model is told apart from the model's other rows (a size, or a flash offer's dates).
-type RowLabel<T> = { key: (row: T) => string; title: (row: T) => ReactNode; code: (row: T) => ReactNode; unit: string }
+// On a phone a model's button opens its rows (more) and closes them (less).
+type RowLabel<T> = { key: (row: T) => string; title: (row: T) => ReactNode; code: (row: T) => ReactNode; unit: string; more: (count: number) => string; less: string }
 
 // The rows of a page: a model with more rows is one row (its picture, name, colour and its rows' ranges) that opens
 // onto them; a model of one row is that row.
@@ -322,7 +404,7 @@ function Pager({ listing }: { listing: Listing }) {
 
 // A size of a Plus or advantage file: its size, barcode and cost.
 const sizeLabel: RowLabel<{ barcode: string; size: string | null; costPrice: number | null }> = {
-  key: row => row.barcode, unit: 'beden',
+  key: row => row.barcode, unit: 'beden', more: count => `${count.toLocaleString('tr-TR')} Bedeni Ayrı Gör`, less: 'Bedenleri Gizle',
   title: row => row.size ?? row.barcode,
   code: row => <>{row.barcode} · {row.costPrice !== null ? `Maliyet ${money(row.costPrice)}` : 'Maliyet girilmemiş'}</>
 }
@@ -336,26 +418,39 @@ function PlusTable({ rows }: { rows: PlusOffer[] }) {
   const listing = useGroupedListing(sorted, plusPrices, byBarcode)
   const gains = listing.shown.filter(row => row.gain !== null && row.gain > 0).length
   const losses = listing.shown.filter(row => row.gain !== null && row.gain <= 0).length
+  const phone = useMediaQuery(phoneQuery)
   return <div className="commission-rows">
-    <ListingHead listing={listing} rows={rows} columns={plusColumns}
+    <ListingHead listing={listing} rows={rows} columns={plusColumns} phone={phone}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · Plus’ta ${gains.toLocaleString('tr-TR')} ürün daha çok, ${losses.toLocaleString('tr-TR')} ürün daha az bırakıyor`} />
-    <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
+    {phone ? <OfferCards groups={listing.groups} label={sizeLabel} now={row => row.now} stocks={group => group.map(row => row.stock)}
+      cards={row => <>
+        {row.plus && <PriceCard price={row.plus} heading="Plus Teklifi" label="Plus fiyat üst limiti" highlight={row.gain !== null && row.gain > 0} />}
+        {row.gain !== null && gainCard(gainBadge(row.gain))}
+      </>}
+      groupCards={group => {
+        const gains = group.flatMap(row => row.gain === null ? [] : [row.gain])
+        return <>
+          {group.some(row => row.plus) && <RangeCard prices={group.flatMap(row => row.plus ? [row.plus] : [])} heading="Plus Teklifi" label="Plus fiyat üst limiti" />}
+          {gains.length > 0 && gainCard(gainsBadge(gains))}
+        </>
+      }} />
+    : <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
       <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th scope="col">Ürün</th><th scope="col" className="commission-stock">Stok</th><th scope="col">Güncel Fiyat</th><th scope="col">Plus Teklifi</th><th scope="col">Fark</th></tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={sizeLabel} cells={row => <>
         {stockCell([row.stock])}
         {priceCell([row.now?.price])}
         <td>{row.plus ? <PriceCard price={row.plus} label="Plus fiyat üst limiti" highlight={row.gain !== null && row.gain > 0} /> : none}</td>
-        <td>{row.gain === null ? none : <em className={`promotion-gain ${row.gain > 0 ? 'is-up' : 'is-down'}`}>{row.gain > 0 ? '+ ' : ''}{signed(row.gain)}</em>}</td>
+        <td>{row.gain === null ? none : gainBadge(row.gain)}</td>
       </>} groupCells={group => {
         const gains = group.flatMap(row => row.gain === null ? [] : [row.gain])
         return <>
           {stockCell(group.map(row => row.stock))}
           {priceCell(group.map(row => row.now?.price))}
           <td>{group.some(row => row.plus) ? <RangeCard prices={group.flatMap(row => row.plus ? [row.plus] : [])} label="Plus fiyat üst limiti" /> : none}</td>
-          <td>{gains.length === 0 ? none : <em className={`promotion-gain ${Math.max(...gains) > 0 ? 'is-up' : 'is-down'}`}>{amountRange(gains)}</em>}</td>
+          <td>{gains.length === 0 ? none : gainsBadge(gains)}</td>
         </>
       }} /></tbody>
-    </table></div>
+    </table></div>}
     <Pager listing={listing} />
   </div>
 }
@@ -374,10 +469,22 @@ function AdvantageTable({ rows }: { rows: AdvantageOffer[] }) {
     const distinct = [...new Set(values)].sort()
     return <small className={`promotion-stars is-${Math.max(...distinct)}`}>{distinct.length === 1 ? starText(distinct[0]) : distinct.map(star => starNames[star] ?? 'Etiket yok').join(' – ')}</small>
   }
+  const phone = useMediaQuery(phoneQuery)
   return <div className="commission-rows">
-    <ListingHead listing={listing} rows={rows} columns={advantageColumns}
+    <ListingHead listing={listing} rows={rows} columns={advantageColumns} phone={phone}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} ürün · şu an ${(listing.shown.length - unstarred).toLocaleString('tr-TR')} ürün etiketli, ${unstarred.toLocaleString('tr-TR')} ürün etiketsiz`} />
-    <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
+    {/* On a phone the label a product has now is its card's Şu An tag (the table marks it as the picked card). */}
+    {phone ? <OfferCards groups={listing.groups} label={sizeLabel} now={row => row.now} stocks={group => group.map(row => row.stock)}
+      nowNote={group => stars(group.map(row => row.currentStars))}
+      cards={row => [1, 2, 3].map(star => {
+        const offer = row.stars.find(item => item.star === star)
+        return offer ? <PriceCard key={star} price={offer.price} heading={starNames[star]} label={offer.min !== null ? `${money(offer.min)} – ${money(offer.max)}` : `En fazla ${money(offer.max)}`} current={row.currentStars === star} /> : null
+      })}
+      groupCards={group => [1, 2, 3].map(star => {
+        const offers = group.flatMap(row => row.stars.filter(item => item.star === star))
+        return offers.length ? <RangeCard key={star} prices={offers.map(item => item.price)} heading={starNames[star]} label={`En fazla ${priceRange(offers.map(item => item.max))}`} current={group.some(row => row.currentStars === star)} /> : null
+      })} />
+    : <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
       <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th scope="col">Ürün</th><th scope="col" className="commission-stock">Stok</th><th scope="col">Güncel Fiyat</th>{[1, 2, 3].map(star => <th scope="col" key={star}>{starNames[star]}</th>)}</tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={sizeLabel} cells={row => <>
         {stockCell([row.stock])}
@@ -394,7 +501,7 @@ function AdvantageTable({ rows }: { rows: AdvantageOffer[] }) {
           return <td key={star}>{offers.length ? <RangeCard prices={offers.map(item => item.price)} label={`En fazla ${priceRange(offers.map(item => item.max))}`} /> : none}</td>
         })}
       </>} /></tbody>
-    </table></div>
+    </table></div>}
     <Pager listing={listing} />
   </div>
 }
@@ -406,7 +513,7 @@ export const flashPrices = (row: FlashOffer, column: string) => row.slots.filter
 const flashKey = (row: FlashOffer) => `${row.barcodes.join(',')}|${row.slots.map(slot => slot.start).join(',')}`
 const flashDays = (row: FlashOffer) => [...new Set(row.slots.map(slot => slot.start?.slice(0, 10)).filter(Boolean))].join(', ') || 'Tarih yok'
 const flashLabel: RowLabel<FlashOffer> = {
-  key: flashKey, unit: 'flaş teklifi',
+  key: flashKey, unit: 'flaş teklifi', more: count => `${count.toLocaleString('tr-TR')} Flaş Teklifini Ayrı Gör`, less: 'Teklifleri Gizle',
   title: flashDays,
   code: row => <>{row.barcodes.length} beden{row.campaign ? ' · Kampanyalı' : ''} · {row.costLow !== null && row.costHigh !== null ? `Maliyet ${row.costLow === row.costHigh ? money(row.costLow) : `${money(row.costLow)} – ${money(row.costHigh)}`}` : 'Maliyet eksik'}</>
 }
@@ -416,10 +523,21 @@ function FlashTable({ rows }: { rows: FlashOffer[] }) {
   const listing = useGroupedListing(sorted, flashPrices, flashKey)
   const slots = ['24 Saat', ...(rows.some(row => row.slots.some(slot => slot.slot === '3 Saat')) ? ['3 Saat'] : [])]
   const losses = listing.shown.filter(losesInFlash).length
+  const phone = useMediaQuery(phoneQuery)
   return <div className="commission-rows">
-    <ListingHead listing={listing} rows={rows} columns={slots.map(name => [name, `${name} Flaş`] as [string, string])}
+    <ListingHead listing={listing} rows={rows} columns={slots.map(name => [name, `${name} Flaş`] as [string, string])} phone={phone}
       summary={`${listing.shown.length.toLocaleString('tr-TR')} flaş teklifi · ${losses.toLocaleString('tr-TR')} teklif flaş fiyatında zarar ediyor`} />
-    <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
+    {/* A colour's stock is the same on each of its offers: counted once. */}
+    {phone ? <OfferCards groups={listing.groups} label={flashLabel} now={row => row.now} stocks={group => [group[0].stock]}
+      cards={row => slots.map(name => {
+        const slot = row.slots.find(item => item.slot === name)
+        return slot ? <PriceCard key={name} price={slot.price} heading={`${name} Flaş`} label={[slot.start, slot.end].filter(Boolean).join(' – ') || undefined} /> : null
+      })}
+      groupCards={group => slots.map(name => {
+        const prices = group.flatMap(row => row.slots.filter(item => item.slot === name).map(item => item.price))
+        return prices.length ? <RangeCard key={name} prices={prices} heading={`${name} Flaş`} label={`${prices.length} gün`} /> : null
+      })} />
+    : <div className="commission-table-wrap"><table className="commission-table is-plan promotion-table">
       <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><th scope="col">Ürün</th><th scope="col" className="commission-stock">Stok</th><th scope="col">Güncel Fiyat</th>{slots.map(name => <th scope="col" key={name}>{name} Flaş</th>)}</tr></thead>
       <tbody><GroupedRows groups={listing.groups} label={flashLabel} cells={row => <>
         {stockCell([row.stock])}
@@ -437,7 +555,7 @@ function FlashTable({ rows }: { rows: FlashOffer[] }) {
           return <td key={name}>{prices.length ? <RangeCard prices={prices} label={`${prices.length} gün`} /> : none}</td>
         })}
       </>} /></tbody>
-    </table></div>
+    </table></div>}
     <Pager listing={listing} />
   </div>
 }

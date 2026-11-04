@@ -37,18 +37,27 @@ export function profitText(profit: number, costs: UnitProfitCosts | null | undef
   return `${money(profit)} ${profit < 0 ? 'Zarar' : 'Kâr'}${share === null ? '' : ` (${percent(share)})`}`
 }
 
+// The same in a narrow band card: "100,85 ₺ · %63,03" ("Kâr" / "Zarar" stays in the badge's name and hint).
+export function compactProfitText(profit: number, costs: UnitProfitCosts | null | undefined) {
+  const share = onCost(profit, costs)
+  return share === null ? `${money(profit)} ${profit < 0 ? 'Zarar' : 'Kâr'}` : `${money(profit)} · ${percent(share)}`
+}
+
 export type ProfitPrice = { price: number; rate: number | null; commission: number | null; remaining: number | null; costs?: UnitProfitCosts | null }
 
 // A price's profit as a badge that opens its calculation (label: the range of a model's variants instead); the reason it
 // is not known otherwise. The calculation is headed by the product (title), the price it was worked at (tag, a chip)
 // and a note beside the chip (aside).
-export function ProfitBadge({ price, title, tag, aside, missing, label }: { price: ProfitPrice; title?: string; tag?: string; aside?: string; missing?: string; label?: ReactNode }) {
+export function ProfitBadge({ price, title, tag, aside, missing, label, compact }: { price: ProfitPrice; title?: string; tag?: string; aside?: string; missing?: string; label?: ReactNode; compact?: boolean }) {
   const [open, setOpen] = useState(false)
   if (price.remaining === null || !price.costs) return <b className="unit-profit-badge is-unknown">{missing ?? 'Kâr hesaplanamadı'}</b>
+  const full = profitText(price.remaining, price.costs)
+  // compact: the short text in a narrow card, the full one ("… Kâr (%…)") in its name and hint.
+  const short = compact && label === undefined
   return <>
     <button type="button" className={`unit-profit-badge${price.remaining < 0 ? ' is-loss' : ''}`} onClick={event => { event.stopPropagation(); setOpen(true) }}
-      title="Nasıl hesaplandığını görmek için tıklayın">
-      {label ?? profitText(price.remaining, price.costs)}<span aria-hidden="true">›</span>
+      title={short ? `${full} · nasıl hesaplandığını görmek için tıklayın` : 'Nasıl hesaplandığını görmek için tıklayın'} aria-label={short ? full : undefined}>
+      {label ?? (short ? compactProfitText(price.remaining, price.costs) : full)}<span aria-hidden="true">›</span>
     </button>
     {/* Out of the table cell, so the card's styles do not reach it. */}
     {open && createPortal(<ProfitBreakdown price={price} title={title} tag={tag} aside={aside} onClose={() => setOpen(false)} />, document.body)}

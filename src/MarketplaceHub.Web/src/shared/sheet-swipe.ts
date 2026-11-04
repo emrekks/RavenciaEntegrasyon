@@ -1,7 +1,7 @@
 // Phones: bottom sheets (the filter sheet and the menus that open from the bottom) follow a finger pulled down from
 // their handle strip and close when it is let go far enough; a shorter pull springs back. Closing goes through the
 // sheet's own scrim, so each sheet closes the way a tap outside would.
-const sheetSelector = '.rr-fopen > .rr-filters, .rr-anchor > .rr-menu:not(.rr-static), .rr-anchor > .rr-pop:not(.rr-static)'
+const sheetSelector = '.rr-fopen > .rr-filters, .rr-anchor > .rr-menu:not(.rr-static), .rr-anchor > .rr-pop:not(.rr-static), .commission-filter-wrap > .commission-filters.is-open, .commission-bulk > .commission-bulk-popover'
 const handleHeight = 44
 const closeDistance = 70
 
@@ -36,7 +36,7 @@ export function installSheetSwipeClose() {
       return
     }
     sheet.style.transform = 'translateY(100%)'
-    const scrim = sheet.parentElement?.querySelector<HTMLElement>(':scope > .rr-fscrim, :scope > .rr-anchor-scrim')
+    const scrim = sheet.parentElement?.querySelector<HTMLElement>(':scope > .rr-fscrim, :scope > .rr-anchor-scrim, :scope > .commission-sheet-scrim')
     window.setTimeout(() => { scrim?.click(); sheet.style.transform = ''; sheet.style.transition = '' }, 160)
   }
   document.addEventListener('touchend', release)
