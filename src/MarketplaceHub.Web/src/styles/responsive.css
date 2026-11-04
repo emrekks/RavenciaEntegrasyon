@@ -351,3 +351,9 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .rv-auth-page .rv-auth-header > .rv-auth-context { display: inline-flex; align-items: center; gap: 8px; color: var(--rv-color-muted); font-size: 14px; font-weight: 500; }
   html body .rv-auth-page .rv-auth-header > .rv-auth-context .ui-icon { width: 16px; height: 16px; color: var(--rv-color-subtle); }
 }
+
+/* Phone menu: a narrower drawer (the names and their counts fit with room to spare) and the live counts of Siparişler,
+   İadeler, Faturalar and Ürün Soruları beside their names, as in the sidebar (the collapsed sidebar's rule hid them). */
+html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
+.app-shell.stitch-shell.stitch-shell .rv-mobile-navigation .nav-count { display: inline-flex; min-width: 22px; height: 22px; margin-left: auto; padding: 1.5px 6px 0; color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 11.5px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell.stitch-shell .rv-mobile-navigation .nav-count.is-warn { color: var(--rv-color-warning); }

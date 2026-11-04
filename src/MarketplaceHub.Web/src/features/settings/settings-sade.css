@@ -513,3 +513,10 @@
 .app-shell.stitch-shell main .ss-page .ss-secret .ss-btn.is-xs { flex: none; height: 28px; min-height: 0; padding: 0 8px; color: var(--rv-color-primary); background: transparent; border: 0; box-shadow: none; font-weight: 600; }
 .app-shell.stitch-shell main .ss-page .ss-secret .ss-btn.is-xs:hover { color: var(--rv-color-primary-strong, var(--rv-color-primary)); background: transparent; text-decoration: underline; text-underline-offset: 3px; }
 .ss-page .ss-secret-edit > .ss-in { flex: 1 1 auto; }
+
+/* Phones: the section tabs share the row by their own width (a long name such as Authenticator no longer squeezes into
+   an equal third and runs into the frame), with an even 3px inset and 3px between them. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .ss-page .ss-stabs > .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg { display: flex !important; gap: 3px !important; padding: 3px !important; }
+  .app-shell.stitch-shell main .ss-page .ss-stabs > .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg > button { flex: 1 1 auto; padding: 0 8px !important; }
+}
