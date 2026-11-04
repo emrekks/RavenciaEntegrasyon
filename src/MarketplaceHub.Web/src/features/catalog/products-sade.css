@@ -514,3 +514,7 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
   .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor > .rr-trigger { width: 100%; min-width: 0; justify-content: space-between; }
   .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor > .rr-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+/* Düşük Stoklu lifts under the pointer like the other summary cards; the button's own transition would drop the lift. */
+@media (hover: hover) {
+  :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics > .rr-metric-btn { transition: translate var(--rv-motion-fast) var(--rv-ease-out), background-color var(--rv-motion-fast) var(--rv-ease-standard), border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard); }
+}

@@ -1128,7 +1128,7 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
   :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img.rr-img { width: auto; max-width: calc(100vw - 24px); }
   :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview.rr-img-preview { width: min(calc((100dvh - 230px) * 2 / 3), calc(100vw - 50px)); height: auto; max-height: none; aspect-ratio: 2 / 3; }
 }
-/* Onaylanan / Reddedilen: the approvals green, the rejections red (the note under them says they count from today). */
+/* Bugün Onaylanan green, Bugün Reddedilen red. */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics .rr-metric-ok { color: var(--rv-color-accent); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics .rr-metric-bad { color: var(--rv-color-danger); }
 /* A rejected return still waiting for its cargo: the card's figure red, the card's frame breathing softly in red. */

@@ -731,7 +731,8 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const [selectedEntryKey, setSelectedEntryKey] = useState('')
   const valueDrafts = useValueDraftStore(connectionId, onNotice)
   const [extraPanel, setExtraPanel] = useState<'' | 'defaults' | 'conflicts'>('')
-  const [collapsedGroups, setCollapsedGroups] = useState<string[]>(['İsteğe Bağlı'])
+  // null until the owner folds or opens a group: İsteğe Bağlı then starts folded, unless the open field or a product gap is in it.
+  const [collapsedGroupsChoice, setCollapsedGroups] = useState<string[] | null>(null)
   // Same cache entries as the two panels, so the header buttons can show how many items each holds.
   const attributeDefaults = useQuery({ queryKey: ['attribute-defaults', connectionId], queryFn: () => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`), retry: false, enabled: !!connectionId && (platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA' || platformCode === 'N11') }).data
   const attributeDefaultsCount = attributeDefaults?.length ?? 0
@@ -949,6 +950,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const nextOpenEntry = [...mappingEntries.slice(activeIndex + 1), ...mappingEntries.slice(0, Math.max(0, activeIndex))].sort((left, right) => Number(right.required) - Number(left.required)).find(entry => entry.state !== 'done')
   const entryGroups = [{ title: 'Zorunlu', items: requiredEntries }, { title: 'İsteğe Bağlı', items: optionalEntries }]
     .filter(group => group.items.length > 0)
+  const collapsedGroups = collapsedGroupsChoice ?? (optionalEntries.some(entry => entry.key === activeEntry?.key || productIssueByKey.has(entry.key)) ? [] : ['İsteğe Bağlı'])
   const requiredReady = requiredEntries.filter(entry => entry.state === 'done').length
   const openRequired = requiredEntries.length - requiredReady
   const footerHint = openRequired ? `${openRequired} zorunlu alan bekliyor` : 'Zorunlu alanların hepsi hazır'
@@ -978,7 +980,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       <div className="cm-layout">
         <nav ref={fieldNavRef} className="cm-nav" aria-label="Kategori özellikleri">
           {entryGroups.map(group => <Fragment key={group.title}>
-            <button type="button" className={`cm-section${collapsedGroups.includes(group.title) ? ' is-collapsed' : ''}`} aria-expanded={!collapsedGroups.includes(group.title)} onClick={() => setCollapsedGroups(current => current.includes(group.title) ? current.filter(title => title !== group.title) : [...current, group.title])}><svg className="cm-section-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg><span>{group.title}</span><span>{group.items.filter(entry => entry.state === 'done').length} / {group.items.length}</span></button>
+            <button type="button" className={`cm-section${collapsedGroups.includes(group.title) ? ' is-collapsed' : ''}`} aria-expanded={!collapsedGroups.includes(group.title)} onClick={() => setCollapsedGroups(() => collapsedGroups.includes(group.title) ? collapsedGroups.filter(title => title !== group.title) : [...collapsedGroups, group.title])}><svg className="cm-section-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg><span>{group.title}</span><span>{group.items.filter(entry => entry.state === 'done').length} / {group.items.length}</span></button>
             {!collapsedGroups.includes(group.title) && group.items.map(entry => {
               const unsaved = Boolean(entry.remote && valueDrafts.drafts.has(`${categoryScope}/${entry.remote.externalId}`))
               const productIssue = productIssueByKey.get(entry.key)
