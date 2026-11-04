@@ -43,7 +43,13 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
             var last = synced.GetValueOrDefault(store.Id) ?? pazaramaRead.GetValueOrDefault(store.Id);
             return new PayoutCoverageView(store.Id, store.PlatformCode, store.StoreName, last is null ? "NOT_READ" : "READ", last);
         }).ToList();
-        return ServiceResult<PayoutView>.Ok(PayoutBuilder.Build(rows, payouts, stores, today, DaysBack, coverage));
+        // The orders on their way to the customer (not in the balance yet). Only lira orders: another currency would need a rate.
+        var pendingStatuses = PayoutBuilder.PendingDeliveryStatuses;
+        var pending = await db.Orders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && pendingStatuses.Contains(x.DerivedStatus) && x.Currency == "TRY")
+            .Select(x => new PendingOrderRow(x.ConnectionId, x.StoreFrontCode, x.NetAmount))
+            .ToListAsync(cancellationToken);
+        return ServiceResult<PayoutView>.Ok(PayoutBuilder.Build(rows, payouts, stores, today, DaysBack, coverage, pending));
     }
 
     public async Task<ServiceResult<PayoutLinesPage>> LinesAsync(Guid tenantId, PayoutQuery scope, PayoutLinesQuery query, CancellationToken cancellationToken)
@@ -123,6 +129,9 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
 
 internal sealed record PayoutStore(Guid Id, string PlatformCode, string StoreName, bool IsTest);
 
+// An order accepted or shipped but not delivered yet: its store, storefront (Trendyol: TR, SA, RO…) and net amount.
+internal sealed record PendingOrderRow(Guid ConnectionId, string? StoreFrontCode, decimal Amount);
+
 internal sealed record PayoutOrderRow(Guid ConnectionId, string ExternalId, decimal Amount, DateTimeOffset? PayoutDate, string? RegionCode, string? RegionName);
 
 internal sealed record PayoutRow
@@ -179,6 +188,25 @@ internal static class PayoutBuilder
         new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), Istanbul.GetUtcOffset(day.ToDateTime(TimeOnly.MinValue))).ToUniversalTime();
 
     public static DateOnly Day(DateTimeOffset value) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(value, Istanbul).DateTime);
+
+    // An order's state while it is accepted, being prepared or on its way: not delivered, cancelled or returned. Partly
+    // cancelled and manual-review orders are left out (their amount still holds the cancelled part, or their state is
+    // not known).
+    internal static readonly string[] PendingDeliveryStatuses = ["NEW", "PROCESSING", "READY_TO_SHIP", "SHIPPED"];
+
+    // Trendyol's storefronts by its payout regions; a storefront no rule names (or none read yet) is UNKNOWN.
+    private static readonly HashSet<string> TrGulfStoreFronts = new(StringComparer.OrdinalIgnoreCase) { "TR", "SA", "AE", "QA", "OM", "KW", "BH" };
+    private static readonly HashSet<string> EuropeStoreFronts = new(StringComparer.OrdinalIgnoreCase) { "BG", "RO", "GR", "DE", "SK", "CZ", "HU", "PL", "HR", "SI", "AT" };
+
+    public static string StoreFrontRegion(string platformCode, string? storeFront)
+    {
+        if (platformCode != "TRENDYOL") return NoRegion;
+        var code = storeFront?.Trim();
+        if (string.IsNullOrEmpty(code)) return UnknownRegion;
+        if (string.Equals(code, "AZ", StringComparison.OrdinalIgnoreCase)) return Azerbaijan;
+        if (EuropeStoreFronts.Contains(code)) return Europe;
+        return TrGulfStoreFronts.Contains(code) ? TrGulf : UnknownRegion;
+    }
 
     public static string Region(string platformCode, string? country, string? affiliate)
     {
@@ -290,9 +318,13 @@ internal static class PayoutBuilder
     };
 
     public static PayoutView Build(IReadOnlyList<PayoutRow> rows, IReadOnlyList<PayoutOrderRow> payouts, IReadOnlyDictionary<Guid, PayoutStore> stores, DateOnly today, int daysBack,
-        IReadOnlyList<PayoutCoverageView> coverage)
+        IReadOnlyList<PayoutCoverageView> coverage, IReadOnlyList<PendingOrderRow>? pendingOrders = null)
     {
         var lines = rows.Where(Counts).Select(row => (Row: row, Line: Line(row, today))).ToList();
+        // The orders not delivered yet, of the stores in view, by marketplace and Trendyol region.
+        var pending = (pendingOrders ?? []).Where(order => stores.ContainsKey(order.ConnectionId))
+            .Select(order => (Platform: stores[order.ConnectionId].PlatformCode, Region: StoreFrontRegion(stores[order.ConnectionId].PlatformCode, order.StoreFrontCode), order.Amount))
+            .ToList();
         // The balance: every record not paid yet (Trendyol's "Toplam Güncel Bakiye" is the same sum: 295,540.76 TL on
         // 4 Nov 2026, to the kuruş). Overdue: its part past the due day, still waiting for a payout.
         var open = lines.Where(x => Open(x.Line)).Select(x => (x.Row, x.Line, Expect: Expect(x.Row, x.Line, today))).ToList();
@@ -330,10 +362,11 @@ internal static class PayoutBuilder
             {
                 var due = open.Where(x => x.Line.Region == region).ToList();
                 var next = upcoming.Where(x => x.Region == region && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0);
+                var waiting = pending.Where(x => x.Region == region).ToList();
                 return new PayoutRegionView(region, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
-                    overdue.Where(x => x.Line.Region == region).Sum(x => x.Line.Net));
+                    overdue.Where(x => x.Line.Region == region).Sum(x => x.Line.Net), waiting.Sum(x => x.Amount), waiting.Count);
             })
-            .Where(x => x.Region != UnknownRegion || x.Records > 0 || x.Unknown != 0)
+            .Where(x => x.Region != UnknownRegion || x.Records > 0 || x.Unknown != 0 || x.PendingDeliveryOrders > 0)
             .ToList();
         // Every marketplace with a store in view, in the platforms' order; the region totals above are Trendyol's alone.
         var marketplaces = stores.Values.Select(store => store.PlatformCode).Where(code => PayoutPlatformOrder.Contains(code)).Distinct()
@@ -342,8 +375,9 @@ internal static class PayoutBuilder
             {
                 var due = open.Where(x => x.Row.PlatformCode == code).ToList();
                 var next = upcoming.Where(x => x.PlatformCode == code && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0);
+                var waiting = pending.Where(x => x.Platform == code).ToList();
                 return new PayoutPlatformView(code, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
-                    overdue.Where(x => x.Row.PlatformCode == code).Sum(x => x.Line.Net));
+                    overdue.Where(x => x.Row.PlatformCode == code).Sum(x => x.Line.Net), waiting.Sum(x => x.Amount), waiting.Count);
             })
             .ToList();
 
@@ -356,7 +390,8 @@ internal static class PayoutBuilder
             ? upcoming.Where(x => x.Day == first && x.Kind != "OVERDUE").GroupBy(x => 1).Select(group => group.First() with { Key = $"next:{first:yyyy-MM-dd}", Amount = group.Sum(x => x.Amount), Records = group.Sum(x => x.Records) }).Single()
             : null;
         return new(today, daysBack, open.Sum(x => x.Line.Net), open.Count, next, past.FirstOrDefault(x => x.Kind == "PAYOUT") ?? past.FirstOrDefault(),
-            overdue.Sum(x => x.Line.Net), overdue.Count, early.Sum(x => Math.Abs(x.Credit - x.Debt)), early.Count, regions, marketplaces, upcoming, past, coverage);
+            overdue.Sum(x => x.Line.Net), overdue.Count, early.Sum(x => Math.Abs(x.Credit - x.Debt)), early.Count, regions, marketplaces, upcoming, past, coverage,
+            pending.Sum(x => x.Amount), pending.Count);
     }
 
     // A payout's region by Trendyol's code or name; live since Nov 2026: TR "Türkiye, Körfez", AZ "Azerbaycan",

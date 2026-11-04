@@ -252,4 +252,41 @@ public sealed class PayoutBuilderTests
         PayoutRow[] nothing = [Record("s3", "Payment", "WillBePaid", 600m, 0m, new(2026, 11, 12)), Record("r3", "Return", "WillBePaid", 0m, 700m, new(2026, 11, 12))];
         Assert.Null(PayoutBuilder.Build(nothing, [], stores, Today, 90, []).Next);
     }
+
+    [Theory]
+    [InlineData("TRENDYOL", "TR", PayoutBuilder.TrGulf)]
+    [InlineData("TRENDYOL", "SA", PayoutBuilder.TrGulf)]
+    [InlineData("TRENDYOL", "RO", PayoutBuilder.Europe)]
+    [InlineData("TRENDYOL", "AZ", PayoutBuilder.Azerbaijan)]
+    // A storefront not read yet, or one no rule names, is not counted as Türkiye.
+    [InlineData("TRENDYOL", null, PayoutBuilder.UnknownRegion)]
+    [InlineData("TRENDYOL", "KZ", PayoutBuilder.UnknownRegion)]
+    [InlineData("HEPSIBURADA", null, PayoutBuilder.NoRegion)]
+    public void An_orders_storefront_decides_its_payout_region(string platform, string? storeFront, string region) =>
+        Assert.Equal(region, PayoutBuilder.StoreFrontRegion(platform, storeFront));
+
+    [Fact]
+    public void The_orders_not_delivered_yet_stand_apart_from_the_balance_by_marketplace_and_region()
+    {
+        var hb = Guid.CreateVersion7();
+        var other = Guid.CreateVersion7();
+        var stores = new Dictionary<Guid, PayoutStore>(Stores) { [hb] = new(hb, "HEPSIBURADA", "HB", false) };
+        PendingOrderRow[] pending =
+        [
+            new(Store, "TR", 1000m), new(Store, "SA", 250.5m), new(Store, "RO", 400m), new(Store, "AZ", 80m),
+            new(hb, null, 300m),
+            // A store out of view (another filter or a test store) is left out.
+            new(other, "TR", 999m)
+        ];
+        var view = PayoutBuilder.Build([Sale("tr", 500m, 400m, Today.AddDays(1))], [], stores, Today, 90, [], pending);
+        Assert.Equal((2030.5m, 5), (view.PendingDelivery, view.PendingDeliveryOrders));
+        // Not in the balance: that is the delivered orders' records alone.
+        Assert.Equal(400m, view.Expected);
+        // Trendyol's own "Onaylanan/Kargolanan Sipariş Tutarı" is its Türkiye-Körfez region's figure.
+        var trGulf = Assert.Single(view.Regions, x => x.Region == PayoutBuilder.TrGulf);
+        Assert.Equal((1250.5m, 2), (trGulf.PendingDelivery, trGulf.PendingDeliveryOrders));
+        Assert.Equal(400m, Assert.Single(view.Regions, x => x.Region == PayoutBuilder.Europe).PendingDelivery);
+        Assert.Equal(80m, Assert.Single(view.Regions, x => x.Region == PayoutBuilder.Azerbaijan).PendingDelivery);
+        Assert.Equal([(1730.5m, 4), (300m, 1)], view.Platforms.Select(x => (x.PendingDelivery, x.PendingDeliveryOrders)));
+    }
 }

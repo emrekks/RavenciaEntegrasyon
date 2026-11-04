@@ -1880,12 +1880,17 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const lastPaid = region === 'ALL' ? data?.lastPaid ?? null : past[0] ?? null
   const balance = none ? 0 : picked ? picked.expected : data?.expected ?? 0
   const overdue = none ? 0 : picked ? picked.unknown : data?.unknown ?? 0
+  const pendingDelivery = none ? 0 : picked ? picked.pendingDelivery : data?.pendingDelivery ?? 0
+  const pendingOrders = none ? 0 : picked ? picked.pendingDeliveryOrders : data?.pendingDeliveryOrders ?? 0
   // The marketplaces the figures cover (the picked ones, else every one in view) and their payout rules.
   const covered = platforms.length ? platforms : data?.platforms.map(item => item.platformCode) ?? []
   const payoutRules = covered.map(code => payoutRuleText[code]).filter(Boolean).join(' ')
   const items: Kpi[] = [
     { key: 'expected', label: 'Toplam Güncel Bakiye', value: balance, format: formatTl, icon: 'wallet', note: picked ? regionLabels[picked.region] : undefined,
       tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin net hakedişi (komisyon düşülmüş), bekleyen kesintiler düşülerek.\n${formatCount(picked?.records ?? data?.expectedRecords ?? 0)} kayıt.${covered.includes('TRENDYOL') ? " Trendyol'unki, Trendyol'un Toplam Güncel Bakiye'siyle aynı hesap (4 Kasım 2026'da kuruşu kuruşuna eşleşti)." : ''} Henüz kesilmemiş kesinti faturaları dahil değildir.` },
+    { key: 'pending', label: 'Teslim Bekleyen Sipariş', value: pendingDelivery, format: formatTl, icon: 'truck',
+      note: pendingOrders > 0 ? `${formatCount(pendingOrders)} sipariş` : 'Yok',
+      tip: `Onaylanmış ya da kargoya verilmiş, henüz müşteriye teslim edilmemiş siparişlerin toplam tutarı (indirimler düşülmüş, müşterinin ödediği).\nBakiyeye henüz dahil değildir; siparişler teslim edildikten sonra gelecek ödemelere yansır, komisyon o zaman düşülür.${covered.includes('TRENDYOL') ? " Trendyol panelindeki Onaylanan/Kargolanan Sipariş Tutarı, Türkiye, Körfez bölgesinin tutarıdır." : ''}` },
     { key: 'next', label: 'Sıradaki Ödeme', value: nextAmount, format: formatTl, empty: 'Yok', icon: 'calendarClock', note: nextDay ? shortDay(nextDay) : 'Bekleyen ödeme yok',
       tip: `En yakın ödeme gününün tahmini tutarı; vadesi geçip ödeme günü bilinmeyen kayıtlar dahil değildir.\n${payoutRules} Kesinti faturaları kesildikçe tutar düşer.` },
     { key: 'last', label: 'Son Ödeme', value: lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'circleCheck', note: lastPaid ? shortDay(lastPaid.day) : 'Okunmuş ödeme yok',

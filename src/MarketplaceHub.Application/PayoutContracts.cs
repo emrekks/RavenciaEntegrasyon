@@ -12,6 +12,9 @@ public sealed record PayoutLinesQuery(Guid? ConnectionId, string? PayoutId, Date
 // Expected: the balance, every record not paid yet (Trendyol's "Toplam Güncel Bakiye" is the same sum). Unknown: its
 // part whose due day has passed with no payout seen yet (not "unpaid": Avrupa is paid about monthly, and a payout is
 // read a day after it is made). EarlyPaymentsTaken: the early payments (Trendyol CashAdvance) of the last DaysBack days.
+// PendingDelivery: the orders accepted or shipped but not delivered yet (what the customer paid, discounts off, as the
+// marketplace reports it): not in the balance yet, they join a later payout once delivered. Trendyol's "Onaylanan/
+// Kargolanan Sipariş Tutarı" is its Türkiye-Körfez region's figure (39,466.84 TL on 4 Nov 2026, to the kuruş).
 public sealed record PayoutView(
     DateOnly Today,
     int DaysBack,
@@ -27,14 +30,18 @@ public sealed record PayoutView(
     IReadOnlyList<PayoutPlatformView> Platforms,
     IReadOnlyList<PayoutGroupView> Upcoming,
     IReadOnlyList<PayoutGroupView> Past,
-    IReadOnlyList<PayoutCoverageView> Coverage);
+    IReadOnlyList<PayoutCoverageView> Coverage,
+    decimal PendingDelivery = 0,
+    int PendingDeliveryOrders = 0);
 
 // Region: TR_GULF (Türkiye and the Gulf storefronts), EUROPE, AZ, UNKNOWN (a country no rule names).
-public sealed record PayoutRegionView(string Region, decimal Expected, int Records, DateOnly? NextDay, decimal? NextAmount, decimal Unknown);
+public sealed record PayoutRegionView(string Region, decimal Expected, int Records, DateOnly? NextDay, decimal? NextAmount, decimal Unknown,
+    decimal PendingDelivery = 0, int PendingDeliveryOrders = 0);
 
 // One marketplace's balance (its records not paid yet), next payout and overdue part, as PayoutRegionView; the
 // marketplaces' balances add up to PayoutView.Expected. Only the marketplaces whose payouts are read and that have a store.
-public sealed record PayoutPlatformView(string PlatformCode, decimal Expected, int Records, DateOnly? NextDay, decimal? NextAmount, decimal Unknown);
+public sealed record PayoutPlatformView(string PlatformCode, decimal Expected, int Records, DateOnly? NextDay, decimal? NextAmount, decimal Unknown,
+    decimal PendingDelivery = 0, int PendingDeliveryOrders = 0);
 
 // Kind PAYOUT_DAY: a store's open records expected on an estimated payout day in a region (Trendyol Türkiye-Körfez);
 // DUE_DAY: on their due day (the other regions and marketplaces; Status EXPECTED, an estimate; for paid agreements and

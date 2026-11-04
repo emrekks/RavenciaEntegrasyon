@@ -8,13 +8,16 @@ export type PayoutStatus = 'PAID' | 'EXPECTED' | 'UNKNOWN'
 export type PayoutKind = 'PAYOUT_DAY' | 'DUE_DAY' | 'OVERDUE' | 'PAID_DAY' | 'PAYOUT'
 export type PayoutGroup = { key: string; kind: PayoutKind; connectionId: string; platformCode: string; storeName: string; region: PayoutRegion; regionName: string | null
   day: string; amount: number; linesAmount: number | null; records: number; status: PayoutStatus }
-export type PayoutRegionSummary = { region: PayoutRegion; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number }
+// pendingDelivery: the orders accepted or shipped but not delivered yet (not in the balance; they join a later payout).
+export type PayoutRegionSummary = { region: PayoutRegion; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number
+  pendingDelivery: number; pendingDeliveryOrders: number }
 // One marketplace's balance, next payout and overdue part; the marketplaces' balances add up to Payouts.expected.
-export type PayoutPlatformSummary = { platformCode: string; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number }
+export type PayoutPlatformSummary = { platformCode: string; expected: number; records: number; nextDay: string | null; nextAmount: number | null; unknown: number
+  pendingDelivery: number; pendingDeliveryOrders: number }
 export type PayoutCoverage = { connectionId: string; platformCode: string; storeName: string; state: 'READ' | 'NOT_READ' | 'NOT_SUPPORTED'; lastSyncedAt: string | null }
 export type Payouts = { today: string; daysBack: number; expected: number; expectedRecords: number; next: PayoutGroup | null; lastPaid: PayoutGroup | null
   unknown: number; unknownRecords: number; earlyPaymentsTaken: number; earlyPayments: number; regions: PayoutRegionSummary[]; platforms: PayoutPlatformSummary[]
-  upcoming: PayoutGroup[]; past: PayoutGroup[]; coverage: PayoutCoverage[] }
+  upcoming: PayoutGroup[]; past: PayoutGroup[]; coverage: PayoutCoverage[]; pendingDelivery: number; pendingDeliveryOrders: number }
 export type PayoutLine = { externalId: string; connectionId: string; platformCode: string; transactionType: string | null; category: string; transactionDate: string
   dueDay: string | null; orderNumber: string | null; invoiceNumber: string | null; country: string | null; region: PayoutRegion; gross: number; commission: number | null
   net: number; status: PayoutStatus; paymentOrderId: string | null; barcode: string | null }

@@ -82,11 +82,11 @@ const withFinance: ReportSales = {
 const requests = vi.hoisted(() => [] as string[])
 const fixture = vi.hoisted(() => ({ current: null as ReportSales | null }))
 const payouts = {
-  today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0,
+  today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0, pendingDelivery: 1450.5, pendingDeliveryOrders: 3,
   next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 880, linesAmount: null, records: 2, status: 'EXPECTED' },
   lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' },
-  platforms: [{ platformCode: 'TRENDYOL', expected: 1080, records: 3, nextDay: '2026-11-05', nextAmount: 780, unknown: 240 }, { platformCode: 'PAZARAMA', expected: 100, records: 1, nextDay: '2026-11-05', nextAmount: 100, unknown: 0 }],
-  regions: [{ region: 'TR_GULF', expected: 780, records: 2, nextDay: '2026-11-05', nextAmount: 780, unknown: 240 }, { region: 'EUROPE', expected: 400, records: 1, nextDay: '2026-11-12', nextAmount: 400, unknown: -50 }],
+  platforms: [{ platformCode: 'TRENDYOL', expected: 1080, records: 3, nextDay: '2026-11-05', nextAmount: 780, unknown: 240, pendingDelivery: 1450.5, pendingDeliveryOrders: 3 }, { platformCode: 'PAZARAMA', expected: 100, records: 1, nextDay: '2026-11-05', nextAmount: 100, unknown: 0, pendingDelivery: 0, pendingDeliveryOrders: 0 }],
+  regions: [{ region: 'TR_GULF', expected: 780, records: 2, nextDay: '2026-11-05', nextAmount: 780, unknown: 240, pendingDelivery: 1050.5, pendingDeliveryOrders: 2 }, { region: 'EUROPE', expected: 400, records: 1, nextDay: '2026-11-12', nextAmount: 400, unknown: -50, pendingDelivery: 400, pendingDeliveryOrders: 1 }],
   upcoming: [
     { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
     { key: 'due:store-3:2026-11-05:NONE:DUE_DAY', kind: 'DUE_DAY', connectionId: 'store-3', platformCode: 'PAZARAMA', storeName: 'Pazarama', region: 'NONE', regionName: null, day: '2026-11-05', amount: 100, linesAmount: null, records: 1, status: 'EXPECTED' },
@@ -501,8 +501,14 @@ describe('ReportsPage', () => {
     expect(requests).toContain('/reports/payouts?')
     const figures = texts(page, '.reports-kpis > div')
     expect(figures[0]).toContain('Toplam Güncel Bakiye₺1.180')
-    expect(figures[1]).toContain('Sıradaki Ödeme₺880')
-    expect(figures[3]).toContain('Vadesi Geçmiş Bekleyen₺240')
+    // The orders on their way to the customer, apart from the balance; Trendyol's own figure is its Türkiye-Körfez part.
+    expect(figures).toHaveLength(6)
+    expect(figures[1]).toContain('Teslim Bekleyen Sipariş₺1.451')
+    expect(figures[1]).toContain('3 sipariş')
+    expect(figures[1]).toContain('Bakiyeye henüz dahil değildir')
+    expect(figures[1]).toContain('Türkiye, Körfez bölgesinin tutarıdır')
+    expect(figures[2]).toContain('Sıradaki Ödeme₺880')
+    expect(figures[4]).toContain('Vadesi Geçmiş Bekleyen₺240')
     // Every marketplace's total, adding up to the balance; Trendyol's regions in the list under its card.
     expect(texts(page, '.is-platforms .reports-payout-region')).toEqual([expect.stringContaining('Trendyol₺1.080'), expect.stringContaining('Pazarama₺100')])
     expect(texts(page, '.reports-payout-regionpop > button')[1]).toContain('Türkiye, Körfez₺780')
@@ -525,6 +531,8 @@ describe('ReportsPage', () => {
     await act(async () => { (page.querySelectorAll('.reports-payout-regionpop > button')[2] as HTMLButtonElement).click() })
     expect(texts(page, '.reports-payout-row')).toHaveLength(2)
     expect(texts(page, '.reports-kpis > div')[0]).toContain('Toplam Güncel Bakiye₺400')
+    expect(texts(page, '.reports-kpis > div')[1]).toContain('Teslim Bekleyen Sipariş₺400')
+    expect(texts(page, '.reports-kpis > div')[1]).toContain('1 sipariş')
     await act(async () => { (page.querySelector('.reports-payout-regionpop-all') as HTMLButtonElement).click() })
     expect(texts(page, '.reports-payout-row')).toHaveLength(4)
     // A marketplace card sets the platform filter: the server is asked for it, the other cards stay in view.
@@ -566,9 +574,10 @@ describe('ReportsPage', () => {
     const hepsiburada = await open('?view=payouts&hp=HEPSIBURADA')
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     const tips = texts(hepsiburada, '.reports-kpis > div')
-    expect(tips[1]).toContain('Hepsiburada her salı öder')
-    expect(tips[1]).not.toContain('Trendyol Türkiye-Körfez')
+    expect(tips[2]).toContain('Hepsiburada her salı öder')
+    expect(tips[2]).not.toContain('Trendyol Türkiye-Körfez')
     expect(tips[0]).not.toContain("Trendyol'un Toplam Güncel Bakiye")
+    expect(tips[1]).not.toContain('Onaylanan/Kargolanan')
   })
 
   it('opens the stock tab with its capital, value, breakdowns and dead stock, asking for the picked platforms', async () => {
