@@ -88,20 +88,20 @@
 .publish-steps-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .publish-steps { display: inline-flex; min-width: 0; align-items: center; gap: 12px; }
 .publish-steps-track, .publish-steps-item { display: inline-flex; flex: none; align-items: center; }
-.publish-step-link { flex: none; width: 8px; height: 3px; margin: 0 2px; background: var(--ps-idle); border-radius: 2px; }
+.publish-step-link { flex: none; width: 14px; height: 3px; margin: 0 3px; background: var(--ps-idle); border-radius: 2px; }
 .publish-step-link.is-full { background: var(--ps-ok); }
 .publish-step-link.is-half { background: linear-gradient(90deg, var(--ps-ok) 50%, var(--ps-idle) 0); }
 /* Each step keeps its own icon (Hazırlık, Gönderim, Onay, Yayında) with no circle behind it: done steps are green, the
    active one is larger in its state's colour and moves (the clock's hands turn, the plane glides, the page shakes, the
    store hops), the steps ahead are faint. */
 .publish-step { position: relative; display: grid; box-sizing: border-box; flex: none; width: 22px; height: 22px; place-items: center; color: var(--ps-idle-ink); background: none; border-radius: 50%; opacity: .45; }
-.publish-step > svg { position: relative; display: block; width: 13px; height: 13px; overflow: visible; }
+.publish-step > svg { position: relative; display: block; width: 16px; height: 16px; overflow: visible; }
 .publish-step.is-done, .publish-step.is-half { color: var(--ps-ok); opacity: 1; }
 .publish-step.is-next, .publish-step.is-now, .publish-step.is-fail { opacity: 1; }
 .publish-step.is-next { color: var(--rv-color-warning); }
 .publish-step.is-now { color: var(--ps-run); }
 .publish-step.is-fail { color: var(--ps-bad); }
-.publish-step:is(.is-next, .is-now, .is-fail) > svg, .publish-steps-item:last-child .publish-step.is-done > svg { width: 16px; height: 16px; }
+.publish-step:is(.is-next, .is-now, .is-fail) > svg, .publish-steps-item:last-child .publish-step.is-done > svg { width: 19px; height: 19px; }
 .publish-step .publish-clock-hand { transform-box: view-box; transform-origin: 12px 12px; }
 .publish-step .publish-clock-hour { transform: rotate(120deg); }
 .publish-step.is-next .publish-clock-minute { animation: rv-publish-clock-minute 12s linear infinite; }
@@ -141,8 +141,9 @@
    publishStepsFit); the steps and their badges always stay. */
 @container (max-width: 235px) {
   .publish-step { width: 20px; height: 20px; }
-  .publish-step > svg { width: 11px; height: 11px; }
-  .publish-step-link { width: 6px; margin: 0 1px; }
+  .publish-step > svg { width: 14px; height: 14px; }
+  .publish-step:is(.is-next, .is-now, .is-fail) > svg, .publish-steps-item:last-child .publish-step.is-done > svg { width: 17px; height: 17px; }
+  .publish-step-link { width: 9px; margin: 0 2px; }
   .publish-steps { gap: 6px; }
 }
 @container (max-width: 179.98px) { .publish-steps[data-fit="180"] .publish-steps-word { display: none; } }
@@ -192,8 +193,9 @@
 .publish-issue-trigger.publish-platform-status { gap: 6px; min-height: 30px; box-sizing: border-box; cursor: pointer; font: inherit; }
 .publish-issue-trigger.publish-platform-status:hover { filter: brightness(1.08); }
 .publish-issue-trigger.publish-platform-status:focus-visible { outline: 2px solid var(--rv-color-danger); outline-offset: 2px; }
-.publish-issue-trigger svg { flex: none; opacity: .8; }
-.publish-issue-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+.publish-issue-trigger:not(.publish-steps-trigger) svg { flex: none; opacity: .8; }
+/* The chevron of the plain status trigger turns while its list is open; the step pill's icons stay as they are. */
+.publish-issue-trigger:not(.publish-steps-trigger)[aria-expanded="true"] svg { transform: rotate(180deg); }
 .publish-issue-count { display: inline-grid; box-sizing: border-box; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; color: #fff; background: var(--rv-color-danger); border-radius: 12px; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
 .publish-issue-badge:hover .publish-issue-tooltip, .publish-issue-tooltip.is-open { display: block; }
 /* While one gap list is open (clicked), the others do not open on hover or focus; only the open one shows. */

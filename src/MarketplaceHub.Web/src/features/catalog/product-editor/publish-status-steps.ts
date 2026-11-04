@@ -160,7 +160,8 @@ export function publishStepBadges(steps: PublishSteps, unit: 'varyant' | 'renk' 
 export const publishStepsFitTiers = [180, 200, 220, 240, 260, 280, 300, 320, 340, 360] as const
 
 export function publishStepsFit(steps: PublishSteps) {
-  // Measured live: the track is 124 px, the gap 12, padding and border 20; a 12.5 px bold letter about 6.3 px.
-  const width = 156 + steps.label.length * 6.6
+  // The track is 148 px (four 22 px steps, three 14 px links with 3 px sides), the gap 12, padding and border 20; a
+  // 12.5 px bold letter about 6.3 px.
+  const width = 180 + steps.label.length * 6.6
   return publishStepsFitTiers.find(tier => tier >= width) ?? 400
 }
