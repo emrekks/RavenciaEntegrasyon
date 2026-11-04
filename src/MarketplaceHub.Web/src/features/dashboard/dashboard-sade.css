@@ -433,3 +433,5 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-x-word { display: none; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-x-word + .rr-op-sep { margin-left: 0; }
 }
+/* Touch: a sideways drag on the revenue chart moves the chosen hour or day; vertical drags still scroll the page. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart { touch-action: pan-y; }

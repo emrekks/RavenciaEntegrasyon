@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
@@ -123,7 +123,9 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
     tip.style.top = `${above ? hover.y - box.top - height - gap : hover.y - box.top + gap + 4}px`
     tip.style.visibility = ''
   }, [hover])
-  const move = (event: ReactMouseEvent<HTMLDivElement>) => {
+  // Mouse: the point under the pointer. Touch: a finger dragged sideways moves the chosen point (the chart keeps the
+  // page's vertical scroll), and the last point stays chosen after the finger lifts.
+  const move = (event: ReactPointerEvent<HTMLDivElement>) => {
     if ((event.target as Element).closest('.rr-ctip')) return
     const box = event.currentTarget.getBoundingClientRect()
     const px = (event.clientX - box.left) / box.width * W
@@ -132,7 +134,7 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
   }
   const point = hover ? points[hover.index] : null
   const before = hover ? (hourly ? previous[hover.index] ?? null : points[hover.index - 1] ?? previous[previous.length - 1]) : null
-  return <div ref={chartRef} className="rr-chart" onMouseMove={move} onMouseLeave={() => setHover(null)}>
+  return <div ref={chartRef} className="rr-chart" onPointerMove={move} onPointerDown={event => { if (event.pointerType !== 'mouse') move(event) }} onPointerLeave={event => { if (event.pointerType === 'mouse') setHover(null) }}>
     <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={hourly ? 'Saatlik ciro grafiği' : 'Günlük ciro grafiği'}>
       <g className="rr-grid">{Array.from({ length: 6 }, (_, index) => { const value = max / 5 * index; return <g key={index}><line x1={L} x2={W - R} y1={y(value)} y2={y(value)} /><text x={L - 10} y={y(value) + 4} textAnchor="end">{axis(value)}</text></g> })}</g>
       <g className="rr-xax">{points.map((item, index) => index % labelStep === 0 || (!item.label && Number(item.day.slice(8, 10)) === 1) ? <text key={item.day} x={x(index)} y={H - 8} textAnchor="middle">{item.label ?? dayShort(item.day)}</text> : null)}</g>
