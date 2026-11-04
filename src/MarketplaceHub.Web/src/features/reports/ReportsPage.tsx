@@ -15,7 +15,11 @@ import {
 } from './report-format'
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
-import { byDay, payoutGap, payoutLinesQuery, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutGroup, type PayoutLines, type PayoutRegion, type Payouts } from './payouts'
+import { transactionLabel } from './transaction-labels'
+import { byDay, emptyPayoutFilters, filterGroups, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
+import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../shared/list-url-state'
+import { RrAnchor, RrFilterCard, RrIcon } from '../marketplace/returns-ui'
+import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../marketplace/shared'
 import { Columns, CountUp, Donut, Progress, StackedBar, useReveal, type ColumnPoint, type Part } from './report-visuals'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
@@ -1787,34 +1791,76 @@ function stockItemColumns(deadDays: number): Column<ReportStockItem>[] {
 
 // Hakediş: what the marketplaces will pay, by payout day, and what they paid; every figure from the stores' accounting
 // records as read. The balance matches Trendyol's own (Toplam Güncel Bakiye); the days to come are estimates.
-function PayoutsReport({ platforms }: { platforms: string[] | null }) {
-  const query = payoutsQuery(platforms)
-  const result = useQuery({ queryKey: ['reports-payouts', query], queryFn: () => hubApi<Payouts>(`/reports/payouts?${query}`), staleTime: 60_000, placeholderData: previous => previous })
-  const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
-  const [region, setRegion] = useState<PayoutRegion | null>(null)
-  const [search, setSearch] = useState('')
-  const [applied, setApplied] = useState('')
+// The filters live in the address (hp platforms, hr region, hs state, hf/ht days, hmin/hmax amounts, hq search, ho order).
+// Platforms are asked of the server, so every figure follows them; the region narrows the figures too (from the
+// server's region totals, exact); the state, days and amounts narrow the list only.
+function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | null }) {
+  const [params] = useSearchParams()
+  const [platforms, setPlatforms] = useState<string[]>(() => readUrlList(params, 'hp').length ? readUrlList(params, 'hp') : pagePlatforms ?? [])
+  const [applied, setApplied] = useState<PayoutFilters>(() => ({
+    region: readUrlChoice(params, 'hr', ['ALL', 'TR_GULF', 'EUROPE', 'AZ', 'UNKNOWN'] as const, 'ALL'),
+    state: readUrlChoice(params, 'hs', ['ALL', 'EXPECTED', 'PAID', 'OVERDUE', 'DEDUCTION'] as const, 'ALL'),
+    from: readUrlText(params, 'hf'), to: readUrlText(params, 'ht'), min: readUrlText(params, 'hmin'), max: readUrlText(params, 'hmax'),
+    sort: readUrlChoice(params, 'ho', ['date', 'amount'] as const, 'date')
+  }))
+  const [search, setSearch] = useState(() => readUrlText(params, 'hq'))
+  const [draft, setDraft] = useState({ ...applied, platforms, search })
+  const [tab, setTab] = useState<'upcoming' | 'past'>(() => applied.state === 'PAID' ? 'past' : 'upcoming')
   const [open, setOpen] = useState<string | null>(null)
+  useListUrlSync({ hp: platforms, hr: applied.region, hs: applied.state, hf: applied.from, ht: applied.to, hmin: applied.min, hmax: applied.max, hq: search, ho: applied.sort },
+    { hp: [], hr: 'ALL', hs: 'ALL', hf: '', ht: '', hmin: '', hmax: '', hq: '', ho: 'date' })
+  const none = platforms.includes(RETURN_NO_PLATFORM)
+  const query = payoutsQuery(platforms.length ? platforms : null)
+  const result = useQuery({ queryKey: ['reports-payouts', query], queryFn: () => hubApi<Payouts>(`/reports/payouts?${query}`), staleTime: 60_000, placeholderData: previous => previous, enabled: !none })
+  const apply = (next: typeof draft) => {
+    setDraft(next)
+    setPlatforms(next.platforms)
+    setSearch(next.search)
+    setApplied({ region: next.region, state: next.state, from: next.from, to: next.to, min: next.min, max: next.max, sort: next.sort })
+    if (next.state === 'PAID') setTab('past')
+    else if (next.state !== 'ALL') setTab('upcoming')
+    setOpen(null)
+  }
+  const pickRegion = (region: PayoutRegion | 'ALL') => apply({ ...draft, platforms, search, ...applied, region })
+  const clear = () => apply({ ...emptyPayoutFilters, platforms: [], search: '' })
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
-  if (!data) return <Busy text="Hakediş hazırlanıyor…" />
-  const read = data.coverage.filter(store => store.state === 'READ')
+  if (!data && !none) return <Busy text="Hakediş hazırlanıyor…" />
+  const trendyol = platforms.length === 0 || platforms.includes('TRENDYOL')
+  const region = trendyol ? applied.region : 'ALL'
+  const regions = trendyol ? data?.regions.filter(item => item.region !== 'NONE') ?? [] : []
+  const upcoming = none ? [] : (data?.upcoming ?? []).filter(group => region === 'ALL' || group.region === region)
+  const past = none ? [] : (data?.past ?? []).filter(group => region === 'ALL' || group.region === region)
+  // The figures for the chosen region come from the server's region totals and groups, so they stay exact.
+  const picked = region === 'ALL' ? null : regions.find(item => item.region === region) ?? null
+  const nextGroups = upcoming.filter(group => group.kind !== 'OVERDUE')
+  const nextDay = region === 'ALL' ? data?.next?.day ?? null : nextGroups[0]?.day ?? null
+  const nextAmount = region === 'ALL' ? data?.next?.amount ?? null : nextDay ? nextGroups.filter(group => group.day === nextDay).reduce((sum, group) => sum + group.amount, 0) : null
+  const lastPaid = region === 'ALL' ? data?.lastPaid ?? null : past[0] ?? null
+  const balance = none ? 0 : picked ? picked.expected : data?.expected ?? 0
+  const overdue = none ? 0 : picked ? picked.unknown : data?.unknown ?? 0
   const items: Kpi[] = [
-    { key: 'expected', label: 'Toplam Güncel Bakiye', value: data.expected, format: formatTl, icon: 'wallet',
-      tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin net hakedişi (komisyon düşülmüş), bekleyen kesintiler düşülerek.\n${formatCount(data.expectedRecords)} kayıt. Trendyol'un Toplam Güncel Bakiye'siyle aynı hesap (4 Kasım 2026'da kuruşu kuruşuna eşleşti); seçili diğer pazaryerleri de eklenir. Henüz kesilmemiş kesinti faturaları dahil değildir.` },
-    { key: 'next', label: 'Sıradaki Ödeme', value: data.next?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'calendarClock', note: data.next ? shortDay(data.next.day) : 'Bekleyen ödeme yok',
+    { key: 'expected', label: 'Toplam Güncel Bakiye', value: balance, format: formatTl, icon: 'wallet', note: picked ? regionLabels[picked.region] : undefined,
+      tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin net hakedişi (komisyon düşülmüş), bekleyen kesintiler düşülerek.\n${formatCount(picked?.records ?? data?.expectedRecords ?? 0)} kayıt. Trendyol'un Toplam Güncel Bakiye'siyle aynı hesap (4 Kasım 2026'da kuruşu kuruşuna eşleşti). Henüz kesilmemiş kesinti faturaları dahil değildir.` },
+    { key: 'next', label: 'Sıradaki Ödeme', value: nextAmount, format: formatTl, empty: 'Yok', icon: 'calendarClock', note: nextDay ? shortDay(nextDay) : 'Bekleyen ödeme yok',
       tip: 'En yakın ödeme gününün tahmini tutarı; vadesi geçip ödeme günü bilinmeyen kayıtlar dahil değildir.\nTrendyol Türkiye-Körfez pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder; resmi tatil günü kaydırır. Kesinti faturaları kesildikçe tutar düşer.' },
-    { key: 'last', label: 'Son Ödeme', value: data.lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'circleCheck', note: data.lastPaid ? shortDay(data.lastPaid.day) : 'Okunmuş ödeme yok',
+    { key: 'last', label: 'Son Ödeme', value: lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'circleCheck', note: lastPaid ? shortDay(lastPaid.day) : 'Okunmuş ödeme yok',
       tip: 'Pazaryerinin yaptığı son ödeme, kendi bildirdiği tutarla.' },
-    { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: data.unknown, format: formatTl, icon: 'alertTriangle', tone: data.unknownRecords > 0 ? 'warn' : undefined,
-      note: data.unknownRecords > 0 ? `${formatCount(data.unknownRecords)} kayıt` : 'Yok',
-      tip: `Bakiyenin vadesi geçmiş ama henüz bir ödemeye bağlanmamış kısmı.\n${formatCount(data.unknownRecords)} kayıt. Ödenmeyecek demek değildir: Avrupa ayda bir ödenir, ödeme kaydı ödemeden bir gün sonra okunur, kesintiler sonraki ödemeden düşülür.` }
+    { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: overdue, format: formatTl, icon: 'alertTriangle', tone: overdue > 0 ? 'warn' : undefined,
+      note: overdue < 0 ? 'Bekleyen kesinti' : overdue > 0 ? 'Ödeme bekliyor' : 'Yok',
+      tip: 'Bakiyenin vadesi geçmiş ama henüz bir ödemeye bağlanmamış kısmı; eksi ise sıradaki ödemeden düşülecek kesintilerdir.\nÖdenmeyecek demek değildir: Avrupa ayda bir ödenir, ödeme kaydı ödemeden bir gün sonra okunur.' }
   ]
-  const regions = data.regions.filter(item => item.region !== 'NONE')
-  const shown = (tab === 'upcoming' ? data.upcoming : data.past).filter(group => region === null || group.region === region)
-  const waiting = shown.filter(group => group.kind === 'OVERDUE')
-  const days = byDay(shown.filter(group => group.kind !== 'OVERDUE'))
-  const nextDay = tab === 'upcoming' ? data.next?.day ?? null : null
+  const listed = filterGroups(tab === 'upcoming' ? upcoming : past, { ...applied, region: 'ALL' })
+  const waiting = applied.sort === 'date' ? listed.filter(group => group.kind === 'OVERDUE') : []
+  const days = byDay(applied.sort === 'date' ? listed.filter(group => group.kind !== 'OVERDUE') : listed)
+  const filtered = [applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max)].some(Boolean)
+  const activeCount = [platforms.length > 0, region !== 'ALL', applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max), Boolean(search.trim()), applied.sort !== 'date'].filter(Boolean).length
+  const read = data?.coverage.filter(store => store.state === 'READ') ?? []
+  const platformOptions = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA'].map(code => ({ value: code, label: platformName(code) }))
+  const single = (label: string, value: string, options: Array<{ value: string; label: string }>, pick: (value: string) => void, disabled = false, right = false) =>
+    <div className="rr-fld"><small>{label}</small><RrAnchor trigger={(isOpen, toggle) => <button type="button" className={`rr-trigger${isOpen ? ' rr-on' : ''}`} onClick={toggle} disabled={disabled}>
+      <span>{options.find(option => option.value === value)?.label ?? options[0].label}</span><RrIcon name="chev" /></button>}>
+      {close => <ReturnColumnPop label={label} options={options} value={value} right={right} onPick={next => { pick(next); close() }} />}</RrAnchor></div>
   const row = (group: PayoutGroup) => {
     const expanded = open === group.key
     const gap = payoutGap(group)
@@ -1822,65 +1868,93 @@ function PayoutsReport({ platforms }: { platforms: string[] | null }) {
     return <li key={group.key} className={expanded ? 'is-open' : undefined}>
       <button type="button" className="reports-payout-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : group.key)}>
         <strong className="reports-payout-amount">{formatTl(group.amount)}</strong>
-        <span className="reports-payout-store"><PlatformSquareMark code={group.platformCode} name={platformName(group.platformCode)} /><span>{group.storeName}</span></span>
-        <span className="reports-payout-area">{area && <em className="reports-payout-badge is-region">{area}</em>}</span>
-        <span className="reports-payout-state">{group.status !== 'EXPECTED' && <em className={`reports-payout-badge is-${group.status.toLowerCase()}`}>{statusLabels[group.status]}</em>}</span>
+        <span className="reports-payout-store"><PlatformSquareMark code={group.platformCode} name={platformName(group.platformCode)} /><span>{group.storeName}</span>
+          {area && <em className="reports-payout-chip is-region">{area}</em>}</span>
+        <span className="reports-payout-state">{applied.sort === 'amount' && <small>{shortDay(group.day, false)}</small>}
+          {payoutState(group) !== 'EXPECTED' && <em className={`reports-payout-chip is-${payoutState(group).toLowerCase()}`}>{payoutStateLabels[payoutState(group)]}</em>}</span>
         <UiIcon name="chevronDown" size={16} />
       </button>
       {expanded && <div className="reports-payout-detail">
         {gap !== null && <p className="reports-payout-gap" role="note">Okunan kayıtların toplamı {formatTl(group.linesAmount)}; ödeme tutarından {formatTl(gap)} farklı (kesinti ya da başka ödemede listelenen kayıt).</p>}
         {group.kind === 'PAYOUT' && group.linesAmount === null && <p className="reports-payout-gap" role="note">Bu ödemenin kayıtları ödemeden bir gün sonra okunur; henüz okunmadı.</p>}
-        <PayoutLinesTable platforms={platforms} group={group} />
+        <PayoutLinesTable platforms={platforms.length ? platforms : null} group={group} />
       </div>}
     </li>
   }
+  // A day's state: paid, partly paid, or estimated.
+  const dayState = (groups: PayoutGroup[]) => groups.every(group => group.status === 'PAID') ? ['Ödendi', 'is-paid'] as const
+    : groups.some(group => group.status === 'PAID') ? ['Kısmen Ödendi', 'is-paid'] as const : ['Tahmini', 'is-expected'] as const
   return <div className="reports-summary reports-payouts">
     <KpiStrip label="Hakediş özeti" items={items} />
     <p className="reports-payout-early" role="note">
       <UiIcon name="banknote" size={14} />
-      {data.earlyPayments > 0 ? `Son ${data.daysBack} günde alınan erken ödeme: ${formatTl(data.earlyPaymentsTaken)} (${formatCount(data.earlyPayments)} kayıt).` : `Son ${data.daysBack} günde erken ödeme alınmadı.`}
+      {(data?.earlyPayments ?? 0) > 0 ? `Son ${data?.daysBack} günde alınan erken ödeme: ${formatTl(data?.earlyPaymentsTaken)} (${formatCount(data?.earlyPayments ?? 0)} kayıt).` : `Son ${data?.daysBack ?? 90} günde erken ödeme alınmadı.`}
       {' '}Erken alınabilir tutar pazaryeri API'sinde yok; yalnız pazaryeri panelinde görünür.
     </p>
-    <Panel title="Ödeme Özeti" className="reports-payout-list"
-      actions={<form className="reports-order-search" onSubmit={event => { event.preventDefault(); setApplied(search) }}>
-        <input type="search" value={search} onChange={event => { setSearch(event.target.value); if (!event.target.value.trim()) setApplied('') }} placeholder="Sipariş / Fatura No İle Ara" aria-label="Sipariş veya fatura numarasıyla ara" />
-        <button type="submit" className="secondary">Ara</button>
-      </form>}>
-      {/* Trendyol's payout regions in one strip over the payments; a card filters the list to its region. */}
-      {regions.length > 0 && <div className="reports-payout-regions" role="group" aria-label="Bölge Detayları">
+    <Panel title="Ödeme Özeti" className="reports-payout-list">
+      <div className="rr reports-payout-filters">
+        <RrFilterCard active={activeCount}><div className="rr-filters reports-payout-filterbar">
+          <label className="rr-fld rr-search"><small>Sipariş / Fatura No</small><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} />
+            <input className="rr-in" style={{ paddingLeft: 34 }} aria-label="Sipariş veya fatura numarasıyla ara" placeholder="Sipariş, fatura veya kayıt no" value={draft.search}
+              onChange={event => setDraft({ ...draft, search: event.target.value })} onKeyDown={event => { if (event.key === 'Enter') apply(draft) }} /></span></label>
+          <div className="rr-fld"><small>Pazaryeri</small><RrAnchor trigger={(isOpen, toggle) => <button type="button" className={`rr-trigger${isOpen ? ' rr-on' : ''}`} onClick={toggle}>
+            <span>{draft.platforms.length === 0 ? 'Tümü' : draft.platforms.includes(RETURN_NO_PLATFORM) ? 'Hiçbiri' : draft.platforms.map(platformName).join(', ')}</span><RrIcon name="chev" /></button>}>
+            {() => <ReturnPlatformPop title="Pazaryeri" options={platformOptions} selected={draft.platforms} onChange={next => setDraft({ ...draft, platforms: next })} />}</RrAnchor></div>
+          {single('Bölge', draft.region, [{ value: 'ALL', label: 'Tümü' }, { value: 'TR_GULF', label: regionLabels.TR_GULF }, { value: 'EUROPE', label: regionLabels.EUROPE }, { value: 'AZ', label: regionLabels.AZ }],
+            value => setDraft({ ...draft, region: value as PayoutRegion | 'ALL' }), draft.platforms.length > 0 && !draft.platforms.includes('TRENDYOL'))}
+          {single('Durum', draft.state, (Object.keys(payoutStateLabels) as PayoutState[]).map(value => ({ value, label: payoutStateLabels[value] })), value => setDraft({ ...draft, state: value as PayoutState }))}
+          <DateRangePicker className="rr-fld rr-date" from={draft.from} to={draft.to} onChange={range => setDraft({ ...draft, from: range.from, to: range.to })}
+            label={tab === 'past' ? 'Ödeme Tarihi' : 'Ödeme Günü'} placeholder="Başlangıç – Bitiş" icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
+          <div className="rr-fld reports-payout-range"><small>Tutar (₺)</small><span>
+            <input className="rr-in" inputMode="decimal" aria-label="En az tutar" placeholder="En az" value={draft.min} onChange={event => setDraft({ ...draft, min: event.target.value })} />
+            <input className="rr-in" inputMode="decimal" aria-label="En çok tutar" placeholder="En çok" value={draft.max} onChange={event => setDraft({ ...draft, max: event.target.value })} /></span></div>
+          {single('Sıralama', draft.sort, [{ value: 'date', label: 'Tarihe Göre' }, { value: 'amount', label: 'Tutara Göre' }], value => setDraft({ ...draft, sort: value as PayoutSort }), false, true)}
+          <div className="rr-fbtns"><button type="button" className="rr-btn" onClick={clear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => apply(draft)}>Filtrele</button></div>
+        </div></RrFilterCard>
+      </div>
+      {/* Trendyol's payout regions in one strip over the payments; a card sets the region filter. */}
+      {regions.length > 0 && !search.trim() && <div className="reports-payout-regions" role="group" aria-label="Bölge Detayları">
         <ul>{regions.map(item => <li key={item.region}>
-          <button type="button" className="reports-payout-region" aria-pressed={region === item.region} onClick={() => setRegion(region === item.region ? null : item.region)}>
-            <span className="reports-payout-region-name">{regionLabels[item.region]}</span>
+          <button type="button" className="reports-payout-region" aria-pressed={region === item.region} onClick={() => pickRegion(region === item.region ? 'ALL' : item.region)}>
+            <CardBackgroundIcon name="globe" />
+            <span className="reports-payout-region-name"><PlatformSquareMark code="TRENDYOL" name={platformName('TRENDYOL')} />{regionLabels[item.region]}</span>
             <strong>{formatTl(item.expected)}</strong>
             <span className="reports-payout-region-next">{item.nextDay ? `Sıradaki ${shortDay(item.nextDay, false)} · ${formatTl(item.nextAmount)}` : 'Sıradaki ödeme günü belli değil'}</span>
             {/* Overdue sales wait for a payout; an overdue sum below zero is deductions waiting to come off the next one. */}
-            {item.unknown > 0 && <em className="reports-payout-badge is-quiet">Vadesi Geçmiş {formatTl(item.unknown)}</em>}
-            {item.unknown < 0 && <em className="reports-payout-badge is-quiet">Bekleyen Kesinti {formatTl(-item.unknown)}</em>}
+            {item.unknown > 0 && <em className="reports-payout-chip is-overdue">Vadesi Geçmiş {formatTl(item.unknown)}</em>}
+            {item.unknown < 0 && <em className="reports-payout-chip is-deduction">Bekleyen Kesinti {formatTl(-item.unknown)}</em>}
           </button>
         </li>)}</ul>
-        {region && <button type="button" className="secondary reports-payout-all" onClick={() => setRegion(null)}>Tümü</button>}
+        {region !== 'ALL' && <button type="button" className="secondary reports-payout-all" onClick={() => pickRegion('ALL')}>Tümü</button>}
       </div>}
-      {applied.trim() ? <PayoutLinesTable platforms={platforms} search={applied} />
+      {search.trim() ? <PayoutLinesTable platforms={platforms.length ? platforms : null} search={search} />
         : <>
           <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
             items={[{ value: 'upcoming', label: 'Gelecek Ödemeler', icon: 'calendarClock' }, { value: 'past', label: 'Geçmiş Ödemeler', icon: 'circleCheck' }]} />
-          {region && <p className="reports-payout-filter">Yalnız {regionLabels[region]} gösteriliyor.</p>}
           {days.length === 0 && waiting.length === 0
-            ? <p className="reports-empty">{tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data.daysBack} günde okunmuş ödeme yok.`}</p>
+            ? <div className="reports-empty reports-payout-empty"><p>{filtered || none || region !== 'ALL' ? 'Bu filtrelerle ödeme yok.' : tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data?.daysBack ?? 90} günde okunmuş ödeme yok.`}</p>
+              {activeCount > 0 && <button type="button" className="secondary reports-payout-all" onClick={clear}>Filtreleri Temizle</button>}</div>
             : <div className="reports-payout-days">
-              {days.map(item => <section key={item.day} className={`reports-payout-day${item.day === nextDay ? ' is-next' : ''}`} aria-label={shortDay(item.day)}>
-                <header>
-                  <span className="reports-payout-day-name">{item.day === nextDay && <em>Sıradaki Ödeme</em>}{shortDay(item.day)}</span>
-                  <strong>{formatTl(item.total)}</strong>
-                  {tab === 'upcoming' && <small>Tahmini</small>}
-                </header>
-                <ul className="reports-payout-rows">{item.groups.map(row)}</ul>
-              </section>)}
+              {days.map((item, index) => {
+                const next = tab === 'upcoming' && applied.sort === 'date' && item.day === nextDay
+                const [stateLabel, stateTone] = dayState(item.groups)
+                const [year] = item.day.split('-')
+                return <section key={`${item.day}-${index}`} className={`reports-payout-day${next ? ' is-next' : ''}`} aria-label={shortDay(item.day)}>
+                  <header>
+                    <UiIcon name="calendar" size={16} />
+                    <span className="reports-payout-day-name"><b>{shortDay(item.day, false)} {shortDay(item.day).split(' ').at(-1)}</b><small>{year}</small></span>
+                    {next && <em className="reports-payout-chip is-next">Sıradaki Ödeme</em>}
+                    <em className={`reports-payout-chip ${stateTone}`}>{stateLabel}</em>
+                    <strong>{formatTl(item.total)}</strong>
+                  </header>
+                  <ul className="reports-payout-rows">{item.groups.map(row)}</ul>
+                </section>
+              })}
               {waiting.length > 0 && <section className="reports-payout-day is-waiting" aria-label="Vadesi geçmiş, ödeme bekleyen">
                 <header>
-                  <span className="reports-payout-day-name">Vadesi Geçmiş, Ödeme Bekleyen</span>
+                  <UiIcon name="alertTriangle" size={16} />
+                  <span className="reports-payout-day-name"><b>Vadesi Geçmiş, Ödeme Bekleyen</b><small>Ödeme günü belli değil</small></span>
                   <strong>{formatTl(waiting.reduce((sum, group) => sum + group.amount, 0))}</strong>
-                  <small>Ödeme günü belli değil</small>
                 </header>
                 <ul className="reports-payout-rows">{waiting.map(row)}</ul>
               </section>}
@@ -1889,8 +1963,8 @@ function PayoutsReport({ platforms }: { platforms: string[] | null }) {
     </Panel>
     <p className="reports-payout-coverage" role="note">
       {read.length > 0 ? `Okunan mağazalar: ${read.map(store => `${platformName(store.platformCode)} · ${store.storeName}${store.lastSyncedAt ? ` (${formatIstanbul(store.lastSyncedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}`).join(', ')}. ` : 'Henüz hiçbir mağazanın hakediş kaydı okunmadı. '}
-      {data.coverage.some(store => store.state === 'NOT_SUPPORTED') && `Henüz okunmayanlar: ${[...new Set(data.coverage.filter(store => store.state === 'NOT_SUPPORTED').map(store => platformName(store.platformCode)))].join(', ')}. `}
-      Gelecek ödemeler tahminidir; kesin tutar ödeme günü pazaryeri panelinde görünür.
+      {data?.coverage.some(store => store.state === 'NOT_SUPPORTED') && `Henüz okunmayanlar: ${[...new Set(data.coverage.filter(store => store.state === 'NOT_SUPPORTED').map(store => platformName(store.platformCode)))].join(', ')}. `}
+      Kartlar pazaryeri ve bölge filtresine göre; durum, tarih ve tutar filtreleri yalnız listeyi süzer. Gelecek ödemeler tahminidir; kesin tutar ödeme günü pazaryeri panelinde görünür.
     </p>
   </div>
 }
@@ -1914,7 +1988,7 @@ function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | 
         {searching && <th scope="col">Bölge</th>}<th scope="col" className="is-num">Tutar</th><th scope="col" className="is-num">Komisyon</th><th scope="col" className="is-num">Hakediş</th>
         {searching && <th scope="col">Durum</th>}</tr></thead>
       <tbody>{data.items.map(line => <tr key={`${line.connectionId}:${line.externalId}`}>
-        <th scope="row">{line.transactionType ?? line.category}</th>
+        <th scope="row">{transactionLabel(line)}</th>
         <td>{line.orderNumber ?? line.invoiceNumber ?? line.externalId}</td>
         <td>{line.barcode ?? '—'}</td>
         <td>{day(line.transactionDate)}</td>

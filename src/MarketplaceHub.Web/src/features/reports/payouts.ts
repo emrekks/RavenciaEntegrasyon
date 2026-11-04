@@ -75,3 +75,31 @@ export function shortDay(day: string, full = true) {
   const text = `${String(date).padStart(2, '0')} ${months[month - 1]}`
   return full ? `${text} ${year} ${weekdays[new Date(Date.UTC(year, month - 1, date)).getUTCDay()]}` : text
 }
+
+// The Ödeme Özeti filters. Platforms go to the server (the figures follow them); the region, state, days and amounts
+// narrow the list, and the region the figures too (PayoutsReport); the search asks for records instead of payments.
+export type PayoutState = 'ALL' | 'EXPECTED' | 'PAID' | 'OVERDUE' | 'DEDUCTION'
+export type PayoutSort = 'date' | 'amount'
+export type PayoutFilters = { region: PayoutRegion | 'ALL'; state: PayoutState; from: string; to: string; min: string; max: string; sort: PayoutSort }
+export const payoutStateLabels: Record<PayoutState, string> = { ALL: 'Tümü', EXPECTED: 'Tahmini', PAID: 'Ödendi', OVERDUE: 'Vadesi Geçti', DEDUCTION: 'Bekleyen Kesinti' }
+export const emptyPayoutFilters: PayoutFilters = { region: 'ALL', state: 'ALL', from: '', to: '', min: '', max: '', sort: 'date' }
+
+// A group's state as the filter names it: paid, waiting past its due day, deductions waiting (below zero), or expected.
+export function payoutState(group: PayoutGroup): Exclude<PayoutState, 'ALL'> {
+  if (group.status === 'PAID') return 'PAID'
+  if (group.kind === 'OVERDUE') return 'OVERDUE'
+  return group.amount < 0 ? 'DEDUCTION' : 'EXPECTED'
+}
+
+const amount = (text: string) => { const value = Number(text.replace(/\./g, '').replace(',', '.')); return text.trim() === '' || Number.isNaN(value) ? null : value }
+
+// The groups the filters keep, in date order (as given) or by amount, largest first.
+export function filterGroups(groups: PayoutGroup[], filters: PayoutFilters) {
+  const min = amount(filters.min)
+  const max = amount(filters.max)
+  const kept = groups.filter(group => (filters.region === 'ALL' || group.region === filters.region)
+    && (filters.state === 'ALL' || payoutState(group) === filters.state)
+    && (!filters.from || group.day >= filters.from) && (!filters.to || group.day <= filters.to)
+    && (min === null || group.amount >= min) && (max === null || group.amount <= max))
+  return filters.sort === 'amount' ? [...kept].sort((a, b) => b.amount - a.amount) : kept
+}
