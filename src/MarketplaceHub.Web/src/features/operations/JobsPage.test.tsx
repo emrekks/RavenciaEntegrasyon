@@ -311,7 +311,15 @@ describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
     expect(currentSearch).toBe('?kategori=siparis&sekme=api-saglik')
     expect(container.querySelector('#psm-title')!.textContent).toContain('Fiyat ve Stok Gönderimi')
     expect(container.querySelector('.psm-head p')).toBeNull()
-    expect(container.querySelector('.psm-row:not(.is-head)')!.textContent).toContain('Ravencia Trendyol')
+    const row = container.querySelector('.psm-row:not(.is-head)')!
+    expect(row.textContent).toContain('Ravencia Trendyol')
+    // The platform shows as its logo; a name that already says it is not followed by the platform name again.
+    expect(row.querySelector('img.psm-logo')).not.toBeNull()
+    expect(row.querySelector('.psm-conn small')).toBeNull()
+    expect(row.querySelector('[data-label="Son Başarılı"] time')!.textContent).toBe('1 sa önce')
+    expect(row.querySelector('[data-label="Kuyruk"]')!.className).toContain('is-warn')
+    expect(row.querySelector('[data-label="Başarısız"]')!.className).toContain('is-muted')
+    expect(container.querySelector('.psm-summary')!.textContent).toContain('Tümü Açık')
     expect(container.querySelector('.jobs-category-segment, [aria-label="İşlem kategorileri"]')).toBeNull()
     expect(pageRequests().length).toBe(jobReads)
   })

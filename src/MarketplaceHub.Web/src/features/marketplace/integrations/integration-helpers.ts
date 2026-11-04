@@ -47,10 +47,54 @@ export function orderSourceState(row: Pick<PriceStockConnectionMonitor, 'orderSo
   const cadence = cadenceText(row.orderReadIntervalSeconds)
   if (row.orderSource === 'WEBHOOK') return { label: 'Webhook', detail: cadence ? `Yedek okuma ${cadence}` : null, tone: 'on' }
   if (row.orderSource === 'WEBHOOK_FALLBACK') return { label: 'Webhook Sorunlu', detail: cadence ? `Sık okuma ${cadence}` : 'Sipariş okuması kapalı', tone: 'partial' }
-  return { label: 'Düzenli Okuma', detail: cadence ? `Her ${cadence}` : 'Sipariş okuması kapalı', tone: 'off' }
+  if (row.orderSource === 'POLLING') return { label: 'Düzenli Okuma', detail: cadence ? `Her ${cadence}` : 'Sipariş okuması kapalı', tone: 'off' }
+  // A source the API did not report stays unknown; it is not taken for polling.
+  return { label: 'Bilinmiyor', detail: null, tone: 'off' }
 }
 
 export type PriceStockMonitor = { generatedAt: string; connections: PriceStockConnectionMonitor[] }
+
+/** How a count of the monitor reads: zero is muted, a failure is bad, anything else waiting or held back is a warning. */
+export type PriceStockMetricTone = 'muted' | 'warn' | 'bad'
+export function priceStockMetricTone(value: number, kind: 'queue' | 'failed' | 'invalid' | 'lost'): PriceStockMetricTone {
+  if (!(value > 0)) return 'muted'
+  return kind === 'failed' ? 'bad' : 'warn'
+}
+
+/** A connection needs a look when a push failed or waits for review, an offer is held back, a listing is lost, or the
+ *  webhook is unhealthy. A queue alone is ordinary work in progress. */
+export function priceStockNeedsAttention(row: Pick<PriceStockConnectionMonitor, 'failedPushes7d' | 'manualReviewPushes' | 'invalidOffers' | 'notFoundLinks' | 'rejectedLinks' | 'orderSource'>) {
+  return row.failedPushes7d + row.manualReviewPushes + row.invalidOffers + row.notFoundLinks + row.rejectedLinks > 0 || row.orderSource === 'WEBHOOK_FALLBACK'
+}
+
+/** The strip above the connections: how many there are, writes open/held/off, where orders come from, how many need a look. */
+export function priceStockMonitorSummary(rows: PriceStockConnectionMonitor[]) {
+  const summary = { connections: rows.length, writesOpen: 0, writesHeld: 0, writesOff: 0, webhook: 0, webhookTrouble: 0, polling: 0, unknownSource: 0, needsAttention: 0 }
+  for (const row of rows) {
+    const write = priceStockWriteState(row).tone
+    if (write === 'on') summary.writesOpen++
+    else if (write === 'partial') summary.writesHeld++
+    else summary.writesOff++
+    if (row.orderSource === 'WEBHOOK') summary.webhook++
+    else if (row.orderSource === 'WEBHOOK_FALLBACK') summary.webhookTrouble++
+    else if (row.orderSource === 'POLLING') summary.polling++
+    else summary.unknownSource++
+    if (priceStockNeedsAttention(row)) summary.needsAttention++
+  }
+  return summary
+}
+
+/** "Az önce", "12 dk önce", "5 sa önce", "3 gün önce"; null when the time is unknown or unreadable. */
+export function relativeAgeText(value: string | null | undefined, now = Date.now()) {
+  if (!value) return null
+  const at = new Date(value).getTime()
+  if (Number.isNaN(at)) return null
+  const minutes = Math.max(0, Math.floor((now - at) / 60_000))
+  if (minutes < 1) return 'Az önce'
+  if (minutes < 60) return `${minutes} dk önce`
+  const hours = Math.floor(minutes / 60)
+  return hours < 48 ? `${hours} sa önce` : `${Math.floor(hours / 24)} gün önce`
+}
 
 /** The automatic write state of a connection in words: open, held (one policy on) or off, and why. */
 export function priceStockWriteState(row: Pick<PriceStockConnectionMonitor, 'masterSwitchOn' | 'priceWriteEnabled' | 'stockWriteEnabled' | 'automaticWritesOpen'>): { label: string; tone: 'on' | 'partial' | 'off' } {
