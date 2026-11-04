@@ -353,3 +353,11 @@ main .rr.rr-dashboard > * { min-width: 0; }
 /* Returns and other currencies are shown beside the revenue, never added into it. */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-note { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 16px; border-top: 1px solid var(--rr-line); color: var(--rr-muted); font-size: 12.5px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-note b { color: var(--rr-ink); font-weight: 600; }
+
+/* A card's figure and its note ("66 Bekleyen | 0 Yaklaşan") stay on one line; on a narrow card the note shrinks and,
+   only if it still does not fit, ends in an ellipsis. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-t > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) {
+  :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x { font-size: 11px; }
+  :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-sep { margin-inline: 3px; }
+}
