@@ -1837,8 +1837,9 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
       <strong>{formatTl(item.expected)}</strong>
       <span className="reports-payout-region-next">{item.nextDay ? `Sıradaki ${shortDay(item.nextDay, false)} · ${formatTl(item.nextAmount)}` : 'Sıradaki ödeme günü belli değil'}</span>
       {/* Overdue sales wait for a payout; an overdue sum below zero is deductions waiting to come off the next one. */}
-      {item.unknown > 0 && <em className="reports-payout-chip is-overdue">Vadesi Geçmiş {formatTl(item.unknown)}</em>}
-      {item.unknown < 0 && <em className="reports-payout-chip is-deduction">Bekleyen Kesinti {formatTl(-item.unknown)}</em>}
+      {/* Phones show the short form (Gecikmiş / Kesinti, whole liras) so the chip fits the card. */}
+      {item.unknown > 0 && <em className="reports-payout-chip is-overdue"><span className="reports-payout-chip-long">Vadesi Geçmiş {formatTl(item.unknown)}</span><span className="reports-payout-chip-short">Gecikmiş {formatTlWhole(item.unknown)}</span></em>}
+      {item.unknown < 0 && <em className="reports-payout-chip is-deduction"><span className="reports-payout-chip-long">Bekleyen Kesinti {formatTl(-item.unknown)}</span><span className="reports-payout-chip-short">Kesinti {formatTlWhole(-item.unknown)}</span></em>}
     </button></li>
   const clear = () => apply({ ...emptyPayoutFilters, platforms: [], search: '' })
   const data = result.data

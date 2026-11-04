@@ -896,3 +896,10 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-payout-day > header > strong { grid-column: 4; }
   .app-shell.stitch-shell main .reports-page .reports-payout-day-chips { grid-column: 3; grid-row: 1; }
 }
+.app-shell.stitch-shell main .reports-page .reports-payout-chip-short { display: none; }
+@media (max-width: 760px) {
+  /* A card's chip never runs past the card: the short form, wrapping if it still does not fit. */
+  .app-shell.stitch-shell main .reports-page .reports-payout-region .reports-payout-chip { max-width: 100%; height: auto; min-height: 20px; white-space: normal; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-chip-long { display: none; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-chip-short { display: inline; }
+}
