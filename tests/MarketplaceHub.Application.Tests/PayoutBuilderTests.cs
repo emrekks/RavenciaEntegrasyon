@@ -218,8 +218,17 @@ public sealed class PayoutBuilderTests
         var stores = new Dictionary<Guid, PayoutStore> { [store] = new(store, "HEPSIBURADA", "HB", false) };
         PayoutRow Record(string id, string type, string status, decimal credit, decimal debt, DateOnly day) => new()
         {
-            ConnectionId = store, PlatformCode = "HEPSIBURADA", Source = HepsiburadaFinanceSyncJobHandler.Source, ExternalId = id, RequestedType = "x", TransactionType = type,
-            TransactionSubType = status, Category = MarketplaceFinanceCategories.Sale, Credit = credit, Debt = debt, PaymentDate = Due(day)
+            ConnectionId = store,
+            PlatformCode = "HEPSIBURADA",
+            Source = HepsiburadaFinanceSyncJobHandler.Source,
+            ExternalId = id,
+            RequestedType = "x",
+            TransactionType = type,
+            TransactionSubType = status,
+            Category = MarketplaceFinanceCategories.Sale,
+            Credit = credit,
+            Debt = debt,
+            PaymentDate = Due(day)
         };
         PayoutRow[] rows =
         [
