@@ -50,3 +50,11 @@
   .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td:is(.pal-change-td, .pal-source-td)::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--rv-color-muted); font-size: 11px; font-weight: 500; }
   .app-shell.stitch-shell main .jobs-reference-page .pal-source { max-width: none; }
 }
+/* Phones: the source never runs past the card (a long return number is cut with an ellipsis); a product's options and
+   codes take a second line instead of being cut. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td:is(.pal-change-td, .pal-source-td) { min-width: 0; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-source a { display: block; overflow: hidden; max-width: 100%; text-overflow: ellipsis; white-space: nowrap; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-source a > svg { display: inline; margin-left: 4px; vertical-align: -1px; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-row .psl-product-text small { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+}

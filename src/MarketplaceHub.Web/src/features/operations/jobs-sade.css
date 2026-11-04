@@ -173,8 +173,6 @@
 
 /* Phones (mobil-tum-sayfalar.html): the four state counters sit in a tidy 2×2 grid. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .jobs-reference-toolbar .jobs-reference-status-summary.jobs-reference-status-summary { display: grid !important; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
-  .app-shell.stitch-shell main .jobs-reference-toolbar .jobs-reference-status-summary.jobs-reference-status-summary > * { margin: 0 !important; min-width: 0; }
 }
 
 /* Row hover matches every other table (the shared raised tint on the cells, nothing on the row); phone cards keep
@@ -229,3 +227,11 @@
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span[role="button"]:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span[role="button"].is-on { color: var(--rv-color-ink) !important; background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, transparent); }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span[role="button"]:focus-visible { outline: 2px solid color-mix(in srgb, var(--rv-color-primary) 70%, transparent); outline-offset: 1px; }
+/* Phones: the state counts are one row of chips that scrolls sideways, like tabs (owner, 5 Nov 2026), on İş Takibi and
+   Ürün Hareketleri alike. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary { display: flex; flex-wrap: nowrap; grid-template-columns: none; gap: 6px; width: 100%; margin-inline: 0; padding-bottom: 2px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary::-webkit-scrollbar { display: none; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span { flex: none; min-height: 32px; padding: 0 10px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; white-space: nowrap; }
+  html body .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-status-summary > span[aria-pressed="true"] { border-color: var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 10%, var(--rv-color-surface)); }
+}

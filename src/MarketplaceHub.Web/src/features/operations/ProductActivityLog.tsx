@@ -177,11 +177,10 @@ export function ProductActivityLog({ platformOptions, headingSlot }: { platformO
             : <><strong>Henüz ürün hareketi yok.</strong><span>Siparişle düşen ya da iadeyle eklenen stok, elle veya toplu yapılan stok ve fiyat değişiklikleri, ürünün satış durumu burada listelenir.</span></>}</td></tr>}
         </tbody>
       </table></div>
-      {rows.length > 0 && <div className="jobs-reference-pagination">
-        <strong>{list.hasNextPage ? `${rows.length.toLocaleString('tr-TR')} hareket yüklendi, daha eskileri var` : `Toplam ${rows.length.toLocaleString('tr-TR')} hareket`}</strong>
-        {list.hasNextPage && <div className="jobs-reference-pagination-actions"><Button variant="secondary" className="jobs-reference-load-more" loading={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Daha Fazla Yükle</Button></div>}
+      {/* Only the way to older rows; no count or note under the list (owner, 5 Nov 2026). */}
+      {list.hasNextPage && <div className="jobs-reference-pagination">
+        <div className="jobs-reference-pagination-actions"><Button variant="secondary" className="jobs-reference-load-more" loading={list.isFetchingNextPage} onClick={() => void list.fetchNextPage()}>Daha Fazla Yükle</Button></div>
       </div>}
-      <p className="pal-history-note">Satış durumu ve panel fiyatı değişiklikleri 4 Kasım 2026’dan beri kaydediliyor; daha eskileri için kayıt yok.</p>
     </>}
   </div>
 }
