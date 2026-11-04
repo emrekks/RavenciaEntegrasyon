@@ -104,6 +104,8 @@ export type PublicationReadinessDraft = {
   categoryId: string
   automaticBarcodeGeneration: boolean
   mediaCount: number
+  // Variant rows without a picture of their own (the editor's rows, or a saved record's variants); undefined when unknown.
+  variantsWithoutMedia?: number
   variantAttributeIds: string[]
   variantRows: ReadinessRow[]
   attributeSelections: Record<string, string[]>
@@ -189,6 +191,7 @@ export function publicationProductChecks(draft: PublicationReadinessDraft, requi
     { title: 'Görsel Kalitesi', detail: hasProductMedia ? `${mediaCount} adet ürün görseli eklendi.${mediaCount > 8 ? ' Trendyol için sıralamadaki ilk 8 görsel kullanılır.' : ''}` : 'En az bir yüksek çözünürlüklü görsel ekleyin.', ok: hasProductMedia, shopifyOk: hasProductMedia, shopifyDetail: 'Shopify yayını için en az bir geçerli HTTPS görseli gerekir.' },
     { title: 'Varyant Bilgileri', detail: hasVariantData ? 'Varyant yapısı yayınlanmaya hazır.' : 'Seçilen seçenekler için varyant satırlarını oluşturun.', ok: hasVariantData, shopifyOk: hasVariantData, shopifyDetail: 'Shopify yayını için en az bir stok kodlu varyant oluşturun.' },
     { title: 'Kategori ve Seçenekler', detail: catalogValidationDetail, ok: catalogValidationIssues.length === 0, shopifyOk: true, shopifyDetail: 'Shopify yayını için pazaryeri kategori özellikleri gerekmez.' },
+    ...(draft.variantsWithoutMedia ? [{ title: 'Varyant Görselleri', detail: `${draft.variantRows.length} varyanttan ${draft.variantsWithoutMedia} tanesine görsel seçilmedi. Varyant tablosundan veya “Seçeneklere görsel ata” ile görsel atayın.`, ok: false, shopifyOk: true, shopifyDetail: 'Shopify yayını varyant görseli olmadan da yapılır.' }] : []),
     { title: 'Web Color', detail: webColorValidationIssues.length ? webColorValidationIssues.join(' ') : 'Web Color yayınlamaya hazır.', ok: webColorValidationIssues.length === 0, platforms: ['TRENDYOL'] }
   ]
 }
@@ -266,6 +269,7 @@ export function publicationReadinessDraftFromProduct(product: Product, allRequir
     barcode: primary?.barcode ?? '',
     categoryId: product.categoryId ?? '',
     automaticBarcodeGeneration: false,
+    variantsWithoutMedia: product.variants.filter(variant => !(variant.mediaUrls ?? []).length).length,
     // The form keeps the URLs as one text and splits it the same way.
     mediaCount: orderMediaUrlsByVariants(product.variants, product.mediaUrls ?? [], product.primaryImageUrl, product.hasCustomMediaOrder).join('\n').split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean).length,
     variantAttributeIds,

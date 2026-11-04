@@ -75,6 +75,7 @@ describe('publish readiness parity', () => {
     expect(bulkIssues).toEqual([
       'Temel Ürün Verileri. Eksik alanlar: açıklama.',
       'Görsel Kalitesi. En az bir yüksek çözünürlüklü görsel ekleyin.',
+      'Varyant Görselleri. 1 varyanttan 1 tanesine görsel seçilmedi. Varyant tablosundan veya “Seçeneklere görsel ata” ile görsel atayın.',
       'Web Color. Web Color için kategori özelliği eşleştirilmemiş.',
       'Kategori eşlemesi. Elbise kategorisinin Trendyol Mağaza karşılığı seçilmemiş; kategoriyi eşleyin.'
     ])

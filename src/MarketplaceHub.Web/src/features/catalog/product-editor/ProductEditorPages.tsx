@@ -790,7 +790,7 @@ function PublishPlatformCardSkeletons() {
   </article>)}</>
 }
 
-export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, categoryName = '', productChecks, selectedAttributes, variantMediaWarning, onSelect, onDeselect, onBlockedChange, onFeedback: emitFeedback, onEditProductData }: {
+export function PublishPlatformCard({ card, selected, settling: pageSettling = false, productId, familyProductIds, variantLinks, lookupKeys, categoryId, categoryName = '', productChecks, selectedAttributes, onSelect, onDeselect, onBlockedChange, onFeedback: emitFeedback, onEditProductData }: {
   // A gap in the product's own data: back to the form (the publish popup has no form, its gap links to the product).
   onEditProductData?: () => void
   /** The card's required gaps once known (0 when none, or while it is still reading them), so Yayınla can say why it left the card out. */
@@ -809,7 +809,6 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   categoryName?: string
   productChecks: Array<{ title: string; detail: string; ok: boolean; shopifyOk?: boolean; shopifyDetail?: string }>
   selectedAttributes: PublicationAttributeSelection[]
-  variantMediaWarning?: string
   onSelect: () => void
   onDeselect: () => void
   /** The page's toast: the refresh and stop controls say on screen what they started, naming the marketplace. */
@@ -1149,7 +1148,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     {blockedIssues.length > 0 && <span id={`${issueListId}-required`} className="sr-only">{blockedIssues.map(issue => `${issue.attribute}: ${issue.detail}`).join('. ')}</span>}
     {mappingCheckPending && <span id={`${issueListId}-pending`} className="sr-only">Yayın gereksinimleri kontrol ediliyor. Güncel zorunlu özellik eşlemeleri doğrulanıyor.</span>}
     {optionalMappingWarnings.length > 0 && <span id={`${issueListId}-optional`} className="sr-only">{optionalMappingWarnings.map(issue => `${issue.attribute}: ${issue.detail}`).join('. ')}</span>}
-    {variantMediaWarning && <div className="publish-platform-warning" role="status" aria-label={`${card.name} varyant görsel uyarısı`}><UiIcon name="alert" /><div><strong>Varyant görselleri seçilmedi</strong><p>{variantMediaWarning}</p></div></div>}
+    
   </article>
 }
 // The card's last publication job, read while it runs; the card shows it inline so its height never changes.
@@ -3165,8 +3164,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const selectedVariantMediaRefs = variantMediaModal?.mode === 'bulk'
     ? readVariantMediaAssignmentDraft(variantMediaModal.draftsBySelection, selectedBulkMediaAssignmentKey)
     : variantMediaModal?.draftRefs ?? []
-  const publicationDraft: PublicationReadinessDraft = { title: form.title, description: form.description, brandId: form.brandId, modelCode: form.modelCode, barcode: form.barcode, categoryId: form.categoryId, automaticBarcodeGeneration, mediaCount: mediaUrls.length + mediaFiles.length, variantAttributeIds, variantRows, attributeSelections, attributeTextValues, webColorAutoEnabled, manualWebColorValueId }
   const variantsWithoutMediaCount = variantRows.filter(row => !row.mediaRefs.length).length
+  const publicationDraft: PublicationReadinessDraft = { variantsWithoutMedia: variantsWithoutMediaCount, title: form.title, description: form.description, brandId: form.brandId, modelCode: form.modelCode, barcode: form.barcode, categoryId: form.categoryId, automaticBarcodeGeneration, mediaCount: mediaUrls.length + mediaFiles.length, variantAttributeIds, variantRows, attributeSelections, attributeTextValues, webColorAutoEnabled, manualWebColorValueId }
   const productChecks = publicationProductChecks(publicationDraft, { items: allRequirements, isLoading: requirements.isLoading, isError: requirements.isError, isSuccess: requirements.isSuccess })
   const publicationAttributeSelections = useMemo(() => publicationAttributeSelectionsFor({ title: '', description: '', brandId: '', modelCode: '', barcode: '', categoryId: '', automaticBarcodeGeneration: false, mediaCount: 0, variantAttributeIds: [], variantRows, attributeSelections, attributeTextValues, webColorAutoEnabled, manualWebColorValueId }, allRequirements), [allRequirements, attributeSelections, attributeTextValues, manualWebColorValueId, variantRows, webColorAutoEnabled])
   const canAddVariantCombinations = useMemo(() => {
@@ -3458,7 +3457,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               settling={editorHydrating || (Boolean(form.categoryId) && requirements.isLoading)}
               productChecks={productChecks}
               selectedAttributes={publicationAttributeSelections}
-              variantMediaWarning={variantsWithoutMediaCount > 0 ? `${variantRows.length} varyanttan ${variantsWithoutMediaCount} tanesine görsel seçilmedi. Varyant tablosundan veya “Seçeneklere görsel ata” ile görsel atayın.` : undefined}
               onSelect={() => updateChannel(card.connection.id)}
               onDeselect={() => setSelectedChannelIds(current => current.filter(id => id !== card.connection.id))}
               onBlockedChange={gaps => setBlockedPublishCards(current => (current[card.connection.id] ?? 0) === gaps ? current : { ...current, [card.connection.id]: gaps })}
