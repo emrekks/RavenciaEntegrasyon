@@ -91,16 +91,27 @@
 .publish-step-link { flex: none; width: 8px; height: 3px; margin: 0 2px; background: var(--ps-idle); border-radius: 2px; }
 .publish-step-link.is-full { background: var(--ps-ok); }
 .publish-step-link.is-half { background: linear-gradient(90deg, var(--ps-ok) 50%, var(--ps-idle) 0); }
-.publish-step { position: relative; display: grid; box-sizing: border-box; flex: none; width: 22px; height: 22px; place-items: center; color: var(--ps-idle-ink); background: var(--ps-idle); border-radius: 50%; }
-.publish-step > svg { position: relative; display: block; width: 12px; height: 12px; }
-.publish-step.is-done { color: var(--ps-on); background: var(--ps-ok); }
-.publish-step.is-next { color: var(--ps-ok); background: transparent; border: 1.5px dashed var(--ps-ok); }
-.publish-step.is-fail { color: var(--ps-on); background: var(--ps-bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ps-bad) 26%, transparent); }
-.publish-step.is-now { color: var(--ps-on); background: var(--ps-run); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ps-run) 24%, transparent); }
-.publish-step.is-now > svg { animation: rv-publish-status-spin 1.4s linear infinite; }
-/* Partly live: the Yayında step is a ring filled to the live share around the store icon. */
-.publish-step.is-half { color: var(--ps-ok); background: conic-gradient(var(--ps-ok) calc(var(--publish-step-share, 50) * 1%), var(--ps-idle) 0); }
-.publish-step.is-half::before { position: absolute; inset: 3px; content: ""; background: var(--ps-ground); border-radius: 50%; }
+/* Each step keeps its own icon (Hazırlık, Gönderim, Onay, Yayında) with no circle behind it: done steps are green, the
+   active one is larger in its state's colour and moves (the clock's hands turn, the plane glides, the page shakes, the
+   store hops), the steps ahead are faint. */
+.publish-step { position: relative; display: grid; box-sizing: border-box; flex: none; width: 22px; height: 22px; place-items: center; color: var(--ps-idle-ink); background: none; border-radius: 50%; opacity: .45; }
+.publish-step > svg { position: relative; display: block; width: 13px; height: 13px; overflow: visible; }
+.publish-step.is-done, .publish-step.is-half { color: var(--ps-ok); opacity: 1; }
+.publish-step.is-next, .publish-step.is-now, .publish-step.is-fail { opacity: 1; }
+.publish-step.is-next { color: var(--rv-color-warning); }
+.publish-step.is-now { color: var(--ps-run); }
+.publish-step.is-fail { color: var(--ps-bad); }
+.publish-step:is(.is-next, .is-now, .is-fail) > svg, .publish-steps-item:last-child .publish-step.is-done > svg { width: 16px; height: 16px; }
+.publish-step .publish-clock-hand { transform-box: view-box; transform-origin: 12px 12px; }
+.publish-step .publish-clock-hour { transform: rotate(120deg); }
+.publish-step.is-next .publish-clock-minute { animation: rv-publish-clock-minute 12s linear infinite; }
+.publish-step.is-next .publish-clock-hour { animation: rv-publish-clock-hour 144s linear infinite; }
+.publish-step.is-now > svg { animation: rv-publish-step-glide 1s ease-in-out infinite; }
+.publish-step.is-fail > svg { animation: rv-publish-step-shake 1.6s ease-in-out infinite; }
+.publish-steps-item:last-child .publish-step.is-done > svg { animation: rv-publish-step-hop 2.2s ease-in-out infinite; }
+/* Partly live: the green store with a thin ring filled to the live share. */
+.publish-step.is-half { background: conic-gradient(var(--ps-ok) calc(var(--publish-step-share, 50) * 1%), var(--ps-idle) 0); }
+.publish-step.is-half::before { position: absolute; inset: 2px; content: ""; background: var(--ps-ground); border-radius: 50%; }
 /* A count sits on the corner of the step it concerns, as on a notification icon: 18 px, 11 px bold, solid in its tone
    with a 2 px ring in the pill's colour so it stands clear of the icon; a step's second count takes the lower corner.
    Red: required gaps or refused / vanished variants; yellow: optional warnings; green: how many are live. */
@@ -120,7 +131,12 @@
 .publish-steps-chip { display: inline-flex; flex: none; align-items: center; height: 20px; padding: 0 7px; border-radius: 7px; font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .publish-steps-chip.is-red { color: color-mix(in srgb, var(--ps-bad) 75%, #fff); background: color-mix(in srgb, var(--ps-bad) 16%, transparent); }
 .publish-steps-chip.is-yellow { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, transparent); }
-@media (prefers-reduced-motion: reduce) { .publish-step.is-now > svg, .publish-issue-action.is-busy > svg { animation: none; } }
+@keyframes rv-publish-clock-minute { to { transform: rotate(360deg); } }
+@keyframes rv-publish-clock-hour { from { transform: rotate(120deg); } to { transform: rotate(480deg); } }
+@keyframes rv-publish-step-glide { 50% { transform: translate(2px, -2px); } }
+@keyframes rv-publish-step-shake { 0%, 60%, 100% { transform: translateX(0); } 10%, 30%, 50% { transform: translateX(-2px); } 20%, 40% { transform: translateX(2px); } }
+@keyframes rv-publish-step-hop { 0%, 70%, 100% { transform: translateY(0); } 35% { transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .publish-step > svg, .publish-step .publish-clock-hand, .publish-issue-action.is-busy > svg { animation: none !important; } }
 /* A narrower cell: smaller steps and links; the state label gives way below the width its pill needs (data-fit,
    publishStepsFit); the steps and their badges always stay. */
 @container (max-width: 235px) {
