@@ -31,9 +31,10 @@ internal sealed record ReportInput(
     // The parcels' desi for the platforms costed from their cargo tariffs (ReportParcelDesi).
     ReportDesiInput? Desi = null);
 
-// The commission tariffs uploaded for the report's stores (Komisyon Tarifeleri): a line the marketplace sent no
-// commission for takes the rate of the band its paid unit price falls in, in the tariff week the sale was made.
-// The latest upload wins where weeks overlap; no covering tariff or no band means no rate (never a guess).
+// The commission tariffs uploaded for the report's stores (Komisyon Tarifeleri): a line sold while a tariff that lists
+// its product covers the sale takes the rate of the band its sale price falls in, in place of the rate on the order (the
+// order's rate is only an estimate; Trendyol's statement, once it settles the order, still wins over both).
+// The latest upload wins where periods overlap; no covering tariff, no row or no band means no rate (never a guess).
 internal sealed class ReportCommissionTariffs
 {
     private readonly Dictionary<(Guid ConnectionId, string Code), List<(CommissionTariff Tariff, CommissionTariffRow Row)>> byCode = [];
@@ -49,17 +50,31 @@ internal sealed class ReportCommissionTariffs
             }
     }
 
-    public decimal? Rate(Guid connectionId, string? barcode, string? sku, DateTimeOffset at, decimal basisPrice)
+    public decimal? Rate(Guid connectionId, string? barcode, string? sku, DateTimeOffset at, decimal basisPrice) =>
+        Match(connectionId, barcode, sku, at, basisPrice)?.Rate;
+
+    // The rate and the tariff it comes from. The band is read at the unit's sale price before the seller's discounts and
+    // coupons (Trendyol's lineGrossAmount, the tariff file's "satış fiyatı"): live, 29 Oct 2026 #11762777840 MZ032YAD4 was
+    // paid 633.81 of 675 and settled at 21.5 %, the band of 675 (>= 634.60), not 20.8 %, the band of 633.81.
+    public ReportTariffMatch? Match(Guid connectionId, string? barcode, string? sku, DateTimeOffset at, decimal basisPrice)
     {
         foreach (var code in new[] { barcode, sku }.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x!.Trim()))
         {
             if (!byCode.TryGetValue((connectionId, code), out var list)) continue;
             var covering = list.FirstOrDefault(x => x.Tariff.PeriodStart <= at && at < x.Tariff.PeriodEnd);
             if (covering.Row is null) continue;
-            return CommissionTariffBands.BandFor(covering.Row, Math.Round(basisPrice, 2, MidpointRounding.AwayFromZero))?.Rate;
+            return CommissionTariffBands.BandFor(covering.Row, Math.Round(basisPrice, 2, MidpointRounding.AwayFromZero)) is { } band
+                ? new ReportTariffMatch(band.Rate, covering.Tariff)
+                : null;
         }
         return null;
     }
+}
+
+internal sealed record ReportTariffMatch(decimal Rate, CommissionTariff Tariff)
+{
+    // The tariff's validity as Komisyon Tarifeleri shows it ("29 Ekim – 1 Kasım 2026").
+    public string Period => Imports.CommissionTariffValidity.Text(Tariff.PeriodStart, Tariff.PeriodEnd);
 }
 
 internal sealed class ReportOrderRow
@@ -137,6 +152,9 @@ internal sealed class ReportLineExtra
     public string? Commission { get; init; }
     public string? CommissionRate { get; init; }
     public string? Komisyon { get; init; }
+    // Trendyol's lineGrossAmount: the unit's sale price before the seller's discounts and coupons, the price a commission
+    // tariff's bands are read at.
+    public string? GrossUnitPrice { get; init; }
     public string? CancelReason { get; init; }
 }
 
@@ -337,6 +355,9 @@ public static class ReportBuckets
         }
     }
 
+    // A line's gross unit price as the marketplace sent it (Trendyol lineGrossAmount); null when none or not positive.
+    public static decimal? GrossUnitPrice(string? value) => Number(value) is { } price && price > 0 ? price : null;
+
     private static decimal? Rate(string? value) => Number(value) is { } rate && rate > 0 && rate <= 100 ? rate : null;
 
     private static decimal? Number(string? value)
@@ -476,15 +497,17 @@ internal static class ReportBuilder
                 var commission = isTry && extra is not null
                     ? ReportBuckets.EstimatedCommission(platform, extra.CommissionType, extra.Commission, extra.CommissionRate, extra.Komisyon, paidUnit * keptUnits, keptUnits)
                     : null;
-                // Nothing usable on the line: the uploaded tariff's band for the price paid, in the week of the sale.
-                var fromTariff = false;
-                if (commission is null && isTry && keptUnits > 0 && paidUnit > 0
-                    && input.Tariffs?.Rate(order.ConnectionId, line.Barcode, line.Sku, order.RealAt, paidUnit) is { } tariffRate)
+                // An uploaded tariff covering the sale and listing the product: the rate of its band for the sale price
+                // replaces the order's, taken of what was paid (live: 21.5 % of 633.81 = 136.27, Trendyol's settled
+                // commission). A line without a gross price is read at its paid price.
+                ReportTariffMatch? tariff = null;
+                if (isTry && keptUnits > 0 && paidUnit > 0)
                 {
-                    commission = Math.Round(paidUnit * keptUnits * tariffRate / 100m, 2);
-                    fromTariff = true;
+                    var basis = ReportBuckets.GrossUnitPrice(extra?.GrossUnitPrice) ?? paidUnit;
+                    tariff = input.Tariffs?.Match(order.ConnectionId, line.Barcode, line.Sku, order.RealAt, basis);
+                    if (tariff is not null) commission = Math.Round(paidUnit * keptUnits * tariff.Rate / 100m, 2);
                 }
-                lines.Add(new(line, active, lineBack, paidUnit, commission, extra?.CancelReason, fromTariff));
+                lines.Add(new(line, active, lineBack, paidUnit, commission, extra?.CancelReason, tariff?.Period));
             }
             // Pazarama sends no commission on the order: its money movements carry it, net of a refund's, as the amount the
             // payout takes off (live: 625 − 75 commission − 5.68 withholding − 112.33 cargo − 8.28 fee = 423.71, its
@@ -837,7 +860,7 @@ internal static class ReportBuilder
             : $"Komisyon ve hakediş tahminidir: siparişte gelen komisyon oranı ya da tutarı üzerinden, iade edilmeyen adetler için hesaplanır; kesinleşmiş hakediş değildir. Komisyon bilgisi net cironun {Percent(commission.Coverage)} kadarında var; Pazarama ve Shopify komisyon göndermez, n11 oranları tutarsız olabilir.");
         var tariffLines = orders.Sum(x => x.Lines.Count(line => line.CommissionFromTariff));
         if (tariffLines > 0)
-            notes.Add($"{Count(tariffLines)} satırda siparişte komisyon gelmediği için oran yüklenen komisyon tarifesinden alındı (satış gününü kapsayan tarifede, ödenen birim fiyatın düştüğü bant).");
+            notes.Add($"{Count(tariffLines)} satırda oran yüklenen komisyon tarifesinden alındı (satış anını kapsayan tarifede, ürünün satış fiyatının düştüğü bant); siparişte gelen oranın yerine geçer.");
         if (cost.KeptQuantity > 0)
             notes.Add(cost.CostedQuantity <= 0
                 ? "Satılan ürünlerin hiçbirinde maliyet girilmemiş; kâr hesaplanamaz."
@@ -855,8 +878,10 @@ internal static class ReportBuilder
     private static decimal Back(IEnumerable<OrderFact> rows) => rows.Sum(x => x.Lines.Sum(line => line.Back));
     private static decimal? Rate(decimal part, decimal whole) => whole > 0 ? Math.Round(part / whole, 4) : null;
 
-    internal sealed record LineFact(ReportLineRow Row, decimal Active, decimal Back, decimal PaidUnitPrice, decimal? Commission, string? CancelReason, bool CommissionFromTariff = false)
+    // TariffPeriod: the validity of the uploaded tariff the line's commission was read from; null when it is the order's.
+    internal sealed record LineFact(ReportLineRow Row, decimal Active, decimal Back, decimal PaidUnitPrice, decimal? Commission, string? CancelReason, string? TariffPeriod = null)
     {
+        public bool CommissionFromTariff => TariffPeriod is not null;
         public decimal KeptUnits => Active - Back;
         public decimal KeptAmount => PaidUnitPrice * KeptUnits;
     }

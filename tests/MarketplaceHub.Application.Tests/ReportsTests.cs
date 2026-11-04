@@ -19,7 +19,7 @@ public sealed class ReportsTests
         var tariffs = new ReportCommissionTariffs([(first, Row(21.5m)), (reupload, Row(22m))]);
         var sale = week.AddDays(2);
 
-        // The latest upload of the week wins; the band follows the paid unit price.
+        // The latest upload of the week wins; the band follows the price given (the line's sale price).
         Assert.Equal(22m, tariffs.Rate(connection, "RYP00101", null, sale, 519.75m));
         Assert.Equal(20.6m, tariffs.Rate(connection, "RYP00101", null, sale, 470.63m));
         Assert.Equal(17.5m, tariffs.Rate(connection, "RYP00101", null, sale, 388.63m));

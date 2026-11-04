@@ -1,4 +1,5 @@
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.Trendyol;
 using MarketplaceHub.Infrastructure.Persistence;
 using Xunit;
 
@@ -93,6 +94,112 @@ public sealed class ReportOrderProfitTests
         var cargo = view.Costs.Single(cost => cost.Key == "cargo");
         Assert.Equal((98.34m, false, "Kargo faturasından"), (cargo.Amount, cargo.Estimated, cargo.Source));
         Assert.Equal(100.95m, view.Profit);
+    }
+
+    // Live, 29 Oct 2026 #11762777840: MZ032YAD4 sold at 675, paid 633.81 after the seller's discount and coupon, the order's
+    // rate 21.5 %. The uploaded tariff (29 Ekim 08.00 – 1 Kasım 07.59) puts 675 in its first band (>= 634.60, 21.5 %),
+    // 633.81 in the second (20.8 %); Trendyol settled it at 21.5 % of 633.81.
+    private static (ReportInput Input, Guid Order) TariffOrder(string orderRate, DateTimeOffset soldAt, ReportFinance? finance = null)
+    {
+        var (store, order, line) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var tariff = new CommissionTariff
+        {
+            ConnectionId = store,
+            PlatformCode = "TRENDYOL",
+            PeriodStart = new DateTimeOffset(2026, 10, 29, 5, 0, 0, TimeSpan.Zero),
+            PeriodEnd = new DateTimeOffset(2026, 11, 1, 5, 0, 0, TimeSpan.Zero),
+            PeriodText = "29 Ekim 08.00-1 Kasım 07.59",
+            FileName = "930112.xlsx",
+            FileHash = "H",
+            UploadedAt = new DateTimeOffset(2026, 10, 30, 22, 36, 0, TimeSpan.Zero)
+        };
+        var row = new CommissionTariffRow
+        {
+            Barcode = "MZ032YAD4",
+            SellerSku = "MZ032YAD4",
+            Tier1Min = 634.60m,
+            Rate1 = 21.5m,
+            Tier2Min = 574.48m,
+            Tier2Max = 634.59m,
+            Rate2 = 20.8m,
+            Tier3Min = 514.36m,
+            Tier3Max = 574.47m,
+            Rate3 = 19.3m,
+            Tier4Max = 514.35m,
+            Rate4 = 17.5m
+        };
+        var day = DateOnly.FromDateTime(soldAt.ToOffset(TimeSpan.FromHours(3)).DateTime);
+        var start = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.FromHours(3)).ToUniversalTime();
+        var input = new ReportInput(new ReportPeriod(day, day, start, start.AddDays(1)), ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
+            new Dictionary<Guid, ReportChannelView> { [store] = new(store, "TRENDYOL", "Trendyol", false) },
+            [new() { Id = order, ConnectionId = store, OrderNumber = "11762777840", DerivedStatus = "DELIVERED", Amount = 633.81m, ListAmount = 675m, LineValue = 633.81m,
+                RealAt = soldAt, OrderedAt = soldAt, StoreFrontCode = "TR" }],
+            new Dictionary<Guid, ReportOrderExtra>(),
+            [new() { Id = line, OrderId = order, Title = "Anne Penye Bluz", Sku = "MZ032YAD4", Barcode = "MZ032YAD4", UnitPrice = 633.81m, OrderedQuantity = 1m, VatRate = 10m, CostPrice = 200m }],
+            new Dictionary<Guid, ReportLineExtra> { [line] = new() { Id = line, Commission = orderRate, GrossUnitPrice = "675.00" } }, [], [],
+            new ReportCatalogNames(new Dictionary<Guid, string>(), new Dictionary<Guid, string>()), false,
+            new ReportCommissionTariffs([(tariff, row)]), finance ?? Unsettled(store));
+        return (input, order);
+    }
+
+    [Fact]
+    public void An_uploaded_tariff_covering_the_sale_replaces_the_orders_rate_at_the_band_of_the_sale_price()
+    {
+        // The order sent 11.6 %; the tariff covering the sale says 21.5 % for a sale price of 675.
+        var (input, _) = TariffOrder("11.6", new DateTimeOffset(2026, 10, 29, 16, 48, 35, TimeSpan.Zero));
+
+        var view = Assert.Single(ReportOrderProfit.Build(input, ReportBuilder.Facts(input).Orders));
+
+        var commission = view.Costs.Single(cost => cost.Key == "commission");
+        Assert.Equal(136.27m, commission.Amount);
+        Assert.True(commission.Estimated);
+        Assert.Equal("Yüklenen komisyon tarifesinden (29 Ekim – 1 Kasım 2026), ürünün satış fiyatının bandı", commission.Source);
+        Assert.Equal(21.5m, Assert.Single(view.Lines).CommissionRate);
+    }
+
+    [Fact]
+    public void An_order_outside_every_tariff_keeps_the_rate_it_was_sent()
+    {
+        // 4 Nov 2026 22:15 Istanbul, as #11784664870: the only tariff ends on 1 Nov 07:59.
+        var (input, _) = TariffOrder("11.6", new DateTimeOffset(2026, 11, 4, 19, 15, 48, TimeSpan.Zero));
+
+        var view = Assert.Single(ReportOrderProfit.Build(input, ReportBuilder.Facts(input).Orders));
+
+        var commission = view.Costs.Single(cost => cost.Key == "commission");
+        Assert.Equal(73.52m, commission.Amount);
+        Assert.StartsWith("Siparişten gelen oran", commission.Source);
+        // One minute before the tariff's 08:00 start the order's rate stands too.
+        var (before, _) = TariffOrder("11.6", new DateTimeOffset(2026, 10, 29, 4, 59, 0, TimeSpan.Zero));
+        Assert.StartsWith("Siparişten gelen oran", Assert.Single(ReportOrderProfit.Build(before, ReportBuilder.Facts(before).Orders)).Costs.Single(cost => cost.Key == "commission").Source);
+    }
+
+    [Fact]
+    public void Trendyols_settled_commission_still_wins_over_the_tariff()
+    {
+        var soldAt = new DateTimeOffset(2026, 10, 29, 16, 48, 35, TimeSpan.Zero);
+        var (probe, _) = TariffOrder("21.5", soldAt);
+        var store = probe.Orders[0].ConnectionId;
+        // Settled: 145.13 on the sale less 6.01 and 2.85 on the discount and the coupon.
+        ReportFinanceRow Settlement(string type, decimal commission) => new()
+        {
+            ConnectionId = store,
+            Source = TrendyolFinanceRequestContract.Settlements,
+            ExternalId = type,
+            RequestedType = type,
+            Category = MarketplaceFinanceCategories.Sale,
+            TransactionDate = soldAt.AddDays(2),
+            OrderNumber = "11762777840",
+            Barcode = "MZ032YAD4",
+            CommissionAmount = commission
+        };
+        var finance = new ReportFinance([Settlement("Sale", 145.13m), Settlement("Discount", 6.01m), Settlement("Discount", 2.85m)], [], new HashSet<(Guid, string)>(),
+            new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = null }, new Dictionary<Guid, ReportCargoSample> { [store] = new(98.34m, 1) });
+        var input = probe with { Finance = finance };
+
+        var view = Assert.Single(ReportOrderProfit.Build(input, ReportBuilder.Facts(input).Orders));
+
+        var commission = view.Costs.Single(cost => cost.Key == "commission");
+        Assert.Equal((136.27m, false, "Trendyol cari hesabından"), (commission.Amount, commission.Estimated, commission.Source));
     }
 
     [Fact]
