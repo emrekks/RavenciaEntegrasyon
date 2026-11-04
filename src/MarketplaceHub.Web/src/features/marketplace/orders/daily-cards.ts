@@ -21,22 +21,22 @@ export function dailyCancellationCounts(stores: DailyCancellationRow[] | undefin
   }
 }
 
-// The micro-export card's request: the order summary's ALL tab alone over the micro-export orders placed on the day
-// (the Istanbul day, the list's Sipariş Tarihi filter), which carries their count and countries.
+// The micro-export card's request: the order summary's PENDING tab alone (not yet handed to the carrier) over the
+// micro-export orders placed on the day (the Istanbul day, the list's Sipariş Tarihi filter), with their countries.
 export function microDayParams(day: string) {
-  return new URLSearchParams({ tabs: 'ALL', micro: 'true', dateFrom: istanbulDayBoundary(day), dateTo: istanbulDayBoundary(day, true) }).toString()
+  return new URLSearchParams({ tabs: 'PENDING', micro: 'true', dateFrom: istanbulDayBoundary(day), dateTo: istanbulDayBoundary(day, true) }).toString()
 }
 
 // The lists the cards open: the micro-export orders placed today, orders cancelled today (whole, or in part), and the resends
 // that have not been handed to the carrier (not about today).
 export type DayCard = 'micro' | 'cancelled' | 'partial' | 'resent'
 
-// The list a card opens: the micro-export orders placed that day (Tümü), or İptal / Kısmi İptal on the orders
+// The list a card opens: the micro-export orders placed that day and not yet shipped (Bekleyen), or İptal / Kısmi İptal on the orders
 // cancelled that day. Only the date filter the tab offers is set (order-date-filters.ts), the other is cleared.
 export function dayCardFilters(card: DayCard, day: string) {
   if (card === 'resent') return { kind: 'RESENT_UNSHIPPED', status: 'RESENT', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' }
   return card === 'micro'
-    ? { kind: 'MICRO', status: 'ALL', dateFrom: day, dateTo: day, cancelFrom: '', cancelTo: '' }
+    ? { kind: 'MICRO', status: 'PENDING', dateFrom: day, dateTo: day, cancelFrom: '', cancelTo: '' }
     : { kind: 'ALL', status: card === 'cancelled' ? 'CANCELLED' : 'PARTIALLY_CANCELLED', dateFrom: '', dateTo: '', cancelFrom: day, cancelTo: day }
 }
 

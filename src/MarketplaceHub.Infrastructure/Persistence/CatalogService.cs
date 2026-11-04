@@ -449,6 +449,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 "OUT" => stockByProduct.GetValueOrDefault(product.Id) <= 0,
                 "LOW" => stockByProduct.GetValueOrDefault(product.Id) > 0
                     && ProductStockPolicy.IsLowStock(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),
+                // Some variant sold out while the product still has stock (one size of a colour is enough).
+                "GAP" => stockByProduct.GetValueOrDefault(product.Id) > 0
+                    && ProductStockPolicy.HasSoldOutVariant(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),
                 "OK" => stockByProduct.GetValueOrDefault(product.Id) > 0
                     && !ProductStockPolicy.IsLowStock(variantsByProductForFilter.GetValueOrDefault(product.Id) ?? [], inventoryByVariant),
                 _ => true

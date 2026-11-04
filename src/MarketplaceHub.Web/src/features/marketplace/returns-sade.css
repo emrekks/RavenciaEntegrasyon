@@ -458,6 +458,9 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-vt-wrap { position: relative; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-vt-wrap > .rr-menu { right: 8px; left: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu { position: absolute; z-index: 60; top: calc(100% + 6px); min-width: 250px; padding: 6px; display: grid; gap: 2px; background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: 0 18px 50px rgb(0 0 0 / 45%); }
+/* A filter's list is as wide as its longest option (at least the field, at most the screen), so no option wraps or is cut. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-fld .rr-anchor > .rr-menu { width: max-content; min-width: 100%; max-width: min(480px, calc(100vw - 32px)); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-fld .rr-anchor > .rr-menu > button { white-space: nowrap; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu.rr-static { position: static; box-shadow: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 12px; color: var(--rr-ink); text-align: left; background: none; border: 0; border-radius: 7px; cursor: pointer; font-size: 14px; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button:hover:not(:disabled) { background: var(--rv-hover, var(--rr-raised)); }

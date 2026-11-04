@@ -18,6 +18,10 @@ internal static class ProductStockPolicy
         });
     }
 
+    // A product with any variant sold out while others still have stock: the Tükenen Varyantlar list.
+    public static bool HasSoldOutVariant(IEnumerable<ProductVariant> variants, IReadOnlyDictionary<Guid, decimal> inventoryByVariant)
+        => variants.Any(variant => inventoryByVariant.GetValueOrDefault(variant.Id) <= 0m);
+
     private static string? ColorOptionValue(string optionSignature)
     {
         foreach (var part in optionSignature.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))

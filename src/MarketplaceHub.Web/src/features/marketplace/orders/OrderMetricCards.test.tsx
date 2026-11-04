@@ -144,7 +144,7 @@ describe('order summary cards', () => {
     const { host } = render(<OrderMetricCards {...props({ microExport: metric(0), microCountries: {} })} />)
     expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-tip')).toBeNull()
     // Without the panel a native title says what it counts.
-    expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Bugün gelen mikro ihracat siparişleri')
+    expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Bugün gelen, kargoya verilmemiş mikro ihracat siparişleri')
   })
 
   it('lists the stores of Geciken, İptal and Yeniden Gönderim on hover while they count any', () => {

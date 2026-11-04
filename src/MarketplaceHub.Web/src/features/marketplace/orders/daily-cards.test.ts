@@ -13,9 +13,9 @@ describe('daily order cards', () => {
     expect(dailyCancellationCounts(undefined)).toBeUndefined()
   })
 
-  it('asks the summary for the ALL tab alone over the micro-export orders placed on the day', () => {
+  it('asks the summary for the PENDING tab alone over the micro-export orders placed on the day', () => {
     const params = new URLSearchParams(microDayParams('2026-11-04'))
-    expect(params.get('tabs')).toBe('ALL')
+    expect(params.get('tabs')).toBe('PENDING')
     expect(params.get('micro')).toBe('true')
     // The Istanbul day: 4 Nov 00:00 to 23:59:59 at +03:00.
     expect(new Date(params.get('dateFrom')!).toISOString()).toBe('2026-11-03T21:00:00.000Z')
@@ -23,8 +23,8 @@ describe('daily order cards', () => {
   })
 
   it('opens the micro-export orders placed that day, and İptal or Kısmi İptal on the day of the cancellation', () => {
-    // The same set the card counts: the micro-export orders placed that day, in Tümü.
-    expect(dayCardFilters('micro', '2026-11-02')).toEqual({ kind: 'MICRO', status: 'ALL', dateFrom: '2026-11-02', dateTo: '2026-11-02', cancelFrom: '', cancelTo: '' })
+    // The same set the card counts: the micro-export orders placed that day and not yet shipped.
+    expect(dayCardFilters('micro', '2026-11-02')).toEqual({ kind: 'MICRO', status: 'PENDING', dateFrom: '2026-11-02', dateTo: '2026-11-02', cancelFrom: '', cancelTo: '' })
     expect(dayCardFilters('cancelled', '2026-11-02')).toEqual({ kind: 'ALL', status: 'CANCELLED', dateFrom: '', dateTo: '', cancelFrom: '2026-11-02', cancelTo: '2026-11-02' })
     expect(dayCardFilters('partial', '2026-11-02')).toMatchObject({ status: 'PARTIALLY_CANCELLED', cancelFrom: '2026-11-02', cancelTo: '2026-11-02' })
     // The resends not yet shipped are about no day: both date filters are cleared.

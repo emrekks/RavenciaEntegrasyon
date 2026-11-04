@@ -189,6 +189,10 @@ main .rr.rr-dashboard > * { min-width: 0; }
 /* while the report loads the trend, average and range keep their place but stay hidden, so they appear in place */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crows.rr-crows-wait > * { visibility: hidden; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-kc-wait :is(.rr-trend, .rr-avg, .rr-krange) { visibility: hidden; }
+/* While a period loads its figure is a shimmering bar, not a dash. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc-skel { display: inline-block; width: 96px; height: 24px; vertical-align: middle; border-radius: 7px; background: linear-gradient(90deg, var(--rr-line) 0%, color-mix(in srgb, var(--rr-line) 40%, var(--rr-surface)) 50%, var(--rr-line) 100%); background-size: 200% 100%; animation: rr-kc-shimmer 1.2s ease-in-out infinite; }
+@keyframes rr-kc-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc-skel { animation: none; } }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-mx.rr-off { color: var(--rr-muted); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-mx.rr-off i, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-foot .rr-legend i.rr-mx-l.rr-mx-l.rr-off, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx-l.rr-mx-l.rr-off { width: 12px; height: 12px; border: 0; border-radius: 0; background: var(--rr-muted); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.2' stroke-dasharray='2.6 2.2'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.2' stroke-dasharray='2.6 2.2'/%3E%3C/svg%3E") center / contain no-repeat; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crows.rr-crows { gap: 7px; }

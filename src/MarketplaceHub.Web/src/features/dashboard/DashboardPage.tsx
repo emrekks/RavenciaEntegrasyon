@@ -1,6 +1,6 @@
 import { lazy, Suspense, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
 import type { Product } from '../catalog/shared'
 import { DateRangePicker } from '../../shared/DateRangePicker'
@@ -158,7 +158,7 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
 function KpiCell({ icon: cardIcon, label, hint, tip, value, delta, note, avgLabel = 'Günlük Ortalama', avg, min, max, position, on, onPick, loading }: { icon: CardIconName; loading?: boolean; label: string; hint?: string; tip?: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
   return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} title={tip} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
     <CardBackgroundIcon name={cardIcon} />
-    <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className="rr-num">{value}</strong>
+    <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className="rr-num">{loading ? <span className="rr-kc-skel" role="status" aria-label="Yükleniyor" /> : value}</strong>
     {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span><em>önceki döneme göre</em></span> : <span className="rr-trend"><em>{note}</em></span>}
     <span className="rr-avg">{avgLabel} <b className="rr-num">{avg}</b></span>
     <div className="rr-krange" role="img" aria-label={`${min} – ${max}`}><span className="rr-kbar"><i style={{ left: `${Math.max(0, Math.min(1, position)) * 100}%` }} /></span><span className="rr-kends"><span className="rr-num">{min}</span><span className="rr-num">{max}</span></span></div>
@@ -197,6 +197,17 @@ export function DashboardPage() {
   // Today's cancellations, each counted on the day the marketplace says it happened.
   const cancellations = useQuery({ queryKey: ['dashboard', 'cancellations', today], queryFn: () => hubApi<{ stores: CancellationRow[] }>(`/dashboard/cancellations?day=${today}`, poll), ...refresh })
   const performance = useQuery({ placeholderData: keepPreviousData, queryKey: ['dashboard', 'performance', days?.from, days?.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${days!.from}&to=${days!.to}`, poll), enabled: days !== null, ...refresh })
+  // Once a period has loaded, the other ready-made periods are read in the background, so switching to them is instant.
+  const queryClient = useQueryClient()
+  const performanceReady = performance.isSuccess
+  useEffect(() => {
+    if (!performanceReady) return
+    for (const other of ['today', 'yesterday', '7', '30', '90'] as const) {
+      const span = periodDays(other, custom, today)
+      if (span) void queryClient.prefetchQuery({ queryKey: ['dashboard', 'performance', span.from, span.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${span.from}&to=${span.to}`, poll), staleTime: 60_000 })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once per day, after the first period has loaded
+  }, [performanceReady, today])
 
   const metrics = bootstrap.data?.metrics
   // The report also names stores that are switched off or wait for new credentials; the live list wins where both have one.
@@ -286,7 +297,7 @@ export function DashboardPage() {
     // left out while it is not known, never shown as 0. The card opens the pending list; the due list is a tab there.
     ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <>Bekleyen{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(dueSoon)} Yaklaşan</>}</>],
     // Today's cancellations; the section is about today, so the label does not repeat it.
-    ['packageX', cancelLabel, knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), '', dayCancellationsLink(today), cancelRows],
+    ['packageX', cancelLabel, knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows],
     // The same count as the product list's low-stock filter it opens.
     ['alertTriangle', 'Düşük Stok', knownCount(productSummary.isLoading, products?.lowStockCount), 'warn', dashboardOperationalLinks.lowStock, undefined],
   ]
