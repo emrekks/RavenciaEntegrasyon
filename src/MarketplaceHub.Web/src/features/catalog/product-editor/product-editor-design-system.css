@@ -1227,3 +1227,7 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell:not(:has(.rv-topbar.is-hidden)) main .product-add-page .variant-table-editor > .variant-table-head { top: 61px; }
 }
+/* Yayınlama: the platform cards sit in one panel; the space between them is the panel's colour, not the page's, so
+   no dark lines cross between the cards (owner, 5 Nov 2026: "aradaki koyu çizgi"). */
+.app-shell.stitch-shell main .product-publish-step .publish-platform-grid { gap: 12px; padding: 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; }
+.app-shell.stitch-shell main .product-publish-step .publish-platform-grid > .publish-platform-card { background: var(--rv-color-surface-raised); box-shadow: none; }
