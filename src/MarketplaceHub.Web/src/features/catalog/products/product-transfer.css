@@ -19,9 +19,13 @@
   .pci-fields legend { float: left; width: 100%; margin: 0 0 2px; padding: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
   .pci-field-list { display: flex; flex-wrap: wrap; gap: 0 18px; }
   .pci-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; min-width: 0; }
-  .pci-group { display: grid; align-content: start; gap: 0; min-width: 0; padding: 6px 12px 8px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-  .pci-group .pci-field-list { padding-left: 24px; }
-  .pci-group-all { font-weight: 600; }
+  .pci-group { display: grid; align-content: start; gap: 0; min-width: 0; padding: 0; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+  /* A group reads as a small card: its name (with the check that takes the whole group) is the card's head on a soft band
+     with a rule under it, and its fields sit below in two even columns, aligned with the head's text. */
+  .pci-group .pci-field-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 12px; padding: 2px 12px 4px; }
+  .pci-group .pci-field-list .pci-check { min-height: 32px; }
+  .pci-group > .pci-group-all { display: flex; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); font-size: 12.5px; font-weight: 600; letter-spacing: .01em; background: var(--rv-color-surface-soft); }
+  .pci-group > .pci-group-all:has(+ .pci-field-list) { border-bottom: 1px solid var(--rv-color-border); }
   .pci-note b { color: var(--rv-color-ink); font-weight: 600; }
   .pci-text { min-width: 180px; overflow-wrap: anywhere; }
   .pci-check { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; color: var(--rv-color-ink); font-size: 13px; cursor: pointer; }
