@@ -188,4 +188,26 @@ public sealed class PayoutBuilderTests
         Assert.Null(europe.NextDay);
         Assert.Equal(800m, europe.Unknown);
     }
+
+    [Fact]
+    public void Each_marketplace_has_its_own_total_and_the_totals_add_up_to_the_balance()
+    {
+        var pazarama = Guid.CreateVersion7();
+        var stores = new Dictionary<Guid, PayoutStore>(Stores) { [pazarama] = new(pazarama, "PAZARAMA", "Pazarama", false) };
+        PayoutRow[] rows =
+        [
+            Sale("tr", 500m, 400m, Today.AddDays(1)), Sale("eu", 300m, 250m, Today.AddDays(-7), country: "Bulgaristan"),
+            new()
+            {
+                ConnectionId = pazarama, PlatformCode = "PAZARAMA", Source = PazaramaFinanceSyncJobHandler.Source, ExternalId = "p1", RequestedType = PazaramaFinanceSyncJobHandler.RequestedType,
+                TransactionType = "Hakediş Ödemesi Bekliyor", Category = MarketplaceFinanceCategories.Sale, Credit = 120m, SellerRevenue = 100m, PaymentDate = Due(Today.AddDays(3))
+            }
+        ];
+        var view = PayoutBuilder.Build(rows, [], stores, Today, 90, []);
+        Assert.Equal(["TRENDYOL", "PAZARAMA"], view.Platforms.Select(x => x.PlatformCode));
+        Assert.Equal(view.Expected, view.Platforms.Sum(x => x.Expected));
+        var trendyol = view.Platforms[0];
+        Assert.Equal((650m, 250m, Today.AddDays(1), 400m), (trendyol.Expected, trendyol.Unknown, trendyol.NextDay!.Value, trendyol.NextAmount!.Value));
+        Assert.Equal((100m, Today.AddDays(3)), (view.Platforms[1].Expected, view.Platforms[1].NextDay!.Value));
+    }
 }

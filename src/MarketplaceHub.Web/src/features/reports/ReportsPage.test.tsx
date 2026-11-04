@@ -85,6 +85,7 @@ const payouts = {
   today: '2026-11-04', daysBack: 90, expected: 1180, expectedRecords: 3, unknown: 240, unknownRecords: 1, earlyPaymentsTaken: 0, earlyPayments: 0,
   next: { key: 'next:2026-11-05', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 880, linesAmount: null, records: 2, status: 'EXPECTED' },
   lastPaid: { key: 'payout:store-1:78542975', kind: 'PAYOUT', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: 'Türkiye', day: '2026-10-29', amount: 950, linesAmount: 950, records: 4, status: 'PAID' },
+  platforms: [{ platformCode: 'TRENDYOL', expected: 1080, records: 3, nextDay: '2026-11-05', nextAmount: 780, unknown: 240 }, { platformCode: 'PAZARAMA', expected: 100, records: 1, nextDay: '2026-11-05', nextAmount: 100, unknown: 0 }],
   regions: [{ region: 'TR_GULF', expected: 780, records: 2, nextDay: '2026-11-05', nextAmount: 780, unknown: 240 }, { region: 'EUROPE', expected: 400, records: 1, nextDay: '2026-11-12', nextAmount: 400, unknown: -50 }],
   upcoming: [
     { key: 'due:store-1:2026-11-05:TR_GULF', kind: 'PAYOUT_DAY', connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 780, linesAmount: null, records: 2, status: 'EXPECTED' },
@@ -502,10 +503,12 @@ describe('ReportsPage', () => {
     expect(figures[0]).toContain('Toplam Güncel Bakiye₺1.180')
     expect(figures[1]).toContain('Sıradaki Ödeme₺880')
     expect(figures[3]).toContain('Vadesi Geçmiş Bekleyen₺240')
-    expect(texts(page, '.reports-payout-region')[0]).toContain('Türkiye, Körfez₺780')
-    expect(texts(page, '.reports-payout-region')[0]).toContain('Vadesi Geçmiş ₺240,00')
+    // Every marketplace's total first, adding up to the balance, then Trendyol's regions.
+    expect(texts(page, '.is-platforms .reports-payout-region')).toEqual([expect.stringContaining('Trendyol₺1.080'), expect.stringContaining('Pazarama₺100')])
+    expect(texts(page, '.is-sub .reports-payout-region')[0]).toContain('Türkiye, Körfez₺780')
+    expect(texts(page, '.is-sub .reports-payout-region')[0]).toContain('Vadesi Geçmiş ₺240,00')
     // Deductions waiting below zero are named as such, not as an overdue minus.
-    expect(texts(page, '.reports-payout-region')[1]).toContain('Bekleyen Kesinti ₺50,00')
+    expect(texts(page, '.is-sub .reports-payout-region')[1]).toContain('Bekleyen Kesinti ₺50,00')
     // The days to come, each with its total; the next one is marked, a Pazarama row carries no Trendyol region.
     const days = texts(page, '.reports-payout-day > header')
     expect(days[0]).toContain('05 Kas Per2026Sıradaki ÖdemeTahmini₺880,00')
@@ -519,11 +522,18 @@ describe('ReportsPage', () => {
     expect(rows[1]).toContain('Pazarama')
     expect(page.querySelectorAll('.reports-payout-row')[1].querySelector('.is-region')).toBeNull()
     // A region card sets the region filter: the payments and the figures narrow to it, and the address keeps it.
-    await act(async () => { (page.querySelectorAll('.reports-payout-region')[1] as HTMLButtonElement).click() })
+    await act(async () => { (page.querySelectorAll('.is-sub .reports-payout-region')[1] as HTMLButtonElement).click() })
     expect(texts(page, '.reports-payout-row')).toHaveLength(2)
     expect(texts(page, '.reports-kpis > div')[0]).toContain('Toplam Güncel Bakiye₺400')
-    await act(async () => { (page.querySelector('.reports-payout-all') as HTMLButtonElement).click() })
+    await act(async () => { (page.querySelector('.is-sub .reports-payout-all') as HTMLButtonElement).click() })
     expect(texts(page, '.reports-payout-row')).toHaveLength(4)
+    // A marketplace card sets the platform filter: the server is asked for it, the other cards stay in view.
+    await act(async () => { (page.querySelectorAll('.is-platforms .reports-payout-region')[1] as HTMLButtonElement).click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(requests).toContain('/reports/payouts?platformCodes=PAZARAMA')
+    expect(page.querySelectorAll('.is-platforms .reports-payout-region')).toHaveLength(2)
+    await act(async () => { (page.querySelector('.is-platforms .reports-payout-all') as HTMLButtonElement).click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     // A payment opens its records.
     await act(async () => { (page.querySelector('.reports-payout-row') as HTMLButtonElement).click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })

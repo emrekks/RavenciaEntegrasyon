@@ -1812,6 +1812,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const none = platforms.includes(RETURN_NO_PLATFORM)
   const query = payoutsQuery(platforms.length ? platforms : null)
   const result = useQuery({ queryKey: ['reports-payouts', query], queryFn: () => hubApi<Payouts>(`/reports/payouts?${query}`), staleTime: 60_000, placeholderData: previous => previous, enabled: !none })
+  const everything = useQuery({ queryKey: ['reports-payouts', ''], queryFn: () => hubApi<Payouts>('/reports/payouts?'), staleTime: 60_000, enabled: platforms.length > 0 })
   const apply = (next: typeof draft) => {
     setDraft(next)
     setPlatforms(next.platforms)
@@ -1822,6 +1823,20 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
     setOpen(null)
   }
   const pickRegion = (region: PayoutRegion | 'ALL') => apply({ ...draft, platforms, search, ...applied, region })
+  const pickPlatform = (code: string | null) => apply({ ...draft, ...applied, search, platforms: code === null || (platforms.length === 1 && platforms[0] === code) ? [] : [code] })
+  // The marketplaces' cards stay all in view while one is picked: they come from the unfiltered answer then.
+  const platformCards = none ? [] : (platforms.length ? everything.data?.platforms : result.data?.platforms) ?? []
+  // A summary card in the metric card language: its mark and name, its balance, the next payout, its overdue part.
+  const summaryCard = (key: string, name: string, mark: string, icon: UiIconName, item: { expected: number; nextDay: string | null; nextAmount: number | null; unknown: number }, pressed: boolean, pick: () => void) =>
+    <li key={key}><button type="button" className="reports-payout-region" aria-pressed={pressed} onClick={pick}>
+      <CardBackgroundIcon name={icon} />
+      <span className="reports-payout-region-name"><PlatformSquareMark code={mark} name={platformName(mark)} />{name}</span>
+      <strong>{formatTl(item.expected)}</strong>
+      <span className="reports-payout-region-next">{item.nextDay ? `Sıradaki ${shortDay(item.nextDay, false)} · ${formatTl(item.nextAmount)}` : 'Sıradaki ödeme günü belli değil'}</span>
+      {/* Overdue sales wait for a payout; an overdue sum below zero is deductions waiting to come off the next one. */}
+      {item.unknown > 0 && <em className="reports-payout-chip is-overdue">Vadesi Geçmiş {formatTl(item.unknown)}</em>}
+      {item.unknown < 0 && <em className="reports-payout-chip is-deduction">Bekleyen Kesinti {formatTl(-item.unknown)}</em>}
+    </button></li>
   const clear = () => apply({ ...emptyPayoutFilters, platforms: [], search: '' })
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
@@ -1912,19 +1927,15 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
           <div className="rr-fbtns"><button type="button" className="rr-btn" onClick={clear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => apply(draft)}>Filtrele</button></div>
         </div></RrFilterCard>
       </div>
-      {/* Trendyol's payout regions in one strip over the payments; a card sets the region filter. */}
-      {regions.length > 0 && !search.trim() && <div className="reports-payout-regions" role="group" aria-label="Bölge Detayları">
-        <ul>{regions.map(item => <li key={item.region}>
-          <button type="button" className="reports-payout-region" aria-pressed={region === item.region} onClick={() => pickRegion(region === item.region ? 'ALL' : item.region)}>
-            <CardBackgroundIcon name="globe" />
-            <span className="reports-payout-region-name"><PlatformSquareMark code="TRENDYOL" name={platformName('TRENDYOL')} />{regionLabels[item.region]}</span>
-            <strong>{formatTl(item.expected)}</strong>
-            <span className="reports-payout-region-next">{item.nextDay ? `Sıradaki ${shortDay(item.nextDay, false)} · ${formatTl(item.nextAmount)}` : 'Sıradaki ödeme günü belli değil'}</span>
-            {/* Overdue sales wait for a payout; an overdue sum below zero is deductions waiting to come off the next one. */}
-            {item.unknown > 0 && <em className="reports-payout-chip is-overdue">Vadesi Geçmiş {formatTl(item.unknown)}</em>}
-            {item.unknown < 0 && <em className="reports-payout-chip is-deduction">Bekleyen Kesinti {formatTl(-item.unknown)}</em>}
-          </button>
-        </li>)}</ul>
+      {/* Every marketplace's total first (a card sets the platform filter), then Trendyol's payout regions (a card sets
+          the region filter); the marketplaces' totals add up to the balance. */}
+      {!search.trim() && platformCards.length > 0 && <div className="reports-payout-regions is-platforms" role="group" aria-label="Pazaryeri Toplamları">
+        <ul>{platformCards.map(item => summaryCard(item.platformCode, platformName(item.platformCode), item.platformCode, 'wallet', item,
+          platforms.length === 1 && platforms[0] === item.platformCode, () => pickPlatform(item.platformCode)))}</ul>
+        {platforms.length > 0 && <button type="button" className="secondary reports-payout-all" onClick={() => pickPlatform(null)}>Tümü</button>}
+      </div>}
+      {regions.length > 0 && !search.trim() && <div className="reports-payout-regions is-sub" role="group" aria-label="Trendyol Bölgeleri">
+        <ul>{regions.map(item => summaryCard(item.region, regionLabels[item.region], 'TRENDYOL', 'globe', item, region === item.region, () => pickRegion(region === item.region ? 'ALL' : item.region)))}</ul>
         {region !== 'ALL' && <button type="button" className="secondary reports-payout-all" onClick={() => pickRegion('ALL')}>Tümü</button>}
       </div>}
       {search.trim() ? <PayoutLinesTable platforms={platforms.length ? platforms : null} search={search} />
