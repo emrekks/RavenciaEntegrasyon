@@ -1834,7 +1834,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setDragOverMedia(null)
     showFeedback('Görseller Temizlendi', duplicateProductId && !editProductId ? 'Görseller kopyadan kaldırıldı. Kaynak ürünün görselleri değişmez.' : clearAllMediaFeedbackText(ownCount, plan.removable.length, plan.keptCount), plan.keptCount ? 'error' : 'info')
   }
-  async function removeProductMedia(url: string, confirmed = false) {
+  async function removeProductMedia(url: string) {
     const targetKey = mediaImageKey(url)
     const savedMediaUrls = initialEditMediaUrl.current.split(/\r?\n|[;|]/u).map(item => item.trim()).filter(Boolean)
     const isPersisted = Boolean(editProductId && productToEdit.data && savedMediaUrls.some(item => mediaImageKey(item) === targetKey))
@@ -1853,10 +1853,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       return
     }
 
-    if (!confirmed) {
-      setMediaRemovalConfirmation({ kind: 'product', url })
-      return
-    }
+    // One saved image leaves at once, without a question (owner, 5 Nov 2026); clearing all images still asks.
     setDeletingProductMediaKey(targetKey)
     try {
       const product = productToEdit.data
@@ -1916,7 +1913,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setMediaRemovalConfirmation(null)
     if (!confirmation) return
     if (confirmation.kind === 'all') clearAllMedia(true)
-    else void removeProductMedia(confirmation.url, true)
+    else void removeProductMedia(confirmation.url)
   }
   function updateChannel(id: string) {
     const selected = selectedChannelIds.includes(id)

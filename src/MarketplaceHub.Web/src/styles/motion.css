@@ -43,7 +43,7 @@
 /* Windows (kit "A · iOS Yay"): the window grows from .9 on an overshooting spring and settles while it fades in; its
    backdrop fades in under it. Drawers slide in whole and sheets slide in, starting heavy and stopping softly. A window
    that becomes a bottom sheet on a phone takes the sheet motion (styles/responsive.css). */
-:where([role="dialog"][aria-modal="true"]) {
+:where(:is([role="dialog"], [role="alertdialog"])[aria-modal="true"]) {
   animation: rv-motion-fade var(--rv-motion-modal) var(--rv-ease-enter) backwards, rv-motion-zoom var(--rv-motion-modal) var(--rv-ease-modal) backwards;
 }
 :where([role="dialog"][aria-modal="true"][class*="drawer"], [role="dialog"][aria-modal="true"][class*="sheet"]) { animation: rv-motion-slide var(--rv-motion-sheet) var(--rv-ease-sheet) backwards; }
