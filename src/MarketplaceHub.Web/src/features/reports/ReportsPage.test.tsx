@@ -149,7 +149,10 @@ describe('ReportsPage', () => {
     expect(figures[0]).toContain('Net Ciro')
     // Money in a strip is shown in whole liras, the previous period's too.
     expect(figures[0]).toContain('Net Ciro₺250')
-    expect(figures[0]).toContain('Önceki dönem ₺200Satış tutarından')
+    // The previous period's figure shows under the change chip on a tap.
+    expect(figures[0]).not.toContain('Önceki dönem')
+    await act(async () => { (page.querySelector('.reports-kpis > div .reports-kpi-delta-toggle') as HTMLButtonElement).click() })
+    expect(texts(page, '.reports-kpis > div')[0]).toContain('Önceki dönem ₺200Satış tutarından')
     // O5: the overview's Ciro has the returns in it, Net Ciro not; the margin says which amount it is over.
     expect(figures[0]).toContain('iadeler düşülmüş ciro')
     expect(figures[0]).toContain('Genel Bakış\'taki Ciro iadeler dahildir')
@@ -165,9 +168,10 @@ describe('ReportsPage', () => {
     // Every figure against the previous period: the profit against its 160, the margin against 45,7 % (a rate's change
     // written in per cent, not points); every change on its own line, so the notes under them start level.
     expect(figures[1]).toContain('−%20,6')
-    expect(figures[1]).toContain('Önceki dönem ₺160')
+    const peek = async (index: number) => { await act(async () => { (page.querySelectorAll('.reports-kpis > div')[index].querySelector('.reports-kpi-delta-toggle') as HTMLButtonElement).click() }); return texts(page, '.reports-kpis > div')[index] }
+    expect(await peek(1)).toContain('Önceki dönem ₺160')
     expect(figures[2]).toContain('−%9,4')
-    expect(figures[2]).toContain('Önceki dönem %45,7')
+    expect(await peek(2)).toContain('Önceki dönem %45,7')
     expect(page.querySelectorAll('.reports-kpis > div > .reports-kpi-change')).toHaveLength(6)
     expect(page.querySelector('.reports-kpis')?.textContent).not.toContain('puan')
     // Masraf Kalemleri: the account's deductions and the product cost, largest first, 223 in all (63,7 % of the sales);
@@ -245,6 +249,7 @@ describe('ReportsPage', () => {
     expect(loss.textContent).toContain('Tahmini Zarar')
     expect(loss.textContent).toContain('− ₺112')
     // The previous period read no statement, so its profit is not set against this one.
+    await act(async () => { (loss.querySelector('.reports-kpi-delta-toggle') as HTMLButtonElement).click() })
     expect(loss.textContent).toContain('Önceki dönemde veri yok')
     expect(metricRows(page, 'ads')[0]).toBe('Toplam Reklam Harcaması₺0,00')
     expect(metricRows(page, 'order')[2]).toBe('Sipariş Başına Kargo₺75,56')

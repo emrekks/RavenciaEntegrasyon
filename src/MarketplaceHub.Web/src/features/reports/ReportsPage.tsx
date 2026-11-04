@@ -287,7 +287,8 @@ type OpenDetail = (key: DetailKey) => void
 // the lines after it how it is worked out.
 // Each sentence of the working goes on a line of its own.
 // The round "?" beside a name: its explanation opens while the pointer is on it (or the name has the keyboard focus).
-const TipMark = () => <UiIcon name="help" size={15} className="reports-qmark" />
+// Report figures explain an amount or a count: an "i" mark (a "?" is for settings that need a decision).
+const TipMark = () => <UiIcon name="infoCircle" size={15} className="reports-qmark" />
 
 function TipText({ text }: { text: string }) {
   const [what, ...how] = text.split('\n')
@@ -478,6 +479,8 @@ function KpiStrip({ label, items, marks = true }: { label: string; items: Kpi[];
   const tip = useId()
   const [open, setOpen] = useState<{ key: string; left: number; top: number; width: number } | null>(null)
   const compares = items.some(item => item.delta !== undefined)
+  const [peek, setPeek] = useState<string | null>(null)
+  const previousNote = (item: Kpi) => item.delta !== undefined && item.note?.startsWith('Önceki dönem') === true
   const show = (key: string, cell: HTMLElement) => {
     const strip = cell.parentElement
     if (!strip) return
@@ -502,8 +505,9 @@ function KpiStrip({ label, items, marks = true }: { label: string; items: Kpi[];
           onMouseLeave={marks ? hide : undefined}
           onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}{marks && <TipMark />}</button>
         <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
-        {compares && <span className="reports-kpi-change">{item.delta !== undefined && <Delta delta={item.delta} invert={item.invert} />}</span>}
-        {item.note !== undefined && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
+        {/* The previous period's figure opens under the change chip on a tap, instead of always taking a line. */}
+        {compares && <span className="reports-kpi-change">{item.delta !== undefined && (previousNote(item) ? <button type="button" className="reports-kpi-delta-toggle" aria-expanded={peek === item.key} onClick={() => setPeek(peek === item.key ? null : item.key)}><Delta delta={item.delta} invert={item.invert} /></button> : <Delta delta={item.delta} invert={item.invert} />)}</span>}
+        {item.note !== undefined && (!previousNote(item) || peek === item.key) && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
         <span id={id} className="reports-sr">{item.tip.replace('\n', ' ')}</span>
       </div>
     })}</div>
