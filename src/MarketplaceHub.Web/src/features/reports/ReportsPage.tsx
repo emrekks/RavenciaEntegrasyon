@@ -1905,21 +1905,27 @@ function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | 
   if (!data) return <Busy />
   if (data.items.length === 0) return <p className="reports-empty">{search ? 'Bu numarayla kayıt bulunamadı.' : 'Kayıt yok.'}</p>
   const pages = Math.max(1, Math.ceil(data.totalCount / data.pageSize))
+  // In a group every record shares its region and state, so those columns show for a search only; days are short.
+  const searching = group === undefined
+  const day = (value: string) => formatIstanbul(value, { day: '2-digit', month: 'short' })
   return <>
-    <div className="reports-table-wrap"><table className="reports-table reports-payout-lines">
-      <thead><tr><th scope="col">İşlem</th><th scope="col">Sipariş / Fatura</th><th scope="col">İşlem Tarihi</th><th scope="col">Vade</th><th scope="col">Bölge</th><th scope="col" className="is-num">Tutar</th><th scope="col" className="is-num">Komisyon</th><th scope="col" className="is-num">Hakediş</th><th scope="col">Durum</th></tr></thead>
+    <div className="reports-table-wrap reports-payout-lines-wrap"><table className="reports-table reports-payout-lines">
+      <thead><tr><th scope="col">İşlem</th><th scope="col">Sipariş / Fatura</th><th scope="col">Barkod</th><th scope="col">Tarih</th><th scope="col">Vade</th>
+        {searching && <th scope="col">Bölge</th>}<th scope="col" className="is-num">Tutar</th><th scope="col" className="is-num">Komisyon</th><th scope="col" className="is-num">Hakediş</th>
+        {searching && <th scope="col">Durum</th>}</tr></thead>
       <tbody>{data.items.map(line => <tr key={`${line.connectionId}:${line.externalId}`}>
         <th scope="row">{line.transactionType ?? line.category}</th>
         <td>{line.orderNumber ?? line.invoiceNumber ?? line.externalId}</td>
-        <td>{formatIstanbul(line.transactionDate, { day: '2-digit', month: 'short', year: 'numeric' })}</td>
-        <td>{line.dueDay ? formatIstanbul(`${line.dueDay}T12:00:00Z`, { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
-        <td>{line.country ?? (regionLabels[line.region] || '—')}</td>
+        <td>{line.barcode ?? '—'}</td>
+        <td>{day(line.transactionDate)}</td>
+        <td>{line.dueDay ? shortDay(line.dueDay, false) : '—'}</td>
+        {searching && <td>{line.country ?? (regionLabels[line.region] || '—')}</td>}
         <td className="is-num">{formatTl(line.gross)}</td>
         <td className="is-num">{line.commission === null ? '—' : formatTl(line.commission)}</td>
         <td className={`is-num ${line.net < 0 ? 'is-loss' : ''}`}>{formatTl(line.net)}</td>
-        <td><em className={`reports-payout-badge is-${line.status.toLowerCase()}`}>{statusLabels[line.status]}</em></td>
+        {searching && <td><em className={`reports-payout-badge is-${line.status.toLowerCase()}`}>{statusLabels[line.status]}</em></td>}
       </tr>)}</tbody>
-      <tfoot><tr><th scope="row" colSpan={7}>{formatCount(data.totalCount)} kayıt</th><td className="is-num">{formatTl(data.net)}</td><td /></tr></tfoot>
+      <tfoot><tr><th scope="row" colSpan={searching ? 8 : 7}>{formatCount(data.totalCount)} kayıt</th><td className="is-num">{formatTl(data.net)}</td>{searching && <td />}</tr></tfoot>
     </table></div>
     {pages > 1 && <div className="reports-order-pager">
       <button type="button" className="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>Önceki</button>
