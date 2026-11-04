@@ -31,7 +31,7 @@
 
   /* Lists without a frame: the page gutter is their edge */
   :root .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel { padding: 0 !important; background: none !important; border: 0 !important; }
-  :root .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel > .rr-panel-h { padding: 4px 0 10px !important; }
+  :root .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel > .rr-panel-h { padding: 4px 0 2px !important; }
   :root .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel > .rr-tblwrap { padding: 0 !important; }
   :root .app-shell.stitch-shell main section.content.rr.rr:is(.rr-products, .rr-orders, .rr-returns) > .rr-panel > .rr-pager { padding-inline: 0 !important; }
 
