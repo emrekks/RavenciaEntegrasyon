@@ -386,3 +386,16 @@ body .invoice-reference-actions-popover > .invoice-reference-actions-separator {
   .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-addresses > article { padding: 10px 14px; line-height: 1.4; }
 }
 
+/* Phones, invoice detail: a section's title on the left with its count ("2 kalem") right after it (not centred); the four invoice
+   facts as a 2×2 table, each label above its value. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-section-heading { flex-direction: row; align-items: baseline; justify-content: flex-start; gap: 8px; text-align: left; }
+  html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-section-heading > div { justify-content: flex-start; text-align: left; }
+  html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-section-heading h3 { justify-content: flex-start; text-align: left; }
+  html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div { display: grid; align-content: start; justify-items: start; gap: 4px; min-width: 0; border-top: 1px solid var(--rv-color-border); }
+  html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div:nth-child(-n + 2) { border-top: 0; }
+  html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div:nth-child(2n) { border-left: 1px solid var(--rv-color-border); }
+  html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div > small:first-child { flex: none; font-size: 12px; }
+  html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts strong { font-size: 12.5px; overflow-wrap: anywhere; }
+}
