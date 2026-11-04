@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { DateRangePicker } from '../../../shared/DateRangePicker'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
 import { Busy, ErrorBox, TitleHint, UiIcon, useConfirmDialog } from '../../../shared/components'
@@ -67,14 +68,10 @@ export function validityProblem(days: ValidityDays): string | null {
 // The report queries (sales, order profitability, stock, payouts…): a tariff's days change which orders take its rate.
 const isReportQuery = (key: readonly unknown[]) => typeof key[0] === 'string' && key[0].startsWith('report')
 
-// Two date fields for the days a tariff is valid for.
-function ValidityFields({ days, onChange, disabled, idPrefix }: { days: ValidityDays; onChange: (days: ValidityDays) => void; disabled?: boolean; idPrefix: string }) {
-  return <div className="commission-validity">
-    <label htmlFor={`${idPrefix}-from`}><span>Geçerlilik Başlangıcı</span>
-      <input id={`${idPrefix}-from`} type="date" value={days.from} max={days.to || undefined} disabled={disabled} onChange={event => onChange({ ...days, from: event.target.value })} /></label>
-    <label htmlFor={`${idPrefix}-to`}><span>Geçerlilik Bitişi</span>
-      <input id={`${idPrefix}-to`} type="date" value={days.to} min={days.from || undefined} disabled={disabled} onChange={event => onChange({ ...days, to: event.target.value })} /></label>
-  </div>
+// The days a tariff is valid for, picked as one range on a two-month calendar (days to come too).
+function ValidityFields({ days, onChange, disabled }: { days: ValidityDays; onChange: (days: ValidityDays) => void; disabled?: boolean }) {
+  return <DateRangePicker className="commission-validity" label="Geçerlilik Tarihleri" placeholder="Başlangıç – Bitiş" future disabled={disabled}
+    from={days.from} to={days.to} onChange={range => onChange({ from: range.from, to: range.to })} />
 }
 
 // A period's length in whole days (3 for 29 Ekim 08.00 – 1 Kasım 07.59).
@@ -375,7 +372,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   return <section className="panel commission-tariffs" aria-labelledby="commission-tariffs-title">
     <div className="cs-sec-head"><h3 id="commission-tariffs-title">Komisyon Tarifeleri<TitleHint label="Komisyon Tarifeleri">{platformName}’un komisyon tarifesi dosyasını, geçerli olduğu günleri seçerek yükleyin. Seçtiğiniz günlerdeki siparişlerden komisyonu finanstan gelmeyenlerin komisyonu, satış fiyatının düştüğü banda göre bu tarifenin oranından tahmin edilir; fiyatınızın hangi banda düştüğünü ve bir alt banda inmek için gereken fiyatı görürsünüz. Pazaryerine hiçbir şey gönderilmez.</TitleHint></h3></div>
     <div className={`commission-dropzone${dragging ? ' is-dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
-      <ValidityFields idPrefix="commission-upload" days={uploadDays} onChange={setUploadDays} disabled={upload.isPending} />
+      <ValidityFields days={uploadDays} onChange={setUploadDays} disabled={upload.isPending} />
       <strong>{upload.isPending ? 'Tarife okunuyor…' : 'Tarife dosyasını buraya bırakın'}</strong>
       <span>{platformName} satıcı panelinden indirilen .xlsx dosyası · en fazla 10 MiB</span>
       <button type="button" className="secondary" disabled={upload.isPending || uploadProblem !== null} onClick={() => input.current?.click()}>Dosya Seç</button>
@@ -405,7 +402,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
           {editing?.groupId === group.id && (() => {
             const problem = validityProblem(editing.days)
             return <form className="commission-period-edit" aria-label="Geçerlilik Tarihleri" onSubmit={event => { event.preventDefault(); if (!problem) changeDays.mutate({ tariffId: first.id, days: editing.days }) }}>
-              <ValidityFields idPrefix={`commission-edit-${group.id}`} days={editing.days} onChange={days => setEditing({ groupId: group.id, days })} disabled={changeDays.isPending} />
+              <ValidityFields days={editing.days} onChange={days => setEditing({ groupId: group.id, days })} disabled={changeDays.isPending} />
               <div className="commission-period-edit-actions">
                 <button type="submit" disabled={changeDays.isPending || problem !== null}>{changeDays.isPending ? 'Kaydediliyor…' : 'Kaydet'}</button>
                 <button type="button" className="secondary" disabled={changeDays.isPending} onClick={() => setEditing(null)}>Vazgeç</button>

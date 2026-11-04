@@ -33,20 +33,26 @@ async function settle(ms = 30) {
   await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)) })
 }
 
-// A date field typed into as a person would (React reads the native value setter).
-function type(input: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
-  act(() => { setter.call(input, value); input.dispatchEvent(new Event('input', { bubbles: true })) })
+// Days picked on the range calendar as a person would: open it from its field, then click each day.
+function pick(field: HTMLElement, ...days: string[]) {
+  // The calendar stays open after the first day of a range; it opens only when it is closed.
+  if (!document.querySelector('.date-range-picker-popover')) act(() => field.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+  for (const day of days) {
+    const label = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'long' }).format(new Date(`${day}T12:00:00`))
+    act(() => document.querySelector<HTMLButtonElement>(`.date-range-picker-popover [aria-label="${label}"]`)!.click())
+  }
 }
 
 describe('commission tariff validity days', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-04T09:00:00Z'))
     apiState.calls = []
     container = document.createElement('div')
     document.body.append(container)
     root = createRoot(container)
   })
-  afterEach(() => { act(() => root.unmount()); container.remove() })
+  afterEach(() => { act(() => root.unmount()); container.remove(); vi.useRealTimers() })
 
   it('reads a file\'s Istanbul days and tells what is missing', () => {
     const periods = [{ periodStart: '2026-10-29T05:00:00Z', periodEnd: '2026-11-01T05:00:00Z' }, { periodStart: '2026-11-01T05:00:00Z', periodEnd: '2026-11-05T05:00:00Z' }] as CommissionTariff[]
@@ -63,18 +69,16 @@ describe('commission tariff validity days', () => {
     act(() => root.render(<QueryClientProvider client={client}><CommissionTariffsPanel connectionId="c1" platformName="Trendyol" /></QueryClientProvider>))
     await settle()
     const zone = container.querySelector<HTMLElement>('.commission-dropzone')!
-    const pick = [...zone.querySelectorAll('button')].find(button => button.textContent === 'Dosya Seç')!
-    expect(pick.disabled).toBe(true)
+    const pickButton = [...zone.querySelectorAll('button')].find(button => button.textContent === 'Dosya Seç')!
+    expect(pickButton.disabled).toBe(true)
     expect(zone.querySelector('.commission-validity-hint')?.textContent).toBe('Önce geçerlilik başlangıcı ve bitişini seçin.')
-    const [from, to] = [...zone.querySelectorAll<HTMLInputElement>('input[type="date"]')]
-    expect([...zone.querySelectorAll('label span')].map(label => label.textContent)).toEqual(['Geçerlilik Başlangıcı', 'Geçerlilik Bitişi'])
-    type(from, '2026-11-02')
-    expect(pick.disabled).toBe(true)
-    type(to, '2026-11-01')
-    expect(pick.disabled).toBe(true)
-    expect(zone.querySelector('.commission-validity-hint')?.textContent).toBe('Geçerlilik başlangıcı, bitişten sonra olamaz.')
-    type(to, '2026-11-08')
-    expect(pick.disabled).toBe(false)
+    // One field opens a calendar for both days; days to come can be picked.
+    const field = zone.querySelector<HTMLElement>('.commission-validity')!
+    expect(field.querySelector('.date-range-picker-label')?.textContent).toBe('Geçerlilik Tarihleri')
+    pick(field, '2026-11-02')
+    expect(pickButton.disabled).toBe(true)
+    pick(field, '2026-11-08')
+    expect(pickButton.disabled).toBe(false)
     expect(zone.querySelector('.commission-validity-hint')).toBeNull()
   })
 
@@ -86,11 +90,10 @@ describe('commission tariff validity days', () => {
     const card = container.querySelector<HTMLElement>('.commission-period')!
     act(() => [...card.querySelectorAll('button')].find(button => button.textContent === 'Tarihleri Değiştir')!.click())
     const form = card.querySelector<HTMLFormElement>('.commission-period-edit')!
-    const [from, to] = [...form.querySelectorAll<HTMLInputElement>('input[type="date"]')]
-    // The fields open on the days the file covers now.
-    expect([from.value, to.value]).toEqual(['2026-10-29', '2026-11-05'])
-    type(from, '2026-10-28')
-    type(to, '2026-11-09')
+    // The field opens on the days the file covers now.
+    const field = form.querySelector<HTMLElement>('.commission-validity')!
+    expect(field.querySelector('.date-range-picker-trigger')?.textContent).toContain('29')
+    pick(field, '2026-10-28', '2026-11-09')
     const listed = apiState.calls.filter(call => call.path.endsWith('/commission-tariffs')).length
     act(() => [...form.querySelectorAll('button')].find(button => button.textContent === 'Kaydet')!.click())
     await settle()

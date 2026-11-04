@@ -7,12 +7,14 @@ import { formatDateRange, selectDateRangeDay, type DateRange } from './date-rang
 function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 function monthStart(value: string) { const date = value ? new Date(`${value}T12:00:00`) : new Date(); return new Date(date.getFullYear(), date.getMonth(), 1) }
 // The two calendars end at this month at the latest, so the second one is never a month that is all in the future.
-function firstShownMonth(value: string) { const start = monthStart(value); const now = new Date(); const latest = new Date(now.getFullYear(), now.getMonth() - 1, 1); return start > latest ? latest : start }
+function firstShownMonth(value: string, future = false) { const start = monthStart(value); if (future) return start; const now = new Date(); const latest = new Date(now.getFullYear(), now.getMonth() - 1, 1); return start > latest ? latest : start }
 
 // placeholder, icon and chevron let a page draw the trigger in its own style (the returns page uses the proposal's icons).
-export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı', className, placeholder, icon, chevron }: { from: string; to: string; onChange: (range: DateRange) => void; label?: string; className?: string; placeholder?: string; icon?: ReactNode; chevron?: ReactNode }) {
+// future: the days to come can be picked too (a tariff's validity), the calendars start at the chosen month and the
+// ready ranges (all past) are left out. disabled: the trigger does not open.
+export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı', className, placeholder, icon, chevron, future = false, disabled = false }: { from: string; to: string; onChange: (range: DateRange) => void; label?: string; className?: string; placeholder?: string; icon?: ReactNode; chevron?: ReactNode; future?: boolean; disabled?: boolean }) {
   const [open, setOpen] = useState(false)
-  const [month, setMonth] = useState(() => firstShownMonth(from))
+  const [month, setMonth] = useState(() => firstShownMonth(from, future))
   const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number; maxHeight: number } | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const popover = useRef<HTMLElement>(null)
@@ -51,7 +53,7 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
     if (position) setPopoverPosition(position)
     setOpen(true)
   }
-  const showSelectedMonth = useEffectEvent(() => setMonth(firstShownMonth(from)))
+  const showSelectedMonth = useEffectEvent(() => setMonth(firstShownMonth(from, future)))
   useEffect(() => {
     if (!open) return
     showSelectedMonth()
@@ -63,7 +65,7 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
     return () => { cancelAnimationFrame(frame); window.removeEventListener('scroll', follow, true); window.removeEventListener('resize', follow) }
   }, [open])
   useDismissable(open, [root, popover], () => setOpen(false))
-  const nextMonthBlocked = new Date(month.getFullYear(), month.getMonth() + 2, 1) > monthStart(today)
+  const nextMonthBlocked = !future && new Date(month.getFullYear(), month.getMonth() + 2, 1) > monthStart(today)
   const renderMonth =(visibleMonth: Date) => {
     const monthStartWeekday = (visibleMonth.getDay() + 6) % 7
     const daysInMonth = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth() + 1, 0).getDate()
@@ -71,15 +73,15 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
     const monthLabel = new Intl.DateTimeFormat('tr-TR', { month: 'long', year: 'numeric' }).format(visibleMonth)
     return <section className="date-range-picker-month" aria-label={monthLabel} key={`${visibleMonth.getFullYear()}-${visibleMonth.getMonth()}`}>
       <strong>{monthLabel}</strong>
-      <div className="date-range-picker-grid" role="grid">{['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pa'].map(day => <span role="columnheader" key={day}>{day}</span>)}{cells.map((day, index) => day < 1 || day > daysInMonth ? <span key={`empty-${index}`} aria-hidden="true" /> : (() => { const date = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), day); const value = dateKey(date); const selected = value === from || value === to; const inRange = Boolean(from && to && value > from && value < to); const future = value > today; return <button type="button" role="gridcell" aria-label={new Intl.DateTimeFormat('tr-TR', { dateStyle: 'long' }).format(date)} aria-selected={selected} disabled={future} className={`${selected ? 'is-selected' : ''}${inRange ? ' is-in-range' : ''}`} key={value} onClick={() => { const range = selectDateRangeDay({ from, to }, value); onChange(range); if (range.from && range.to) setOpen(false) }}>{day}</button> })())}</div>
+      <div className="date-range-picker-grid" role="grid">{['Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct', 'Pa'].map(day => <span role="columnheader" key={day}>{day}</span>)}{cells.map((day, index) => day < 1 || day > daysInMonth ? <span key={`empty-${index}`} aria-hidden="true" /> : (() => { const date = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), day); const value = dateKey(date); const selected = value === from || value === to; const inRange = Boolean(from && to && value > from && value < to); const later = !future && value > today; return <button type="button" role="gridcell" aria-label={new Intl.DateTimeFormat('tr-TR', { dateStyle: 'long' }).format(date)} aria-selected={selected} disabled={later} className={`${selected ? 'is-selected' : ''}${inRange ? ' is-in-range' : ''}`} key={value} onClick={() => { const range = selectDateRangeDay({ from, to }, value); onChange(range); if (range.from && range.to) setOpen(false) }}>{day}</button> })())}</div>
     </section>
   }
   return <div className={`date-range-picker${className ? ` ${className}` : ''}`} ref={root}>
     <span className="date-range-picker-label">{label}</span>
-    <button type="button" className="date-range-picker-trigger" aria-haspopup="dialog" aria-expanded={open} onClick={toggleOpen}>{icon ?? <UiIcon name="calendar" size={16} />}<span className={!from && !to && placeholder ? 'is-empty' : undefined}>{!from && !to && placeholder ? placeholder : formatDateRange({ from, to })}</span>{chevron ?? <UiIcon name="chevronDown" size={15} />}</button>
+    <button type="button" className="date-range-picker-trigger" aria-haspopup="dialog" aria-expanded={open} disabled={disabled} onClick={toggleOpen}>{icon ?? <UiIcon name="calendar" size={16} />}<span className={!from && !to && placeholder ? 'is-empty' : undefined}>{!from && !to && placeholder ? placeholder : formatDateRange({ from, to })}</span>{chevron ?? <UiIcon name="chevronDown" size={15} />}</button>
     {open && createPortal(<section ref={popover} className="date-range-picker-popover" role="dialog" aria-label={`${label} seç`} style={popoverPosition ?? undefined}>
       <div className="date-range-picker-layout">
-        <nav className="date-range-picker-presets" aria-label="Hazır tarih aralıkları">{presetRanges.map(preset => <button type="button" key={preset.label} onClick={() => { onChange(preset.range); setOpen(false) }}>{preset.label}</button>)}</nav>
+        {!future && <nav className="date-range-picker-presets" aria-label="Hazır tarih aralıkları">{presetRanges.map(preset => <button type="button" key={preset.label} onClick={() => { onChange(preset.range); setOpen(false) }}>{preset.label}</button>)}</nav>}
         <div className="date-range-picker-calendars">
           <header><button type="button" className="secondary" aria-label="Önceki ay" onClick={() => setMonth(value => new Date(value.getFullYear(), value.getMonth() - 1, 1))}><UiIcon name="chevronLeft" /></button><button type="button" className="secondary" aria-label="Sonraki ay" disabled={nextMonthBlocked} onClick={() => setMonth(value => new Date(value.getFullYear(), value.getMonth() + 1, 1))}><UiIcon name="chevronRight" /></button></header>
           <div className="date-range-picker-months">{renderMonth(month)}{renderMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}</div>

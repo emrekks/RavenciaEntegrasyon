@@ -501,6 +501,8 @@ function KpiStrip({ label, items, marks = false }: { label: string; items: Kpi[]
         <CardBackgroundIcon name={kpiIcon(item)} tone={item.tone === 'good' ? 'ok' : item.tone} />
         <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={id}
           onMouseEnter={marks ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined}
+          // With a "?" mark the tip belongs to the label: it closes as the pointer leaves it, not only the card.
+          onMouseLeave={marks ? hide : undefined}
           onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}{marks && <TipMark />}</button>
         <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && <Delta delta={item.delta} invert={item.invert} />}</span>}

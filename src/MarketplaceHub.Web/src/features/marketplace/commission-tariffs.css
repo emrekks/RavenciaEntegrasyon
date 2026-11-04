@@ -34,10 +34,10 @@
 
 /* The days a tariff is valid for (Geçerlilik Başlangıcı / Bitişi): two date fields 36 px high, above the dropzone's
    text and in a file's "Tarihleri Değiştir" form under its card. */
-.app-shell.stitch-shell main .commission-tariffs .commission-validity { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-bottom: 4px; }
-.app-shell.stitch-shell main .commission-tariffs .commission-validity label { display: grid; gap: 4px; justify-items: start; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; text-align: left; }
-.app-shell.stitch-shell main .commission-tariffs .commission-validity input { box-sizing: border-box; min-height: 0; height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font: inherit; font-size: 13px; }
-.app-shell.stitch-shell main .commission-tariffs .commission-validity input:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-validity { justify-items: start; width: min(280px, 100%); margin: 0 auto 4px; text-align: left; }
+.app-shell.stitch-shell main .commission-tariffs .commission-validity .date-range-picker-label { font-weight: 500; }
+.app-shell.stitch-shell main .commission-tariffs .commission-validity .date-range-picker-trigger { box-sizing: border-box; width: 100%; min-height: 0; height: 36px; padding: 0 10px; font-size: 13px; background: var(--rv-color-bg); border-radius: 7px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-validity .date-range-picker-trigger .is-empty { color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .commission-tariffs :is(.commission-validity-hint, .commission-validity-note) { color: var(--rv-color-muted); font-size: 12px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-validity-hint { color: var(--rv-color-warning); }
 .app-shell.stitch-shell main .commission-tariffs .commission-period-edit { display: grid; flex-basis: 100%; justify-items: start; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid var(--rv-color-border); }

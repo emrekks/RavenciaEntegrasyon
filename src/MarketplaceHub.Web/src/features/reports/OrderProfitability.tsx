@@ -126,10 +126,6 @@ function CopyNumber({ value }: { value: string }) {
 function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () => void }) {
   return <Modal open onClose={onClose} className="reports-order-modal" title={`Sipariş Analizi · #${order.orderNumber}`}
     description={`${formatIstanbul(order.orderedAt, { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })} · ${order.storeName}${order.microExport ? ` · Mikro ihracat (${order.storeFront})` : ''}`}>
-    <div className={`reports-order-result ${tone(order.profit)}`}>
-      <span>Bu siparişteki net kârınız<small>Tüm giderler çıkarıldıktan sonra</small></span>
-      <strong>{order.profit === null ? unknownProfit(order) : money(order.profit)}</strong>
-    </div>
     <div className="reports-order-columns">
       <section>
         <h3>Siparişteki Ürünler <em>{order.lines.length} kalem</em></h3>
@@ -156,6 +152,11 @@ function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () 
           </li>)}
         </ul>
       </section>
+    </div>
+    {/* What is left, at the bottom, under the charges it is worked out from. */}
+    <div className={`reports-order-result ${tone(order.profit)}`}>
+      <span>Bu siparişteki net kârınız<small>Tüm giderler çıkarıldıktan sonra</small></span>
+      <strong>{order.profit === null ? unknownProfit(order) : money(order.profit)}</strong>
     </div>
   </Modal>
 }
