@@ -725,7 +725,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const optionCount = new Set([...optionAttributes.map(item => item.id), ...(specialColorOption ? [specialColorOption.attribute.id] : [])]).size
   const productSync = useMutation({ mutationFn: () => hubApi(`/connections/${connectionId}/product-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }), onSuccess: () => { onNotice('Ürünler salt-okunur eşitleme kuyruğuna alındı; pazar yerine yazma yapılmaz.') }, onError: reason => onNotice(reason instanceof Error ? reason.message : 'Ürün eşitleme başlatılamadı.') })
   // Bulk "same name" matching for the whole category: first the headings (attributes and option groups), then every value of the mapped headings.
-  const [bulkBusy, setBulkBusy] = useState<'' | 'HEADINGS' | 'VALUES' | 'TEMPLATES'>('')
+  const [bulkBusy, setBulkBusy] = useState<'' | 'HEADINGS' | 'VALUES'>('')
   const [selectedEntryKey, setSelectedEntryKey] = useState('')
   const valueDrafts = useValueDraftStore(connectionId, onNotice)
   const [extraPanel, setExtraPanel] = useState<'' | 'defaults' | 'conflicts'>('')
@@ -743,21 +743,6 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const valueMappingsByExternal = new Map(mappedValueFields.map((item, index) => [item.externalId, valueMappingQueries[index]?.data]))
   const attributeNameHints = useQuery({ queryKey: ['attribute-name-hints', connectionId], queryFn: () => hubApi<Record<string, string[]>>(`/mappings/attribute-name-hints?connectionId=${encodeURIComponent(connectionId)}`), retry: false, staleTime: 5 * 60_000, enabled: !!connectionId })
   // Brings over the attribute and value decisions made for the connection's other categories.
-  async function fillFromOtherCategories() {
-    if (bulkBusy) return
-    setBulkBusy('TEMPLATES'); onNotice('')
-    try {
-      const result = await hubApi<{ attributes: number; values: number }>(`/mappings/templates/fill?connectionId=${encodeURIComponent(connectionId)}&categoryExternalId=${encodeURIComponent(categoryScope)}`, { method: 'POST', body: '{}' })
-      await client.invalidateQueries({ queryKey: ['attribute-mappings', connectionId, categoryScope] })
-      await client.invalidateQueries({ queryKey: ['attribute-value-mappings', connectionId] })
-      await client.invalidateQueries({ queryKey: ['publication-attribute-readiness'] })
-      onNotice(result.attributes || result.values
-        ? `Diğer kategorilerdeki eşlemelerden ${result.attributes} başlık ve ${result.values} değer getirildi.`
-        : 'Diğer kategorilerden getirilecek yeni eşleme yok. Değer listesi henüz gelmemiş başlıklar, liste gelince otomatik dolar.')
-    } catch (reason) {
-      onNotice(reason instanceof Error ? reason.message : 'Diğer kategorilerden doldurma tamamlanamadı.')
-    } finally { setBulkBusy('') }
-  }
   async function matchHeadingsByName() {
     if (!references.data || bulkBusy) return
     setBulkBusy('HEADINGS'); onNotice('')
@@ -980,7 +965,6 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
       {!dataLoading && !dataFailed && <div className="cm-actions" role="toolbar" aria-label="Kategori eşleme işlemleri">
       <button type="button" className="secondary" title="Önce adı aynı olan panel başlıklarını, bulunamazsa eş anlamlısını (ör. Materyal ≈ Kumaş Tipi) ya da diğer pazaryerinde eşlendiği adı toplu eşler. Birden fazla aday varsa atlar." disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchHeadingsByName()}>{bulkBusy === 'HEADINGS' ? 'Başlıklar Eşleniyor…' : 'Başlıkları Eşle'}</button>
       <button type="button" className="secondary" title="Eşlenmiş tüm başlıklarda adı aynı olan değerleri toplu eşler" disabled={sync.isPending || bulkBusy !== ''} onClick={() => void matchAllValuesByName()}>{bulkBusy === 'VALUES' ? 'Değerler Eşleniyor…' : 'Tüm Değerleri Eşle'}</button>
-      <button type="button" className="secondary" title={`Aynı ${platformLabel} başlığını kullanan diğer kategorilerde yaptığınız başlık ve değer eşlemelerini bu kategoriye getirir. Elle yaptığınız ve sildiğiniz eşlemelere dokunmaz.`} disabled={sync.isPending || bulkBusy !== ''} onClick={() => void fillFromOtherCategories()}>{bulkBusy === 'TEMPLATES' ? 'Getiriliyor…' : 'Kategorilerden Doldur'}</button>
       {(platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA') && categoryScope && <button type="button" className="secondary" title={`Ürünlerde boş kalan alanlar için ${platformLabel}’a gönderilecek sabit değerler`} onClick={() => setExtraPanel('defaults')}>Platform Varsayılanları <span className="cm-count">{attributeDefaultsCount}</span></button>}
       <button type="button" className={`secondary${mappingConflictCount ? ' cm-has-conflicts' : ''}`} title={`Aynı panel değeri birden fazla ${platformLabel} değerine bağlanmış eşlemeler`} onClick={() => setExtraPanel('conflicts')}>Gözden Geçirilecek <span className="cm-count">{mappingConflictCount}</span></button>
       {platformCode === 'TRENDYOL' && optionCount > 0 && <button type="button" className="secondary" title="Trendyol’daki ürünleri salt-okunur okuyarak ürün seçeneklerini günceller; Trendyol’a yazma yapmaz." disabled={productSync.isPending} onClick={() => productSync.mutate()}>{productSync.isPending ? 'Ürünler Eşitleniyor…' : 'Seçenekleri Eşitle'}</button>}
@@ -1192,7 +1176,7 @@ function FieldValueTable({ platformCode, platformLabel, connectionId, categorySc
   if (seenGeneration !== generation) { setSeenGeneration(generation); setSelections(null); setBaseline(null) }
   const saved = useMemo(() => groupSavedSelections(mappings.data ?? []), [mappings.data])
   useEffect(() => { if (mappings.data && selections === null) { const grouped = groupSavedSelections(mappings.data); setSelections(grouped); setBaseline(grouped) } }, [mappings.data, selections])
-  // The saved pairs changed after the table was filled (Tüm Değerleri Eşle, Kategorilerden Doldur, another window).
+  // The saved pairs changed after the table was filled (Tüm Değerleri Eşle, another window).
   if (mappings.data && selections !== null && baseline !== null && selectionsDiffer(saved, baseline)) { setSelections(rebaseSelections(selections, baseline, saved)); setBaseline(saved) }
   // A Hepsiburada value may reuse a panel value that already feeds another Hepsiburada value.
   const allowReuse = platformCode === 'HEPSIBURADA'

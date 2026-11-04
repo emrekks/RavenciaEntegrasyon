@@ -153,6 +153,7 @@
 /* Modal title with the same room as the design's page head. */
 .workspace-modal.mapping-advanced-modal > header { min-height: 0; padding: 20px 24px; align-items: flex-start; }
 .workspace-modal.mapping-advanced-modal > header .eyebrow { display: none; }
+.workspace-modal.mapping-advanced-modal > header > .modal-close { margin-right: -12px; }
 .workspace-modal.mapping-advanced-modal > header h2 { margin: 0; font-size: 18px; font-weight: 600; line-height: 1.35; }
 .workspace-modal.mapping-advanced-modal > header p { margin: 2px 0 0; color: var(--rv-color-muted); font-size: 14px; line-height: 1.5; }
 

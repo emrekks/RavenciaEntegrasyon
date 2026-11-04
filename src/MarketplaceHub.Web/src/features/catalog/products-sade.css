@@ -475,3 +475,15 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-del-list li span { min-width: 0; overflow: hidden; color: var(--rr-ink); text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-del-list li small { flex: none; color: var(--rr-muted); font-variant-numeric: tabular-nums; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-del-list li.rr-del-more { color: var(--rr-muted); }
+
+/* Phones: the variant stock table opens on a tap and closes on a second tap or a tap elsewhere; it never opens on a
+   hover, which on a touch screen sticks after the finger lifts. The product card does not light up under the finger. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover:not(:focus-within) > .rr-vtip { display: none; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl tbody tr:not(.rr-sel):hover { background: var(--rr-surface); }
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl tbody tr.rr-sel:hover { background: color-mix(in srgb, var(--rr-primary-soft) 45%, var(--rr-surface)); }
+  /* five summary cards: two per row, the last one full width (the tablet's span rules no longer leak in) */
+  .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > :nth-child(n) { grid-column: auto; min-width: 0; }
+  .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > :last-child { grid-column: 1 / -1; }
+}

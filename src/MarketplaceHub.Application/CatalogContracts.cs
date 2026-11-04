@@ -311,7 +311,6 @@ public sealed record CatalogMappingView(Guid Id, Guid ConnectionId, Guid Snapsho
 // false keeps it to this category only.
 public sealed record UpsertCatalogMappingCommand(Guid ConnectionId, Guid SnapshotId, string ExternalId, string Status, string Role = "ATTRIBUTE", bool UpdateTemplate = true);
 
-public sealed record MappingTemplateFillView(int Attributes, int Values);
 
 // Names a panel attribute and its values carry on the other marketplace connections (from their
 // templates), used as extra hints when suggesting matches on another marketplace.
@@ -342,7 +341,6 @@ public interface IReferenceDataService
     Task<ServiceResult<ConnectionAttributeDefaultView>> UpsertAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, UpsertConnectionAttributeDefaultCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<bool>> DeleteAttributeDefaultAsync(Guid tenantId, Guid connectionId, string externalAttributeId, CancellationToken cancellationToken);
     // Fills a mapped marketplace category from the decisions made for the connection's other categories.
-    Task<ServiceResult<MappingTemplateFillView>> FillFromTemplatesAsync(Guid tenantId, Guid connectionId, string categoryExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<ReferenceDataView>> ListAsync(Guid tenantId, Guid connectionId, string resourceType, string? parentExternalId, CancellationToken cancellationToken);
     // The connection's current brand snapshot: its id, age and size, without items.
     Task<ServiceResult<ReferenceSliceView>> BrandSummaryAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);

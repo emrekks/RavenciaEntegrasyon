@@ -353,3 +353,23 @@ main .rr.rr-dashboard > * { min-width: 0; }
 /* Returns and other currencies are shown beside the revenue, never added into it. */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-note { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 16px; border-top: 1px solid var(--rr-line); color: var(--rr-muted); font-size: 12.5px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pf-note b { color: var(--rr-ink); font-weight: 600; }
+
+/* A card's figure and its note ("66 Bekleyen | 0 Yaklaşan") stay on one line; on a narrow card the note shrinks and,
+   only if it still does not fit, ends in an ellipsis. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-t > strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 760px) {
+  :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x { font-size: 11px; }
+  :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-sep { margin-inline: 3px; }
+}
+/* Every operation card is the same size: rows share one height and each card fills its cell. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid { grid-auto-rows: 1fr; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard { height: 100%; min-height: 0; box-sizing: border-box; }
+
+/* Phones: the Entegrasyon Durumu head stacks, the title on one line and the status pill under it; a store card's
+   İncele link sits beside its name instead of on a row of its own. */
+@media (max-width: 760px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-panel > .rr-panel-h:has(> .rr-hpill) { flex-direction: column; align-items: flex-start; gap: 10px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-panel > .rr-panel-h:has(> .rr-hpill) h2 { white-space: nowrap; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td:first-child { grid-row: 1; grid-column: 1 / 3; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act { grid-row: 1; grid-column: 3; align-self: start; text-align: right; }
+}
