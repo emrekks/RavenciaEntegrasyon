@@ -461,7 +461,11 @@
 /* The filters on two lines: the period (presets and the custom range) across the top, then the platform, the grouping
    and the test toggle side by side; every label alike and every control the same height, so they line up. */
 .app-shell.stitch-shell main .reports-page .reports-filters { display: grid; grid-template-columns: repeat(3, max-content) minmax(0, 1fr); align-items: end; gap: 16px 24px; }
-.app-shell.stitch-shell main .reports-page .reports-filters > .reports-period-field { grid-column: 1 / -1; padding-bottom: 16px; border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-filters > .reports-period-field { grid-column: 1 / -1; }
+/* The period buttons on the left; the custom period and the platforms at the right end of the same row. */
+.app-shell.stitch-shell main .reports-page .reports-period-row > .reports-period-custom { margin-left: auto; }
+.app-shell.stitch-shell main .reports-page .reports-period-platforms .platform-multi-select-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-period-platforms :is(.platform-multi-select-field, .platform-multi-select) { gap: 0; }
 .app-shell.stitch-shell main .reports-page .reports-filters .platform-multi-select-field { display: grid; gap: 6px; }
 .app-shell.stitch-shell main .reports-page .reports-filters .platform-multi-select-label { color: var(--rv-color-muted); font-size: 13px; font-weight: 400; line-height: 20px; }
 .app-shell.stitch-shell main .reports-page .reports-filters :is(.platform-multi-select-trigger, .date-range-picker-trigger, select) { box-sizing: border-box; height: 40px; min-height: 40px; }
@@ -510,7 +514,7 @@
 .app-shell.stitch-shell main .reports-page .reports-kpis.is-4 { --kpi-columns: 4; }
 .app-shell.stitch-shell main .reports-page .reports-kpis.is-5 { --kpi-columns: 5; }
 .app-shell.stitch-shell main .reports-page .reports-kpis > div { position: relative; overflow: hidden; transition: background-color 140ms ease; display: grid; align-content: start; gap: 6px; min-width: 0; padding: 16px 18px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.app-shell.stitch-shell main .reports-page .reports-kpis .reports-kpi-label { color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-kpis .reports-kpi-label { color: var(--rv-color-muted); font-size: 13px; white-space: normal; }
 .app-shell.stitch-shell main .reports-page .reports-kpi-change { display: flex; align-items: center; min-height: 22px; }
 .app-shell.stitch-shell main .reports-page .reports-kpi-note { color: var(--rv-color-subtle); font-size: 12.5px; line-height: 1.4; }
 .app-shell.stitch-shell main .reports-page .reports-kpis-wrap { position: relative; min-width: 0; }

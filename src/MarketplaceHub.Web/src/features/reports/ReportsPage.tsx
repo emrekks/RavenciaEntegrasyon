@@ -111,8 +111,7 @@ export function ReportsPage() {
   const matching = presets.filter(preset => preset.range.from === range.from && preset.range.to === range.to)
   const activePreset = (matching.find(preset => preset.key === pickedPreset) ?? matching[0])?.key ?? null
   const [platforms, setPlatforms] = useState<string[] | null>(null)
-  const [granularity, setGranularity] = useState('')
-  const query = reportQuery({ from: range.from, to: range.to, platforms, granularity, includeTest: false })
+  const query = reportQuery({ from: range.from, to: range.to, platforms, granularity: '', includeTest: false })
   const report = useQuery({ queryKey: ['reports-sales', query], queryFn: () => hubApi<ReportSales>(`/reports/sales?${query}`), staleTime: 60_000, placeholderData: previous => previous })
   const data = report.data
   const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].filter(isSalesChannel).sort(bySalesChannel).map(code => ({ value: code, label: platformName(code) })), [data?.channels])
@@ -139,11 +138,9 @@ export function ReportsPage() {
         <div className="reports-segmented" role="group" aria-label="Hazır dönemler">{presets.map(preset => <button key={preset.key} type="button" aria-pressed={preset.key === activePreset} onClick={() => { setDraft(null); setPickedPreset(preset.key); setRange(preset.range) }}>{preset.label}</button>)}</div>
         <div className={`reports-period-custom${activePreset ? '' : ' is-active'}`}><DateRangePicker from={draft?.from ?? range.from} to={draft ? draft.to : range.to} label="Özel Dönem"
           onChange={next => { if (next.from && next.to) { setDraft(null); setRange({ from: next.from, to: next.to }) } else setDraft(next) }} /></div>
+        {/* The custom period and the platforms at the row's right end; the charts group by day, week or month on their own. */}
+        <div className="reports-period-platforms"><PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={platforms} onChange={next => setPlatforms(next.length ? next : null)} /></div>
       </div></div>
-      <div className="reports-field"><PlatformMultiSelect label="Platform" options={platformOptions} selectedCodes={platforms} onChange={next => setPlatforms(next.length ? next : null)} /></div>
-      <label className="reports-field"><span>Gruplama</span><select value={granularity} onChange={event => setGranularity(event.target.value)} aria-label="Zaman gruplaması">
-        <option value="">Otomatik</option><option value="day">Gün</option><option value="week">Hafta</option><option value="month">Ay</option>
-      </select></label>
       {/* Always in place (the card's top right, level with Dönem), so showing it moves nothing; it fades in while a
           filter change loads. */}
       <span className={`reports-refreshing${report.isFetching && data ? ' is-active' : ''}`} role="status">
