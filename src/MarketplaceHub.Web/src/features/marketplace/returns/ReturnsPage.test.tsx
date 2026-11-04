@@ -63,12 +63,12 @@ describe('returns page', () => {
     expect(returnRequests).toContain('/returns/summary?')
     expect(returnRequests).toHaveLength(2)
     const cards = Array.from(host.querySelectorAll<HTMLElement>('.rr-metrics article'))
-    expect(cards.map(card => card.querySelector('small')!.textContent)).toEqual(['Aksiyon Bekleyen', 'Kargoya Verilen', 'Reddedilen', 'Onaylanan / Reddedilen'])
+    expect(cards.map(card => card.querySelector('small')!.textContent)).toEqual(['Aksiyon Bekleyen', 'Kargoya Verilen', 'Kargolanmayı Bekleyen Red', 'Onaylanan / Reddedilen'])
     expect(cards[0].querySelector('strong')!.textContent).toBe('7')
     // Rejected returns whose package back to the customer is not with the cargo yet, not every rejected return (4).
     expect(cards[2].querySelector('strong')!.textContent).toBe('3')
     expect(cards[2].className).toBe('rr-warn')
-    expect(cards[2].textContent).toContain('1 iadede bilinmiyor')
+    expect(cards[2].textContent).toContain('1 iadede kargo durumu bilinmiyor')
     expect(cards[3].querySelector('strong')!.textContent).toBe('6 / 2')
     expect(host.textContent).toContain('Toplam 41 iade bilgisi')
     // The return's amounts as the marketplace wrote them, never ones calculated from the order.
