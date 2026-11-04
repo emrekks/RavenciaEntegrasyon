@@ -50,6 +50,8 @@ const pill = () => fact().querySelector<HTMLButtonElement>('button.publish-steps
 const steps = () => [...pill().querySelectorAll('.publish-step')].map(step => step.className.replace('publish-step is-', ''))
 // Each corner badge as "<tone> <count> @<step index>".
 const counts = () => [...pill().querySelectorAll('.publish-step')].flatMap((step, index) => [...step.querySelectorAll('.publish-step-badge')].map(badge => `${badge.className.match(/is-(red|yellow|green)/)![1]} ${badge.textContent} @${index}`))
+// The red and yellow counts beside the steps, as "<tone> <words>".
+const chips = () => [...pill().querySelectorAll('.publish-steps-chip')].map(chip => `${chip.className.match(/is-(red|yellow)/)![1]} ${chip.textContent}`)
 const popover = () => fact().querySelector<HTMLElement>('.publish-issue-tooltip')!
 const ok = [{ title: 'Temel Ürün Verileri', detail: 'Eksiksiz.', ok: true }]
 const gap = [{ title: 'Temel Ürün Verileri', detail: 'Eksik alanlar: açıklama.', ok: false }]
@@ -180,7 +182,8 @@ describe('PublishPlatformCard status steps', () => {
     await answer('p1', { actualStatus: 'LIVE' })
     await answer('p2', { actualStatus: 'UNKNOWN' })
     expect(steps()).toEqual(['fail', 'idle', 'idle', 'half'])
-    expect(counts()).toEqual(['red 1 @0', 'green 1 @3'])
+    expect(counts()).toEqual(['green 1 @3'])
+    expect(chips()).toEqual(['red 1 Eksik'])
     expect(pill().getAttribute('aria-label')).toBe('Trendyol: Kısmen Yayında, 1/2 renk yayında; 1 zorunlu eksik')
     await act(async () => { pill().click() })
     expect(pill().getAttribute('aria-expanded')).toBe('true')
@@ -194,7 +197,8 @@ describe('PublishPlatformCard status steps', () => {
     await answer('p1', { actualStatus: 'UNKNOWN' })
     await answer('p2', { actualStatus: 'UNKNOWN' })
     expect(steps()).toEqual(['fail', 'idle', 'idle', 'idle'])
-    expect(counts()).toEqual(['red 1 @0'])
+    expect(counts()).toEqual([])
+    expect(chips()).toEqual(['red 1 Eksik'])
     // The count is on the icon, not a chip beside the steps.
     expect(pill().querySelector('.publish-steps-counts')).toBeNull()
   })
@@ -237,7 +241,8 @@ describe('PublishPlatformCard status steps', () => {
     await render({ productChecks: ok, variantLinks: { linked: 0, total: 2, missing: 2 } })
     await answer('p1', { actualStatus: 'LIVE', profileId: 'pr1' })
     expect(steps()).toEqual(['done', 'done', 'done', 'fail'])
-    expect(counts()).toEqual(['red 2 @3'])
+    expect(counts()).toEqual([])
+    expect(chips()).toEqual(['red 2 Bulunamadı'])
   })
 })
 
