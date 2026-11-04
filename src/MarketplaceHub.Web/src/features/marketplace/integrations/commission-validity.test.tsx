@@ -82,7 +82,7 @@ describe('commission tariff validity days', () => {
     expect(zone.querySelector('.commission-validity-hint')).toBeNull()
   })
 
-  it('changes a file\'s days from its card and refreshes the tariffs and the reports', async () => {
+  it('changes a file\'s days from its card and refreshes the tariffs (reports no longer read them)', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     client.setQueryData(['report-order-profit', 'q'], { items: [] })
     act(() => root.render(<QueryClientProvider client={client}><CommissionTariffsPanel connectionId="c1" platformName="Trendyol" /></QueryClientProvider>))
@@ -101,7 +101,7 @@ describe('commission tariff validity days', () => {
     expect(put.map(call => call.path)).toEqual(['/connections/c1/commission-tariffs/t3/period'])
     expect(JSON.parse(put[0].body!)).toEqual({ validFrom: '2026-10-28', validTo: '2026-11-09', wholeFile: true })
     expect(apiState.calls.filter(call => call.path.endsWith('/commission-tariffs')).length).toBeGreaterThan(listed)
-    expect(client.getQueryState(['report-order-profit', 'q'])?.isInvalidated).toBe(true)
+    expect(client.getQueryState(['report-order-profit', 'q'])?.isInvalidated).toBe(false)
     expect(container.querySelector('.commission-period-edit')).toBeNull()
     expect(container.querySelector('.commission-message')?.textContent).toBe('Tarifenin geçerlilik tarihleri değiştirildi.')
   })

@@ -65,8 +65,6 @@ export function validityProblem(days: ValidityDays): string | null {
   if (days.from > days.to) return 'Geçerlilik başlangıcı, bitişten sonra olamaz.'
   return null
 }
-// The report queries (sales, order profitability, stock, payouts…): a tariff's days change which orders take its rate.
-const isReportQuery = (key: readonly unknown[]) => typeof key[0] === 'string' && key[0].startsWith('report')
 
 // The days a tariff is valid for, picked as one range on a two-month calendar (days to come too).
 function ValidityFields({ days, onChange, disabled }: { days: ValidityDays; onChange: (days: ValidityDays) => void; disabled?: boolean }) {
@@ -327,7 +325,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
       setMessage(result.alreadyUploaded
         ? { kind: 'info', text: 'Bu dosya bu dönem için daha önce yüklenmiş; mevcut tarife gösteriliyor.', warnings: result.warnings }
         : { kind: result.skippedRows ? 'info' : 'success', text: `${result.importedRows.toLocaleString('tr-TR')} ürünün tarifesi yüklendi${result.skippedRows ? `; ${result.skippedRows.toLocaleString('tr-TR')} satır okunamadı` : ''}.`, warnings: result.warnings })
-      await Promise.all([client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] }), client.invalidateQueries({ predicate: query => isReportQuery(query.queryKey) })])
+      await client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] })
     },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Tarife yüklenemedi.' })
   })
@@ -348,7 +346,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
     onSuccess: async () => {
       setEditing(null)
       setMessage({ kind: 'success', text: 'Tarifenin geçerlilik tarihleri değiştirildi.' })
-      await Promise.all([client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] }), client.invalidateQueries({ predicate: query => isReportQuery(query.queryKey) })])
+      await client.invalidateQueries({ queryKey: ['commission-tariffs', connectionId] })
     },
     onError: reason => setMessage({ kind: 'error', text: reason instanceof Error ? reason.message : 'Tarihler değiştirilemedi.' })
   })

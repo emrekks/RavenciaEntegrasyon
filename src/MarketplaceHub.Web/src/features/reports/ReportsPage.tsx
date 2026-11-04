@@ -588,7 +588,7 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
   const cargo = part('cargo')
   const lines: OverviewCost[] = [
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost, tone: 'cost', note: explain('cost', money.cost === null ? 'Ürün kartında varyantların maliyeti girildiğinde hesaplanır.' : costCoverageText(money.costCoverage)) },
-    { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission?.value ?? null, tone: 'commission', note: explain('commission', commission?.note || 'Siparişte komisyon gelmedi, komisyon tarifesi de yüklenmedi.') },
+    { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission?.value ?? null, tone: 'commission', note: explain('commission', commission?.note || 'Siparişte komisyon gelmedi.') },
     { key: 'cargo', label: 'Kargo', value: finance ? cargo?.value ?? 0 : null, tone: 'cargo', note: explain('cargo', finance ? cargo?.note || 'Bu dönemde kargo yok.' : notRead) },
     { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, tone: 'returned', note: explain('returned', `Bu dönemde ${formatNumber(data.summary.returnedQuantity)} adet ürün iade edildi.`) },
     // "Diğer Kesinti" (deduction invoices no rule names) and "Ödeme Komisyonu" (Shopify only) are listed only when there is one.
@@ -958,7 +958,7 @@ function ProfitView({ data }: { data: ReportSales }) {
   const chargedBefore = previousMoney(data)?.deductions.find(part => part.key === 'commission') ?? null
   const items: Kpi[] = [
     { key: 'commission', label: charged?.label ?? 'Komisyon', value: charged?.value ?? null, format: formatTl, delta: change(charged?.value, chargedBefore?.value), invert: true,
-      note: previousText(chargedBefore ? formatTl(chargedBefore.value) : null), tip: `Pazaryerinin her satıştan aldığı komisyon.\n${charged?.note || 'Siparişte komisyon gelmedi, komisyon tarifesi de yüklenmedi.'}` },
+      note: previousText(chargedBefore ? formatTl(chargedBefore.value) : null), tip: `Pazaryerinin her satıştan aldığı komisyon.\n${charged?.note || 'Siparişte komisyon gelmedi.'}` },
     { key: 'rate', label: 'Komisyon Oranı', value: commission.effectiveRate, format: percent, delta: change(commission.effectiveRate, earlier?.commission.effectiveRate, 'rate'), invert: true,
       note: previousText(formatPercent(earlier?.commission.effectiveRate)), tip: 'Pazaryerinin satıştan aldığı ortalama pay.\nTahmini komisyon ÷ komisyon oranı bilinen satış.' },
     { key: 'costed', label: 'Maliyeti Girili Satış', value: cost.coverage, format: percent, delta: change(cost.coverage, earlier?.cost.coverage, 'rate'),
@@ -1115,7 +1115,7 @@ function profitSteps(data: ReportSales): ProfitSteps {
     )
   } else steps.push(
     { key: 'commission', label: 'Tahmini Komisyon', value: hasCommission ? commission.estimatedCommission : null, kind: 'minus', missing: 'Komisyon bilinmiyor',
-      note: hasCommission ? `Siparişteki ya da yüklenen tarifedeki orandan tahmin edildi; satışların ${formatPercent(commission.coverage)} kadarının oranı biliniyor.${partialCommission ? ' Kalanından komisyon düşülmedi.' : ''}` : 'Siparişte komisyon gelmedi, komisyon tarifesi de yüklenmedi.' },
+      note: hasCommission ? `Siparişteki orandan tahmin edildi; satışların ${formatPercent(commission.coverage)} kadarının oranı biliniyor.${partialCommission ? ' Kalanından komisyon düşülmedi.' : ''}` : 'Siparişte komisyon gelmedi.' },
     { key: 'payout', label: 'Komisyon Düşülmüş', value: hasCommission ? now.netRevenue - commission.estimatedCommission : null, kind: 'total', missing: '—',
       note: hasCommission ? (partialCommission ? 'Tahmini; gerçek tutar daha düşük olabilir' : 'Tahmini; kesinleşmiş hakediş değil') : undefined }
   )

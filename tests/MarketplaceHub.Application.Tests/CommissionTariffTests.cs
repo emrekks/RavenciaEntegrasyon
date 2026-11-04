@@ -218,27 +218,6 @@ public sealed class CommissionTariffTests
         Assert.Equal(519.75m, row4.BasisPrice);
     }
 
-    // The reports' fallback commission reads the period a sale was made in: the 3-day rate before 1 Nov 08.00, the 4-day
-    // rate from then on.
-    [Fact]
-    public void AReportLineTakesTheRateOfThePeriodItWasSoldIn()
-    {
-        var bytes = TrendyolTariffWorkbookTests.Workbook(("Bluz M", "RYP00101", TrendyolTariffWorkbookTests.Period3, null));
-        var parsed = CommissionTariffFileParser.Parse(ImportFileReader.ReadXlsxTable(new MemoryStream(bytes), 10_000_000), TrendyolTariffWorkbookTests.Now);
-        var connection = Guid.NewGuid();
-        var uploaded = TrendyolTariffWorkbookTests.Now;
-        var tariffs = new Infrastructure.Persistence.ReportCommissionTariffs(parsed.Tariffs.SelectMany(period =>
-        {
-            var tariff = new CommissionTariff { Id = Guid.NewGuid(), ConnectionId = connection, PlatformCode = "TRENDYOL", PeriodStart = period.PeriodStart, PeriodEnd = period.PeriodEnd, PeriodText = period.PeriodText, PeriodLabel = period.Label, FileName = "930112.xlsx", FileHash = "H", UploadedAt = uploaded };
-            return period.Rows.Select(row => (tariff, row));
-        }));
-        var istanbul = TimeSpan.FromHours(3);
-        Assert.Equal(20.6m, tariffs.Rate(connection, "RYP00101", null, new DateTimeOffset(2026, 11, 1, 7, 59, 0, istanbul).ToUniversalTime(), 450m));
-        Assert.Equal(15.8m, tariffs.Rate(connection, "RYP00101", null, new DateTimeOffset(2026, 11, 1, 8, 0, 0, istanbul).ToUniversalTime(), 450m));
-        Assert.Equal(12.8m, tariffs.Rate(connection, "RYP00101", null, new DateTimeOffset(2026, 11, 4, 20, 0, 0, istanbul).ToUniversalTime(), 399m));
-        Assert.Null(tariffs.Rate(connection, "RYP00101", null, new DateTimeOffset(2026, 11, 5, 8, 0, 0, istanbul).ToUniversalTime(), 399m));
-    }
-
     // A row whose second period is empty or does not read is kept in the period that reads, with a warning for the other;
     // a row neither period reads is skipped.
     [Fact]

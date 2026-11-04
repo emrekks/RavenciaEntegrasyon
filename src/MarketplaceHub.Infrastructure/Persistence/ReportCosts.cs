@@ -138,7 +138,7 @@ internal static class ReportCosts
         var financeStores = new HashSet<Guid>();
         var products = new Dictionary<string, ProductTotal>(StringComparer.Ordinal);
         var linesByOrder = orders.ToDictionary(order => order.Order.Id, order => order.Lines);
-        // A Trendyol line without a commission (none on the line, no tariff) is estimated at its store's rate over the
+        // A Trendyol line without a commission (none on the line) is estimated at its store's rate over the
         // period's lines that have one, so the commission is not left short.
         var commissionRates = orders.Where(order => IsFinanceStore(input, order.Order.ConnectionId))
             .SelectMany(order => order.Lines.Where(line => line.Commission is not null && line.KeptAmount > 0).Select(line => (order.Order.ConnectionId, line)))

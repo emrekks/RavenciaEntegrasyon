@@ -68,22 +68,14 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         // Only the carriers of its packages: its platform cargo is costed at the carrier's tariff, as the period's is.
         var previousCarriers = await PackageCarriersAsync(tenantId, allowedIds, previous, cancellationToken);
 
-        // Uploaded commission tariffs whose weeks touch the period or the previous one: the fallback rate for a line that
-        // carries none.
-        var tariffRows = await (from tariff in db.CommissionTariffs.AsNoTracking()
-                                join row in db.CommissionTariffRows.AsNoTracking() on new { tariff.TenantId, TariffId = tariff.Id } equals new { row.TenantId, row.TariffId }
-                                where tariff.TenantId == tenantId && allowedIds.Contains(tariff.ConnectionId)
-                                    && tariff.PeriodEnd > previous.Start && tariff.PeriodStart < current.End
-                                select new { tariff, row }).ToListAsync(cancellationToken);
-        var tariffs = tariffRows.Count == 0 ? null : new ReportCommissionTariffs(tariffRows.Select(x => (x.tariff, x.row)));
         var finance = await FinanceAsync(tenantId, allowed, orders, current, cancellationToken);
         var learnedDesi = await LearnedDesiAsync(tenantId, cancellationToken);
-        var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest, tariffs, finance,
+        var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest, finance,
             await PazaramaCommissionsAsync(tenantId, allowed, orders, cancellationToken),
             new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
         var previousFinance = await FinanceAsync(tenantId, allowed, previousOrders, previous, cancellationToken);
         var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders, previousOrderExtras, previousLines,
-            previousLineExtras, previousClaims, previousCarriers, names, query.IncludeTest, tariffs, previousFinance, await PazaramaCommissionsAsync(tenantId, allowed, previousOrders, cancellationToken),
+            previousLineExtras, previousClaims, previousCarriers, names, query.IncludeTest, previousFinance, await PazaramaCommissionsAsync(tenantId, allowed, previousOrders, cancellationToken),
             new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, previousOrders, cancellationToken)));
         var stockVariants = ReportBuilder.StockCandidates(input);
         var stock = stockVariants.Length == 0
@@ -122,14 +114,10 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var orders = await OrderRowsAsync(tenantId, allowedIds, current, cancellationToken);
         var orderIds = orders.Select(x => x.Id).ToArray();
         var lines = await LineRowsAsync(tenantId, allowedIds, current, cancellationToken);
-        var tariffRows = await (from tariff in db.CommissionTariffs.AsNoTracking()
-                                join row in db.CommissionTariffRows.AsNoTracking() on new { tariff.TenantId, TariffId = tariff.Id } equals new { row.TenantId, row.TariffId }
-                                where tariff.TenantId == tenantId && allowedIds.Contains(tariff.ConnectionId) && tariff.PeriodEnd > current.Start && tariff.PeriodStart < current.End
-                                select new { tariff, row }).ToListAsync(cancellationToken);
         var input = new ReportInput(current, ReportBuckets.Day, timezone, allowed, orders, await OrderExtrasAsync(tenantId, orderIds, cancellationToken), lines,
             await LineExtrasAsync(tenantId, orderIds, cancellationToken), await ClaimRowsAsync(tenantId, allowedIds, current, cancellationToken),
             await PackageRowsAsync(tenantId, allowedIds, current, cancellationToken), await CatalogNamesAsync(tenantId, lines, cancellationToken), false,
-            tariffRows.Count == 0 ? null : new ReportCommissionTariffs(tariffRows.Select(x => (x.tariff, x.row))), await FinanceAsync(tenantId, allowed, orders, current, cancellationToken),
+            await FinanceAsync(tenantId, allowed, orders, current, cancellationToken),
             await PazaramaCommissionsAsync(tenantId, allowed, orders, cancellationToken),
             new ReportDesiInput(await LearnedDesiAsync(tenantId, cancellationToken), await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
         var all = ReportOrderProfit.Build(input, ReportBuilder.Facts(input).Orders);
@@ -451,8 +439,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     }
 
     // The commission each marketplace sent on the line (Trendyol "commission" rate, Hepsiburada "commission" amount
-    // object, n11 "commissionRate", PTT AVM "Komisyon"), Trendyol's gross unit price (a tariff's bands are read at it) and
-    // a cancel reason, read in the database.
+    // object, n11 "commissionRate", PTT AVM "Komisyon") and a cancel reason, read in the database.
     private async Task<Dictionary<Guid, ReportLineExtra>> LineExtrasAsync(Guid tenantId, Guid[] orderIds, CancellationToken cancellationToken)
     {
         if (orderIds.Length == 0) return [];
@@ -467,7 +454,6 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                    CASE WHEN jsonb_typeof(j->'commission') = 'object' THEN j->'commission'->>'amount' ELSE j->>'commission' END AS "Commission",
                    j->>'commissionRate' AS "CommissionRate",
                    j->>'Komisyon' AS "Komisyon",
-                   j->>'lineGrossAmount' AS "GrossUnitPrice",
                    coalesce(nullif(j->>'cancelReason', ''), nullif(j->>'cancelReasonCode', ''), nullif(j->>'cancellationReason', ''), nullif(j->>'CancelReason', ''), nullif(j->>'IptalNedeni', '')) AS "CancelReason"
             FROM src
             """;
