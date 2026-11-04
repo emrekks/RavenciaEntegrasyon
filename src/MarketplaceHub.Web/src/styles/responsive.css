@@ -384,3 +384,8 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
    to the page behind it (the page is also pinned while a window is open, see overlay-scroll-lock.ts). */
 :is(.workspace-modal-backdrop, .missing-value-mapping-backdrop, .value-mapping-quick-value-backdrop, .rv-overlay, .rr-overlay),
 :is(.workspace-modal-backdrop, .missing-value-mapping-backdrop, .value-mapping-quick-value-backdrop, .rv-overlay, .rr-overlay) * { overscroll-behavior: contain; }
+/* Touch screens: a list row does not stay lit after a tap or a drag over it. */
+@media (hover: none) {
+  .app-shell.stitch-shell main :is(.rr-tbl, .jobs-reference-table) tbody tr:hover > td { background-color: transparent !important; }
+  .app-shell.stitch-shell main .rr-tbl.rr-tbl tbody tr:hover:not(.rr-sel) { background-color: transparent; }
+}

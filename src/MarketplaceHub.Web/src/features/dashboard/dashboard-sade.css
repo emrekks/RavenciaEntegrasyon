@@ -403,3 +403,10 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act { line-height: 17.25px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act .rr-btn.rr-link { display: inline; height: auto; min-height: 0; padding: 0; font-size: 11.5px; font-weight: 600; line-height: 17.25px; vertical-align: top; }
 }
+/* Touch screens: a card keeps its own look after a tap or a drag over it (the browser leaves :hover on the last card
+   touched, which looked pressed). */
+@media (hover: none) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard:hover:not(:focus-visible) { background: var(--rr-surface); border-color: var(--rr-line); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad:not(.rr-nodot):hover:not(:focus-visible) { border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); background: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover td { background: none; }
+}
