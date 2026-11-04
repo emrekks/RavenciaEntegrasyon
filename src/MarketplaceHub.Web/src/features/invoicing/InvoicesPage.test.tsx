@@ -430,12 +430,12 @@ describe('InvoicesPage on a phone (375 px)', () => {
     }
   })
 
-  it('opens the detail with a short tap outside selection mode', async () => {
+  it('does not open the detail on a short tap outside selection mode (Detayları Aç opens it)', async () => {
     const media = phoneViewport()
     try {
       act(() => { row('TY-1003').querySelector<HTMLElement>('.invoice-reference-buyer')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
       await settle()
-      expect(container.querySelector('.invoice-detail-modal')).not.toBeNull()
+      expect(container.querySelector('.invoice-detail-modal')).toBeNull()
       expect(container.querySelector('.invoice-selection-bar')).toBeNull()
     } finally {
       media.mockRestore()

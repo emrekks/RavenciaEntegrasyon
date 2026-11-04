@@ -567,8 +567,8 @@ export function InvoicesPage() {
     if (!isPhoneViewport()) return
     if (longPressFired.current) { longPressFired.current = false; return }
     if ((event.target as Element).closest(interactiveRowTargets)) return
+    // A tap on a card selects it only in selection mode; the details open from the card's Detayları Aç button.
     if (selectionMode) togglePackage(item.packageId)
-    else setSelectedItem(item)
   }
   useEffect(() => { const press = longPress; return () => { if (press.current) window.clearTimeout(press.current.timer) } }, [])
   // The search goes out once typing pauses, not on every key (W27).
