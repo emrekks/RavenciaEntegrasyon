@@ -69,15 +69,27 @@
 }
 
 @media (max-width: 760px) {
-  .psm-panel { padding: 12px; gap: 12px; }
+  .psm-panel { padding: 12px; gap: 10px; }
+  .psm-head { gap: 8px; }
   .psm-head h2 { font-size: 15px; }
-  .psm-panel button.psm-stop { width: 100%; }
-  .psm-summary { gap: 8px; }
-  .psm-stat { padding: 8px 10px; }
-  .psm-stat > b { font-size: 14px; }
-  /* Counts read label left, number right: a card stays short. */
-  .psm-m { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: 8px; padding: 6px 9px; }
-  .psm-row .psm-m[data-label]::before { margin-bottom: 0; font-size: 12px; }
-  .psm-m > small { flex-basis: 100%; }
-  .psm-m > :is(b, time) { margin-left: auto; text-align: right; }
+  /* Quiet while nothing is on; the danger colour only shows when there is something to stop. */
+  .psm-panel button.psm-stop { height: 36px; padding: 0 12px; border-color: var(--rv-color-border); background: transparent; color: var(--rv-color-muted); font-size: 13px; }
+  .psm-panel button.psm-stop:not(:disabled) { border-color: var(--rv-color-danger); color: var(--rv-color-danger); }
+  .psm-panel button.psm-stop:disabled { opacity: .7; }
+  /* Summary: one bordered list, label left and value right on one line, equal rows. */
+  .psm-summary { grid-template-columns: minmax(0, 1fr); gap: 0; border: 1px solid var(--rv-color-border); border-radius: 12px; overflow: hidden; background: var(--rv-color-surface-soft); }
+  .psm-stat { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 10px; min-height: 36px; padding: 6px 12px; border: 0; border-radius: 0; background: transparent; }
+  .psm-stat + .psm-stat { border-top: 1px solid var(--rv-color-border); }
+  .psm-stat.is-warn { background: var(--rv-color-warning-soft); }
+  .psm-stat > span { white-space: nowrap; }
+  .psm-stat > b { margin-left: auto; font-size: 13px; text-align: right; overflow-wrap: normal; }
+  .psm-stat > small { flex-basis: 100%; text-align: right; }
+  /* Connection cards: head, two aligned chips, then equal rows (label left, number right). */
+  .psm-table { gap: 10px; }
+  .psm-row { gap: 10px 8px; padding: 12px; }
+  .psm-row .psm-write, .psm-row .psm-source { min-width: 0; }
+  .psm-m, .psm-m[data-label="Kayıp İlan"] { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: 8px; min-height: 34px; padding: 8px 0 0; border-radius: 0; background: transparent; border-top: 1px solid var(--rv-color-border); }
+  .psm-row .psm-m[data-label]::before { margin-bottom: 0; font-size: 13px; font-weight: 400; }
+  .psm-m > small { flex-basis: 100%; margin-top: 0; text-align: right; }
+  .psm-m > :is(b, time) { margin-left: auto; text-align: right; font-variant-numeric: tabular-nums; }
 }
