@@ -966,3 +966,10 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-table-wrap { margin-inline: -16px; padding-inline: 16px; }
   .app-shell.stitch-shell main .reports-page .reports-segmented > button { flex: 0 0 auto; }
 }
+/* Phones: Raporlar keeps the page's one gap (10px) everywhere: the empty scroll anchor before the tabs takes no gap of
+   its own, the overview's rows and the figures' cards are 10px apart, as the rest of the page. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reports-page .reports-tabs-anchor { margin-bottom: -10px; }
+  .app-shell.stitch-shell main .reports-page :is(.reports-overview, .reports-overview-row) { gap: 10px; }
+  .app-shell.stitch-shell main .reports-page .reports-kpis { gap: 10px; }
+}
