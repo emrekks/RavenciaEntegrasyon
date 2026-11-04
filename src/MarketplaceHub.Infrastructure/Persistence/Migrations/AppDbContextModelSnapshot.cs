@@ -987,6 +987,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId", "EffectiveAt", "Id")
+                        .IsDescending(false, true, true);
+
                     b.HasIndex("TenantId", "OfferId", "PriceVersion")
                         .IsUnique();
 
@@ -4961,6 +4964,83 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductChangeEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ConnectionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<decimal?>("NewListPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("NewSalePrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("NewStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal?>("PreviousListPrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<decimal?>("PreviousSalePrice")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("VariantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "ProductId");
+
+                    b.HasIndex("TenantId", "OccurredAt", "Id")
+                        .IsDescending(false, true, true);
+
+                    b.ToTable("product_change_entries", "catalog");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.ProductImportSession", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5929,6 +6009,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "ReturnLineId");
 
+                    b.HasIndex("TenantId", "CreatedAt", "Id")
+                        .IsDescending(false, true, true);
+
                     b.ToTable("return_stock_dispositions", "sales", t =>
                         {
                             t.HasCheckConstraint("ck_return_stock_disposition_quantity", "\"Quantity\" > 0");
@@ -6217,6 +6300,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "IdempotencyKey")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "OccurredAt", "Id")
+                        .IsDescending(false, true, true);
 
                     b.HasIndex("TenantId", "InventoryItemId", "OccurredAt", "Id");
 

@@ -88,5 +88,23 @@ export function withJobsMainTab(current: URLSearchParams, tab: JobsMainTab): URL
   const params = new URLSearchParams(current)
   if (tab === 'jobs') params.delete(logsTabParam)
   else params.set(logsTabParam, mainTabSlugs[tab])
+  if (tab !== 'logs') params.delete(logViewParam)
+  return params
+}
+
+// Loglar has two views: Ürün Hareketleri (what changed on the products; the default, no parameter) and Pazaryeri
+// Gönderimleri (the price/stock send log, ?kayit=gonderimler).
+const logViewParam = 'kayit'
+const sendsLogSlug = 'gonderimler'
+export type JobsLogView = 'activity' | 'sends'
+
+export function jobsLogView(params: URLSearchParams): JobsLogView {
+  return params.get(logViewParam) === sendsLogSlug ? 'sends' : 'activity'
+}
+
+export function withJobsLogView(current: URLSearchParams, view: JobsLogView): URLSearchParams {
+  const params = new URLSearchParams(current)
+  if (view === 'sends') params.set(logViewParam, sendsLogSlug)
+  else params.delete(logViewParam)
   return params
 }

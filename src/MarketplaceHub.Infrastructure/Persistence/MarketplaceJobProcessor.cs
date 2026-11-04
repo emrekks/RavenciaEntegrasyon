@@ -7948,6 +7948,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // A title or description the listing does not carry is unknown, not empty: the panel's stays.
             if (isNewProduct || !string.IsNullOrWhiteSpace(snapshot.Title)) product.Title = ProductTitle(snapshot.Title, externalProductId);
             if (isNewProduct || snapshot.Description is not null) product.Description = snapshot.Description ?? "";
+            if (!isNewProduct && ProductChangeLog.Status(tenantId, product.Id, null, product.Status, ProductStatus.Active, ProductChangeSources.MarketplaceImport, null, connectionId,
+                    $"catalog-import:{connectionId:N}", now) is { } statusChange)
+                db.ProductChangeEntries.Add(statusChange);
             product.Status = ProductStatus.Active;
             product.ArchivedAt = null;
             product.UpdatedAt = now;
@@ -8491,6 +8494,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var nextBarcodeNormalized = CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, barcodeNormalized) ? variant.BarcodeNormalized : barcodeNormalized;
             if (!observeOnly && (variant.SortOrder != sortOrder || variant.Sku != sku || variant.SkuNormalized != nextSkuNormalized || variant.Barcode != barcode || variant.BarcodeNormalized != nextBarcodeNormalized || variant.ModelCode != nextModelCode || variant.OptionSignature != optionSignature || variant.Status != nextStatus))
             {
+                if (ProductChangeLog.Status(tenantId, variant.ProductId, variant.Id, variant.Status, nextStatus, ProductChangeSources.MarketplaceImport, null, connectionId,
+                        $"catalog-import:{connectionId:N}", now) is { } statusChange)
+                    db.ProductChangeEntries.Add(statusChange);
                 variant.SortOrder = sortOrder; variant.Sku = sku; variant.SkuNormalized = nextSkuNormalized; variant.Barcode = barcode; variant.BarcodeNormalized = nextBarcodeNormalized; variant.ModelCode = nextModelCode; variant.OptionSignature = optionSignature; variant.Status = nextStatus; variant.UpdatedAt = now; variant.Version++;
                 telemetryUpdatedCount++;
             }
@@ -8601,7 +8607,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ?? await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variant.Id && x.LocationCode == "MAIN", cancellationToken);
             if (inventory is null)
             {
-                db.InventoryItems.Add(new InventoryItem
+                var opening = new InventoryItem
                 {
                     Id = Guid.CreateVersion7(),
                     TenantId = tenantId,
@@ -8618,7 +8624,29 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     ReconciledAt = now,
                     ProjectionVersion = 1,
                     Version = 1
-                });
+                };
+                db.InventoryItems.Add(opening);
+                // The opening stock is a stock move like any other, so Ürün Hareketleri shows where the first number
+                // came from. It is not an on-hand movement for MarketplaceStockImportPolicy (it is the remote number).
+                if (opening.OnHand != 0)
+                {
+                    var openingEventId = $"catalog-opening:{connectionId:N}:{opening.Id:N}";
+                    db.StockLedgerEntries.Add(new StockLedgerEntry
+                    {
+                        Id = Guid.CreateVersion7(),
+                        TenantId = tenantId,
+                        InventoryItemId = opening.Id,
+                        MovementType = ProductActivityTypes.ImportOpening,
+                        QuantityDelta = opening.OnHand,
+                        SourceType = MarketplaceStockImportPolicy.SourceType,
+                        SourceId = connectionId.ToString("D"),
+                        SourceEventId = openingEventId,
+                        IdempotencyKey = openingEventId,
+                        OccurredAt = now,
+                        RecordedAt = now,
+                        CorrelationId = $"catalog-import:{connectionId:N}"
+                    });
+                }
             }
             else
             {

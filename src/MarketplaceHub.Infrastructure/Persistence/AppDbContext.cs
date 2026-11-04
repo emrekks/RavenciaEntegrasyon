@@ -31,6 +31,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     public DbSet<ExternalEffectRecord> ExternalEffectRecords => Set<ExternalEffectRecord>();
     public DbSet<PriceStockSendLog> PriceStockSendLogs => Set<PriceStockSendLog>();
+    public DbSet<ProductChangeEntry> ProductChangeEntries => Set<ProductChangeEntry>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<OperationalIssue> OperationalIssues => Set<OperationalIssue>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
@@ -272,6 +273,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             throw new InvalidOperationException("Audit log is append-only.");
         if (ChangeTracker.Entries<OrderStatusHistory>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
             throw new InvalidOperationException("Order status history is append-only.");
+        if (ChangeTracker.Entries<ProductChangeEntry>().Any(x => x.State == EntityState.Modified))
+            throw new InvalidOperationException("Product change entries are append-only.");
         // ReturnDecision is the mutable lifecycle snapshot for a queued external
         // action. Its evidence and audit records remain immutable; the decision
         // itself must transition through its processing states.
@@ -437,6 +440,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.CreatedAt, x.Id }).IsDescending(false, false, true, true);
             entity.HasIndex(x => x.JobId);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ProductChangeEntry>(entity =>
+        {
+            entity.ToTable("product_change_entries", "catalog"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.Kind).HasMaxLength(24); entity.Property(x => x.Source).HasMaxLength(32);
+            entity.Property(x => x.PreviousStatus).HasMaxLength(16); entity.Property(x => x.NewStatus).HasMaxLength(16);
+            entity.Property(x => x.PreviousSalePrice).HasPrecision(19, 4); entity.Property(x => x.NewSalePrice).HasPrecision(19, 4);
+            entity.Property(x => x.PreviousListPrice).HasPrecision(19, 4); entity.Property(x => x.NewListPrice).HasPrecision(19, 4);
+            entity.Property(x => x.Note).HasMaxLength(200); entity.Property(x => x.CorrelationId).HasMaxLength(128);
+            // Ürün Hareketleri reads a tenant's rows newest first; a product's purge goes by product. No foreign keys: a
+            // history row never blocks deleting what it names.
+            entity.HasIndex(x => new { x.TenantId, x.OccurredAt, x.Id }).IsDescending(false, true, true);
+            entity.HasIndex(x => new { x.TenantId, x.ProductId });
         });
     }
 

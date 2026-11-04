@@ -599,7 +599,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             stocked.Sum(x => Math.Max(0, stockByProduct.GetValueOrDefault(x.Id))));
     }
 
-    public async Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken)
+    public async Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
     {
         var ids = command.ProductIds.Distinct().ToArray();
         if (ids.Length is 0 or > 500) return ServiceResult<int>.Fail("BULK_PRODUCT_LIMIT", "Toplu işlemde 1-500 ürün seçilebilir.", 422);
@@ -618,8 +618,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var variants = changedProductIds.Length == 0
             ? []
             : await db.ProductVariants.Where(x => x.TenantId == tenantId && changedProductIds.Contains(x.ProductId) && x.Status != status).ToListAsync(cancellationToken);
+        var correlation = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId;
         foreach (var product in products)
         {
+            if (ProductChangeLog.Status(tenantId, product.Id, null, product.Status, status, ProductChangeSources.BulkEdit, actorUserId, null, correlation, now) is { } change)
+                db.ProductChangeEntries.Add(change);
             product.Status = status;
             product.ArchivedAt = status == ProductStatus.Archived ? product.ArchivedAt ?? now : null;
             product.UpdatedAt = now;
@@ -865,6 +868,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             DELETE FROM inventory.stock_ledger_entries l
             USING inventory.inventory_items i, catalog.product_variants v, purge_product_ids p
             WHERE l."TenantId"={{tenantId}} AND l."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
+            DELETE FROM catalog.product_change_entries c
+            USING purge_product_ids p
+            WHERE c."TenantId"={{tenantId}} AND c."ProductId"=p."Id";
             DELETE FROM sales.return_stock_dispositions d
             USING inventory.inventory_items i, catalog.product_variants v, purge_product_ids p
             WHERE d."TenantId"={{tenantId}} AND d."InventoryItemId"=i."Id" AND i."VariantId"=v."Id" AND v."ProductId"=p."Id";
@@ -1176,8 +1182,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         });
     }
 
-    public async Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken)
+    public async Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
     {
+        var correlation = string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId;
+        var priceChangedProductIds = new HashSet<Guid>();
         var product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (product is null) return NotFound<ProductView>(); if (product.Version != expectedVersion) return Precondition<ProductView>(product.Version);
         var effectiveListPrice = command.DefaultListPrice ?? product.DefaultListPrice;
         var effectiveSalePrice = command.DefaultSalePrice ?? product.DefaultSalePrice;
@@ -1287,8 +1295,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 if (CatalogKeyNormalizer.SameKey(variant.SkuNormalized, update.Sku)) variant.SkuNormalized = Normalize(update.Sku);
                 if (variant.BarcodeNormalized is not null && CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, update.Barcode)) variant.BarcodeNormalized = NormalizeBarcode(update.Barcode);
                 if (!dataChanged && variant.SortOrder == Math.Max(0, update.SortOrder)) continue;
+                var pricesBefore = (variant.DefaultListPrice, variant.DefaultSalePrice);
                 variant.Sku = update.Sku.Trim(); variant.SkuNormalized = Normalize(update.Sku); variant.Barcode = NullTrim(update.Barcode); variant.BarcodeNormalized = NormalizeBarcode(update.Barcode); variant.ModelCode = NullTrim(update.ModelCode); if (update.CostPrice is decimal variantCost) variant.CostPrice = NonNegativeOrNull(variantCost); if (update.Desi is decimal variantDesi) variant.Desi = variantDesi; if (update.DefaultListPrice is decimal variantDefaultListPrice) variant.DefaultListPrice = variantDefaultListPrice; if (update.DefaultSalePrice is decimal variantDefaultSalePrice) variant.DefaultSalePrice = variantDefaultSalePrice; variant.SortOrder = Math.Max(0, update.SortOrder);
                 if (update.Options is not null) variant.OptionSignature = Signature(update.Options);
+                if (ProductChangeLog.DefaultPrice(tenantId, variant.ProductId, variant.Id, pricesBefore, (variant.DefaultListPrice, variant.DefaultSalePrice), ProductChangeSources.Editor, actorUserId, correlation, updatedAt) is { } priceChange)
+                {
+                    db.ProductChangeEntries.Add(priceChange);
+                    priceChangedProductIds.Add(variant.ProductId);
+                }
                 variant.UpdatedAt = updatedAt; variant.Version++;
             }
             var optionUpdatesByProduct = variantUpdates.Where(update => update.Options is not null && changedVariantIds.Contains(update.Id))
@@ -1414,6 +1428,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 DELETE FROM inventory.stock_ledger_entries l
                 USING inventory.inventory_items i, purge_variant_ids v
                 WHERE l."TenantId"={{tenantId}} AND l."InventoryItemId"=i."Id" AND i."VariantId"=v."Id";
+                DELETE FROM catalog.product_change_entries c
+                USING purge_variant_ids v
+                WHERE c."TenantId"={{tenantId}} AND c."VariantId"=v."Id";
                 DELETE FROM inventory.inventory_items i
                 USING purge_variant_ids v
                 WHERE i."TenantId"={{tenantId}} AND i."VariantId"=v."Id";
@@ -1447,8 +1464,17 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             }
         }
         product.Title = command.Title.Trim(); product.Description = command.Description.Trim(); product.CategoryId = command.CategoryId; product.BrandId = command.BrandId;
+        var cardPricesBefore = (product.DefaultListPrice, product.DefaultSalePrice);
         if (command.DefaultListPrice is decimal defaultListPrice) product.DefaultListPrice = defaultListPrice;
         if (command.DefaultSalePrice is decimal defaultSalePrice) product.DefaultSalePrice = defaultSalePrice;
+        var changedAt = timeProvider.GetUtcNow();
+        // The card's own price is recorded only when no variant row of the card recorded the change already (a single
+        // variant card carries the same price on both).
+        if (!priceChangedProductIds.Contains(id)
+            && ProductChangeLog.DefaultPrice(tenantId, id, null, cardPricesBefore, (product.DefaultListPrice, product.DefaultSalePrice), ProductChangeSources.Editor, actorUserId, correlation, changedAt) is { } cardPriceChange)
+            db.ProductChangeEntries.Add(cardPriceChange);
+        if (statusChanged && ProductChangeLog.Status(tenantId, id, null, previousStatus, productStatus, ProductChangeSources.Editor, actorUserId, null, correlation, changedAt) is { } statusChange)
+            db.ProductChangeEntries.Add(statusChange);
         // Sent only by the editor: 0 clears the warranty; a caller that leaves it out keeps it.
         if (command.WarrantyMonths is int warrantyMonths) product.WarrantyMonths = warrantyMonths > 0 ? warrantyMonths : null;
         // Teslimat Süresi: a caller that leaves it out keeps the card's days.
@@ -1476,8 +1502,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var siblings = await db.Products.Where(x => x.TenantId == tenantId && familyProductIdsToProtect.Contains(x.Id)).ToListAsync(cancellationToken);
             foreach (var sibling in siblings)
             {
+                var siblingStatusBefore = sibling.Status;
                 if (emptiedFamilyProductIds.Contains(sibling.Id)) { sibling.Status = ProductStatus.Archived; sibling.ArchivedAt ??= product.UpdatedAt; }
                 else if (familyStatusProductIds.Contains(sibling.Id)) sibling.Status = productStatus;
+                if (ProductChangeLog.Status(tenantId, sibling.Id, null, siblingStatusBefore, sibling.Status, ProductChangeSources.Editor, actorUserId, null, correlation, changedAt,
+                        emptiedFamilyProductIds.Contains(sibling.Id) ? "Tüm varyantları silindi" : "Aynı model kodlu ürünle birlikte") is { } siblingChange)
+                    db.ProductChangeEntries.Add(siblingChange);
                 sibling.UpdatedAt = product.UpdatedAt;
                 sibling.Version++;
             }
@@ -1512,6 +1542,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         static string Money(decimal? value) => value is decimal amount ? amount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) : "-";
         var reason = string.IsNullOrWhiteSpace(command.Reason) ? "Panel ana fiyatı" : command.Reason.Trim();
         if (reason.Length > 160) reason = reason[..160];
+        var source = reason == ProductActivityPolicy.BulkPriceReason ? ProductChangeSources.BulkEdit : ProductChangeSources.PriceEdit;
+        if (ProductChangeLog.DefaultPrice(tenantId, variant.ProductId, variant.Id, previous, (command.ListPrice, command.SalePrice), source, userId, correlationId, now, reason) is { } priceChange)
+            db.ProductChangeEntries.Add(priceChange);
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "VARIANT_DEFAULT_PRICE_CHANGED", TargetType = "ProductVariant", TargetId = variant.Id.ToString("D"), Reason = Truncate($"{reason}: {variant.Sku} liste {Money(previous.DefaultListPrice)} → {Money(command.ListPrice)}, satış {Money(previous.DefaultSalePrice)} → {Money(command.SalePrice)}", 512), CorrelationId = correlationId, CreatedAt = now });
         try { await db.SaveChangesAsync(cancellationToken); }
         catch (DbUpdateConcurrencyException)

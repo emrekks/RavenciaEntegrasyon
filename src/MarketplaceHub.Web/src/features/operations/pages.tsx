@@ -18,8 +18,9 @@ import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCa
 import { jobPageSizes, jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState, type JobsMainTab, type JobStatusChip, type JobsViewState } from './jobs-url-state'
 import type { IntegrationFeedback } from '../marketplace/shared'
 
-// The send log (Loglar) and the sending health (API Sağlık) load with their own chunks the first time their tab opens.
-const PriceStockSendLog = lazy(() => import('./PriceStockSendLog'))
+// The logs (Loglar: Ürün Hareketleri and the send log) and the sending health (API Sağlık) load with their own chunks the
+// first time their tab opens.
+const OperationLogs = lazy(() => import('./OperationLogs'))
 const PriceStockMonitorPanel = lazy(() => import('../marketplace/integrations/PriceStockMonitorPanel').then(module => ({ default: module.PriceStockMonitorPanel })))
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
@@ -568,7 +569,7 @@ export function JobsPage({ me }: { me: Me }) {
     <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İş Takibi') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
     <div className="jobs-reference-canvas">
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
-      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog platformOptions={platformOptions} onOpenJob={setSelectedId} headingSlot={logHeadingSlot} /></Suspense>
+      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} headingSlot={logHeadingSlot} /></Suspense>
         : mainTab === 'health' ? <Suspense fallback={<Busy text="Gönderim durumu yükleniyor…" />}><PriceStockMonitorPanel onFeedback={showPanelFeedback} /></Suspense> : <>
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">

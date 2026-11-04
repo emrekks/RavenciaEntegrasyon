@@ -1,0 +1,52 @@
+/* İşlem Takibi › Loglar › Ürün Hareketleri: the send log's table and toolbar (price-stock-send-log.css) with its own
+   kind summary, change chip, source link and actor; cards on phones. */
+.app-shell.stitch-shell main .jobs-reference-page .pal-table { min-width: 980px; }
+
+/* Kind summary: Stok, Fiyat, Durum, İade toggles, each a filter of its kind. */
+.app-shell.stitch-shell main .jobs-reference-page .pal-kind { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; color: var(--rv-color-muted); border: 1px solid transparent; border-radius: 7px; cursor: pointer; user-select: none; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-kind strong { color: var(--rv-color-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-kind:hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }
+.app-shell.stitch-shell main .jobs-reference-page .pal-kind:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-kind.is-on { color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 35%, transparent); }
+
+.app-shell.stitch-shell main .jobs-reference-page .pal-time { cursor: default; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-product-link { overflow: hidden; color: var(--rv-color-ink); font-weight: 500; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-product-link:hover { color: var(--rv-color-primary); text-decoration: underline; }
+
+/* Change chip: green stock in / price up / on sale, red stock out / price down, amber information (no stock change). */
+.app-shell.stitch-shell main .jobs-reference-page .pal-change-cell { display: grid; justify-items: start; gap: 2px; min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-change-cell small { color: var(--rv-color-muted); font-size: 11px; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-change { display: inline-flex; align-items: center; height: 24px; max-width: 100%; padding: 0 8px; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-change.is-up { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-color: color-mix(in srgb, var(--rv-color-accent) 35%, transparent); }
+.app-shell.stitch-shell main .jobs-reference-page .pal-change.is-down { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 35%, transparent); }
+.app-shell.stitch-shell main .jobs-reference-page .pal-change.is-info { color: var(--rv-color-ink); background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 35%, transparent); }
+
+.app-shell.stitch-shell main .jobs-reference-page .pal-source { display: grid; gap: 2px; min-width: 0; max-width: 240px; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-source a { display: inline-flex; align-items: center; gap: 4px; width: max-content; max-width: 100%; color: var(--rv-color-primary); font-weight: 500; text-decoration: none; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-source a:hover { text-decoration: underline; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-source > span { white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-source small { overflow: hidden; color: var(--rv-color-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-actor { max-width: 160px; overflow: hidden; color: var(--rv-color-muted); text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-muted { color: var(--rv-color-subtle); }
+.app-shell.stitch-shell main .jobs-reference-page .pal-history-note { margin: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.5; }
+
+/* Phones: each change is a card — product on top, change and source, then time and user, then the platform. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .jobs-reference-page .pal-view-segment { width: 100%; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-view-segment > button { flex: 1 1 0; min-width: 0; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table { min-width: 0; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr {
+    grid-template-areas:
+      "product product"
+      "change source"
+      "time actor"
+      "platform platform";
+  }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-change-td { grid-area: change; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-source-td { grid-area: source; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-actor { grid-area: actor; max-width: none; padding-top: 8px; border-top: 1px solid var(--rv-color-border); text-align: right; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-time { grid-area: time; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td.pal-platform { grid-area: platform; padding-top: 0; border-top: 0; text-align: left; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-table > tbody > tr > td:is(.pal-change-td, .pal-source-td)::before { content: attr(data-label); display: block; margin-bottom: 2px; color: var(--rv-color-muted); font-size: 11px; font-weight: 500; }
+  .app-shell.stitch-shell main .jobs-reference-page .pal-source { max-width: none; }
+}

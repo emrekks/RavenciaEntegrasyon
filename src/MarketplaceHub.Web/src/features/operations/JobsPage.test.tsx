@@ -5,7 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Me } from '../../shared/api'
 
-const apiState = vi.hoisted(() => ({ calls: [] as string[], retryGate: Promise.resolve() as Promise<void>, failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }>, sendLog: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false }, sendLogCounts: [] as Array<{ result: string; count: number }> }))
+const apiState = vi.hoisted(() => ({ calls: [] as string[], retryGate: Promise.resolve() as Promise<void>, failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }>, sendLog: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false }, sendLogCounts: [] as Array<{ result: string; count: number }>, activity: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false }, activityCounts: [] as Array<{ kind: string; count: number }> }))
 
 // The page shows the last 24 hours by default, so the fixture's jobs are dated relative to the run.
 function hoursAgo(hours: number) {
@@ -40,6 +40,8 @@ vi.mock('../../shared/api', () => {
     if (path.startsWith('/jobs/metrics')) return []
     if (path.startsWith('/price-stock-send-log?')) return apiState.sendLog
     if (path.startsWith('/price-stock-send-log/counts')) return apiState.sendLogCounts
+    if (path.startsWith('/product-activity?')) return apiState.activity
+    if (path.startsWith('/product-activity/counts')) return apiState.activityCounts
     if (path === '/price-stock-monitor') return { generatedAt: hoursAgo(0), connections: [{
       connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', status: 'ACTIVE', masterSwitchOn: true, priceWriteEnabled: true, stockWriteEnabled: true,
       automaticWritesOpen: true, lastSuccessfulPushAt: hoursAgo(1), queuedJobs: 2, waitingForOrderRead: 0, failedPushes7d: 0, manualReviewPushes: 0, invalidOffers: 0,
@@ -113,6 +115,8 @@ beforeEach(() => {
   apiState.extraCountRows = []
   apiState.sendLog = { items: [], nextCursor: null, hasMore: false }
   apiState.sendLogCounts = []
+  apiState.activity = { items: [], nextCursor: null, hasMore: false }
+  apiState.activityCounts = []
   container = document.createElement('div')
   document.body.append(container)
 })
@@ -337,13 +341,24 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     await settle()
   }
 
+  async function activityViewLoaded() {
+    for (let tick = 0; tick < 200 && !container.querySelector('.pal .psl-empty, .pal-row'); tick++) await settle()
+    await settle()
+  }
+
   it('opens from the tab, keeps the job list unread and explains the empty log', async () => {
     await renderPage()
     const jobReads = pageRequests().length
     await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => tab.textContent?.includes('Loglar'))!.click() })
+    await activityViewLoaded()
+    // Loglar opens on Ürün Hareketleri; Pazaryeri Gönderimleri is the segment beside it.
+    expect(currentSearch).toBe('?sekme=loglar')
+    const views = container.querySelector('[role="tablist"][aria-label="Log görünümü"]')!
+    expect(Array.from(views.querySelectorAll('[role="tab"]')).map(tab => [tab.textContent, tab.getAttribute('aria-selected')])).toEqual([['Ürün Hareketleri', 'true'], ['Pazaryeri Gönderimleri', 'false']])
+    await act(async () => { Array.from(views.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => tab.textContent === 'Pazaryeri Gönderimleri')!.click() })
     await logViewLoaded()
 
-    expect(currentSearch).toBe('?sekme=loglar')
+    expect(currentSearch).toBe('?sekme=loglar&kayit=gonderimler')
     expect(logRequests().at(-1)!.get('limit')).toBe('50')
     expect(pageRequests().length).toBe(jobReads)
     expect(container.textContent).toContain('Henüz gönderim kaydı yok.')
@@ -357,7 +372,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
 
   it('has the job list heading controls of its own: range, Filtrele and a result summary that filters', async () => {
     apiState.sendLogCounts = [{ result: 'APPLIED', count: 3 }, { result: 'UNCHANGED', count: 1 }, { result: 'REJECTED', count: 2 }, { result: 'SUBMITTED', count: 1 }]
-    await renderPage('/jobs?sekme=loglar&aralik=7g')
+    await renderPage('/jobs?sekme=loglar&kayit=gonderimler&aralik=7g')
     await logViewLoaded()
     const countRequests = () => apiState.calls.filter(path => path.startsWith('/price-stock-send-log/counts'))
 
@@ -404,7 +419,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(main.compareDocumentPosition(categories) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     await act(async () => { Array.from(main.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => tab.textContent === 'Loglar')!.click() })
-    await logViewLoaded()
+    await activityViewLoaded()
     expect(container.querySelector('[aria-label="İşlem kategorileri"]')).toBeNull()
 
     await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-label="İşlem Takibi görünümü"] [role="tab"]')).find(tab => tab.textContent === 'İş Takibi')!.click() })
@@ -424,7 +439,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
       nextCursor: null,
       hasMore: false
     }
-    await renderPage('/jobs?sekme=loglar')
+    await renderPage('/jobs?sekme=loglar&kayit=gonderimler')
     await logViewLoaded()
 
     const row = container.querySelector('.psl-row')!
@@ -443,7 +458,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
   })
 
   it('sends the result filter and clears it with Temizle', async () => {
-    await renderPage('/jobs?sekme=loglar')
+    await renderPage('/jobs?sekme=loglar&kayit=gonderimler')
     await logViewLoaded()
     // The filters sit in the Filtrele panel of the page heading, like the job list's.
     expect(container.querySelector('button[aria-label="Sonuç: Tüm Sonuçlar"]')).toBeNull()
@@ -470,7 +485,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
   })
 
   it('orders by Zaman, newest first by default and oldest first on a click', async () => {
-    await renderPage('/jobs?sekme=loglar')
+    await renderPage('/jobs?sekme=loglar&kayit=gonderimler')
     await logViewLoaded()
     const header = container.querySelector('.psl-table th[aria-sort]')!
     expect(header.getAttribute('aria-sort')).toBe('descending')
@@ -480,6 +495,75 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     await settle()
     expect(container.querySelector('.psl-table th[aria-sort]')!.getAttribute('aria-sort')).toBe('ascending')
     expect(logRequests().at(-1)!.get('order')).toBe('asc')
+  })
+})
+
+describe('JobsPage Loglar › Ürün Hareketleri', () => {
+  const activityRequests = () => apiState.calls.filter(path => path.startsWith('/product-activity?')).map(path => new URLSearchParams(path.slice(path.indexOf('?') + 1)))
+  const countRequests = () => apiState.calls.filter(path => path.startsWith('/product-activity/counts'))
+
+  async function loaded() {
+    for (let tick = 0; tick < 200 && !container.querySelector('.pal .psl-empty, .pal-row'); tick++) await settle()
+    await settle()
+  }
+
+  function entry(patch: Record<string, unknown>) {
+    return {
+      id: 'a-1', occurredAt: hoursAgo(1), kind: 'STOCK', type: 'MANUAL_ADJUSTMENT', productId: 'p-1', productTitle: 'Keten Gömlek', imageUrl: null, variantId: 'v-1',
+      sku: 'KG-1', barcode: '8680001', modelCode: 'KG', optionText: 'Renk: Siyah | Beden: M', quantityDelta: 2, previousSalePrice: null, newSalePrice: null,
+      previousListPrice: null, newListPrice: null, currency: null, previousStatus: null, newStatus: null, source: 'BULK_EDIT', note: 'Toplu ürün stok düzenleme',
+      connectionId: null, platformCode: null, storeName: null, orderId: null, orderNumber: null, returnId: null, returnNumber: null, actorUserId: 'u-1', actorName: 'Emre',
+      ...patch
+    }
+  }
+
+  it('lists stock, return, price and status changes with their source, link and user', async () => {
+    apiState.activityCounts = [{ kind: 'STOCK', count: 5 }, { kind: 'RETURN', count: 1 }, { kind: 'PRICE', count: 2 }]
+    apiState.activity = {
+      items: [
+        entry({ id: 'a-1', kind: 'RETURN', type: 'RETURN_PASS', quantityDelta: 1, source: 'RETURN', note: null, connectionId: 'ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol', orderId: 'o-1', orderNumber: '10931', returnId: 'r-1', returnNumber: 'R-77' }),
+        entry({ id: 'a-2', type: 'ORDER_RECEIVED', quantityDelta: -1, source: 'ORDER', note: null, connectionId: 'ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol', orderId: 'o-2', orderNumber: '10932', actorUserId: null, actorName: null }),
+        entry({ id: 'a-3', kind: 'PRICE', type: 'OFFER_PRICE', quantityDelta: null, previousSalePrice: 899, newSalePrice: 950, previousListPrice: 1200, newListPrice: 1200, currency: 'TRY', source: 'BULK_EDIT', note: null, connectionId: 'ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol' }),
+        entry({ id: 'a-4', kind: 'STATUS', type: 'STATUS', variantId: null, sku: null, barcode: null, optionText: null, quantityDelta: null, previousStatus: 'ACTIVE', newStatus: 'ARCHIVED', source: 'EDITOR', note: null })
+      ],
+      nextCursor: null,
+      hasMore: false
+    }
+    await renderPage('/jobs?sekme=loglar')
+    await loaded()
+
+    const rows = Array.from(container.querySelectorAll('.pal-row'))
+    expect(rows).toHaveLength(4)
+    expect(rows[0].textContent).toContain('+1 Stok')
+    expect(rows[0].textContent).toContain('İade #R-77')
+    expect(rows[0].querySelector<HTMLAnchorElement>('.pal-source a')!.getAttribute('href')).toBe('/returns/r-1')
+    expect(rows[0].textContent).toContain('Ravencia Trendyol')
+    expect(rows[0].textContent).toContain('Emre')
+    expect(rows[1].textContent).toContain('−1 Stok')
+    expect(rows[1].querySelector<HTMLAnchorElement>('.pal-source a')!.getAttribute('href')).toBe('/orders?search=10932')
+    expect(rows[1].textContent).toContain('Sistem')
+    expect(rows[2].textContent).toContain('₺899 → ₺950')
+    expect(rows[2].textContent).toContain('Mağaza Fiyatı')
+    expect(rows[3].textContent).toContain('Satışa Açık → Satışa Kapalı')
+    expect(rows[3].textContent).toContain('Panel')
+    expect(rows[3].querySelector<HTMLAnchorElement>('.pal-product-link')!.getAttribute('href')).toBe('/products/p-1')
+    const summary = container.querySelector('[aria-label="Ürün hareketi özeti"]')!
+    expect(Array.from(summary.querySelectorAll('[role="button"]')).map(chip => chip.textContent)).toEqual(['Stok 5', 'Fiyat 2', 'Durum 0', 'İade 1'])
+  })
+
+  it('filters by a kind from the summary and reads the counts without it', async () => {
+    await renderPage('/jobs?sekme=loglar')
+    await loaded()
+    expect(activityRequests().at(-1)!.get('kinds')).toBeNull()
+    const prices = Array.from(container.querySelectorAll<HTMLElement>('[aria-label="Ürün hareketi özeti"] [role="button"]')).find(chip => chip.textContent?.startsWith('Fiyat'))!
+    await act(async () => { prices.click() })
+    await settle()
+    expect(activityRequests().at(-1)!.get('kinds')).toBe('PRICE')
+    expect(prices.getAttribute('aria-pressed')).toBe('true')
+    expect(countRequests().at(-1)).not.toContain('kinds=')
+    expect(container.textContent).toContain('Seçili filtrelerle eşleşen ürün hareketi bulunamadı.')
+    await act(async () => { container.querySelector<HTMLButtonElement>('.jobs-reference-heading-actions .jobs-reference-filter-toggle')!.click() })
+    expect(container.querySelector('button[aria-label="Tür: Fiyat"]')).not.toBeNull()
   })
 })
 

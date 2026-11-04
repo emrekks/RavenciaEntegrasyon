@@ -255,7 +255,7 @@ internal static class CatalogModelConfiguration
         });
         builder.Entity<StockLedgerEntry>(entity =>
         {
-            entity.ToTable("stock_ledger_entries", "inventory"); entity.HasKey(x => x.Id); entity.Property(x => x.QuantityDelta).HasPrecision(19, 4); entity.Property(x => x.MovementType).HasMaxLength(48); entity.Property(x => x.SourceType).HasMaxLength(48); entity.Property(x => x.IdempotencyKey).HasMaxLength(256); entity.Property(x => x.CorrelationId).HasMaxLength(128); entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.InventoryItemId, x.OccurredAt, x.Id }); entity.HasOne<InventoryItem>().WithMany().HasForeignKey(x => new { x.TenantId, x.InventoryItemId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("stock_ledger_entries", "inventory"); entity.HasKey(x => x.Id); entity.Property(x => x.QuantityDelta).HasPrecision(19, 4); entity.Property(x => x.MovementType).HasMaxLength(48); entity.Property(x => x.SourceType).HasMaxLength(48); entity.Property(x => x.IdempotencyKey).HasMaxLength(256); entity.Property(x => x.CorrelationId).HasMaxLength(128); entity.HasIndex(x => new { x.TenantId, x.IdempotencyKey }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.InventoryItemId, x.OccurredAt, x.Id }); entity.HasIndex(x => new { x.TenantId, x.OccurredAt, x.Id }).IsDescending(false, true, true); entity.HasOne<InventoryItem>().WithMany().HasForeignKey(x => new { x.TenantId, x.InventoryItemId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<StockReservation>(entity =>
         {
@@ -271,7 +271,7 @@ internal static class CatalogModelConfiguration
         });
         builder.Entity<ChannelPriceHistory>(entity =>
         {
-            entity.ToTable("channel_price_history", "inventory"); entity.HasKey(x => x.Id); entity.Property(x => x.ListPrice).HasPrecision(19, 4); entity.Property(x => x.SalePrice).HasPrecision(19, 4); entity.Property(x => x.Currency).HasColumnType("char(3)"); entity.HasIndex(x => new { x.TenantId, x.OfferId, x.PriceVersion }).IsUnique(); entity.HasOne<ChannelOffer>().WithMany().HasForeignKey(x => new { x.TenantId, x.OfferId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+            entity.ToTable("channel_price_history", "inventory"); entity.HasKey(x => x.Id); entity.Property(x => x.ListPrice).HasPrecision(19, 4); entity.Property(x => x.SalePrice).HasPrecision(19, 4); entity.Property(x => x.Currency).HasColumnType("char(3)"); entity.HasIndex(x => new { x.TenantId, x.OfferId, x.PriceVersion }).IsUnique(); entity.HasIndex(x => new { x.TenantId, x.EffectiveAt, x.Id }).IsDescending(false, true, true); entity.HasOne<ChannelOffer>().WithMany().HasForeignKey(x => new { x.TenantId, x.OfferId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
     }
 

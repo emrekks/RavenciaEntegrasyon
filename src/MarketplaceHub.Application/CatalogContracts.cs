@@ -224,7 +224,8 @@ public interface ICatalogService
     Task<ServiceResult<IReadOnlyList<AttributeRequirementCommand>>> ReplaceRequirementsAsync(Guid tenantId, Guid categoryId, long expectedVersion, IReadOnlyList<AttributeRequirementCommand> requirements, CancellationToken cancellationToken);
     Task<PageResult<ProductView>> ListProductsAsync(Guid tenantId, int limit, string? after, string? status, string? search, string? platform, string? stock, string? sort, CancellationToken cancellationToken);
     Task<ProductSummaryView> ProductSummaryAsync(Guid tenantId, CancellationToken cancellationToken);
-    Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken);
+    // actorUserId and correlationId name who made the change in Ürün Hareketleri (product_change_entries).
+    Task<ServiceResult<int>> BulkSetStatusAsync(Guid tenantId, BulkProductStatusCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<ProductDeleteResult>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeleteResult>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeletePreview>> PreviewProductDeleteAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
@@ -233,7 +234,7 @@ public interface ICatalogService
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ProductMarketplaceCodesView>> GetProductMarketplaceCodesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ProductMarketplaceCodesView>> UpdateProductMarketplaceCodesAsync(Guid tenantId, Guid id, UpdateMarketplaceCodesCommand command, CancellationToken cancellationToken);
-    Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<ProductView>> UpdateProductAsync(Guid tenantId, Guid id, long expectedVersion, UpdateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<VariantDefaultPricesView>> UpdateVariantDefaultPricesAsync(Guid tenantId, Guid userId, Guid variantId, long expectedVersion, UpdateVariantDefaultPricesCommand command, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ListingProfileView>> GetListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<ListingProfileView>> UpsertListingProfileAsync(Guid tenantId, Guid productId, Guid connectionId, long? expectedVersion, UpsertListingProfileCommand command, CancellationToken cancellationToken);

@@ -347,6 +347,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         DELETE FROM catalog.product_option_values x USING catalog.product_options o, purge_products p WHERE x."TenantId"={{tenantId}} AND x."OptionId"=o."Id" AND o."ProductId"=p."Id";
         DELETE FROM catalog.product_options o USING purge_products p WHERE o."TenantId"={{tenantId}} AND o."ProductId"=p."Id";
         DELETE FROM catalog.product_variants v USING purge_products p WHERE v."TenantId"={{tenantId}} AND v."ProductId"=p."Id";
+        DELETE FROM catalog.product_change_entries c USING purge_products p WHERE c."TenantId"={{tenantId}} AND c."ProductId"=p."Id";
         DELETE FROM catalog.products x USING purge_products p WHERE x."TenantId"={{tenantId}} AND x."Id"=p."Id";
         """, cancellationToken);
 

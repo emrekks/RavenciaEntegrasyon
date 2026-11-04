@@ -343,6 +343,9 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
                 }
                 if (change.PanelPrice is { } panel && (variant.DefaultSalePrice != panel.SalePrice || variant.DefaultListPrice != panel.ListPrice))
                 {
+                    if (ProductChangeLog.DefaultPrice(tenantId, variant.ProductId, variant.Id, (variant.DefaultListPrice, variant.DefaultSalePrice), (panel.ListPrice, panel.SalePrice),
+                            ProductChangeSources.FileImport, userId, correlationId, now) is { } priceChange)
+                        db.ProductChangeEntries.Add(priceChange);
                     variant.DefaultSalePrice = panel.SalePrice;
                     variant.DefaultListPrice = panel.ListPrice;
                     if (variantCounts.GetValueOrDefault(variant.ProductId) == 1)
