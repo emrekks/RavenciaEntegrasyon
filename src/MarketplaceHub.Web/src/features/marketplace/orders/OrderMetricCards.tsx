@@ -57,7 +57,7 @@ function Packages({ packages, units }: { packages: Metric; units: number | undef
 
 // The panel a card opens on hover or focus: one row per store, its logo, name and figure.
 function StoreTip({ rows }: { rows: TipRow[] }) {
-  return <div className="rr-metric-tip" role="tooltip">{rows.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}</div>
+  return <div className="rr-metric-tip" role="tooltip">{rows.length === 0 && <div className="rr-metric-tip-r is-empty"><span>Bugün bu kartta paket yok</span></div>}{rows.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}</div>
 }
 
 const tipped = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ') || undefined
@@ -76,10 +76,10 @@ const packageTip = (rows: PackageRow[]) => rows.map(row => ({ ...row, value: `${
 
 // Touch screens: a tap on a card shows its stores (the shared tap handler opens the breakdown) and never switches the
 // list's tab; a computer opens the card's list as before.
-const touchOnly = () => typeof window !== 'undefined' && window.matchMedia?.('(hover: none)').matches
 
 export function OrderMetricCards({ newOrders, newUnits, newRows, processing, processingUnits, processingRows, late, lateRows, microExport, microCountries, cancelled, cancelledRows, partiallyCancelled, partialUnits, resent, resentRows, onOpenDay, activeCard }: { newOrders: Metric; newUnits?: number; newRows?: UnitRow[]; processing: Metric; processingUnits?: number; processingRows?: UnitRow[]; late: Metric; lateRows?: PackageRow[]; microExport: Metric; microCountries?: Record<string, number>; cancelled: Metric; cancelledUnits?: number; cancelledRows?: CancelRow[]; partiallyCancelled: Metric; partialUnits?: number; resent: Metric; resentRows?: PackageRow[]; onOpenDay: (card: DayCard) => void; activeCard?: DayCard }) {
-  const openOnPointer = (card: DayCard) => { if (!touchOnly()) onOpenDay(card) }
+  // The cards no longer switch the list to their orders (owner, 5 Nov 2026): a click shows the stores, as Yeni Sipariş does.
+  const openOnPointer = (_card: DayCard) => { void _card; void onOpenDay }
   // The partly cancelled orders are a chip beside the cancelled count only while there are any.
   const partial = partiallyCancelled.loading ? 0 : partiallyCancelled.value ?? 0
   // A warning card is plain at 0 and warns only above it: Geciken with a softly pulsing red box, İptal with its number.
@@ -93,26 +93,27 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
   return <div className="rr-metrics rr-metrics-6">
     <UnitsCard title="Yeni Sipariş" icon="orders" tone="warn" packages={newOrders} units={newUnits} rows={newRows} />
     <UnitsCard title="İşleme Alınan" icon="packagePen" tone="warn" packages={processing} units={processingUnits} rows={processingRows} />
-    <article className={tipped(positive(late) && 'rr-bad rr-alert', lateStores.length > 0 && 'rr-metric-tipped')} tabIndex={lateStores.length > 0 ? 0 : undefined}>
+    {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- focusable so a keyboard opens its store list */}
+    <article className={tipped(positive(late) && 'rr-bad rr-alert', 'rr-metric-tipped')} tabIndex={0}>
       <CardBackgroundIcon name="clock" tone={positive(late) ? 'bad' : undefined} />
       <small>Geciken</small><Packages packages={late} units={undefined} />
-      {lateStores.length > 0 && <StoreTip rows={packageTip(lateStores)} />}
+      {<StoreTip rows={packageTip(lateStores)} />}
     </article>
     <article className={tipped('rr-metric-link rr-metric-tipped', activeCard === 'micro' && 'rr-metric-on')}>
       <CardBackgroundIcon name="globe" />
       <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Bugün gelen, kargoya verilmemiş mikro ihracat siparişleri'} aria-pressed={activeCard === 'micro'} onClick={() => openOnPointer('micro')}><small>Mikro İhracat Sipariş</small><Packages packages={microExport} units={undefined} /></button>
-      {countries.length > 0 && <div className="rr-metric-tip" role="tooltip">{countries.map(([code, value]) => <div className="rr-metric-tip-r" key={code || 'unknown'}>{code ? <Flag code={code} /> : <span className="rr-metric-tip-none" aria-hidden="true" />}<span>{code ? countryName(code) : 'Ülke Bilinmiyor'}</span><b className="rr-num">{count(value)}</b></div>)}</div>}
+      {<div className="rr-metric-tip" role="tooltip">{countries.length === 0 && <div className="rr-metric-tip-r is-empty"><span>Bugün mikro ihracat paketi yok</span></div>}{countries.map(([code, value]) => <div className="rr-metric-tip-r" key={code || 'unknown'}>{code ? <Flag code={code} /> : <span className="rr-metric-tip-none" aria-hidden="true" />}<span>{code ? countryName(code) : 'Ülke Bilinmiyor'}</span><b className="rr-num">{count(value)}</b></div>)}</div>}
     </article>
-    <article className={tipped(positive(cancelled) && 'rr-bad', 'rr-metric-link', partial > 0 && 'rr-metric-chipped', cancelStores.length > 0 && 'rr-metric-tipped', (activeCard === 'cancelled' || activeCard === 'partial') && 'rr-metric-on')}>
+    <article className={tipped(positive(cancelled) && 'rr-bad', 'rr-metric-link', partial > 0 && 'rr-metric-chipped', 'rr-metric-tipped', (activeCard === 'cancelled' || activeCard === 'partial') && 'rr-metric-on')}>
       <CardBackgroundIcon name="packageX" tone={positive(cancelled) ? 'bad' : undefined} />
       <button type="button" className="rr-metric-open" title={cancelStores.length > 0 ? undefined : 'Bugün iptal edilen siparişler'} aria-pressed={activeCard === 'cancelled'} onClick={() => openOnPointer('cancelled')}><small>İptal</small><Packages packages={cancelled} units={undefined} /></button>
       {partial > 0 && <button type="button" className={tipped('rr-metric-chip rr-metric-chip-alert', activeCard === 'partial' && 'rr-metric-on')} aria-pressed={activeCard === 'partial'} title={cancelStores.length > 0 ? undefined : `Bugün kısmen iptal edilen ${count(partial)} sipariş`} onClick={() => openOnPointer('partial')}>{count(partial)} Kısmi İptal{partialUnits !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(partialUnits)} Adet</>}</button>}
-      {cancelStores.length > 0 && <StoreTip rows={cancelStores.map(row => ({ ...row, value: cancelRowText(row) }))} />}
+      {<StoreTip rows={cancelStores.map(row => ({ ...row, value: cancelRowText(row) }))} />}
     </article>
-    <article className={tipped('rr-metric-link', resentStores.length > 0 && 'rr-metric-tipped', activeCard === 'resent' && 'rr-metric-on')}>
+    <article className={tipped('rr-metric-link', 'rr-metric-tipped', activeCard === 'resent' && 'rr-metric-on')}>
       <CardBackgroundIcon name="refresh" />
       <button type="button" className="rr-metric-open" title={resentStores.length > 0 ? undefined : 'Kargoya verilmemiş yeniden gönderimler'} aria-pressed={activeCard === 'resent'} onClick={() => openOnPointer('resent')}><small>Yeniden Gönderim</small><Packages packages={resent} units={undefined} /></button>
-      {resentStores.length > 0 && <StoreTip rows={packageTip(resentStores)} />}
+      {<StoreTip rows={packageTip(resentStores)} />}
     </article>
   </div>
 }

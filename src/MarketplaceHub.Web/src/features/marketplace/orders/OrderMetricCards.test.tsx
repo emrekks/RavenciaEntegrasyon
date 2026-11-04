@@ -34,9 +34,10 @@ describe('order summary cards', () => {
 
     const values = Array.from(host.querySelectorAll('article strong')).map(value => value.textContent)
     expect(values).toEqual(['…', '…', '0 Paket', '…', '…', '…'])
-    // While the data loads, the chip and the hover panels are not drawn.
+    // While the data loads, the chip is not drawn and the hover panels list no store (only their empty row).
     expect(host.querySelector('.rr-metric-chip')).toBeNull()
-    expect(host.querySelector('.rr-metric-tip')).toBeNull()
+    expect(host.querySelectorAll('.rr-metric-tip-r:not(.is-empty)')).toHaveLength(0)
+    expect(host.querySelectorAll('.rr-metric-tip-r.is-empty')).toHaveLength(4)
     cleanup()
     // An older API: the packages without their products.
     const older = render(<OrderMetricCards {...props({ newUnits: undefined, newRows: undefined, processingUnits: undefined, processingRows: undefined, cancelledUnits: undefined, partialUnits: undefined })} />).host
@@ -45,7 +46,7 @@ describe('order summary cards', () => {
     expect(older.querySelector('.rr-metric-chip')!.textContent).toBe('1 Kısmi İptal')
   })
 
-  it('opens the day lists from the cancelled count and its chip, and the unshipped resends from their card', () => {
+  it('never switches the list: clicking İptal, its chip, Yeniden Gönderim or Mikro İhracat does not open a day list', () => {
     const openDay = vi.fn()
     const { host } = render(<OrderMetricCards {...props({ onOpenDay: openDay })} />)
 
@@ -55,15 +56,15 @@ describe('order summary cards', () => {
     chip.click()
     open(host, 'Yeniden Gönderim')
     open(host, 'Mikro İhracat Sipariş')
-    expect(openDay.mock.calls.map(call => call[0])).toEqual(['cancelled', 'partial', 'resent', 'micro'])
+    expect(openDay).not.toHaveBeenCalled()
   })
 
   it('keeps the cancelled count and its pulsing chip together, and draws no chip when no order is partly cancelled', () => {
     const { host } = render(<OrderMetricCards {...props()} />)
     const cancelled = card(host, 'İptal')
     expect(cancelled.classList.contains('rr-metric-chipped')).toBe(true)
-    // The decorative background icon comes first, then the open button and the chip.
-    expect(Array.from(cancelled.children).map(child => child.className)).toEqual(['rv-card-bg', 'rr-metric-open', 'rr-metric-chip rr-metric-chip-alert'])
+    // The decorative background icon comes first, then the open button, the chip and the hover panel.
+    expect(Array.from(cancelled.children).map(child => child.className)).toEqual(['rv-card-bg', 'rr-metric-open', 'rr-metric-chip rr-metric-chip-alert', 'rr-metric-tip'])
     cleanup()
 
     const plain = render(<OrderMetricCards {...props({ partiallyCancelled: metric(0) })} />).host
@@ -72,12 +73,12 @@ describe('order summary cards', () => {
     expect(plain.querySelectorAll('.rr-metric-open')).toHaveLength(3)
   })
 
-  it('lists the countries of the pending micro-export orders on hover, the biggest first, and opens their list', () => {
+  it('lists the countries of the pending micro-export orders on hover, the biggest first, without opening their list', () => {
     const openDay = vi.fn()
     const { host } = render(<OrderMetricCards {...props({ onOpenDay: openDay })} />)
 
     open(host, 'Mikro İhracat Sipariş')
-    expect(openDay.mock.calls).toEqual([['micro']])
+    expect(openDay).not.toHaveBeenCalled()
     const micro = card(host, 'Mikro İhracat Sipariş')
     // No day heading: the card counts the pending orders, whatever day they were placed.
     expect(micro.querySelector('.rr-metric-tip-h')).toBeNull()
@@ -123,27 +124,29 @@ describe('order summary cards', () => {
   it('warns with Geciken and İptal only above zero', () => {
     const classes = (host: HTMLElement) => Object.fromEntries(Array.from(host.querySelectorAll('article')).map(item => [item.querySelector('small')?.textContent, item.className]))
     const warning = render(<OrderMetricCards {...props({ late: metric(3), cancelled: metric(68), partiallyCancelled: metric(0) })} />).host
-    expect(classes(warning)['Geciken']).toBe('rr-bad rr-alert')
-    expect(classes(warning)['İptal']).toBe('rr-bad rr-metric-link')
+    expect(classes(warning)['Geciken']).toBe('rr-bad rr-alert rr-metric-tipped')
+    expect(classes(warning)['İptal']).toBe('rr-bad rr-metric-link rr-metric-tipped')
     expect(classes(warning)['Yeni Sipariş']).toBe('rr-warn rr-metric-tipped')
     cleanup()
     const quiet = render(<OrderMetricCards {...props({ late: metric(0), cancelled: metric(0), partiallyCancelled: metric(0), newRows: [] })} />).host
-    expect(classes(quiet)['Geciken']).toBe('')
-    expect(classes(quiet)['İptal']).toBe('rr-metric-link')
+    expect(classes(quiet)['Geciken']).toBe('rr-metric-tipped')
+    expect(classes(quiet)['İptal']).toBe('rr-metric-link rr-metric-tipped')
     expect(classes(quiet)['Yeni Sipariş']).toBe('rr-warn')
     cleanup()
     // While the summary loads nothing warns.
     const loading = render(<OrderMetricCards {...props({ late: metric(undefined, true), cancelled: metric(undefined, true), partiallyCancelled: metric(0) })} />).host
-    expect(classes(loading)['Geciken']).toBe('')
-    expect(classes(loading)['İptal']).toBe('rr-metric-link')
+    expect(classes(loading)['Geciken']).toBe('rr-metric-tipped')
+    expect(classes(loading)['İptal']).toBe('rr-metric-link rr-metric-tipped')
   })
 
-  it('puts the orders of no known country last and draws no panel without countries', () => {
+  it('puts the orders of no known country last and shows only the empty row without countries', () => {
     expect(microCountryRows({ '': 4, SA: 2, BG: 2, RO: 0 })).toEqual([['BG', 2], ['SA', 2], ['', 4]])
     expect(microCountryRows(undefined)).toEqual([])
     const { host } = render(<OrderMetricCards {...props({ microExport: metric(0), microCountries: {} })} />)
-    expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-tip')).toBeNull()
-    // Without the panel a native title says what it counts.
+    const micro = card(host, 'Mikro İhracat Sipariş')
+    expect(Array.from(micro.querySelectorAll('.rr-metric-tip-r')).map(row => [row.className, row.textContent])).toEqual([['rr-metric-tip-r is-empty', 'Bugün mikro ihracat paketi yok']])
+    expect(micro.classList.contains('rr-metric-tipped')).toBe(true)
+    // Without countries a native title says what it counts.
     expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Bugün gelen, kargoya verilmemiş mikro ihracat siparişleri')
   })
 
@@ -161,12 +164,16 @@ describe('order summary cards', () => {
     // The panel says it; a native title would open over it.
     expect(card(host, 'İptal').querySelector('.rr-metric-open')!.getAttribute('title')).toBeNull()
     cleanup()
-    // At 0 a card lists nothing.
+    // At 0 a card lists no store: the panel is still there with its one empty row.
     const quiet = render(<OrderMetricCards {...props({ late: metric(0), resent: metric(0), cancelled: metric(0), partiallyCancelled: metric(0), lateRows, resentRows, cancelledRows })} />).host
-    for (const title of ['Geciken', 'İptal', 'Yeniden Gönderim']) expect(card(quiet, title).querySelector('.rr-metric-tip')).toBeNull()
+    for (const title of ['Geciken', 'İptal', 'Yeniden Gönderim']) {
+      expect(card(quiet, title).querySelector('.rr-metric-tip')).not.toBeNull()
+      expect(Array.from(card(quiet, title).querySelectorAll('.rr-metric-tip-r')).map(row => [row.className, row.textContent])).toEqual([['rr-metric-tip-r is-empty', 'Bugün bu kartta paket yok']])
+    }
+    expect(card(quiet, 'Geciken').getAttribute('tabindex')).toBe('0')
   })
 
-  it('marks the card whose list is open as selected and offers it again to close the list', () => {
+  it('marks the card whose list is open as selected, and clicking it still does not call onOpenDay', () => {
     const onOpenDay = vi.fn()
     const { host } = render(<OrderMetricCards {...props({ onOpenDay, activeCard: 'resent' })} />)
     expect(card(host, 'Yeniden Gönderim').classList.contains('rr-metric-on')).toBe(true)
@@ -174,7 +181,7 @@ describe('order summary cards', () => {
     expect(card(host, 'İptal').classList.contains('rr-metric-on')).toBe(false)
     expect(card(host, 'İptal').querySelector('.rr-metric-open')!.getAttribute('aria-pressed')).toBe('false')
     open(host, 'Yeniden Gönderim')
-    expect(onOpenDay).toHaveBeenCalledWith('resent')
+    expect(onOpenDay).not.toHaveBeenCalled()
     cleanup()
     // The Kısmi İptal list selects its chip and the İptal card it sits on.
     const partial = render(<OrderMetricCards {...props({ activeCard: 'partial' })} />).host

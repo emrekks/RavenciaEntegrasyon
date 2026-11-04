@@ -74,3 +74,4 @@
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-pk { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-adet { display: none; }
 }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r.is-empty { grid-template-columns: 1fr; color: var(--rr-muted); }

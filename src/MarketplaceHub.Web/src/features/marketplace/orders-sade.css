@@ -314,3 +314,8 @@
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-ordercell > div > .rr-on-no { align-self: end; margin-bottom: -2px; }
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-cust b { font-weight: 600; }
 }
+/* Desktop: Etiket and İşlemler in the actions column share one width (the wider one's), stacked. */
+@media (min-width: 761px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell { display: inline-grid; grid-template-columns: max-content; justify-items: stretch; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell > :is(.rr-btn, .rr-anchor), :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell > .rr-anchor > .rr-trigger { width: 100%; justify-content: center; }
+}
