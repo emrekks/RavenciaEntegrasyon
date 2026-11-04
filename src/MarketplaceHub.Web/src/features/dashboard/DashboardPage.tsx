@@ -67,7 +67,8 @@ export function matrixCellText(cell: MatrixCell) {
   const when = age(cell.lastSuccessAt)
   if (cell.state === 'off') return 'İşlem Yok'
   if (cell.state === 'bad') return 'Hata Var'
-  if (cell.state === 'warn') return when ? `Gecikiyor · ${when}` : 'Gecikiyor'
+  // A late flow shows only its time; the amber dot and the hover title say it is late ("Gecikiyor · 2 gün önce" did not fit a phone cell).
+  if (cell.state === 'warn') return when || 'Gecikiyor'
   return when ?? 'Güncel'
 }
 // A count the page could not read (still loading, the request failed, the field is missing) is unknown and shows "—":
