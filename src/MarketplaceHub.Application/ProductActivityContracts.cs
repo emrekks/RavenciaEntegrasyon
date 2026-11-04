@@ -139,6 +139,9 @@ public static class ProductActivityTypes
 
     public static readonly IReadOnlyList<string> StockLedger = [OrderReceived, ManualAdjustment, MarketplaceStockImport, ImportOpening, OrderStockShortfall];
     public static readonly IReadOnlyList<string> ReturnLedger = [ReturnPass];
+    // The ledger rows that move on-hand stock: every on-hand change writes one, so the stock after a row is the item's
+    // on-hand now less these rows' deltas after it. Shortfall, baseline, shipment and reservation rows move nothing.
+    public static readonly IReadOnlyList<string> OnHandLedger = [OrderReceived, ManualAdjustment, MarketplaceStockImport, ImportOpening, ReturnPass];
 }
 
 public static class ProductActivityPolicy
@@ -187,6 +190,15 @@ public static class ProductActivityPolicy
             PublishPriceReason => ProductActivitySources.Publish,
             _ => ReasonSource(reason) is var source && source == ProductActivitySources.Manual ? ProductActivitySources.PriceEdit : source
         };
+    }
+
+    // A stock row's before → after from the stock after it (on-hand now less the later on-hand rows) and its delta. A
+    // before below zero means the ledger does not reach back to that row's start (stock set before the ledger kept every
+    // change): only the after is known then, the before stays unknown.
+    public static (decimal? Before, decimal After) StockBalance(decimal after, decimal delta)
+    {
+        var before = after - delta;
+        return (before < 0 ? null : before, after);
     }
 
     // The user a price history row names (ActorSource "USER:{id}"); null for the system.
@@ -245,8 +257,9 @@ public sealed record ProductActivityQuery(int? Limit = null, string? After = nul
 }
 
 // One row of Ürün Hareketleri. QuantityDelta is the stock change (or, for a shortfall or a return kept out of stock,
-// the units concerned); the price and status pairs are before → after, a null before being unknown. The product and
-// variant fields are the card as it is now; null when it was deleted.
+// the units concerned); StockBefore → StockAfter is the on-hand stock around a stock-changing row (null on any other
+// row; a null before is unknown); the price and status pairs are before → after, a null before being unknown (a store
+// price's first version). The product and variant fields are the card as it is now; null when it was deleted.
 public sealed record ProductActivityView(
     Guid Id,
     DateTimeOffset OccurredAt,
@@ -261,6 +274,8 @@ public sealed record ProductActivityView(
     string? ModelCode,
     string? OptionText,
     decimal? QuantityDelta,
+    decimal? StockBefore,
+    decimal? StockAfter,
     decimal? PreviousSalePrice,
     decimal? NewSalePrice,
     decimal? PreviousListPrice,

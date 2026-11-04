@@ -16,7 +16,12 @@
 /* Change chip: green stock in / price up / on sale, red stock out / price down, amber information (no stock change). */
 .app-shell.stitch-shell main .jobs-reference-page .pal-change-cell { display: grid; justify-items: start; gap: 2px; min-width: 0; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-change-cell small { color: var(--rv-color-muted); font-size: 11px; white-space: nowrap; }
-.app-shell.stitch-shell main .jobs-reference-page .pal-change { display: inline-flex; align-items: center; height: 24px; max-width: 100%; padding: 0 8px; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-change { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0 5px; min-height: 24px; max-width: 100%; min-width: 0; padding: 3px 8px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; font-size: 12px; font-weight: 600; line-height: 16px; font-variant-numeric: tabular-nums; }
+/* Before → after: each part stays whole and a narrow card wraps between them; a part longer than the chip is cut. */
+.app-shell.stitch-shell main .jobs-reference-page .pal-change-part { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-change-from { font-weight: 500; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-change-mark { opacity: .6; font-weight: 500; }
+.app-shell.stitch-shell main .jobs-reference-page .pal-change-label { font-weight: 500; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-change.is-up { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border-color: color-mix(in srgb, var(--rv-color-accent) 35%, transparent); }
 .app-shell.stitch-shell main .jobs-reference-page .pal-change.is-down { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); border-color: color-mix(in srgb, var(--rv-color-danger) 35%, transparent); }
 .app-shell.stitch-shell main .jobs-reference-page .pal-change.is-info { color: var(--rv-color-ink); background: var(--rv-color-warning-soft); border-color: color-mix(in srgb, var(--rv-color-warning) 35%, transparent); }

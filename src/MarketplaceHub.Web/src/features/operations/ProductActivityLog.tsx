@@ -46,8 +46,20 @@ function ProductCell({ entry }: { entry: ProductActivityEntry }) {
 
 function ChangeChip({ entry }: { entry: ProductActivityEntry }) {
   const change = activityChange(entry)
+  // What it was → what it became, each part kept whole; a narrow card wraps between the parts, never inside one.
+  // The parts are spaced by text too, so the chip reads (and copies) as "+1 · 4 → 5".
+  const parts: Array<[string, string]> = change.to === undefined
+    ? [['', change.text]]
+    : [
+      ...(change.delta ? [['pal-change-delta', change.delta], ['pal-change-mark', '·']] as Array<[string, string]> : []),
+      ...(change.label ? [['pal-change-label', change.label]] as Array<[string, string]> : []),
+      ...(change.from !== undefined ? [['pal-change-from', change.from], ['pal-change-mark', '→']] as Array<[string, string]> : []),
+      ['pal-change-to', change.to]
+    ]
   return <span className="pal-change-cell">
-    <span className={`pal-change is-${change.tone}`} title={change.title}>{change.text}</span>
+    <span className={`pal-change is-${change.tone}`} title={change.title ?? change.text}>
+      {parts.map(([part, text], index) => <span key={index} className={`pal-change-part ${part}`.trim()}>{index > 0 ? ' ' : ''}{text}</span>)}
+    </span>
     <small>{activityTypeLabel(entry)}</small>
   </span>
 }

@@ -22,6 +22,9 @@ export type ProductActivityEntry = {
   modelCode: string | null
   optionText: string | null
   quantityDelta: number | null
+  /** On-hand stock before and after a stock-changing row; null on other rows, a null before is unknown. */
+  stockBefore?: number | null
+  stockAfter?: number | null
   previousSalePrice: number | null
   newSalePrice: number | null
   previousListPrice: number | null
@@ -85,7 +88,11 @@ export function activitySourceLabel(source: string) {
 }
 
 export type ActivityChangeTone = 'up' | 'down' | 'neutral' | 'info'
-export type ActivityChange = { text: string; tone: ActivityChangeTone; title?: string }
+/**
+ * The chip's words: `text` is the whole change in one line; a before → after change also gives its parts (`from`, `to`)
+ * so the chip can wrap between them, a stock change its signed amount (`delta`), a first price its `label`.
+ */
+export type ActivityChange = { text: string; tone: ActivityChangeTone; title?: string; delta?: string; label?: string; from?: string; to?: string }
 
 const quantityFormat = new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 4 })
 
@@ -94,15 +101,30 @@ function price(value: number, currency: string | null) {
   return formatMoney(value, currency || 'TRY', { minimumFractionDigits: Number.isInteger(value) ? 0 : 2, maximumFractionDigits: 2 })
 }
 
+const known = (value: number | null | undefined): value is number => value !== null && value !== undefined
+
 function priceChange(previous: number | null, next: number | null, currency: string | null) {
-  if (next === null || next === undefined) return null
-  if (previous === null || previous === undefined) return price(next, currency)
-  return `${price(previous, currency)} → ${price(next, currency)}`
+  if (!known(next)) return null
+  if (!known(previous)) return { text: `İlk Fiyat ${price(next, currency)}`, label: 'İlk Fiyat', to: price(next, currency) }
+  const from = price(previous, currency), to = price(next, currency)
+  return { text: `${from} → ${to}`, from, to }
+}
+
+function stockChange(entry: ProductActivityEntry, amount: string): ActivityChange {
+  const delta = entry.quantityDelta!
+  const tone: ActivityChangeTone = delta > 0 ? 'up' : delta < 0 ? 'down' : 'neutral'
+  const signed = delta > 0 ? `+${amount}` : delta < 0 ? `−${amount}` : '0'
+  if (!known(entry.stockAfter)) return { text: `${signed} Stok`, tone }
+  const to = quantityFormat.format(entry.stockAfter)
+  if (!known(entry.stockBefore)) return { text: `${signed} · Stok ${to}`, tone, delta: signed, label: 'Stok', to, title: 'Önceki stok bilinmiyor: kayıtlar bu hareketin öncesini tutmuyor.' }
+  const from = quantityFormat.format(entry.stockBefore)
+  return { text: `${signed} · ${from} → ${to}`, tone, delta: signed, from, to, title: `Stok ${from} iken ${to} oldu.` }
 }
 
 /**
- * The change chip: "+1 Stok" / "−2 Stok", "₺899 → ₺950", "Satışa Açık → Satışa Kapalı". A shortfall or a return kept out
- * of stock changed no stock: it says what happened instead. A price without one before is "₺950" (set).
+ * The change chip, what it was and what it became: "+1 · 4 → 5" (stock), "₺899 → ₺950", "Satışa Açık → Satışa Kapalı".
+ * A shortfall or a return kept out of stock changed no stock: it says what happened instead, without numbers. A store
+ * price without one before is its first: "İlk Fiyat ₺950". A stock row whose before is unknown shows its after only.
  */
 export function activityChange(entry: ProductActivityEntry): ActivityChange {
   const amount = entry.quantityDelta === null ? '' : quantityFormat.format(Math.abs(entry.quantityDelta))
@@ -115,20 +137,21 @@ export function activityChange(entry: ProductActivityEntry): ActivityChange {
       return { text: `${amount} Adet Hasarlı`, tone: 'info', title: 'İade ürün stoğa eklenmedi.' }
     case 'RETURN_NOTRECEIVED':
       return { text: `${amount} Adet Gelmedi`, tone: 'info', title: 'İade ürün stoğa eklenmedi.' }
-    case 'STATUS':
-      return { text: `${activityStatusLabel(entry.previousStatus)} → ${activityStatusLabel(entry.newStatus)}`, tone: entry.newStatus === 'ACTIVE' ? 'up' : 'neutral' }
+    case 'STATUS': {
+      const from = activityStatusLabel(entry.previousStatus), to = activityStatusLabel(entry.newStatus)
+      return { text: `${from} → ${to}`, tone: entry.newStatus === 'ACTIVE' ? 'up' : 'neutral', from, to }
+    }
     case 'OFFER_PRICE':
     case 'DEFAULT_PRICE': {
       const sale = priceChange(entry.previousSalePrice, entry.newSalePrice, entry.currency)
       const list = entry.previousListPrice !== entry.newListPrice ? priceChange(entry.previousListPrice, entry.newListPrice, entry.currency) : null
-      const tone: ActivityChangeTone = entry.previousSalePrice === null || entry.newSalePrice === null ? 'neutral' : entry.newSalePrice > entry.previousSalePrice ? 'up' : entry.newSalePrice < entry.previousSalePrice ? 'down' : 'neutral'
-      if (sale) return { text: sale, tone, title: list ? `Liste fiyatı: ${list}` : undefined }
-      return { text: list ? `Liste: ${list}` : 'Fiyat', tone: 'neutral' }
+      const tone: ActivityChangeTone = !known(entry.previousSalePrice) || !known(entry.newSalePrice) ? 'neutral' : entry.newSalePrice > entry.previousSalePrice ? 'up' : entry.newSalePrice < entry.previousSalePrice ? 'down' : 'neutral'
+      if (sale) return { ...sale, tone, title: list ? `Liste fiyatı: ${list.text}` : undefined }
+      return list ? { ...list, text: `Liste: ${list.text}`, label: list.label ?? 'Liste', tone: 'neutral' } : { text: 'Fiyat', tone: 'neutral' }
     }
   }
   if (entry.quantityDelta === null) return { text: '—', tone: 'neutral' }
-  if (entry.quantityDelta === 0) return { text: '0 Stok', tone: 'neutral' }
-  return entry.quantityDelta > 0 ? { text: `+${amount} Stok`, tone: 'up' } : { text: `−${amount} Stok`, tone: 'down' }
+  return stockChange(entry, amount)
 }
 
 /** What the change was, beside its source: "Satış", "Sipariş İptali", "Açılış Stoğu", "Mağaza Fiyatı", "Panel Fiyatı"... */

@@ -522,7 +522,7 @@ describe('JobsPage Loglar › Ürün Hareketleri', () => {
     apiState.activity = {
       items: [
         entry({ id: 'a-1', kind: 'RETURN', type: 'RETURN_PASS', quantityDelta: 1, source: 'RETURN', note: null, connectionId: 'ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol', orderId: 'o-1', orderNumber: '10931', returnId: 'r-1', returnNumber: 'R-77' }),
-        entry({ id: 'a-2', type: 'ORDER_RECEIVED', quantityDelta: -1, source: 'ORDER', note: null, connectionId: 'ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol', orderId: 'o-2', orderNumber: '10932', actorUserId: null, actorName: null }),
+        entry({ id: 'a-2', type: 'ORDER_RECEIVED', quantityDelta: -1, stockBefore: 5, stockAfter: 4, source: 'ORDER', note: null, connectionId: 'ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol', orderId: 'o-2', orderNumber: '10932', actorUserId: null, actorName: null }),
         entry({ id: 'a-3', kind: 'PRICE', type: 'OFFER_PRICE', quantityDelta: null, previousSalePrice: 899, newSalePrice: 950, previousListPrice: 1200, newListPrice: 1200, currency: 'TRY', source: 'BULK_EDIT', note: null, connectionId: 'ty', platformCode: 'TRENDYOL', storeName: 'Ravencia Trendyol' }),
         entry({ id: 'a-4', kind: 'STATUS', type: 'STATUS', variantId: null, sku: null, barcode: null, optionText: null, quantityDelta: null, previousStatus: 'ACTIVE', newStatus: 'ARCHIVED', source: 'EDITOR', note: null })
       ],
@@ -539,7 +539,7 @@ describe('JobsPage Loglar › Ürün Hareketleri', () => {
     expect(rows[0].querySelector<HTMLAnchorElement>('.pal-source a')!.getAttribute('href')).toBe('/returns/r-1')
     expect(rows[0].textContent).toContain('Ravencia Trendyol')
     expect(rows[0].textContent).toContain('Emre')
-    expect(rows[1].textContent).toContain('−1 Stok')
+    expect(rows[1].textContent).toContain('−1 · 5 → 4')
     expect(rows[1].querySelector<HTMLAnchorElement>('.pal-source a')!.getAttribute('href')).toBe('/orders?search=10932')
     expect(rows[1].textContent).toContain('Sistem')
     expect(rows[2].textContent).toContain('₺899 → ₺950')

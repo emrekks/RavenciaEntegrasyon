@@ -95,4 +95,15 @@ public sealed class ProductActivityPolicyTests
         var entry = ProductChangeLog.Status(Guid.NewGuid(), Guid.NewGuid(), null, ProductStatus.Active, ProductStatus.Draft, ProductChangeSources.Editor, null, null, "corr", Now, new string('a', 300));
         Assert.Equal(ProductChangeLog.MaxNoteLength, entry!.Note!.Length);
     }
+
+    [Fact]
+    public void A_stock_row_shows_before_and_after_and_an_unreachable_before_stays_unknown()
+    {
+        Assert.Equal(((decimal?)4m, 5m), ProductActivityPolicy.StockBalance(5m, 1m));
+        Assert.Equal(((decimal?)3m, 1m), ProductActivityPolicy.StockBalance(1m, -2m));
+        Assert.Equal(((decimal?)0m, 5m), ProductActivityPolicy.StockBalance(5m, 5m));
+        // Stock set before the ledger kept every change: the before would be below zero, so only the after is known.
+        Assert.Equal(((decimal?)null, 2m), ProductActivityPolicy.StockBalance(2m, 6m));
+        Assert.DoesNotContain(ProductActivityTypes.OrderStockShortfall, ProductActivityTypes.OnHandLedger);
+    }
 }

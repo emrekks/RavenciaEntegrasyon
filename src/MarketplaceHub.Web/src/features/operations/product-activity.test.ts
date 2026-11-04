@@ -19,13 +19,24 @@ describe('product activity change chip', () => {
     expect(activityChange(entry({ quantityDelta: -2.5 }))).toMatchObject({ text: '−2,5 Stok', tone: 'down' })
     expect(activityChange(entry({ type: 'ORDER_STOCK_SHORTFALL', quantityDelta: 1 }))).toMatchObject({ text: 'Stok Yetersiz · 1 Eksik', tone: 'info' })
     expect(activityChange(entry({ type: 'RETURN_QUARANTINE', kind: 'RETURN', quantityDelta: 1 }))).toMatchObject({ text: '1 Adet Karantinada', tone: 'info' })
+    // Information rows carry no numbers change even if a balance came along.
+    expect(activityChange(entry({ type: 'ORDER_STOCK_SHORTFALL', quantityDelta: 1, stockBefore: 0, stockAfter: 0 })).from).toBeUndefined()
   })
 
-  it('shows a price before → after, a first price alone, and a status in the panel words', () => {
-    expect(activityChange(entry({ type: 'OFFER_PRICE', kind: 'PRICE', previousSalePrice: 899, newSalePrice: 950, currency: 'TRY' }))).toMatchObject({ text: '₺899 → ₺950', tone: 'up' })
+  it('shows the stock before → after with the amount, and only the after when the before is unknown', () => {
+    expect(activityChange(entry({ quantityDelta: 1, stockBefore: 4, stockAfter: 5 }))).toMatchObject({ text: '+1 · 4 → 5', delta: '+1', from: '4', to: '5', tone: 'up' })
+    expect(activityChange(entry({ type: 'ORDER_RECEIVED', quantityDelta: -2, stockBefore: 3, stockAfter: 1 }))).toMatchObject({ text: '−2 · 3 → 1', from: '3', to: '1', tone: 'down' })
+    const unknownBefore = activityChange(entry({ quantityDelta: 6, stockBefore: null, stockAfter: 2 }))
+    expect(unknownBefore).toMatchObject({ text: '+6 · Stok 2', to: '2', tone: 'up' })
+    expect(unknownBefore.from).toBeUndefined()
+  })
+
+  it('shows a price before → after, a first price as İlk Fiyat, and a status in the panel words', () => {
+    expect(activityChange(entry({ type: 'OFFER_PRICE', kind: 'PRICE', previousSalePrice: 899, newSalePrice: 950, currency: 'TRY' }))).toMatchObject({ text: '₺899 → ₺950', from: '₺899', to: '₺950', tone: 'up' })
     expect(activityChange(entry({ type: 'DEFAULT_PRICE', kind: 'PRICE', previousSalePrice: 100, newSalePrice: 89.9, previousListPrice: 150, newListPrice: 120, currency: 'TRY' })))
       .toMatchObject({ text: '₺100 → ₺89,90', tone: 'down', title: 'Liste fiyatı: ₺150 → ₺120' })
-    expect(activityChange(entry({ type: 'OFFER_PRICE', kind: 'PRICE', newSalePrice: 950, currency: 'TRY' })).text).toBe('₺950')
+    expect(activityChange(entry({ type: 'OFFER_PRICE', kind: 'PRICE', newSalePrice: 950, currency: 'TRY' }))).toMatchObject({ text: 'İlk Fiyat ₺950', label: 'İlk Fiyat', to: '₺950', tone: 'neutral' })
+    expect(activityChange(entry({ type: 'STATUS', kind: 'STATUS', previousStatus: 'ACTIVE', newStatus: 'ARCHIVED' }))).toMatchObject({ text: 'Satışa Açık → Satışa Kapalı', from: 'Satışa Açık', to: 'Satışa Kapalı' })
     expect(activityChange(entry({ type: 'STATUS', kind: 'STATUS', previousStatus: 'ARCHIVED', newStatus: 'ACTIVE' })).text).toBe('Satışa Kapalı → Satışa Açık')
     expect(activityChange(entry({ type: 'STATUS', kind: 'STATUS', previousStatus: 'DRAFT', newStatus: 'ACTIVE' })).text).toBe('Taslak → Satışa Açık')
   })

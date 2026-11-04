@@ -58,7 +58,34 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         var hasMore = rows.Count > limit;
         if (hasMore) rows = rows.Take(limit).ToList();
         var nextCursor = hasMore ? JobListCursor.Encode(rows[^1].OccurredAt, rows[^1].Id) : null;
-        return ServiceResult<PageResult<ProductActivityView>>.Ok(new(await ViewsAsync(tenantId, rows, cancellationToken), nextCursor, hasMore));
+        var balances = await StockAfterAsync(tenantId, rows, cancellationToken);
+        return ServiceResult<PageResult<ProductActivityView>>.Ok(new(await ViewsAsync(tenantId, rows, balances, cancellationToken), nextCursor, hasMore));
+    }
+
+    // The on-hand stock right after each stock-changing row of the page. The ledger keeps no balance, but every on-hand
+    // change writes a row, so it is the item's on-hand now less the deltas of the item's on-hand rows after it (in the
+    // list's order, OccurredAt then Id). Only the page's rows are looked at, each summing its later rows over the
+    // (tenant, item, time, id) index, so the cost follows the page, not the history.
+    private async Task<Dictionary<Guid, decimal>> StockAfterAsync(Guid tenantId, List<ProductActivityRow> rows, CancellationToken cancellationToken)
+    {
+        var ids = rows.Where(x => x.QuantityDelta is not null && ProductActivityTypes.OnHandLedger.Contains(x.Type, StringComparer.Ordinal)).Select(x => x.Id).Distinct().ToArray();
+        if (ids.Length == 0) return [];
+        var types = Literals(ProductActivityTypes.OnHandLedger);
+        var sql = $"""
+            SELECT e."Id" AS "Id", i."OnHand" - COALESCE(later."Total", 0) AS "After"
+            FROM inventory.stock_ledger_entries e
+            JOIN inventory.inventory_items i ON i."TenantId" = e."TenantId" AND i."Id" = e."InventoryItemId"
+            LEFT JOIN LATERAL (
+                SELECT sum(l."QuantityDelta") AS "Total" FROM inventory.stock_ledger_entries l
+                WHERE l."TenantId" = e."TenantId" AND l."InventoryItemId" = e."InventoryItemId" AND (l."OccurredAt", l."Id") > (e."OccurredAt", e."Id")
+                    AND l."MovementType" IN ({types})) later ON true
+            WHERE e."TenantId" = @tenant AND e."Id" = ANY(@ids) AND e."MovementType" IN ({types})
+            """;
+        var balances = await db.Database.SqlQueryRaw<ProductActivityStockRow>(Escaped(sql),
+                new NpgsqlParameter("tenant", NpgsqlDbType.Uuid) { Value = tenantId },
+                new NpgsqlParameter("ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = ids })
+            .ToListAsync(cancellationToken);
+        return balances.ToDictionary(x => x.Id, x => x.After);
     }
 
     // The summary above the list: rows per kind under the list's filters, the kind filter left out.
@@ -252,7 +279,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         return known is null ? codes : codes.Where(code => known.Contains(code, StringComparer.Ordinal)).ToArray();
     }
 
-    private async Task<IReadOnlyList<ProductActivityView>> ViewsAsync(Guid tenantId, List<ProductActivityRow> rows, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<ProductActivityView>> ViewsAsync(Guid tenantId, List<ProductActivityRow> rows, IReadOnlyDictionary<Guid, decimal> stockAfter, CancellationToken cancellationToken)
     {
         if (rows.Count == 0) return [];
         var variantIds = rows.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).Distinct().ToArray();
@@ -304,10 +331,13 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
             var actor = Actor(row);
             var type = row.Type.ToUpperInvariant();
             var options = variant?.OptionSignature?.Trim();
+            (decimal? Before, decimal? After) stock = row.QuantityDelta is { } delta && stockAfter.TryGetValue(row.Id, out var after)
+                ? ProductActivityPolicy.StockBalance(after, delta)
+                : (null, null);
             return new ProductActivityView(row.Id, row.OccurredAt, ProductActivityPolicy.KindOfType(type), type,
                 title is null ? null : productId, title, productId is { } imageProduct && title is not null ? Image(row.VariantId, imageProduct) : null,
                 row.VariantId, variant?.Sku, variant?.Barcode, variant?.ModelCode, string.IsNullOrEmpty(options) || options == "-" ? null : options,
-                row.QuantityDelta, row.PreviousSalePrice, row.NewSalePrice, row.PreviousListPrice, row.NewListPrice, row.Currency?.Trim(),
+                row.QuantityDelta, stock.Before, stock.After, row.PreviousSalePrice, row.NewSalePrice, row.PreviousListPrice, row.NewListPrice, row.Currency?.Trim(),
                 row.PreviousStatus, row.NewStatus, Source(row), Note(row),
                 connection is null ? row.ConnectionId : connection.Id, connection?.PlatformCode, connection?.DisplayName,
                 row.OrderId, row.OrderId is { } oid ? orders.GetValueOrDefault(oid) : null,
@@ -360,6 +390,12 @@ internal sealed class ProductActivityRow
     public Guid? OrderId { get; set; }
     public Guid? ReturnId { get; set; }
     public Guid? ActorUserId { get; set; }
+}
+
+internal sealed class ProductActivityStockRow
+{
+    public Guid Id { get; set; }
+    public decimal After { get; set; }
 }
 
 internal sealed class ProductActivityCountRow
