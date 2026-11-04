@@ -860,8 +860,8 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-payout-state { grid-column: 1; flex-wrap: wrap; }
   .app-shell.stitch-shell main .reports-page .reports-payout-state:empty { display: none; }
 }
-/* The marketplaces' totals over Trendyol's regions: the region row a step lighter. */
-.app-shell.stitch-shell main .reports-page .reports-payout-regions.is-platforms { margin-bottom: 12px; }
+/* The marketplaces' totals, then the filters under them. */
+.app-shell.stitch-shell main .reports-page .reports-payout-regions.is-platforms { margin-bottom: 16px; }
 .app-shell.stitch-shell main .reports-page .reports-payout-regions.is-sub .reports-payout-region { padding: 12px 16px; }
 .app-shell.stitch-shell main .reports-page .reports-payout-regions.is-sub .reports-payout-region strong { font-size: 20px; }
 .app-shell.stitch-shell main .reports-page .reports-payout-day-chips { display: inline-flex; gap: 6px; align-items: center; }

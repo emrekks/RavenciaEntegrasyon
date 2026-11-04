@@ -1945,26 +1945,6 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   return <div className="reports-summary reports-payouts">
     <KpiStrip label="Hakediş özeti" items={items} marks />
     <Panel title="Ödeme Özeti" description="Kartlar pazaryeri ve bölge filtresine göre; durum, tarih ve tutar filtreleri yalnız listeyi süzer." className="reports-payout-list">
-      <div className="rr reports-payout-filters">
-        <RrFilterCard active={activeCount}><div className="rr-filters reports-payout-filterbar">
-          <label className="rr-fld rr-search"><small>Sipariş / Fatura No</small><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} />
-            <input className="rr-in" style={{ paddingLeft: 34 }} aria-label="Sipariş veya fatura numarasıyla ara" placeholder="Sipariş, fatura veya kayıt no" value={draft.search}
-              onChange={event => setDraft({ ...draft, search: event.target.value })} onKeyDown={event => { if (event.key === 'Enter') apply(draft) }} /></span></label>
-          <div className="rr-fld"><small>Pazaryeri</small><RrAnchor trigger={(isOpen, toggle) => <button type="button" className={`rr-trigger${isOpen ? ' rr-on' : ''}`} onClick={toggle}>
-            <span>{draft.platforms.length === 0 ? 'Tümü' : draft.platforms.includes(RETURN_NO_PLATFORM) ? 'Hiçbiri' : draft.platforms.map(platformName).join(', ')}</span><RrIcon name="chev" /></button>}>
-            {() => <ReturnPlatformPop title="Pazaryeri" options={platformOptions} selected={draft.platforms} onChange={next => setDraft({ ...draft, platforms: next })} />}</RrAnchor></div>
-          {single('Bölge', draft.region, [{ value: 'ALL', label: 'Tümü' }, { value: 'TR_GULF', label: regionLabels.TR_GULF }, { value: 'EUROPE', label: regionLabels.EUROPE }, { value: 'AZ', label: regionLabels.AZ }],
-            value => setDraft({ ...draft, region: value as PayoutRegion | 'ALL' }), draft.platforms.length > 0 && !draft.platforms.includes('TRENDYOL'))}
-          {single('Durum', draft.state, (Object.keys(payoutStateLabels) as PayoutState[]).map(value => ({ value, label: payoutStateLabels[value] })), value => setDraft({ ...draft, state: value as PayoutState }))}
-          <DateRangePicker className="rr-fld rr-date" from={draft.from} to={draft.to} onChange={range => setDraft({ ...draft, from: range.from, to: range.to })}
-            label={tab === 'past' ? 'Ödeme Tarihi' : 'Ödeme Günü'} placeholder="Başlangıç – Bitiş" icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
-          <div className="rr-fld reports-payout-range"><small>Tutar (₺)</small><span>
-            <input className="rr-in" inputMode="decimal" aria-label="En az tutar" placeholder="En az" value={draft.min} onChange={event => setDraft({ ...draft, min: event.target.value })} />
-            <input className="rr-in" inputMode="decimal" aria-label="En çok tutar" placeholder="En çok" value={draft.max} onChange={event => setDraft({ ...draft, max: event.target.value })} /></span></div>
-          {single('Sıralama', draft.sort, [{ value: 'date', label: 'Tarihe Göre' }, { value: 'amount', label: 'Tutara Göre' }], value => setDraft({ ...draft, sort: value as PayoutSort }), false, true)}
-          <div className="rr-fbtns"><button type="button" className="rr-btn" onClick={clear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => apply(draft)}>Filtrele</button></div>
-        </div></RrFilterCard>
-      </div>
       {/* Every marketplace's total (a card sets the platform filter; the totals add up to the balance). Trendyol's card
           holds its payout regions in a list that opens under it; a region sets the region filter. */}
       {!search.trim() && platformCards.length > 0 && <div className="reports-payout-regions is-platforms" role="group" aria-label="Pazaryeri Toplamları">
@@ -1988,6 +1968,26 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
         })}</ul>
         {(platforms.length > 0 || region !== 'ALL') && <button type="button" className="secondary reports-payout-all" onClick={() => apply({ ...draft, ...applied, search, platforms: [], region: 'ALL' })}>Tümü</button>}
       </div>}
+      <div className="rr reports-payout-filters">
+        <RrFilterCard active={activeCount}><div className="rr-filters reports-payout-filterbar">
+          <label className="rr-fld rr-search"><small>Sipariş / Fatura No</small><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} />
+            <input className="rr-in" style={{ paddingLeft: 34 }} aria-label="Sipariş veya fatura numarasıyla ara" placeholder="Sipariş, fatura veya kayıt no" value={draft.search}
+              onChange={event => setDraft({ ...draft, search: event.target.value })} onKeyDown={event => { if (event.key === 'Enter') apply(draft) }} /></span></label>
+          <div className="rr-fld"><small>Pazaryeri</small><RrAnchor trigger={(isOpen, toggle) => <button type="button" className={`rr-trigger${isOpen ? ' rr-on' : ''}`} onClick={toggle}>
+            <span>{draft.platforms.length === 0 ? 'Tümü' : draft.platforms.includes(RETURN_NO_PLATFORM) ? 'Hiçbiri' : draft.platforms.map(platformName).join(', ')}</span><RrIcon name="chev" /></button>}>
+            {() => <ReturnPlatformPop title="Pazaryeri" options={platformOptions} selected={draft.platforms} onChange={next => setDraft({ ...draft, platforms: next })} />}</RrAnchor></div>
+          {single('Bölge', draft.region, [{ value: 'ALL', label: 'Tümü' }, { value: 'TR_GULF', label: regionLabels.TR_GULF }, { value: 'EUROPE', label: regionLabels.EUROPE }, { value: 'AZ', label: regionLabels.AZ }],
+            value => setDraft({ ...draft, region: value as PayoutRegion | 'ALL' }), draft.platforms.length > 0 && !draft.platforms.includes('TRENDYOL'))}
+          {single('Durum', draft.state, (Object.keys(payoutStateLabels) as PayoutState[]).map(value => ({ value, label: payoutStateLabels[value] })), value => setDraft({ ...draft, state: value as PayoutState }))}
+          <DateRangePicker className="rr-fld rr-date" from={draft.from} to={draft.to} onChange={range => setDraft({ ...draft, from: range.from, to: range.to })}
+            label={tab === 'past' ? 'Ödeme Tarihi' : 'Ödeme Günü'} placeholder="Başlangıç – Bitiş" icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
+          <div className="rr-fld reports-payout-range"><small>Tutar (₺)</small><span>
+            <input className="rr-in" inputMode="decimal" aria-label="En az tutar" placeholder="En az" value={draft.min} onChange={event => setDraft({ ...draft, min: event.target.value })} />
+            <input className="rr-in" inputMode="decimal" aria-label="En çok tutar" placeholder="En çok" value={draft.max} onChange={event => setDraft({ ...draft, max: event.target.value })} /></span></div>
+          {single('Sıralama', draft.sort, [{ value: 'date', label: 'Tarihe Göre' }, { value: 'amount', label: 'Tutara Göre' }], value => setDraft({ ...draft, sort: value as PayoutSort }), false, true)}
+          <div className="rr-fbtns"><button type="button" className="rr-btn" onClick={clear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => apply(draft)}>Filtrele</button></div>
+        </div></RrFilterCard>
+      </div>
       {search.trim() ? <PayoutLinesTable platforms={platforms.length ? platforms : null} search={search} />
         : <>
           <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
