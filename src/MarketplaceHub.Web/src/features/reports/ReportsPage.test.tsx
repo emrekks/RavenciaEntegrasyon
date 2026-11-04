@@ -508,19 +508,20 @@ describe('ReportsPage', () => {
     expect(texts(page, '.reports-payout-region')[1]).toContain('Bekleyen Kesinti ₺50,00')
     // The days to come, each with its total; the next one is marked, a Pazarama row carries no Trendyol region.
     const days = texts(page, '.reports-payout-day > header')
-    expect(days[0]).toContain('Sıradaki Ödeme05 Kas 2026 Per₺880,00')
-    expect(days[1]).toContain('12 Kas 2026 Per₺400,00')
+    expect(days[0]).toContain('05 Kas Per2026Sıradaki ÖdemeTahmini₺880,00')
+    expect(days[1]).toContain('12 Kas Per2026Tahmini₺400,00')
     // The overdue records wait apart, out of the next payout.
-    expect(days[2]).toContain('Vadesi Geçmiş, Ödeme Bekleyen₺240,00')
+    expect(days[2]).toContain('Vadesi Geçmiş, Ödeme BekleyenÖdeme günü belli değil₺240,00')
     const rows = texts(page, '.reports-payout-row')
     expect(rows).toHaveLength(4)
     expect(rows[0]).toContain('Türkiye, Körfez')
     expect(rows[0]).not.toContain('Tahmini')
     expect(rows[1]).toContain('Pazarama')
     expect(page.querySelectorAll('.reports-payout-row')[1].querySelector('.is-region')).toBeNull()
-    // A region narrows the payments to it.
+    // A region card sets the region filter: the payments and the figures narrow to it, and the address keeps it.
     await act(async () => { (page.querySelectorAll('.reports-payout-region')[1] as HTMLButtonElement).click() })
     expect(texts(page, '.reports-payout-row')).toHaveLength(2)
+    expect(texts(page, '.reports-kpis > div')[0]).toContain('Toplam Güncel Bakiye₺400')
     await act(async () => { (page.querySelector('.reports-payout-all') as HTMLButtonElement).click() })
     expect(texts(page, '.reports-payout-row')).toHaveLength(4)
     // A payment opens its records.
@@ -532,9 +533,24 @@ describe('ReportsPage', () => {
     expect(page.querySelector('.reports-payout-lines')?.textContent).toContain('MZ042DSS14')
     // The past payments show the marketplace's payout, under its day.
     await act(async () => { ([...page.querySelectorAll('.reports-payout-list [role="tab"]')].find(tab => tab.textContent?.includes('Geçmiş')) as HTMLElement).click() })
-    expect(texts(page, '.reports-payout-day > header')[0]).toContain('29 Eki 2026 Per')
+    expect(texts(page, '.reports-payout-day > header')[0]).toContain('29 Eki Per2026Ödendi')
     expect(texts(page, '.reports-payout-row')[0]).toContain('Ödendi')
     expect(page.querySelector('.reports-payout-coverage')?.textContent).toContain('Henüz okunmayanlar: PTT AVM')
+  })
+
+  it('narrows the payments by the filters kept in the address and says so when none is left', async () => {
+    const page = await open('?view=payouts&hs=OVERDUE')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(texts(page, '.reports-payout-row')).toHaveLength(1)
+    expect(texts(page, '.reports-payout-day > header')[0]).toContain('Vadesi Geçmiş, Ödeme Bekleyen')
+    // The figures follow the platforms and the region only.
+    expect(texts(page, '.reports-kpis > div')[0]).toContain('Toplam Güncel Bakiye₺1.180')
+    act(() => root?.unmount())
+    const empty = await open('?view=payouts&hmin=100000')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(empty.querySelector('.reports-payout-empty')?.textContent).toContain('Bu filtrelerle ödeme yok.')
+    await act(async () => { (empty.querySelector('.reports-payout-empty button') as HTMLButtonElement).click() })
+    expect(texts(empty, '.reports-payout-row')).toHaveLength(4)
   })
 
   it('opens the stock tab with its capital, value, breakdowns and dead stock, asking for the picked platforms', async () => {
