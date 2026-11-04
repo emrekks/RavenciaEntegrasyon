@@ -465,3 +465,19 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
 @media (max-width: 760px) {
   html body .date-range-picker-popover { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--rv-color-border-strong) transparent; }
 }
+/* The other filter panels on phones (Sorular's Filtre, İş Takibi's Filtrele, Entegrasyonlar' Filtrele) open the same way
+   as Siparişler's Filtre: a sheet sliding up from the bottom over a darkened page, with a grab handle (owner, 5 Nov
+   2026). Their own outside-tap handlers close them. */
+@keyframes rv-filter-sheet-up { from { translate: 0 100%; } }
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main :is(.qi-page .qi-popover, .integration-filter-menu, .jobs-reference-filter-panel) {
+    position: fixed !important; inset: auto 0 0 !important; z-index: 901 !important; box-sizing: border-box; width: auto !important; min-width: 0 !important; max-width: none !important;
+    max-height: 86dvh; overflow-y: auto; overscroll-behavior: contain; margin: 0 !important; padding: 26px 16px calc(16px + env(safe-area-inset-bottom)) !important;
+    border-width: 1px 0 0 !important; border-radius: 14px 14px 0 0 !important; box-shadow: 0 0 0 100vmax rgb(0 0 0 / 55%), 0 -12px 32px rgb(0 0 0 / 30%) !important;
+    transform-origin: bottom center; animation: rv-filter-sheet-up var(--rv-motion-sheet) var(--rv-ease-sheet) backwards;
+  }
+  html body .app-shell.stitch-shell main :is(.qi-page .qi-popover, .integration-filter-menu, .jobs-reference-filter-panel)::before { content: ""; position: absolute; top: 8px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--rv-color-border-strong); }
+}
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) {
+  html body .app-shell.stitch-shell main :is(.qi-page .qi-popover, .integration-filter-menu, .jobs-reference-filter-panel) { animation: none; }
+}

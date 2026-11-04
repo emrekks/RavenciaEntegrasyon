@@ -113,7 +113,7 @@
   --rv-motion-enter: 550ms;
   --rv-ease-enter: cubic-bezier(.2, .9, .2, 1);
   --rv-motion-item-stagger: 60ms;
-  --rv-motion-modal: 420ms;
+  --rv-motion-modal: 300ms; /* windows open quicker (owner, 5 Nov 2026: "biraz daha hızlandır") */
   --rv-ease-modal: cubic-bezier(.32, 1.32, .48, 1);
   --rv-motion-modal-from: .9;
   --rv-motion-backdrop-blur: 6px;
