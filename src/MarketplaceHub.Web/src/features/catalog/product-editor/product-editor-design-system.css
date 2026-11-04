@@ -1184,3 +1184,26 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .app-shell.stitch-shell main .product-page-heading .product-heading-back { width: 24px; min-width: 24px; justify-content: flex-start; }
   html body .app-shell.stitch-shell main .product-add-page .product-step-label-more { display: none; }
 }
+
+/* Phones, save bar of a saved product (Kaydet, the quick-update pair, Yayınla): Kaydet takes only the width of its word,
+   the quick-update pair takes the rest so "Hızlı Güncelle" and its icon have room, Yayınla stays a 40px icon button;
+   all 36px high with even 8px gaps. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions:has(> .platform-update-split) { display: flex; align-items: center; gap: 8px; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions:has(> .platform-update-split) > * { box-sizing: border-box; height: 36px; min-height: 0; margin: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions:has(> .platform-update-split) > button[type="submit"] { flex: 0 0 auto; width: auto; padding-inline: 14px; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions:has(> .platform-update-split) > .platform-update-split { flex: 1 1 auto; width: auto; min-width: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions:has(> .platform-update-split) .platform-update-split > .platform-update-quick { justify-content: center; gap: 8px; padding: 0 12px; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions:has(> .platform-update-split) .platform-update-split > .platform-update-settings { flex: 0 0 40px; width: 40px; min-width: 40px; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions:has(> .platform-update-split) > .product-submit-publish { flex: 0 0 40px; width: 40px; min-width: 40px; justify-content: center; padding: 0; }
+}
+
+/* Phones: dragging pictures does not work reliably there, so each tile carries a left and a right arrow under its
+   picture that move it one place; wider screens keep drag-sorting only. */
+.media-preview-strip .media-move-buttons { display: none; }
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > .media-move-buttons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; margin-top: 4px; }
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > .media-move-buttons > .media-move-btn { display: inline-grid; place-items: center; box-sizing: border-box; width: 100%; height: 28px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; }
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > .media-move-buttons > .media-move-btn:disabled { opacity: .4; cursor: default; }
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-drag-hint { display: none; }
+}

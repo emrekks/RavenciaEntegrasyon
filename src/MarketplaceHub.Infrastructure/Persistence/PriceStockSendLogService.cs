@@ -15,26 +15,8 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
     public async Task<ServiceResult<PageResult<PriceStockSendLogView>>> PageAsync(Guid tenantId, PriceStockSendLogQuery request, CancellationToken cancellationToken)
     {
         var empty = ServiceResult<PageResult<PriceStockSendLogView>>.Ok(new([], null, false));
-        var query = db.PriceStockSendLogs.AsNoTracking().Where(x => x.TenantId == tenantId);
-        if (request.ConnectionId is { } connectionId) query = query.Where(x => x.ConnectionId == connectionId);
-        var platforms = Codes(request.Platforms, null);
-        if (platforms is not null) query = query.Where(x => platforms.Contains(x.PlatformCode));
-        var results = Codes(request.Results, PriceStockSendResults.All);
-        if (results is { Length: 0 }) return empty;
-        if (results is not null) query = query.Where(x => results.Contains(x.Result));
-        var triggers = Codes(request.Triggers, PriceStockSendTriggers.All);
-        if (triggers is { Length: 0 }) return empty;
-        if (triggers is not null) query = query.Where(x => triggers.Contains(x.Trigger));
-        if (request.From is { } from) { var fromUtc = from.ToUniversalTime(); query = query.Where(x => x.CreatedAt >= fromUtc); }
-        if (request.To is { } to) { var toUtc = to.ToUniversalTime(); query = query.Where(x => x.CreatedAt <= toUtc); }
-        var term = request.Search?.Trim();
-        if (!string.IsNullOrEmpty(term))
-        {
-            if (term.Length > PriceStockSendLogQuery.MaximumSearchLength) term = term[..PriceStockSendLogQuery.MaximumSearchLength];
-            var variantIds = await SearchVariantIdsAsync(tenantId, term, cancellationToken);
-            if (variantIds.Count == 0) return empty;
-            query = query.Where(x => variantIds.Contains(x.VariantId));
-        }
+        var query = await FilteredAsync(tenantId, request, includeResults: true, cancellationToken);
+        if (query is null) return empty;
         if (!string.IsNullOrWhiteSpace(request.After))
         {
             if (!JobListCursor.TryDecode(request.After, out var afterCreatedAt, out var afterId))
@@ -53,6 +35,51 @@ public sealed class PriceStockSendLogService(AppDbContext db) : IPriceStockSendL
         if (hasMore) rows = rows.Take(limit).ToList();
         var nextCursor = hasMore ? JobListCursor.Encode(rows[^1].CreatedAt, rows[^1].Id) : null;
         return ServiceResult<PageResult<PriceStockSendLogView>>.Ok(new(await ViewsAsync(tenantId, rows, cancellationToken), nextCursor, hasMore));
+    }
+
+    // The summary above the log: how many rows each result has under the list's filters, the result filter left out so
+    // every count stays visible while one is picked. Grouped in the database, one row per result.
+    public async Task<ServiceResult<IReadOnlyList<PriceStockSendLogCount>>> CountsAsync(Guid tenantId, PriceStockSendLogQuery request, CancellationToken cancellationToken)
+    {
+        var query = await FilteredAsync(tenantId, request, includeResults: false, cancellationToken);
+        if (query is null) return ServiceResult<IReadOnlyList<PriceStockSendLogCount>>.Ok([]);
+        var counts = await query.GroupBy(x => x.Result)
+            .Select(group => new { Result = group.Key, Count = group.Count() })
+            .ToListAsync(cancellationToken);
+        return ServiceResult<IReadOnlyList<PriceStockSendLogCount>>.Ok(counts
+            .OrderBy(x => x.Result, StringComparer.Ordinal)
+            .Select(x => new PriceStockSendLogCount(x.Result, x.Count))
+            .ToList());
+    }
+
+    // The rows the filters keep (tenant, connection, platforms, results, triggers, send time, search); null when no row
+    // can match (a filter naming unknown codes only, or a search that names no variant).
+    private async Task<IQueryable<MarketplaceHub.Domain.PriceStockSendLog>?> FilteredAsync(Guid tenantId, PriceStockSendLogQuery request, bool includeResults, CancellationToken cancellationToken)
+    {
+        var query = db.PriceStockSendLogs.AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (request.ConnectionId is { } connectionId) query = query.Where(x => x.ConnectionId == connectionId);
+        var platforms = Codes(request.Platforms, null);
+        if (platforms is not null) query = query.Where(x => platforms.Contains(x.PlatformCode));
+        if (includeResults)
+        {
+            var results = Codes(request.Results, PriceStockSendResults.All);
+            if (results is { Length: 0 }) return null;
+            if (results is not null) query = query.Where(x => results.Contains(x.Result));
+        }
+        var triggers = Codes(request.Triggers, PriceStockSendTriggers.All);
+        if (triggers is { Length: 0 }) return null;
+        if (triggers is not null) query = query.Where(x => triggers.Contains(x.Trigger));
+        if (request.From is { } from) { var fromUtc = from.ToUniversalTime(); query = query.Where(x => x.CreatedAt >= fromUtc); }
+        if (request.To is { } to) { var toUtc = to.ToUniversalTime(); query = query.Where(x => x.CreatedAt <= toUtc); }
+        var term = request.Search?.Trim();
+        if (!string.IsNullOrEmpty(term))
+        {
+            if (term.Length > PriceStockSendLogQuery.MaximumSearchLength) term = term[..PriceStockSendLogQuery.MaximumSearchLength];
+            var variantIds = await SearchVariantIdsAsync(tenantId, term, cancellationToken);
+            if (variantIds.Count == 0) return null;
+            query = query.Where(x => variantIds.Contains(x.VariantId));
+        }
+        return query;
     }
 
     // Null: no filter. Empty: a filter that names only unknown values, so nothing can match.

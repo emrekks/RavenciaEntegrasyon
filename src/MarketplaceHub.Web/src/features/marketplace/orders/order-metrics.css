@@ -57,3 +57,8 @@
   /* The panel of a card in the right-hand column opens to the left so it stays on the screen. */
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article:nth-child(even) .rr-metric-tip { right: 0; left: auto; }
 }
+/* The card (or the Kısmi İptal chip) whose list is open: selected like the other selected controls, primary-soft with a
+   primary border; tapping it again closes the list. Every width. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link.rr-metric-on,
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link.rr-metric-on:hover { background: var(--rr-primary-soft, var(--rv-color-primary-soft)); border-color: var(--rr-primary, var(--rv-color-primary)); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip.rr-metric-on { background: var(--rr-surface); border-color: var(--rr-primary, var(--rv-color-primary)); animation: none; }

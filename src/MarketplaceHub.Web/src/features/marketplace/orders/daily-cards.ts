@@ -40,6 +40,21 @@ export function dayCardFilters(card: DayCard, day: string) {
     : { kind: 'ALL', status: card === 'cancelled' ? 'CANCELLED' : 'PARTIALLY_CANCELLED', dateFrom: '', dateTo: '', cancelFrom: day, cancelTo: day }
 }
 
+// The card whose list is the open one (its tab, and for micro-export the Mikro İhracat kind on Bekleyen), so the card
+// shows as selected; undefined on any other tab.
+export function activeDayCard({ status, kind }: { status: string; kind: string }): DayCard | undefined {
+  if (status === 'CANCELLED') return 'cancelled'
+  if (status === 'PARTIALLY_CANCELLED') return 'partial'
+  if (status === 'RESENT') return 'resent'
+  if (status === 'PENDING' && kind === 'MICRO') return 'micro'
+  return undefined
+}
+
+// Tapping the selected card again closes its list: back to the Tümü tab, without the kind and the day the card set.
+export function dayCardCloseFilters() {
+  return { kind: 'ALL', status: 'ALL', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' }
+}
+
 // The Yeniden Gönderim card's request: the order summary's RESENT tab alone over the resends not handed to the carrier,
 // which carries their count and their stores (the same set the Yeniden Gönderimler list shows under that filter).
 export function resentPendingParams() {

@@ -5,7 +5,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Me } from '../../shared/api'
 
-const apiState = vi.hoisted(() => ({ calls: [] as string[], retryGate: Promise.resolve() as Promise<void>, failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }>, sendLog: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false } }))
+const apiState = vi.hoisted(() => ({ calls: [] as string[], retryGate: Promise.resolve() as Promise<void>, failNextPage: false, extraCountRows: [] as Array<{ status: string; jobType: string; count: number }>, sendLog: { items: [] as unknown[], nextCursor: null as string | null, hasMore: false }, sendLogCounts: [] as Array<{ result: string; count: number }> }))
 
 // The page shows the last 24 hours by default, so the fixture's jobs are dated relative to the run.
 function hoursAgo(hours: number) {
@@ -39,6 +39,7 @@ vi.mock('../../shared/api', () => {
     ]
     if (path.startsWith('/jobs/metrics')) return []
     if (path.startsWith('/price-stock-send-log?')) return apiState.sendLog
+    if (path.startsWith('/price-stock-send-log/counts')) return apiState.sendLogCounts
     if (path === '/price-stock-monitor') return { generatedAt: hoursAgo(0), connections: [{
       connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', status: 'ACTIVE', masterSwitchOn: true, priceWriteEnabled: true, stockWriteEnabled: true,
       automaticWritesOpen: true, lastSuccessfulPushAt: hoursAgo(1), queuedJobs: 2, waitingForOrderRead: 0, failedPushes7d: 0, manualReviewPushes: 0, invalidOffers: 0,
@@ -111,6 +112,7 @@ beforeEach(() => {
   apiState.failNextPage = false
   apiState.extraCountRows = []
   apiState.sendLog = { items: [], nextCursor: null, hasMore: false }
+  apiState.sendLogCounts = []
   container = document.createElement('div')
   document.body.append(container)
 })
@@ -340,7 +342,44 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     // The empty log does not claim whether automatic writes are on: it cannot know, API Sağlık does.
     expect(container.textContent).not.toContain('şu an kapalı')
     expect(container.textContent).toContain('API Sağlık gösterir')
-    expect(container.querySelector('.jobs-reference-status-summary')).toBeNull()
+    // The job list's counts give way to the log's own result summary.
+    expect(container.querySelector('[aria-label="İşlem durum özeti"]')).toBeNull()
+    expect(container.querySelector('[aria-label="Gönderim sonuç özeti"]')).not.toBeNull()
+  })
+
+  it('has the job list heading controls of its own: range, Filtrele and a result summary that filters', async () => {
+    apiState.sendLogCounts = [{ result: 'APPLIED', count: 3 }, { result: 'UNCHANGED', count: 1 }, { result: 'REJECTED', count: 2 }, { result: 'SUBMITTED', count: 1 }]
+    await renderPage('/jobs?sekme=loglar&aralik=7g')
+    await logViewLoaded()
+    const countRequests = () => apiState.calls.filter(path => path.startsWith('/price-stock-send-log/counts'))
+
+    // The log opens on its whole history whatever range the job list holds.
+    const range = container.querySelector<HTMLButtonElement>('.jobs-reference-heading-actions .jobs-reference-range')!
+    expect(range.textContent).toBe('Tüm Zamanlar')
+    expect(logRequests().at(-1)!.get('from')).toBeNull()
+    const summary = container.querySelector('[aria-label="Gönderim sonuç özeti"]')!
+    expect(Array.from(summary.querySelectorAll('[role="button"]')).map(chip => chip.textContent)).toEqual(['Başarılı 4', 'Sorunlu 2', 'Bekleyen 1', 'Yeni Sürüm 0'])
+
+    await act(async () => { range.click() })
+    await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('.jobs-reference-range-menu button')).find(item => item.textContent === 'Son 24 Saat')!.click() })
+    await settle()
+    const since = Date.parse(logRequests().at(-1)!.get('from')!)
+    expect(Math.abs(Date.now() - 24 * 60 * 60 * 1000 - since)).toBeLessThan(60_000)
+    expect(new URLSearchParams(countRequests().at(-1)!.split('?')[1]).get('from')).toBe(logRequests().at(-1)!.get('from'))
+    expect(container.querySelector('.jobs-reference-heading-actions .jobs-reference-range')!.textContent).toBe('Son 24 Saat')
+    // The job list's range in the address is untouched.
+    expect(currentSearch).toContain('aralik=7g')
+
+    // Sorunlu picks its whole group; the counts are read without the result filter.
+    const problems = Array.from(summary.querySelectorAll<HTMLElement>('[role="button"]')).find(chip => chip.textContent?.startsWith('Sorunlu'))!
+    await act(async () => { problems.click() })
+    await settle()
+    expect(logRequests().at(-1)!.get('results')).toBe('REJECTED,FAILED,UNKNOWN')
+    expect(countRequests().at(-1)).not.toContain('results=')
+    expect(problems.getAttribute('aria-pressed')).toBe('true')
+    await act(async () => { container.querySelector<HTMLButtonElement>('.jobs-reference-filter-toggle')!.click() })
+    expect(container.querySelector('button[aria-label="Sonuç: 3 Sonuç"]')).not.toBeNull()
+    expect(container.querySelector('.jobs-reference-filter-toggle .psl-clear-count')!.textContent).toBe('1')
   })
 
   it('is a main tab beside İş Takibi, above the category tabs, and İş Takibi brings the category back', async () => {
@@ -397,6 +436,10 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
   it('sends the result filter and clears it with Temizle', async () => {
     await renderPage('/jobs?sekme=loglar')
     await logViewLoaded()
+    // The filters sit in the Filtrele panel of the page heading, like the job list's.
+    expect(container.querySelector('button[aria-label="Sonuç: Tüm Sonuçlar"]')).toBeNull()
+    await act(async () => { container.querySelector<HTMLButtonElement>('.jobs-reference-heading-actions .jobs-reference-filter-toggle')!.click() })
+    expect(container.querySelector('[role="dialog"][aria-label="Gönderim kaydı filtreleri"]')).not.toBeNull()
     const clearButton = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.psl-clear'))[0]
     expect(clearButton().disabled).toBe(true)
     await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="Sonuç: Tüm Sonuçlar"]')!.click() })

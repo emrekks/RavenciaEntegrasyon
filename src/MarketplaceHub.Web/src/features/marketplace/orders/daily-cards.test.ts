@@ -1,10 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { cancellationStores, dailyCancellationCounts, dayCardFilters, microDayParams, resentPendingParams, storeCounts, storeUnits } from './daily-cards'
+import { activeDayCard, cancellationStores, dailyCancellationCounts, dayCardCloseFilters, dayCardFilters, microDayParams, resentPendingParams, storeCounts, storeUnits } from './daily-cards'
 import { tabDateFilters } from './order-date-filters'
 
 const row = (cancelledOrders: number, partialOrders: number, unknownTimeOrders = 0, wholeUnits?: number, partialUnits?: number) => ({ connectionId: 'c', cancelledOrders, partialOrders, cancelledUnits: 0, unknownTimeOrders, unknownTimeUnits: 0, wholeUnits, partialUnits })
 
 describe('daily order cards', () => {
+  it('knows which card list is open, and closes it back to Tümü', () => {
+    expect(activeDayCard({ status: 'CANCELLED', kind: 'ALL' })).toBe('cancelled')
+    expect(activeDayCard({ status: 'PARTIALLY_CANCELLED', kind: 'ALL' })).toBe('partial')
+    expect(activeDayCard({ status: 'RESENT', kind: 'RESENT_UNSHIPPED' })).toBe('resent')
+    expect(activeDayCard({ status: 'PENDING', kind: 'MICRO' })).toBe('micro')
+    // Bekleyen without the micro-export kind, and Tümü, belong to no card.
+    expect(activeDayCard({ status: 'PENDING', kind: 'ALL' })).toBeUndefined()
+    expect(activeDayCard({ status: 'ALL', kind: 'ALL' })).toBeUndefined()
+    // Every card's own list is recognised as its own.
+    for (const card of ['micro', 'cancelled', 'partial', 'resent'] as const) expect(activeDayCard(dayCardFilters(card, '2026-11-04'))).toBe(card)
+    expect(dayCardCloseFilters()).toEqual({ kind: 'ALL', status: 'ALL', dateFrom: '', dateTo: '', cancelFrom: '', cancelTo: '' })
+    expect(activeDayCard(dayCardCloseFilters())).toBeUndefined()
+  })
+
   it('counts the orders cancelled whole and in part today over every store with their units, and nothing while unread', () => {
     expect(dailyCancellationCounts([row(2, 1, 0, 3, 1), row(1, 0, 0, 2, 0), row(0, 3, 4, 0, 5)])).toEqual({ whole: 3, partial: 4, wholeUnits: 5, partialUnits: 6 })
     expect(dailyCancellationCounts([])).toEqual({ whole: 0, partial: 0, wholeUnits: 0, partialUnits: 0 })

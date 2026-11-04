@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  emptySendLogFilters, hasSendLogFilters, istanbulDayToIso, listPriceChanged, priceChange, quantityChange, sendLogFilterCount, sendLogQueryString,
-  sendLogResultGroups, sendLogResultLabel, sendLogResultTone, sendLogResultTooltip, sendLogTriggerGroups, sendLogTriggerLabel
+  emptySendLogFilters, hasSendLogFilters, istanbulDayToIso, listPriceChanged, priceChange, quantityChange, sendLogCountsQueryString, sendLogFilterCount,
+  sendLogPanelFilterCount, sendLogQueryString, sendLogRangeLabel, sendLogResultGroups, sendLogResultLabel, sendLogResultTone, sendLogResultTooltip,
+  sendLogSummary, sendLogSummaryCounts, sendLogSummaryOn, sendLogTriggerGroups, sendLogTriggerLabel, toggleSendLogSummary
 } from './price-stock-send-log'
 
 describe('price/stock send log values', () => {
@@ -79,7 +80,7 @@ describe('price/stock send log request', () => {
   })
 
   it('sends every filter and the cursor', () => {
-    const filters = { search: '  8680001  ', platforms: ['trendyol', 'HEPSIBURADA', 'TRENDYOL'], results: ['REJECTED', 'FAILED'], triggers: ['ORDER'], from: '2026-10-19', to: '2026-10-20' }
+    const filters = { search: '  8680001  ', platforms: ['trendyol', 'HEPSIBURADA', 'TRENDYOL'], results: ['REJECTED', 'FAILED'], triggers: ['ORDER'], range: '24h' as const, from: '2026-10-19', to: '2026-10-20' }
     const params = new URLSearchParams(sendLogQueryString(filters, 'cursor-1', 100, true).slice(1))
     expect(Object.fromEntries(params)).toEqual({
       limit: '100', search: '8680001', platforms: 'TRENDYOL,HEPSIBURADA', results: 'REJECTED,FAILED', triggers: 'ORDER',
@@ -89,6 +90,43 @@ describe('price/stock send log request', () => {
     // The date range counts once, however many of its ends are set.
     expect(sendLogFilterCount(filters)).toBe(5)
     expect(sendLogFilterCount({ ...emptySendLogFilters, to: '2026-10-20' })).toBe(1)
+  })
+
+  it('counts the heading range back from now unless days are chosen', () => {
+    const now = Date.parse('2026-11-04T12:00:00Z')
+    const lastDay = { ...emptySendLogFilters, range: '24h' as const }
+    expect(new URLSearchParams(sendLogQueryString(lastDay, null, 50, false, now).slice(1)).get('from')).toBe('2026-11-03T12:00:00.000Z')
+    expect(new URLSearchParams(sendLogQueryString({ ...lastDay, range: '7d' }, null, 50, false, now).slice(1)).get('from')).toBe('2026-10-28T12:00:00.000Z')
+    expect(sendLogQueryString(emptySendLogFilters, null, 50, false, now)).toBe('?limit=50')
+    // A range other than Tüm Zamanlar narrows the list; chosen days replace it and count once.
+    expect(sendLogFilterCount(lastDay)).toBe(1)
+    expect(sendLogPanelFilterCount(lastDay)).toBe(0)
+    expect(sendLogRangeLabel(lastDay)).toBe('Son 24 Saat')
+    const days = { ...lastDay, from: '2026-11-01', to: '2026-11-02' }
+    expect(Object.fromEntries(new URLSearchParams(sendLogQueryString(days, null, 50, false, now).slice(1)))).toEqual({ limit: '50', from: '2026-10-31T21:00:00.000Z', to: '2026-11-02T20:59:59.999Z' })
+    expect(sendLogFilterCount(days)).toBe(1)
+    expect(sendLogPanelFilterCount(days)).toBe(1)
+    expect(sendLogRangeLabel(days)).toBe('01.11.2026 – 02.11.2026')
+  })
+
+  it('asks for the summary counts without the result filter', () => {
+    const now = Date.parse('2026-11-04T12:00:00Z')
+    const filters = { ...emptySendLogFilters, search: ' 868 ', platforms: ['n11'], results: ['APPLIED'], triggers: ['ORDER'], range: '24h' as const }
+    expect(Object.fromEntries(new URLSearchParams(sendLogCountsQueryString(filters, now).slice(1)))).toEqual({ search: '868', platforms: 'N11', triggers: 'ORDER', from: '2026-11-03T12:00:00.000Z' })
+    expect(sendLogCountsQueryString(emptySendLogFilters, now)).toBe('')
+  })
+
+  it('sums the counts into the summary groups and toggles a whole group', () => {
+    expect(sendLogSummary.map(group => group.label)).toEqual(['Başarılı', 'Sorunlu', 'Bekleyen', 'Yeni Sürüm'])
+    expect(sendLogSummaryCounts([{ result: 'APPLIED', count: 3 }, { result: 'UNCHANGED', count: 2 }, { result: 'REJECTED', count: 1 }, { result: 'UNKNOWN', count: 4 }, { result: 'SUBMITTED', count: 5 }, { result: 'NEW_STATE', count: 9 }]))
+      .toEqual({ success: 5, problem: 5, pending: 5, other: 0 })
+    const problems = sendLogSummary[1].values
+    expect(toggleSendLogSummary(['APPLIED'], problems)).toEqual(['APPLIED', 'REJECTED', 'FAILED', 'UNKNOWN'])
+    expect(sendLogSummaryOn(['APPLIED', 'REJECTED', 'FAILED', 'UNKNOWN'], problems)).toBe(true)
+    expect(toggleSendLogSummary(['APPLIED', 'REJECTED', 'FAILED', 'UNKNOWN'], problems)).toEqual(['APPLIED'])
+    // One result of the group picked in the Sonuç menu: the group is off, and a tap picks the rest of it.
+    expect(sendLogSummaryOn(['REJECTED'], problems)).toBe(false)
+    expect(toggleSendLogSummary(['REJECTED'], problems)).toEqual(['REJECTED', 'FAILED', 'UNKNOWN'])
   })
 
   it('keeps the page size and the search within the server limits', () => {

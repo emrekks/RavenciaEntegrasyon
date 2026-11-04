@@ -1,15 +1,25 @@
-/* İşlem Takibi › Loglar: the price/stock send log as a dense API-log table (44px rows), the filters in one bar,
-   cards on phones like the job list. */
+/* İşlem Takibi › Loglar: the price/stock send log as a dense API-log table (44px rows) under the job list's toolbar
+   card, its range and Filtrele in the page heading, cards on phones like the job list. */
 .app-shell.stitch-shell main .jobs-reference-page .psl { display: grid; gap: 12px; min-width: 0; }
 
-/* Filters bar: one row of 36px controls on a wide screen (search, Platform, Sonuç, Tetikleyen, dates, then Temizle and
-   Yenile at the right end); on a narrower one the search takes the first row and the rest follow it. */
-.app-shell.stitch-shell main .jobs-reference-page .psl-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.app-shell.stitch-shell main .jobs-reference-page .psl-filters .psl-search { flex: 1 1 180px; width: auto; min-width: 180px; height: 36px; min-height: 0; }
+/* Toolbar: the job list's card, the result summary at the left, the search and Yenile at the right. */
+.app-shell.stitch-shell main .jobs-reference-page .psl-toolbar .psl-search { width: min(360px, 100%); min-width: 0; height: 36px; min-height: 0; }
+/* Filtrele panel (in the page heading): Platform across, Sonuç and Tetikleyen side by side, the dates across, then
+   Temizle. Each picker fills its cell; a menu opens over the panel. */
+.app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; width: min(360px, calc(100vw - 32px)); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel .psl-panel-wide { grid-column: 1 / -1; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-panel-field { display: grid; gap: 6px; min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page :is(.psl-panel-field > span, .psl-filter-panel .date-range-picker-label) { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel :is(.psl-menu-wrap, .psl-dates) { min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel :is(.psl-menu-toggle, .psl-dates .date-range-picker-trigger, .psl-clear) { width: 100%; min-width: 0; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel .psl-menu-summary { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel .psl-dates { display: grid; gap: 6px; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel .psl-dates .date-range-picker-label { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel .psl-clear { justify-content: center; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-toggle .psl-clear-count { margin-left: 2px; }
 .app-shell.stitch-shell main .jobs-reference-page .psl-control { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400; text-transform: none; }
 .app-shell.stitch-shell main .jobs-reference-page button.psl-control { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
 .app-shell.stitch-shell main .jobs-reference-page button.psl-control:hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-soft)); }
-.app-shell.stitch-shell main .jobs-reference-page .psl-filter-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 .app-shell.stitch-shell main .jobs-reference-page .psl-clear:disabled { color: var(--rv-color-muted); cursor: default; opacity: .55; }
 .app-shell.stitch-shell main .jobs-reference-page .psl-clear-count { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; color: var(--rv-color-primary); background: var(--rv-color-primary-soft); border-radius: 7px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
 /* Dates: the panel's range picker, drawn as one more 36px control of the bar (its label stays for screen readers). */
@@ -85,13 +95,8 @@
 
 /* Phones: each line is a card — product and result on top, stock and price, then time, platform and trigger. */
 @media (max-width: 760px) {
-  /* Filters: the search on its own row, the four pickers two by two, Temizle and Yenile at the right of the last row. */
-  .app-shell.stitch-shell main .jobs-reference-page .psl-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .app-shell.stitch-shell main .jobs-reference-page .psl-filters .psl-search { grid-column: 1 / -1; min-width: 0; }
-  .app-shell.stitch-shell main .jobs-reference-page :is(.psl-menu-wrap, .psl-dates) { min-width: 0; }
-  .app-shell.stitch-shell main .jobs-reference-page :is(.psl-menu-toggle, .psl-dates .date-range-picker-trigger) { width: 100%; min-width: 0; }
-  .app-shell.stitch-shell main .jobs-reference-page .psl-menu-summary { flex: 1; min-width: 0; overflow: hidden; text-align: left; text-overflow: ellipsis; }
-  .app-shell.stitch-shell main .jobs-reference-page .psl-filter-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  /* The search takes the toolbar's width, Yenile beside it (the job list's toolbar rules stack it under the counts). */
+  .app-shell.stitch-shell main .jobs-reference-page .psl-toolbar .psl-search { flex: 1 1 auto; width: auto; min-width: 0; }
   .app-shell.stitch-shell main .jobs-reference-page .psl-table-scroll { overflow: visible; background: transparent; border: 0; }
   .app-shell.stitch-shell main .jobs-reference-page .psl-table,
   .app-shell.stitch-shell main .jobs-reference-page .psl-table > tbody { display: block; width: 100%; min-width: 0; }

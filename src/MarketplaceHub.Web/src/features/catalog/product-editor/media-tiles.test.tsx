@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, click, flush, render } from '../../../test/render'
-import { LocalImagePreview, MediaAddTile } from './media-tiles'
+import { LocalImagePreview, MediaAddTile, MediaMoveButtons } from './media-tiles'
 
 beforeEach(() => {
   Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:picture-1'), revokeObjectURL: vi.fn() })
@@ -42,11 +42,39 @@ describe('product picture tile', () => {
     expect(image.title).not.toContain('Büyütmek')
   })
 
-  it('has no order arrows: pictures are sorted by dragging', async () => {
+  it('has no order arrows unless a move handler is given', async () => {
     const { host } = render(<LocalImagePreview file={picture} alt="Ürün 1" caption="urun.jpg" draggable mediaIndex={0} />)
     await flush()
     expect(host.querySelector('.media-move-buttons')).toBeNull()
     expect(host.querySelectorAll('button')).toHaveLength(0)
+  })
+
+  it('moves an uploaded picture one place with the arrows under it', async () => {
+    const onMove = vi.fn()
+    const { host } = render(<LocalImagePreview file={picture} alt="Ürün 2" caption="urun.jpg" draggable mediaIndex={1} mediaCount={3} onMove={onMove} />)
+    await flush()
+    click(host.querySelector<HTMLButtonElement>('button[aria-label="Görseli sola taşı"]')!)
+    click(host.querySelector<HTMLButtonElement>('button[aria-label="Görseli sağa taşı"]')!)
+    expect(onMove.mock.calls).toEqual([[0], [2]])
+  })
+
+  it('turns the arrow off at each end of the strip and when disabled', () => {
+    const onMove = vi.fn()
+    const left = (host: HTMLElement) => host.querySelector<HTMLButtonElement>('button[aria-label="Görseli sola taşı"]')!
+    const right = (host: HTMLElement) => host.querySelector<HTMLButtonElement>('button[aria-label="Görseli sağa taşı"]')!
+    const first = render(<MediaMoveButtons index={0} count={2} onMove={onMove} />).host
+    expect(left(first).disabled).toBe(true)
+    expect(right(first).disabled).toBe(false)
+    cleanup()
+    const last = render(<MediaMoveButtons index={1} count={2} onMove={onMove} />).host
+    expect(left(last).disabled).toBe(false)
+    expect(right(last).disabled).toBe(true)
+    cleanup()
+    const busy = render(<MediaMoveButtons index={1} count={3} onMove={onMove} disabled />).host
+    expect(left(busy).disabled).toBe(true)
+    expect(right(busy).disabled).toBe(true)
+    click(left(busy))
+    expect(onMove).not.toHaveBeenCalled()
   })
 
   it('opens the file picker from the plus tile and takes dropped files, but not a dragged picture', () => {

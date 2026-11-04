@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query'
+import { createPortal } from 'react-dom'
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Button, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
-import { useDismissable } from '../../shared/hooks/useDismissable'
+import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
+import { jobTimeRanges } from './job-list-query'
+import { JobStateGlyph } from './job-state-glyph'
 import {
-  emptySendLogFilters, hasSendLogFilters, listPriceChanged, priceChange, quantityChange, sendLogFilterCount, sendLogQueryString, sendLogResultGroups,
-  sendLogResultLabel, sendLogResultTone, sendLogResultTooltip, sendLogTriggerGroups, sendLogTriggerLabel,
+  emptySendLogFilters, hasSendLogFilters, listPriceChanged, priceChange, quantityChange, sendLogCountsQueryString, sendLogFilterCount, sendLogPanelFilterCount,
+  sendLogQueryString, sendLogRangeLabel, sendLogResultGroups, sendLogResultLabel, sendLogResultTone, sendLogResultTooltip, sendLogSummary, sendLogSummaryCounts,
+  sendLogSummaryOn, sendLogTriggerGroups, sendLogTriggerLabel, toggleSendLogSummary,
   type PriceStockSendLogEntry, type PriceStockSendLogPage, type SendLogFilters, type ValueChange
 } from './price-stock-send-log'
 import './price-stock-send-log.css'
@@ -92,7 +96,44 @@ function FilterMenu({ name, allLabel, unit, groups, selected, onChange, emptyTex
 const resultGroups: FilterMenuGroup[] = sendLogResultGroups.map(group => ({ label: group.label, options: group.values.map(value => ({ value, label: sendLogResultLabel(value) })) }))
 const triggerGroups: FilterMenuGroup[] = sendLogTriggerGroups.map(group => ({ label: group.label, options: group.values.map(value => ({ value, label: sendLogTriggerLabel(value) })) }))
 
-export function PriceStockSendLog({ platformOptions, onOpenJob }: { platformOptions: string[]; onOpenJob: (jobId: string) => void }) {
+// The page heading's controls for the log, drawn into İşlem Takibi's heading (headingSlot) where the job list has its
+// own: the range menu with the job list's presets (chosen days override it) and Filtrele with Platform, Sonuç,
+// Tetikleyen and Gönderim Tarihi. The log keeps its own range and filters; the job list's stay as they were.
+function SendLogHeadingControls({ filters, platformGroups, onChange, onClear, clearCount }: { filters: SendLogFilters; platformGroups: FilterMenuGroup[]; onChange: (patch: Partial<SendLogFilters>) => void; onClear: () => void; clearCount: number }) {
+  const [rangeOpen, setRangeOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const rangeWrap = useRef<HTMLDivElement>(null)
+  const panelWrap = useRef<HTMLDivElement>(null)
+  useDismissable(rangeOpen, [rangeWrap], () => setRangeOpen(false))
+  // The date picker's calendar is portalled to the page, so a press in it still belongs to the panel.
+  useDismissable(panelOpen, [panelWrap], () => setPanelOpen(false), { isInside: insideSelector('.date-range-picker-popover') })
+  const days = Boolean(filters.from || filters.to)
+  const panelCount = sendLogPanelFilterCount(filters)
+  return <>
+    <div className="jobs-reference-range-wrap" ref={rangeWrap}>
+      <button type="button" className="jobs-reference-range" aria-expanded={rangeOpen} aria-label={`Gönderim zaman aralığı: ${sendLogRangeLabel(filters)}`} onClick={() => setRangeOpen(value => !value)}>
+        <UiIcon name="calendar" className="jobs-reference-icon" size={18} />{sendLogRangeLabel(filters)}<UiIcon name="chevronDown" className="jobs-reference-icon" size={18} />
+      </button>
+      {rangeOpen && <div className="jobs-reference-range-menu" role="menu" aria-label="Zaman aralığı">
+        {jobTimeRanges.map(([value, label]) => <button type="button" role="menuitem" className={!days && filters.range === value ? 'active' : ''} key={value} onClick={() => { onChange({ range: value, from: '', to: '' }); setRangeOpen(false) }}>{label}</button>)}
+      </div>}
+    </div>
+    <div className="jobs-reference-filter-wrap" ref={panelWrap}>
+      <button type="button" className="jobs-reference-filter-toggle" aria-expanded={panelOpen} onClick={() => setPanelOpen(value => !value)}>
+        <UiIcon name="listSortAscending" className="jobs-reference-icon" size={18} />Filtrele{panelCount > 0 && <span className="psl-clear-count" aria-label={`${panelCount} filtre`}>{panelCount}</span>}
+      </button>
+      {panelOpen && <div className="jobs-reference-filter-panel psl-filter-panel" role="dialog" aria-label="Gönderim kaydı filtreleri">
+        <div className="psl-panel-field psl-panel-wide"><span>Platform</span><FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={filters.platforms} onChange={platforms => onChange({ platforms })} emptyText="Bağlı pazaryeri yok." /></div>
+        <div className="psl-panel-field"><span>Sonuç</span><FilterMenu name="Sonuç" allLabel="Tüm Sonuçlar" unit="Sonuç" groups={resultGroups} selected={filters.results} onChange={results => onChange({ results })} /></div>
+        <div className="psl-panel-field"><span>Tetikleyen</span><FilterMenu name="Tetikleyen" allLabel="Tümü" unit="Tetikleyen" groups={triggerGroups} selected={filters.triggers} onChange={triggers => onChange({ triggers })} /></div>
+        <DateRangePicker className="psl-dates psl-panel-wide" label="Gönderim Tarihi" placeholder="Aralık Seçilmedi" from={filters.from} to={filters.to} onChange={range => onChange({ from: range.from, to: range.to })} />
+        <button type="button" className="psl-control psl-clear psl-panel-wide" onClick={onClear} disabled={clearCount === 0}>Temizle{clearCount > 0 && <span className="psl-clear-count" aria-label={`${clearCount} filtre`}>{clearCount}</span>}</button>
+      </div>}
+    </div>
+  </>
+}
+
+export function PriceStockSendLog({ platformOptions, onOpenJob, headingSlot }: { platformOptions: string[]; onOpenJob: (jobId: string) => void; headingSlot?: HTMLElement | null }) {
   const [filters, setFilters] = useState<SendLogFilters>(emptySendLogFilters)
   const [searchText, setSearchText] = useState('')
   // Zaman is the one order the server pages by: newest first, or oldest first.
@@ -104,6 +145,16 @@ export function PriceStockSendLog({ platformOptions, onOpenJob }: { platformOpti
   }, [searchText])
   const update = (patch: Partial<SendLogFilters>) => setFilters(current => ({ ...current, ...patch }))
   const clear = () => { setSearchText(''); setFilters(emptySendLogFilters) }
+
+  // The summary counts every result under the other filters, so a picked group keeps the rest of the counts in view.
+  const countFilters = useMemo(() => ({ ...filters, results: [] }), [filters])
+  const counts = useQuery({
+    queryKey: ['price-stock-send-log', 'counts', countFilters],
+    queryFn: () => hubPoll<Array<{ result: string; count: number }>>(`/price-stock-send-log/counts${sendLogCountsQueryString(countFilters)}`),
+    placeholderData: keepPreviousData,
+    refetchInterval: firstPagePollMs
+  })
+  const summary = useMemo(() => counts.data ? sendLogSummaryCounts(counts.data) : null, [counts.data])
 
   const list = useInfiniteQuery({
     queryKey: ['price-stock-send-log', filters, oldestFirst],
@@ -124,16 +175,24 @@ export function PriceStockSendLog({ platformOptions, onOpenJob }: { platformOpti
   const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: [...new Set([...platformOptions.filter(code => code !== 'TRENDYOL_EFATURAM'), ...filters.platforms])]
     .map(code => ({ value: code, label: marketplacePlatformLabel(code), mark: <PlatformSquareMark code={code} name={marketplacePlatformLabel(code)} /> })) }], [platformOptions, filters.platforms])
 
+  // A summary group toggles its results in the Sonuç filter; several can be on at once, like the job list's counts.
+  const summaryProps = (values: string[], glyph: string) => {
+    const on = sendLogSummaryOn(filters.results, values)
+    const toggle = () => update({ results: toggleSendLogSummary(filters.results, values) })
+    return { role: 'button', tabIndex: 0, 'aria-pressed': on, className: `${glyph}${on ? ' is-on' : ''}`, onClick: toggle, onKeyDown: (event: React.KeyboardEvent) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle() } } } as const
+  }
+
   return <div className="psl">
-    <div className="psl-filters" role="search" aria-label="Gönderim kaydı filtreleri">
-      <label className="jobs-reference-search psl-search"><UiIcon name="search" size={15} /><input value={searchText} onChange={event => setSearchText(event.target.value.slice(0, 100))} placeholder="Barkod, stok kodu, model kodu veya ürün adı…" aria-label="Gönderim kayıtlarında ara" /></label>
-      <FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={filters.platforms} onChange={platforms => update({ platforms })} emptyText="Bağlı pazaryeri yok." />
-      <FilterMenu name="Sonuç" allLabel="Tüm Sonuçlar" unit="Sonuç" groups={resultGroups} selected={filters.results} onChange={results => update({ results })} />
-      <FilterMenu name="Tetikleyen" allLabel="Tüm Tetikleyenler" unit="Tetikleyen" groups={triggerGroups} selected={filters.triggers} onChange={triggers => update({ triggers })} />
-      <DateRangePicker className="psl-dates" label="Gönderim Tarihi" placeholder="Tüm Tarihler" from={filters.from} to={filters.to} onChange={range => update({ from: range.from, to: range.to })} />
-      <div className="psl-filter-actions">
-        <button type="button" className="psl-control psl-clear" onClick={clear} disabled={filterCount === 0}>Temizle{filterCount > 0 && <span className="psl-clear-count" aria-label={`${filterCount} filtre`}>{filterCount}</span>}</button>
-        <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="Gönderim kayıtlarını yenile" onClick={() => void list.refetch()}><UiIcon name="refresh" size={16} /></button>
+    {headingSlot && createPortal(<SendLogHeadingControls filters={filters} platformGroups={platformGroups} onChange={update} onClear={clear} clearCount={filterCount} />, headingSlot)}
+    <div className="jobs-reference-toolbar psl-toolbar">
+      <div className="jobs-reference-status-summary" aria-label="Gönderim sonuç özeti">
+        {sendLogSummary.map(group => <span key={group.key} {...summaryProps(group.values, group.glyph)} title={group.values.map(sendLogResultLabel).join(', ')}>
+          <JobStateGlyph tone={group.glyph} />{group.label} <strong>{summary ? summary[group.key].toLocaleString('tr-TR') : '—'}</strong>
+        </span>)}
+      </div>
+      <div className="jobs-reference-toolbar-actions" role="search" aria-label="Gönderim kaydı arama">
+        <label className="jobs-reference-search psl-search"><UiIcon name="search" size={15} /><input value={searchText} onChange={event => setSearchText(event.target.value.slice(0, 100))} placeholder="Barkod, stok kodu, model kodu veya ürün adı…" aria-label="Gönderim kayıtlarında ara" /></label>
+        <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="Gönderim kayıtlarını yenile" onClick={() => { void list.refetch(); void counts.refetch() }}><UiIcon name="refresh" size={16} /></button>
       </div>
     </div>
     {list.isLoading ? <Busy text="Gönderim kayıtları yükleniyor…" /> : list.isError && !list.data ? <div role="alert" className="jobs-reference-state jobs-reference-state-error">Gönderim kayıtları alınamadı.{list.error instanceof Error && list.error.message ? ` ${list.error.message}` : ''}</div> : <>

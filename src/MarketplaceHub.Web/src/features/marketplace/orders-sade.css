@@ -239,3 +239,36 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-wordmark-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 /* A long name breaks inside its cell instead of running over the next column (last rule: it wins the table's own). */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: anywhere !important; min-width: 0; }
+/* Phones: the order card opens its detail sheet from a "Detayları Aç" button in its action row (beside Etiket and
+   İşlemler, three even columns), not from a tap anywhere on the card. Wider screens do not show the button. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-detail-open { display: none; }
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell .rr-btn.rr-detail-open { display: inline-flex; align-items: center; justify-content: center; min-width: 0; height: 36px; min-height: 0; padding: 0 8px; font-size: 12.5px; white-space: nowrap; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-actcell.rr-actcell:has(> :nth-child(3)) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+/* The order detail sheet's İşlemler opens a menu: drawn as the app's other dropdown triggers (.rr-trigger, framed, with
+   its chevron), sized to its word beside the sheet's other buttons. */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-trigger.rr-sheet-trigger { flex: none; width: auto; box-sizing: border-box; height: 36px; min-height: 0; padding: 0 10px 0 12px; gap: 6px; font-size: 13px; font-weight: 500; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-trigger.rr-sheet-trigger > .rr-ico { display: block; flex: none; transition: transform .15s; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-trigger.rr-sheet-trigger.rr-on > .rr-ico { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet-f.rr-sheet-f > .rr-trigger.rr-sheet-trigger > .rr-ico { transition: none; } }
+/* Phones: the label print preview's subtitle (order number · carrier · size) stays on one line at 12.5px, cut with an
+   ellipsis only if a very long carrier name still does not fit. */
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-modal.shipping-label-modal > .rr-m-head p { overflow: hidden; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+}
+/* Orders bulk bar. Wider screens: the buttons read in full ("Kargo Firması Değiştir (1)"), Seçimi Temizle is a quiet word.
+   Phones: one row that fits 343px: the count on the left, then Seçimi Temizle as an × icon and Kargo Firması Değiştir and
+   Etiketleri Yazdır as 36px icon buttons with their count as a small badge (their names in aria-label and title). */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk .rr-bulk-clear > .rr-ico,
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk .rr-bulk-badge { display: none; }
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk.rr-bulk { flex-wrap: nowrap; gap: 8px; padding: 10px 12px; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk > .rr-grow { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk > .rr-grow > .rr-bulk-note { overflow: hidden; text-overflow: ellipsis; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk > :is(.rr-bulk-clear, .rr-bulk-act) { position: relative; display: inline-grid; flex: none; place-items: center; box-sizing: border-box; width: 36px; min-width: 36px; height: 36px; min-height: 0; padding: 0; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk > :is(.rr-bulk-clear, .rr-bulk-act) > .rr-bulk-lbl { display: none; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk > .rr-bulk-clear > .rr-ico { display: block; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk > .rr-bulk-act > .rr-ico { margin: 0; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-bulk > .rr-bulk-act > .rr-bulk-badge { position: absolute; top: -6px; right: -6px; display: inline-grid; place-items: center; box-sizing: border-box; min-width: 18px; height: 18px; padding: 0 5px; color: #fff; background: var(--rr-primary); border: 2px solid var(--rr-surface); border-radius: 12px; font-size: 10.5px; font-weight: 700; line-height: 1; }
+}

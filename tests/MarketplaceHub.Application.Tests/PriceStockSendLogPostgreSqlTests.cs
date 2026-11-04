@@ -156,6 +156,35 @@ public sealed class PriceStockSendLogPostgreSqlTests(PostgreSqlTenantIsolationFi
     }
 
     [PostgreSqlFact]
+    public async Task The_counts_group_by_result_under_the_list_filters_without_the_result_filter()
+    {
+        var seed = await Seed();
+        await Submit(seed);
+        await Poll(seed, new RemoteOperationStatus(OperationId, "COMPLETED",
+            [new RemoteOperationLine("HB-SKU-1", false, "HBV00001", "OutOfPriceRange", false, "REJECTED")]));
+        await using var db = fixture.CreateContext();
+        var service = new PriceStockSendLogService(db);
+        var now = DateTimeOffset.UtcNow;
+
+        // The result filter is left out: picking one result keeps the others counted.
+        var all = await service.CountsAsync(seed.Tenant.Id, new PriceStockSendLogQuery(Results: [PriceStockSendResults.Rejected]), CancellationToken.None);
+        // A time window given with a non-zero offset is read as the same instant.
+        var lastDay = await service.CountsAsync(seed.Tenant.Id, new PriceStockSendLogQuery(From: now.AddDays(-1).ToOffset(TimeSpan.FromHours(3)), Platforms: ["hepsiburada"]), CancellationToken.None);
+        var future = await service.CountsAsync(seed.Tenant.Id, new PriceStockSendLogQuery(From: now.AddHours(1)), CancellationToken.None);
+        var otherTrigger = await service.CountsAsync(seed.Tenant.Id, new PriceStockSendLogQuery(Triggers: [PriceStockSendTriggers.Order]), CancellationToken.None);
+        var unknownTrigger = await service.CountsAsync(seed.Tenant.Id, new PriceStockSendLogQuery(Triggers: ["NOPE"]), CancellationToken.None);
+        var bySearch = await service.CountsAsync(seed.Tenant.Id, new PriceStockSendLogQuery(Search: $"Ürün 2 {seed.Tag}"), CancellationToken.None);
+
+        var expected = new[] { (PriceStockSendResults.Applied, 1), (PriceStockSendResults.Rejected, 1) };
+        Assert.Equal(expected, all.Value!.Select(x => (x.Result, x.Count)));
+        Assert.Equal(expected, lastDay.Value!.Select(x => (x.Result, x.Count)));
+        Assert.Empty(future.Value!);
+        Assert.Empty(otherTrigger.Value!);
+        Assert.Empty(unknownTrigger.Value!);
+        Assert.Equal(new[] { (PriceStockSendResults.Applied, 1) }, bySearch.Value!.Select(x => (x.Result, x.Count)));
+    }
+
+    [PostgreSqlFact]
     public async Task The_retention_removes_rows_older_than_ninety_days_only()
     {
         var seed = await Seed();

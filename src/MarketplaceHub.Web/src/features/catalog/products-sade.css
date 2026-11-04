@@ -251,7 +251,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-t small { color: var(--rr-subtle); font-size: 11.5px; font-weight: 400 !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-t b { font-size: 14px; font-weight: 600 !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-t em { overflow: hidden; color: var(--rr-muted); font-size: 12.5px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-c { display: grid; justify-items: end; flex: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-c { display: grid; align-self: center; align-items: center; justify-items: end; flex: none; line-height: 1; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-c b { color: var(--rr-bad); }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf-t > .rr-ico { flex: none; color: var(--rr-muted); transition: transform .15s; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-lowf.rr-open .rr-lowf-t > .rr-ico { transform: rotate(180deg); }
@@ -491,4 +491,11 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Phones: a product card's stock reads on one line ("28 adet"), the unit beside the figure. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn:has(> small) { display: inline-flex; align-items: baseline; gap: 4px; }
+}
+/* Phones: the page actions (Excel, Ürün Aktar, Yeni Ürün Ekle) share the row in three equal 36px buttons that keep
+   inside the screen. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rr.rr-products > .rr-ph > .rr-acts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; width: 100%; }
+  .app-shell.stitch-shell main .rr.rr-products > .rr-ph > .rr-acts > .rr-btn { min-width: 0; height: 36px; min-height: 0; padding: 0 6px; gap: 5px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app-shell.stitch-shell main .rr.rr-products > .rr-ph > .rr-acts > .rr-btn > .rr-ico { flex: none; }
 }

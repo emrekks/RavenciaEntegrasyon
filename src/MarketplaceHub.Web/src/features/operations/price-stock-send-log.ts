@@ -1,5 +1,7 @@
+import { formatDateRange } from '../../shared/date-range'
 import { istanbulDayBoundary } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
+import { timeRangeLabel, timeRangeStart, type JobListTimeRange } from './job-list-query'
 
 // The price/stock send log (İşlem Takibi › Loglar): one row per line of a price/stock request sent to a marketplace,
 // read from GET /price-stock-send-log. These helpers turn a row into the text the table shows and the filters into
@@ -139,20 +141,89 @@ export type SendLogFilters = {
   platforms: string[]
   results: string[]
   triggers: string[]
+  /** The heading's range (Son 24 Saat, Son 7 Gün, Tüm Zamanlar); chosen days below override it. */
+  range: JobListTimeRange
   /** Istanbul calendar days, YYYY-MM-DD, or '' for no bound. */
   from: string
   to: string
 }
 
-export const emptySendLogFilters: SendLogFilters = { search: '', platforms: [], results: [], triggers: [], from: '', to: '' }
+// The log keeps 90 days, so Tüm Zamanlar is its whole history: the view opens on it, as it did before it had a range.
+export const emptySendLogFilters: SendLogFilters = { search: '', platforms: [], results: [], triggers: [], range: 'all', from: '', to: '' }
 
-/** How many filters narrow the list: the search, each of platform, result and trigger, and the dates count once each. */
+const hasDays = (filters: Pick<SendLogFilters, 'from' | 'to'>) => Boolean(filters.from || filters.to)
+
+/** How many filters the Filtrele panel holds: each of platform, result and trigger, and the chosen days once. */
+export function sendLogPanelFilterCount(filters: SendLogFilters) {
+  return [filters.platforms.length, filters.results.length, filters.triggers.length, hasDays(filters)].filter(Boolean).length
+}
+
+/** How many filters narrow the list: the search, the panel's filters, and a range other than Tüm Zamanlar. */
 export function sendLogFilterCount(filters: SendLogFilters) {
-  return [filters.search.trim(), filters.platforms.length, filters.results.length, filters.triggers.length, filters.from || filters.to].filter(Boolean).length
+  return sendLogPanelFilterCount(filters) + (filters.search.trim() ? 1 : 0) + (!hasDays(filters) && filters.range !== 'all' ? 1 : 0)
 }
 
 export function hasSendLogFilters(filters: SendLogFilters) {
   return sendLogFilterCount(filters) > 0
+}
+
+/** The range button's text: the chosen days when there are any, else the range. */
+export function sendLogRangeLabel(filters: SendLogFilters) {
+  return hasDays(filters) ? formatDateRange({ from: filters.from, to: filters.to }) : timeRangeLabel(filters.range)
+}
+
+// The summary above the log: the result groups of the Sonuç menu, each a toggle of its whole group, drawn with the job
+// list's state glyphs. Bekleyen waits for the marketplace's answer; Diğer is a line a newer value replaced.
+export type SendLogSummaryKey = 'success' | 'problem' | 'pending' | 'other'
+export const sendLogSummary: Array<{ key: SendLogSummaryKey; label: string; glyph: string; values: string[] }> = [
+  { key: 'success', label: 'Başarılı', glyph: 'success', values: sendLogResultGroups[0].values },
+  { key: 'problem', label: 'Sorunlu', glyph: 'error', values: sendLogResultGroups[1].values },
+  { key: 'pending', label: 'Bekleyen', glyph: 'waiting', values: sendLogResultGroups[2].values },
+  { key: 'other', label: 'Yeni Sürüm', glyph: 'cancelled', values: sendLogResultGroups[3].values }
+]
+
+/** Each summary group's total from the server's counts; an unknown result counts nowhere. */
+export function sendLogSummaryCounts(rows: ReadonlyArray<{ result: string; count: number }>) {
+  return Object.fromEntries(sendLogSummary.map(group => [group.key, rows.reduce((total, row) => total + (group.values.includes(row.result) ? row.count : 0), 0)])) as Record<SendLogSummaryKey, number>
+}
+
+/** A summary group is on when every result of it is picked. */
+export function sendLogSummaryOn(results: string[], values: string[]) {
+  return values.every(value => results.includes(value))
+}
+
+/** Turns a summary group on (adds its results) or off (drops them), keeping the other picked results. */
+export function toggleSendLogSummary(results: string[], values: string[]) {
+  return sendLogSummaryOn(results, values) ? results.filter(value => !values.includes(value)) : [...new Set([...results, ...values])]
+}
+
+// The send time bounds: the chosen Istanbul days, else the range counted back from now.
+function sendLogTimeParams(params: URLSearchParams, filters: SendLogFilters, now: number) {
+  if (hasDays(filters)) {
+    const from = istanbulDayToIso(filters.from)
+    const to = istanbulDayToIso(filters.to, true)
+    if (from) params.set('from', from)
+    if (to) params.set('to', to)
+    return
+  }
+  const start = timeRangeStart(filters.range, now)
+  if (start) params.set('from', start)
+}
+
+function sendLogCommonParams(params: URLSearchParams, filters: SendLogFilters) {
+  const search = filters.search.trim().slice(0, 100)
+  if (search) params.set('search', search)
+  if (filters.platforms.length) params.set('platforms', [...new Set(filters.platforms.map(code => code.toUpperCase()))].join(','))
+}
+
+/** The summary's request: the list's filters without the result filter (?search=…&platforms=…&triggers=…&from=…&to=…). */
+export function sendLogCountsQueryString(filters: SendLogFilters, now = Date.now()) {
+  const params = new URLSearchParams()
+  sendLogCommonParams(params, filters)
+  if (filters.triggers.length) params.set('triggers', [...new Set(filters.triggers)].join(','))
+  sendLogTimeParams(params, filters, now)
+  const query = params.toString()
+  return query ? `?${query}` : ''
 }
 
 /** The instant an Istanbul day starts (or ends) as a UTC ISO string; '' for an empty or unreadable day. */
@@ -164,18 +235,13 @@ export function istanbulDayToIso(day: string, endOfDay = false) {
 }
 
 /** The request for one page: ?limit=50&search=…&platforms=…&results=…&triggers=…&from=…&to=…&order=asc&after=… */
-export function sendLogQueryString(filters: SendLogFilters, after: string | null = null, limit = sendLogPageSize, oldestFirst = false) {
+export function sendLogQueryString(filters: SendLogFilters, after: string | null = null, limit = sendLogPageSize, oldestFirst = false, now = Date.now()) {
   const params = new URLSearchParams()
   params.set('limit', String(Math.min(Math.max(1, limit), 100)))
-  const search = filters.search.trim().slice(0, 100)
-  if (search) params.set('search', search)
-  if (filters.platforms.length) params.set('platforms', [...new Set(filters.platforms.map(code => code.toUpperCase()))].join(','))
+  sendLogCommonParams(params, filters)
   if (filters.results.length) params.set('results', [...new Set(filters.results)].join(','))
   if (filters.triggers.length) params.set('triggers', [...new Set(filters.triggers)].join(','))
-  const from = istanbulDayToIso(filters.from)
-  const to = istanbulDayToIso(filters.to, true)
-  if (from) params.set('from', from)
-  if (to) params.set('to', to)
+  sendLogTimeParams(params, filters, now)
   if (oldestFirst) params.set('order', 'asc')
   if (after) params.set('after', after)
   return `?${params.toString()}`

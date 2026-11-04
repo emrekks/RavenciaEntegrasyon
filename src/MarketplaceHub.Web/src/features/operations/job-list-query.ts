@@ -5,6 +5,18 @@ const rangeMilliseconds: Record<Exclude<JobListTimeRange, 'all'>, number> = {
   '7d': 7 * 24 * 60 * 60 * 1000
 }
 
+/** The range menu of İşlem Takibi's heading, shared by the job list and the send log (Loglar). */
+export const jobTimeRanges = [['24h', 'Son 24 Saat'], ['7d', 'Son 7 Gün'], ['all', 'Tüm Zamanlar']] as const satisfies ReadonlyArray<readonly [JobListTimeRange, string]>
+
+export function timeRangeLabel(value: JobListTimeRange) {
+  return jobTimeRanges.find(([range]) => range === value)?.[1] ?? 'Son 24 Saat'
+}
+
+/** The instant a range starts, as a UTC ISO string; null for Tüm Zamanlar. */
+export function timeRangeStart(range: JobListTimeRange, now = Date.now()) {
+  return range === 'all' ? null : new Date(now - rangeMilliseconds[range]).toISOString()
+}
+
 /** Jobs per server page of the operations list. */
 export const jobPageSize = 200
 

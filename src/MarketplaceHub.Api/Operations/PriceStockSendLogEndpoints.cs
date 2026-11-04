@@ -20,6 +20,17 @@ public static class PriceStockSendLogEndpoints
                 http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
+        // The summary above the log: [{ result, count }] under the same filters as the list, without its result filter.
+        endpoints.MapGet("/api/v1/price-stock-send-log/counts", async (HttpContext http, IPriceStockSendLogService service, string? platform, string? platforms,
+            Guid? connectionId, DateTimeOffset? from, DateTimeOffset? to, string? search, string? triggers) =>
+        {
+            var tenant = http.RequestServices.GetRequiredService<ITenantContextAccessor>().Current;
+            if (tenant is null) return MarketplaceHub.Api.Security.ApiProblems.Of(http, new("AUTHENTICATION_REQUIRED", "Aktif tenant oturumu gereklidir.", 401));
+            var result = await service.CountsAsync(tenant.TenantId,
+                new PriceStockSendLogQuery(Platforms: JobEndpoints.Platforms(platform, platforms), ConnectionId: connectionId, From: from, To: to, Search: search, Triggers: List(triggers)),
+                http.RequestAborted);
+            return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
+        });
         return endpoints;
     }
 

@@ -25,12 +25,21 @@ export function MediaZoomButton({ onZoom }: { onZoom: () => void }) {
   return <button type="button" className="image-zoom-btn" aria-label="Görseli büyüt" title="Görseli büyüt" onClick={event => { event.stopPropagation(); onZoom() }}><UiIcon name="search" /></button>
 }
 
-export function LocalImagePreview({ file, alt, caption: _caption, onRemove, onZoom, draggable = false, isDragOver = false, onDragStart, onDragOver, onDrop, onDragEnd, mediaIndex }: { file: File, alt: string, caption: string, mediaIndex?: number, onRemove?: () => void, onZoom?: (url: string) => void, draggable?: boolean, isDragOver?: boolean, onDragStart?: (event: DragEvent<HTMLElement>) => void, onDragOver?: (event: DragEvent<HTMLElement>) => void, onDrop?: (event: DragEvent<HTMLElement>) => void, onDragEnd?: () => void }) {
+// Phones: dragging is unreliable there, so every tile gets a left and a right arrow under it that move the picture one
+// place with the same reorder the drag uses; the arrows are hidden on wider screens (CSS) and off at the strip's ends.
+export function MediaMoveButtons({ index, count, onMove, disabled = false }: { index: number; count: number; onMove: (targetIndex: number) => void; disabled?: boolean }) {
+  return <div className="media-move-buttons" role="group" aria-label="Görsel sırası">
+    <button type="button" className="media-move-btn" aria-label="Görseli sola taşı" title="Görseli sola taşı" disabled={disabled || index <= 0} onClick={event => { event.stopPropagation(); onMove(index - 1) }}><UiIcon name="chevronLeft" size={14} /></button>
+    <button type="button" className="media-move-btn" aria-label="Görseli sağa taşı" title="Görseli sağa taşı" disabled={disabled || index >= count - 1} onClick={event => { event.stopPropagation(); onMove(index + 1) }}><UiIcon name="chevronRight" size={14} /></button>
+  </div>
+}
+
+export function LocalImagePreview({ file, alt, caption: _caption, onRemove, onZoom, draggable = false, isDragOver = false, onDragStart, onDragOver, onDrop, onDragEnd, mediaIndex, mediaCount, onMove, moveDisabled }: { file: File, alt: string, caption: string, mediaIndex?: number, mediaCount?: number, onMove?: (targetIndex: number) => void, moveDisabled?: boolean, onRemove?: () => void, onZoom?: (url: string) => void, draggable?: boolean, isDragOver?: boolean, onDragStart?: (event: DragEvent<HTMLElement>) => void, onDragOver?: (event: DragEvent<HTMLElement>) => void, onDrop?: (event: DragEvent<HTMLElement>) => void, onDragEnd?: () => void }) {
   const [url, setUrl] = useState('');
   useEffect(() => {
     const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
     return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
-  return <figure data-media-kind={mediaIndex === undefined ? undefined : 'file'} data-media-index={mediaIndex} className={`image-preview-card${draggable ? ' media-sortable' : ''}${isDragOver ? ' is-media-drag-over' : ''}`} draggable={draggable} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}><img src={url} alt={alt} className="media-tile-image" draggable={false} title={draggable ? 'Sıralamak için sürükleyin' : undefined} />{onZoom && url && <MediaZoomButton onZoom={() => onZoom(url)} />}{onRemove && <button type="button" className="image-remove-btn" title="Görseli sil" onClick={e => { e.stopPropagation(); onRemove(); }}><UiIcon name="close" /></button>}</figure>;
+  return <figure data-media-kind={mediaIndex === undefined ? undefined : 'file'} data-media-index={mediaIndex} className={`image-preview-card${draggable ? ' media-sortable' : ''}${isDragOver ? ' is-media-drag-over' : ''}`} draggable={draggable} onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd}><img src={url} alt={alt} className="media-tile-image" draggable={false} title={draggable ? 'Sıralamak için sürükleyin' : undefined} />{onZoom && url && <MediaZoomButton onZoom={() => onZoom(url)} />}{onRemove && <button type="button" className="image-remove-btn" title="Görseli sil" onClick={e => { e.stopPropagation(); onRemove(); }}><UiIcon name="close" /></button>}{onMove && mediaIndex !== undefined && mediaCount !== undefined && <MediaMoveButtons index={mediaIndex} count={mediaCount} onMove={onMove} disabled={moveDisabled} />}</figure>;
 }

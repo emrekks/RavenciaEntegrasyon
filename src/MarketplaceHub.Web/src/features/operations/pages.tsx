@@ -13,7 +13,7 @@ import { fallbackJobChange, jobRelatedLinks, type JobChange } from './job-change
 import { jobPresentation, jobSubtitle, jobTitle, jobTypeCode, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { isJobInTimeRange, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
+import { isJobInTimeRange, jobTimeRanges, timeRangeLabel, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
 import { jobPageSizes, jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState, type JobsMainTab, type JobStatusChip, type JobsViewState } from './jobs-url-state'
 import type { IntegrationFeedback } from '../marketplace/shared'
@@ -35,6 +35,7 @@ import { newIdempotencyKey } from '../../shared/idempotency'
 import { jobAttemptDuration } from './job-duration'
 import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
 import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
+import { JobStateGlyph } from './job-state-glyph'
 
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
@@ -107,17 +108,6 @@ function jobStatusLabel(status: JobStatus) {
   return 'İptal edildi'
 }
 
-type JobGlyphState = 'success' | 'running' | 'waiting' | 'error' | 'cancelled'
-
-// The shared state glyphs: filled check, turning arc while running, clock arc while waiting, red cross, dashed circle.
-function JobStateGlyph({ tone }: { tone: string }) {
-  const state: JobGlyphState = tone === 'success' || tone === 'running' || tone === 'error' || tone === 'cancelled' ? tone : 'waiting'
-  if (state === 'success') return <svg className="jb-glyph is-success" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2.1 2.1 3.9-4.2" fill="none" stroke="var(--rv-color-surface)" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>
-  if (state === 'running') return <svg className="jb-glyph is-running" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6" opacity=".25" /><path d="M8 2a6 6 0 0 1 6 6" /></svg>
-  if (state === 'error') return <svg className="jb-glyph is-error" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /><path d="m5.8 5.8 4.4 4.4M10.2 5.8l-4.4 4.4" /></svg>
-  if (state === 'cancelled') return <svg className="jb-glyph is-cancelled" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeDasharray="2.6 2.2" aria-hidden="true"><circle cx="8" cy="8" r="6.2" /></svg>
-  return <svg className="jb-glyph is-waiting" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.2" opacity=".35" /><path d="M8 1.8a6.2 6.2 0 0 1 5.9 4.3" /><path d="M8 5.6v2.6l1.8 1.1" /></svg>
-}
 
 // A job that only waits for the marketplace to finish (a batch task, an approval) reads as waiting, not as a retry.
 function jobStateLabel(job: JobSummary) {
@@ -166,12 +156,6 @@ function formatOptionalJobTime(value: string | null) {
 }
 
 type JobTimeRange = JobListTimeRange
-
-function timeRangeLabel(value: JobTimeRange) {
-  if (value === '7d') return 'Son 7 Gün'
-  if (value === 'all') return 'Tüm Zamanlar'
-  return 'Son 24 Saat'
-}
 
 type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh' | 'search' | JobTypeIconName
 
@@ -379,6 +363,7 @@ export function JobsPage({ me }: { me: Me }) {
   const client = useQueryClient()
   const [filterOpen, setFilterOpen] = useState(false)
   const [timeRangeOpen, setTimeRangeOpen] = useState(false)
+  const [logHeadingSlot, setLogHeadingSlot] = useState<HTMLDivElement | null>(null)
   // Filters and the page live in the address (jobs-url-state.ts): Back, a refresh or a link opens the same view.
   // ?durum=hata opens the list with the error filter on (the overview's İncele link uses it); ?platform=trendyol keeps
   // the platform, which the server applies to the list and the counts.
@@ -565,7 +550,7 @@ export function JobsPage({ me }: { me: Me }) {
         <div className="jobs-reference-range-wrap">
           <button type="button" className="jobs-reference-range" aria-expanded={timeRangeOpen} onClick={() => setTimeRangeOpen(value => !value)}><JobsIcon name="calendar" />{timeRangeLabel(timeRange)}<JobsIcon name="chevron-down" /></button>
           {timeRangeOpen && <div className="jobs-reference-range-menu" role="menu" aria-label="Zaman aralığı">
-            {([['24h', 'Son 24 Saat'], ['7d', 'Son 7 Gün'], ['all', 'Tüm Zamanlar']] as const).map(([value, label]) => <button type="button" role="menuitem" className={timeRange === value ? 'active' : ''} key={value} onClick={() => { setTimeRange(value); setTimeRangeOpen(false) }}>{label}</button>)}
+            {jobTimeRanges.map(([value, label]) => <button type="button" role="menuitem" className={timeRange === value ? 'active' : ''} key={value} onClick={() => { setTimeRange(value); setTimeRangeOpen(false) }}>{label}</button>)}
           </div>}
         </div>
         <div className="jobs-reference-filter-wrap">
@@ -577,11 +562,13 @@ export function JobsPage({ me }: { me: Me }) {
           </div>}
         </div>
       </div>}
+      {/* Loglar has the same range and Filtrele buttons, its own: the log view draws them here (they act on the log only). */}
+      {mainTab === 'logs' && <div className="jobs-reference-heading-actions" ref={setLogHeadingSlot} />}
     </div>
     <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İş Takibi') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
     <div className="jobs-reference-canvas">
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
-      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
+      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog platformOptions={platformOptions} onOpenJob={setSelectedId} headingSlot={logHeadingSlot} /></Suspense>
         : mainTab === 'health' ? <Suspense fallback={<Busy text="Gönderim durumu yükleniyor…" />}><PriceStockMonitorPanel onFeedback={showPanelFeedback} /></Suspense> : <>
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">

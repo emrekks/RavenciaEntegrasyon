@@ -164,7 +164,13 @@ public sealed record PriceStockSendLogView(
     string? ErrorMessage,
     string? ExternalRequestId);
 
+// One result's row count for the summary above the log.
+public sealed record PriceStockSendLogCount(string Result, int Count);
+
 public interface IPriceStockSendLogService
 {
     Task<ServiceResult<PageResult<PriceStockSendLogView>>> PageAsync(Guid tenantId, PriceStockSendLogQuery query, CancellationToken cancellationToken);
+
+    // Rows per result under the list's filters except the result filter; Results, After, Limit and OldestFirst are ignored.
+    Task<ServiceResult<IReadOnlyList<PriceStockSendLogCount>>> CountsAsync(Guid tenantId, PriceStockSendLogQuery query, CancellationToken cancellationToken);
 }

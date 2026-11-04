@@ -166,6 +166,23 @@ describe('order summary cards', () => {
     for (const title of ['Geciken', 'İptal', 'Yeniden Gönderim']) expect(card(quiet, title).querySelector('.rr-metric-tip')).toBeNull()
   })
 
+  it('marks the card whose list is open as selected and offers it again to close the list', () => {
+    const onOpenDay = vi.fn()
+    const { host } = render(<OrderMetricCards {...props({ onOpenDay, activeCard: 'resent' })} />)
+    expect(card(host, 'Yeniden Gönderim').classList.contains('rr-metric-on')).toBe(true)
+    expect(card(host, 'Yeniden Gönderim').querySelector('.rr-metric-open')!.getAttribute('aria-pressed')).toBe('true')
+    expect(card(host, 'İptal').classList.contains('rr-metric-on')).toBe(false)
+    expect(card(host, 'İptal').querySelector('.rr-metric-open')!.getAttribute('aria-pressed')).toBe('false')
+    open(host, 'Yeniden Gönderim')
+    expect(onOpenDay).toHaveBeenCalledWith('resent')
+    cleanup()
+    // The Kısmi İptal list selects its chip and the İptal card it sits on.
+    const partial = render(<OrderMetricCards {...props({ activeCard: 'partial' })} />).host
+    expect(card(partial, 'İptal').classList.contains('rr-metric-on')).toBe(true)
+    expect(partial.querySelector('.rr-metric-chip')!.classList.contains('rr-metric-on')).toBe(true)
+    expect(card(partial, 'İptal').querySelector('.rr-metric-open')!.getAttribute('aria-pressed')).toBe('false')
+  })
+
   it('writes an İptal store row with its partly cancelled orders and leaves unknown units out', () => {
     expect(cancelRowText({ packages: 2, units: 3, partial: 1, partialUnits: 1 })).toBe('2 paket · 3 adet, 1 kısmi · 1 adet')
     expect(cancelRowText({ packages: 2, units: undefined, partial: 0, partialUnits: undefined })).toBe('2 paket')
