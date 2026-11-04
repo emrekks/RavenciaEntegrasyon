@@ -1149,3 +1149,14 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
 @layer features {
   .app-shell.stitch-shell main .media-preview-strip { justify-content: space-between; row-gap: var(--rv-space-3, 12px); }
 }
+
+/* Phones, product save bar: Yayınla is an arrow icon button (its name in the title and the label), so the quick update
+   has room for its name, "Hızlı Güncelle", beside its icon. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions.product-submit-actions { grid-template-columns: minmax(0, .9fr) minmax(0, 1.5fr) 44px; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > .platform-update-quick { flex: 1 1 auto; width: auto; min-width: 0; gap: 6px; padding: 0 10px; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split > .platform-update-quick > span { display: inline; white-space: nowrap; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions .platform-update-split { display: flex; min-width: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions > .product-submit-publish { width: 44px; padding: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .product-submit-actions > .product-submit-publish > :is(.submit-label-short, .submit-label-long) { display: none; }
+}
