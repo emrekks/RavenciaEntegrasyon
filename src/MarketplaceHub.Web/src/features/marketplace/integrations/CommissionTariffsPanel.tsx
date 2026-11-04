@@ -506,10 +506,18 @@ export function FilterActions({ onClear }: { onClear: () => void }) {
 function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets: { categories: string[]; brands: string[] } | undefined; onApply: (filter: TariffFilter) => void }) {
   const [draft, setDraft] = useState(value)
   const set = (key: keyof TariffFilter) => (event: { target: { value: string } }) => setDraft(current => ({ ...current, [key]: event.target.value }))
-  const apply = (event?: FormEvent) => { event?.preventDefault(); onApply(draft) }
-  const clear = () => { setDraft(noFilter); onApply(noFilter) }
+  // On phones the fields stay closed behind a Filtre button (with the number of filters applied) and open as a block.
+  const [open, setOpen] = useState(false)
+  const activeCount = [value.name, value.barcode, value.model, value.minStock || value.maxStock, value.category, value.brand,
+    value.profitTier ? 'tier' : '', value.sort ?? ''].filter(Boolean).length
+  const apply = (event?: FormEvent) => { event?.preventDefault(); onApply(draft); setOpen(false) }
+  const clear = () => { setDraft(noFilter); onApply(noFilter); setOpen(false) }
   const noFacts = facets !== undefined && facets.categories.length === 0 && facets.brands.length === 0
-  return <form className="commission-filters" onSubmit={apply} aria-label="Ürün filtreleri">
+  return <div className="commission-filter-wrap">
+    <button type="button" className="secondary commission-filter-toggle" aria-expanded={open} onClick={() => setOpen(current => !current)}>
+      <UiIcon name="filter" />Filtre{activeCount > 0 && <em>{activeCount}</em>}
+    </button>
+  <form className={`commission-filters is-collapsible${open ? ' is-open' : ''}`} onSubmit={apply} aria-label="Ürün filtreleri">
     <FilterField label="Ürün Adı"><input type="search" value={draft.name} onChange={set('name')} /></FilterField>
     <FilterField label="Barkod"><input type="search" value={draft.barcode} onChange={set('barcode')} /></FilterField>
     <FilterField label="Model Kodu"><input type="search" value={draft.model} onChange={set('model')} /></FilterField>
@@ -530,6 +538,7 @@ function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets
     {noFacts && <p className="commission-filter-note">Kategori ve marka bu tarifede yok: tarife dosyası önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
     <FilterActions onClear={clear} />
   </form>
+  </div>
 }
 
 // A column's header with its order beside it: up (A–Z, low to high), down, then none. A band orders by what it leaves.
