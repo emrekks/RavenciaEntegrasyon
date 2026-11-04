@@ -16,7 +16,7 @@ import {
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
 import { transactionLabel } from './transaction-labels'
-import { byDay, emptyPayoutFilters, filterGroups, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
+import { byDay, emptyPayoutFilters, filterGroups, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
 import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../shared/list-url-state'
 import { RrAnchor, RrFilterCard, RrIcon } from '../marketplace/returns-ui'
 import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../marketplace/shared'
@@ -475,7 +475,8 @@ const kpiIcon = (item: Kpi): CardIconName => item.icon ?? kpiIcons.find(([patter
 // change's line empty, so every note starts on one line.
 // The explanation of the figure under the pointer (or the focus) opens as a card under the strip, level with its cell
 // and kept inside the strip's width; each cell keeps its explanation as text for screen readers too.
-function KpiStrip({ label, items }: { label: string; items: Kpi[] }) {
+// marks: each label carries the round question mark and the explanation opens from the label only (Hakediş).
+function KpiStrip({ label, items, marks = false }: { label: string; items: Kpi[]; marks?: boolean }) {
   const [ref, shown] = useReveal<HTMLDivElement>()
   const tip = useId()
   const [open, setOpen] = useState<{ key: string; left: number; top: number; width: number } | null>(null)
@@ -496,10 +497,11 @@ function KpiStrip({ label, items }: { label: string; items: Kpi[] }) {
       // Whole counts stay whole while they count up; money shows whole liras (the kuruş rounded) in a strip.
       const format = item.format === formatTl ? formatTlWhole : item.format ?? (Number.isInteger(item.value) ? (value: number) => formatNumber(Math.round(value)) : formatNumber)
       return <div key={item.key} className={`${missing && empty !== '—' ? 'is-missing' : ''}${item.text !== undefined ? ' is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}${open?.key === item.key ? ' is-open' : ''}`.trim() || undefined}
-        onMouseEnter={event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
+        onMouseEnter={marks ? undefined : event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
         <CardBackgroundIcon name={kpiIcon(item)} tone={item.tone === 'good' ? 'ok' : item.tone} />
         <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={id}
-          onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}</button>
+          onMouseEnter={marks ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined}
+          onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}{marks && <TipMark />}</button>
         <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {compares && <span className="reports-kpi-change">{item.delta !== undefined && <Delta delta={item.delta} invert={item.invert} />}</span>}
         {item.note !== undefined && <span className="reports-kpi-note">{wholeLiras(item.note)}</span>}
@@ -1837,8 +1839,9 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
       <strong>{formatTl(item.expected)}</strong>
       <span className="reports-payout-region-next">{item.nextDay ? `Sıradaki ${shortDay(item.nextDay, false)} · ${formatTl(item.nextAmount)}` : 'Sıradaki ödeme günü belli değil'}</span>
       {/* Overdue sales wait for a payout; an overdue sum below zero is deductions waiting to come off the next one. */}
-      {item.unknown > 0 && <em className="reports-payout-chip is-overdue">Vadesi Geçmiş {formatTl(item.unknown)}</em>}
-      {item.unknown < 0 && <em className="reports-payout-chip is-deduction">Bekleyen Kesinti {formatTl(-item.unknown)}</em>}
+      {/* Phones show the short form (Gecikmiş / Kesinti, whole liras) so the chip fits the card. */}
+      {item.unknown > 0 && <em className="reports-payout-chip is-overdue"><span className="reports-payout-chip-long">Vadesi Geçmiş {formatTl(item.unknown)}</span><span className="reports-payout-chip-short">Gecikmiş {formatTlWhole(item.unknown)}</span></em>}
+      {item.unknown < 0 && <em className="reports-payout-chip is-deduction"><span className="reports-payout-chip-long">Bekleyen Kesinti {formatTl(-item.unknown)}</span><span className="reports-payout-chip-short">Kesinti {formatTlWhole(-item.unknown)}</span></em>}
     </button></li>
   const clear = () => apply({ ...emptyPayoutFilters, platforms: [], search: '' })
   const data = result.data
@@ -1857,11 +1860,14 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const lastPaid = region === 'ALL' ? data?.lastPaid ?? null : past[0] ?? null
   const balance = none ? 0 : picked ? picked.expected : data?.expected ?? 0
   const overdue = none ? 0 : picked ? picked.unknown : data?.unknown ?? 0
+  // The marketplaces the figures cover (the picked ones, else every one in view) and their payout rules.
+  const covered = platforms.length ? platforms : data?.platforms.map(item => item.platformCode) ?? []
+  const payoutRules = covered.map(code => payoutRuleText[code]).filter(Boolean).join(' ')
   const items: Kpi[] = [
     { key: 'expected', label: 'Toplam Güncel Bakiye', value: balance, format: formatTl, icon: 'wallet', note: picked ? regionLabels[picked.region] : undefined,
-      tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin net hakedişi (komisyon düşülmüş), bekleyen kesintiler düşülerek.\n${formatCount(picked?.records ?? data?.expectedRecords ?? 0)} kayıt. Trendyol'un Toplam Güncel Bakiye'siyle aynı hesap (4 Kasım 2026'da kuruşu kuruşuna eşleşti). Henüz kesilmemiş kesinti faturaları dahil değildir.` },
+      tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin net hakedişi (komisyon düşülmüş), bekleyen kesintiler düşülerek.\n${formatCount(picked?.records ?? data?.expectedRecords ?? 0)} kayıt.${covered.includes('TRENDYOL') ? " Trendyol'unki, Trendyol'un Toplam Güncel Bakiye'siyle aynı hesap (4 Kasım 2026'da kuruşu kuruşuna eşleşti)." : ''} Henüz kesilmemiş kesinti faturaları dahil değildir.` },
     { key: 'next', label: 'Sıradaki Ödeme', value: nextAmount, format: formatTl, empty: 'Yok', icon: 'calendarClock', note: nextDay ? shortDay(nextDay) : 'Bekleyen ödeme yok',
-      tip: 'En yakın ödeme gününün tahmini tutarı; vadesi geçip ödeme günü bilinmeyen kayıtlar dahil değildir.\nTrendyol Türkiye-Körfez pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder; resmi tatil günü kaydırır. Kesinti faturaları kesildikçe tutar düşer.' },
+      tip: `En yakın ödeme gününün tahmini tutarı; vadesi geçip ödeme günü bilinmeyen kayıtlar dahil değildir.\n${payoutRules} Kesinti faturaları kesildikçe tutar düşer.` },
     { key: 'last', label: 'Son Ödeme', value: lastPaid?.amount ?? null, format: formatTl, empty: 'Yok', icon: 'circleCheck', note: lastPaid ? shortDay(lastPaid.day) : 'Okunmuş ödeme yok',
       tip: 'Pazaryerinin yaptığı son ödeme, kendi bildirdiği tutarla.' },
     { key: 'unknown', label: 'Vadesi Geçmiş Bekleyen', value: overdue, format: formatTl, icon: 'alertTriangle', tone: overdue > 0 ? 'warn' : undefined,
@@ -1909,7 +1915,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const dayState = (groups: PayoutGroup[]) => groups.every(group => group.status === 'PAID') ? ['Ödendi', 'is-paid'] as const
     : groups.some(group => group.status === 'PAID') ? ['Kısmen Ödendi', 'is-paid'] as const : ['Tahmini', 'is-expected'] as const
   return <div className="reports-summary reports-payouts">
-    <KpiStrip label="Hakediş özeti" items={items} />
+    <KpiStrip label="Hakediş özeti" items={items} marks />
     <p className="reports-payout-early" role="note">
       <UiIcon name="banknote" size={14} />
       {(data?.earlyPayments ?? 0) > 0 ? `Son ${data?.daysBack} günde alınan erken ödeme: ${formatTl(data?.earlyPaymentsTaken)} (${formatCount(data?.earlyPayments ?? 0)} kayıt).` : `Son ${data?.daysBack ?? 90} günde erken ödeme alınmadı.`}
@@ -1963,8 +1969,9 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
                   <header>
                     <UiIcon name="calendar" size={16} />
                     <span className="reports-payout-day-name"><b>{shortDay(item.day, false)} {shortDay(item.day).split(' ').at(-1)}</b><small>{year}</small></span>
-                    {next && <em className="reports-payout-chip is-next">Sıradaki Ödeme</em>}
-                    <em className={`reports-payout-chip ${stateTone}`}>{stateLabel}</em>
+                    {/* The chips in one box, so on a phone they can drop under the day while the total stays beside it. */}
+                    <span className="reports-payout-day-chips">{next && <em className="reports-payout-chip is-next">Sıradaki<span className="reports-payout-chip-more"> Ödeme</span></em>}
+                      <em className={`reports-payout-chip ${stateTone}`}>{stateLabel}</em></span>
                     <strong>{formatTl(item.total)}</strong>
                   </header>
                   <ul className="reports-payout-rows">{item.groups.map(row)}</ul>

@@ -866,3 +866,44 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
 .app-shell.stitch-shell main .reports-page .reports-payout-regions.is-platforms { margin-bottom: 12px; }
 .app-shell.stitch-shell main .reports-page .reports-payout-regions.is-sub .reports-payout-region { padding: 12px 16px; }
 .app-shell.stitch-shell main .reports-page .reports-payout-regions.is-sub .reports-payout-region strong { font-size: 20px; }
+.app-shell.stitch-shell main .reports-page .reports-payout-day-chips { display: inline-flex; gap: 6px; align-items: center; }
+/* Phones: two marketplace cards a row, smaller inside, Tümü a small link over them; a day's date, chips and total on
+   one line where they fit (no year, short chips), the total beside the date when they do not; the two payment tabs
+   share the width. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reports-page .reports-payout-regions { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-regions > ul { flex: 1 1 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-all { order: -1; height: 24px; margin-left: auto; padding: 0 8px; font-size: 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-region { gap: 3px; padding: 10px 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-region strong,
+  .app-shell.stitch-shell main .reports-page .reports-payout-regions.is-sub .reports-payout-region strong { font-size: 18px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-region-name { font-size: 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-region-next { font-size: 11.5px; white-space: normal; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-region .rv-card-bg { transform: scale(.6); transform-origin: top right; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-day > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 8px; padding: 8px 12px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-day > header > strong { grid-column: 3; grid-row: 1; margin-left: 0; font-size: 15px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-day-name small,
+  .app-shell.stitch-shell main .reports-page .reports-payout-chip-more { display: none; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-day-chips { grid-column: 2 / 4; grid-row: 2; flex-wrap: wrap; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-day-chips:empty { display: none; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-list .reports-subtabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-list .reports-subtabs [role="tab"] { justify-content: center; min-width: 0; padding-inline: 6px; font-size: 13px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-list .reports-subtabs .rv-view-tab-icon { width: 13px; height: 13px; }
+}
+@media (min-width: 401px) and (max-width: 760px) {
+  /* Wider phones keep the chips beside the date when the line has room. */
+  .app-shell.stitch-shell main .reports-page .reports-payout-day > header { grid-template-columns: auto auto minmax(0, 1fr) auto; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-day > header > strong { grid-column: 4; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-day-chips { grid-column: 3; grid-row: 1; }
+}
+.app-shell.stitch-shell main .reports-page .reports-payout-chip-short { display: none; }
+@media (max-width: 760px) {
+  /* A card's chip never runs past the card: the short form, wrapping if it still does not fit. */
+  .app-shell.stitch-shell main .reports-page .reports-payout-region .reports-payout-chip { max-width: 100%; height: auto; min-height: 20px; white-space: normal; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-chip-long { display: none; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-chip-short { display: inline; }
+}
+@media (max-width: 760px) {
+  /* A Hakediş figure's label wraps onto a second line instead of being cut. */
+  .app-shell.stitch-shell main .reports-page .reports-payouts .reports-kpi-label { overflow: visible; text-overflow: clip; white-space: normal; text-align: left; }
+}
