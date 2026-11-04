@@ -398,9 +398,12 @@
 
 @layer features {
   .variant-filter-dropdown-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--rv-space-2); }
-  /* Always laid out beside the search box (hidden, not removed, with no selection) so the option list never shifts. */
+  /* The search takes the whole row; the clear button joins it only while something is picked. */
+  .app-shell.stitch-shell main .variant-filter-dropdown-tools > input, .variant-filter-dropdown-tools > input { width: 100%; min-width: 0; grid-column: 1; }
+  .variant-filter-dropdown-tools:not(:has(> button:enabled)) { grid-template-columns: minmax(0, 1fr); }
+  /* The clear button beside the search box, shown only while a value is picked. */
   .app-shell.stitch-shell main .variant-filter-dropdown-tools > button.variant-filter-clear-selection { width: auto; min-height: 0; height: 36px; padding: 0 var(--rv-space-2); color: var(--rv-color-primary); background: transparent; border: 0; font-size: var(--rv-font-size-xs); font-weight: 750; white-space: nowrap; }
-  .app-shell.stitch-shell main .variant-filter-dropdown-tools > button.variant-filter-clear-selection:disabled { visibility: hidden; }
+  .app-shell.stitch-shell main .variant-filter-dropdown-tools > button.variant-filter-clear-selection:disabled { display: none; }
 }
 
 @layer features {
