@@ -1160,3 +1160,16 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .app-shell.stitch-shell main .product-add-page .product-submit-actions > .product-submit-publish { width: 44px; padding: 0; }
   html body .app-shell.stitch-shell main .product-add-page .product-submit-actions > .product-submit-publish > :is(.submit-label-short, .submit-label-long) { display: none; }
 }
+
+/* Phones: a picture tile is a 2:3 frame hugging its picture, 2px between the picture and the frame. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card { height: auto; padding: 2px; align-content: start; }
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > img { width: 100%; height: auto; aspect-ratio: 2 / 3; object-fit: cover; }
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-add-tile { height: auto; aspect-ratio: 2 / 3; }
+}
+/* Phones: the tiles grow with the screen instead of spreading apart: three equal columns, 8px between them, each tile
+   a 2:3 frame filling its column. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); justify-content: normal; gap: 8px; }
+  html body .app-shell.stitch-shell main .product-add-page .media-preview-strip > :is(.image-preview-card, .media-add-tile) { width: 100%; }
+}
