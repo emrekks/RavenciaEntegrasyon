@@ -318,7 +318,9 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
 @keyframes rv-rise { from { translate: 0 100%; } to { translate: 0 0; } }
 @keyframes rv-nav-row-in { from { opacity: 0; translate: -8px 0; } }
 @media (prefers-reduced-motion: no-preference) {
-  html body .rv-overlay:has(.rv-mobile-navigation) { animation: rv-fade-in var(--rv-motion-sheet) ease-out; }
+  /* A drawer's backdrop darkens by its colour, not its opacity: the drawer sits inside it, and an opacity fade made the
+     drawer slide in see-through (owner, 4 Nov 2026: "yan menü düzgün açılmıyor"). */
+  html body .rv-drawer-overlay { animation: rv-scrim-in var(--rv-motion-sheet) ease-out; }
   html body .rv-drawer:has(.rv-mobile-navigation) { animation: rv-slide-in-left var(--rv-motion-sheet) var(--rv-ease-sheet); }
   html body .rv-drawer .rv-mobile-navigation > * { animation: rv-nav-row-in var(--rv-motion-sheet) var(--rv-ease-enter) backwards; }
   html body .rv-drawer .rv-mobile-navigation > :nth-child(2) { animation-delay: calc(var(--rv-motion-item-stagger) * .6); }
@@ -327,11 +329,13 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .rv-drawer .rv-mobile-navigation > :nth-child(n + 5) { animation-delay: calc(var(--rv-motion-item-stagger) * 2.4); }
   /* Closing (Drawer keeps it mounted 220 ms with .rv-closing): the backdrop fades, the drawer slides back out the way
      it came (the menu to the left, the others to the right), faster than it came in. */
-  html body .rv-drawer-overlay.rv-closing { pointer-events: none; animation: rv-fade-out .22s ease-in forwards; }
+  html body .rv-drawer-overlay.rv-closing { pointer-events: none; animation: rv-scrim-out .22s ease-in forwards; }
   html body .rv-drawer-overlay.rv-closing > .rv-drawer { animation: rv-drawer-out-right .22s cubic-bezier(.4, 0, 1, 1) forwards; }
   html body .rv-drawer-overlay.rv-closing > .rv-drawer:has(.rv-mobile-navigation) { animation: rv-drawer-out-left .22s cubic-bezier(.4, 0, 1, 1) forwards; }
   html body .rv-drawer-overlay.rv-closing .rv-mobile-navigation > * { animation: none; }
 }
+@keyframes rv-scrim-in { from { background-color: transparent; } }
+@keyframes rv-scrim-out { to { background-color: transparent; } }
 @keyframes rv-drawer-out-left { to { translate: -100% 0; } }
 @keyframes rv-drawer-out-right { to { translate: 100% 0; } }
 @media (max-width: 760px) and (prefers-reduced-motion: no-preference) {
@@ -434,4 +438,10 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell .rv-topbar :is(.rv-topbar-notification-trigger, .rv-icon-button, .rv-topbar-actions > button, .rv-topbar-actions > * > button) { width: 38px; height: 38px; min-width: 0; min-height: 0; padding: 0; }
   html body .app-shell.stitch-shell .rv-topbar :is(.rv-topbar-notification-trigger, .rv-icon-button, .rv-topbar-actions button) .ui-icon { width: 17px; height: 17px; }
+}
+
+/* Phones: no blur behind a drawer. Blurring the whole page again on every frame of its slide made the menu stutter on
+   the iPhone; the darkened backdrop alone sets it apart. */
+@media (max-width: 760px) {
+  html body .rv-drawer-overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
