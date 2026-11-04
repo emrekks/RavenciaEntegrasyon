@@ -2,23 +2,12 @@
  * Shared motion for every page, in the `base` layer: any component, feature or page rule (and every unlayered rule)
  * wins over it, so a screen with its own motion (Raporlar, the toasts, the login page) keeps it.
  *
- * A page opening with a sweep of light: a band of light passes once over the first rows of a table and over each
- * summary card, one after another; nothing on the page moves. Only opacity, size and position
- * move (the light is a background inside the card), so the browser lays nothing out again. Things move when they
- * first appear, once a load: only on the first page shown after the panel is opened or reloaded (the shell is
- * `.is-opening` until the first move to another page); nothing loops, and nothing replays while a block stays mounted. The
- * keyframes use the individual `translate` and `scale` properties, not `transform`, so an element positioned with its
- * own transform (a centred modal) keeps it, and `backwards` fill so nothing stays applied after the animation: a
+ * Things move when they first appear, once a load; nothing loops, and nothing replays while a block stays mounted.
+ * No light sweeps over rows or cards any more (owner, 4 Nov 2026). The keyframes use the individual `translate` and
+ * `scale` properties, not `transform`, so an element positioned with its own transform (a centred modal) keeps it, and `backwards` fill so nothing stays applied after the animation: a
  * finished animation never turns an element into a containing block for fixed descendants.
  */
 
-/* A band of light across a table row: the row's own background image, only while the animation runs (the keyframes
-   carry it and its size, so a row's own background rule cannot undo it and nothing stays on the row after). */
-@keyframes rv-motion-row {
-  from { background-image: var(--rv-motion-band); background-size: 300% 100%; background-repeat: no-repeat; background-position: 100% 0; }
-  to { background-image: var(--rv-motion-band); background-size: 300% 100%; background-repeat: no-repeat; background-position: 0 0; }
-}
-@keyframes rv-motion-sheen { from { opacity: 1; background-position: 100% 0; } to { opacity: 1; background-position: 0 0; } }
 @keyframes rv-motion-fade { from { opacity: 0; } }
 /* Kit "A · iOS Yay": a block rises a little and grows into place; a window grows from .9 on an overshooting spring
    (its opacity runs on its own, unbouncing curve); a menu grows from its trigger's corner and its rows follow; a drawer
@@ -37,42 +26,6 @@
    its data arrives and it mounts, or when it is scrolled into view; blocks shown together follow one another. They
    rise 14px and grow from .98 as they fade in (kit "A · iOS Yay", owner, 4 Nov 2026). */
 :where(.rv-reveal) { animation: rv-motion-rise var(--rv-motion-enter) var(--rv-ease-enter) backwards; animation-delay: var(--rv-reveal-delay, 0ms); }
-
-/* A band of light passes over the first rows of a table one after another (the rest, below the fold, with the last of
-   them); the rows themselves do not move (owner, 24 Oct 2026). The light plays with the block that holds the table. */
-:where(.rv-reveal:not(.reports-page *)) tbody > tr {
-  --rv-motion-band: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--rv-color-primary) 12%, transparent) 50%, transparent 65%);
-  animation: rv-motion-row var(--rv-motion-sheen) ease-out backwards;
-  animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay));
-}
-:where(.rv-reveal:not(.reports-page *)) tbody > tr:nth-child(2) { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 1); }
-:where(.rv-reveal:not(.reports-page *)) tbody > tr:nth-child(3) { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 2); }
-:where(.rv-reveal:not(.reports-page *)) tbody > tr:nth-child(4) { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 3); }
-:where(.rv-reveal:not(.reports-page *)) tbody > tr:nth-child(5) { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 4); }
-:where(.rv-reveal:not(.reports-page *)) tbody > tr:nth-child(6) { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 5); }
-:where(.rv-reveal:not(.reports-page *)) tbody > tr:nth-child(7) { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 6); }
-:where(.rv-reveal:not(.reports-page *)) tbody > tr:nth-child(8) { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 7); }
-:where(.rv-reveal:not(.reports-page *)) tbody > tr:nth-child(9) { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 8); }
-:where(.rv-reveal:not(.reports-page *)) tbody > tr:nth-child(n + 10) { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-row-delay) + var(--rv-motion-stagger) * 9); }
-
-/* A band of light passes once over each summary card, one after another, as its figure counts up. The band is the
-   card's own background layer moving inside it, so nothing spills out and the card needs no clipping. */
-:where(.rv-reveal:not(.reports-page *)) :is(.rr-metrics > article, .invoice-reference-metrics > article, .rr-kgrid > .rr-kc) { position: relative; }
-:where(.rv-reveal:not(.reports-page *)) :is(.rr-metrics > article, .invoice-reference-metrics > article, .rr-kgrid > .rr-kc)::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(100deg, transparent 35%, color-mix(in srgb, var(--rv-color-primary) 16%, transparent) 50%, transparent 65%) 100% 0 / 300% 100% no-repeat;
-  opacity: 0;
-  pointer-events: none;
-  animation: rv-motion-sheen var(--rv-motion-sheen) ease-out backwards;
-  animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-sheen-delay));
-}
-:where(.rv-reveal:not(.reports-page *)) :is(.rr-metrics > article, .invoice-reference-metrics > article, .rr-kgrid > .rr-kc):nth-child(2)::after { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 1); }
-:where(.rv-reveal:not(.reports-page *)) :is(.rr-metrics > article, .invoice-reference-metrics > article, .rr-kgrid > .rr-kc):nth-child(3)::after { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 2); }
-:where(.rv-reveal:not(.reports-page *)) :is(.rr-metrics > article, .invoice-reference-metrics > article, .rr-kgrid > .rr-kc):nth-child(4)::after { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 3); }
-:where(.rv-reveal:not(.reports-page *)) :is(.rr-metrics > article, .invoice-reference-metrics > article, .rr-kgrid > .rr-kc):nth-child(n + 5)::after { animation-delay: calc(var(--rv-reveal-delay, 0ms) + var(--rv-motion-sheen-delay) + var(--rv-motion-block-stagger) * 4); }
 
 /* Cards under the pointer: a summary card lifts a little; an integration card only takes a shadow, because it holds
    its detail window and menus (fixed to the screen), and a moved card would hold them inside itself instead. */
@@ -145,9 +98,7 @@
     --rv-motion-fast: 0ms;
     --rv-motion-base: 0ms;
     --rv-motion-block-stagger: 0ms;
-    --rv-motion-row-delay: 0ms;
     --rv-motion-stagger: 0ms;
-    --rv-motion-sheen-delay: 0ms;
     --rv-motion-enter: 0ms;
     --rv-motion-press: 1;
     --rv-motion-lift: 0px;
