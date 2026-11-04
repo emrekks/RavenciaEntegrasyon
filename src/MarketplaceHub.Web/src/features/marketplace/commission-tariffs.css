@@ -300,3 +300,11 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-zoom { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--rv-color-muted); font-size: 12.5px; white-space: nowrap; }
 .app-shell.stitch-shell main .commission-tariffs .commission-zoom select { height: 36px; min-height: 0; padding: 0 28px 0 10px; border-radius: 7px; font-size: 13px; }
 @media (max-width: 760px) { .app-shell.stitch-shell main .commission-tariffs .commission-zoom > span { display: none; } }
+/* Desktop band table, tighter (owner, 5 Nov 2026: "gereksiz gapleri azalt"): less cell padding around the band cards,
+   a narrower card with less inner padding, and the variants switch closer to the profit chip. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan td { padding: 6px 8px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice { min-width: 172px; gap: 1px; padding: 7px 9px 6px; border-radius: 7px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-switch { margin-top: 3px; padding-top: 5px; }
+  .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan th[scope="row"] { padding-block: 6px; }
+}
