@@ -99,7 +99,7 @@
    active one is larger in its state's colour and moves (the clock's hands turn, the plane glides, the page shakes, the
    store hops), the steps ahead are faint. */
 .publish-step { position: relative; display: grid; box-sizing: border-box; flex: none; width: 22px; height: 22px; place-items: center; color: var(--ps-idle-ink); background: none; border-radius: 50%; opacity: .45; }
-.publish-step > svg { position: relative; display: block; width: 18px; height: 18px; overflow: visible; }
+.publish-step > svg { position: relative; display: block; width: 18px; height: 18px; overflow: visible; will-change: transform; backface-visibility: hidden; transform: translateZ(0); }
 .publish-step.is-done, .publish-step.is-half { color: var(--ps-ok); opacity: 1; }
 .publish-step.is-next, .publish-step.is-now, .publish-step.is-fail { opacity: 1; }
 .publish-step.is-next { color: var(--rv-color-warning); }
@@ -112,8 +112,8 @@
 .publish-step.is-next .publish-clock-hour { animation: rv-publish-clock-hour 144s linear infinite; }
 /* The step the card is at moves whether it waits (is-next) or runs (is-now): the page and the store hop, the plane glides,
    the clock turns its hands. */
-.publish-steps-item:nth-child(2) .publish-step:is(.is-next, .is-now) > svg { animation: rv-publish-step-glide 1s ease-in-out infinite; }
-.publish-steps-item:is(:nth-child(1), :nth-child(4)) .publish-step:is(.is-next, .is-now) > svg { animation: rv-publish-step-hop 1.4s ease-in-out infinite; }
+.publish-steps-item:nth-child(2) .publish-step:is(.is-next, .is-now) > svg { animation: rv-publish-step-glide 1.6s cubic-bezier(.45, 0, .55, 1) infinite; }
+.publish-steps-item:is(:nth-child(1), :nth-child(4)) .publish-step:is(.is-next, .is-now) > svg { animation: rv-publish-step-hop 1.8s cubic-bezier(.45, 0, .55, 1) infinite; }
 .publish-step.is-now .publish-clock-minute { animation: rv-publish-clock-minute 6s linear infinite; }
 .publish-step.is-now .publish-clock-hour { animation: rv-publish-clock-hour 72s linear infinite; }
 .publish-step.is-fail > svg { animation: rv-publish-step-shake 1.6s ease-in-out infinite; }
@@ -142,9 +142,9 @@
 .publish-steps-chip.is-yellow { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, transparent); }
 @keyframes rv-publish-clock-minute { to { transform: rotate(360deg); } }
 @keyframes rv-publish-clock-hour { from { transform: rotate(120deg); } to { transform: rotate(480deg); } }
-@keyframes rv-publish-step-glide { 50% { transform: translate(2px, -2px); } }
+@keyframes rv-publish-step-glide { 0%, 100% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(1.6px, -1.6px, 0); } }
 @keyframes rv-publish-step-shake { 0%, 60%, 100% { transform: translateX(0); } 10%, 30%, 50% { transform: translateX(-2px); } 20%, 40% { transform: translateX(2px); } }
-@keyframes rv-publish-step-hop { 0%, 70%, 100% { transform: translateY(0); } 35% { transform: translateY(-3px); } }
+@keyframes rv-publish-step-hop { 0%, 70%, 100% { transform: translate3d(0, 0, 0); } 35% { transform: translate3d(0, -2.5px, 0); } }
 @media (prefers-reduced-motion: reduce) { .publish-step > svg, .publish-step .publish-clock-hand, .publish-issue-action.is-busy > svg { animation: none !important; } }
 /* A narrower cell: smaller steps and links; the state label gives way below the width its pill needs (data-fit,
    publishStepsFit); the steps and their badges always stay. */
