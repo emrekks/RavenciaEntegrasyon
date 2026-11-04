@@ -435,3 +435,5 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
 }
 /* Touch: a sideways drag on the revenue chart moves the chosen hour or day; vertical drags still scroll the page. */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart { touch-action: pan-y; }
+/* Touch: holding a finger on the chart shows the point (no text selection or iOS callout steals the press). */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
