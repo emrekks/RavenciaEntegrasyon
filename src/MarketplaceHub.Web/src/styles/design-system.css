@@ -6654,10 +6654,10 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 /* Product options: the bulk-sync action sits as a quiet toolbar above the option groups, and the
    "create variants" panel follows the groups it summarises. */
 .product-options-card .product-options-toolbar { display: flex; justify-content: flex-end; margin: 0 0 var(--rv-space-3); }
-/* PC keeps the original order: create-variants panel above the groups and the sync button at the top right. */
+/* PC: the option groups (Beden, Renk) first, the create-variants panel under them, the sync button at the top right. */
 @media (min-width: 761px) {
   .product-options-card > .product-options-header { order: 0; padding-right: 160px; }
-  .product-options-card > .attribute-variant-action { order: 1; }
+  .product-options-card > .attribute-variant-action { order: 2; }
   .product-options-card > .product-variant-groups-section { order: 3; }
   .product-options-card > .product-options-toolbar { position: absolute; top: var(--product-card-padding, 20px); right: var(--product-card-padding, 20px); margin: 0; order: 0; }
 }

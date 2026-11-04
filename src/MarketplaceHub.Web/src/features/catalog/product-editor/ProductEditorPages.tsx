@@ -77,6 +77,12 @@ const productSaveToastKey = 'product-editor-save'
 // Channel prices are separate rows per variant and store; this many are written at once.
 const channelOfferWriteConcurrency = 6
 
+// A variant's options as the panel writes them elsewhere ("Beden: L - Renk: Bej"), not its raw signature ("Beden:L_Renk:Bej").
+function pricingVariantLabel(signature: string | null | undefined) {
+  const entries = parseVariantOptionSignature(signature ?? '')
+  return entries.length ? joinVariantOptionLabels(entries.map(entry => `${entry.name}: ${entry.value}`)) : signature ?? ''
+}
+
 function seedVariantMediaRefs(variants: Variant[]) {
   const mediaByColor = new Map<string, string[]>()
   for (const variant of variants) {
@@ -365,12 +371,12 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
                 <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-corner"><strong>Varyant</strong><small>Model / barkod</small></div>
                 {platforms.flatMap(platform => [renderMatrixHeader(platform, 'Liste Fiyatı'), renderMatrixHeader(platform, 'Satış Fiyatı')])}
                 {sortedRows.flatMap(item => [
-                  <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-row-label" key={`${item.key}:label`}><strong>{item.optionSignature || item.sku}</strong><small>{item.barcode || item.sku}</small></div>,
+                  <div className="variant-platform-pricing-matrix-cell variant-platform-pricing-matrix-row-label" key={`${item.key}:label`}><strong>{pricingVariantLabel(item.optionSignature) || item.sku}</strong><small>{item.barcode || item.sku}</small></div>,
                   ...platforms.flatMap(platform => {
                     const draft = matrixDraft(item, platform)
                     return [
-                      <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:list`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} liste fiyatı`} type="number" min="0" step="0.01" value={draft.listPrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'listPrice', event.target.value)} /></div>,
-                      <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:sale`}><input aria-label={`${item.optionSignature || item.sku} ${marketplacePlatformName(platform)} satış fiyatı`} type="number" min="0" step="0.01" value={draft.salePrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'salePrice', event.target.value)} /></div>
+                      <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:list`}><input aria-label={`${pricingVariantLabel(item.optionSignature) || item.sku} ${marketplacePlatformName(platform)} liste fiyatı`} type="number" min="0" step="0.01" value={draft.listPrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'listPrice', event.target.value)} /></div>,
+                      <div className="variant-platform-pricing-matrix-cell" key={`${item.key}:${platformKey(platform)}:sale`}><input aria-label={`${pricingVariantLabel(item.optionSignature) || item.sku} ${marketplacePlatformName(platform)} satış fiyatı`} type="number" min="0" step="0.01" value={draft.salePrice} disabled={saving || !platform.connectionId} onChange={event => updateMatrixDraft(item, platform, 'salePrice', event.target.value)} /></div>
                     ]
                   })
                 ])}
@@ -3329,7 +3335,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               const filteredValues = filterAttributeOptionValues(sortOptionValues(item.attribute.name, item.attribute.values), valueQuery)
               return (
               <article className={`attribute-builder-card ${expanded ? 'is-open' : ''}`} key={item.attributeId}>
-                <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={expanded ? `option-values-${item.attributeId}` : undefined} disabled={!expandable} onClick={() => setExpandedOptionGroupIds(current => ({ ...current, [item.attributeId]: !expanded }))}>
+                <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={expanded ? `option-values-${item.attributeId}` : undefined} disabled={!expandable} title={expanded ? 'Bütün seçenek gruplarını kapat' : 'Bütün seçenek gruplarını birlikte aç'} onClick={() => setExpandedOptionGroupIds(Object.fromEntries(visibleOptionRequirements.map(other => [other.attributeId, !expanded])))}>
                   <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong><small>{item.attribute.values.length} değer · seçenek grubu</small></span>
                   <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{(attributeSelections[item.attributeId]?.length ?? 0) > 0 ? `${attributeSelections[item.attributeId].length} değer seçildi` : 'Değer seçin'}</small>{expandable && <UiIcon name="chevronDown" />}</span>
                 </button>
@@ -3347,13 +3353,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                   <div className="option-chip-list">
                     {filteredValues.map(value => {
                       const isSelected = (attributeSelections[item.attributeId] ?? []).includes(value.id)
+                      // Chips share one size; a longer value (Standart, Kahverengi) takes two or three cells of the grid.
+                      const length = cleanOptionValue(value.value).length
+                      const span = length > 10 ? ' is-wider' : length > 5 ? ' is-wide' : ''
                       return (
                         <button
                           type="button"
                           key={value.id}
                           title={cleanOptionValue(value.value)}
                           aria-pressed={isSelected}
-                          className={`option-chip ${isSelected ? 'active' : ''}`}
+                          className={`option-chip${span}${isSelected ? ' active' : ''}`}
                           onClick={() => toggleAttributeValue(item.attributeId, value.id)}
                         >
                           {cleanOptionValue(value.value)}

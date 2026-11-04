@@ -222,7 +222,7 @@
   .variant-marketplace-codes-button { margin-left: auto; }
   .marketplace-codes-modal { width: min(760px, 100%); }
   /* Product editor dialog footers: compact 34 px buttons. */
-  :is(.marketplace-codes-modal, .variant-code-confirm-modal, .variant-bulk-edit-modal, .variant-media-picker-modal, .variant-option-edit-modal) > footer button { min-height: 0; height: 34px; padding-block: 0; }
+  .app-shell.stitch-shell main :is(.marketplace-codes-modal, .variant-code-confirm-modal, .variant-bulk-edit-modal, .variant-media-picker-modal, .variant-option-edit-modal) > footer button, :is(.marketplace-codes-modal, .variant-code-confirm-modal, .variant-bulk-edit-modal, .variant-media-picker-modal, .variant-option-edit-modal) > footer button { min-height: 0; height: 34px; padding-block: 0; }
   /* Variant option text: read only, changed through the pencil (Varyant Düzenleme). */
   .variant-option-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .variant-option-cell > .variant-option-text { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 14px; white-space: nowrap; text-overflow: ellipsis; }
@@ -242,7 +242,9 @@
   .variant-option-edit-body > footer { display: flex; justify-content: flex-end; gap: 8px; margin: 0 -24px; padding: 14px 24px; border-top: 1px solid var(--rv-color-border); }
   .variant-option-edit-body > footer button { height: 36px; min-height: 0; }
   @media (max-width: 560px) { .variant-option-edit-pair { grid-template-columns: 1fr; } }
-  .marketplace-codes-body { display: grid; gap: var(--rv-space-3); padding: var(--rv-space-4) var(--rv-space-5); min-width: 0; }
+  .marketplace-codes-body { display: grid; gap: var(--rv-space-2); padding: var(--rv-space-3) var(--rv-space-5); min-width: 0; }
+  .app-shell.stitch-shell main .marketplace-codes-modal > header { padding-block: 14px; }
+  .app-shell.stitch-shell main .marketplace-codes-modal > footer { padding-block: 10px; gap: var(--rv-space-2); }
   .marketplace-codes-table-wrap { max-height: min(60vh, 520px); overflow: auto; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
   .marketplace-codes-table { width: 100%; border-collapse: collapse; font-size: var(--rv-font-size-sm); }
   .marketplace-codes-table :is(th, td) { padding: var(--rv-space-2) var(--rv-space-3); text-align: left; border-bottom: 1px solid var(--rv-color-border); white-space: nowrap; }
@@ -259,9 +261,10 @@
   .marketplace-codes-table td { vertical-align: top; }
   /* One variant: a row per connection with its platform, whether the variant is linked there, and the code. */
   .marketplace-code-list { display: grid; gap: var(--rv-space-2); margin: 0; padding: 0; list-style: none; }
-  .marketplace-code-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); align-items: center; gap: var(--rv-space-2) var(--rv-space-4); padding: 10px 12px 10px 14px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; transition: background-color 120ms ease, border-color 120ms ease; }
-  .marketplace-code-row:hover { background: var(--rv-color-surface-raised); border-color: var(--rv-color-border-strong); }
-  .marketplace-code-row:focus-within { background: var(--rv-color-primary-soft); border-color: var(--rv-color-primary); }
+  .marketplace-code-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 300px); align-items: center; gap: var(--rv-space-2) var(--rv-space-4); padding: 8px 10px 8px 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; transition: border-color 120ms ease, box-shadow 120ms ease; }
+  /* Rows sit on the panel surface like the other cards; hover and focus show on the border, not as a fill. */
+  .marketplace-code-row:hover { border-color: color-mix(in srgb, var(--rv-color-primary) 40%, var(--rv-color-border)); }
+  .marketplace-code-row:focus-within { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 14%, transparent); }
   .marketplace-code-row.is-invalid { background: var(--rv-color-danger-soft); border-color: var(--rv-color-danger); }
   .marketplace-code-platform { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .marketplace-code-platform img, .marketplace-code-logo-fallback { width: 32px; height: 32px; flex: none; border-radius: 7px; object-fit: contain; }
@@ -328,6 +331,13 @@
   .option-chip-list { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
   /* A long value group (Renk) stops at five chip rows and scrolls inside, so it stands as tall as Beden beside it. */
   .attribute-builder-values .option-chip-list { max-height: 252px; overflow-y: auto; align-content: flex-start; padding: 2px; margin: -2px; }
+  /* Pointing at one option group lights every group, since they open and close together. */
+  .attribute-builder-list:has(.attribute-builder-disclosure:hover:not(:disabled)) .attribute-builder-card { border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-primary) 30%, transparent); }
+  /* One chip size: a grid of equal cells, a longer value spanning two or three of them. */
+  .attribute-builder-values .option-chip-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); grid-auto-flow: row dense; }
+  .attribute-builder-values .option-chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attribute-builder-values .option-chip.is-wide { grid-column: span 2; }
+  .attribute-builder-values .option-chip.is-wider { grid-column: span 3; }
 }
 
 @layer features {

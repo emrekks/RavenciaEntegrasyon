@@ -52,14 +52,14 @@ describe('BulkVariantPlatformPricingModal', () => {
   it('keeps a typed price across renders and enables Kaydet', () => {
     const onSave = vi.fn()
     render(onSave)
-    const input = document.querySelector<HTMLInputElement>('input[aria-label="Renk:Kırmızı Trendyol satış fiyatı"]')!
+    const input = document.querySelector<HTMLInputElement>('input[aria-label="Renk: Kırmızı Trendyol satış fiyatı"]')!
     expect(input.value).toBe('90')
     expect(saveButton().disabled).toBe(true)
     type(input, '85')
     // The caller renders again with an equal but new marketplace list.
     render(onSave, 'Elbise Yeni')
     render(onSave, 'Elbise Yeni 2')
-    expect(document.querySelector<HTMLInputElement>('input[aria-label="Renk:Kırmızı Trendyol satış fiyatı"]')!.value).toBe('85')
+    expect(document.querySelector<HTMLInputElement>('input[aria-label="Renk: Kırmızı Trendyol satış fiyatı"]')!.value).toBe('85')
     expect(saveButton().disabled).toBe(false)
     act(() => saveButton().click())
     expect(onSave).toHaveBeenCalledWith({ 'v1:TRENDYOL:ty': { listPrice: '100', salePrice: '85' } })
