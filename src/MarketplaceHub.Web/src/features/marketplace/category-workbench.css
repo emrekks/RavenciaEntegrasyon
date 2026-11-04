@@ -482,3 +482,9 @@
 /* Footer row: hint, legend and 34 px buttons in one 52 px band (9 px above and below). */
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot { height: 52px; padding: 9px 20px; }
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot > button { height: 34px; min-height: 0; }
+/* Değer Eşlemeleri's tools share the field row's columns, Kaldır's column included, so Değer ara starts under Panel
+   Özelliği (owner, 5 Nov 2026). */
+@media (min-width: 901px) {
+  .app-shell .panel.mapping-step.cm-card :is(.cm-form, .cm-vtools) { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr) 64px; }
+  .app-shell .panel.mapping-step.cm-card .cm-form > .cm-unlink { justify-self: end; }
+}

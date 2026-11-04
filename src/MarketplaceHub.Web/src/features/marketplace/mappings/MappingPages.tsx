@@ -731,7 +731,7 @@ function CategoryAttributeWorkspace({ platformCode, connectionId, localCategoryI
   const [selectedEntryKey, setSelectedEntryKey] = useState('')
   const valueDrafts = useValueDraftStore(connectionId, onNotice)
   const [extraPanel, setExtraPanel] = useState<'' | 'defaults' | 'conflicts'>('')
-  const [collapsedGroups, setCollapsedGroups] = useState<string[]>([])
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>(['İsteğe Bağlı'])
   // Same cache entries as the two panels, so the header buttons can show how many items each holds.
   const attributeDefaults = useQuery({ queryKey: ['attribute-defaults', connectionId], queryFn: () => hubApi<AttributeDefault[]>(`/connections/${connectionId}/attribute-defaults`), retry: false, enabled: !!connectionId && (platformCode === 'TRENDYOL' || platformCode === 'HEPSIBURADA' || platformCode === 'N11') }).data
   const attributeDefaultsCount = attributeDefaults?.length ?? 0
