@@ -1122,3 +1122,9 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 /* An image window's title: the product's name on one line, smaller, cut with an ellipsis (owner, 5 Nov 2026). */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head > div { min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head h2 { overflow: hidden; font-size: 15px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+/* Phones: the picture takes the height the window has left (the visible screen, less its title and the bars), at
+   2:3 and never wider than the window, so it is never cut at the bottom; the window fits around it. */
+@media (max-width: 760px) {
+  :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img.rr-img { width: auto; max-width: calc(100vw - 24px); }
+  :is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-img-preview.rr-img-preview { width: min(calc((100dvh - 230px) * 2 / 3), calc(100vw - 50px)); height: auto; max-height: none; aspect-ratio: 2 / 3; }
+}
