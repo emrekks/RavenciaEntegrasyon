@@ -379,3 +379,8 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
   html body .rv-auth-page .rv-auth-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 12px; }
   html body .rv-auth-page .rv-auth-footer > * { white-space: nowrap; }
 }
+
+/* Open windows keep their scrolling to themselves: a drag that reaches the end of a window's content does not pass on
+   to the page behind it (the page is also pinned while a window is open, see overlay-scroll-lock.ts). */
+:is(.workspace-modal-backdrop, .missing-value-mapping-backdrop, .value-mapping-quick-value-backdrop, .rv-overlay, .rr-overlay),
+:is(.workspace-modal-backdrop, .missing-value-mapping-backdrop, .value-mapping-quick-value-backdrop, .rv-overlay, .rr-overlay) * { overscroll-behavior: contain; }

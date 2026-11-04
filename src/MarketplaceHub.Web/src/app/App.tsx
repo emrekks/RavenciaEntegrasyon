@@ -22,6 +22,7 @@ import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChange
 import { readStoredItem, removeStoredItem, writeStoredItem } from '../shared/local-storage'
 import { focusOnMount } from '../shared/focus'
 import { closeTouchTip, installTouchTips } from '../shared/touch-tips'
+import { installOverlayScrollLock } from '../shared/overlay-scroll-lock'
 import { ToastStackProvider } from '../shared/components/ToastStack'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
@@ -108,6 +109,7 @@ function Shell({ me }: { me: Me }) {
   useEffect(() => { closeAllDismissables('route'); closeTouchTip() }, [location.pathname])
   // On a touch screen every hover-only tip opens on a tap and stays inside the window (shared/touch-tips.ts).
   useEffect(() => installTouchTips(), [])
+  useEffect(() => installOverlayScrollLock(), [])
   useEffect(() => {
     const load = () => void loadNotificationPanel()
     if (typeof window.requestIdleCallback === 'function') { const id = window.requestIdleCallback(load, { timeout: 4000 }); return () => window.cancelIdleCallback(id) }
