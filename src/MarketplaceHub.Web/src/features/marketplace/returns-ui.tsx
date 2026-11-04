@@ -170,7 +170,9 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     if (sheet) pin({ position: 'fixed', 'overflow-y': 'auto', margin: '0', 'box-shadow': '0 16px 40px rgb(0 0 0 / 35%)' })
     const anchor = host.getBoundingClientRect()
     if (sheet) pin({ 'max-height': `${Math.max(160, Math.min(320, anchor.top - 16))}px` })
-    const box = pop.getBoundingClientRect()
+    // Width and height at layout size: the list grows in from .92 as it opens (styles/motion.css).
+    const drawn = pop.getBoundingClientRect()
+    const box = { top: drawn.top, left: drawn.left, width: pop.offsetWidth, height: pop.offsetHeight, bottom: drawn.top + pop.offsetHeight }
     const above = anchor.top - box.height - 6
     const below = anchor.bottom + 6
     const top = sheet

@@ -32,7 +32,8 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
   function updateCompactMenuPosition() {
     if (!compact || !menu.current || !trigger.current) return
     const triggerRect = trigger.current.getBoundingClientRect()
-    const menuRect = menu.current.getBoundingClientRect()
+    // Layout size: the menu grows in from .92 as it opens (styles/motion.css).
+    const menuRect = { width: menu.current.offsetWidth, height: menu.current.offsetHeight }
     const top = triggerRect.bottom + menuRect.height + 8 <= window.innerHeight - 12
       ? triggerRect.bottom + 8
       : Math.max(12, triggerRect.top - menuRect.height - 8)
@@ -63,7 +64,7 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
   const [alignStart, setAlignStart] = useState(false)
   useLayoutEffect(() => {
     if (!open || compact || !menu.current || !trigger.current) return
-    const width = menu.current.getBoundingClientRect().width
+    const width = menu.current.offsetWidth
     setAlignStart(trigger.current.getBoundingClientRect().right - width < 12)
   }, [open, compact])
 

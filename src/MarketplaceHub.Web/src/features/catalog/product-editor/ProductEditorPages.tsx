@@ -130,7 +130,8 @@ function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current
       const menu = menuRef.current
       if (!anchor || !menu) return
       const bounds = anchor.getBoundingClientRect()
-      const menuBounds = menu.getBoundingClientRect()
+      // Layout size: the menu grows in from .92 as it opens (styles/motion.css).
+      const menuBounds = { width: menu.offsetWidth, height: menu.offsetHeight }
       const left = Math.max(12, Math.min(window.innerWidth - menuBounds.width - 12, bounds.right - menuBounds.width))
       const below = bounds.bottom + 8
       const top = below + menuBounds.height <= window.innerHeight - 12 ? below : Math.max(12, bounds.top - menuBounds.height - 8)

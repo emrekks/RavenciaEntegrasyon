@@ -109,10 +109,12 @@ function InvoiceProductSummary({ item }: { item: InvoiceWorkspace }) {
     if (!open) return
     const updatePosition = () => {
       const trigger = triggerRef.current?.getBoundingClientRect()
-      const tooltip = tooltipRef.current?.getBoundingClientRect()
+      // The layout size, not the drawn one: the list grows in from .92 as it opens, and a size read mid-animation
+      // would place it too far right on a phone.
+      const tooltip = tooltipRef.current
       if (!trigger) return
-      const width = tooltip?.width ?? Math.min(340, window.innerWidth - 32)
-      const height = tooltip?.height ?? 120
+      const width = tooltip?.offsetWidth || Math.min(340, window.innerWidth - 32)
+      const height = tooltip?.offsetHeight || 120
       const below = trigger.bottom + 8
       const top = window.innerHeight - below >= height + 12 || trigger.top <= height + 20
         ? below
@@ -300,10 +302,11 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, can
     if (!open) return
     const updatePosition = () => {
       const trigger = triggerRef.current?.getBoundingClientRect()
-      const menu = menuRef.current?.getBoundingClientRect()
+      // Layout size: the menu grows in from .92 as it opens (styles/motion.css).
+      const menu = menuRef.current
       if (!trigger) return
-      const width = menu?.width ?? 220
-      const height = menu?.height ?? 150
+      const width = menu?.offsetWidth || 220
+      const height = menu?.offsetHeight || 150
       const below = trigger.bottom + 5
       const top = window.innerHeight - below >= height + 8 || trigger.top <= height + 12
         ? below
