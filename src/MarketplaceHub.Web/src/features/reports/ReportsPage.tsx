@@ -1543,11 +1543,14 @@ type LedgerRow = { label: string; value: string; hint?: string; kind?: 'minus' |
 
 // A small account: rows one under another, deductions in red with a minus, subtotals and the result ruled above and
 // coloured by their sign.
+// A row's note ("₺70.416,27 kesin, ₺19.639,78 tahmini") opens from the "i" beside its label, as Kâr Hesabı's rows do.
 function Ledger({ title, description, rows, empty }: { title: string; description: string; rows: LedgerRow[]; empty: string }) {
+  const tip = useId()
   return <Panel title={title} description={description} className="reports-ledger-panel">
-    {rows.length === 0 ? <p className="reports-empty">{empty}</p> : <dl className="reports-ledger">{rows.map(row => <div key={row.label} className={[row.kind && `is-${row.kind}`, row.tone && `is-${row.tone}`].filter(Boolean).join(' ') || undefined}>
-      <dt>{row.label}{row.hint && <small>{row.hint}</small>}</dt>
+    {rows.length === 0 ? <p className="reports-empty">{empty}</p> : <dl className="reports-ledger">{rows.map((row, index) => <div key={row.label} className={['reports-tip-host', row.kind && `is-${row.kind}`, row.tone && `is-${row.tone}`].filter(Boolean).join(' ')}>
+      <dt>{row.hint ? <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${index}`}>{row.label}<TipMark /></button> : row.label}</dt>
       <dd>{row.kind === 'minus' ? `− ${row.value}` : row.value}</dd>
+      {row.hint && <span role="tooltip" id={`${tip}-${index}`} className="reports-hover-tip"><TipText text={row.hint} /></span>}
     </div>)}</dl>}
   </Panel>
 }
