@@ -6,7 +6,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router'
 import { createPortal } from 'react-dom'
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, hubPoll, loadAllPages } from '../../../shared/api'
-import { UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard, StickyActionBar } from '../../../shared/components'
+import { TitleHint, UiIcon, usePromptDialog, type UiIconName, DialogSurface, UnsavedChangesGuard, StickyActionBar } from '../../../shared/components'
 import { failedWithHttpAnswer, newIdempotencyKey, sendWithVersionedIdempotencyKey } from '../../../shared/idempotency'
 import { httpsUrlProblem } from '../../../shared/safe-url'
 import { ErrorToast, NoticeToast } from '../../../shared/components/NoticeToast'
@@ -693,8 +693,8 @@ function CategoryAttributeMappingPanel({
     <div className="editor-section-title">
       <span>3</span>
       <div>
-        <h2>Kategori Özellikleri</h2>
-        <p>{categoryLabel ? `Seçili kategori: ${categoryLabel} · Bu kategoriye bağlanan özellik değerlerini atayın.` : 'Seçili kategoriye bağlanan özellik değerlerini atayın.'}</p>
+        <h2>Kategori Özellikleri<TitleHint label="Kategori Özellikleri">Seçili kategoriye bağlanan özellik değerlerini atayın.</TitleHint></h2>
+        {categoryLabel ? <p>Seçili kategori: {categoryLabel}</p> : null}
       </div>
     </div>
     {isLoading ? (
@@ -3203,7 +3203,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     {!publishOnly && <div className="product-add-wizardbar"><div className="product-add-stepper"><div className="product-add-progress" role="tablist" aria-label={editProductId ? 'Ürün düzenleme adımları' : 'Ürün ekleme adımları'}><button type="button" className={wizardStep === 1 ? 'active' : ''} role="tab" aria-selected={wizardStep === 1} onClick={() => setWizardStep(1)}><span>1</span><strong>Ürün Bilgileri ve Varyantlar</strong></button><i aria-hidden="true" /><button type="button" className={wizardStep === 2 ? 'active' : ''} role="tab" aria-selected={wizardStep === 2} onClick={() => setWizardStep(2)}><span>2</span><strong>Yayınlama</strong></button></div></div></div>}<form id="product-creation-form" className="product-creation-workspace product-add-workspace" data-wizard-step={wizardStep} aria-busy={editorHydrating || undefined} inert={editorHydrating || undefined} onSubmit={submit} onInvalidCapture={handleInvalid} onChange={dismissProductError} noValidate>
     <div className="product-top-layout">
       <section className="panel product-step-card product-basics-card">
-        <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri</h2><p>Ürün kartının temel başlığı ve katalog bilgileri.</p></div></div>
+        <div className="editor-section-title"><span>1</span><div><h2>Temel Ürün Bilgileri<TitleHint label="Temel Ürün Bilgileri">Ürün kartının temel başlığı ve katalog bilgileri.</TitleHint></h2></div></div>
         <div className="product-step-grid product-basics-grid">
           <label className="product-title-field">Ürün Adı<input value={form.title} aria-invalid={fieldErrors.title ? true : undefined} onChange={event => updateField('title', event.target.value)} required maxLength={320} /><EditorFieldError message={fieldErrors.title} /></label>
           <label>Satış Durumu<select value={form.status} onChange={event => updateField('status', event.target.value)}><option value="ACTIVE">Satışa Açık</option><option value="ARCHIVED">Satışa Kapalı</option></select></label>
@@ -3222,7 +3222,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       </section>
       <div className="product-top-sidebar">
         <section className="panel product-step-card product-pricing-card">
-          <div className="editor-section-title"><span>2</span><div><h2>Fiyat, Stok ve Vergi</h2><p>Başlangıç değerleri varyantlara uygulanır.</p></div></div>
+          <div className="editor-section-title"><span>2</span><div><h2>Fiyat, Stok ve Vergi<TitleHint label="Fiyat, Stok ve Vergi">Başlangıç değerleri varyantlara uygulanır.</TitleHint></h2></div></div>
           <div className="product-step-grid">
             {/* Like Stok Kodu and Barkod: a card with variants prices each variant, so these stay grey and empty. */}
             <label title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined}>Liste Fiyatı<input value={variantRows.length > 1 ? '' : form.listPrice} disabled={variantRows.length > 1} title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
@@ -3277,7 +3277,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       <section className="panel product-step-card product-media-card">
         <div className="editor-section-title">
           <span>4</span>
-            <div><h2>Görseller<button type="button" className="editor-hint" aria-label="Görseller hakkında" aria-describedby="product-media-hint"><UiIcon name="help" size={16} /><span role="tooltip" id="product-media-hint" className="editor-hint-tip">JPEG/PNG dosyası yükleyebilirsiniz. Görselleri sürükleyerek sıralayın; aynı modelin diğer renk görselleri de burada görünür ve sıralama kayıtta renk ürünlerine uygulanır.</span></button></h2></div>
+            <div><h2>Görseller<TitleHint label="Görseller">JPEG/PNG dosyası yükleyebilirsiniz. Görselleri sürükleyerek sıralayın; aynı modelin diğer renk görselleri de burada görünür ve sıralama kayıtta renk ürünlerine uygulanır.</TitleHint></h2></div>
             <div className="product-media-header-actions">
               {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={() => clearAllMedia()}>Tümünü Temizle</button>}
             </div>
@@ -3315,8 +3315,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         <div className="editor-section-title product-options-header">
           <span>5</span>
           <div>
-            <h2>Ürün Seçenekleri</h2>
-            <p>Seçenek grubu ve değerlerini burada seçin. Mevcut ürünlerde kayıtlı Renk ve Beden değerleri otomatik işaretlenir; yeni seçimler “Ürünleri ekle” ile varyant satırlarına eklenir.</p>
+            <h2>Ürün Seçenekleri<TitleHint label="Ürün Seçenekleri">Seçenek grubu ve değerlerini burada seçin. Mevcut ürünlerde kayıtlı Renk ve Beden değerleri otomatik işaretlenir; yeni seçimler “Ürünleri ekle” ile varyant satırlarına eklenir.</TitleHint></h2>
           </div>
         </div>
         {bulkSyncOptionRequirements.length > 0 && <div className="product-options-toolbar"><button type="button" className="secondary product-options-sync-button" onClick={() => { setBulkOptionSyncSelection([]); setBulkOptionSyncOpen(true) }} aria-haspopup="dialog">Toplu Eşitleme</button></div>}
@@ -3399,7 +3398,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           </div>
         </div>
       <div className="product-variant-groups-section">
-        <div className="editor-section-title"><span>6</span><div><h2>Ürün Seçenek Grupları</h2><p>İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</p></div></div>
+        <div className="editor-section-title"><span>6</span><div><h2>Ürün Seçenek Grupları<TitleHint label="Ürün Seçenek Grupları">İşaretlediğiniz özellik değerlerinin tüm kombinasyonları varyant satırı olur.</TitleHint></h2></div></div>
         {(fieldErrors.variants || fieldErrors.stock || fieldErrors.attributes) && <div className="product-field-error-list" role="alert">{[fieldErrors.variants, fieldErrors.stock, fieldErrors.attributes].filter(Boolean).map(message => <p key={message}>{message}</p>)}</div>}
         {variantRows.length > 0 && <>
             <div className="variant-table-toolbar"><span>Varyant görsellerini tek tek veya seçenek değerine göre toplu atayın.</span><div className="variant-table-toolbar-actions"><button type="button" className="secondary is-danger variant-clear-button" onClick={clearVariants}><UiIcon name="trash" /> Oluşan Varyantları Temizle</button><button type="button" className="secondary variant-media-bulk-button" onClick={openBulkVariantMediaPicker} title="Seçenek değerine görsel ata"><VariantImageIcon /> Seçeneklere Görsel Ata</button>{editProductId && <button type="button" className="secondary variant-marketplace-codes-button" onClick={() => setMarketplaceCodesOpen(true)} title="Hepsiburada ve Shopify varyant kodlarını göster"><UiIcon name="externalLink" /> Pazaryeri Kodları</button>}</div></div>

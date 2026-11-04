@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router'
 import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
-import { Button, Pagination, Tabs, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
+import { Button, Pagination, Tabs, TitleHint, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification, notificationError, notificationLinks, platformCodeFromName, type NotificationContext } from '../../shared/notifications'
@@ -560,8 +560,7 @@ export function JobsPage({ me }: { me: Me }) {
     <div className="jobs-reference-heading rv-page-head">
       <div>
         <p className="eyebrow">Sistem İzleme</p>
-        <h1>İşlem Takibi</h1>
-        <p className="rv-page-lead">Arka plan işlemlerinin durumunu, hatalarını ve kuyruk performansını izleyin.</p>
+        <h1>İşlem Takibi<TitleHint label="İşlem Takibi">Arka plan işlemlerinin durumunu, hatalarını ve kuyruk performansını izleyin.</TitleHint></h1>
       </div>
       {!listHidden && <div className="jobs-reference-heading-actions">
         <div className="jobs-reference-range-wrap">

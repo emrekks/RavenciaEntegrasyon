@@ -2,7 +2,7 @@ import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState,
 import { useSearchParams } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi, settingsIfMatch } from '../../shared/api'
-import { LoadingState, Modal, StickyActionBar } from '../../shared/components'
+import { LoadingState, Modal, StickyActionBar, TitleHint } from '../../shared/components'
 import { uiGlyph16, type UiIconName } from '../../shared/components/UiIcon'
 import type { DataResetGroup } from '../../shared/components/DataResetLedger'
 import { NoticeToast, type NoticeToastKind } from '../../shared/components/NoticeToast'
@@ -99,7 +99,7 @@ function SettingsGlyph({ state }: { state: SettingsGlyphState }) {
 
 function SettingsPaneHead({ section, description, actions }: { section: SettingsSectionKey; description: ReactNode; actions?: ReactNode }) {
   const item = settingsSections.find(entry => entry.key === section) ?? settingsSections[0]
-  return <header className="ss-head"><div><h2>{item.label}</h2><p>{description}</p></div>{actions ? <div className="ss-head-actions">{actions}</div> : null}</header>
+  return <header className="ss-head"><div><h2>{item.label}<TitleHint label={item.label}>{description}</TitleHint></h2></div>{actions ? <div className="ss-head-actions">{actions}</div> : null}</header>
 }
 
 function SettingsBar({ title, copy, dirty = false, children }: { title: string; copy: ReactNode; dirty?: boolean; children: ReactNode }) {
@@ -190,7 +190,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, con
         return <section className="ss-dr-group" key={group.label} aria-label={group.label}>
           <header className="ss-dr-gh">
             <span className="ss-tile is-sm ss-dr-ico"><SettingsIcon name={resetGroupIcons[group.label] ?? 'db'} /></span>
-            <div><h3>{group.label}</h3><p>{group.description}</p></div>
+            <div><h3>{group.label}{group.description ? <TitleHint label={group.label}>{group.description}</TitleHint> : null}</h3></div>
             <span className={`ss-tag ss-dr-sel${chosen ? ' is-on' : ''}`}>{chosen}/{group.options.length} Seçili</span>
             <button type="button" className="ss-btn is-xs" disabled={busy} onClick={() => onToggle(group.options.map(option => option.scope), !all)}>{all ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button>
           </header>
@@ -420,7 +420,7 @@ export function SystemSettingsPage() {
 
   return <section className="content ss-page">
     {notice && <SettingsNotice {...notice} />}
-    <header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları</h1><p>Hesap güvenliği, alarm bildirimleri, yerel veri, kargo etiketi ve görünüm.</p></header>
+    <header className="ss-page-head"><span className="ss-crumb">Ayarlar</span><h1>Sistem Ayarları<TitleHint label="Sistem Ayarları">Hesap güvenliği, alarm bildirimleri, yerel veri, kargo etiketi ve görünüm.</TitleHint></h1></header>
     <div className="ss-gtabs rv-tabs rv-view-tabs" role="tablist" aria-label="Ayar grupları">{settingsSectionGroups.map(group => <button type="button" role="tab" key={group.label} aria-selected={group === activeGroup} className={group === activeGroup ? 'is-on is-active' : undefined} onClick={() => selectSection(group.items[0].key)}><span className="rv-tab-label"><SettingsIcon name={group.icon} /><span className="rv-tab-text" data-text={group.label}>{group.label}</span></span></button>)}</div>
     <div className="ss-card">
       {activeGroup.items.length > 1 && <div className="ss-stabs"><span className="ss-seg rv-tabs rv-view-tabs" role="tablist" aria-label={`${activeGroup.label} bölümleri`}>{activeGroup.items.map(item => <button type="button" role="tab" key={item.key} aria-selected={section === item.key} className={section === item.key ? 'is-on is-active' : undefined} onClick={() => selectSection(item.key)}><span className="rv-tab-label"><SettingsIcon name={item.icon} />{item.short ? <><span className="rv-tab-text ss-lbl-long" data-text={item.label}>{item.label}</span><span className="rv-tab-text ss-lbl-short" data-text={item.short}>{item.short}</span></> : <span className="rv-tab-text" data-text={item.label}>{item.label}</span>}</span>{navMeta(item.key)}</button>)}</span></div>}

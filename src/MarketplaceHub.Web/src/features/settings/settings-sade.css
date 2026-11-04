@@ -33,7 +33,7 @@
 .ss-page .ss-seg .ss-st { width: 14px; height: 14px; }
 .ss-page .ss-seg > button.is-on .ss-st:not(.is-done) { color: var(--ss-violet); }
 .ss-page .ss-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; container: ss-pane / inline-size; }
-.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 20px 0 16px; }
+.ss-page .ss-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 20px 0 16px; }
 .ss-page .ss-head > div:first-child { flex: 1 1 260px; min-width: 0; }
 .ss-page .ss-head h2 { font-size: 16px; font-weight: 600; line-height: 1.35; }
 .ss-page .ss-head p { color: var(--rv-color-muted); font-size: 13px; }
@@ -513,3 +513,10 @@
 .app-shell.stitch-shell main .ss-page .ss-secret .ss-btn.is-xs { flex: none; height: 28px; min-height: 0; padding: 0 8px; color: var(--rv-color-primary); background: transparent; border: 0; box-shadow: none; font-weight: 600; }
 .app-shell.stitch-shell main .ss-page .ss-secret .ss-btn.is-xs:hover { color: var(--rv-color-primary-strong, var(--rv-color-primary)); background: transparent; text-decoration: underline; text-underline-offset: 3px; }
 .ss-page .ss-secret-edit > .ss-in { flex: 1 1 auto; }
+
+/* Phones: the section tabs share the row by their own width (a long name such as Authenticator no longer squeezes into
+   an equal third and runs into the frame), with an even 3px inset and 3px between them. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .ss-page .ss-stabs > .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg { display: flex !important; gap: 3px !important; padding: 3px !important; }
+  .app-shell.stitch-shell main .ss-page .ss-stabs > .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg > button { flex: 1 1 auto; padding: 0 8px !important; }
+}

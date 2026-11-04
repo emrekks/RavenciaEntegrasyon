@@ -837,7 +837,7 @@ internal static class ReportBuilder
             : $"Komisyon ve hakediş tahminidir: siparişte gelen komisyon oranı ya da tutarı üzerinden, iade edilmeyen adetler için hesaplanır; kesinleşmiş hakediş değildir. Komisyon bilgisi net cironun {Percent(commission.Coverage)} kadarında var; Pazarama ve Shopify komisyon göndermez, n11 oranları tutarsız olabilir.");
         var tariffLines = orders.Sum(x => x.Lines.Count(line => line.CommissionFromTariff));
         if (tariffLines > 0)
-            notes.Add($"{Count(tariffLines)} satırda siparişte komisyon gelmediği için oran yüklenen komisyon tarifesinden alındı (satışın yapıldığı tarife haftasında, ödenen birim fiyatın düştüğü bant).");
+            notes.Add($"{Count(tariffLines)} satırda siparişte komisyon gelmediği için oran yüklenen komisyon tarifesinden alındı (satış gününü kapsayan tarifede, ödenen birim fiyatın düştüğü bant).");
         if (cost.KeptQuantity > 0)
             notes.Add(cost.CostedQuantity <= 0
                 ? "Satılan ürünlerin hiçbirinde maliyet girilmemiş; kâr hesaplanamaz."

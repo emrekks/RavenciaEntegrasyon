@@ -6,6 +6,7 @@ import type { Product } from '../catalog/shared'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { CardBackgroundIcon, type CardIconName } from '../../shared/components/CardBackgroundIcon'
+import { TitleHint } from '../../shared/components/TitleHint'
 import { dashboardOperationalLinks, dayCancellationsLink } from '../../shared/dashboard-operational-links'
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
@@ -317,11 +318,11 @@ export function DashboardPage() {
   const storeLabel = (row: MatrixRow) => /^\d+$/.test(row.externalStoreId) ? `Mağaza ${row.externalStoreId}` : row.externalStoreId.length > 24 ? `Mağaza ${row.externalStoreId.slice(0, 8)}…` : row.externalStoreId
 
   return <section className="content f3 rr rr-dashboard" aria-label="Genel Bakış">
-    <div className="rr-ph"><div><div className="rr-crumb">Operasyon Merkezi</div><h1>Genel Bakış</h1><p>Siparişler, iadeler, faturalar ve stok için bugün ilgilenmeniz gerekenler ve satış performansınız.</p></div><div className="rr-acts">
+    <div className="rr-ph"><div><div className="rr-crumb">Operasyon Merkezi</div><h1>Genel Bakış<TitleHint label="Genel Bakış">Siparişler, iadeler, faturalar ve stok için bugün ilgilenmeniz gerekenler ve satış performansınız.</TitleHint></h1></div><div className="rr-acts">
       <button type="button" className="rr-btn" onClick={downloadReport} disabled={!reportReady} title={reportReady ? undefined : 'Rapor verisi hazırlanıyor'}><RrIcon name="export" />Raporu İndir</button>
     </div></div>
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
-    <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
+    <section className="rr-dsect"><header><h2>Operasyon Metrikleri<TitleHint label="Operasyon Metrikleri">Bugün ilgilenmeniz gereken işler.</TitleHint></h2></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
       const body = <><CardBackgroundIcon name={kind} tone={tone && value ? tone : undefined} /><span className="rr-op-t"><small>{label}</small><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong></span><RrIcon name="arrowR" /><Breakdown rows={Array.isArray(byConnection) ? byConnection : breakdown(byConnection)} /></>
       // The İptal card is red when it counts any, but its pulsing dot only marks orders cancelled in part.
       const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'packageX' && !partialCancels ? ' rr-nodot' : ''}`

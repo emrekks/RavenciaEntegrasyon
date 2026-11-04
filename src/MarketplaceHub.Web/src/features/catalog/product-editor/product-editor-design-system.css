@@ -1149,13 +1149,3 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
 @layer features {
   .app-shell.stitch-shell main .media-preview-strip { justify-content: space-between; row-gap: var(--rv-space-3, 12px); }
 }
-
-/* A section's explanation behind a round "?" beside its title (as on the reports): it opens while the pointer or the
-   keyboard focus is on the mark, in a small card under it. */
-@layer features {
-  .app-shell.stitch-shell main .editor-hint, .editor-hint { position: relative; display: inline-grid; place-items: center; box-sizing: border-box; width: 20px; height: 20px; min-height: 0; padding: 0; background: none; border: 0; box-shadow: none; font: inherit; text-align: left; margin-left: 6px; vertical-align: -2px; color: var(--rv-color-subtle, var(--rv-color-muted)); border-radius: 999px; cursor: help; outline: none; }
-  .editor-hint:hover, .editor-hint:focus-visible { color: var(--rv-color-primary); }
-  .editor-hint:focus-visible { box-shadow: 0 0 0 2px var(--rv-color-primary); }
-  .editor-hint-tip { position: absolute; z-index: var(--rv-z-tooltip, 60); top: calc(100% + 6px); left: -8px; width: max-content; max-width: min(320px, calc(100vw - 48px)); padding: 10px 12px; color: var(--rv-color-ink); font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-transform: none; white-space: normal; background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px); transition: opacity 140ms ease, visibility 140ms ease, transform 140ms ease; }
-  .editor-hint:is(:hover, :focus-visible) > .editor-hint-tip { opacity: 1; visibility: visible; transform: none; }
-}

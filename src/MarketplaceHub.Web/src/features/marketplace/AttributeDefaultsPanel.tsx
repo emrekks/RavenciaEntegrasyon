@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { UiIcon } from '../../shared/components'
+import { TitleHint, UiIcon } from '../../shared/components'
 import { filterValueCandidates } from '../catalog/value-mapping-suggestions'
 import { productFieldLabel } from './product-field-sources'
 import './attribute-defaults-panel.css'
@@ -109,8 +109,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
           : <p className="attribute-defaults-state">Henüz varsayılan yok. Örneğin Menşei için TR seçerseniz, menşei boş bırakılan ürünlerde TR gönderilir.</p>}
       </section>
       <section className="attribute-defaults-section attribute-defaults-add">
-        <h4>Yeni Varsayılan</h4>
-        <p className="attribute-defaults-state">Ürüne girilen değer her zaman önce gelir; varsayılan yalnızca alan boşsa kullanılır.</p>
+        <h4>Yeni Varsayılan<TitleHint label="Yeni Varsayılan">Ürüne girilen değer her zaman önce gelir; varsayılan yalnızca alan boşsa kullanılır.</TitleHint></h4>
         <div className="attribute-defaults-form">
           <label>
             <span>Özellik</span>

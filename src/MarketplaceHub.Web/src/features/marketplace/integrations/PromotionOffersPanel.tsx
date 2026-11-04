@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
-import { Busy, ErrorBox, useConfirmDialog } from '../../../shared/components'
+import { Busy, ErrorBox, TitleHint, useConfirmDialog } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
@@ -135,7 +135,7 @@ export function PromotionOffersPanel({ connectionId, kind }: { connectionId: str
   }
 
   return <section className="panel commission-tariffs promotion-offers" aria-labelledby={`promotion-${kind}-title`}>
-    <div className="cs-sec-head"><h3 id={`promotion-${kind}-title`}>{promotionTitles[kind]}</h3><p>{promotionHelp[kind]} Kargo, hizmet bedeli ve stopaj ürün bazında bilinmediği için düşülmez; pazaryerine hiçbir şey gönderilmez.</p></div>
+    <div className="cs-sec-head"><h3 id={`promotion-${kind}-title`}>{promotionTitles[kind]}<TitleHint label={promotionTitles[kind]}>{promotionHelp[kind]} Kargo, hizmet bedeli ve stopaj ürün bazında bilinmediği için düşülmez; pazaryerine hiçbir şey gönderilmez.</TitleHint></h3></div>
     <div className={`commission-dropzone${dragging ? ' is-dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
       <strong>{upload.isPending ? 'Dosya okunuyor…' : `${promotionTitles[kind]} dosyasını buraya bırakın`}</strong>
       <span>Trendyol satıcı panelinden indirilen .xlsx dosyası · en fazla 10 MiB · yeni dosya öncekinin yerine geçer</span>

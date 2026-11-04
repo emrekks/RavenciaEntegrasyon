@@ -7,8 +7,29 @@ import './field-help.css'
 // has keyboard focus, and toggled by a tap (a tap elsewhere or Esc closes it). The text stays in the page (hidden) so
 // the field can name it with aria-describedby={fieldHelpId}.
 export function FieldHelp({ id, label, children }: { id?: string; label: string; children: ReactNode }) {
+  return <HelpMark id={id} idPrefix="field-help" ariaLabel={`${label}: açıklama`} className="field-help" tipClassName="field-help-tip" iconSize={15} tipWidth={280} edge={12} prefer="above">{children}</HelpMark>
+}
+
+type HelpMarkProps = {
+  id?: string
+  idPrefix: string
+  ariaLabel: string
+  className: string
+  tipClassName: string
+  iconSize: number
+  // The widest the card gets, and the least room kept between it and the window's edge.
+  tipWidth: number
+  edge: number
+  // Centred over the mark and above it while there is room (a field), or under it starting at the mark (a title).
+  prefer: 'above' | 'below'
+  children: ReactNode
+}
+
+// The question mark and its card, shared by FieldHelp and TitleHint. The card is drawn on the page body with a fixed
+// position, so a panel that clips its content cannot cut it, and it is kept inside the window on a phone.
+export function HelpMark({ id, idPrefix, ariaLabel, className, tipClassName, iconSize, tipWidth, edge, prefer, children }: HelpMarkProps) {
   const generated = useId()
-  const tipId = id ?? `field-help-${generated}`
+  const tipId = id ?? `${idPrefix}-${generated}`
   const buttonRef = useRef<HTMLButtonElement>(null)
   const tipRef = useRef<HTMLSpanElement>(null)
   // Open while hovered or focused; a click or tap pins it open (so a link in it can be followed) until a second click,
@@ -23,11 +44,12 @@ export function FieldHelp({ id, label, children }: { id?: string; label: string;
   useLayoutEffect(() => {
     if (!open || !buttonRef.current) return
     const mark = buttonRef.current.getBoundingClientRect()
-    const width = Math.min(280, window.innerWidth - 24)
-    const left = Math.min(Math.max(12, mark.left + mark.width / 2 - width / 2), window.innerWidth - width - 12)
-    const above = mark.top > 140
+    const width = Math.min(tipWidth, window.innerWidth - edge * 2)
+    const start = prefer === 'above' ? mark.left + mark.width / 2 - width / 2 : mark.left - 8
+    const left = Math.max(edge, Math.min(start, window.innerWidth - width - edge))
+    const above = prefer === 'above' ? mark.top > 140 : mark.bottom > window.innerHeight - 160 && mark.top > 160
     setPlace({ left, top: above ? mark.top - 8 : mark.bottom + 8, above })
-  }, [open])
+  }, [open, tipWidth, edge, prefer])
 
   useEffect(() => {
     if (!open) return undefined
@@ -47,15 +69,15 @@ export function FieldHelp({ id, label, children }: { id?: string; label: string;
   }, [open])
 
   return <>
-    <button ref={buttonRef} type="button" className={`field-help${open ? ' is-open' : ''}`} aria-label={`${label}: açıklama`} aria-describedby={tipId} aria-expanded={open}
+    <button ref={buttonRef} type="button" className={`${className}${open ? ' is-open' : ''}`} aria-label={ariaLabel} aria-describedby={tipId} aria-expanded={open}
       onPointerEnter={event => { if (event.pointerType === 'mouse') setHovered(true) }}
       onPointerLeave={event => { if (event.pointerType === 'mouse') setHovered(false) }}
       onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setFocused(true) }}
       onBlur={() => setFocused(false)}
       onClick={event => { event.preventDefault(); event.stopPropagation(); setPinned(value => !value) }}>
-      <UiIcon name="help" size={15} />
+      <UiIcon name="help" size={iconSize} />
     </button>
-    {createPortal(<span ref={tipRef} id={tipId} role="tooltip" className={`field-help-tip${place?.above ? ' is-above' : ''}`} hidden={!open || !place} style={place ? { left: place.left, top: place.top } : undefined}>{children}</span>, document.body)}
+    {createPortal(<span ref={tipRef} id={tipId} role="tooltip" className={`${tipClassName}${place?.above ? ' is-above' : ''}`} hidden={!open || !place} style={place ? { left: place.left, top: place.top } : undefined}>{children}</span>, document.body)}
   </>
 }
 

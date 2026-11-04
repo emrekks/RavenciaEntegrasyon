@@ -925,6 +925,81 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         }
     }
 
+    // Validity days picked by the seller: an upload with days stores the two-period file with them as its outer bounds
+    // (the boundary between the periods and the file's own period texts kept), the same file again is the same tariff,
+    // the days can be changed later for the whole file or one period (never over the other), each change is audited,
+    // and the Excel of the picks still names the file's own period length.
+    [PostgreSqlFact]
+    public async Task CommissionTariff_ValidityDaysPickedOnUploadAndChangedLater()
+    {
+        var tenant = NewTenant("commission-validity");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            await seed.SaveChangesAsync();
+        }
+        var file = TrendyolTariffWorkbookTests.Workbook(("Bluz M", "RYP00101", TrendyolTariffWorkbookTests.Period3, null), ("Etek", "ETK001", TrendyolTariffWorkbookTests.Period3, null));
+        var clock = new FixedClock(TrendyolTariffWorkbookTests.Now);
+        var istanbul = TimeSpan.FromHours(3);
+        var boundary = new DateTimeOffset(2026, 11, 1, 8, 0, 0, istanbul).ToUniversalTime();
+        Guid tariffId, tariff4Id;
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CommissionTariffService(db, clock);
+            // Days that leave the boundary between the periods outside are refused, nothing stored.
+            var refused = await service.UploadAsync(tenant.Id, null, trendyol.Id, "930112.xlsx", new MemoryStream(file), new CommissionTariffValidDays(new(2026, 11, 2), new(2026, 11, 6)), "test", CancellationToken.None);
+            Assert.Equal("COMMISSION_TARIFF_PERIOD_INVALID", refused.Error?.Code);
+            Assert.False(await db.CommissionTariffs.AnyAsync(x => x.TenantId == tenant.Id));
+
+            var uploaded = await service.UploadAsync(tenant.Id, null, trendyol.Id, "930112.xlsx", new MemoryStream(file), new CommissionTariffValidDays(new(2026, 10, 28), new(2026, 11, 6)), "test", CancellationToken.None);
+            Assert.True(uploaded.Succeeded, uploaded.Error?.Message);
+            Assert.Equal(2, uploaded.Value!.Tariffs.Count);
+            (tariffId, tariff4Id) = (uploaded.Value.Tariffs[0].Id, uploaded.Value.Tariffs[1].Id);
+            Assert.Equal((new DateTimeOffset(2026, 10, 27, 21, 0, 0, TimeSpan.Zero), boundary), (uploaded.Value.Tariffs[0].PeriodStart, uploaded.Value.Tariffs[0].PeriodEnd));
+            Assert.Equal((boundary, new DateTimeOffset(2026, 11, 6, 21, 0, 0, TimeSpan.Zero)), (uploaded.Value.Tariffs[1].PeriodStart, uploaded.Value.Tariffs[1].PeriodEnd));
+            Assert.Equal(TrendyolTariffWorkbookTests.Period3, uploaded.Value.Tariffs[0].PeriodText);
+
+            // An order of 28 Ekim (before the file's own 29 Ekim 08.00) now takes the 3-day period's rate.
+            var lookup = new CommissionTariffLookup(db);
+            Assert.Equal(tariffId, (await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 10, 28, 10, 0, 0, istanbul), 450m, CancellationToken.None))?.TariffId);
+            Assert.Null(await lookup.RateAsync(tenant.Id, trendyol.Id, "RYP00101", null, new DateTimeOffset(2026, 11, 7, 0, 0, 0, istanbul), 450m, CancellationToken.None));
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            var service = new CommissionTariffService(db, clock);
+            // The same file again (without days) is the stored tariff, not a second one.
+            var again = await service.UploadAsync(tenant.Id, null, trendyol.Id, "930112.xlsx", new MemoryStream(file), "test", CancellationToken.None);
+            Assert.True(again.Value!.AlreadyUploaded);
+            Assert.Equal([tariffId, tariff4Id], again.Value.Tariffs.Select(x => x.Id));
+            Assert.Equal(2, await db.CommissionTariffs.CountAsync(x => x.TenantId == tenant.Id));
+
+            // The whole file to 29 Ekim – 4 Kasım.
+            var whole = await service.UpdatePeriodAsync(tenant.Id, null, trendyol.Id, tariff4Id, new(new(2026, 10, 29), new(2026, 11, 4)), true, "test", CancellationToken.None);
+            Assert.True(whole.Succeeded, whole.Error?.Message);
+            Assert.Equal(new DateTimeOffset(2026, 10, 28, 21, 0, 0, TimeSpan.Zero), whole.Value![0].PeriodStart);
+            Assert.Equal(boundary, whole.Value[0].PeriodEnd);
+            Assert.Equal(new DateTimeOffset(2026, 11, 4, 21, 0, 0, TimeSpan.Zero), whole.Value[1].PeriodEnd);
+
+            // One period alone: up to 31 Ekim is fine, up to 1 Kasım runs over the 4-day period.
+            Assert.True((await service.UpdatePeriodAsync(tenant.Id, null, trendyol.Id, tariffId, new(new(2026, 10, 27), new(2026, 10, 31)), false, "test", CancellationToken.None)).Succeeded);
+            Assert.Equal("COMMISSION_TARIFF_PERIOD_INVALID", (await service.UpdatePeriodAsync(tenant.Id, null, trendyol.Id, tariffId, new(new(2026, 10, 27), new(2026, 11, 1)), false, "test", CancellationToken.None)).Error?.Code);
+            Assert.Equal("COMMISSION_TARIFF_PERIOD_INVALID", (await service.UpdatePeriodAsync(tenant.Id, null, trendyol.Id, tariffId, new(new(2026, 10, 31), new(2026, 10, 27)), false, "test", CancellationToken.None)).Error?.Code);
+            Assert.Equal("RESOURCE_NOT_FOUND", (await service.UpdatePeriodAsync(tenant.Id, null, trendyol.Id, Guid.NewGuid(), new(new(2026, 10, 27), new(2026, 10, 31)), false, "test", CancellationToken.None)).Error?.Code);
+            Assert.Equal(new DateTimeOffset(2026, 11, 1, 0, 0, 0, istanbul).ToUniversalTime(), (await db.CommissionTariffs.AsNoTracking().SingleAsync(x => x.Id == tariffId)).PeriodEnd);
+            Assert.Equal(2, await db.AuditLogs.CountAsync(x => x.TenantId == tenant.Id && x.Action == "COMMISSION_TARIFF_PERIOD_CHANGED"));
+
+            // The Excel still writes the file's own 3-day choice although the period now covers 5 days.
+            var rowId = await db.CommissionTariffRows.Where(x => x.TariffId == tariffId && x.Barcode == "ETK001").Select(x => x.Id).SingleAsync();
+            Assert.True((await service.SaveSelectionAsync(tenant.Id, null, trendyol.Id, tariffId, new(null, null, [new(rowId, 4, null)]), CancellationToken.None)).Succeeded);
+            var export = (await service.ExportAsync(tenant.Id, trendyol.Id, tariffId, new(null, null, null), CancellationToken.None)).Value!;
+            var table = Infrastructure.Imports.ImportFileReader.ReadXlsxTable(new MemoryStream(export.Content), 10_000_000);
+            var cells = table.Rows.Single(x => x.Cells[1] == "ETK001" && x.Cells.Contains(TrendyolTariffWorkbookTests.Period3)).Cells;
+            Assert.Equal("3 Günlük Fiyat", cells.ElementAtOrDefault(table.Headers.ToList().IndexOf("Tarife Seçimi")));
+        }
+    }
+
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

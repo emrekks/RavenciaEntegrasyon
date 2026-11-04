@@ -308,3 +308,25 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { position: sticky; top: var(--rv-topbar-height, 60px); z-index: 3; }
 }
+
+/* Phones, product editor save bar, as on a computer: it sticks to the bottom edge while the form scrolls and at the
+   end of the page joins the last card (no gap, the card's bottom corners square, the bar's top rule the divider).
+   Inside: the status and its counts on one line, then Kaydet, the quick-update pair and Yayınla in one 36px row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell > main > .content > form.product-add-workspace > .rv-action-bar.product-submit-sticky.product-submit-sticky { position: sticky; bottom: 0; margin-top: -20px; padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)) !important; gap: 8px; border-radius: 0 0 var(--rv-bar-bottom-r) var(--rv-bar-bottom-r); }
+  .app-shell.stitch-shell > main > .content > form.product-add-workspace > .rv-action-bar.product-submit-sticky[data-docked="true"] { box-shadow: none; }
+  .app-shell.stitch-shell main .content > form.product-add-workspace > .product-layout-grid:has(~ .rv-action-bar[data-docked="true"]:not(.is-leaving)) .product-main-stack > .product-step-card:last-child { border-bottom-color: transparent !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky > div:first-child { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 8px; min-width: 0; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky > div:first-child > strong { flex: none; font-size: 13px; white-space: nowrap; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky > div:first-child > p { min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky .product-submit-actions > * { height: 36px; min-height: 36px; }
+  .app-shell.stitch-shell main .product-add-page .product-submit-sticky.product-submit-sticky .product-submit-actions button { height: 36px; min-height: 36px; }
+}
+
+/* Phones: the description editor's toolbar wraps onto a second line instead of scrolling with its last tools cut in
+   half; the step tabs above the form fit their names on two short lines. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .rich-text-editor > .rich-text-toolbar { flex-wrap: wrap; row-gap: 4px; overflow-x: visible; }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > button { height: auto; min-height: 42px; padding-block: 4px; }
+  .app-shell.stitch-shell main .product-add-page .product-add-progress > button > strong { overflow: visible; font-size: 12.5px; line-height: 1.2; text-align: left; text-overflow: clip; white-space: normal; }
+}
