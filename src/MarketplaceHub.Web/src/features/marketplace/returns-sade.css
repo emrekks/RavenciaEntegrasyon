@@ -1131,3 +1131,8 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 /* Onaylanan / Reddedilen: the approvals green, the rejections red (the note under them says they count from today). */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics .rr-metric-ok { color: var(--rv-color-accent); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics .rr-metric-bad { color: var(--rv-color-danger); }
+/* A rejected return still waiting for its cargo: the card's figure red, the card's frame breathing softly in red. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics article.rr-metric-alarm { border-color: color-mix(in srgb, var(--rv-color-danger) 40%, var(--rr-line)); animation: rr-metric-alarm 2.8s ease-in-out infinite; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics article.rr-metric-alarm strong { color: var(--rv-color-danger); }
+@keyframes rr-metric-alarm { 50% { border-color: color-mix(in srgb, var(--rv-color-danger) 70%, var(--rr-line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-danger) 10%, transparent); } }
+@media (prefers-reduced-motion: reduce) { :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics article.rr-metric-alarm { animation: none; } }

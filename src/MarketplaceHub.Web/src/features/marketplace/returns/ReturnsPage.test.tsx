@@ -56,7 +56,7 @@ describe('returns page', () => {
   it('reads one page of cards and the tab counts from the server instead of every return', async () => {
     const { host } = renderPage()
     await waitFor(() => host.textContent?.includes('#2'))
-    await waitFor(() => host.querySelector('.rr-metrics')?.textContent?.includes('Reddedilen3'))
+    await waitFor(() => host.querySelector('.rr-metrics')?.textContent?.includes('Red3'))
 
     const returnRequests = api.paths.filter(path => path.startsWith('/returns'))
     expect(returnRequests).toContain('/returns?limit=20')
@@ -67,7 +67,7 @@ describe('returns page', () => {
     expect(cards[0].querySelector('strong')!.textContent).toBe('7')
     // Rejected returns whose package back to the customer is not with the cargo yet, not every rejected return (4).
     expect(cards[2].querySelector('strong')!.textContent).toBe('3')
-    expect(cards[2].className).toBe('rr-warn')
+    expect(cards[2].className).toBe('rr-metric-alarm')
     expect(cards[2].textContent).toContain('1 iadede kargo durumu bilinmiyor')
     expect(cards[3].querySelector('strong')!.textContent).toBe('6 / 2')
     expect(host.textContent).toContain('Toplam 41 iade bilgisi')
