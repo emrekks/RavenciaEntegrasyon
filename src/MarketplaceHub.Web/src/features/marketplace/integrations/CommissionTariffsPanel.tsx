@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubFile } from '../../../shared/api'
-import { Busy, ErrorBox, UiIcon, useConfirmDialog } from '../../../shared/components'
+import { Busy, ErrorBox, TitleHint, UiIcon, useConfirmDialog } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues, ImageLightboxModal } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
@@ -373,7 +373,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
   const pageCount = rows.data ? Math.max(1, Math.ceil(rows.data.totalCount / rows.data.pageSize)) : 1
 
   return <section className="panel commission-tariffs" aria-labelledby="commission-tariffs-title">
-    <div className="cs-sec-head"><h3 id="commission-tariffs-title">Komisyon Tarifeleri</h3><p>{platformName}’un komisyon tarifesi dosyasını, geçerli olduğu günleri seçerek yükleyin. Seçtiğiniz günlerdeki siparişlerden komisyonu finanstan gelmeyenlerin komisyonu, satış fiyatının düştüğü banda göre bu tarifenin oranından tahmin edilir; fiyatınızın hangi banda düştüğünü ve bir alt banda inmek için gereken fiyatı görürsünüz. Pazaryerine hiçbir şey gönderilmez.</p></div>
+    <div className="cs-sec-head"><h3 id="commission-tariffs-title">Komisyon Tarifeleri<TitleHint label="Komisyon Tarifeleri">{platformName}’un komisyon tarifesi dosyasını, geçerli olduğu günleri seçerek yükleyin. Seçtiğiniz günlerdeki siparişlerden komisyonu finanstan gelmeyenlerin komisyonu, satış fiyatının düştüğü banda göre bu tarifenin oranından tahmin edilir; fiyatınızın hangi banda düştüğünü ve bir alt banda inmek için gereken fiyatı görürsünüz. Pazaryerine hiçbir şey gönderilmez.</TitleHint></h3></div>
     <div className={`commission-dropzone${dragging ? ' is-dragging' : ''}`} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={onDrop}>
       <ValidityFields idPrefix="commission-upload" days={uploadDays} onChange={setUploadDays} disabled={upload.isPending} />
       <strong>{upload.isPending ? 'Tarife okunuyor…' : 'Tarife dosyasını buraya bırakın'}</strong>
@@ -826,10 +826,8 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
 
   return <div className="commission-rows">
     <div className="commission-rows-head">
-      <strong>{partner ? `${weekTabLabel([tariff, partner])} · ${periodName(tariff)} ve ${periodName(partner)} Bantları` : `${tariff.periodLabel?.trim() ? `${tariff.periodLabel.trim()} · ` : ''}${tariff.periodText} Bantları`}</strong>
+      <strong>{partner ? `${weekTabLabel([tariff, partner])} · ${periodName(tariff)} ve ${periodName(partner)} Bantları` : `${tariff.periodLabel?.trim() ? `${tariff.periodLabel.trim()} · ` : ''}${tariff.periodText} Bantları`}{partner ? <TitleHint label="Bantlar">Bant sınırları iki dönemde aynı, komisyon oranları farklı. Her kartta iki dönemin komisyonu ve kârı ile gün sayısına göre ağırlıklı ({periodDays(tariff)}/{periodDays(tariff) + periodDays(partner)} ve {periodDays(partner)}/{periodDays(tariff) + periodDays(partner)}) ortalama kâr görünür. Burada yaptığınız seçim iki döneme birden kaydedilir; Excel İndir bu ürünlere “{periodDays(tariff) + periodDays(partner)} Günlük Fiyat” yazar. Toplu Seçim’in kâr koşulu her dönemde ayrı uygulanır; koşulu yalnız bir dönemde sağlayan ürüne o dönemin fiyatı yazılır.</TitleHint> : manyPeriods ? <TitleHint label="Bantlar">Seçimler her dönem için ayrı kaydedilir. Excel İndir tüm dönemlerin seçimlerini Trendyol dosyasına birlikte yazar: iki dönemde aynı fiyatı seçtiğiniz ürüne “7 Günlük Fiyat”, tek dönemde seçtiğiniz ürüne o dönemin fiyatı yazılır. Bir ürüne iki dönemde farklı fiyat seçtiyseniz dosya ürün başına tek fiyat taşıdığı için Excel’i indirdiğiniz sekmenin ({openName}) fiyatı yazılır.</TitleHint> : null}</strong>
     </div>
-    {partner && <p className="commission-period-note">Bant sınırları iki dönemde aynı, komisyon oranları farklı. Her kartta iki dönemin komisyonu ve kârı ile gün sayısına göre ağırlıklı ({periodDays(tariff)}/{periodDays(tariff) + periodDays(partner)} ve {periodDays(partner)}/{periodDays(tariff) + periodDays(partner)}) ortalama kâr görünür. Burada yaptığınız seçim iki döneme birden kaydedilir; Excel İndir bu ürünlere “{periodDays(tariff) + periodDays(partner)} Günlük Fiyat” yazar. Toplu Seçim’in kâr koşulu her dönemde ayrı uygulanır; koşulu yalnız bir dönemde sağlayan ürüne o dönemin fiyatı yazılır.</p>}
-    {manyPeriods && !partner && <p className="commission-period-note">Seçimler her dönem için ayrı kaydedilir. Excel İndir tüm dönemlerin seçimlerini Trendyol dosyasına birlikte yazar: iki dönemde aynı fiyatı seçtiğiniz ürüne “7 Günlük Fiyat”, tek dönemde seçtiğiniz ürüne o dönemin fiyatı yazılır. Bir ürüne iki dönemde farklı fiyat seçtiyseniz dosya ürün başına tek fiyat taşıdığı için Excel’i indirdiğiniz sekmenin ({openName}) fiyatı yazılır.</p>}
     {/* Which products the list shows. */}
     <TariffFilters key={JSON.stringify(filter)} value={filter} facets={facets.data} onApply={onFilter} />
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}

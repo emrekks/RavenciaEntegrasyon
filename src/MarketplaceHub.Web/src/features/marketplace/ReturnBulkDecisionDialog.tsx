@@ -177,6 +177,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     crumb="Aksiyon Bekleyen İadeler"
     title={approving ? 'Toplu İade Onayı' : 'Toplu İade Reddi'}
     desc={`${items.length} iade seçildi. ${approving ? 'Onayla' : 'Reddet'} dediğinizde her iade sırayla pazar yerine gönderilir.`}
+    hint={approving ? undefined : 'Kanıt dosyası gerektiren ret nedenleri toplu retle kullanılamaz, bu yüzden listede görünmez.'}
     size={mixedReject ? 'md' : 'lg'}
     locked={running}
     onClose={() => { if (!running) onClose() }}
@@ -201,7 +202,6 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
       </div>
       {reasons.isError && <div className="rr-callout rr-danger"><RrIcon name="alert" /><span>Ret nedenleri alınamadı. Pencereyi kapatıp tekrar deneyin.</span></div>}
       {reasons.data && usableReasons.length === 0 && <div className="rr-callout rr-danger"><RrIcon name="alert" /><span>Bu iadeler için kanıt dosyası gerektirmeyen bir ret nedeni yok. Bu iadeleri tek tek reddedin.</span></div>}
-      {usableReasons.length > 0 && <div className="rr-callout"><RrIcon name="info" /><span>Kanıt dosyası gerektiren nedenler toplu retle kullanılamaz, bu yüzden listede görünmez.</span></div>}
     </>}
     {!mixedReject && items.map((item, index) => {
       const outcome = outcomes.find(entry => entry.id === item.id)

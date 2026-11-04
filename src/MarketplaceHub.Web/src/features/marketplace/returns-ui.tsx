@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { InvoiceGlyph, type InvoiceGlyphKind } from '../invoicing/invoice-state-glyph'
 import { errorText, RetryRing } from '../../shared/components/AsyncState'
 import { useDialogSurface } from '../../shared/components/DesignSystem'
+import { TitleHint } from '../../shared/components/TitleHint'
 import { uiIconBody, type UiIconName } from '../../shared/components/UiIcon'
 import { autoRetryLine, useAutoRetry } from '../../shared/hooks/useAutoRetry'
 import './returns-sade.css'
@@ -243,7 +244,7 @@ export function RrFilterCard({ active, children }: { active: number; children: R
 
 // Popups: overlay, framed window with head, body and footer. The shared dialog surface traps focus, lets only the top
 // window answer Escape, holds the page still and gives focus back on close.
-export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean }) {
+export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; hint?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean }) {
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
   // Closing from the window itself (the cross, a tap outside, Escape) first plays the closing motion, then closes.
@@ -262,7 +263,7 @@ export function RrModal({ crumb, title, desc, size, flush, head, foot, onClose, 
   return createPortal(<div className={['rr-layer', layerClass, closing ? 'rr-closing' : ''].filter(Boolean).join(' ')}>
     <div className="rr-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) close.current() }}>
       <div ref={dialog} tabIndex={-1} className={['rr-modal', size ? `rr-${size}` : '', modalClass].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)}>
-        <header className="rr-m-head"><div>{head ?? <>{crumb && <div className="rr-crumb">{crumb}</div>}<h2>{title}</h2>{desc && <p>{desc}</p>}</>}</div><button type="button" className="rr-icon-btn" onClick={() => close.current()} aria-label="Pencereyi Kapat"><RrIcon name="close" /></button></header>
+        <header className="rr-m-head"><div>{head ?? <>{crumb && <div className="rr-crumb">{crumb}</div>}<h2>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : (label ?? 'Pencere')}>{hint}</TitleHint> : null}</h2>{desc && <p>{desc}</p>}</>}</div><button type="button" className="rr-icon-btn" onClick={() => close.current()} aria-label="Pencereyi Kapat"><RrIcon name="close" /></button></header>
         <div className={`rr-m-body${flush ? ' rr-flush' : ''}`}>{children}</div>
         {foot && <footer className="rr-m-foot">{foot}</footer>}
       </div>

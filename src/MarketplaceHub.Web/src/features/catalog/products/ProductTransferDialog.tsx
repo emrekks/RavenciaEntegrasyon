@@ -8,6 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { formatMoney } from '../../../shared/format-money'
+import { TitleHint } from '../../../shared/components'
 import { RrIcon, RrModal } from '../../marketplace/returns-ui'
 import './product-transfer.css'
 
@@ -170,7 +171,7 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
         : <button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button>}
   </>
 
-  return <RrModal crumb="Ürünler" title="Ürünleri İçe / Dışa Aktar" desc="Ürünlerinizi Excel'e aktarın, düzenleyip geri yükleyin ve hangi alanların panele yazılacağını seçin. Değişiklikler önce önizlenir; siz kaydetmeden hiçbir şey değişmez." size="lg" onClose={onClose} locked={apply.isPending} foot={foot} modalClass="pci-modal">
+  return <RrModal crumb="Ürünler" label="Ürünleri İçe / Dışa Aktar" title={<>Ürünleri İçe / Dışa Aktar<TitleHint label="Ürünleri İçe / Dışa Aktar">Ürünlerinizi Excel'e aktarın, düzenleyip geri yükleyin ve hangi alanların panele yazılacağını seçin. Değişiklikler önce önizlenir; siz kaydetmeden hiçbir şey değişmez.</TitleHint></>} size="lg" onClose={onClose} locked={apply.isPending} foot={foot} modalClass="pci-modal">
     {done ? <div className="pci-done" role="status">
       <span className="pci-done-mark"><RrIcon name="check" size={20} /></span>
       <strong>{appliedTotal(done) === 0 ? 'Değerler zaten güncel' : 'Değişiklikler kaydedildi'}</strong>
@@ -180,8 +181,7 @@ export function ProductTransferDialog({ onClose }: { onClose: () => void }) {
         <li className="pci-step">
           <span className="pci-step-n" aria-hidden="true">1</span>
           <div className="pci-step-b">
-            <strong>Ürünleri Dışa Aktarın</strong>
-            <p>Her varyant bir satırdır: ürün adı, varyant, stok kodu, barkod, model kodu, panel fiyatı, KDV oranı, <b>stok</b>, <b>maliyet</b>, <b>desi</b> ve her mağazanın <b>satış ve liste fiyatı</b>. Boş hücre değişmez; maliyeti, desiyi ya da model kodunu silmek için <b>-</b> yazın.</p>
+            <strong>Ürünleri Dışa Aktarın<TitleHint label="Ürünleri Dışa Aktarın">Her varyant bir satırdır: ürün adı, varyant, stok kodu, barkod, model kodu, panel fiyatı, KDV oranı, <b>stok</b>, <b>maliyet</b>, <b>desi</b> ve her mağazanın <b>satış ve liste fiyatı</b>. Boş hücre değişmez; maliyeti, desiyi ya da model kodunu silmek için <b>-</b> yazın.</TitleHint></strong>
             <div className="pci-step-acts">
               <label className="pci-field"><span>Varyantlar</span>
                 <select className="pci-select" value={filter} onChange={event => setFilter(event.target.value as ProductTransferExportFilter)}>
@@ -223,7 +223,7 @@ function FieldCheck({ field, label, fields, available, disabled, onToggle }: { f
 
 function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: { fields: ProductTransferField[]; available?: ProductTransferField[]; disabled: boolean; onToggle: (field: ProductTransferField) => void; onToggleGroup: (group: readonly ProductTransferField[]) => void }) {
   return <fieldset className="pci-fields">
-    <legend>Panele Aktarılacak Alanlar</legend>
+    <legend>Panele Aktarılacak Alanlar<TitleHint label="Panele Aktarılacak Alanlar">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; stok kodu değiştirilemez. Varyant, marka, kategori ve durum sütunları yalnız bilgi içindir. <b>Ürün adı</b> ürüne aittir: bir ürünün tüm satırlarına aynı adı yazın. <b>Barkod</b> aktarılırken satırlar yalnız stok kodu ile eşleştirilir; bir barkod tek bir varyantta olabilir ve silinemez. <b>Panel fiyatı ve KDV oranı</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez ve mağaza fiyatları değişmez.</TitleHint></legend>
     <div className="pci-groups">{productTransferFieldGroups.map(group => {
       if (group.fields.length === 1) return <div key={group.label} className="pci-group" role="group" aria-label={group.label}>
         <FieldCheck field={group.fields[0]} label={group.label} fields={fields} available={available} disabled={disabled} onToggle={onToggle} />
@@ -238,10 +238,6 @@ function FieldPicker({ fields, available, disabled, onToggle, onToggleGroup }: {
       </div>
     })}</div>
     {fields.length === 0 && <p className="pci-error" role="alert">En az bir alan seçin.</p>}
-    <p className="pci-note" role="note">Satırlar <b>Stok Kodu</b> ile, yoksa <b>Barkod</b> ile eşleştirilir; stok kodu değiştirilemez. Varyant, marka, kategori ve durum sütunları yalnız bilgi içindir.</p>
-    {fields.includes('TITLE') && <p className="pci-note" role="note"><b>Ürün adı</b> ürüne aittir: bir ürünün tüm satırlarına aynı adı yazın.</p>}
-    {fields.includes('BARCODE') && <p className="pci-note" role="note"><b>Barkod</b> aktarılırken satırlar yalnız stok kodu ile eşleştirilir; bir barkod tek bir varyantta olabilir ve silinemez.</p>}
-    {(fields.includes('PANEL_PRICES') || fields.includes('VAT')) && <p className="pci-note" role="note"><b>Panel fiyatı ve KDV oranı</b> yalnız panele kaydedilir; pazaryerine fiyat gönderilmez ve mağaza fiyatları değişmez.</p>}
     {fields.includes('STOCK') && <p className="pci-note" role="note"><b>Stok</b>, ürün sayfasındaki stok değişikliği gibi kaydedilir: stok gönderimi açık mağazalara yeni stok gönderilir.</p>}
     {fields.includes('PRICES') && <p className="pci-note" role="note"><b>Mağaza fiyatları</b> panele kaydedilir; bu işlem kendisi fiyat göndermez, ancak sonraki stok ya da fiyat gönderimi yeni fiyatı mağazaya taşır. Yalnız fiyat kaydı olan mağazalar güncellenir.</p>}
   </fieldset>

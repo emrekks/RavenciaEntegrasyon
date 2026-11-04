@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { useConfirmDialog } from '../../shared/components'
+import { TitleHint, useConfirmDialog } from '../../shared/components'
 import { mappingSaveErrorMessage } from './mappings/mapping-refresh'
 import { changeLine, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type Conflicts, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
 import './mapping-conflicts-panel.css'
@@ -161,14 +161,12 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
 
   return <>{confirmElement}<details className="mapping-conflicts-panel" open={expanded || undefined}>
     <summary>
-      <span className="panel-summary-title">Gözden Geçirilecek Eşlemeler</span>
+      <span className="panel-summary-title">Gözden Geçirilecek Eşlemeler<TitleHint label="Gözden Geçirilecek Eşlemeler">Aynı panel değeri birden fazla {platformLabel} değerine bağlanmış eşlemeler.</TitleHint></span>
       <b className="panel-summary-count is-warning" aria-label={`${same.length + cross.length} kayıt`}>{same.length + cross.length}</b>
-      <small>Aynı panel değeri birden fazla {platformLabel} değerine bağlanmış.</small>
     </summary>
     <div className="mapping-conflicts-body">
       {same.length > 0 && <section>
-        <h4>Aynı Kategoride Birden Fazla Değer <span className="mc-count">{same.length}</span></h4>
-        <p>{platformLabel}’a yalnızca biri gönderilebilir; kalacak değeri seçin, diğerleri bu kategoriden kaldırılır.</p>
+        <h4>Aynı Kategoride Birden Fazla Değer<TitleHint label="Aynı Kategoride Birden Fazla Değer">{platformLabel}’a yalnızca biri gönderilebilir; kalacak değeri seçin, diğerleri bu kategoriden kaldırılır.</TitleHint> <span className="mc-count">{same.length}</span></h4>
         <ul>
           {same.map(conflict => {
             const key = `${conflict.scopeExternalId}:${conflict.localValueId}`
@@ -184,8 +182,7 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
         </ul>
       </section>}
       {cross.length > 0 && <section>
-        <h4>Kategoriler Arasında Farklı Değer <span className="mc-count">{cross.length}</span></h4>
-        <p>Bazıları bilerek yapılmış olabilir. Yeni kategoriler “Şablon” işaretli değeri alır. Eşitlemek için bir değer seçip “Hepsinde Bunu Kullan”a basın.</p>
+        <h4>Kategoriler Arasında Farklı Değer<TitleHint label="Kategoriler Arasında Farklı Değer">Bazıları bilerek yapılmış olabilir. Yeni kategoriler “Şablon” işaretli değeri alır. Eşitlemek için bir değer seçip “Hepsinde Bunu Kullan”a basın.</TitleHint> <span className="mc-count">{cross.length}</span></h4>
         <ul>
           {cross.map(conflict => {
             const rowKey = crossConflictKey(conflict)

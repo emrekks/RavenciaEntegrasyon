@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { Busy, ErrorBox, Modal, UiIcon } from '../../shared/components'
+import { Busy, ErrorBox, Modal, TitleHint, UiIcon } from '../../shared/components'
 import { copyText } from '../../shared/copy-text'
 import { formatIstanbul } from '../../shared/format-date'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
@@ -72,7 +72,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
 
   return <section className="reports-panel reports-order-profit" aria-labelledby="order-profit-title">
     <header className="reports-order-profit-head">
-      <div><h2 id="order-profit-title">Sipariş Kârlılık Analizi</h2><p>Her sipariş için ürün maliyeti, komisyon, kargo, hizmet bedeli, stopaj ve net KDV düştükten sonra kalan kâr. Henüz kesinleşmeyen kalemler tahminidir.</p></div>
+      <h2 id="order-profit-title">Sipariş Kârlılık Analizi<TitleHint label="Sipariş Kârlılık Analizi">Her sipariş için ürün maliyeti, komisyon, kargo, hizmet bedeli, stopaj ve net KDV düştükten sonra kalan kâr. Henüz kesinleşmeyen kalemler tahminidir.</TitleHint></h2>
       <form className="reports-order-search" onSubmit={event => { event.preventDefault(); setApplied(search); setPage(0) }}>
         <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Sipariş no, ürün, barkod" aria-label="Sipariş ara" />
         <button type="submit" className="secondary">Ara</button>

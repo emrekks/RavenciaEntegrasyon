@@ -5,7 +5,7 @@ import { Fragment, useEffect, useEffectEvent, useLayoutEffect, useRef, useState,
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
-import { CardBackgroundIcon, cargoCarrier, cargoLabel, CountUp, StickyActionBar } from '../../../shared/components'
+import { CardBackgroundIcon, cargoCarrier, cargoLabel, CountUp, StickyActionBar, TitleHint } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { sendStockDisposition, type PendingDispositionKeys } from './return-disposition-key'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
@@ -70,7 +70,7 @@ function ReturnImagePreview({ title, imageUrl, facts, onClose }: { title: string
 }
 function ReturnLabelPreview({ item, lines, onClose }: { item: ReturnClaim; lines: OrderLine[]; onClose: () => void }) {
   const label = returnLabelContent(item, lines)
-  return <RrModal crumb="Yazdırma Önizlemesi" title="İade Etiketi Yazdır" desc={`${displayOrderNumber(item.orderNumber)} · Etiket yeni pencerede açılır ve yazdırma başlar.`} size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => { printReturnLabel(item, lines); onClose() }}><RrIcon name="print" />Yazdır</button></>}>
+  return <RrModal crumb="Yazdırma Önizlemesi" title="İade Etiketi Yazdır" desc={displayOrderNumber(item.orderNumber)} hint="Etiket yeni pencerede açılır ve yazdırma başlar." size="md" onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => { printReturnLabel(item, lines); onClose() }}><RrIcon name="print" />Yazdır</button></>}>
     <div style={{ display: 'grid', placeItems: 'center' }}><div className="rr-rlabel"><div className="rr-hd"><div><small>{label.eyebrow}</small><h4>{label.title}</h4></div><b>{label.status}</b></div><div className="rr-mt">{label.fields.map(([name, value]) => <div key={name}><small>{name}</small><b>{value}</b></div>)}</div><div className="rr-bars" /><div className="rr-no">{label.barcodeValue}</div><ul>{label.products.length ? label.products.map(line => <li key={line.key}>{line.text}</li>) : <li>Ürün Ayrıntısı Yok</li>}</ul></div></div>
   </RrModal>
 }
@@ -248,7 +248,7 @@ function ReturnReceiptButton({ item, onNotice }: { item: ReturnDetail; onNotice?
     onError: error => { const failure = notificationError(error, 'İade teslim alındı olarak işaretlenemedi.'); notifyReturn(onNotice, failure.message, 'error', undefined, undefined, { ...returnNotificationContext(item), title: 'İade Teslim Alınamadı', operation: 'İade teslim alma', code: failure.code }) }
   })
   if (!item.allowedActions.includes('RECEIVE')) return null
-  return <section className="rr-dsec"><header><div className="rr-h3">Kargo Teslimi</div><p>İade paketi fiziksel olarak elinize ulaştıysa teslim aldığınızı işaretleyin. Ardından aynı pencereden onay veya ret kararı verebilirsiniz.</p></header><div><button type="button" className="rr-btn" disabled={receive.isPending} onClick={() => receive.mutate()}><RrIcon name="box" />{receive.isPending ? 'Kaydediliyor…' : 'Teslim Aldım'}</button></div></section>
+  return <section className="rr-dsec"><header><div className="rr-h3">Kargo Teslimi<TitleHint label="Kargo Teslimi">İade paketi fiziksel olarak elinize ulaştıysa teslim aldığınızı işaretleyin. Ardından aynı pencereden onay veya ret kararı verebilirsiniz.</TitleHint></div></header><div><button type="button" className="rr-btn" disabled={receive.isPending} onClick={() => receive.mutate()}><RrIcon name="box" />{receive.isPending ? 'Kaydediliyor…' : 'Teslim Aldım'}</button></div></section>
 }
 type ReturnDecisionDraft = { action: 'APPROVE' | 'REJECT' | 'PREAPPROVAL_CONFIRM'; reasonCode: string | null; explanation: string | null; evidenceAssetIds: string[]; returnLineIds: string[]; reasonLabel: string | null; finalizedWith: 'Refund' | 'Change' | null }
 type ReturnDecisionActionsProps = { item: ReturnDetail; onNotice?: ReturnNoticeHandler; onComplete?: () => void; selectedLineIds?: string[]; onSelectedLineIdsChange?: (ids: string[]) => void; initialAction?: ReturnDecisionDraft['action']; showActionPicker?: boolean }
@@ -311,9 +311,9 @@ function ReturnDecisionActions({ item, onNotice, onComplete, selectedLineIds: co
   const confirmKind = confirmation?.action === 'REJECT' ? 'reject' : confirmation?.action === 'PREAPPROVAL_CONFIRM' ? 'pre' : 'approve'
   const confirmExtra: Array<[string, string]> = !confirmation ? [] : confirmation.action === 'REJECT' ? [['Ret Nedeni', confirmation.reasonLabel ?? '—'], ['Açıklama', confirmation.explanation || '—']] : confirmation.action === 'PREAPPROVAL_CONFIRM' ? [['İnceleme Nedeni', 'Ürün incelemesi']] : confirmation.finalizedWith ? [['Onay Türü', confirmation.finalizedWith === 'Refund' ? 'Ücret İadesi' : 'Ürün Değişimi']] : []
   return <section className="rr-dsec">
-    <header><div className="rr-h3">İade İşlemi</div><p>{isAwaitingPreApproval ? 'Ön onay talebinde iade, değişim, ret veya inceleme için geri gönderim kararını seçin.' : 'İade paketi kontrol edildikten sonra kabul veya ret kararını buradan gönderin.'}</p><p>Birden fazla ürün varsa ürün kartlarına tıklayarak hangi ürünlerin işleme alınacağını seçin. Karar gönderilmeden önce seçiminizi özet penceresinde onaylayabilirsiniz.</p></header>
+    <header><div className="rr-h3">İade İşlemi<TitleHint label="İade İşlemi">{isAwaitingPreApproval ? 'Ön onay talebinde iade, değişim, ret veya inceleme için geri gönderim kararını seçin.' : 'İade paketi kontrol edildikten sonra kabul veya ret kararını buradan gönderin.'} Birden fazla ürün varsa ürün kartlarına tıklayarak hangi ürünlerin işleme alınacağını seçin. Karar gönderilmeden önce seçiminizi özet penceresinde onaylayabilirsiniz.</TitleHint></div></header>
     {externalWritesDisabled && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Dış Yazma Kapalı.</b> Bu iade için onay veya ret gönderilemez.</span></div>}
-    {isControlled && <div className="rr-selnote"><strong>{selectedLineIds.length} / {lines.length} ürün seçildi</strong><span>Ürün seçimini yukarıdaki kartlardan değiştirebilirsiniz.</span></div>}
+    {isControlled && <div className="rr-selnote"><strong>{selectedLineIds.length} / {lines.length} ürün seçildi</strong></div>}
     {!isControlled && lines.length > 1 && !isHepsiburada && <div className="rr-selnote"><label className="rr-cklabel"><input type="checkbox" className="rr-cb" checked={allLinesSelected} onChange={event => updateSelectedLineIds(event.target.checked ? lines.map(line => line.id) : [])} /><strong>{selectedLineIds.length} / {lines.length} ürün seçildi</strong></label>{lines.map(line => <label key={line.id} className="rr-cklabel"><input type="checkbox" className="rr-cb" checked={selectedLineIds.includes(line.id)} onChange={event => updateSelectedLineIds(event.target.checked ? [...selectedLineIds, line.id] : selectedLineIds.filter(id => id !== line.id))} />{line.title} · {line.quantity.toLocaleString('tr-TR')} adet</label>)}</div>}
     <form style={{ display: 'contents' }} onSubmit={requestDecision}>
       <div className="rr-dgrid">

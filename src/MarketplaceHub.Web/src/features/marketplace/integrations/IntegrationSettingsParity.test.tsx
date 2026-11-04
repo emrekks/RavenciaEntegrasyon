@@ -111,7 +111,8 @@ describe('integration settings parity', () => {
     expect(toggle).not.toBeNull()
     expect(toggle.checked).toBe(true)
     expect(toggle.disabled).toBe(false)
-    expect(manual.textContent).toContain('satıcı panelinden')
+    const manualHint = manual.querySelector<HTMLButtonElement>('button.title-hint')!
+    expect(document.getElementById(manualHint.getAttribute('aria-describedby')!)?.textContent).toContain('satıcı panelinden')
     const automatic = container.querySelector('[data-external-write-group="automatic-external-writes"]')!
     expect(automatic.querySelector('input[type="checkbox"]')).not.toBeNull()
     await act(async () => { toggle.click() })

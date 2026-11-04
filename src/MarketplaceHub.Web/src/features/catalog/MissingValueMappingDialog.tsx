@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { UiIcon, DialogSurface } from '../../shared/components'
+import { UiIcon, DialogSurface, TitleHint } from '../../shared/components'
 import type { PublicationValueMappingFix } from './publication-attribute-readiness'
 import { filterValueCandidates, rankValueCandidates, type ValueCandidate } from './value-mapping-suggestions'
 import { mappingSaveErrorMessage, refreshMappingConflicts, saveAllMappings } from '../marketplace/mappings/mapping-refresh'
@@ -80,8 +80,7 @@ export function MissingValueMappingDialog({ connectionId, platformName, category
     <DialogSurface as="section" onClose={() => { if (!saving) onClose() }} className="missing-value-mapping" aria-labelledby="missing-value-mapping-title">
       <header>
         <div>
-          <strong id="missing-value-mapping-title">Eksik Değer Eşlemeleri</strong>
-          <small>{platformName} değerini seçin; seçiminiz bu özelliği kullanan diğer kategorilere de uygulanır.</small>
+          <strong id="missing-value-mapping-title">Eksik Değer Eşlemeleri<TitleHint label="Eksik Değer Eşlemeleri">{platformName} değerini seçin; seçiminiz bu özelliği kullanan diğer kategorilere de uygulanır.</TitleHint></strong>
         </div>
         <button type="button" aria-label="Kapat" onClick={onClose} disabled={saving}><UiIcon name="close" /></button>
       </header>

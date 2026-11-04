@@ -377,7 +377,8 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     await settle()
     act(() => button('Fatura Durumunu Güncelle').click())
     await settle()
-    expect(container.querySelector('[role="dialog"]')?.textContent).toContain('Fatura dosyası yüklenmez')
+    const hint = container.querySelector<HTMLButtonElement>('[role="dialog"] h2 button.title-hint')!
+    expect(document.getElementById(hint.getAttribute('aria-describedby')!)?.textContent).toContain('fatura dosyası yüklenmez')
     const status = container.querySelector<HTMLSelectElement>('[aria-label="Yeni fatura durumu"]')!
     act(() => { status.value = 'UPLOADED'; status.dispatchEvent(new Event('change', { bubbles: true })) })
     act(() => button('2 Siparişi Güncelle').click())

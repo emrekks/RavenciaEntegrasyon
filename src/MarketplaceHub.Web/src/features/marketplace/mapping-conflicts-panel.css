@@ -20,7 +20,7 @@
 .mapping-conflicts-panel[open] > summary { border-bottom: 1px solid var(--rv-color-border); }
 
 .mapping-conflicts-body { display: grid; gap: 16px; max-height: 420px; padding: 12px 14px; overflow-y: auto; }
-.mapping-conflicts-body h4 { margin: 0 0 2px; font-size: var(--rv-font-size-sm); }
+.mapping-conflicts-body h4 { margin: 0 0 8px; font-size: var(--rv-font-size-sm); }
 .mapping-conflicts-body p { margin: 0 0 8px; color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
 .mapping-conflicts-body ul { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 

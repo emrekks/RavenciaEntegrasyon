@@ -792,7 +792,6 @@
   .variant-bulk-edit-target > span { color: var(--rv-color-muted); }
   .variant-bulk-edit-target > strong { flex: 0 0 auto; }
   .variant-bulk-edit-body > label { display: grid; min-width: 0; gap: var(--rv-space-2); color: var(--rv-color-ink); font-size: var(--rv-font-size-sm); font-weight: 750; }
-  .variant-bulk-edit-scope { margin: 0; padding: var(--rv-space-3); color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); line-height: 1.5; }
   .variant-bulk-edit-body > small { color: var(--rv-color-muted); }
   .variant-bulk-edit-error { margin: 0; padding: var(--rv-space-3); color: var(--rv-color-danger); background: color-mix(in srgb, var(--rv-color-danger) 12%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--rv-color-danger) 48%, var(--rv-color-border)); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); }
   .option-chip { min-height: 36px; padding: 6px 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 999px; }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { DialogSurface, UiIcon } from '../../../shared/components'
+import { DialogSurface, TitleHint, UiIcon } from '../../../shared/components'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { bulkPublishPlatformName } from '../products/bulk-publish-status'
 import type { MarketplaceConnection } from '../shared'
@@ -68,7 +68,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
         <header><div><p className="eyebrow">Ürün Güncelleme</p><h2 id="platform-update-title">Platformlarda Güncelle</h2></div><button type="button" className="modal-close" onClick={close} disabled={submitting} aria-label="Platform güncelleme penceresini kapat"><UiIcon name="close" /></button></header>
         <div className="product-publish-popup-body"><div className="product-add-page product-publish-popup"><section className="product-publish-step" aria-label="Ürünü platformlarda güncelle"><div className="product-publish-layout"><div className="product-publish-main">
           {groups.length > 0 && <section className="platform-update-section" aria-labelledby="platform-update-fields-title">
-            <PlatformUpdateSectionHead id="platform-update-fields-title" title="Gönderilecek Bilgiler" hint={`${visibleFields.length}/${available.length} bilgi seçili · Seçtikleriniz her mağazanın aldığı kadarıyla gönderilir.`}>
+            <PlatformUpdateSectionHead id="platform-update-fields-title" title="Gönderilecek Bilgiler" hint={`${visibleFields.length}/${available.length} bilgi seçili`} help="Seçtiğiniz bilgiler her mağazaya, o mağazanın aldığı kadarıyla gönderilir.">
               <button type="button" disabled={submitting || allFieldsPicked} onClick={() => setGroup(available, true)}>Tümünü Seç</button>
               <button type="button" disabled={submitting || !visibleFields.length} onClick={() => setGroup(available, false)}>Temizle</button>
             </PlatformUpdateSectionHead>
@@ -102,10 +102,10 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
     document.querySelector('main') ?? document.body)
 }
 
-// A section's title and hint, with its bulk picks on the right; the line above it parts it from the section before.
-function PlatformUpdateSectionHead({ id, title, hint, children }: { id: string; title: string; hint: string; children?: ReactNode }) {
+// A section's title (with its explanation behind a "?") and its selection count, with its bulk picks on the right; the line above it parts it from the section before.
+function PlatformUpdateSectionHead({ id, title, hint, help, children }: { id: string; title: string; hint: string; help?: ReactNode; children?: ReactNode }) {
   return <header className="platform-update-section-head">
-    <div><h3 id={id}>{title}</h3><small>{hint}</small></div>
+    <div><h3 id={id}>{title}{help ? <TitleHint label={title}>{help}</TitleHint> : null}</h3><small>{hint}</small></div>
     <div className="platform-update-bulk">{children}</div>
   </header>
 }

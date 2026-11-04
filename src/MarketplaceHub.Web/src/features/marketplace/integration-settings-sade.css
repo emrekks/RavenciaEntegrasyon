@@ -127,7 +127,6 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main .cs-workspace .cs-write-groups .sync-policy-row:first-child { border-top: 0; }
 .app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups) .sync-policy-card-summary { flex: 1; display: grid; gap: 2px; }
 .app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups) .sync-policy-card-summary strong { font-size: 14px; font-weight: 600; }
-.app-shell.stitch-shell main .cs-workspace :is(.cs-write-groups) .sync-policy-card-summary small { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel { gap: 18px; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel :is(input:not([type="checkbox"]), select) { height: 36px; min-height: 36px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
 .app-shell.stitch-shell main .cs-workspace .connection-settings-panel label { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
@@ -225,10 +224,9 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 
 /* Flow settings popup in the same language: plain head, flat cards, title-case labels, quiet values. */
 .app-shell.stitch-shell main .sync-policy-modal.sp-sade { width: min(600px, 100%); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 14px; box-shadow: var(--rv-shadow-modal, 0 16px 40px rgb(0 0 0 / 24%)); }
-.app-shell.stitch-shell main .sp-sade > header { display: flex; align-items: flex-start; gap: 12px; padding: 20px 24px 16px; border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .sp-sade > header { display: flex; align-items: center; gap: 12px; padding: 20px 24px 16px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .sp-sade > header > div { flex: 1; min-width: 0; }
 .app-shell.stitch-shell main .sp-sade > header h2 { margin: 0; font-size: 18px; font-weight: 600; text-transform: none; }
-.app-shell.stitch-shell main .sp-sade > header p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
 .app-shell.stitch-shell main .sp-sade .modal-close { display: grid; width: 32px; min-width: 32px; height: 32px; min-height: 32px; place-items: center; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; }
 .app-shell.stitch-shell main .sp-sade .modal-close:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 /* Every block keeps its content height and the body scrolls: a card with overflow hidden has no minimum height in a grid,

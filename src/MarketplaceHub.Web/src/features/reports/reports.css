@@ -703,9 +703,8 @@
 
 /* Sipariş Kârlılık Analizi: a search over the orders, the totals as a strip, a row per order and its analysis in a dialog. */
 .app-shell.stitch-shell main .reports-page .reports-order-profit { display: grid; gap: 16px; min-width: 0; }
-.app-shell.stitch-shell main .reports-page .reports-order-profit-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 20px; }
+.app-shell.stitch-shell main .reports-page .reports-order-profit-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
 .app-shell.stitch-shell main .reports-page .reports-order-profit-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
-.app-shell.stitch-shell main .reports-page .reports-order-profit-head p { max-width: 640px; margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .reports-page .reports-order-search { display: flex; gap: 8px; }
 .app-shell.stitch-shell main .reports-page .reports-order-search input { box-sizing: border-box; width: min(280px, 60vw); height: 36px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; }
 .app-shell.stitch-shell main .reports-page .reports-order-search button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; text-transform: none; }

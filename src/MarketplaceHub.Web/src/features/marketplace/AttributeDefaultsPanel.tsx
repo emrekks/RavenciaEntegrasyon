@@ -91,9 +91,8 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
   const otherCandidates = candidates.filter(item => item.isRequired !== true)
   return <details className="attribute-defaults-panel" open={expanded || undefined}>
     <summary>
-      <span className="panel-summary-title">Platform Varsayılanları</span>
+      <span className="panel-summary-title">Platform Varsayılanları<TitleHint label="Platform Varsayılanları">Ürünlerde boş kalan alanlar için {platformLabel}’a gönderilecek sabit değerler. Örneğin Menşei için TR seçerseniz, menşei boş bırakılan ürünlerde TR gönderilir.</TitleHint></span>
       <b className="panel-summary-count" aria-label={`${existing.length} varsayılan`}>{existing.length}</b>
-      <small>Ürünlerde boş kalan alanlar için {platformLabel}’a gönderilecek sabit değerler.</small>
     </summary>
     <div className="attribute-defaults-body">
       <section className="attribute-defaults-section">
@@ -106,7 +105,7 @@ export function AttributeDefaultsPanel({ connectionId, categoryScope, platformLa
               <button type="button" className="secondary attribute-defaults-remove" aria-label={`${item.attributeName} varsayılanını kaldır`} title="Varsayılanı kaldır" disabled={busy} onClick={() => void remove(item)}><UiIcon name="close" /></button>
             </li>)}
           </ul>
-          : <p className="attribute-defaults-state">Henüz varsayılan yok. Örneğin Menşei için TR seçerseniz, menşei boş bırakılan ürünlerde TR gönderilir.</p>}
+          : <p className="attribute-defaults-state">Henüz varsayılan yok.</p>}
       </section>
       <section className="attribute-defaults-section attribute-defaults-add">
         <h4>Yeni Varsayılan<TitleHint label="Yeni Varsayılan">Ürüne girilen değer her zaman önce gelir; varsayılan yalnızca alan boşsa kullanılır.</TitleHint></h4>

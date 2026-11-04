@@ -1,7 +1,7 @@
 import { useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
-import { DialogSurface, UiIcon } from '../../../shared/components'
+import { DialogSurface, TitleHint, UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { platformLogoSource } from '../../../shared/platform-logos'
 
@@ -143,7 +143,7 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
 
   return <div className="workspace-modal-backdrop marketplace-codes-backdrop" role="presentation" onMouseDown={onClose}>
     <DialogSurface as="section" onClose={onClose} className="workspace-modal marketplace-codes-modal" aria-labelledby="marketplace-codes-title" onMouseDown={event => event.stopPropagation()}>
-      <header><div><p className="eyebrow">{single ? 'Varyant Eşleştirme' : 'Varyantlar'}</p><h2 id="marketplace-codes-title">{single ? single.label : 'Pazaryeri Kodları'}</h2><p>{single ? 'Bu varyantın pazaryerlerindeki kodları. Fiyat ve stok bu kodlarla gönderilir.' : 'Her varyantın Hepsiburada SKU’su ve Shopify Variant ID’si. Fiyat ve stok bu kodlarla gönderilir.'}</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
+      <header><div><p className="eyebrow">{single ? 'Varyant Eşleştirme' : 'Varyantlar'}</p><h2 id="marketplace-codes-title">{single ? single.label : 'Pazaryeri Kodları'}<TitleHint label={single ? single.label : 'Pazaryeri Kodları'}>{single ? 'Bu varyantın pazaryerlerindeki kodları.' : 'Her varyantın Hepsiburada SKU’su ve Shopify Variant ID’si.'} Fiyat ve stok bu kodlarla gönderilir. Kodu yazıp kaydedin; boşaltılan kod eşleşmeyi kaldırır. Yeni kodun stok kodu ve barkodu bir sonraki ürün aktarımında okunur.</TitleHint></h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
       <div className="marketplace-codes-body">
         {codes.isLoading ? <p className="marketplace-codes-note">Kodlar yükleniyor…</p>
           : codes.isError ? <p className="marketplace-codes-note" role="alert">Pazaryeri kodları okunamadı.</p>
@@ -171,7 +171,6 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
                 <thead><tr><th scope="col">Varyant</th>{connections.map(connection => <th scope="col" key={connection.connectionId}><CodeHead connection={connection} connections={connections} /></th>)}</tr></thead>
                 <tbody>{rows.map(row => <tr key={row.variantId}><th scope="row">{row.label}</th>{connections.map(connection => <td key={connection.connectionId}>{codeField(row.variantId, connection, fieldLabel(row.label, connection))}</td>)}</tr>)}</tbody>
               </table></div>}
-        <p className="marketplace-codes-note">Kodu yazıp kaydedin; boşaltılan kod eşleşmeyi kaldırır. Yeni kodun stok kodu ve barkodu bir sonraki ürün aktarımında okunur.</p>
         {status && <p className={`marketplace-codes-status is-${status.kind}`} role={status.kind === 'error' ? 'alert' : 'status'}>{status.message}</p>}
       </div>
       <footer><button type="button" className="secondary" onClick={onClose}>Kapat</button><button type="button" disabled={!canSave} onClick={() => save.mutate()}>{save.isPending ? 'Kaydediliyor…' : changes.length ? `Kaydet (${changes.length.toLocaleString('tr-TR')})` : 'Kaydet'}</button></footer>

@@ -1921,7 +1921,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
       {(data?.earlyPayments ?? 0) > 0 ? `Son ${data?.daysBack} günde alınan erken ödeme: ${formatTl(data?.earlyPaymentsTaken)} (${formatCount(data?.earlyPayments ?? 0)} kayıt).` : `Son ${data?.daysBack ?? 90} günde erken ödeme alınmadı.`}
       {' '}Erken alınabilir tutar pazaryeri API'sinde yok; yalnız pazaryeri panelinde görünür.
     </p>
-    <Panel title="Ödeme Özeti" className="reports-payout-list">
+    <Panel title="Ödeme Özeti" description="Kartlar pazaryeri ve bölge filtresine göre; durum, tarih ve tutar filtreleri yalnız listeyi süzer." className="reports-payout-list">
       <div className="rr reports-payout-filters">
         <RrFilterCard active={activeCount}><div className="rr-filters reports-payout-filterbar">
           <label className="rr-fld rr-search"><small>Sipariş / Fatura No</small><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} />
@@ -1999,7 +1999,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
     <p className="reports-payout-coverage" role="note">
       {read.length > 0 ? `Okunan mağazalar: ${read.map(store => `${platformName(store.platformCode)} · ${store.storeName}${store.lastSyncedAt ? ` (${formatIstanbul(store.lastSyncedAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}`).join(', ')}. ` : 'Henüz hiçbir mağazanın hakediş kaydı okunmadı. '}
       {data?.coverage.some(store => store.state === 'NOT_SUPPORTED') && `Henüz okunmayanlar: ${[...new Set(data.coverage.filter(store => store.state === 'NOT_SUPPORTED').map(store => platformName(store.platformCode)))].join(', ')}. `}
-      Kartlar pazaryeri ve bölge filtresine göre; durum, tarih ve tutar filtreleri yalnız listeyi süzer. Gelecek ödemeler tahminidir; kesin tutar ödeme günü pazaryeri panelinde görünür.
+      Gelecek ödemeler tahminidir; kesin tutar ödeme günü pazaryeri panelinde görünür.
     </p>
   </div>
 }

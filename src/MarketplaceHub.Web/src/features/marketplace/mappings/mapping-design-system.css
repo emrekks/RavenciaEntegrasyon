@@ -21,7 +21,6 @@
 }
 
 @layer components {
-  .mapping-transfer-warning { margin: 0 var(--rv-space-6) var(--rv-space-5); padding: var(--rv-space-3) var(--rv-space-4); color: var(--rv-color-warning); background: var(--rv-color-warning-soft); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); font-size: var(--rv-font-size-sm); }
 }
 
 @layer components {
@@ -731,7 +730,7 @@
 }
 
 @media (max-width: 700px) {
-  .mapping-transfer-options, .mapping-transfer-warning { margin-inline: var(--rv-space-4); }
+  .mapping-transfer-options { margin-inline: var(--rv-space-4); }
 }
 
 @media (max-width: 700px) {

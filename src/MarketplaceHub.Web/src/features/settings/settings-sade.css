@@ -135,10 +135,10 @@
 @media (min-width: 761px) {
   .ss-page .ss-bar-copy { flex-wrap: nowrap; }
   .ss-page .ss-bar-copy strong { flex: none; white-space: nowrap; }
-  .ss-page .ss-bar-copy span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ss-page .ss-bar-copy > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 .ss-page .ss-bar-copy strong { font-size: 14px; font-weight: 600; }
-.ss-page .ss-bar-copy span { color: var(--rv-color-muted); font-size: 13px; }
+.ss-page .ss-bar-copy > span { color: var(--rv-color-muted); font-size: 13px; }
 .ss-page .ss-bar-copy span b { color: var(--rv-color-ink); font-weight: 500; }
 .ss-page .ss-bar-copy span.is-dirty { color: var(--rv-color-ink); }
 .ss-page .ss-bar-copy span.is-dirty::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 1px 0; background: var(--rv-color-warning); border-radius: 50%; }
@@ -148,7 +148,6 @@
 .ss-page .ss-auth { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; }
 .ss-page .ss-auth > .ss-tile { grid-row: span 2; align-self: start; }
 .ss-page .ss-auth h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
-.ss-page .ss-auth > p { color: var(--rv-color-muted); font-size: 13px; }
 .ss-page .ss-auth-meta { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--rv-color-subtle); font-size: 12px; }
 .ss-page .ss-auth-meta b { color: var(--rv-color-ink); font-weight: 500; font-variant-numeric: tabular-nums; }
 .ss-page .ss-auth-side { grid-column: 3; grid-row: 1 / span 2; display: flex; gap: 8px; }

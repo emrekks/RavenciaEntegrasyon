@@ -2,11 +2,12 @@ import { createElement, useEffect, useId, useRef, useState, type ButtonHTMLAttri
 import { useRememberedTabCounts } from '../tab-counts'
 import { UiIcon } from './UiIcon'
 import { lockPageScroll } from '../hooks/useScrollLock'
+import { TitleHint } from './TitleHint'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type ControlSize = 'sm' | 'md' | 'lg'
 export type StatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
-type DialogSurfaceProps = { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; description?: ReactNode; className?: string }
+type DialogSurfaceProps = { open: boolean; title: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; description?: ReactNode; className?: string; /** What the window is for, behind a "?" beside its title; live facts stay in `description`. */ hint?: ReactNode }
 
 const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
 
@@ -143,19 +144,19 @@ export function Pagination({ page, totalPages, hasNext, onPageChange, onPrevious
   return <nav className={['rv-pagination', className].filter(Boolean).join(' ')} aria-label={ariaLabel}><Button variant="secondary" size="sm" onClick={goPrevious} disabled={disabled || safePage <= 1}>Önceki</Button><label className="rv-pagination-jump"><span>Sayfa</span><input type="number" inputMode="numeric" min={1} max={safeTotalPages} value={draftPage} onChange={event => setDraftPage(event.target.value)} onBlur={commitDraftPage} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); commitDraftPage(); event.currentTarget.blur() } }} aria-label="Sayfa numarası" disabled={disabled} /><span aria-hidden="true"> / {safeTotalPages}</span></label><Button variant="secondary" size="sm" onClick={goNext} disabled={disabled || !(hasNext ?? safePage < safeTotalPages)}>Sonraki</Button></nav>
 }
 
-export function Modal({ open, title, onClose, children, footer, description, className }: DialogSurfaceProps) {
+export function Modal({ open, title, onClose, children, footer, description, className, hint }: DialogSurfaceProps) {
   const dialogRef = useDialogSurface(open, onClose)
   const titleId = useId()
   const descriptionId = useId()
   if (!open) return null
-  return <div className="rv-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section ref={dialogRef} className={['rv-modal', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-modal-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</section></div>
+  return <div className="rv-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><section ref={dialogRef} className={['rv-modal', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : 'Pencere'}>{hint}</TitleHint> : null}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-modal-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</section></div>
 }
 
-export function Drawer({ open, title, onClose, children, footer, description, className }: DialogSurfaceProps) {
+export function Drawer({ open, title, onClose, children, footer, description, className, hint }: DialogSurfaceProps) {
   const dialogRef = useDialogSurface(open, onClose)
   const titleId = useId()
   const descriptionId = useId()
-  return open ? <div className="rv-overlay rv-drawer-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><aside ref={dialogRef} className={['rv-drawer', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-drawer-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</aside></div> : null
+  return open ? <div className="rv-overlay rv-drawer-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><aside ref={dialogRef} className={['rv-drawer', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : 'Pencere'}>{hint}</TitleHint> : null}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-drawer-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</aside></div> : null
 }
 
 export function EmptyState({ children }: { children: ReactNode }) { return <div className="rv-empty-state"><span className="rv-empty-state-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Henüz kayıt yok</strong><p>{children}</p></div> }

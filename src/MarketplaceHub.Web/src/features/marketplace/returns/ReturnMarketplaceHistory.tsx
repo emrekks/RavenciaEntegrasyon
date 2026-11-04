@@ -4,6 +4,7 @@ import { hubApi } from '../../../shared/api'
 import { formatDateTime } from '../../../shared/format-date'
 import { statusLabel } from '../../../shared/status-labels'
 import { RrError, RrIcon, RrLoading } from '../returns-ui'
+import { TitleHint } from '../../../shared/components'
 
 type SettledLine = { id: string; title: string; acceptDetail?: string | null; marketplaceNote?: string | null; resolved?: boolean | null; acceptedBySeller?: boolean | null }
 type AuditEntry = { previousStatus: string | null; newStatus: string; executorApp: string | null; executorUser: string | null; at: string }
@@ -51,7 +52,7 @@ export function ReturnMarketplaceHistory({ returnId, lines, showSettlement = tru
     ['Trendyol Notu', line.marketplaceNote?.trim() || null]
   ].filter((fact): fact is [string, string] => Boolean(fact[1])) }))
   return <article className="rr-mhist">
-    <div className="rr-h3">{showSettlement ? 'Trendyol Kararı ve Durum Geçmişi' : 'Trendyol Durum Geçmişi'}</div>
+    <div className="rr-h3">{showSettlement ? 'Trendyol Kararı ve Durum Geçmişi' : 'Trendyol Durum Geçmişi'}<TitleHint label={showSettlement ? 'Trendyol Kararı ve Durum Geçmişi' : 'Trendyol Durum Geçmişi'}>Ret talebinde gönderilen açıklama ve belgeler Trendyol API’sinde okunamıyor; yalnızca Trendyol satıcı panelinde görünür.</TitleHint></div>
     {!showSettlement ? null : settled.some(entry => entry.facts.length) ? settled.filter(entry => entry.facts.length).map(({ line, facts }) => <div className="rr-mhist-line" key={line.id}>
       {lines.length > 1 && <b>{line.title}</b>}
       <dl className="rr-kv">{facts.map(([label, value]) => <div key={label} style={{ display: 'contents' }}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
@@ -68,6 +69,5 @@ export function ReturnMarketplaceHistory({ returnId, lines, showSettlement = tru
             {(entry.executorApp || entry.executorUser) && <small>{[entry.executorApp, entry.executorUser].filter(Boolean).join(' · ')}</small>}
           </li>)}</ol>}
       </div>)}
-    <p className="rr-mhist-note">Ret talebinde gönderilen açıklama ve belgeler Trendyol API’sinde okunamıyor; yalnızca Trendyol satıcı panelinde görünür.</p>
   </article>
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { DialogSurface, UiIcon } from '../../shared/components'
+import { DialogSurface, UiIcon, TitleHint } from '../../shared/components'
 import { ValuePicker, pickerOptions } from '../marketplace/mappings/ValuePicker'
 import { mappingSaveErrorMessage } from '../marketplace/mappings/mapping-refresh'
 import './missing-value-mapping-dialog.css'
@@ -76,8 +76,7 @@ export function CategoryMappingDialog({ connectionId, platformName, categoryId, 
     <DialogSurface as="section" onClose={() => { if (!saving) onClose() }} className="missing-value-mapping category-mapping-dialog" aria-labelledby="category-mapping-dialog-title">
       <header>
         <div>
-          <strong id="category-mapping-dialog-title">Kategori Eşle</strong>
-          <small>{categoryName} kategorisinin {platformName} karşılığını seçin; bu kategorideki tüm ürünler için geçerli olur.</small>
+          <strong id="category-mapping-dialog-title">Kategori Eşle<TitleHint label="Kategori Eşle">{categoryName} kategorisinin {platformName} karşılığını seçin; bu kategorideki tüm ürünler için geçerli olur.</TitleHint></strong>
         </div>
         <button type="button" aria-label="Kapat" onClick={onClose} disabled={saving}><UiIcon name="close" /></button>
       </header>
