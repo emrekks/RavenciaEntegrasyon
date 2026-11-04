@@ -104,7 +104,7 @@ function Breakdown({ rows }: { rows: BreakdownRow[] }) {
 // pointer, above it when the page has room there, otherwise below.
 // An hourly chart (a one-day period) compares each hour with the same hour of the previous day.
 function RevenueChart({ points, previous, currency, value = point => point.amount, axis = amount => axisLabel(amount, currency), hourly = false }: { points: DayPoint[]; previous: DayPoint[]; currency: string; value?: (point: DayPoint) => number; axis?: (value: number) => string; hourly?: boolean }) {
-  const [hover, setHover] = useState<{ index: number; x: number; y: number } | null>(null)
+  const [hover, setHover] = useState<{ index: number; x: number; y: number; touch?: boolean } | null>(null)
   const chartRef = useRef<HTMLDivElement>(null)
   const tipRef = useRef<HTMLDivElement>(null)
   const W = 760, H = 260, L = 64, R = 12, T = 12, B = 30
@@ -116,9 +116,10 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
   useLayoutEffect(() => {
     const tip = tipRef.current, chart = chartRef.current
     if (!tip || !chart || !hover) return
-    const box = chart.getBoundingClientRect(), width = tip.offsetWidth, height = tip.offsetHeight, gap = 14
+    // A finger covers the point under it: on touch the window opens well above the fingertip, never under it.
+    const box = chart.getBoundingClientRect(), width = tip.offsetWidth, height = tip.offsetHeight, gap = hover.touch ? 64 : 14
     const left = Math.max(0, Math.min(box.width - width, hover.x - box.left - width / 2))
-    const above = hover.y - height - gap >= 8
+    const above = hover.touch || hover.y - height - gap >= 8
     tip.style.left = `${left}px`
     tip.style.top = `${above ? hover.y - box.top - height - gap : hover.y - box.top + gap + 4}px`
     tip.style.visibility = ''
@@ -130,7 +131,7 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
     const box = event.currentTarget.getBoundingClientRect()
     const px = (event.clientX - box.left) / box.width * W
     const index = Math.max(0, Math.min(points.length - 1, Math.round((px - L) / (W - L - R) * (points.length - 1))))
-    setHover({ index, x: event.clientX, y: event.clientY })
+    setHover({ index, x: event.clientX, y: event.clientY, touch: event.pointerType !== 'mouse' })
   }
   const point = hover ? points[hover.index] : null
   const before = hover ? (hourly ? previous[hover.index] ?? null : points[hover.index - 1] ?? previous[previous.length - 1]) : null
