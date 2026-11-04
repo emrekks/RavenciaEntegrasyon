@@ -17,21 +17,24 @@ function iconFor(state: PublishStepState, index: number) {
   return state === 'done' ? 'check' : state === 'fail' ? 'x' : state === 'now' ? 'spin' : stepIcons[index]
 }
 
-// The compact pill of a publish card's status: four icon steps joined by short links, the counts as corner badges on the
-// step they concern (red on the failing step, yellow warnings on Hazırlık, the green live count on Yayında), then the
-// state label, which gives way on a narrow cell.
+// The compact pill of a publish card's status: four icon steps joined by short links, the green live count as a corner
+// badge on Yayında, then the state label; the red and yellow counts take the label's place as two small chips ("2 Eksik",
+// "6 Uyarı"), which give way on a narrow cell like the label.
 export function PublishStatusSteps({ steps, fit, unit = 'varyant' }: { steps: PublishSteps; fit: number; unit?: 'varyant' | 'renk' }) {
   const badges = publishStepBadges(steps, unit)
+  const corner = badges.filter(badge => badge.tone === 'green')
+  const chips = badges.filter(badge => badge.tone !== 'green')
   return <span className="publish-steps" data-fit={fit} style={{ '--publish-step-share': steps.share ?? 50 } as CSSProperties}>
     <span className="publish-steps-track" aria-hidden="true">
       {steps.steps.map((state, index) => <span key={publishStepNames[index]} className="publish-steps-item">
         {index > 0 && <span className={`publish-step-link is-${steps.links[index - 1]}`} />}
         <span className={`publish-step is-${state}`} title={[publishStepTitle(index, state, steps), ...badges.filter(badge => badge.step === index).map(badge => badge.title)].join(' · ')}>
           <svg viewBox="0 0 24 24" width="12" height="12" {...stroke}>{icons[iconFor(state, index)]}</svg>
-          {badges.filter(badge => badge.step === index).map(badge => <b key={badge.tone} className={`publish-step-badge is-${badge.tone} is-${badge.corner}`}>{badge.text}</b>)}
+          {corner.filter(badge => badge.step === index).map(badge => <b key={badge.tone} className={`publish-step-badge is-${badge.tone} is-${badge.corner}`}>{badge.text}</b>)}
         </span>
       </span>)}
     </span>
-    <span className={`publish-steps-label publish-steps-word is-${steps.steps.includes('fail') ? 'fail' : steps.steps.includes('now') ? 'now' : steps.steps.every(state => state === 'idle') ? 'idle' : 'ok'}`} aria-hidden="true">{steps.label}</span>
+    {chips.length ? <span className="publish-steps-label publish-steps-chips" aria-hidden="true">{chips.map(badge => <b key={badge.tone} className={`publish-steps-chip is-${badge.tone}`}>{badge.chip}</b>)}</span>
+      : <span className={`publish-steps-label publish-steps-word is-${steps.steps.includes('fail') ? 'fail' : steps.steps.includes('now') ? 'now' : steps.steps.every(state => state === 'idle') ? 'idle' : 'ok'}`} aria-hidden="true">{steps.label}</span>}
   </span>
 }

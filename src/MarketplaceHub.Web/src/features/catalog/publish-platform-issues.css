@@ -104,9 +104,9 @@
 /* A count sits on the corner of the step it concerns, as on a notification icon: 18 px, 11 px bold, solid in its tone
    with a 2 px ring in the pill's colour so it stands clear of the icon; a step's second count takes the lower corner.
    Red: required gaps or refused / vanished variants; yellow: optional warnings; green: how many are live. */
-.publish-step-badge { position: absolute; z-index: 1; right: -9px; display: grid; box-sizing: border-box; min-width: 18px; height: 18px; place-items: center; padding: 0 4px; color: var(--ps-on); border: 2px solid var(--ps-ground); border-radius: 7px; font-size: 11px; font-style: normal; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
-.publish-step-badge.is-top { top: -8px; }
-.publish-step-badge.is-bottom { bottom: -8px; }
+.publish-step-badge { position: absolute; z-index: 1; right: -8px; display: grid; box-sizing: border-box; min-width: 15px; height: 15px; place-items: center; padding: 0 3px; color: var(--ps-on); border: 1.5px solid var(--ps-ground); border-radius: 999px; font-size: 9.5px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 12px; text-align: center; white-space: nowrap; }
+.publish-step-badge.is-top { top: -11px; }
+.publish-step-badge.is-bottom { bottom: -11px; }
 .publish-step-badge.is-red { background: var(--ps-bad); }
 .publish-step-badge.is-yellow { background: var(--rv-color-warning); }
 .publish-step-badge.is-green { background: var(--ps-ok); }
@@ -115,6 +115,11 @@
 .publish-steps-label.is-fail { color: var(--ps-bad); }
 .publish-steps-label.is-now { color: var(--ps-run); }
 .publish-steps-label.is-idle { color: var(--rv-color-muted); }
+/* The red and yellow counts read beside the steps as two small chips in place of the state label ("2 Eksik", "6 Uyarı"). */
+.publish-steps-chips { display: flex; gap: 4px; }
+.publish-steps-chip { display: inline-flex; flex: none; align-items: center; height: 20px; padding: 0 7px; border-radius: 7px; font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.publish-steps-chip.is-red { color: color-mix(in srgb, var(--ps-bad) 75%, #fff); background: color-mix(in srgb, var(--ps-bad) 16%, transparent); }
+.publish-steps-chip.is-yellow { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, transparent); }
 @media (prefers-reduced-motion: reduce) { .publish-step.is-now > svg, .publish-issue-action.is-busy > svg { animation: none; } }
 /* A narrower cell: smaller steps and links; the state label gives way below the width its pill needs (data-fit,
    publishStepsFit); the steps and their badges always stay. */

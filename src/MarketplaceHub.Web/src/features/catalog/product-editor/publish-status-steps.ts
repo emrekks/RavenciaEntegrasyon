@@ -141,16 +141,17 @@ export function publishStepsAriaLabel(platformName: string, steps: PublishSteps,
 // The counts sit as corner badges on the step they concern: the red one (required gaps, or the variants refused or no
 // longer found) on the failing step, the yellow one (optional warnings) on Hazırlık, the green one (how many are live)
 // on a partly live Yayında. A step with two badges carries the second at its lower corner.
-export type PublishStepBadge = { step: number; tone: 'red' | 'yellow' | 'green'; text: string; corner: 'top' | 'bottom'; title: string }
+// chip is the words a red or yellow count reads beside the steps ("2 Eksik", "6 Uyarı").
+export type PublishStepBadge = { step: number; tone: 'red' | 'yellow' | 'green'; text: string; chip: string; corner: 'top' | 'bottom'; title: string }
 
 export function publishStepBadges(steps: PublishSteps, unit: 'varyant' | 'renk' = 'varyant'): PublishStepBadge[] {
   const { partial, required, missing, optional } = steps.counts
   const failing = steps.steps.indexOf('fail')
   const badges: Array<Omit<PublishStepBadge, 'corner'>> = []
-  if (required) badges.push({ step: failing >= 0 ? failing : 0, tone: 'red', text: String(required), title: `${required} zorunlu eksik` })
-  else if (missing) badges.push({ step: failing >= 0 ? failing : 3, tone: 'red', text: String(missing.count), title: `${missing.count} varyant ${missing.word === 'ret' ? 'reddedildi' : 'pazaryerinde bulunamadı'}` })
-  if (partial) badges.push({ step: 3, tone: 'green', text: partial.split('/')[0], title: `${partial} ${unit} yayında` })
-  if (optional) badges.push({ step: 0, tone: 'yellow', text: String(optional), title: `${optional} isteğe bağlı uyarı` })
+  if (required) badges.push({ step: failing >= 0 ? failing : 0, tone: 'red', text: String(required), chip: `${required} Eksik`, title: `${required} zorunlu eksik` })
+  else if (missing) badges.push({ step: failing >= 0 ? failing : 3, tone: 'red', text: String(missing.count), chip: `${missing.count} ${missing.word === 'ret' ? 'Ret' : 'Bulunamadı'}`, title: `${missing.count} varyant ${missing.word === 'ret' ? 'reddedildi' : 'pazaryerinde bulunamadı'}` })
+  if (partial) badges.push({ step: 3, tone: 'green', text: partial.split('/')[0], chip: `${partial} Yayında`, title: `${partial} ${unit} yayında` })
+  if (optional) badges.push({ step: 0, tone: 'yellow', text: String(optional), chip: `${optional} Uyarı`, title: `${optional} isteğe bağlı uyarı` })
   return badges.map((badge, index) => ({ ...badge, corner: badges.slice(0, index).some(other => other.step === badge.step) ? 'bottom' : 'top' }))
 }
 
