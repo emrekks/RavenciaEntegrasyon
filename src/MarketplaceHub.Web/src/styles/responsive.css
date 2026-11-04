@@ -325,7 +325,15 @@ html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
   html body .rv-drawer .rv-mobile-navigation > :nth-child(3) { animation-delay: calc(var(--rv-motion-item-stagger) * 1.2); }
   html body .rv-drawer .rv-mobile-navigation > :nth-child(4) { animation-delay: calc(var(--rv-motion-item-stagger) * 1.8); }
   html body .rv-drawer .rv-mobile-navigation > :nth-child(n + 5) { animation-delay: calc(var(--rv-motion-item-stagger) * 2.4); }
+  /* Closing (Drawer keeps it mounted 220 ms with .rv-closing): the backdrop fades, the drawer slides back out the way
+     it came (the menu to the left, the others to the right), faster than it came in. */
+  html body .rv-drawer-overlay.rv-closing { pointer-events: none; animation: rv-fade-out .22s ease-in forwards; }
+  html body .rv-drawer-overlay.rv-closing > .rv-drawer { animation: rv-drawer-out-right .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+  html body .rv-drawer-overlay.rv-closing > .rv-drawer:has(.rv-mobile-navigation) { animation: rv-drawer-out-left .22s cubic-bezier(.4, 0, 1, 1) forwards; }
+  html body .rv-drawer-overlay.rv-closing .rv-mobile-navigation > * { animation: none; }
 }
+@keyframes rv-drawer-out-left { to { translate: -100% 0; } }
+@keyframes rv-drawer-out-right { to { translate: 100% 0; } }
 @media (max-width: 760px) and (prefers-reduced-motion: no-preference) {
   html body :is(.rv-overlay:not(:has(.rv-mobile-navigation)), .workspace-modal-backdrop, .rr-overlay) { animation: rv-fade-in var(--rv-motion-modal) ease-out; }
   html body :is(.rv-overlay > .rv-modal, .workspace-modal-backdrop > .workspace-modal, .rr-overlay > .rr-modal) { animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet); }
@@ -370,7 +378,7 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
 .rv-drawer.rv-mobile-drawer .rv-drawer-body { display: flex; flex-direction: column; }
 .rv-mobile-drawer .rv-mobile-navigation { flex: 1 1 auto; grid-template-rows: auto 1fr; align-content: stretch; }
 .rv-mobile-navigation > .rv-mobile-nav-foot { display: grid; align-self: end; gap: 4px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell .rv-mobile-navigation .rv-mobile-logout { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 46px; margin: 0; padding: 10px 12px; color: var(--rv-color-danger); font: inherit; text-align: left; background: none; border: 0; border-radius: var(--rv-radius-md); box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell .rv-mobile-navigation .rv-mobile-logout { display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; min-height: 46px; margin: 0; padding: 10px 12px; color: var(--rv-color-danger); font: inherit; text-align: left; background: none; border: 0; border-radius: var(--rv-radius-md); box-shadow: none; cursor: pointer; }
 .app-shell.stitch-shell .rv-mobile-navigation .rv-mobile-logout:hover { background: color-mix(in srgb, var(--rv-color-danger) 8%, transparent); }
 
 /* Phones, sign-in page: the top bar stays one slim row (Sistem Hazır as a small pill, Operasyon Merkezi hidden, the theme

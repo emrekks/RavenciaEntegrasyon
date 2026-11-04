@@ -156,7 +156,17 @@ export function Drawer({ open, title, onClose, children, footer, description, cl
   const dialogRef = useDialogSurface(open, onClose)
   const titleId = useId()
   const descriptionId = useId()
-  return open ? <div className="rv-overlay rv-drawer-overlay" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><aside ref={dialogRef} className={['rv-drawer', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : 'Pencere'}>{hint}</TitleHint> : null}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-drawer-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</aside></div> : null
+  // A drawer that closes slides back out before it unmounts (rv-closing, 220 ms), as it slid in.
+  const [shown, setShown] = useState(open)
+  const [closing, setClosing] = useState(false)
+  if (open && (!shown || closing)) { setShown(true); setClosing(false) }
+  if (!open && shown && !closing) setClosing(true)
+  useEffect(() => {
+    if (!closing) return
+    const timer = window.setTimeout(() => { setShown(false); setClosing(false) }, 220)
+    return () => window.clearTimeout(timer)
+  }, [closing])
+  return shown ? <div className={`rv-overlay rv-drawer-overlay${closing ? ' rv-closing' : ''}`} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}><aside ref={dialogRef} className={['rv-drawer', className].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} tabIndex={-1}><header><div><h2 id={titleId}>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : 'Pencere'}>{hint}</TitleHint> : null}</h2>{description ? <p id={descriptionId}>{description}</p> : null}</div><IconButton label="Kapat" variant="ghost" onClick={onClose}><UiIcon name="close" /></IconButton></header><div className="rv-drawer-body">{children}</div>{footer ? <footer>{footer}</footer> : null}</aside></div> : null
 }
 
 export function EmptyState({ children }: { children: ReactNode }) { return <div className="rv-empty-state"><span className="rv-empty-state-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Henüz kayıt yok</strong><p>{children}</p></div> }
