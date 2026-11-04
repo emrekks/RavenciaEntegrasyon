@@ -1119,3 +1119,6 @@ main .rr.rr.rr-orders .rr-tbl.rr-tbl col.rr-c-prod { width: auto; }
 }
 /* A long buyer name breaks inside its cell instead of running over the next column (last rule: it wins the earlier ones). */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl.rr-tbl td[data-l="Alıcı"] .rr-cust b { overflow-wrap: anywhere !important; min-width: 0; }
+/* An image window's title: the product's name on one line, smaller, cut with an ellipsis (owner, 5 Nov 2026). */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head > div { min-width: 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-modal.rr-img .rr-m-head h2 { overflow: hidden; font-size: 15px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
