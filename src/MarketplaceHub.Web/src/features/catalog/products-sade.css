@@ -507,3 +507,10 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip { transition: none !important; animation: none !important; }
   .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn { display: inline-flex; width: fit-content; max-width: 100%; justify-self: start; align-self: start; }
 }
+/* Phones, quick edit: the colour and size pickers of "Varyantları Seç" share the row half and half. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor { display: block; min-width: 0; }
+  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor > .rr-trigger { width: 100%; min-width: 0; justify-content: space-between; }
+  .app-shell.stitch-shell :is(main, .rr-layer) .rr-step > header > .rr-step-tools > .rr-anchor > .rr-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
