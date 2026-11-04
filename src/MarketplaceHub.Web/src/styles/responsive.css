@@ -401,3 +401,8 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
   html body .rv-auth-page .auth-signal-scene .auth-orbit-tag-hepsiburada { left: 70%; top: 90.4%; }
   html body .rv-auth-page .auth-signal-scene .auth-orbit-tag-n11 { left: 30%; top: 89.8%; }
 }
+
+/* Phones: the top bar's lower corners are softly rounded (14px), so it reads as a floating bar over the page. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell .rv-topbar { border-bottom-left-radius: 14px; border-bottom-right-radius: 14px; }
+}
