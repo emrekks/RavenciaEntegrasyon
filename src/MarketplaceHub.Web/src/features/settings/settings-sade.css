@@ -510,5 +510,7 @@
 .ss-page .ss-secret-dots { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-muted); letter-spacing: 2px; white-space: nowrap; }
 .ss-page .ss-secret-state { display: inline-flex; flex: none; align-items: center; gap: 5px; color: var(--rv-color-success, var(--rv-color-ink)); font-size: 12.5px; font-weight: 500; }
 .ss-page .ss-secret-state .ss-st { width: 14px; height: 14px; }
-.ss-page .ss-secret .ss-btn.is-xs { flex: none; }
+/* Değiştir is a quiet purple text link inside the field, not a framed button. */
+.app-shell.stitch-shell main .ss-page .ss-secret .ss-btn.is-xs { flex: none; height: 28px; min-height: 0; padding: 0 8px; color: var(--rv-color-primary); background: transparent; border: 0; box-shadow: none; font-weight: 600; }
+.app-shell.stitch-shell main .ss-page .ss-secret .ss-btn.is-xs:hover { color: var(--rv-color-primary-strong, var(--rv-color-primary)); background: transparent; text-decoration: underline; text-underline-offset: 3px; }
 .ss-page .ss-secret-edit > .ss-in { flex: 1 1 auto; }
