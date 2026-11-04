@@ -882,3 +882,9 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* The brand picker in an editing row is a plain framed field, not a filled button: the frame turns primary while its
+   list is open. */
+.app-shell.stitch-shell main .brand-mapping-inline-editor .searchable-select-trigger { height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-weight: 500; }
+.app-shell.stitch-shell main .brand-mapping-inline-editor .searchable-select-trigger:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border-strong)); }
+.app-shell.stitch-shell main .brand-mapping-inline-editor .searchable-select-trigger[aria-expanded="true"] { color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 14%, transparent); }
+.app-shell.stitch-shell main .brand-mapping-inline-editor .searchable-select-trigger .ui-icon { color: var(--rv-color-muted); }
