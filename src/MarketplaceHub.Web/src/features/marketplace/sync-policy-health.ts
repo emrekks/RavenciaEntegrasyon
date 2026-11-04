@@ -23,7 +23,7 @@ export function syncPolicyHealthPresentation(
   // The open-return scan is not queued while no return is open.
   if (health === 'PAUSED_NO_OPEN_RETURNS') return { label: 'Beklemede · Açık iade yok', tone: 'paused', stalled: false }
   // The server holds a stock reconciliation while the automatic price/stock writes are off: waiting, not late.
-  if (health === 'PAUSED_WRITES_OFF') return { label: 'Beklemede · Otomatik fiyat/stok yazma kapalı', tone: 'paused', stalled: false }
+  if (health === 'PAUSED_WRITES_OFF') return { label: 'Otomatik fiyat/stok yazma kapalı', tone: 'paused', stalled: false }
   const stalled = policy.cursorProgressStatus?.trim().toUpperCase() === 'STALLED'
 
   if (health === 'OFFLINE') return { label: policy.lastSuccessAt ? 'Güncelleme gecikti' : 'İlk çalışma bekliyor', tone: 'offline', stalled }

@@ -45,6 +45,6 @@ describe('syncPolicyHealthPresentation', () => {
   })
 
   it('shows a stock reconciliation held by closed price/stock writes as waiting, not late', () => {
-    expect(syncPolicyHealthPresentation({ enabled: true, healthStatus: 'PAUSED_WRITES_OFF', lastSuccessAt: '2026-09-17T10:00:00Z', cursorProgressStatus: 'STALLED' })).toEqual({ label: 'Beklemede · Otomatik fiyat/stok yazma kapalı', tone: 'paused', stalled: false })
+    expect(syncPolicyHealthPresentation({ enabled: true, healthStatus: 'PAUSED_WRITES_OFF', lastSuccessAt: '2026-09-17T10:00:00Z', cursorProgressStatus: 'STALLED' })).toEqual({ label: 'Otomatik fiyat/stok yazma kapalı', tone: 'paused', stalled: false })
   })
 })
