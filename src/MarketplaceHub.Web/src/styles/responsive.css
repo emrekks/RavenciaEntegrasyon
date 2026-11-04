@@ -406,3 +406,11 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell .rv-topbar { border-bottom-left-radius: 14px; border-bottom-right-radius: 14px; }
 }
+
+/* Phones, İşlem Takibi: the status summary (Başarılı, Çalışıyor, Bekliyor, Hata, İptal) is one row that scrolls
+   sideways (no scrollbar) instead of a three-row grid. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .jobs-reference-status-summary { display: flex; flex-wrap: nowrap; gap: 6px 16px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding-bottom: 2px; }
+  html body .app-shell.stitch-shell main .jobs-reference-status-summary::-webkit-scrollbar { display: none; }
+  html body .app-shell.stitch-shell main .jobs-reference-status-summary > * { flex: 0 0 auto; white-space: nowrap; }
+}
