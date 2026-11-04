@@ -14,7 +14,7 @@ export type Payouts = { today: string; daysBack: number; expected: number; expec
   upcoming: PayoutGroup[]; past: PayoutGroup[]; coverage: PayoutCoverage[] }
 export type PayoutLine = { externalId: string; connectionId: string; platformCode: string; transactionType: string | null; category: string; transactionDate: string
   dueDay: string | null; orderNumber: string | null; invoiceNumber: string | null; country: string | null; region: PayoutRegion; gross: number; commission: number | null
-  net: number; status: PayoutStatus; paymentOrderId: string | null }
+  net: number; status: PayoutStatus; paymentOrderId: string | null; barcode: string | null }
 export type PayoutLines = { items: PayoutLine[]; totalCount: number; page: number; pageSize: number; net: number }
 
 export const regionLabels: Record<PayoutRegion, string> = { TR_GULF: 'Türkiye, Körfez', EUROPE: 'Avrupa', AZ: 'Azerbaycan', UNKNOWN: 'Bilinmeyen Bölge', NONE: '' }

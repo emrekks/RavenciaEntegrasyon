@@ -45,8 +45,9 @@ public sealed record PayoutGroupView(string Key, string Kind, Guid ConnectionId,
 public sealed record PayoutCoverageView(Guid ConnectionId, string PlatformCode, string StoreName, string State, DateTimeOffset? LastSyncedAt);
 
 // One record. Net: what it adds to (or takes from) the payout. Status PAID, EXPECTED or UNKNOWN as in PayoutView.
+// Barcode: the product the record is for; an order of two products has a sale (and a discount) for each.
 public sealed record PayoutLineView(string ExternalId, Guid ConnectionId, string PlatformCode, string? TransactionType, string Category, DateTimeOffset TransactionDate,
-    DateOnly? DueDay, string? OrderNumber, string? InvoiceNumber, string? Country, string Region, decimal Gross, decimal? Commission, decimal Net, string Status, string? PaymentOrderId);
+    DateOnly? DueDay, string? OrderNumber, string? InvoiceNumber, string? Country, string Region, decimal Gross, decimal? Commission, decimal Net, string Status, string? PaymentOrderId, string? Barcode = null);
 
 public sealed record PayoutLinesPage(IReadOnlyList<PayoutLineView> Items, int TotalCount, int Page, int PageSize, decimal Net);
 

@@ -86,6 +86,7 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
                 Category = x.Category,
                 TransactionDate = x.TransactionDate,
                 OrderNumber = x.OrderNumber,
+                Barcode = x.Barcode,
                 ShipmentPackageId = x.ShipmentPackageId,
                 InvoiceNumber = x.InvoiceNumber,
                 Debt = x.Debt,
@@ -135,6 +136,7 @@ internal sealed record PayoutRow
     public string Category { get; init; } = MarketplaceFinanceCategories.Other;
     public DateTimeOffset TransactionDate { get; init; }
     public string? OrderNumber { get; init; }
+    public string? Barcode { get; init; }
     public string? ShipmentPackageId { get; init; }
     public string? InvoiceNumber { get; init; }
     public decimal Debt { get; init; }
@@ -230,7 +232,7 @@ internal static class PayoutBuilder
 
     public static PayoutLineView Line(PayoutRow row, DateOnly today) =>
         new(row.ExternalId, row.ConnectionId, row.PlatformCode, row.TransactionType, row.Category, row.TransactionDate, row.PaymentDate is { } due ? Day(due) : null,
-            row.OrderNumber, row.InvoiceNumber, row.Country, Region(row.PlatformCode, row.Country, row.Affiliate), row.Credit - row.Debt, row.CommissionAmount, Net(row), Status(row, today), row.PaymentOrderId);
+            row.OrderNumber, row.InvoiceNumber, row.Country, Region(row.PlatformCode, row.Country, row.Affiliate), row.Credit - row.Debt, row.CommissionAmount, Net(row), Status(row, today), row.PaymentOrderId, row.Barcode);
 
     // Whether a record still waits for its payout: not paid, whatever its due day (Avrupa is paid about monthly, so a
     // record past its due day may simply wait for the next payout).

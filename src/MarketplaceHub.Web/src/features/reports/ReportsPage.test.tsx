@@ -96,7 +96,7 @@ const payouts = {
   coverage: [{ connectionId: 'store-1', platformCode: 'TRENDYOL', storeName: 'Ravencia', state: 'READ', lastSyncedAt: '2026-11-04T09:00:00Z' }, { connectionId: 'store-2', platformCode: 'PTTAVM', storeName: 'PTT', state: 'NOT_SUPPORTED', lastSyncedAt: null }]
 }
 const payoutLines = { items: [{ externalId: '725041340', connectionId: 'store-1', platformCode: 'TRENDYOL', transactionType: 'Satış', category: 'SALE', transactionDate: '2026-10-20T10:00:00Z', dueDay: '2026-11-05',
-  orderNumber: '10234', invoiceNumber: 'DCF2026000123', country: 'Türkiye', region: 'TR_GULF', gross: 1000, commission: 200, net: 800, status: 'EXPECTED', paymentOrderId: null }], totalCount: 1, page: 0, pageSize: 100, net: 800 }
+  orderNumber: '10234', invoiceNumber: 'DCF2026000123', country: 'Türkiye', region: 'TR_GULF', gross: 1000, commission: 200, net: 800, status: 'EXPECTED', paymentOrderId: null, barcode: 'MZ042DSS14' }], totalCount: 1, page: 0, pageSize: 100, net: 800 }
 
 vi.mock('../../shared/api', () => ({
   hubApi: vi.fn(async (path: string) => {
@@ -528,6 +528,8 @@ describe('ReportsPage', () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     expect(requests).toContain('/reports/payouts/lines?connectionId=store-1&day=2026-11-05&region=TR_GULF&kind=PAYOUT_DAY')
     expect(page.querySelector('.reports-payout-lines')?.textContent).toContain('10234')
+    // A record names its product: an order of two products has a sale for each.
+    expect(page.querySelector('.reports-payout-lines')?.textContent).toContain('MZ042DSS14')
     // The past payments show the marketplace's payout, under its day.
     await act(async () => { ([...page.querySelectorAll('.reports-payout-list [role="tab"]')].find(tab => tab.textContent?.includes('Geçmiş')) as HTMLElement).click() })
     expect(texts(page, '.reports-payout-day > header')[0]).toContain('29 Eki 2026 Per')
