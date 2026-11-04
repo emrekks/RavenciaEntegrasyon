@@ -211,7 +211,6 @@
 }
 
 @layer features {
-  .bulk-option-sync-modal { width: min(560px, 100%); }
 }
 
 @layer features {
@@ -316,15 +315,12 @@
 }
 
 @layer features {
-  .bulk-option-sync-body fieldset { display: grid; gap: var(--rv-space-3); margin: 0; padding: var(--rv-space-4); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md); }
 }
 
 @layer features {
-  .bulk-option-sync-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); }
 }
 
 @layer features {
-  .bulk-option-sync-note { margin: 0; font-size: var(--rv-font-size-sm); line-height: 1.5; }
 }
 
 @layer features {
@@ -813,7 +809,6 @@
 }
 
 @media (max-width: 700px) {
-  .bulk-option-sync-options { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 700px) {
@@ -878,7 +873,6 @@
 .variant-platform-pricing-modal .variant-platform-pricing-matrix-scroll { max-height: min(62vh, 640px); }
 .variant-platform-pricing-modal .variant-platform-pricing-matrix-cell:not(.variant-platform-pricing-matrix-head) { gap: 1px; padding-block: 4px; }
 .variant-platform-pricing-modal .variant-platform-pricing-matrix-cell > input { height: 32px; min-height: 0; padding-block: 0; }
-.product-options-card .product-options-toolbar .product-options-sync-button { min-height: 36px; margin: 0; padding: 0 12px; font-size: 13px; }
 @media (max-width: 760px) {
   .product-options-card .attribute-builder-list + .attribute-variant-action,
   .product-options-card .unknown + .attribute-variant-action { margin-top: var(--rv-space-4); margin-bottom: var(--rv-space-4); }
@@ -1181,4 +1175,12 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { transition: top .2s ease; }
   html body .app-shell.stitch-shell:has(.rv-topbar.is-hidden) main .product-add-page .variant-table-editor > .variant-table-head { top: 0; }
+}
+
+/* Phones: the product title starts closer to its back arrow (24px column, 6px gap), the first step tab reads "Ürün
+   Bilgileri", and a publish chip keeps a small space between its figure and its word. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-page-heading .product-page-heading-copy { grid-template-columns: 24px minmax(0, 1fr); column-gap: 6px; }
+  html body .app-shell.stitch-shell main .product-page-heading .product-heading-back { width: 24px; min-width: 24px; justify-content: flex-start; }
+  html body .app-shell.stitch-shell main .product-add-page .product-step-label-more { display: none; }
 }

@@ -28,7 +28,7 @@ export function VariantOptionEditDialog({ label, fields, sameValueCount, onClose
 
   return <div className="workspace-modal-backdrop" role="presentation" onMouseDown={onClose}>
     <DialogSurface as="section" onClose={onClose} className="workspace-modal variant-option-edit-modal" aria-labelledby="variant-option-edit-title" onMouseDown={event => event.stopPropagation()}>
-      <header><div><p className="eyebrow">Varyant Düzenleme</p><h2 id="variant-option-edit-title">{label}</h2><p>Değerler kategori özelliğinin listesinden seçilir. Değişiklik ürünü kaydettiğinizde kalıcı olur.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
+      <header><div><p className="eyebrow">Varyant Düzenleme</p><h2 id="variant-option-edit-title">{label}</h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
       {/* No <form>: the dialog sits inside the editor form, and a nested form would submit the page. */}
       <div className="variant-option-edit-body">
         <div className="variant-option-edit-grid">

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyGeneratedVariantCodes, applyVariantCodesByKey, buildSequentialVariantCode, buildSequentialVariantCodes, buildVariantGenerationDefaults, planVariantCodes, resolveVariantSyncAttributeIds, variantCodeCandidates, variantCodeChangeConfirmText } from './variant-generation'
+import { applyGeneratedVariantCodes, applyVariantCodesByKey, buildSequentialVariantCode, buildSequentialVariantCodes, buildVariantGenerationDefaults, planVariantCodes, variantCodeCandidates, variantCodeChangeConfirmText } from './variant-generation'
 
 describe('variant generation defaults', () => {
   it('leaves the stock code and the barcode of a new variant empty when automatic barcodes are off: no code is made up', () => {
@@ -73,20 +73,6 @@ describe('variant generation defaults', () => {
 
   it('produces unique generated codes for a large variant set', () => {
     expect(new Set(buildSequentialVariantCodes('MZ049BOC', 100)).size).toBe(100)
-  })
-})
-
-describe('bulk variant option sync', () => {
-  it('syncs every available option group when none is explicitly selected', () => {
-    expect(resolveVariantSyncAttributeIds([], [], ['color', 'size'])).toEqual(['color', 'size'])
-  })
-
-  it('syncs selected groups while retaining the active unselected axis', () => {
-    expect(resolveVariantSyncAttributeIds(['color', 'size'], ['color'], ['color', 'size'])).toEqual(['color', 'size'])
-  })
-
-  it('does not duplicate axes when a selected group is already active', () => {
-    expect(resolveVariantSyncAttributeIds(['size', 'color'], ['color'], ['color', 'size'])).toEqual(['size', 'color'])
   })
 })
 

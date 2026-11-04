@@ -127,8 +127,3 @@ export function buildVariantGenerationDefaults({ modelCode, sequence, automaticB
 
   return { sku: '', barcode: buildSequentialVariantCode(modelCode, safeSequence), salePrice: 0, listPrice: 0 }
 }
-
-export function resolveVariantSyncAttributeIds(currentIds: string[], selectedIds: string[], allIds: string[]) {
-  const requestedIds = selectedIds.length ? selectedIds : allIds
-  return [...new Set([...currentIds, ...requestedIds])]
-}
