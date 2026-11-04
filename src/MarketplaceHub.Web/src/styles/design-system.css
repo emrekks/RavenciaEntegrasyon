@@ -7021,5 +7021,5 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
    (the dashboard's operation cards, the orders cards with a list) keeps its breakdown closed there; the other cards open
    theirs on a tap (shared/touch-tips.ts). */
 @media (hover: none) {
-  .app-shell.stitch-shell main :is(.rr-opcard .rr-tip, .rr-metrics .rr-metric-link .rr-metric-tip, .rr-kc .rr-tip) { display: none !important; }
+  .app-shell.stitch-shell main :is(.rr-opcard .rr-tip, .rr-kc .rr-tip) { display: none !important; }
 }

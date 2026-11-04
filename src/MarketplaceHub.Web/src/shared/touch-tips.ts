@@ -34,7 +34,7 @@ export const touchTipFamilies: TipFamily[] = [
   // Orders list: the marks beside an order number (delivery point, fast delivery, micro export).
   { trigger: '.rr-omark[data-tip]', attr: 'data-tip' },
   // Orders summary cards that do not open a list (Yeni Sipariş, İşleme Alınan, Geciken): the stores behind the figure.
-  { trigger: '.rr-metrics article.rr-metric-tipped:not(.rr-metric-link)', tip: '.rr-metric-tip' },
+  { trigger: '.rr-metrics article.rr-metric-tipped', tip: '.rr-metric-tip' },
   // Invoice and return failure reasons.
   { trigger: '.rr-reason-tip', tip: '.rr-reason-pop' },
   // Reports: the explanation behind a row's name or its "?".
