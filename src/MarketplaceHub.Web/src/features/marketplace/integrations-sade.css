@@ -134,3 +134,9 @@
 
 /* A tested connection that waits to be activated: it reads, but invoices and writes wait, so it is not shown as active. */
 .app-shell.stitch-shell main .integrations-reference-page .reference-connection-state.pending { color: var(--rv-color-warning); }
+/* Phones: Filtrele and Ekle share the row half and half. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .integrations-reference-page .integration-heading-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .app-shell.stitch-shell main .integrations-reference-page .integration-filter-wrap { display: grid; min-width: 0; }
+  .app-shell.stitch-shell main .integrations-reference-page :is(.integration-filter-button, .integration-add-button) { justify-content: center; width: 100%; }
+}
