@@ -399,3 +399,6 @@ body .invoice-reference-actions-popover > .invoice-reference-actions-separator {
   html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts > div > small:first-child { flex: none; font-size: 12px; }
   html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-summary-facts strong { font-size: 12.5px; overflow-wrap: anywhere; }
 }
+/* Invoice detail: a touch less padding and gap in the body, so a detail that fits the window does not scroll a few
+   pixels (owner, 5 Nov 2026: four sections came to 11px more than the window's body). */
+html body .app-shell.stitch-shell main .reference-invoices-page .invoice-detail-modal .invoice-detail-body { padding-block: 10px; row-gap: 10px; }
