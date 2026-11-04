@@ -43,6 +43,7 @@ import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdateP
 import { publishCardVariantLinks, publishCardVariantPresence, withLatestVariantLinks } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
+import { PriceSuggestionLink } from './PriceSuggestionDialog'
 import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeFieldIssueText } from '../platform-code-rules'
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
@@ -3215,7 +3216,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       </section>
       <div className="product-top-sidebar">
         <section className="panel product-step-card product-pricing-card">
-          <div className="editor-section-title"><span>2</span><div><h2>Fiyat, Stok ve Vergi<TitleHint label="Fiyat, Stok ve Vergi">Başlangıç değerleri varyantlara uygulanır.</TitleHint></h2></div></div>
+          <div className="editor-section-title"><span>2</span><div className="price-suggestion-title"><h2>Fiyat, Stok ve Vergi<TitleHint label="Fiyat, Stok ve Vergi">Başlangıç değerleri varyantlara uygulanır.</TitleHint></h2>
+            {/* A card with variants prices each variant in the table, so the suggestion has no Satış Fiyatı to fill. */}
+            {variantRows.length <= 1 && <PriceSuggestionLink fields={{ cost: form.costPrice, vatRate: form.vatRate, vatIncluded: form.vatIncluded !== 'EXCLUDED', listPrice: form.listPrice }} onApply={prices => { updateField('salePrice', prices.salePrice); updateField('listPrice', prices.listPrice) }} />}</div></div>
           <div className="product-step-grid">
             {/* Like Stok Kodu and Barkod: a card with variants prices each variant, so these stay grey and empty. */}
             <label title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined}>Liste Fiyatı<input value={variantRows.length > 1 ? '' : form.listPrice} disabled={variantRows.length > 1} title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
