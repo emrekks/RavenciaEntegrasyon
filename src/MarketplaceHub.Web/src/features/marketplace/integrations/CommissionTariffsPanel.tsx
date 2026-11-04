@@ -693,8 +693,17 @@ type TariffPlanProps = {
 // after the commission and the product cost. A pick is made row by row (a band, or a price of the seller's own) or for
 // every row at once; the picks are saved as they change and go out as Trendyol's own tariff file with the picked prices
 // filled in. Picks are kept across pages, searches and visits.
+const tableZoomSteps = [100, 90, 80, 70]
+const tableZoomKey = 'commission-table-zoom'
+function readTableZoom(): number {
+  try { const value = Number(localStorage.getItem(tableZoomKey)); return tableZoomSteps.includes(value) ? value : 100 } catch { return 100 }
+}
+function writeTableZoom(value: number) { try { localStorage.setItem(tableZoomKey, String(value)) } catch { /* private mode: the size is not kept */ } }
+
 function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading, error, onRetry, filter, onFilter, page, pageCount, onPage, onMessage, saved, partnerSaved }: TariffPlanProps & { saved: TariffSelection; partnerSaved?: TariffSelection }) {
   const [picks, setPicks] = useState<Map<string, TariffPick>>(() => selectionState(saved).picks)
+  // The table's size (100 % to 70 %), kept for this browser, so more of the wide band table fits the screen.
+  const [tableZoom, setTableZoom] = useState(readTableZoom)
   // The pick for every row, set in the Toplu Seçim popover.
   const [bulk, setBulk] = useState<TariffBulk>(() => selectionState(saved).bulk)
   const applied = bulk
@@ -837,6 +846,8 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     {/* The pick for every product: a band, or the best band by money or by share; with a condition on what it leaves. */}
     <div className="commission-plan-bar">
       <span className="commission-plan-count" role="status">{summary}{savingStatus === 'saving' ? <small> · Kaydediliyor…</small> : savingStatus === 'error' ? <small className="commission-warn"> · Seçimler kaydedilemedi</small> : null}</span>
+      <label className="commission-zoom"><span>Tablo Boyutu</span><select aria-label="Tablo boyutu" value={tableZoom} onChange={event => { const next = Number(event.target.value); setTableZoom(next); writeTableZoom(next) }}>
+        {tableZoomSteps.map(step => <option key={step} value={step}>%{step}</option>)}</select></label>
       <BulkPicker bulk={bulk} onApply={applyBulk} onClearColumn={clearColumn} onClearAll={clearAll} />
       <button type="button" className="rv-button-primary commission-plan-download" disabled={(!bulkOn && ownPicks === 0 && !manyPeriods) || download.isPending} onClick={() => download.mutate()}>
         <UiIcon name="download" size={16} />{download.isPending ? 'Hazırlanıyor…' : 'Excel İndir'}
@@ -845,7 +856,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
     {loading && <Busy />}
     {error !== null && <ErrorBox error={error} onRetry={onRetry} />}
     {rows && rows.items.length === 0 && <p className="cs-empty">Filtreye uyan ürün yok.</p>}
-    {rows && rows.items.length > 0 && <div ref={tableTop} className="commission-table-wrap"><table className={`commission-table is-plan${partner ? ' is-week' : ''}`}>
+    {rows && rows.items.length > 0 && <div ref={tableTop} className="commission-table-wrap" style={tableZoom === 100 ? undefined : { zoom: tableZoom / 100 }}><table className={`commission-table is-plan${partner ? ' is-week' : ''}`}>
       <thead><tr><th scope="col" className="commission-expand" aria-label="Bedenler" /><SortHeader label="Ürün" sort="name" filter={filter} onFilter={onFilter} /><th scope="col" className="commission-stock">Stok</th><SortHeader label="Güncel Fiyat" sort="price" filter={filter} onFilter={onFilter} />{tiers.map(tier => <SortHeader key={tier} label={`${tier}. Fiyat Aralığı`} sort={`tier${tier}` as TariffSort} filter={filter} onFilter={onFilter} />)}<th scope="col">Kendi Fiyatın</th></tr></thead>
       <tbody>{shownGroups.map(([key, group]) => {
         // A variant's row; under its model it shows its size, codes and cost, the model's name and picture being above.
