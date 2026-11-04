@@ -37,7 +37,9 @@ import { jobAttemptDuration } from './job-duration'
 import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
 import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
 import { JobStateGlyph } from './job-state-glyph'
+import { useTabSlide } from '../../shared/tab-slide'
 
+const jobsMainTabOrder = ['jobs', 'logs', 'health']
 type JobStatus = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED' | 'MANUAL_REVIEW' | 'SUCCEEDED' | 'DEAD' | 'CANCELLED'
 type JobSummary = {
   id: string
@@ -540,6 +542,8 @@ export function JobsPage({ me }: { me: Me }) {
       selectedId ? client.invalidateQueries({ queryKey: ['job', selectedId] }) : Promise.resolve()
     ])
   }
+  // A main tab slides its view in from its side and starts the page from its top (shared/tab-slide.tsx).
+  const mainSlide = useTabSlide(mainTab, jobsMainTabOrder)
 
   return <section className="content jobs-page jobs-reference-page">
     <div className="jobs-reference-heading rv-page-head">
@@ -567,7 +571,7 @@ export function JobsPage({ me }: { me: Me }) {
       {mainTab === 'logs' && <div className="jobs-reference-heading-actions" ref={setLogHeadingSlot} />}
     </div>
     <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İş Takibi') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
-    <div className="jobs-reference-canvas">
+    <div key={mainSlide.key} className={`jobs-reference-canvas${mainSlide.className ? ` ${mainSlide.className}` : ''}`}>
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
       {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} headingSlot={logHeadingSlot} /></Suspense>
         : mainTab === 'health' ? <Suspense fallback={<Busy text="Gönderim durumu yükleniyor…" />}><PriceStockMonitorPanel onFeedback={showPanelFeedback} /></Suspense> : <>

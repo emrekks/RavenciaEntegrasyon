@@ -1,5 +1,4 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
-import { flushSync } from 'react-dom'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
@@ -8,7 +7,7 @@ import { DateRangePicker } from '../../shared/DateRangePicker'
 import { formatIstanbul } from '../../shared/format-date'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
 import { ViewTabsWithMore } from '../../shared/view-tabs'
-import { startViewTransitionSafely } from '../../shared/view-transition'
+import { TabSlidePanel } from '../../shared/tab-slide'
 import {
   bySalesChannel, change, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   stockQuery, type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportInventory, type ReportProduct, type ReportReason, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform, type ReportStockRow
@@ -80,7 +79,6 @@ export function ReportsPage() {
   useEffect(() => { if (viewParam === 'tariffs') void navigate('/promotions', { replace: true }) }, [viewParam, navigate])
   const view: ViewKey = legacy?.view ?? (isViewKey(viewParam) ? viewParam : 'overview')
   const sub = legacy?.sub ?? searchParams.get('sub')
-  const body = useRef<HTMLDivElement>(null)
   const page = useRef<HTMLElement>(null)
   // An explanation opens above its row when the screen has room for it there (under the top bar), else under it, and
   // towards the left when it would run off the right edge.
@@ -115,20 +113,18 @@ export function ReportsPage() {
   const report = useQuery({ queryKey: ['reports-sales', query], queryFn: () => hubApi<ReportSales>(`/reports/sales?${query}`), staleTime: 60_000, placeholderData: previous => previous })
   const data = report.data
   const platformOptions = useMemo(() => [...new Set((data?.channels ?? []).map(channel => channel.platformCode))].filter(isSalesChannel).sort(bySalesChannel).map(code => ({ value: code, label: platformName(code) })), [data?.channels])
-  // A tab change cross-fades the body where the browser has view transitions (and motion is welcome); elsewhere it
-  // simply switches.
+  // A tab change slides the body in from the tab's side and starts the page from its top (shared/tab-slide.tsx).
   const go = (nextView: ViewKey, nextSub: string | null = null) => {
-    const apply = () => setSearchParams(current => {
+    setSearchParams(current => {
       const next = new URLSearchParams(current)
       next.delete('detail')
       if (nextView === 'overview') next.delete('view'); else next.set('view', nextView)
       if (nextSub) next.set('sub', nextSub); else next.delete('sub')
       return next
     }, { replace: true })
-    startViewTransitionSafely(() => flushSync(apply))
   }
-  // "Tümünü Gör": the area's tab, scrolled to the tabs so the breakdown starts at the top.
-  const openDetail = (key: DetailKey) => { go(detailHome[key].view, detailHome[key].sub ?? null); body.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }) }
+  // "Tümünü Gör": the area's tab, opened like any tab: from the page's top.
+  const openDetail = (key: DetailKey) => { go(detailHome[key].view, detailHome[key].sub ?? null) }
 
   return <section ref={page} className="content reports-page">
     <div className="page-heading reports-heading">
@@ -152,10 +148,9 @@ export function ReportsPage() {
     {data && (() => {
       const tabs = reportTabs(data)
       return <>
-        <div ref={body} className="reports-tabs-anchor" />
         <ViewTabsWithMore className="reports-tabs" ariaLabel="Rapor görünümü" more={[]} value={view} onChange={value => go(value as ViewKey)}
           items={tabs.map(tab => ({ value: tab.value, label: tabLabel(tab.icon, tab.label), count: tab.count, countTone: tab.warn ? 'warn' : undefined }))} />
-        <div className="reports-body" role="tabpanel" aria-label={tabs.find(tab => tab.value === view)?.label}>
+        <TabSlidePanel active={view} order={tabs.map(tab => tab.value)} className="reports-body" role="tabpanel" aria-label={tabs.find(tab => tab.value === view)?.label}>
           {view === 'overview' ? <Overview data={data} onMore={openDetail} />
             : view === 'geo' ? <Geography data={data} />
             : view === 'products' ? <ProductsView data={data} sub={sub === 'brands' ? 'brands' : 'products'} onSub={next => go('products', next)} />
@@ -165,7 +160,7 @@ export function ReportsPage() {
             : view === 'stock' ? <StockReport from={range.from} to={range.to} platforms={platforms} />
             : view === 'ops' ? <OperationsView data={data} sub={isOpsSub(sub) ? sub : 'returns'} onSub={next => go('ops', next)} />
             : <CustomersView data={data} />}
-        </div>
+        </TabSlidePanel>
       </>
     })()}
   </section>
@@ -192,6 +187,7 @@ function reportTabs(data: ReportSales): ReportTab[] {
   ]
 }
 
+const opsSubs: OpsSub[] = ['returns', 'cancellations', 'cargo', 'invoices', 'stock']
 const isOpsSub = (value: string | null): value is OpsSub => value === 'returns' || value === 'cancellations' || value === 'cargo' || value === 'invoices' || value === 'stock'
 
 // A tab's own sub-tabs, in the panel's tab style.
@@ -943,7 +939,8 @@ function ProductsView({ data, sub, onSub }: { data: ReportSales; sub: ProductSub
       { value: 'products', label: 'Ürünler', icon: 'products', count: formatCount(data.topProducts.length) },
       { value: 'brands', label: 'Marka ve Kategori', icon: 'layers', count: formatCount(data.brands.filter(group => group.known).length) }
     ]} />
-    <div role="tabpanel">{sub === 'brands' ? <BrandsAndCategories data={data} /> : <Products data={data} />}</div>
+    {/* These sub-tabs sit under the lists, so a change keeps the scroll where they are. */}
+    <TabSlidePanel active={sub} order={['products', 'brands']} scrollToTop={false} role="tabpanel">{sub === 'brands' ? <BrandsAndCategories data={data} /> : <Products data={data} />}</TabSlidePanel>
   </div>
 }
 
@@ -994,13 +991,13 @@ function OperationsView({ data, sub, onSub }: { data: ReportSales; sub: OpsSub; 
       { value: 'invoices', label: 'Fatura', icon: 'invoice', count: formatCount(invoiced) },
       { value: 'stock', label: 'Stok', icon: 'stock', count: formatCount(lowStock), warn: lowStock > 0 }
     ]} />
-    <div role="tabpanel" className="reports-summary">
+    <TabSlidePanel active={sub} order={opsSubs} role="tabpanel" className="reports-summary">
       {sub === 'returns' && <Returns data={data} />}
       {sub === 'cancellations' && <Cancellations data={data} />}
       {sub === 'cargo' && <Cargo data={data} />}
       {sub === 'invoices' && <Invoices data={data} />}
       {sub === 'stock' && <Stock data={data} />}
-    </div>
+    </TabSlidePanel>
   </div>
 }
 
@@ -1988,7 +1985,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
         : <>
           <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
             items={[{ value: 'upcoming', label: 'Gelecek Ödemeler', icon: 'calendarClock' }, { value: 'past', label: 'Geçmiş Ödemeler', icon: 'circleCheck' }]} />
-          {days.length === 0 && waiting.length === 0 && deductions.length === 0
+          <TabSlidePanel active={tab} order={['upcoming', 'past']} role="tabpanel">{days.length === 0 && waiting.length === 0 && deductions.length === 0
             ? <div className="reports-empty reports-payout-empty"><p>{filtered || none || region !== 'ALL' ? 'Bu filtrelerle ödeme yok.' : tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data?.daysBack ?? 90} günde okunmuş ödeme yok.`}</p>
               {activeCount > 0 && <button type="button" className="secondary reports-payout-all" onClick={clear}>Filtreleri Temizle</button>}</div>
             : <div className="reports-payout-days">
@@ -2024,7 +2021,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
                 </header>
                 <ul className="reports-payout-rows">{waiting.map(row)}</ul>
               </section>}
-            </div>}
+            </div>}</TabSlidePanel>
         </>}
     </Panel>
     <p className="reports-payout-coverage" role="note">

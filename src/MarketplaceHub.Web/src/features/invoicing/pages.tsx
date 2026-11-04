@@ -34,6 +34,7 @@ import './invoices-sade.css'
 import { InvoiceGlyph, StatusRing, type InvoiceGlyphKind, badgeGlyphKind, invoiceGlyphKind, invoiceStatusProgress, orderStatusProgress } from './invoice-state-glyph'
 import { invoiceFailureGuidance, invoiceFailureReason } from './invoice-failure-reasons'
 import { ViewTabsWithMore, viewTabLabel } from '../../shared/view-tabs'
+import { useTabSlide } from '../../shared/tab-slide'
 import { formatDate, formatDateTime, formatIstanbul, fromDateTimeLocal, istanbulDayBoundary, toDateTimeLocal } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { InvoiceLinkRevocationPanel } from './InvoiceLinkRevocationPanel'
@@ -585,6 +586,8 @@ export function InvoicesPage() {
     setTab(nextTab)
     setSearchParams(current => { const params = new URLSearchParams(current); params.set('tab', nextTab); return params }, { replace: true })
   }
+  // A tab slides the list in from its side and starts the page from its top (shared/tab-slide.tsx).
+  const tabSlide = useTabSlide(tab, tabs.map(([value]) => value))
   return <section className="content f3 invoices-page reference-invoices-page">
     <div className="page-heading invoices-reference-heading">
       <div><p className="eyebrow">Mali Belgeler</p><h1>Faturalar</h1></div>
@@ -608,7 +611,7 @@ export function InvoicesPage() {
         <button type="button" className="secondary invoice-reference-filter-reset" disabled={!hasInvoiceFilters} onClick={() => { setSearch(''); setSelectedPlatforms(null); setShipmentStatusFilter('ALL'); setCargoFilter('ALL'); setInvoiceStatusFilter('ALL'); setInvoiceActionFilter('ALL'); setDateFrom(''); setDateTo(''); setColumnFilterOpen(null) }}>Temizle</button>
       </MobileFilterShell>
     </div>
-    <section className="invoice-reference-workspace">
+    <section key={tabSlide.key} className={`invoice-reference-workspace${tabSlide.className ? ` ${tabSlide.className}` : ''}`}>
       <header><div><h2>{activeTabLabel}</h2><p>Filtreleme sonuçları: {pageData ? pageData.totalCount.toLocaleString('tr-TR') : '—'} paket</p></div><label className="invoice-reference-page-size">Sayfa Başına<select aria-label="Sayfa başına fatura" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{[20, 50, 100, 200].map(value => <option key={value} value={value}>{value}</option>)}</select></label></header>
       {selectionMode && <div className="orders-selection-bar invoice-selection-bar" role="region" aria-label="Seçim modu"><button type="button" className="orders-selection-cancel" onClick={exitSelectionMode}>İptal</button><strong>{selectedItems.length} sipariş seçildi</strong><button type="button" className="orders-selection-all" onClick={() => setSelectedPackages(allVisibleSelected ? new Set() : new Set(pageItems.map(item => item.packageId)))} disabled={!pageItems.length}>{allVisibleSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}</button></div>}
       {query.isPending ? <div className="invoice-reference-state"><Busy /></div> : query.isError ? <div className="invoice-reference-state"><ErrorBox error={query.error} onRetry={() => void query.refetch()} /></div> : <><div className={`invoice-reference-table${query.isPlaceholderData ? ' is-stale-data' : ''}`} role="table" aria-busy={query.isPlaceholderData || undefined}>

@@ -77,6 +77,16 @@
    (app/hooks/usePageEntryReveal). */
 :where(.rv-view-tabs > :is(button, a).is-active)::after { animation: rv-motion-tab-line var(--rv-motion-tab) var(--rv-ease-tab) backwards; }
 :where(.rr-seg > button.rr-on, .ss-seg > button.is-on, .rv-tabs:not(.rv-view-tabs) > [role="tab"][aria-selected="true"]) { animation: rv-motion-tab-on var(--rv-motion-tab) var(--rv-ease-tab) backwards; }
+/* A tab the user picks slides its content in like iOS (shared/tab-slide.tsx, owner 5 Nov 2026): from the right for a
+   tab to the right, from the left for one to the left, fading in on the panel's ease, no bounce. Only `translate` and
+   `opacity`, `backwards` fill: nothing stays on the wrapper once it has played. These win over the page entry's rise
+   (.rv-reveal) on the same wrapper. */
+@keyframes rv-motion-tab-in-next { from { opacity: 0; translate: var(--rv-motion-tab-shift) 0; } }
+@keyframes rv-motion-tab-in-prev { from { opacity: 0; translate: calc(var(--rv-motion-tab-shift) * -1) 0; } }
+.rv-tab-in-next { animation: rv-motion-tab-in-next var(--rv-motion-tab-slide) var(--rv-ease-sheet) backwards; }
+.rv-tab-in-prev { animation: rv-motion-tab-in-prev var(--rv-motion-tab-slide) var(--rv-ease-sheet) backwards; }
+/* A slide wrapper set inside a grid of blocks keeps that grid's spacing for the blocks it holds. */
+:where(.rv-tab-slide-grid) { display: grid; grid-template-columns: minmax(0, 1fr); gap: inherit; min-width: 0; }
 
 /* A loading message fades in, so a quick load does not flash it. */
 :where(.rv-loading-state) { animation: rv-motion-fade var(--rv-motion-base) ease-out 120ms backwards; }
@@ -115,6 +125,7 @@
   :is(.rr-metrics > article, .invoice-reference-metrics > article, .rr-kgrid > .rr-kc)::after { animation: none; }
   :where(.app-shell main > .content) tbody > tr { animation: none; }
   :where(.rv-reveal) { animation: none; }
+  .rv-tab-in-next, .rv-tab-in-prev { animation: none; }
 }
 
 /* Theme switch from the light/dark button (features/settings/visual-theme.ts sets html.theme-transitioning for about

@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router'
 import { Busy } from '../../shared/components/AsyncState'
+import { TabSlidePanel } from '../../shared/tab-slide'
 import { jobsLogView, withJobsLogView, type JobsLogView } from './jobs-url-state'
 import ProductActivityLog from './ProductActivityLog'
 
@@ -11,6 +12,7 @@ const views: Array<{ value: JobsLogView; label: string }> = [
   { value: 'activity', label: 'Ürün Hareketleri' },
   { value: 'sends', label: 'Pazaryeri Gönderimleri' }
 ]
+const viewOrder = views.map(item => item.value)
 
 // İşlem Takibi › Loglar: Ürün Hareketleri (every stock, price, status and return change of the products; the default)
 // and Pazaryeri Gönderimleri (the price/stock lines sent to the marketplaces), switched by a segment above the view.
@@ -33,9 +35,9 @@ export function OperationLogs({ platformOptions, onOpenJob, headingSlot }: { pla
         <span className="jobs-category-segment-label" data-text={item.label}>{item.label}</span>
       </button>)}
     </div>
-    {view === 'sends'
+    <TabSlidePanel active={view} order={viewOrder} className="rv-tab-slide-grid" role="tabpanel">{view === 'sends'
       ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog key="sends" platformOptions={platformOptions} onOpenJob={onOpenJob} headingSlot={headingSlot} /></Suspense>
-      : <ProductActivityLog key="activity" platformOptions={platformOptions} headingSlot={headingSlot} />}
+      : <ProductActivityLog key="activity" platformOptions={platformOptions} headingSlot={headingSlot} />}</TabSlidePanel>
   </>
 }
 
