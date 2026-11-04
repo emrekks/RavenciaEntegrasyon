@@ -7029,3 +7029,9 @@ html body .app-shell.stitch-shell main :is(.invoice-reference-filter-reset, .com
   .app-shell.stitch-shell.stitch-shell.stitch-shell > aside :is(.sidebar-brand-row, .sidebar-pin-toggle, .brand.wordmark, .sidebar-profile-copy, nav a, .nav-label, .logout-link, .logout-label, .nav-count),
   .app-shell.stitch-shell.stitch-shell.stitch-shell > aside :is(nav a, .settings-nav > a, .settings-nav > .logout-link)::before { transition: none !important; }
 }
+
+/* On a touch screen a finger sliding over a card while scrolling counts as hover: the cards' hover breakdowns stay closed
+   there (tapping the card opens its list instead). */
+@media (hover: none) {
+  .app-shell.stitch-shell main :is(.rr-opcard .rr-tip, .rr-metrics .rr-metric-tip, .rr-kc .rr-tip) { display: none !important; }
+}
