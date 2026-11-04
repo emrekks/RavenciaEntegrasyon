@@ -335,3 +335,14 @@
 @media (prefers-reduced-motion: reduce) { .qi-page .qi-glyph.is-running { animation: none; } }
 /* the subject line the customer gave the question (n11), shown apart from the question */
 .qi-page .qi-subject { align-self: flex-start; margin: 2px 0 6px; color: var(--rv-color-muted); }
+
+/* Phones: the answer's buttons share the row half and half (Sonraki Soru, Gönder), or Gönder takes the whole row when
+   it is alone; the answer box and its row never run past the card. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .qi-composer { min-width: 0; padding: 12px; }
+  .app-shell.stitch-shell main .qi-composer > textarea { box-sizing: border-box; width: 100%; max-width: 100%; }
+  .app-shell.stitch-shell main .qi-composer-foot { display: block; }
+  .app-shell.stitch-shell main .qi-composer-foot > .rv-answer-bar-meta { display: block; margin-bottom: 8px; }
+  .app-shell.stitch-shell main .qi-composer-foot > div { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; width: 100%; }
+  .app-shell.stitch-shell main .qi-composer-foot > div > .rv-button { width: 100%; min-width: 0; height: 36px; min-height: 0; justify-content: center; }
+}

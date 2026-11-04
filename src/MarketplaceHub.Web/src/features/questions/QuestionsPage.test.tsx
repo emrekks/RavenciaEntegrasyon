@@ -315,7 +315,7 @@ describe('QuestionsPage workspace flows', () => {
     expect(button('Gönder').disabled).toBe(true)
     input(editor, 'Ürün uzunluğu 65 cm. Ölçü bilgisi ürün sayfasında da yer alıyor.')
     expect(button('Gönder').disabled).toBe(false)
-    expect(container.querySelector('.rv-answer-bar-meta')?.textContent).toContain('10–2000 karakter')
+    expect(container.querySelector('.rv-answer-bar-meta')).toBeNull()
     act(() => button('Gönder').click())
     await settle()
     expect(apiState.calls.some(call => call.path.endsWith('/answer') && call.method === 'POST')).toBe(true)
