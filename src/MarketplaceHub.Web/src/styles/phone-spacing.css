@@ -111,3 +111,12 @@
   :root body :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop > .workspace-modal, .invoice-detail-backdrop > .workspace-modal, .panel-attribute-modal > .panel-attribute-modal-card) { max-height: calc(100dvh - 48px - var(--m-safe-top) - var(--m-safe-bottom)) !important; }
   :root body :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop > .workspace-modal) img:not(.rr-logo):not([class*="logo"]):not(.rv-view-tab-logo) { max-height: calc(100dvh - 260px); object-fit: contain; }
 }
+
+/* Phones, every window whose body ends in a framed card (order and return details, invoice details, quick edit…): the
+   footer bar joins that last card as the page bars do: inset to the cards' width with their frame, square on top (its
+   top rule is the divider) and rounded at the bottom, while the card above it goes square at the bottom and meets it. */
+@media (max-width: 760px) {
+  :root body :is(.rr-modal > .rr-m-body, .workspace-modal > .invoice-detail-body, .workspace-modal > .workspace-modal-body):has(> :is(section, article, fieldset, .rr-step, [class*="-card"], [class*="-sec"]):last-child) { padding-bottom: 0 !important; }
+  :root body :is(.rr-modal > .rr-m-body, .workspace-modal > .invoice-detail-body, .workspace-modal > .workspace-modal-body) > :is(section, article, fieldset, .rr-step, [class*="-card"], [class*="-sec"]):last-child { margin-bottom: 0 !important; border-bottom-color: transparent !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+  :root body :is(.rr-modal > .rr-m-body, .workspace-modal > .invoice-detail-body, .workspace-modal > .workspace-modal-body):has(> :is(section, article, fieldset, .rr-step, [class*="-card"], [class*="-sec"]):last-child) + :is(.rr-m-foot, .invoice-detail-footer, footer) { margin: 0 var(--m-pad) var(--m-pad) !important; padding: 10px 12px !important; border: 1px solid var(--rv-color-border) !important; border-radius: 0 0 14px 14px !important; }
+}
