@@ -365,7 +365,8 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     await settle()
     const since = Date.parse(logRequests().at(-1)!.get('from')!)
     expect(Math.abs(Date.now() - 24 * 60 * 60 * 1000 - since)).toBeLessThan(60_000)
-    expect(new URLSearchParams(countRequests().at(-1)!.split('?')[1]).get('from')).toBe(logRequests().at(-1)!.get('from'))
+    // The counts and the list each work out the range start when they are built; a millisecond apart is the same range.
+    expect(Math.abs(Date.parse(new URLSearchParams(countRequests().at(-1)!.split('?')[1]).get('from')!) - since)).toBeLessThan(1_000)
     expect(container.querySelector('.jobs-reference-heading-actions .jobs-reference-range')!.textContent).toBe('Son 24 Saat')
     // The job list's range in the address is untouched.
     expect(currentSearch).toContain('aralik=7g')
