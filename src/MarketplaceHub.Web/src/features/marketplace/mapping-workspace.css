@@ -673,7 +673,9 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main section.mapping-page.mapping-page .panel-attribute-records { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 56px; max-height: calc(3 * 56px + 2 * 8px + 2px); overflow-y: auto; overscroll-behavior: contain; }
   .app-shell.stitch-shell main section.mapping-page.mapping-page .panel-attribute-records > article { min-height: 0; padding: 8px 10px; }
-  .app-shell.stitch-shell main section.mapping-page.mapping-page .panel-attribute-records .panel-attribute-record-main > :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .panel-attribute-records > article { min-width: 0; overflow: hidden; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .panel-attribute-records .panel-attribute-record-main { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .panel-attribute-records .panel-attribute-record-main > :is(strong, small) { display: block; width: auto !important; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
   .app-shell.stitch-shell main section.mapping-page.mapping-page .category-library-list { max-height: calc(3 * 36px + 2 * 8px + 2px); overflow-y: auto; overscroll-behavior: contain; }
 
   /* Saved mappings, one card each: the panel category and its state on the first line, the platform path under them,
