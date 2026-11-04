@@ -161,6 +161,8 @@ internal static class PayoutBuilder
     public const string UnknownRegion = "UNKNOWN";
     // The other marketplaces pay without regions; their records carry none.
     public const string NoRegion = "NONE";
+    // The marketplaces whose payouts are read, in the order their cards stand.
+    internal static readonly string[] PayoutPlatformOrder = ["TRENDYOL", "HEPSIBURADA", "N11", "PAZARAMA"];
 
     private static readonly TimeZoneInfo Istanbul = DashboardReadService.ResolveTimezone("Europe/Istanbul");
 
@@ -313,6 +315,17 @@ internal static class PayoutBuilder
             })
             .Where(x => x.Region != UnknownRegion || x.Records > 0 || x.Unknown != 0)
             .ToList();
+        // Every marketplace with a store in view, in the platforms' order; the region totals above are Trendyol's alone.
+        var marketplaces = stores.Values.Select(store => store.PlatformCode).Where(code => PayoutPlatformOrder.Contains(code)).Distinct()
+            .OrderBy(code => Array.IndexOf(PayoutPlatformOrder, code))
+            .Select(code =>
+            {
+                var due = open.Where(x => x.Row.PlatformCode == code).ToList();
+                var next = upcoming.Where(x => x.PlatformCode == code && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault();
+                return new PayoutPlatformView(code, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
+                    overdue.Where(x => x.Row.PlatformCode == code).Sum(x => x.Line.Net));
+            })
+            .ToList();
 
         var early = rows.Where(x => x.Source == MarketplaceFinanceSources.MoneyMovements && string.Equals(x.RequestedType, "CashAdvance", StringComparison.OrdinalIgnoreCase)
             && Day(x.TransactionDate) >= today.AddDays(-daysBack)).ToList();
@@ -322,7 +335,7 @@ internal static class PayoutBuilder
             ? upcoming.Where(x => x.Day == first && x.Kind != "OVERDUE").GroupBy(x => 1).Select(group => group.First() with { Key = $"next:{first:yyyy-MM-dd}", Amount = group.Sum(x => x.Amount), Records = group.Sum(x => x.Records) }).Single()
             : null;
         return new(today, daysBack, open.Sum(x => x.Line.Net), open.Count, next, past.FirstOrDefault(x => x.Kind == "PAYOUT") ?? past.FirstOrDefault(),
-            overdue.Sum(x => x.Line.Net), overdue.Count, early.Sum(x => Math.Abs(x.Credit - x.Debt)), early.Count, regions, upcoming, past, coverage);
+            overdue.Sum(x => x.Line.Net), overdue.Count, early.Sum(x => Math.Abs(x.Credit - x.Debt)), early.Count, regions, marketplaces, upcoming, past, coverage);
     }
 
     // A payout's region by Trendyol's code or name; live since Nov 2026: TR "Türkiye, Körfez", AZ "Azerbaycan",
