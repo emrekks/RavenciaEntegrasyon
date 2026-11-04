@@ -423,7 +423,7 @@
 .app-shell.stitch-shell main section.mapping-page .brand-reference-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 14px 0 0; color: var(--rv-color-muted); background: none; border: 0; border-top: 1px solid var(--rv-color-border); border-radius: 0; font-size: 13px; }
 .app-shell.stitch-shell main section.mapping-page .brand-reference-action strong { color: var(--rv-color-ink); font-weight: 600; }
 /* Fixed-size stand-ins while a platform's brand list or saved mappings load, so a tab switch moves nothing. */
-.app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton { display: inline-block; height: 10px; vertical-align: middle; border-radius: 999px; background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)); background-size: 220% 100%; animation: rv-splash-shimmer 1.8s linear infinite; }
+.app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton { display: inline-block; height: 10px; vertical-align: middle; border-radius: 999px; background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)); background-size: 220% 100%; animation: rv-splash-shimmer var(--rv-motion-shimmer) linear infinite; }
 .app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton.is-count { width: 52px; }
 .app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton.is-time { width: 112px; }
 .app-shell.stitch-shell main section.mapping-page .brand-reference-skeleton.is-name { width: 88px; }

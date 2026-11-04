@@ -763,7 +763,7 @@
    nothing moves when the figures come in). */
 .app-shell.stitch-shell main .reports-page .reports-stock-item { display: grid; gap: 2px; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-stock-item small { overflow: hidden; color: var(--rv-color-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.app-shell.stitch-shell main .reports-page .reports-skeleton { display: block; background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)); background-size: 220% 100%; border-radius: 7px; animation: rv-splash-shimmer 1.8s linear infinite; }
+.app-shell.stitch-shell main .reports-page .reports-skeleton { display: block; background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)); background-size: 220% 100%; border-radius: 7px; animation: rv-splash-shimmer var(--rv-motion-shimmer) linear infinite; }
 .app-shell.stitch-shell main .reports-page .reports-skeleton.is-label { width: 55%; height: 12px; }
 .app-shell.stitch-shell main .reports-page .reports-skeleton.is-figure { width: 75%; height: 26px; }
 .app-shell.stitch-shell main .reports-page .reports-skeleton.is-block { height: 240px; margin-top: 16px; border-radius: 12px; }

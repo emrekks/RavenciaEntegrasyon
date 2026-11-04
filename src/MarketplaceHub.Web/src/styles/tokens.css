@@ -103,16 +103,33 @@
   /* Shared motion (styles/motion.css): measured, short and only on first appearance; all zero under reduced motion. */
   --rv-motion-fast: 160ms;
   --rv-motion-base: 280ms;
-  --rv-motion-block-stagger: 70ms;
+  --rv-motion-block-stagger: 60ms;
   --rv-motion-row-delay: 60ms;
   --rv-motion-stagger: 35ms;
   --rv-motion-sheen: 900ms;
-  --rv-motion-enter: 260ms;
   --rv-motion-sheen-delay: 120ms;
-  --rv-motion-press: .96;
   --rv-motion-lift: -2px;
   --rv-ease-out: cubic-bezier(.22, 1, .36, 1);
   --rv-ease-spring: cubic-bezier(.34, 1.36, .64, 1);
+  /* Animation kit "A · iOS Yay" (owner, 4 Nov 2026): springy and lightly overshooting, the Apple system feel. Windows
+     grow from .9 and settle, sheets and drawers start heavy and stop softly, menus grow from the trigger's corner. */
+  --rv-motion-enter: 550ms;
+  --rv-ease-enter: cubic-bezier(.2, .9, .2, 1);
+  --rv-motion-item-stagger: 60ms;
+  --rv-motion-modal: 420ms;
+  --rv-ease-modal: cubic-bezier(.32, 1.32, .48, 1);
+  --rv-motion-modal-from: .9;
+  --rv-motion-backdrop-blur: 6px;
+  --rv-motion-sheet: 500ms;
+  --rv-ease-sheet: cubic-bezier(.32, .72, 0, 1);
+  --rv-motion-menu: 280ms;
+  --rv-ease-menu: cubic-bezier(.34, 1.4, .5, 1);
+  --rv-motion-menu-from: .92;
+  --rv-motion-tab: 400ms;
+  --rv-ease-tab: cubic-bezier(.34, 1.3, .5, 1);
+  --rv-motion-press-duration: 120ms;
+  --rv-motion-press: .96;
+  --rv-motion-shimmer: 1.4s;
   --rv-z-sticky: 20;
   --rv-z-sidebar: 40;
   --rv-z-dropdown: 80;

@@ -8,7 +8,8 @@ import { useLayoutEffect, type RefObject } from 'react'
 export const revealCandidateSelector = 'main > .content > *, main > .content :is(.rr-panel, .panel, [data-motion="block"])'
 const excludedSelector = '.rv-action-bar, [role="dialog"], .notice, [class*="toast"], script, style, template'
 export const revealClass = 'rv-reveal'
-const staggerMs = 70
+// Blocks shown together follow one another .06s apart (kit "A · iOS Yay"; styles/tokens.css --rv-motion-block-stagger).
+const staggerMs = 60
 const maxStaggerSteps = 4
 const revealLifetimeMs = 2200
 

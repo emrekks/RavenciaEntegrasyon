@@ -6,7 +6,7 @@
   background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)) 0 0 / 220% 100%;
   border-style: solid;
   border-radius: 7px;
-  animation: rv-splash-shimmer 1.8s linear infinite;
+  animation: rv-splash-shimmer var(--rv-motion-shimmer) linear infinite;
 }
 .app-shell.stitch-shell main .product-add-page.is-hydrating .product-add-workspace :is(input, textarea)::placeholder, .app-shell.stitch-shell main .product-add-page.is-hydrating .product-add-workspace [contenteditable]::before { color: transparent; }
 .app-shell.stitch-shell main .product-add-page.is-hydrating .product-add-workspace :is(input[type="checkbox"], input[type="radio"]) { visibility: hidden; }
@@ -22,7 +22,7 @@
   -webkit-text-fill-color: transparent;
   background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)) 0 0 / 220% 100%;
   border-radius: 7px;
-  animation: rv-splash-shimmer 1.8s linear infinite;
+  animation: rv-splash-shimmer var(--rv-motion-shimmer) linear infinite;
 }
 .app-shell.stitch-shell main .publish-platform-card.is-settling .publish-platform-fact-publication dd > * { visibility: hidden; }
 .app-shell.stitch-shell main .publish-platform-card.is-settling .publish-platform-toggle { visibility: hidden; }

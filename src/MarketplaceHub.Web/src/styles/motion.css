@@ -20,15 +20,23 @@
 }
 @keyframes rv-motion-sheen { from { opacity: 1; background-position: 100% 0; } to { opacity: 1; background-position: 0 0; } }
 @keyframes rv-motion-fade { from { opacity: 0; } }
-@keyframes rv-motion-pop { from { opacity: 0; translate: 0 -6px; scale: .96; } }
-@keyframes rv-motion-dialog { from { opacity: 0; translate: 0 18px; scale: .96; } }
-@keyframes rv-motion-drawer { from { opacity: 0; translate: 32px 0; } }
+/* Kit "A · iOS Yay": a block rises a little and grows into place; a window grows from .9 on an overshooting spring
+   (its opacity runs on its own, unbouncing curve); a menu grows from its trigger's corner and its rows follow; a drawer
+   slides in whole. */
+@keyframes rv-motion-rise { from { opacity: 0; translate: 0 14px; scale: .98; } }
+@keyframes rv-motion-zoom { from { scale: var(--rv-motion-modal-from); } }
+@keyframes rv-motion-pop { from { translate: 0 -4px; scale: var(--rv-motion-menu-from); } }
+@keyframes rv-motion-item { from { opacity: 0; translate: 0 -3px; } }
+@keyframes rv-motion-drawer { from { translate: 100% 0; } }
+@keyframes rv-motion-slide { from { opacity: 0; translate: 40px 0; } }
+@keyframes rv-motion-tab-line { from { opacity: 0; scale: .2 1; } }
+@keyframes rv-motion-tab-on { from { scale: .94; } }
 
 /* Every page opens the same way (app/hooks/usePageEntryReveal): each of its blocks (a direct block of the page, a panel,
    or an element marked data-motion="block") takes .rv-reveal once, when it is first on screen: as the page opens, when
    its data arrives and it mounts, or when it is scrolled into view; blocks shown together follow one another. They
-   fade, they do not move (owner, 24 Oct 2026). */
-:where(.rv-reveal) { animation: rv-motion-fade var(--rv-motion-enter) ease-out backwards; animation-delay: var(--rv-reveal-delay, 0ms); }
+   rise 14px and grow from .98 as they fade in (kit "A · iOS Yay", owner, 4 Nov 2026). */
+:where(.rv-reveal) { animation: rv-motion-rise var(--rv-motion-enter) var(--rv-ease-enter) backwards; animation-delay: var(--rv-reveal-delay, 0ms); }
 
 /* A band of light passes over the first rows of a table one after another (the rest, below the fold, with the last of
    them); the rows themselves do not move (owner, 24 Oct 2026). The light plays with the block that holds the table. */
@@ -79,24 +87,53 @@
   :where(.rr-metrics > article, .invoice-reference-metrics > article, .integration-grid > *):hover { box-shadow: 0 10px 24px -14px rgb(0 0 0 / 55%); }
 }
 
-/* Modals, drawers and their backdrops; menus and lists that open over the page spring open. */
-:where([role="dialog"][aria-modal="true"]) { animation: rv-motion-dialog var(--rv-motion-base) var(--rv-ease-spring) backwards; }
-:where([role="dialog"][aria-modal="true"][class*="drawer"], [role="dialog"][aria-modal="true"][class*="sheet"]) { animation: rv-motion-drawer var(--rv-motion-base) var(--rv-ease-out) backwards; }
-:where([class*="backdrop"], [class*="overlay"], [class*="scrim"]) { animation: rv-motion-fade var(--rv-motion-base) ease-out backwards; }
+/* Windows (kit "A · iOS Yay"): the window grows from .9 on an overshooting spring and settles while it fades in; its
+   backdrop fades in under it. Drawers slide in whole and sheets slide in, starting heavy and stopping softly. A window
+   that becomes a bottom sheet on a phone takes the sheet motion (styles/responsive.css). */
+:where([role="dialog"][aria-modal="true"]) {
+  animation: rv-motion-fade var(--rv-motion-modal) var(--rv-ease-enter) backwards, rv-motion-zoom var(--rv-motion-modal) var(--rv-ease-modal) backwards;
+}
+:where([role="dialog"][aria-modal="true"][class*="drawer"], [role="dialog"][aria-modal="true"][class*="sheet"]) { animation: rv-motion-slide var(--rv-motion-sheet) var(--rv-ease-sheet) backwards; }
+:where(.rv-drawer[role="dialog"]) { animation: rv-motion-drawer var(--rv-motion-sheet) var(--rv-ease-sheet) backwards; }
+:where([class*="backdrop"], [class*="overlay"], [class*="scrim"]) { animation: rv-motion-fade var(--rv-motion-modal) ease-out backwards; }
 /* A window whose dialog element is its own full-screen backdrop (the panel attribute windows on Eşleştirmeler): the
-   darkening only fades, and the card inside rises and grows; a backdrop never scales (owner, 30 Oct 2026). */
-:where([role="dialog"][aria-modal="true"].panel-attribute-modal) { animation: rv-motion-fade var(--rv-motion-base) ease-out backwards; }
-:where(.panel-attribute-modal > .panel-attribute-modal-card) { animation: rv-motion-dialog var(--rv-motion-base) var(--rv-ease-spring) backwards; }
-:where([role="menu"], [role="listbox"], .rv-popover, .rr-menu, .rr-pop) { animation: rv-motion-pop var(--rv-motion-base) var(--rv-ease-spring) backwards; transform-origin: top; }
+   darkening only fades, and the card inside grows; a backdrop never scales (owner, 30 Oct 2026). */
+:where([role="dialog"][aria-modal="true"].panel-attribute-modal) { animation: rv-motion-fade var(--rv-motion-modal) ease-out backwards; }
+:where(.panel-attribute-modal > .panel-attribute-modal-card) {
+  animation: rv-motion-fade var(--rv-motion-modal) var(--rv-ease-enter) backwards, rv-motion-zoom var(--rv-motion-modal) var(--rv-ease-modal) backwards;
+}
+
+/* Menus and lists that open over the page grow from their trigger's corner (top left, or top right for a menu held to
+   the right of its trigger) as they fade in; the rows of an action menu follow one another. Option lists (listbox)
+   come in as one, so a list of hundreds does not start hundreds of animations. */
+:where([role="menu"], [role="listbox"], .rv-popover, .rr-menu, .rr-pop, .rv-view-tabs-menu, .order-column-filter-popover, .jobs-reference-range-menu, .qi-popover, .ss-pick-menu, .invoice-reference-actions-popover, .date-range-picker-popover) {
+  animation: rv-motion-fade var(--rv-motion-menu) ease-out backwards, rv-motion-pop var(--rv-motion-menu) var(--rv-ease-menu) backwards;
+  transform-origin: top left;
+}
+:where(.rr-pop.rr-right, .rr-actcell .rr-menu, .rr-vt-wrap > .rr-menu, .invoice-reference-actions-popover) { transform-origin: top right; }
+:where(.rr-bulk-menu > .rr-menu) { transform-origin: bottom right; }
+:where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"])) { animation: rv-motion-item var(--rv-motion-menu) var(--rv-ease-enter) backwards; }
+:where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"]):nth-child(2)) { animation-delay: calc(var(--rv-motion-item-stagger) * .5); }
+:where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"]):nth-child(3)) { animation-delay: calc(var(--rv-motion-item-stagger) * 1); }
+:where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"]):nth-child(4)) { animation-delay: calc(var(--rv-motion-item-stagger) * 1.5); }
+:where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"]):nth-child(5)) { animation-delay: calc(var(--rv-motion-item-stagger) * 2); }
+:where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"]):nth-child(n + 6)) { animation-delay: calc(var(--rv-motion-item-stagger) * 2.5); }
+
+/* Tabs: the active tab's underline grows out from its middle and a segmented control's chosen pill settles on a spring
+   as it is picked. A tab's new content that mounts as page blocks plays the page entry above
+   (app/hooks/usePageEntryReveal). */
+:where(.rv-view-tabs > :is(button, a).is-active)::after { animation: rv-motion-tab-line var(--rv-motion-tab) var(--rv-ease-tab) backwards; }
+:where(.rr-seg > button.rr-on, .ss-seg > button.is-on, .rv-tabs:not(.rv-view-tabs) > [role="tab"][aria-selected="true"]) { animation: rv-motion-tab-on var(--rv-motion-tab) var(--rv-ease-tab) backwards; }
 
 /* A loading message fades in, so a quick load does not flash it. */
 :where(.rv-loading-state) { animation: rv-motion-fade var(--rv-motion-base) ease-out 120ms backwards; }
 
-/* Controls answer the pointer: colours ease, a pressed button gives a little. */
+/* Controls answer the pointer: colours ease, a pressed button gives a little (scale .96 over .12s, only while held:
+   hover looks live under @media (hover: hover), so a finger never leaves a hover state behind). */
 :where(button, a, [role="button"], [role="tab"], input, select, textarea, summary) {
   transition: color var(--rv-motion-fast) var(--rv-ease-standard), background-color var(--rv-motion-fast) var(--rv-ease-standard),
     border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard),
-    opacity var(--rv-motion-fast) var(--rv-ease-standard), scale var(--rv-motion-fast) var(--rv-ease-out);
+    opacity var(--rv-motion-fast) var(--rv-ease-standard), scale var(--rv-motion-press-duration) var(--rv-ease-enter);
 }
 :where(button, [role="button"]):not(:disabled, [aria-disabled="true"], [role="switch"]):active { scale: var(--rv-motion-press); }
 
@@ -114,6 +151,12 @@
     --rv-motion-enter: 0ms;
     --rv-motion-press: 1;
     --rv-motion-lift: 0px;
+    --rv-motion-item-stagger: 0ms;
+    --rv-motion-modal: 0ms;
+    --rv-motion-sheet: 0ms;
+    --rv-motion-menu: 0ms;
+    --rv-motion-tab: 0ms;
+    --rv-motion-press-duration: 0ms;
   }
   :where(.rv-loading-state) { animation: none; }
   :is(.rr-metrics > article, .invoice-reference-metrics > article, .rr-kgrid > .rr-kc)::after { animation: none; }

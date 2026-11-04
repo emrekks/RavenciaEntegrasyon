@@ -192,7 +192,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-crows.rr-crows-wait > * { visibility: hidden; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-kc-wait :is(.rr-trend, .rr-avg, .rr-krange) { visibility: hidden; }
 /* While a period loads its figure is a shimmering bar, not a dash. */
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc-skel { display: inline-block; width: 96px; height: 24px; vertical-align: middle; border-radius: 7px; background: linear-gradient(90deg, var(--rr-line) 0%, color-mix(in srgb, var(--rr-line) 40%, var(--rr-surface)) 50%, var(--rr-line) 100%); background-size: 200% 100%; animation: rr-kc-shimmer 1.2s ease-in-out infinite; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc-skel { display: inline-block; width: 96px; height: 24px; vertical-align: middle; border-radius: 7px; background: linear-gradient(90deg, var(--rr-line) 0%, color-mix(in srgb, var(--rr-line) 40%, var(--rr-surface)) 50%, var(--rr-line) 100%); background-size: 200% 100%; animation: rr-kc-shimmer var(--rv-motion-shimmer) ease-in-out infinite; }
 @keyframes rr-kc-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc-skel { animation: none; } }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mx.rr-mx.rr-off { color: var(--rr-muted); }

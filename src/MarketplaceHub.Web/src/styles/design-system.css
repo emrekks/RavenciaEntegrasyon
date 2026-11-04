@@ -371,7 +371,7 @@
   .data-table > *:first-child { background: var(--rv-color-surface-raised); }
   .data-table > *:last-child { border-bottom: 0; }
   .data-table > a:hover { background: var(--rv-hover, color-mix(in srgb, var(--rv-color-ink) 7%, transparent)); }
-  .workspace-modal-backdrop, .rv-overlay { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(5px); }
+  .workspace-modal-backdrop, .rv-overlay { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
   .workspace-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(760px, 100%); max-height: calc(100dvh - 32px); min-width: 0; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
   .workspace-modal > * { min-width: 0; }
   .product-image-modal { position: relative; width: min(720px, 100%); max-height: calc(100dvh - 32px); }
@@ -501,7 +501,7 @@
   .order-invoice-label { display: inline-flex; min-width: 0; align-items: center; gap: var(--rv-space-1); }
   .order-invoice-label small { min-width: 0; }
   .invoice-status-label { width: fit-content; max-width: 100%; }
-  .integration-modal-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(5px); }
+  .integration-modal-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
   .integration-modal { display: grid; gap: var(--rv-space-4); width: min(560px, 100%); max-height: calc(100dvh - (var(--rv-space-4) * 2)); padding: var(--rv-space-5); overflow: auto; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
   .integration-modal-header { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-3); padding-bottom: var(--rv-space-3); border-bottom: 1px solid var(--rv-color-border); }
   .integration-modal-header h2 { margin: 0; font-size: var(--rv-font-size-xl); }
@@ -564,7 +564,7 @@
   .searchable-select-options > button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
   .searchable-select-options > button[aria-selected="true"] { color: var(--rv-color-ink); background: var(--rv-color-primary-soft); }
   .searchable-select-empty { display: block; padding: var(--rv-space-3); color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
-  .brand-mapping-modal-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(5px); }
+  .brand-mapping-modal-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
   .brand-mapping-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(560px, 100%); max-height: calc(100vh - 32px); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
   .brand-mapping-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
   .brand-mapping-modal > header h2, .brand-mapping-modal > header p { margin-bottom: var(--rv-space-1); }
@@ -656,7 +656,7 @@
   .image-lightbox-backdrop { background: rgb(5 16 29 / 78%); }
   .is-error { color: var(--rv-color-danger); }
   .invoice-reference-state { display: grid; min-height: 180px; place-items: center; }
-  .invoice-detail-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(5px); }
+  .invoice-detail-backdrop { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
   .invoice-detail-modal { width: min(980px, 100%); max-height: calc(100dvh - 32px); }
   .invoice-detail-header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
   .invoice-detail-header h2, .invoice-detail-header p { margin: 0; }
@@ -998,7 +998,7 @@
   .rv-badge-warning { color: var(--rv-color-warning); background: var(--rv-color-warning-soft); }
   .rv-badge-danger { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
   .rv-pagination { display: flex; align-items: center; justify-content: flex-end; gap: var(--rv-space-3); margin-top: var(--rv-space-4); color: var(--rv-color-muted); }
-  .rv-overlay { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(5px); }
+  .rv-overlay { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
   .rv-modal { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: min(720px, 100%); max-height: calc(100vh - 32px); overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
   .rv-drawer { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; position: absolute; inset: 0 0 0 auto; width: min(560px, 100%); overflow: auto; color: var(--rv-color-ink); background: var(--rv-color-surface); border-left: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-lg) 0 0 var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
   .rv-modal > header, .rv-drawer > header { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5); border-bottom: 1px solid var(--rv-color-border); }
@@ -1089,7 +1089,7 @@
   .category-chip-list > span { display: inline-flex; align-items: center; max-width: 100%; overflow: hidden; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 999px; }
   .category-chip-list button { min-height: 30px; padding-inline: var(--rv-space-3); color: inherit; background: transparent; border: 0; white-space: nowrap; }
   .category-chip-list > span.active .category-chip-remove { color: var(--rv-color-muted); border-left-color: color-mix(in srgb, var(--rv-color-primary) 36%, var(--rv-color-border)); }
-  .panel-attribute-modal { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(5px); }
+  .panel-attribute-modal { position: fixed; inset: 0; z-index: var(--rv-z-modal); display: grid; place-items: center; padding: var(--rv-space-4); background: var(--rv-color-backdrop); backdrop-filter: blur(var(--rv-motion-backdrop-blur)); }
   .panel-attribute-modal-card > header { display: flex; min-width: 0; align-items: flex-start; justify-content: space-between; gap: var(--rv-space-4); padding: var(--rv-space-5) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
   .panel-attribute-add-value { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: var(--rv-space-2); align-items: center; padding: var(--rv-space-4) var(--rv-space-6); border-bottom: 1px solid var(--rv-color-border); }
   .panel-attribute-sort-actions > button { width: 58px; min-width: 58px; padding: 0; }
@@ -1712,7 +1712,7 @@ button,
 .rv-splash-skeleton-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--rv-space-3); }
 .rv-splash-skeleton-card { display: grid; gap: var(--rv-space-2); min-width: 0; }
 .rv-splash-skeleton-card.is-wide { grid-column: 1 / -1; max-width: calc(50% - var(--rv-space-2)); }
-.rv-splash-skeleton-media, .rv-splash-skeleton-line { display: block; background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)); background-size: 220% 100%; animation: rv-splash-shimmer 1.8s linear infinite; }
+.rv-splash-skeleton-media, .rv-splash-skeleton-line { display: block; background: linear-gradient(90deg, var(--rv-color-surface-soft), var(--rv-color-border), var(--rv-color-surface-soft)); background-size: 220% 100%; animation: rv-splash-shimmer var(--rv-motion-shimmer) linear infinite; }
 .rv-splash-skeleton-media { min-height: 76px; border-radius: var(--rv-radius-sm); }
 .rv-splash-skeleton-line { height: 9px; border-radius: 999px; }
 .rv-splash-skeleton-line.line-wide { width: 92%; }
@@ -6821,10 +6821,10 @@ html body .rr-opt-count:not(.is-loading) { display: inline-flex !important; }
 /* Phones: the menu button's icon reads a little larger than the other top bar icons. */
 .app-shell.stitch-shell .rv-mobile-menu-toggle .ui-icon-menu { width: 20px !important; height: 20px !important; }
 
-/* Windows closed from themselves (the cross, a tap outside, Escape) fade and drop slightly before they go; on phones
+/* Windows closed from themselves (the cross, a tap outside, Escape) fade and shrink slightly before they go; on phones
    they sink back down the way they rose (responsive.css). */
 @keyframes rv-fade-out { to { opacity: 0; } }
-@keyframes rv-window-out { to { opacity: 0; translate: 0 12px; } }
+@keyframes rv-window-out { to { opacity: 0; scale: .96; } }
 @media (prefers-reduced-motion: no-preference) {
   .rr-layer.rr-closing .rr-overlay { animation: rv-fade-out .18s ease-in forwards; pointer-events: none; }
   .rr-layer.rr-closing .rr-overlay > .rr-modal { animation: rv-window-out .18s ease-in forwards; }

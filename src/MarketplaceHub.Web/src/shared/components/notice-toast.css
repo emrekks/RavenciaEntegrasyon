@@ -7,7 +7,7 @@
   color: var(--rv-color-ink); background: var(--rv-color-surface-raised);
   border: 1px solid var(--rv-color-border-strong); border-radius: 14px;
   box-shadow: var(--rv-shadow-md);
-  animation: app-toast-in .38s cubic-bezier(.34, 1.4, .64, 1);
+  animation: app-toast-in var(--rv-motion-sheet, .5s) var(--rv-ease-sheet, cubic-bezier(.32, .72, 0, 1));
 }
 .app-toast-success { --app-toast-tone: var(--rv-color-accent); }
 .app-toast-error { --app-toast-tone: var(--rv-color-danger); }
@@ -40,7 +40,8 @@
 .app-toast-error .app-toast-icon { animation: app-toast-pop .5s cubic-bezier(.34, 1.56, .64, 1) .08s backwards, app-toast-shake .45s ease-in-out .55s; }
 .app-toast-content strong, .app-toast-content p, .app-toast-lines { animation: app-toast-text .35s ease-out .18s backwards; }
 .app-toast-content p, .app-toast-lines { animation-delay: .26s; }
-@keyframes app-toast-in { from { opacity: 0; transform: translate(24px, -10px) scale(.96); } }
+/* A toast drops in from above the top edge on the sheet curve (kit "A · iOS Yay"): heavy start, soft stop. */
+@keyframes app-toast-in { from { opacity: 0; transform: translateY(calc(-100% - 16px)); } }
 @keyframes app-toast-pop { from { opacity: 0; transform: scale(.4) rotate(-12deg); } }
 @keyframes app-toast-draw { to { stroke-dashoffset: 0; } }
 @keyframes app-toast-ripple { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-toast-tone) 45%, transparent); } to { box-shadow: 0 0 0 12px transparent; } }

@@ -353,7 +353,7 @@
 }
 
 @layer features {
-  .panel-attribute-category-skeleton { display: block; width: 100%; min-height: 42px; box-sizing: border-box; background: linear-gradient(90deg, var(--rv-color-surface-raised), var(--rv-color-border), var(--rv-color-surface-raised)); background-size: 220% 100%; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); animation: rv-splash-shimmer 1.8s linear infinite; }
+  .panel-attribute-category-skeleton { display: block; width: 100%; min-height: 42px; box-sizing: border-box; background: linear-gradient(90deg, var(--rv-color-surface-raised), var(--rv-color-border), var(--rv-color-surface-raised)); background-size: 220% 100%; border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-sm); animation: rv-splash-shimmer var(--rv-motion-shimmer) linear infinite; }
 }
 
 @layer features {
