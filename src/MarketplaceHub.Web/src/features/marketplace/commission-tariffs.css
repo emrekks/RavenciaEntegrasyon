@@ -297,6 +297,6 @@
   .app-shell.stitch-shell main .commission-tariffs .commission-period-edit-actions button { flex: 1 1 0; }
 }
 /* Tablo Boyutu: a compact 36px select left of Toplu Seçim; the table itself scales with CSS zoom. */
-.app-shell.stitch-shell main .commission-tariffs .commission-zoom { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--rv-color-muted); font-size: 12.5px; }
+.app-shell.stitch-shell main .commission-tariffs .commission-zoom { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--rv-color-muted); font-size: 12.5px; white-space: nowrap; }
 .app-shell.stitch-shell main .commission-tariffs .commission-zoom select { height: 36px; min-height: 0; padding: 0 28px 0 10px; border-radius: 7px; font-size: 13px; }
 @media (max-width: 760px) { .app-shell.stitch-shell main .commission-tariffs .commission-zoom > span { display: none; } }
