@@ -52,6 +52,11 @@ public sealed class ProductActivityPostgreSqlTests(PostgreSqlTenantIsolationFixt
         Assert.Equal((ProductActivityKinds.Stock, (decimal?)3m, ProductActivitySources.BulkEdit, "Toplu ürün stok düzenleme", seed.Sku), (manual.Kind, manual.QuantityDelta, manual.Source, manual.Note, manual.Sku));
         var opening = items[4];
         Assert.Equal((ProductActivitySources.MarketplaceImport, (decimal?)5m, (Guid?)seed.ConnectionId), (opening.Source, opening.QuantityDelta, opening.ConnectionId));
+        // On-hand 8 now: the bulk edit took it 5 → 8, the opening 0 → 5 (the order baseline moved nothing); other rows
+        // carry no stock.
+        Assert.Equal(((decimal?)5m, (decimal?)8m), (manual.StockBefore, manual.StockAfter));
+        Assert.Equal(((decimal?)0m, (decimal?)5m), (opening.StockBefore, opening.StockAfter));
+        Assert.All(items.Take(3), x => Assert.Null(x.StockAfter));
     }
 
     [PostgreSqlFact]
