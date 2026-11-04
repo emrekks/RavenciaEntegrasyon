@@ -1177,3 +1177,8 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { border-radius: 11px 11px 0 0; }
 }
+/* Phones: when the top bar slides away on scroll, the variant table head moves up to the very top of the screen. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { transition: top .2s ease; }
+  html body .app-shell.stitch-shell:has(.rv-topbar.is-hidden) main .product-add-page .variant-table-editor > .variant-table-head { top: 0; }
+}
