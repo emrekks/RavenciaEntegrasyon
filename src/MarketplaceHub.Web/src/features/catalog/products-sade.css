@@ -487,3 +487,8 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
   .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > :nth-child(n) { grid-column: auto; min-width: 0; }
   .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > :last-child { grid-column: 1 / -1; }
 }
+
+/* Phones: a product card's stock reads on one line ("28 adet"), the unit beside the figure. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-qbtn:has(> small) { display: inline-flex; align-items: baseline; gap: 4px; }
+}
