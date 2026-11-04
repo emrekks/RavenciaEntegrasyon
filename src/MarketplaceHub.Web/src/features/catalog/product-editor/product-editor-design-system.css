@@ -1207,3 +1207,7 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
   html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card > .media-move-buttons > .media-move-btn:disabled { opacity: .4; cursor: default; }
   html body .app-shell.stitch-shell main .product-add-page .media-preview-strip .media-drag-hint { display: none; }
 }
+/* Phones: the product's name in the page head is smaller (18px), so more of a long name fits before it is cut. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-page-heading .product-page-heading-title > h1 { font-size: 18px; line-height: 1.3; letter-spacing: -.1px; }
+}
