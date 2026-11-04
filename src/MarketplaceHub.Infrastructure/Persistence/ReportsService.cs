@@ -451,7 +451,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     }
 
     // The commission each marketplace sent on the line (Trendyol "commission" rate, Hepsiburada "commission" amount
-    // object, n11 "commissionRate", PTT AVM "Komisyon") and a cancel reason, read in the database.
+    // object, n11 "commissionRate", PTT AVM "Komisyon"), Trendyol's gross unit price (a tariff's bands are read at it) and
+    // a cancel reason, read in the database.
     private async Task<Dictionary<Guid, ReportLineExtra>> LineExtrasAsync(Guid tenantId, Guid[] orderIds, CancellationToken cancellationToken)
     {
         if (orderIds.Length == 0) return [];
@@ -466,6 +467,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                    CASE WHEN jsonb_typeof(j->'commission') = 'object' THEN j->'commission'->>'amount' ELSE j->>'commission' END AS "Commission",
                    j->>'commissionRate' AS "CommissionRate",
                    j->>'Komisyon' AS "Komisyon",
+                   j->>'lineGrossAmount' AS "GrossUnitPrice",
                    coalesce(nullif(j->>'cancelReason', ''), nullif(j->>'cancelReasonCode', ''), nullif(j->>'cancellationReason', ''), nullif(j->>'CancelReason', ''), nullif(j->>'IptalNedeni', '')) AS "CancelReason"
             FROM src
             """;
