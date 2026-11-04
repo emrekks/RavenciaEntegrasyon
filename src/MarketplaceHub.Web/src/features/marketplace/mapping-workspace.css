@@ -627,3 +627,9 @@
   html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) .mapping-row-actions { display: flex; gap: 2px; }
   html body .app-shell.stitch-shell main .mapping-saved-table tbody tr:has(> td.brand-mapping-inline-editor) .mapping-icon-button { width: 32px; height: 32px; min-height: 0; }
 }
+/* Section titles: the question mark sits right after the title text (6px), not a full icon gap away. */
+.app-shell.stitch-shell main section.mapping-page .mapping-section-heading h2 > .title-hint { margin-left: -2px; }
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-section-heading h2 { gap: 8px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-section-heading h2 > .title-hint { margin-left: -2px; }
+}
