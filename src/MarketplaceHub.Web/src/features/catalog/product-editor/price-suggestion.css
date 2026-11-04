@@ -1,0 +1,37 @@
+/* Fiyat, Stok ve Vergi's "Hesapla" link and its window (PriceSuggestionDialog.tsx). The window is portalled to the
+   body, so its controls carry their own look (36 px high, 7 px radius) instead of the page's scoped input rules. */
+.editor-section-title .price-suggestion-title { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 2px; }
+button.price-suggestion-link { min-height: 0; height: auto; padding: 2px 4px; margin: 0 -4px; color: var(--rv-color-primary); font: inherit; font-size: 13px; font-weight: 600; line-height: 20px; text-transform: none; background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
+button.price-suggestion-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+button.price-suggestion-link:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+
+.price-suggestion-modal { width: min(480px, calc(100vw - 32px)); }
+.price-suggestion-modal .rv-modal-body { display: grid; gap: 14px; }
+.price-suggestion-modal .price-suggestion-basis { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.price-suggestion-modal .price-suggestion-basis button { min-height: 0; height: 30px; padding: 0 12px; color: var(--rv-color-muted); font: inherit; font-size: 13px; font-weight: 500; text-transform: none; white-space: nowrap; background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
+.price-suggestion-modal .price-suggestion-basis button:hover { color: var(--rv-color-ink); }
+.price-suggestion-modal .price-suggestion-basis button[aria-pressed='true'] { color: var(--rv-color-ink); font-weight: 600; background: var(--rv-color-surface); box-shadow: 0 1px 2px rgb(0 0 0 / 14%); }
+.price-suggestion-modal .price-suggestion-basis button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+
+.price-suggestion-modal .price-suggestion-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.price-suggestion-modal .price-suggestion-fields label { display: grid; gap: 6px; min-width: 0; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; }
+.price-suggestion-modal .price-suggestion-fields input { box-sizing: border-box; width: 100%; height: 36px; min-height: 36px; padding: 0 10px; color: var(--rv-color-ink); font: inherit; font-size: 14px; font-weight: 500; font-variant-numeric: tabular-nums; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+.price-suggestion-modal .price-suggestion-fields input:focus-visible { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
+
+.price-suggestion-modal .price-suggestion-result { display: grid; gap: 10px; padding: 12px; color: var(--rv-color-accent); background: var(--rv-color-accent-soft); border: 1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius: 12px; }
+.price-suggestion-modal .price-suggestion-result.is-loss { color: var(--rv-color-danger); background: var(--rv-color-danger-soft); }
+.price-suggestion-modal .price-suggestion-price { display: grid; gap: 2px; }
+.price-suggestion-modal .price-suggestion-price > span { font-size: 12px; font-weight: 600; }
+.price-suggestion-modal .price-suggestion-price strong { font-size: 24px; font-weight: 700; line-height: 30px; font-variant-numeric: tabular-nums; }
+.price-suggestion-modal .price-suggestion-price small { font-size: 12px; opacity: .85; }
+.price-suggestion-modal .price-suggestion-result dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.price-suggestion-modal .price-suggestion-result dl > div { display: grid; gap: 2px; min-width: 0; }
+.price-suggestion-modal .price-suggestion-result dt { font-size: 12px; font-weight: 500; opacity: .85; }
+.price-suggestion-modal .price-suggestion-result dd { margin: 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.price-suggestion-modal .price-suggestion-empty { margin: 0; padding: 12px; color: var(--rv-color-muted); font-size: 13px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.price-suggestion-modal .price-suggestion-note { margin: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.5; }
+
+@media (max-width: 760px) {
+  .price-suggestion-modal .price-suggestion-fields { gap: 10px; }
+  .price-suggestion-modal .price-suggestion-result dd { font-size: 14px; }
+}
