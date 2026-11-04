@@ -3277,7 +3277,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       <section className="panel product-step-card product-media-card">
         <div className="editor-section-title">
           <span>4</span>
-            <div><h2>Görseller</h2><p>JPEG/PNG dosyası yükleyebilirsiniz. Görselleri sürükleyerek sıralayın; aynı modelin diğer renk görselleri de burada görünür ve sıralama kayıtta renk ürünlerine uygulanır.</p></div>
+            <div><h2>Görseller<button type="button" className="editor-hint" aria-label="Görseller hakkında" aria-describedby="product-media-hint"><UiIcon name="help" size={16} /><span role="tooltip" id="product-media-hint" className="editor-hint-tip">JPEG/PNG dosyası yükleyebilirsiniz. Görselleri sürükleyerek sıralayın; aynı modelin diğer renk görselleri de burada görünür ve sıralama kayıtta renk ürünlerine uygulanır.</span></button></h2></div>
             <div className="product-media-header-actions">
               {(mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0 || variantRows.some(row => row.mediaRefs.length > 0)) && <button type="button" className="secondary product-media-clear-all-button" onClick={() => clearAllMedia()}>Tümünü Temizle</button>}
             </div>

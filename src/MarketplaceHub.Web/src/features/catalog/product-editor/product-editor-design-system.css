@@ -226,8 +226,8 @@
   /* Variant option text: read only, changed through the pencil (Varyant Düzenleme). */
   .variant-option-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .variant-option-cell > .variant-option-text { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-ink); font-size: 14px; white-space: nowrap; text-overflow: ellipsis; }
-  .variant-option-cell > .variant-option-edit-button { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 12%, var(--rv-color-surface)); border: 0; border-radius: 999px; cursor: pointer; }
-  .variant-option-cell > .variant-option-edit-button:hover { background: color-mix(in srgb, var(--rv-color-primary) 18%, var(--rv-color-surface)); }
+  .variant-option-cell > .variant-option-edit-button { flex: none; display: inline-grid; place-items: center; width: 28px; height: 28px; min-height: 0; padding: 0; color: var(--rv-color-primary); background: none; border: 0; border-radius: 999px; cursor: pointer; }
+  .variant-option-cell > .variant-option-edit-button:hover { color: var(--rv-color-primary-hover, var(--rv-color-primary)); background: none; }
   .variant-option-cell > .variant-option-edit-button:disabled { opacity: .4; cursor: not-allowed; }
   .variant-option-edit-modal { width: min(560px, 100%); }
   .variant-option-edit-body { display: grid; gap: 16px; padding: 20px 24px 0; overflow: auto; }
@@ -906,7 +906,7 @@
 .app-shell.stitch-shell main .product-identifiers-grid label[title] { cursor: default; }
 
 /* Unlayered: the global button and select rules sit outside the layers and would win over the ones above. */
-.app-shell.stitch-shell main .variant-option-cell > .variant-option-edit-button { width: 28px; height: 28px; min-height: 0; padding: 0; border: 0; box-shadow: none; }
+.app-shell.stitch-shell main .variant-option-cell > .variant-option-edit-button { width: 28px; height: 28px; min-height: 0; padding: 0; background: none; border: 0; box-shadow: none; }
 .app-shell.stitch-shell main .variant-option-edit-pair select, .app-shell.stitch-shell main .variant-option-edit-pair input { height: 36px; min-height: 0; padding-block: 0; }
 .app-shell.stitch-shell main .variant-option-edit-body > footer button { height: 36px; min-height: 0; }
 
@@ -1143,3 +1143,19 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
    the row's cells start at the top instead of lining up at the bottom. */
 .app-shell.stitch-shell main .product-add-page .product-basics-grid { align-items: start; }
 .app-shell.stitch-shell main .product-add-page .model-code-holder-notice { display: block; margin-top: 4px; font-size: 12px; line-height: 16px; }
+
+/* The picture tiles spread over the whole row: the columns keep the tile width and the space left over goes between
+   them, so the strip no longer leaves an empty band on the right (phone and desktop alike). */
+@layer features {
+  .app-shell.stitch-shell main .media-preview-strip { justify-content: space-between; row-gap: var(--rv-space-3, 12px); }
+}
+
+/* A section's explanation behind a round "?" beside its title (as on the reports): it opens while the pointer or the
+   keyboard focus is on the mark, in a small card under it. */
+@layer features {
+  .app-shell.stitch-shell main .editor-hint, .editor-hint { position: relative; display: inline-grid; place-items: center; box-sizing: border-box; width: 20px; height: 20px; min-height: 0; padding: 0; background: none; border: 0; box-shadow: none; font: inherit; text-align: left; margin-left: 6px; vertical-align: -2px; color: var(--rv-color-subtle, var(--rv-color-muted)); border-radius: 999px; cursor: help; outline: none; }
+  .editor-hint:hover, .editor-hint:focus-visible { color: var(--rv-color-primary); }
+  .editor-hint:focus-visible { box-shadow: 0 0 0 2px var(--rv-color-primary); }
+  .editor-hint-tip { position: absolute; z-index: var(--rv-z-tooltip, 60); top: calc(100% + 6px); left: -8px; width: max-content; max-width: min(320px, calc(100vw - 48px)); padding: 10px 12px; color: var(--rv-color-ink); font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-transform: none; white-space: normal; background: var(--rv-color-surface-raised, var(--rv-color-surface)); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; box-shadow: var(--rv-shadow-md); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(-4px); transition: opacity 140ms ease, visibility 140ms ease, transform 140ms ease; }
+  .editor-hint:is(:hover, :focus-visible) > .editor-hint-tip { opacity: 1; visibility: visible; transform: none; }
+}

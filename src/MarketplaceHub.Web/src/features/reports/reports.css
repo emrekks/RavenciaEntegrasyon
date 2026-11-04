@@ -531,8 +531,11 @@
 /* The lines inside keep the card's own type whatever row they sit in (a row's amount is bold, right-aligned, on one line). */
 .app-shell.stitch-shell main .reports-page .reports-hover-tip.reports-hover-tip.reports-hover-tip > :is(b, span) { display: block; margin: 0; padding: 0; color: inherit; font-size: 13px; font-weight: 400; letter-spacing: 0; line-height: 1.5; text-align: left; text-transform: none; white-space: normal; background: none; border: 0; }
 .app-shell.stitch-shell main .reports-page .reports-hover-tip.reports-hover-tip.reports-hover-tip > b { color: var(--rv-color-ink); font-weight: 600; }
-.app-shell.stitch-shell main .reports-page .reports-tip-host:is(:hover, :focus-within) > .reports-hover-tip { opacity: 1; visibility: visible; transform: none; }
-.app-shell.stitch-shell main .reports-page .reports-tip-trigger { display: block; min-width: 0; max-width: 100%; min-height: 0; height: auto; margin: 0; padding: 0; overflow: hidden; color: inherit; font: inherit; text-align: left; text-decoration: underline dotted var(--rv-color-border-strong); text-underline-offset: 3px; text-overflow: ellipsis; text-transform: none; letter-spacing: 0; white-space: nowrap; background: transparent; border: 0; border-radius: 4px; box-shadow: none; cursor: default; }
+/* An explanation opens from the round "?" beside its name (or the keyboard focus on the name), not from the whole row. */
+.app-shell.stitch-shell main .reports-page .reports-tip-host:has(.reports-qmark:hover, :focus-visible) > .reports-hover-tip { opacity: 1; visibility: visible; transform: none; }
+.app-shell.stitch-shell main .reports-page .reports-qmark { flex: none; display: inline-block; width: 15px; height: 15px; margin-left: 6px; vertical-align: -3px; color: var(--rv-color-subtle, var(--rv-color-muted)); cursor: help; transition: color 140ms ease; }
+.app-shell.stitch-shell main .reports-page .reports-qmark:hover { color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .reports-page .reports-tip-trigger { display: block; min-width: 0; max-width: 100%; min-height: 0; height: auto; margin: 0; padding: 0; overflow: hidden; color: inherit; font: inherit; text-align: left; text-decoration: none; text-overflow: ellipsis; text-transform: none; letter-spacing: 0; white-space: nowrap; background: transparent; border: 0; border-radius: 4px; box-shadow: none; cursor: default; }
 .app-shell.stitch-shell main .reports-page .reports-tip-trigger:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 .app-shell.stitch-shell main .reports-page .reports-overview .reports-card-bridge { grid-template-rows: auto 1fr auto; }
 /* What the bridge's estimate leaves out: a ruled block of name and content rows (the cost entered as a bar, the
@@ -636,7 +639,6 @@
 .app-shell.stitch-shell main .reports-page button.reports-metric.is-static:hover { background: transparent; }
 .app-shell.stitch-shell main .reports-page button.reports-metric:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
 .app-shell.stitch-shell main .reports-page .reports-metric-label { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13.5px; }
-.app-shell.stitch-shell main .reports-page .reports-metric-label.has-tip { text-decoration: underline dotted var(--rv-color-border-strong); text-underline-offset: 3px; }
 .app-shell.stitch-shell main .reports-page .reports-metric-value { display: inline-flex; flex: none; align-items: center; gap: 8px; }
 .app-shell.stitch-shell main .reports-page .reports-metric-value strong { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-metrics li.is-warn .reports-metric-value strong { color: var(--rv-color-warning); }
