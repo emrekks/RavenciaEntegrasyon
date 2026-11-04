@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { Children, Fragment, isValidElement, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { thumbnailSources } from '../../shared/product-thumbnail'
 import { orderPlatformLogoSource, platformLogoSource } from '../../shared/platform-logos'
 import { createPortal } from 'react-dom'
@@ -244,6 +244,16 @@ export function RrFilterCard({ active, children }: { active: number; children: R
 
 // Popups: overlay, framed window with head, body and footer. The shared dialog surface traps focus, lets only the top
 // window answer Escape, holds the page still and gives focus back on close.
+// A window footer that holds nothing but a Kapat button (and an empty note): on a phone the header's × closes the window,
+// so this footer is hidden there (owner, 5 Nov 2026).
+function closeOnlyFoot(foot: ReactNode): boolean {
+  const flat: ReactNode[] = []
+  const walk = (node: ReactNode) => Children.forEach(node, child => { if (isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment) walk(child.props.children); else if (child !== null && child !== undefined && child !== false && child !== '') flat.push(child) })
+  walk(foot)
+  const filled = flat.filter(child => !(isValidElement<{ children?: ReactNode }>(child) && child.type === 'span' && !child.props.children))
+  return filled.length === 1 && isValidElement<{ children?: ReactNode }>(filled[0]) && filled[0].props.children === 'Kapat'
+}
+
 export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onClose, children, label, layerClass, modalClass, locked = false }: { crumb?: ReactNode; title: ReactNode; desc?: ReactNode; hint?: ReactNode; size?: 'sm' | 'md' | 'lg' | 'xl' | 'img'; flush?: boolean; head?: ReactNode; foot?: ReactNode; onClose: () => void; children: ReactNode; label?: string; layerClass?: string; modalClass?: string; locked?: boolean }) {
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
@@ -265,7 +275,7 @@ export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onC
       <div ref={dialog} tabIndex={-1} className={['rr-modal', size ? `rr-${size}` : '', modalClass].filter(Boolean).join(' ')} role="dialog" aria-modal="true" aria-label={label ?? (typeof title === 'string' ? title : undefined)}>
         <header className="rr-m-head"><div>{head ?? <>{crumb && <div className="rr-crumb">{crumb}</div>}<h2>{title}{hint ? <TitleHint label={typeof title === 'string' ? title : (label ?? 'Pencere')}>{hint}</TitleHint> : null}</h2>{desc && <p>{desc}</p>}</>}</div><button type="button" className="rr-icon-btn" onClick={() => close.current()} aria-label="Pencereyi Kapat"><RrIcon name="close" /></button></header>
         <div className={`rr-m-body${flush ? ' rr-flush' : ''}`}>{children}</div>
-        {foot && <footer className="rr-m-foot">{foot}</footer>}
+        {foot && <footer className={closeOnlyFoot(foot) ? 'rr-m-foot rr-m-foot-close-only' : 'rr-m-foot'}>{foot}</footer>}
       </div>
     </div>
   </div>, document.body)
