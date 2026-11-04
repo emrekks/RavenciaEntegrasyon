@@ -540,7 +540,8 @@ describe('ReportsPage', () => {
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     expect(requests).toContain('/reports/payouts?platformCodes=PAZARAMA')
     expect(page.querySelectorAll('.is-platforms .reports-payout-region')).toHaveLength(2)
-    await act(async () => { (page.querySelector('.is-platforms .reports-payout-all') as HTMLButtonElement).click() })
+    // The picked card again clears the platform filter (there is no Tümü button).
+    await act(async () => { (page.querySelectorAll('.is-platforms .reports-payout-region')[1] as HTMLButtonElement).click() })
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
     // A payment opens its records.
     await act(async () => { (page.querySelector('.reports-payout-row') as HTMLButtonElement).click() })

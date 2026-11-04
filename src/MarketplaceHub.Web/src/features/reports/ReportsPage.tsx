@@ -1965,7 +1965,6 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
               </div>
             </> } : undefined)
         })}</ul>
-        {(platforms.length > 0 || region !== 'ALL') && <button type="button" className="secondary reports-payout-all" onClick={() => apply({ ...draft, ...applied, search, platforms: [], region: 'ALL' })}>Tümü</button>}
       </div>}
       <div className="rr reports-payout-filters">
         <RrFilterCard active={activeCount}><div className="rr-filters reports-payout-filterbar">
