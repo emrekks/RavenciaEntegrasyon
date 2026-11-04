@@ -366,19 +366,16 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard { height: 100%; min-height: 0; box-sizing: border-box; }
 
 /* Phones: the Entegrasyon Durumu head stacks, the title on one line and the status pill under it; a store card's
-   İncele link sits beside its name instead of on a row of its own. */
+   İncele link sits beside the Webhook heading (below). */
 @media (max-width: 760px) {
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-panel > .rr-panel-h:has(> .rr-hpill) { flex-direction: column; align-items: flex-start; gap: 10px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-panel > .rr-panel-h:has(> .rr-hpill) h2 { white-space: nowrap; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td:first-child { grid-row: 1; grid-column: 1 / 3; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act { grid-row: 1; grid-column: 3; align-self: start; text-align: right; }
 }
 
 /* Phones: a store card without İncele gives its name the whole first row, so every card starts its flows (Sipariş…) on
    the same row; the operation cards' notes fit one line (tighter side padding and note), and the background icons are
    fainter. */
 @media (max-width: 760px) {
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tr:has(> td.rr-mx-act:empty) > td:first-child { grid-column: 1 / -1; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard { padding-inline: 10px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x { margin-left: 4px; font-size: 10.5px; letter-spacing: -.1px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-sep { margin-inline: 2px; }
@@ -388,3 +385,11 @@ main .rr.rr-dashboard > * { min-width: 0; }
 /* The İptal card without partial cancels (rr-nodot) is not an alarm: only its figure is red, the card keeps the plain
    frame and background (the background icon keeps its tone). */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad.rr-nodot { border-color: var(--rr-line); background: var(--rr-surface); }
+
+/* Store cards (tablet and phone, three flows to a row): İncele sits at the right of the Webhook heading, in the
+   Webhook cell, instead of taking a row of its own; the store name keeps the whole first row. */
+@media (max-width: 1024px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td:first-child { grid-column: 1 / -1; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td[data-l="Webhook"] { grid-row: 4; grid-column: 1; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt td.rr-mx-act { grid-row: 4; grid-column: 1; justify-self: end; align-self: start; text-align: right; }
+}
