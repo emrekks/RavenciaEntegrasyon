@@ -210,4 +210,37 @@ public sealed class PayoutBuilderTests
         Assert.Equal((650m, 250m, Today.AddDays(1), 400m), (trendyol.Expected, trendyol.Unknown, trendyol.NextDay!.Value, trendyol.NextAmount!.Value));
         Assert.Equal((100m, Today.AddDays(3)), (view.Platforms[1].Expected, view.Platforms[1].NextDay!.Value));
     }
+
+    [Fact]
+    public void Hepsiburada_pays_on_tuesdays_its_total_record_is_the_payout_and_a_day_netting_to_nothing_is_no_next_payout()
+    {
+        var store = Guid.CreateVersion7();
+        var stores = new Dictionary<Guid, PayoutStore> { [store] = new(store, "HEPSIBURADA", "HB", false) };
+        PayoutRow Record(string id, string type, string status, decimal credit, decimal debt, DateOnly day) => new()
+        {
+            ConnectionId = store, PlatformCode = "HEPSIBURADA", Source = HepsiburadaFinanceSyncJobHandler.Source, ExternalId = id, RequestedType = "x", TransactionType = type,
+            TransactionSubType = status, Category = MarketplaceFinanceCategories.Sale, Credit = credit, Debt = debt, PaymentDate = Due(day)
+        };
+        PayoutRow[] rows =
+        [
+            // Thursday 12 Nov: a sale and its return net to nothing; Monday 16 Nov: a sale; Tuesday 17 Nov: invoices.
+            Record("s1", "Payment", "WillBePaid", 600m, 0m, new(2026, 11, 12)), Record("r1", "Return", "WillBePaid", 0m, 600m, new(2026, 11, 12)),
+            Record("s2", "Payment", "WillBePaid", 625m, 0m, new(2026, 11, 16)), Record("c1", "Commission", "WillBePaid", 0m, 125m, new(2026, 11, 17)),
+            // Tuesday 3 Nov, paid: two records and Hepsiburada's own total of them.
+            Record("p1", "Payment", "Paid", 1000m, 0m, new(2026, 11, 3)), Record("p2", "Commission", "Paid", 0m, 200m, new(2026, 11, 3)),
+            Record("t1", "TotalPayment", "Paid", 800m, 0m, new(2026, 11, 3))
+        ];
+        var view = PayoutBuilder.Build(rows, [], stores, Today, 90, []);
+        // Everything due 11-17 Nov is paid on Tuesday 17 Nov: one day, 500.
+        var day = Assert.Single(view.Upcoming);
+        Assert.Equal((new DateOnly(2026, 11, 17), 500m, "PAYOUT_DAY"), (day.Day, day.Amount, day.Kind));
+        Assert.Equal(500m, view.Expected);
+        // The total record is the payout's figure, not one more record.
+        var paid = Assert.Single(view.Past);
+        Assert.Equal((800m, 800m, "PAID_DAY"), (paid.Amount, paid.LinesAmount!.Value, paid.Kind));
+
+        // A day netting to nothing or less is no next payout.
+        PayoutRow[] nothing = [Record("s3", "Payment", "WillBePaid", 600m, 0m, new(2026, 11, 12)), Record("r3", "Return", "WillBePaid", 0m, 700m, new(2026, 11, 12))];
+        Assert.Null(PayoutBuilder.Build(nothing, [], stores, Today, 90, []).Next);
+    }
 }

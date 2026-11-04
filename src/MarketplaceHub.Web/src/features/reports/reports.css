@@ -808,7 +808,7 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
 /* A day: a framed box whose top strip names the day and its total; the rows one list inside it, divided by lines. */
 .app-shell.stitch-shell main .reports-page .reports-payout-days { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 .app-shell.stitch-shell main .reports-page .reports-payout-day { min-width: 0; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.app-shell.stitch-shell main .reports-page .reports-payout-day > header { display: flex; gap: 10px; align-items: center; min-height: 40px; padding: 6px 16px; color: var(--rv-color-muted); background: color-mix(in srgb, var(--rv-color-surface-raised) 70%, var(--rv-color-surface)); border-bottom: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-payout-day > header { display: flex; gap: 10px; align-items: center; min-height: 40px; padding: 6px 48px 6px 16px; color: var(--rv-color-muted); background: color-mix(in srgb, var(--rv-color-surface-raised) 70%, var(--rv-color-surface)); border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reports-page .reports-payout-day-name { display: inline-flex; gap: 6px; align-items: baseline; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-payout-day-name b { color: var(--rv-color-ink); font-size: 14px; font-weight: 600; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-payout-day-name small { color: var(--rv-color-subtle); font-size: 12px; white-space: nowrap; }
@@ -816,14 +816,17 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
 .app-shell.stitch-shell main .reports-page .reports-payout-day.is-next { border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border)); }
 .app-shell.stitch-shell main .reports-page .reports-payout-day.is-next > header { box-shadow: inset 3px 0 0 var(--rv-color-primary); background: color-mix(in srgb, var(--rv-color-primary) 8%, var(--rv-color-surface)); }
 .app-shell.stitch-shell main .reports-page .reports-payout-day.is-waiting > header { box-shadow: inset 3px 0 0 var(--rv-color-warning); }
+.app-shell.stitch-shell main .reports-page .reports-payout-day.is-deduction > header { box-shadow: inset 3px 0 0 var(--rv-color-muted); }
+/* The records' total row ends the table inside its card: a line above it, none below. */
+.app-shell.stitch-shell main .reports-page .reports-payout-lines tfoot :is(th, td) { border-bottom: 0; }
 .app-shell.stitch-shell main .reports-page .reports-payout-rows { display: grid; margin: 0; padding: 0; list-style: none; }
 .app-shell.stitch-shell main .reports-page .reports-payout-rows > li { min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-payout-rows > li + li { border-top: 1px solid var(--rv-color-border); }
-.app-shell.stitch-shell main .reports-page .reports-payout-row { display: grid; grid-template-columns: 140px minmax(0, 1fr) auto 16px; justify-content: stretch; gap: 16px; align-items: center; width: 100%; min-height: 0; margin: 0; padding: 12px 16px; color: var(--rv-color-ink); text-align: left; text-transform: none; background: transparent; border: 0; border-radius: 0; }
+.app-shell.stitch-shell main .reports-page .reports-payout-row { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(110px, auto) 16px; justify-content: stretch; gap: 16px; align-items: center; width: 100%; min-height: 0; margin: 0; padding: 12px 16px; color: var(--rv-color-ink); text-align: left; text-transform: none; background: transparent; border: 0; border-radius: 0; }
 .app-shell.stitch-shell main .reports-page .reports-payout-row:hover { background: color-mix(in srgb, var(--rv-color-surface-raised) 50%, transparent); }
 .app-shell.stitch-shell main .reports-page .reports-payout-row > svg { transition: transform 160ms ease; color: var(--rv-color-muted); }
 .app-shell.stitch-shell main .reports-page .reports-payout-rows > li.is-open .reports-payout-row > svg { transform: rotate(180deg); }
-.app-shell.stitch-shell main .reports-page .reports-payout-amount { font-size: 16px; font-variant-numeric: tabular-nums; text-align: left; }
+.app-shell.stitch-shell main .reports-page .reports-payout-amount { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
 .app-shell.stitch-shell main .reports-page .reports-payout-store { display: flex; gap: 8px; align-items: center; min-width: 0; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .reports-page .reports-payout-store > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-payout-state { display: flex; gap: 8px; align-items: center; min-width: 0; color: var(--rv-color-subtle); font-size: 12px; }
@@ -847,9 +850,12 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
 @media (max-width: 640px) {
   .app-shell.stitch-shell main .reports-page .reports-payout-regions > ul { grid-template-columns: minmax(0, 1fr); }
   .app-shell.stitch-shell main .reports-page .reports-payout-day > header { flex-wrap: wrap; }
-  /* A row becomes a small card: the amount and the open mark on top, the store and the state under them. */
-  .app-shell.stitch-shell main .reports-page .reports-payout-row { grid-template-columns: minmax(0, 1fr) 16px; gap: 6px 10px; }
-  .app-shell.stitch-shell main .reports-page .reports-payout-row > svg { grid-column: 2; grid-row: 1; }
+  /* A row becomes a small card: the store, the amount and the open mark on top, the state under the store. */
+  .app-shell.stitch-shell main .reports-page .reports-payout-row { grid-template-columns: minmax(0, 1fr) auto 16px; gap: 6px 10px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-day > header { padding-right: 16px; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-store { grid-column: 1; grid-row: 1; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-amount { grid-column: 2; grid-row: 1; }
+  .app-shell.stitch-shell main .reports-page .reports-payout-row > svg { grid-column: 3; grid-row: 1; }
   .app-shell.stitch-shell main .reports-page .reports-payout-store,
   .app-shell.stitch-shell main .reports-page .reports-payout-state { grid-column: 1; flex-wrap: wrap; }
   .app-shell.stitch-shell main .reports-page .reports-payout-state:empty { display: none; }
