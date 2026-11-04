@@ -59,11 +59,11 @@
 /* Menus and lists that open over the page grow from their trigger's corner (top left, or top right for a menu held to
    the right of its trigger) as they fade in; the rows of an action menu follow one another. Option lists (listbox)
    come in as one, so a list of hundreds does not start hundreds of animations. */
-:where([role="menu"], [role="listbox"], .rv-popover, .rr-menu, .rr-pop, .rv-view-tabs-menu, .order-column-filter-popover, .jobs-reference-range-menu, .qi-popover, .ss-pick-menu, .invoice-reference-actions-popover, .date-range-picker-popover) {
+:where([role="menu"], [role="listbox"], .rv-popover, .rr-menu, .rr-pop, .rv-view-tabs-menu, .order-column-filter-popover, .jobs-reference-range-menu, .qi-popover, .ss-pick-menu, .invoice-reference-actions-popover, .date-range-picker-popover, .platform-multi-select-menu) {
   animation: rv-motion-fade var(--rv-motion-menu) ease-out backwards, rv-motion-pop var(--rv-motion-menu) var(--rv-ease-menu) backwards;
   transform-origin: top left;
 }
-:where(.rr-pop.rr-right, .rr-actcell .rr-menu, .rr-vt-wrap > .rr-menu, .invoice-reference-actions-popover) { transform-origin: top right; }
+:where(.rr-pop.rr-right, .rr-actcell .rr-menu, .rr-vt-wrap > .rr-menu, .invoice-reference-actions-popover, .platform-multi-select-menu:not(.is-start)) { transform-origin: top right; }
 :where(.rr-bulk-menu > .rr-menu) { transform-origin: bottom right; }
 :where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"])) { animation: rv-motion-item var(--rv-motion-menu) var(--rv-ease-enter) backwards; }
 :where(:is([role="menu"], .rr-menu, .rv-view-tabs-menu) > :is(button, a, [role="menuitem"]):nth-child(2)) { animation-delay: calc(var(--rv-motion-item-stagger) * .5); }
