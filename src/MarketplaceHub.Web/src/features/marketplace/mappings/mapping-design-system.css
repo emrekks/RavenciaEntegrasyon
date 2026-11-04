@@ -887,3 +887,8 @@
 .app-shell.stitch-shell main .brand-mapping-inline-editor .searchable-select-trigger:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border-strong)); }
 .app-shell.stitch-shell main .brand-mapping-inline-editor .searchable-select-trigger[aria-expanded="true"] { color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 14%, transparent); }
 .app-shell.stitch-shell main .brand-mapping-inline-editor .searchable-select-trigger .ui-icon { color: var(--rv-color-muted); }
+
+/* The search field inside an open picker is one frame: the framed row holds the icon and a bare input (a page-wide
+   input rule gave the input its own border, radius and padding inside the row's frame). */
+html body .app-shell.stitch-shell main .searchable-select .searchable-select-search > input,
+html body .app-shell.stitch-shell main .searchable-select .searchable-select-search > input:focus { height: 34px; min-height: 0; padding: 0; background: transparent; border: 0; border-radius: 0; box-shadow: none; outline: 0; }
