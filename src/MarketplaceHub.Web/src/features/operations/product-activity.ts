@@ -136,7 +136,8 @@ export function activityTypeLabel(entry: ProductActivityEntry) {
   switch (entry.type) {
     case 'ORDER_RECEIVED': return entry.quantityDelta !== null && entry.quantityDelta > 0 ? 'Sipariş İptali / Değişikliği' : 'Satış'
     case 'ORDER_STOCK_SHORTFALL': return 'Stok Yetersiz'
-    case 'MANUAL_ADJUSTMENT': return 'Stok Düzenleme'
+    // The editor's first stock was a manual change before it became an opening row; it reads as one either way.
+    case 'MANUAL_ADJUSTMENT': return entry.note?.trim() === 'İlk ürün stoğu' ? 'Açılış Stoğu' : 'Stok Düzenleme'
     case 'MARKETPLACE_STOCK_IMPORT': return 'Pazaryeri Stoğu'
     case 'IMPORT_OPENING': return 'Açılış Stoğu'
     case 'RETURN_PASS': return 'İade Stoğa Eklendi'

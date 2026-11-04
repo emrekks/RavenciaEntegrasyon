@@ -169,7 +169,12 @@ public static class ProductActivityPolicy
         ProductActivityTypes.OrderReceived or ProductActivityTypes.OrderStockShortfall => ProductActivitySources.Order,
         ProductActivityTypes.ReturnPass => ProductActivitySources.Return,
         ProductActivityTypes.MarketplaceStockImport => ProductActivitySources.MarketplaceImport,
-        ProductActivityTypes.ImportOpening => sourceType == MarketplaceCatalogSourceType ? ProductActivitySources.MarketplaceImport : ProductActivitySources.ClassicImport,
+        ProductActivityTypes.ImportOpening => sourceType switch
+        {
+            MarketplaceCatalogSourceType => ProductActivitySources.MarketplaceImport,
+            OpeningStockLedger.EditorSourceType => ProductActivitySources.Editor,
+            _ => ProductActivitySources.ClassicImport
+        },
         _ => ReasonSource(reason)
     };
 
@@ -195,6 +200,38 @@ public static class ProductActivityPolicy
         FileImportReason => ProductActivitySources.FileImport,
         _ => ProductActivitySources.Manual
     };
+}
+
+// A variant's first stock is a stock move like any other: it is written as an opening row (IMPORT_OPENING, "Açılış
+// Stoğu") in the same save as the variant, whichever way the variant came in (the product editor here, the classic
+// import and the marketplace catalog import their own). It is not an on-hand movement for MarketplaceStockImportPolicy.
+public static class OpeningStockLedger
+{
+    // The product editor: a new card, a variant added to a card, a copied card.
+    public const string EditorSourceType = "PRODUCT_EDITOR";
+
+    // Null when there is no opening stock (0 is no movement).
+    public static StockLedgerEntry? FromEditor(Guid tenantId, Guid inventoryItemId, Guid variantId, decimal quantity, Guid? actorUserId, string correlationId, DateTimeOffset now)
+    {
+        if (quantity == 0) return null;
+        var eventId = $"editor-opening:{variantId:N}";
+        return new StockLedgerEntry
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = tenantId,
+            InventoryItemId = inventoryItemId,
+            MovementType = ProductActivityTypes.ImportOpening,
+            QuantityDelta = quantity,
+            SourceType = EditorSourceType,
+            SourceId = ProductActivityPolicy.NewProductStockReason,
+            SourceEventId = eventId,
+            IdempotencyKey = eventId,
+            OccurredAt = now.ToUniversalTime(),
+            RecordedAt = now.ToUniversalTime(),
+            ActorUserId = actorUserId,
+            CorrelationId = correlationId
+        };
+    }
 }
 
 // The activity list: newest first, at most Limit rows (default 50, max 100); After is the NextCursor of the previous page.

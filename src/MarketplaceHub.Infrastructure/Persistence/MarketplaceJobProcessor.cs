@@ -12389,6 +12389,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             lineStatuses[line.Id] = line.RawStatus;
         }
         await ReconcileReturnDecisionAsync(tenantId, claim.Id, target, remote.RawStatus, lineStatuses, now, cancellationToken);
+        // A "Stoğa Ekle" kept while the approval was unclear is applied once this read shows the lines approved, or
+        // dropped when it shows them rejected; committed with the read.
+        await ReturnPendingStock.SettleClaimAsync(db, tenantId, claim.Id, $"return-stock:{claim.Id:N}", now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
     }
 
@@ -12449,6 +12452,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var now = timeProvider.GetUtcNow();
         if (!await CancelledReturnClaimCleanup.RemoveOrRetainAsync(db, tenantId, claimId.Value, remote.RawStatus, remote.LastModifiedAt, now, cancellationToken)) return false;
         await ReconcileReturnDecisionAsync(tenantId, claimId.Value, ReturnClaimStatus.Cancelled, remote.RawStatus, new Dictionary<Guid, string?>(), now, cancellationToken);
+        await ReturnPendingStock.SettleClaimAsync(db, tenantId, claimId.Value, $"return-stock:{claimId.Value:N}", now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return true;
     }

@@ -5844,6 +5844,16 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("StockLinesJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset?>("StockSettledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("StockStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 

@@ -19,7 +19,11 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
 {
     private const string LikeEscape = "\\";
     internal const int MaximumSearchVariants = 1_000;
-    private const string UuidPattern = "'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'";
+    // SqlQueryRaw reads the SQL as a format string when it is given parameters, so a regex quantifier like {8} would
+    // be taken for a placeholder (FormatException): the patterns spell their character runs out instead.
+    private static string Run(string characterClass, int count) => string.Concat(Enumerable.Repeat(characterClass, count));
+    private static readonly string UuidPattern = $"'^{Run("[0-9a-fA-F]", 8)}-{Run("[0-9a-fA-F]", 4)}-{Run("[0-9a-fA-F]", 4)}-{Run("[0-9a-fA-F]", 4)}-{Run("[0-9a-fA-F]", 12)}$'";
+    private static readonly string OrderCorrelationPattern = $"'^order:{Run("[0-9a-f]", 32)}$'";
 
     public async Task<ServiceResult<PageResult<ProductActivityView>>> PageAsync(Guid tenantId, ProductActivityQuery request, CancellationToken cancellationToken)
     {
@@ -136,7 +140,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         if (kinds.Contains(ProductActivityKinds.Return)) ledgerTypes.AddRange(ProductActivityTypes.ReturnLedger);
         if (ledgerTypes.Count > 0)
         {
-            const string connection = $"""COALESCE(o."ConnectionId", c."ConnectionId", CASE WHEN e."SourceType" = 'MARKETPLACE_CATALOG' AND e."SourceId" ~ {UuidPattern} THEN e."SourceId"::uuid END)""";
+            var connection = $"""COALESCE(o."ConnectionId", c."ConnectionId", CASE WHEN e."SourceType" = 'MARKETPLACE_CATALOG' AND e."SourceId" ~ {UuidPattern} THEN e."SourceId"::uuid END)""";
             yield return new(
                 $"""
                 SELECT e."Id" AS "Id", e."OccurredAt" AS "OccurredAt", e."MovementType"::text AS "Type", i."VariantId" AS "VariantId", v."ProductId" AS "ProductId",
@@ -144,11 +148,11 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                     NULL::text AS "Currency", NULL::text AS "PreviousStatus", NULL::text AS "NewStatus", e."SourceType"::text AS "SourceType", e."SourceId"::text AS "Detail",
                     {connection} AS "ConnectionId", COALESCE(o."Id", c."OrderId") AS "OrderId", d."ClaimId" AS "ReturnId", e."ActorUserId" AS "ActorUserId"
                 """,
-                """
+                $"""
                 FROM inventory.stock_ledger_entries e
                 JOIN inventory.inventory_items i ON i."TenantId" = e."TenantId" AND i."Id" = e."InventoryItemId"
                 LEFT JOIN catalog.product_variants v ON v."TenantId" = i."TenantId" AND v."Id" = i."VariantId"
-                LEFT JOIN sales.orders o ON o."TenantId" = e."TenantId" AND o."Id" = (CASE WHEN e."CorrelationId" ~ '^order:[0-9a-f]{32}$' THEN substr(e."CorrelationId", 7)::uuid END)
+                LEFT JOIN sales.orders o ON o."TenantId" = e."TenantId" AND o."Id" = (CASE WHEN e."CorrelationId" ~ {OrderCorrelationPattern} THEN substr(e."CorrelationId", 7)::uuid END)
                 LEFT JOIN sales.return_stock_dispositions d ON e."MovementType" = 'RETURN_PASS' AND d."TenantId" = e."TenantId" AND d."IdempotencyKey" = e."IdempotencyKey"
                 LEFT JOIN sales.return_claims c ON c."TenantId" = d."TenantId" AND c."Id" = d."ClaimId"
                 """,

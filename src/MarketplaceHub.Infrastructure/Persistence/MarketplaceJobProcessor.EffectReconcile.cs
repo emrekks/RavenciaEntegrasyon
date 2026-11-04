@@ -57,7 +57,8 @@ public sealed partial class MarketplaceJobProcessor
                 return JobExecutionResult.Success();
             case ExternalEffectOutcome.NotApplied:
                 db.ExternalEffectRecords.Remove(effect);
-                if (decision is not null) { decision.Status = "FAILED"; decision.ErrorCode = "EXTERNAL_EFFECT_NOT_APPLIED"; decision.CompletedAt = now; }
+                // The approval did not reach the marketplace: its "Stoğa Ekle" goes with it, no stock.
+                if (decision is not null) { decision.Status = "FAILED"; decision.ErrorCode = "EXTERNAL_EFFECT_NOT_APPLIED"; decision.CompletedAt = now; ReturnPendingStock.Drop(decision, now); }
                 await RecordIssue(tenantId, $"external-effect:{effect.Id}", "EXTERNAL_EFFECT_NOT_APPLIED",
                     "Pazaryerine gönderilen işlem uygulanmamış görünüyor; panelden yeniden deneyebilirsiniz.", cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
