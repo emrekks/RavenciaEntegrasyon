@@ -207,7 +207,6 @@
 .ss-page .ss-dr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .ss-page .ss-dr-chip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; color: var(--rv-color-ink); background: var(--rv-color-primary-soft); border: 1px solid var(--ss-violet-line); border-radius: 99px; font-size: 12px; font-weight: 500; white-space: nowrap; }
 .ss-page .ss-dr-chip b { color: var(--rv-color-muted); font-weight: 500; font-variant-numeric: tabular-nums; }
-.ss-page .ss-dr-empty { color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .ss-page .ss-in.ss-dr-in { width: 200px; }
 .app-shell.stitch-shell main .ss-page .ss-in.ss-dr-in.is-match { border-color: var(--rv-color-accent); }
 /* The reset button stays red while locked, only fainter. */

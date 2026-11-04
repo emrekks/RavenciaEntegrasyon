@@ -213,9 +213,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, con
     <div className="ss-bar ss-dr-bar">
       <div className="ss-dr-sum" role="status">
         <div className="ss-dr-sum-head"><strong>Silinecekler</strong><span className="ss-dr-total">Toplam <b>{going.length && !known ? '…' : `${resetNumber(total)} kayıt`}</b></span></div>
-        <div className="ss-dr-chips">{going.length
-          ? going.map(option => <span key={option.scope} className="ss-dr-chip">{option.label}{counts?.[option.scope] !== undefined ? <b>{resetNumber(counts[option.scope])}</b> : null}</span>)
-          : <span className="ss-dr-empty">Henüz seçim yok; yukarıdan silinecek veri türünü işaretleyin.</span>}</div>
+        {going.length > 0 && <div className="ss-dr-chips">{going.map(option => <span key={option.scope} className="ss-dr-chip">{option.label}{counts?.[option.scope] !== undefined ? <b>{resetNumber(counts[option.scope])}</b> : null}</span>)}</div>}
       </div>
       <div className="ss-bar-actions">
         <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={`${resetConfirmWord} yazın`} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
