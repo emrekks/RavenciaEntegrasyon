@@ -6663,7 +6663,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 /* PC: the option groups (Beden, Renk) first, the create-variants panel under them, the sync button at the top right. */
 @media (min-width: 761px) {
   .product-options-card > .product-options-header { order: 0; padding-right: 160px; }
-  .product-options-card > .attribute-variant-action { order: 2; }
+  .app-shell.stitch-shell main .product-options-card > .attribute-variant-action { order: 2; margin: 12px 0 8px; }
   .product-options-card > .product-variant-groups-section { order: 3; }
   .product-options-card > .product-options-toolbar { position: absolute; top: var(--product-card-padding, 20px); right: var(--product-card-padding, 20px); margin: 0; order: 0; }
 }

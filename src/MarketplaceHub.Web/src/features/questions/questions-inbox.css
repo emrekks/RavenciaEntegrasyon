@@ -44,6 +44,9 @@
 .app-shell.stitch-shell main .qi-page .qi-search { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 36px; padding: 0 12px; color: var(--rv-color-muted); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 0; }
 .app-shell.stitch-shell main .qi-page .qi-search:focus-within { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
 .app-shell.stitch-shell main .qi-page .qi-search input { flex: 1; min-width: 0; height: 100%; min-height: 0; padding: 0; color: var(--rv-color-ink); background: none; border: 0; box-shadow: none; font-size: 14px; outline: none; }
+/* The search is one field: the input inside never draws its own hover or focus frame; the label frame answers both. */
+.app-shell.stitch-shell main .qi-page .qi-search input:is(:hover, :focus, :focus-visible) { background: none; border: 0; box-shadow: none; outline: none; }
+.app-shell.stitch-shell main .qi-page .qi-search:hover:not(:focus-within) { border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border-strong)); }
 .qi-page .qi-filter, .qi-page .qi-status { position: relative; }
 .app-shell.stitch-shell main .qi-page :is(.qi-filter-btn, .qi-status-btn) { display: inline-flex; align-items: center; gap: 8px; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .qi-page :is(.qi-filter-btn, .qi-status-btn):hover { background: var(--rv-hover, var(--rv-color-surface-soft)); }

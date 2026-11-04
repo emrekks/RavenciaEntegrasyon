@@ -825,7 +825,7 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
                   {/* The card's headline is its band limit; the price the row would get stays in the badge's breakdown. */}
                   <strong title={bandLimitHint([band])}>{bandLimitText([band]) ?? money(choice.price)}</strong>
                   {partner ? weekLines([row], tier, `${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`) : <>
-                    <span>{rateText(choice.rate)} komisyon · {money(choice.commission)}</span>
+                    <span>{rateText(choice.rate)} komisyon</span>
                     <ProfitBadge price={choice} title={`${row.productName ?? row.barcode}${row.size ? ` · ${row.size}` : ''}`} tag={`${tier}. Fiyat Aralığı`} missing={row.costPrice ? 'Kâr hesaplanamadı' : 'Maliyet girilmemiş'} />
                   </>}
                   <button type="button" className="commission-switch" aria-pressed={picked} onClick={() => toggle(row, tier, picked)}><span />{picked ? 'Seçili' : 'Seç'}</button>

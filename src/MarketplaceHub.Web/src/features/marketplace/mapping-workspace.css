@@ -532,7 +532,7 @@
 /* The category search keeps its text clear of the magnifier button inside it. */
 .app-shell.stitch-shell main section.mapping-page .category-library-search-control > input { padding-right: 38px !important; }
 /* The magnifier is a 30px icon button inside the 36px field (the global button min-height stretched it to 44px). */
-.app-shell.stitch-shell main section.mapping-page .category-library-search-control > .category-library-search-toggle { min-height: 30px; }
+.app-shell.stitch-shell main section.mapping-page .category-library-search-control > .category-library-search-toggle { top: 50%; right: 6px; width: 30px; min-width: 0; height: 30px; min-height: 0; padding: 0; place-items: center; transform: translateY(-50%); }
 /* Attribute mapping page: its scope fields are 36px under 12px muted captions like every other field on the mapping
    pages (they were 43px fields under 16px ink captions). */
 .app-shell.stitch-shell main section.mapping-page .mapping-step > .mapping-fields > label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }

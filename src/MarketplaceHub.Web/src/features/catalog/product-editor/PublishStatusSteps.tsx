@@ -29,7 +29,7 @@ export function PublishStatusSteps({ steps, fit, unit = 'varyant' }: { steps: Pu
         </span>
       </span>)}
     </span>
-    {chips.length ? <span className="publish-steps-label publish-steps-chips" aria-hidden="true">{chips.map(badge => <b key={badge.tone} className={`publish-steps-chip is-${badge.tone}`}>{badge.chip}</b>)}</span>
+    {chips.length ? <span className="publish-steps-label publish-steps-chips" aria-hidden="true">{chips.map(badge => <b key={badge.tone} className={`publish-steps-chip is-${badge.tone}`}>{badge.text}<span className="publish-steps-chip-word">{badge.chip.slice(badge.text.length)}</span></b>)}</span>
       : <span className={`publish-steps-label publish-steps-word is-${steps.steps.includes('fail') ? 'fail' : steps.steps.includes('now') ? 'now' : steps.steps.every(state => state === 'idle') ? 'idle' : 'ok'}`} aria-hidden="true">{steps.label}</span>}
   </span>
 }

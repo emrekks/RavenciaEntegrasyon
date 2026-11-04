@@ -24,7 +24,6 @@ const PriceStockMonitorPanel = lazy(() => import('../marketplace/integrations/Pr
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Faturam' : marketplacePlatformLabel(code)
-import { JobQueueMetrics } from './JobQueueMetrics'
 import './jobs-responsive.css'
 import './jobs-sade.css'
 import { viewTabLabel } from '../../shared/view-tabs'
@@ -582,7 +581,6 @@ export function JobsPage({ me }: { me: Me }) {
       </div>}
     </div>
     <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İş Takibi') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
-    {!listHidden && <JobQueueMetrics hours={timeRange === '24h' ? 24 : 168} titleFor={jobType => `${jobTitle(jobType)} · ${jobPresentation(jobType).action}`} platform={platform} />}
     <div className="jobs-reference-canvas">
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
       {mainTab === 'logs' ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
