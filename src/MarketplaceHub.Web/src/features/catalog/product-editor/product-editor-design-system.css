@@ -957,7 +957,9 @@
 .publication-job-status.is-danger { color: var(--rv-color-danger); background: var(--rv-color-danger-soft, color-mix(in srgb, var(--rv-color-danger) 10%, var(--rv-color-surface))); }
 .publication-job-status.is-warning { color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 12%, var(--rv-color-surface)); }
 .publication-job-status.is-neutral { color: var(--rv-color-muted); background: var(--rv-color-surface-soft); }
-.publication-job-body { display: grid; gap: 14px; min-height: 0; padding: 20px 24px; overflow: auto; }
+/* Every block keeps its full height and the body scrolls: with the variant table filling the window, auto rows let the
+   clipped facts box (overflow hidden, so no content minimum) shrink to a sliver. */
+.publication-job-body { display: grid; grid-auto-rows: max-content; align-content: start; gap: 14px; min-height: 0; padding: 20px 24px; overflow: auto; }
 .publication-job-note { margin: 0; color: var(--rv-color-muted); }
 .publication-job-error { display: flex; gap: 10px; padding: 12px 14px; border-radius: 12px; color: var(--rv-color-danger); background: var(--rv-color-danger-soft, color-mix(in srgb, var(--rv-color-danger) 8%, var(--rv-color-surface))); border: 1px solid color-mix(in srgb, var(--rv-color-danger) 30%, transparent); }
 .publication-job-error > div { display: grid; gap: 2px; min-width: 0; }

@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { copyText } from '../../../shared/copy-text'
 
-export type JobVariantResult = { barcode: string | null; stockCode: string | null; options: string | null; status: string; reason: string | null }
+export type JobVariantResult = { barcode: string | null; stockCode: string | null; options: string | null; status: string; reason: string | null; at?: string | null }
+
+// The status pill's hover: when the marketplace gave this answer ("03.11.2026 01:50"); none when the time is not known.
+export const variantResultTime = (item: JobVariantResult) => item.at ? new Date(item.at).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : undefined
 export type JobVariantResults = { source: 'RECORDED' | 'CARD_STATE' | 'NONE' | string; items: JobVariantResult[] }
 
 const statusLabels: Record<string, string> = { SENT: 'Gönderildi', APPROVED: 'Onaylandı', REJECTED: 'Reddedildi', NOT_SENT: 'Gönderilmedi', PENDING: 'Bekliyor' }
@@ -63,7 +66,7 @@ export function PublicationJobVariants({ results, approvalCheck }: { results: Jo
           <td>{item.barcode ?? '—'}</td>
           <td>{item.stockCode ?? '—'}</td>
           <td>{item.options ?? '—'}</td>
-          <td><span className={`publication-job-variant-status is-${statusTones[item.status] ?? 'info'}`}>{variantResultLabel(item.status)}</span></td>
+          <td><span className={`publication-job-variant-status is-${statusTones[item.status] ?? 'info'}`} title={variantResultTime(item)}>{variantResultLabel(item.status)}</span></td>
           <td className="publication-job-variant-reason">{variantResultReason(item) ?? '—'}</td>
         </tr>)}</tbody>
       </table>
