@@ -1966,8 +1966,9 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
                   <header>
                     <UiIcon name="calendar" size={16} />
                     <span className="reports-payout-day-name"><b>{shortDay(item.day, false)} {shortDay(item.day).split(' ').at(-1)}</b><small>{year}</small></span>
-                    {next && <em className="reports-payout-chip is-next">Sıradaki Ödeme</em>}
-                    <em className={`reports-payout-chip ${stateTone}`}>{stateLabel}</em>
+                    {/* The chips in one box, so on a phone they can drop under the day while the total stays beside it. */}
+                    <span className="reports-payout-day-chips">{next && <em className="reports-payout-chip is-next">Sıradaki<span className="reports-payout-chip-more"> Ödeme</span></em>}
+                      <em className={`reports-payout-chip ${stateTone}`}>{stateLabel}</em></span>
                     <strong>{formatTl(item.total)}</strong>
                   </header>
                   <ul className="reports-payout-rows">{item.groups.map(row)}</ul>
