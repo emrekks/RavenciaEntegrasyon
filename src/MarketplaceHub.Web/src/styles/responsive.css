@@ -414,3 +414,9 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
   html body .app-shell.stitch-shell main .jobs-reference-status-summary::-webkit-scrollbar { display: none; }
   html body .app-shell.stitch-shell main .jobs-reference-status-summary > * { flex: 0 0 auto; white-space: nowrap; }
 }
+
+/* Phones: the top bar's buttons (menu, notifications, theme, search) are 38px, their icons in proportion. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell .rv-topbar :is(.rv-topbar-notification-trigger, .rv-icon-button, .rv-topbar-actions > button, .rv-topbar-actions > * > button) { width: 38px; height: 38px; min-width: 0; min-height: 0; padding: 0; }
+  html body .app-shell.stitch-shell .rv-topbar :is(.rv-topbar-notification-trigger, .rv-icon-button, .rv-topbar-actions button) .ui-icon { width: 17px; height: 17px; }
+}

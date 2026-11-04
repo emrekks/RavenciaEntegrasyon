@@ -288,3 +288,11 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .rr.rr-orders .rr-tbl tbody tr > td.rr-wide:has(> .rr-plines) { margin-top: -10px; }
 }
+/* Phones, order details: the footer bar joins the last card as the page bars do: inset to the cards' width with their
+   frame, square on top (its top rule is the divider) and rounded at the bottom; the card above it goes square at the
+   bottom and meets it. */
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-b { padding-bottom: 0; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-b > :last-child { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f { margin: 0 12px calc(12px + env(safe-area-inset-bottom)); padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 0 0 14px 14px; }
+}

@@ -104,3 +104,10 @@
   :root body :is(.rr-overlay, .workspace-modal-backdrop:not(.image-lightbox-backdrop), .invoice-detail-backdrop, .panel-attribute-modal, .missing-value-mapping-backdrop, .brand-mapping-modal-backdrop, .integration-modal-backdrop) { padding-top: max(24px, calc(var(--m-safe-top) + 12px)) !important; padding-bottom: max(24px, calc(var(--m-safe-bottom) + 12px)) !important; }
   :root body :is(.integration-settings-modal, .job-detail-drawer, .rv-drawer) { padding-top: var(--m-safe-top) !important; padding-bottom: var(--m-safe-bottom) !important; }
 }
+
+/* Phones: a centred window never runs past the visible screen (100dvh, which leaves out Safari's own bars, where 100vh
+   did not): its body scrolls and a picture in it fits the space, whole, instead of being cut at the top and bottom. */
+@media (max-width: 760px) {
+  :root body :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop > .workspace-modal, .invoice-detail-backdrop > .workspace-modal, .panel-attribute-modal > .panel-attribute-modal-card) { max-height: calc(100dvh - 48px - var(--m-safe-top) - var(--m-safe-bottom)) !important; }
+  :root body :is(.rr-overlay > .rr-modal, .workspace-modal-backdrop > .workspace-modal) img:not(.rr-logo):not([class*="logo"]):not(.rv-view-tab-logo) { max-height: calc(100dvh - 260px); object-fit: contain; }
+}
