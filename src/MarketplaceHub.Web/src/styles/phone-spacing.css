@@ -134,3 +134,9 @@
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main section.mapping-page > .mapping-reference-heading { padding-bottom: 0; border-bottom: 0; }
 }
+/* Phones: the top bar sits above the page's own raised blocks (the lists' filter and search block is z-index 80 too,
+   so the bar slid in under it and looked crushed, owner 5 Nov 2026) and is opaque, so nothing shows through it while it
+   slides. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell .rv-topbar { z-index: 85; background: var(--rv-color-surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
