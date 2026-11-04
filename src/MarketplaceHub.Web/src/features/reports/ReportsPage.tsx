@@ -473,7 +473,7 @@ const kpiIcon = (item: Kpi): CardIconName => item.icon ?? kpiIcons.find(([patter
 // The explanation of the figure under the pointer (or the focus) opens as a card under the strip, level with its cell
 // and kept inside the strip's width; each cell keeps its explanation as text for screen readers too.
 // marks: each label carries the round question mark and the explanation opens from the label only (Hakediş).
-function KpiStrip({ label, items, marks = false }: { label: string; items: Kpi[]; marks?: boolean }) {
+function KpiStrip({ label, items, marks = true }: { label: string; items: Kpi[]; marks?: boolean }) {
   const [ref, shown] = useReveal<HTMLDivElement>()
   const tip = useId()
   const [open, setOpen] = useState<{ key: string; left: number; top: number; width: number } | null>(null)

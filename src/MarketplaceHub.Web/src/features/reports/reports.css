@@ -918,9 +918,9 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
 
 /* Phones: the period presets are one row that scrolls sideways (no scrollbar) instead of wrapping onto three. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .reports-page .reports-segmented[aria-label="Hazır dönemler"] { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-  .app-shell.stitch-shell main .reports-page .reports-segmented[aria-label="Hazır dönemler"]::-webkit-scrollbar { display: none; }
-  .app-shell.stitch-shell main .reports-page .reports-segmented[aria-label="Hazır dönemler"] > button { flex: 0 0 auto; white-space: nowrap; }
+  .app-shell.stitch-shell main .reports-page .reports-segmented { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .app-shell.stitch-shell main .reports-page .reports-segmented::-webkit-scrollbar { display: none; }
+  .app-shell.stitch-shell main .reports-page .reports-segmented > button { flex: 0 0 auto; white-space: nowrap; }
 }
 /* Trendyol's regions: a small Bölgeler button in its card's corner, a list that opens under the card (on hover with a
    mouse, on a tap of the button on touch screens); each row a region's balance, next payout and overdue part. */
@@ -961,4 +961,10 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-period-row > :is(.reports-period-custom, .reports-period-platforms) :is(.date-range-picker, .platform-multi-select-field, .platform-multi-select, .date-range-picker-trigger, .platform-multi-select-trigger) { width: 100%; min-width: 0; }
   .app-shell.stitch-shell main .reports-page .reports-period-row .date-range-picker-trigger { gap: 6px; padding: 0 10px; font-size: 12.5px; }
   .app-shell.stitch-shell main .reports-page .reports-kpis .reports-kpi-note { overflow: hidden; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+}
+/* Phones: a panel's side padding is 16px, so a table that scrolls sideways bleeds to its edge by 16px, not the desktop's
+   22px (which ran 6px past the card); every segmented control scrolls sideways in one row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reports-page .reports-table-wrap { margin-inline: -16px; padding-inline: 16px; }
+  .app-shell.stitch-shell main .reports-page .reports-segmented > button { flex: 0 0 auto; }
 }
