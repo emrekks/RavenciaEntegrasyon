@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { optionText, orderProfitQuery, stateText, unknownProfit, type OrderProfit, type OrderProfitPage } from './OrderProfitability'
+import { optionText, orderProfitQuery, stateText, unknownProfit, type OrderProfit } from './OrderProfitability'
 
-const page = (totals: Partial<OrderProfitPage>): OrderProfitPage => ({ items: [], totalCount: 100, page: 0, pageSize: 50, amount: 10_000, profit: 1_000, missingCost: 0,
-  profitAmount: 10_000, profitOrders: 100, margin: 10, missingCargo: 0, ...totals })
 
 describe('order profitability', () => {
   it('asks for the report\'s period and platforms, the search, the order and the page', () => {
