@@ -32,15 +32,6 @@ export const stateText: Record<OrderProfit['state'], string | null> = { SOLD: nu
 // Why an order's profit is unknown: a line without a product cost, or a cargo that could not be estimated.
 export const unknownProfit = (order: OrderProfit) => order.cost === null ? 'Maliyet eksik' : 'Kargo bilinmiyor'
 
-// The summary's note when some orders' profit is unknown: the profit and the margin are theirs only, not the period's.
-export function profitScope(page: OrderProfitPage) {
-  if (page.profitOrders >= page.totalCount) return null
-  const left = [page.missingCost > 0 && `maliyeti eksik ${count(page.missingCost)}`, page.missingCargo > 0 && `kargosu bilinmeyen ${count(page.missingCargo)}`]
-    .filter(Boolean).join(', ')
-  return page.profitOrders === 0
-    ? `Hiçbir siparişin kârı bilinmiyor (${left} sipariş); Kâr ve Kâr Marjı hesaplanamadı.`
-    : `Kâr ve Kâr Marjı yalnız kârı bilinen ${count(page.profitOrders)} / ${count(page.totalCount)} siparişten (${money(page.profitAmount)} tutar) hesaplandı; ${left} sipariş dışarıda.`
-}
 
 // The query of a page: the period and platforms of the report, the search, the order and the page.
 export function orderProfitQuery(filters: { from: string; to: string; platforms: string[] | null; search: string; sort: Sort; descending: boolean; page: number }) {
@@ -95,7 +86,6 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
       {data.missingCost > 0 && <div className="is-warn"><dt>Maliyeti Eksik</dt><dd>{count(data.missingCost)} sipariş</dd></div>}
       {data.missingCargo > 0 && <div className="is-warn"><dt>Kargosu Bilinmeyen</dt><dd>{count(data.missingCargo)} sipariş</dd></div>}
     </dl>}
-    {data && profitScope(data) && <p className="reports-order-scope" role="note">{profitScope(data)}</p>}
     {result.isLoading && <Busy />}
     {result.isError && <ErrorBox error={result.error} onRetry={() => void result.refetch()} />}
     {data && data.items.length === 0 && <p className="reports-empty">Bu dönemde sipariş yok.</p>}

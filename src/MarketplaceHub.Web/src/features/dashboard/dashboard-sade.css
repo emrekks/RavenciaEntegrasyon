@@ -224,6 +224,7 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc.rr-on::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--rr-primary); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > small { color: var(--rr-muted); font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > strong { font-size: 24px; font-weight: 600; line-height: 1.25; }
+/* The performance cells carry a range bar along their bottom: their icon sits higher, over the figures, clear of the bar. */:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc > .rv-card-bg > svg { top: 38%; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-avg { margin-top: 2px; color: var(--rr-muted); font-size: 12.5px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-kc .rr-avg b { color: var(--rr-ink); font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-krange { display: grid; gap: 4px; }

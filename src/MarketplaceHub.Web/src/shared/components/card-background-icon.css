@@ -8,10 +8,10 @@
 .rv-card-bg[data-tone="bad"] { color: var(--rv-color-danger); }
 .rv-card-bg[data-tone="ok"] { color: var(--rv-color-accent); }
 .rv-card-bg[data-tone="info"] { color: var(--rv-color-info); }
-.rv-card-bg > svg { position: absolute; top: 50%; right: -14px; width: var(--rv-card-bg-size, 118px); height: var(--rv-card-bg-size, 118px); opacity: .2; transform: translateY(-50%) rotate(-12deg); -webkit-mask-image: linear-gradient(90deg, transparent, #000 60%); mask-image: linear-gradient(90deg, transparent, #000 60%); }
+.rv-card-bg > svg { position: absolute; top: 50%; right: -8px; width: var(--rv-card-bg-size, 124px); height: var(--rv-card-bg-size, 124px); opacity: .2; transform: translateY(-50%) rotate(-12deg); -webkit-mask-image: linear-gradient(90deg, transparent, #000 60%); mask-image: linear-gradient(90deg, transparent, #000 60%); }
 /* Everything else in the card sits above the icon; a card's own positioned parts (tooltips) keep their rules. */
 .rv-card-bg ~ * { position: relative; z-index: 1; }
 /* Small cards: a smaller icon, so it never reaches the figure. */
 @media (max-width: 760px) {
-  .rv-card-bg > svg { right: -10px; width: min(var(--rv-card-bg-size, 118px), 88px); height: min(var(--rv-card-bg-size, 118px), 88px); opacity: .16; }
+  .rv-card-bg > svg { right: -6px; width: min(var(--rv-card-bg-size, 124px), 90px); height: min(var(--rv-card-bg-size, 124px), 90px); opacity: .16; }
 }
