@@ -98,13 +98,11 @@ describe('Kategoriler Arasında Farklı Değer', () => {
     expect(chip('Rahat').querySelector('.mc-choice-check')).toBeNull()
     expect(button('Hepsinde Bunu Kullan')!.disabled).toBe(false)
     expect(button('Hepsinde Bunu Kullan')!.classList.contains('secondary')).toBe(false)
-    expect(document.querySelector('.mc-choice-preview')?.textContent).toBe('1 kategoride Rahat → Relaxed olacak; yeni kategoriler için şablon olur.')
 
     // arrow keys move the choice like a radio group
     await act(async () => { chip('Relaxed').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })) })
     expect(chip('Relaxed').getAttribute('aria-checked')).toBe('false')
     expect(chip('Rahat').getAttribute('aria-checked')).toBe('true')
-    expect(document.querySelector('.mc-choice-preview')?.textContent).toBe('1 kategoride Relaxed → Rahat olacak.')
   })
 
   it('previews what changes and writes nothing when the confirm is cancelled', async () => {
@@ -173,7 +171,6 @@ describe('Kategoriler Arasında Farklı Değer', () => {
     await renderPanel()
     // a category holding both values still changes: the other value goes
     await act(async () => { chip('Relaxed').click() })
-    expect(document.querySelector('.mc-choice-preview')?.textContent).toBe('1 kategoride Rahat → Relaxed olacak; yeni kategoriler için şablon olur.')
     await act(async () => { button('Hepsinde Bunu Kullan')!.click() })
     await settle()
     await act(async () => { confirmButton().click() })

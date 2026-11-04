@@ -62,17 +62,6 @@ export function scopesNeedingValueList(conflict: Conflict, chosenExternalId: str
   return [...new Set(conflict.options.filter(option => option.externalId !== chosenExternalId).flatMap(option => option.scopes ?? []).map(scope => scope.scopeExternalId))].filter(scope => !holding.has(scope))
 }
 
-// The line under a row once a value is picked: "1 kategoride Rahat → Relaxed olacak". Each category's value list is
-// checked only when the change is asked for, so a category that does not offer the value is named in the confirm.
-export function choicePreview(conflict: Conflict, chosenExternalId: string, chosenName: string) {
-  // Every category holding another value changes, also one that holds the chosen value beside it (the other goes).
-  const others = conflict.options.filter(option => option.externalId !== chosenExternalId)
-  const changing = new Set(others.flatMap(option => option.scopes ?? []).map(scope => scope.scopeExternalId)).size
-  const from = others.map(option => option.name).join(', ')
-  const template = conflict.templateExternalId === chosenExternalId ? '' : `; yeni kategoriler için şablon olur`
-  return changing ? `${changing} kategoride ${from} → ${chosenName} olacak${template}.` : `Kategorilerde değer değişmez${template}.`
-}
-
 export const changeLine = (target: UnifyTarget, chosenName: string) => `${target.categoryName}: ${target.remove.map(item => item.name).join(', ')} → ${chosenName}`
 
 // "Relaxed: 1 kategoride Rahat → Relaxed"

@@ -50,7 +50,11 @@
   width: 32px; height: 32px; min-width: 0; min-height: 0; place-items: center; margin: 0; padding: 0; color: var(--rv-color-muted);
   background: transparent; border: 0; border-radius: 7px; box-shadow: none; transform: translateY(-50%); cursor: pointer;
 }
-.app-shell.stitch-shell main .publish-platform-card-refresh:hover:not(:disabled), .publish-platform-card-refresh:hover:not(:disabled) { color: var(--rv-color-primary-text); background: var(--rv-color-primary-soft); border: 0; }
+/* No box behind the icon: hovering turns it in the primary colour. */
+.publish-platform-card-refresh > svg { transition: transform .45s cubic-bezier(.3, 1.4, .5, 1); }
+.app-shell.stitch-shell main .publish-platform-card-refresh:hover:not(:disabled), .publish-platform-card-refresh:hover:not(:disabled) { color: var(--rv-color-primary); background: transparent; border: 0; }
+.publish-platform-card-refresh:hover:not(:disabled):not(.is-busy) > svg { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .publish-platform-card-refresh > svg { transition: none; } }
 .publish-platform-card-refresh:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
 .app-shell.stitch-shell main .publish-platform-card-refresh:disabled, .publish-platform-card-refresh:disabled { cursor: not-allowed; opacity: .45; }
 .app-shell.stitch-shell main .publish-platform-card-refresh.is-busy:disabled, .publish-platform-card-refresh.is-busy:disabled { cursor: progress; opacity: 1; }

@@ -28,7 +28,7 @@
    next column; another rule had turned the line's clipping off. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small { white-space: normal; overflow-wrap: anywhere; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-thumb { width: 48px; height: 72px; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover { position: relative; display: inline-block; outline: none; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover { position: relative; display: inline-block; outline: none; cursor: pointer; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell { display: grid; justify-items: center; gap: 1px; cursor: default; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell b { font-weight: 500; text-decoration: underline dotted; text-underline-offset: 3px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell small { color: var(--rr-subtle); font-size: 12px; }

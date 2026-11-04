@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { useConfirmDialog } from '../../shared/components'
 import { mappingSaveErrorMessage } from './mappings/mapping-refresh'
-import { changeLine, choicePreview, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type Conflicts, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
+import { changeLine, crossConflictAttribute, crossConflictKey, planUnify, scopeAttribute, scopeCategory, scopesNeedingValueList, unifySummary, type Conflict, type ConflictOption, type Conflicts, type UnifyTarget, type ValueList } from './mapping-conflict-unify'
 import './mapping-conflicts-panel.css'
 
 // Value mappings worth a look: a panel value mapped to several marketplace values in one category
@@ -220,7 +220,6 @@ export function MappingConflictsPanel({ connectionId, platformLabel, onNotice, e
                 title={selectedName ? `Bütün kategorilerde “${selectedName}” kullanılsın` : 'Önce bir değer seçin'}>
                 {busyKey === rowKey ? 'Kaydediliyor…' : 'Hepsinde Bunu Kullan'}
               </button>
-              {selectedName && <p className="mc-choice-preview" aria-live="polite">{choicePreview(conflict, selected, selectedName)}</p>}
             </li>
           })}
         </ul>
