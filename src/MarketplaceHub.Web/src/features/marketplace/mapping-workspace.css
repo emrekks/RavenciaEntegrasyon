@@ -633,3 +633,37 @@
   .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card .mapping-section-heading h2 { gap: 8px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-section-heading h2 > .title-hint { margin-left: -2px; }
 }
+
+/* The target label's "i": the size and age of the platform's list sit behind it (tap on a phone) instead of in a line
+   under the card, so the footer holds only the save button(s). */
+.app-shell.stitch-shell main section.mapping-page .mapping-label-line { display: inline-flex; align-items: center; min-width: 0; line-height: 18px; }
+.app-shell.stitch-shell main section.mapping-page .mapping-category-builder > footer { justify-content: flex-end; }
+.app-shell.stitch-shell main section.mapping-page .brand-reference-action { justify-content: flex-end; }
+
+/* Phones: the panel category list uses its whole width (no scrollbar gutter or right padding; it still scrolls five
+   rows by touch), and the search row keeps "24 sonuç" whole: flexible search, a compact A–Z, the count on one line. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list { padding-right: 0; scrollbar-width: none; scrollbar-gutter: auto; -ms-overflow-style: none; }
+  .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-local-manager-dialog-standalone .category-library-tools { grid-template-columns: minmax(0, 1fr) 72px auto; gap: 6px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-local-manager-dialog-standalone .category-library-tools > select { min-width: 0; padding-inline: 8px 22px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-local-manager-dialog-standalone .category-library-tools > span { min-width: 0; white-space: nowrap; }
+}
+
+/* Phones: the saved category mapping card. Row 1: name left, state right. Row 2: the platform path, muted, wrapping.
+   Row 3: platform logo and name small on the left; the compact "Kategori Özellikleri" and delete buttons on the right,
+   both 36px, on one line. The tab strip, search and A–Z share the 36px height. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "panel status" "target target" "platform actions"; gap: 8px 10px; padding: 12px; border-radius: 12px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody tr > td:nth-child(1) { grid-area: panel; align-self: center; font-weight: 700; overflow-wrap: anywhere; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody tr > td:nth-child(3) { grid-area: target; align-items: flex-start; overflow-wrap: anywhere; line-height: 1.4; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody tr > td:nth-child(4) { grid-area: status; justify-self: end; align-self: center; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody tr > td:nth-child(2) { grid-area: platform; align-self: center; color: var(--rv-color-muted); }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody tr > td:nth-child(2) .ms-platform { gap: 8px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody tr > td:nth-child(5) { grid-area: actions; justify-self: end; align-self: center; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-saved-table tbody tr > td:nth-child(5) .mapping-row-actions { gap: 8px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-row-actions > .mapping-feature-button { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 12px; border-radius: 7px; font-size: 13px; white-space: nowrap; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card:not(.brand-mapping-saved-card) .mapping-row-actions > .mapping-delete-button { box-sizing: border-box; display: grid; width: 36px; min-width: 36px; height: 36px; min-height: 0; padding: 0; place-items: center; border-radius: 7px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools.mapping-saved-header-tools > :is(input, .mapping-sort-button) { height: 36px !important; min-height: 0 !important; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools.mapping-saved-header-tools > .mapping-platform-tabs { box-sizing: border-box; height: 36px; min-height: 36px; }
+}

@@ -21,6 +21,12 @@ describe('TitleHint', () => {
     expect(tip.hidden).toBe(true)
   })
 
+  it('draws an "i" in a circle instead of the question mark when asked for the info icon', () => {
+    const { host } = render(<span>Hepsiburada Kategorisi<TitleHint label="Hepsiburada Kategorisi" icon="info">4.785 yaprak kategori</TitleHint></span>)
+    expect(host.querySelector('button.title-hint .ui-icon-infoCircle')).not.toBeNull()
+    expect(host.querySelector('button.title-hint .ui-icon-help')).toBeNull()
+  })
+
   it('opens on the pointer on desktop but only on a tap on a touch screen', () => {
     const hoverOver = (mark: Element) => {
       const event = new MouseEvent('pointerover', { bubbles: true })
