@@ -62,3 +62,9 @@
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link.rr-metric-on,
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics article.rr-metric-link.rr-metric-on:hover { background: var(--rr-primary-soft, var(--rv-color-primary-soft)); border-color: var(--rr-primary, var(--rv-color-primary)); }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-chip.rr-metric-on { background: var(--rr-surface); border-color: var(--rr-primary, var(--rv-color-primary)); animation: none; }
+/* The small "Paket | N Adet Ürün" note is 12px weight 500 on every card, the cards that open a list too (inside their
+   button the note took the button's 600). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main :is(.rr.rr-orders, .rr-layer.rr-layer) .rr-metrics :is(.rr-metric-open, article) .rr-metric-pk .rr-metric-sub { font-size: 12px; font-weight: 500; }
+}
+.app-shell.stitch-shell main :is(.rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-open .rr-metric-pk .rr-metric-sub { font-weight: 500; }
