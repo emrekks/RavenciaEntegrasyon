@@ -336,7 +336,7 @@ export function DashboardPage() {
       const breakdownRows = Array.isArray(byConnection) ? byConnection : breakdown(byConnection)
       const toggleBreakdown = (event: ReactMouseEvent | ReactKeyboardEvent) => { event.preventDefault(); event.stopPropagation(); setBreakdownOpen(open => open === kind ? null : kind) }
       // On touch screens the card's "?" shows which stores the figure comes from, without opening the card's list.
-      const mark = breakdownRows.length ? <span className="rr-op-q" role="button" tabIndex={0} aria-label={`${label}: mağazalara göre`} aria-expanded={breakdownOpen === kind} onClick={toggleBreakdown} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') toggleBreakdown(event) }}><UiIcon name="help" size={14} /></span> : null
+      const mark = breakdownRows.length ? <span className="rr-op-q" role="button" tabIndex={0} aria-label={`${label}: mağazalara göre`} aria-expanded={breakdownOpen === kind} onClick={toggleBreakdown} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') toggleBreakdown(event) }}><UiIcon name="alert" size={14} /></span> : null
       const body = <><CardBackgroundIcon name={kind} tone={tone && value ? tone : undefined} /><span className="rr-op-t"><small>{label}{mark}</small><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong></span><RrIcon name="arrowR" /><Breakdown rows={breakdownRows} /></>
       // The İptal card is red when it counts any, but its pulsing dot only marks orders cancelled in part.
       const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'packageX' && !partialCancels ? ' rr-nodot' : ''}${breakdownOpen === kind ? ' rr-bd-open' : ''}`
