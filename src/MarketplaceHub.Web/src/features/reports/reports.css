@@ -906,3 +906,10 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   /* A Hakediş figure's label wraps onto a second line instead of being cut. */
   .app-shell.stitch-shell main .reports-page .reports-payouts .reports-kpi-label { overflow: visible; text-overflow: clip; white-space: normal; text-align: left; }
 }
+
+/* Phones: the period presets are one row that scrolls sideways (no scrollbar) instead of wrapping onto three. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .reports-page .reports-segmented[aria-label="Hazır dönemler"] { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .app-shell.stitch-shell main .reports-page .reports-segmented[aria-label="Hazır dönemler"]::-webkit-scrollbar { display: none; }
+  .app-shell.stitch-shell main .reports-page .reports-segmented[aria-label="Hazır dönemler"] > button { flex: 0 0 auto; white-space: nowrap; }
+}
