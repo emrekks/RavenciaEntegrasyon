@@ -323,7 +323,8 @@ export function DashboardPage() {
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
     <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2><p>Bugün ilgilenmeniz gereken işler</p></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
       const body = <><CardBackgroundIcon name={kind} tone={tone && value ? tone : undefined} /><span className="rr-op-t"><small>{label}</small><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong></span><RrIcon name="arrowR" /><Breakdown rows={Array.isArray(byConnection) ? byConnection : breakdown(byConnection)} /></>
-      const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}`
+      // The İptal card is red when it counts any, but its pulsing dot only marks orders cancelled in part.
+      const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'packageX' && !partialCancels ? ' rr-nodot' : ''}`
       // Low stock opens its window here instead of taking the user to the products page.
       return kind === 'alertTriangle'
         ? <button key={kind} type="button" className={className} aria-haspopup="dialog" onClick={() => setLowStockOpen(true)}>{body}</button>
