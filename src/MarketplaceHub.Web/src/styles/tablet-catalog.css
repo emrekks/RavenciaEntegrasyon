@@ -59,12 +59,8 @@
   html body .app-shell.stitch-shell main .rr.rr-products .rr-ptbl.rr-ptbl .rr-vhover > .rr-vtip { top: auto; right: 12px; left: 12px; width: auto; max-width: none; max-height: 280px; margin-top: 6px; transform: none; }
 
   /* Summary cards: five in one row from 900px (as on desktop), three over two below it. */
-  html body .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > * { min-width: 0; }
 }
 @media (min-width: 900px) and (max-width: 1024px) {
-  html body .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-  html body .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > *,
-  html body .app-shell.stitch-shell main .rr.rr-products .rr-metrics.rr-metrics-5 > :nth-child(n + 4) { grid-column: auto; }
 }
 
 /* ---------- Ürün ekle / düzenle ---------- */
