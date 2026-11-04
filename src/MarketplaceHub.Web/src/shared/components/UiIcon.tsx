@@ -196,10 +196,12 @@ const paths: Record<UiIconName, ReactNode | ((id: string) => ReactNode)> = {
   externalLink: <><path d="M14 5h5v5m0-5-8 8" /><path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" /></>,
   filter: <path d="M4 6h16M7 12h10m-7 6h4" />,
   grid: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
-  help: <><circle cx="12" cy="12" r="9" /><path d="M9.75 9a2.3 2.3 0 1 1 3.8 1.75c-.95.8-1.55 1.2-1.55 2.5M12 16.5h.01" /></>,
+  // "?" and "i" (owner, 5 Nov 2026, design A): a filled circle like the check glyph beside "Aktif", the mark cut out of
+  // it, so it shows the surface behind it in both themes.
+  help: (id: string) => <><mask id={id}><rect width="24" height="24" fill="white" stroke="none" /><path d="M9.15 9.3a2.93 2.93 0 0 1 5.7.83c0 1.95-2.85 2.48-2.85 4.28" fill="none" stroke="black" strokeWidth="2.55" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="17.4" r="1.5" fill="black" stroke="none" /></mask><circle cx="12" cy="12" r="10.5" fill="currentColor" stroke="none" mask={"url(#" + id + ")"} /></>,
   image: <><rect x="4" y="5" width="16" height="14" rx="2" /><circle cx="9" cy="10" r="1.2" /><path d="m5 17 4.5-4 3 2.5 2.5-2 4 3.5" /></>,
   info: <path d="M12 10.5v5.25M12 7.25h.01" />,
-  infoCircle: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 7.75h.01" /></>,
+  infoCircle: (id: string) => <><mask id={id}><rect width="24" height="24" fill="white" stroke="none" /><circle cx="12" cy="7.35" r="1.5" fill="black" stroke="none" /><path d="M12 11.1v6.45" fill="none" stroke="black" strokeWidth="2.7" strokeLinecap="round" /></mask><circle cx="12" cy="12" r="10.5" fill="currentColor" stroke="none" mask={"url(#" + id + ")"} /></>,
   italic: <path d="M10 5h8M6 19h8M14 5 10 19" />,
   layout: <><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 10h16M10 10v10" /></>,
   layers: <><path d="m12 4 8 4-8 4-8-4 8-4Z" /><path d="m4 12 8 4 8-4M4 16l8 4 8-4" /></>,
