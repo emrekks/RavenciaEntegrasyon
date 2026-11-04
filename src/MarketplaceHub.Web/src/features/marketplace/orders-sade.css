@@ -303,3 +303,8 @@
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell > :is(.rr-ring, .rr-reason-tip) { align-self: start; padding-bottom: 0; }
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell > .rr-anchor { align-self: start; }
 }
+/* Phones: Fatura İşlemleri under the invoice state, level with the amount, with no row of its own. */
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell .rr-m.rr-pay { grid-row: 1 / span 2; align-self: end; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell > .rr-anchor { grid-column: 1; grid-row: 2; align-self: end; }
+}

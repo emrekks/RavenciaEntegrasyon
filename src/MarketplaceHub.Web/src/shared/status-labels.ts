@@ -141,7 +141,7 @@ export function invoiceStatusLabel(value: string | null | undefined) {
 
 export function invoiceStatusDisplayLabel(value: string | null | undefined, isMicroExport = false) {
   const label = invoiceStatusLabel(value)
-  return isMicroExport ? label.replace(/^Fatura\s/u, 'M.İhracat Faturası ') : label
+  return isMicroExport ? label.replace(/^Fatura\s/u, 'İhracat Faturası ') : label
 }
 
 export function invoiceStatusTone(value: string | null | undefined): InvoiceStatusTone {

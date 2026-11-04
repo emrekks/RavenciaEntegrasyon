@@ -70,7 +70,7 @@ export function ReturnInvoiceRing({ status, isMicroExport }: { status: string; i
   // green and a failure stays red.
   const tone: RingTone = isMicroExport && baseTone !== 'ok' && baseTone !== 'bad' ? 'move' : baseTone
   // Short states ("Faturası Mevcut") stay on one line; long ones break only between word pairs, so
-  // "M.İhracat Faturası Bekliyor" takes two lines in the narrow column instead of three.
+  // "İhracat Faturası Bekliyor" takes two lines in the narrow column instead of three.
   const words = label.split(' ')
   const shown = label.length <= 18 ? label.replace(/ /g, ' ') : words.length >= 4 ? words.reduce<string[]>((pairs, word, index) => index % 2 ? [...pairs.slice(0, -1), `${pairs[pairs.length - 1]}\u00a0${word}`] : [...pairs, word], []).join(' ') : label
   const ring = <RrRing tone={tone} progress={progress} label={shown} />
