@@ -21,6 +21,7 @@ import { questionWaitingSummaryPath } from './questionNavigationSummary'
 import { readVisualThemePreference, switchVisualThemeSmoothly, visualThemeChangeEvent, type VisualTheme } from '../features/settings/visual-theme'
 import { readStoredItem, removeStoredItem, writeStoredItem } from '../shared/local-storage'
 import { focusOnMount } from '../shared/focus'
+import { closeTouchTip, installTouchTips } from '../shared/touch-tips'
 import { ToastStackProvider } from '../shared/components/ToastStack'
 
 // Loaded ahead (when the page is idle, or when the pointer reaches the bell) so the first open does not wait for it.
@@ -104,7 +105,9 @@ function Shell({ me }: { me: Me }) {
   }, [])
   useDismissable(notificationsOpen, [notificationRef, notificationHistoryRef], () => setNotificationsOpen(false))
   // Every dropdown, menu and picker closes when the page changes (shared/hooks/useDismissable).
-  useEffect(() => { closeAllDismissables('route') }, [location.pathname])
+  useEffect(() => { closeAllDismissables('route'); closeTouchTip() }, [location.pathname])
+  // On a touch screen every hover-only tip opens on a tap and stays inside the window (shared/touch-tips.ts).
+  useEffect(() => installTouchTips(), [])
   useEffect(() => {
     const load = () => void loadNotificationPanel()
     if (typeof window.requestIdleCallback === 'function') { const id = window.requestIdleCallback(load, { timeout: 4000 }); return () => window.cancelIdleCallback(id) }

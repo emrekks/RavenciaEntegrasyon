@@ -21,6 +21,38 @@ describe('TitleHint', () => {
     expect(tip.hidden).toBe(true)
   })
 
+  it('opens on the pointer on desktop but only on a tap on a touch screen', () => {
+    const hoverOver = (mark: Element) => {
+      const event = new MouseEvent('pointerover', { bubbles: true })
+      Object.defineProperty(event, 'pointerType', { value: 'mouse' })
+      act(() => { mark.dispatchEvent(event) })
+    }
+    const desktop = render(<h2>Görseller<TitleHint label="Görseller">Açıklama</TitleHint></h2>)
+    const desktopMark = desktop.host.querySelector<HTMLButtonElement>('button.title-hint')!
+    hoverOver(desktopMark)
+    expect(document.getElementById(desktopMark.getAttribute('aria-describedby')!)!.hidden).toBe(false)
+    cleanup()
+
+    const matchMedia = window.matchMedia
+    window.matchMedia = (query: string) => ({ ...matchMedia(query), matches: query === '(hover: none)' })
+    try {
+      const { host } = render(<h2>Görseller<TitleHint label="Görseller">Açıklama</TitleHint></h2>)
+      const mark = host.querySelector<HTMLButtonElement>('button.title-hint')!
+      const tip = document.getElementById(mark.getAttribute('aria-describedby')!)!
+      hoverOver(mark)
+      expect(tip.hidden).toBe(true)
+      act(() => { mark.click() })
+      expect(tip.hidden).toBe(false)
+      act(() => { mark.click() })
+      expect(tip.hidden).toBe(true)
+      act(() => { mark.click() })
+      act(() => { window.dispatchEvent(new Event('scroll')) })
+      expect(tip.hidden).toBe(true)
+    } finally {
+      window.matchMedia = matchMedia
+    }
+  })
+
   it('keeps the card inside a narrow window when the mark is near its right edge', () => {
     const width = window.innerWidth
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 360 })

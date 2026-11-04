@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { UiIcon } from './UiIcon'
+import { isTouchOnly } from '../touch-tips'
 import './field-help.css'
 
 // A field's explanation behind a small question mark next to its label: shown while the pointer is on the mark or it
@@ -33,7 +34,8 @@ export function HelpMark({ id, idPrefix, ariaLabel, className, tipClassName, ico
   const buttonRef = useRef<HTMLButtonElement>(null)
   const tipRef = useRef<HTMLSpanElement>(null)
   // Open while hovered or focused; a click or tap pins it open (so a link in it can be followed) until a second click,
-  // Esc or a press elsewhere.
+  // Esc or a press elsewhere. A touch screen ((hover: none)) opens it on a tap only: a pointer that reports itself as a
+  // mouse there (some phones and stylus pens do) or the focus a tap leaves behind does not open it.
   const [hovered, setHovered] = useState(false)
   const [focused, setFocused] = useState(false)
   const [pinned, setPinned] = useState(false)
@@ -70,9 +72,9 @@ export function HelpMark({ id, idPrefix, ariaLabel, className, tipClassName, ico
 
   return <>
     <button ref={buttonRef} type="button" className={`${className}${open ? ' is-open' : ''}`} aria-label={ariaLabel} aria-describedby={tipId} aria-expanded={open}
-      onPointerEnter={event => { if (event.pointerType === 'mouse') setHovered(true) }}
+      onPointerEnter={event => { if (event.pointerType === 'mouse' && !isTouchOnly()) setHovered(true) }}
       onPointerLeave={event => { if (event.pointerType === 'mouse') setHovered(false) }}
-      onFocus={event => { if (event.currentTarget.matches(':focus-visible')) setFocused(true) }}
+      onFocus={event => { if (event.currentTarget.matches(':focus-visible') && !isTouchOnly()) setFocused(true) }}
       onBlur={() => setFocused(false)}
       onClick={event => { event.preventDefault(); event.stopPropagation(); setPinned(value => !value) }}>
       <UiIcon name="help" size={iconSize} />
