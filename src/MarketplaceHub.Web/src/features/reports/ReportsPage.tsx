@@ -1811,16 +1811,14 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const [draft, setDraft] = useState({ ...applied, platforms, search })
   const [tab, setTab] = useState<'upcoming' | 'past'>(() => applied.state === 'PAID' ? 'past' : 'upcoming')
   const [open, setOpen] = useState<string | null>(null)
-  // Trendyol's regions open under its card: on hover with a mouse, on a tap of its Bölgeler button on touch screens.
+  // Trendyol's regions open under its card on a click of its Bölgeler button and close on the next click (or Escape).
   const [regionsOpen, setRegionsOpen] = useState(false)
   const regionsRef = useRef<HTMLLIElement>(null)
   useEffect(() => {
     if (!regionsOpen) return
-    const away = (event: PointerEvent) => { if (!regionsRef.current?.contains(event.target as Node)) setRegionsOpen(false) }
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setRegionsOpen(false) }
-    document.addEventListener('pointerdown', away)
     document.addEventListener('keydown', escape)
-    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', escape) }
+    return () => document.removeEventListener('keydown', escape)
   }, [regionsOpen])
   useListUrlSync({ hp: platforms, hr: applied.region, hs: applied.state, hf: applied.from, ht: applied.to, hmin: applied.min, hmax: applied.max, hq: search, ho: applied.sort },
     { hp: [], hr: 'ALL', hs: 'ALL', hf: '', ht: '', hmin: '', hmax: '', hq: '', ho: 'date' })
