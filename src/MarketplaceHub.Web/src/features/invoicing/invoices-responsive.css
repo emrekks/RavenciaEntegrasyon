@@ -435,3 +435,16 @@
 .app-shell.stitch-shell main .reference-invoices-page { grid-template-columns: minmax(0, 1fr); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-shell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { min-width: 0; max-width: 100%; }
+/* Phones: the amount's label on top, level with the invoice state's text, and the amount under it; the order number
+   level with the marketplace's name (Trendyol's ".com" sits above the name, so the logo's middle is too high). */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { align-content: start; gap: 2px; padding-top: 14px; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-amount > small { order: -1; }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .invoice-order-number { align-self: end; translate: 0 3px; }
+}
+/* The product summary is a button: it opens the package's products on a click and shows that it can be tapped. */
+.app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary { display: inline-flex; align-items: center; gap: 3px; min-height: 0; height: auto; margin: 0; padding: 1px 6px; color: var(--rv-color-primary); font: inherit; text-transform: none; background: color-mix(in srgb, var(--rv-color-primary) 8%, transparent); border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary > small { color: inherit; font-weight: 500; }
+.app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary > svg { transition: rotate .18s ease; }
+.app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary[aria-expanded="true"] { background: color-mix(in srgb, var(--rv-color-primary) 16%, transparent); }
+.app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary[aria-expanded="true"] > svg { rotate: 180deg; }

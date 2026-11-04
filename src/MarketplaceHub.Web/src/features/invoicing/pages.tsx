@@ -97,11 +97,12 @@ function manualInvoiceDeliveryActionLabel(status: string | null) {
 }
 
 function InvoiceProductSummary({ item }: { item: InvoiceWorkspace }) {
-  const triggerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 16, top: 16 })
   const tooltipId = `invoice-products-${item.packageId}`
+  useDismissable(open, [triggerRef, tooltipRef], () => setOpen(false))
 
   useLayoutEffect(() => {
     if (!open) return
@@ -129,11 +130,11 @@ function InvoiceProductSummary({ item }: { item: InvoiceWorkspace }) {
   }, [open, item.lines])
 
   return <>
-    {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can open the product list */}
-    <div ref={triggerRef} className="invoice-reference-product-summary" tabIndex={0} aria-describedby={tooltipId} onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)}>
-      <small>{item.productCount} adet · {item.lines?.length ?? 1} çeşit</small>
-    </div>
-    {open && createPortal(<div ref={tooltipRef} className="invoice-reference-product-tooltip invoice-reference-product-tooltip-portal" id={tooltipId} role="tooltip" style={{ left: position.left, top: position.top }}>
+    {/* The product list opens on a click (not on hover) and closes on the next click, outside or with Escape. */}
+    <button ref={triggerRef} type="button" className="invoice-reference-product-summary" aria-expanded={open} aria-controls={tooltipId} onClick={event => { event.stopPropagation(); setOpen(value => !value) }}>
+      <small>{item.productCount} adet · {item.lines?.length ?? 1} çeşit</small><UiIcon name="chevronDown" size={12} />
+    </button>
+    {open && createPortal(<div ref={tooltipRef} className="invoice-reference-product-tooltip invoice-reference-product-tooltip-portal" id={tooltipId} role="dialog" aria-label="Paketteki ürünler" style={{ left: position.left, top: position.top }}>
       {item.lines?.length ? item.lines.map((line, index) => <article key={`${line.sku}-${index}`}>{line.imageUrl || (index === 0 ? item.primaryImageUrl : null) ? <img src={line.imageUrl || (index === 0 ? item.primaryImageUrl ?? undefined : undefined)} alt="" /> : <span className="invoice-reference-product-image-placeholder"><UiIcon name="image" size={18} /></span>}<span><strong>{line.description || line.sku || 'Ürün'}</strong><small>{line.quantity} adet · Birim {formatMoney(line.unitPrice, item.currency)}</small><small>Stok Kodu: {line.sku || '—'} · Barkod: {line.barcode || '—'}</small></span></article>) : <p>Sipariş ürün ayrıntısı bu kayıtta bulunmuyor.</p>}
     </div>, document.body)}
   </>
