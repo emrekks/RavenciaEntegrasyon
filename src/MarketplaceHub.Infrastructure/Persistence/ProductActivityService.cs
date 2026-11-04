@@ -50,7 +50,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
             .ToList();
         if (branches.Count == 0) return empty;
         var sql = $"SELECT * FROM ({string.Join("\nUNION ALL\n", branches)}) activity ORDER BY \"OccurredAt\" DESC, \"Id\" DESC LIMIT @limit";
-        var rows = await db.Database.SqlQueryRaw<ProductActivityRow>(sql, parameters.ToArray()).ToListAsync(cancellationToken);
+        var rows = await db.Database.SqlQueryRaw<ProductActivityRow>(Escaped(sql), parameters.ToArray()).ToListAsync(cancellationToken);
         var hasMore = rows.Count > limit;
         if (hasMore) rows = rows.Take(limit).ToList();
         var nextCursor = hasMore ? JobListCursor.Encode(rows[^1].OccurredAt, rows[^1].Id) : null;
@@ -66,7 +66,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         var branches = Branches(ProductActivityKinds.All, filter, withCursor: false)
             .Select(branch => $"SELECT {branch.KindSql} AS \"Kind\", count(*)::int AS \"Count\" {branch.From} WHERE {branch.Where} GROUP BY 1");
         var sql = string.Join("\nUNION ALL\n", branches);
-        var counts = await db.Database.SqlQueryRaw<ProductActivityCountRow>(sql, parameters.ToArray()).ToListAsync(cancellationToken);
+        var counts = await db.Database.SqlQueryRaw<ProductActivityCountRow>(Escaped(sql), parameters.ToArray()).ToListAsync(cancellationToken);
         return ServiceResult<IReadOnlyList<ProductActivityCount>>.Ok(counts
             .GroupBy(x => x.Kind, StringComparer.Ordinal)
             .Select(group => new ProductActivityCount(group.Key, group.Sum(x => x.Count)))
@@ -236,6 +236,10 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
 
     // Constant codes of this class only, never user input.
     private static string Literals(IEnumerable<string> values) => string.Join(", ", values.Select(value => $"'{value}'"));
+
+    // SqlQueryRaw runs the text through string.Format (for {0}-style arguments), so the braces of the regex quantifiers
+    // ({8}, {32}) read as missing arguments; this text names its parameters (@limit…), so every brace is literal.
+    private static string Escaped(string sql) => sql.Replace("{", "{{", StringComparison.Ordinal).Replace("}", "}}", StringComparison.Ordinal);
 
     private static string[]? Codes(IReadOnlyList<string>? values, IReadOnlyList<string>? known)
     {
