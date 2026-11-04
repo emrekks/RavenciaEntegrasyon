@@ -63,7 +63,7 @@ describe('returns page', () => {
     expect(returnRequests).toContain('/returns/summary?')
     expect(returnRequests).toHaveLength(2)
     const cards = Array.from(host.querySelectorAll<HTMLElement>('.rr-metrics article'))
-    expect(cards.map(card => card.querySelector('small')!.textContent)).toEqual(['Aksiyon Bekleyen', 'Kargoya Verilen', 'Reddedilen', 'Bugün Onaylanan / Reddedilen'])
+    expect(cards.map(card => card.querySelector('small')!.textContent)).toEqual(['Aksiyon Bekleyen', 'Kargoya Verilen', 'Reddedilen', 'Onaylanan / Reddedilen'])
     expect(cards[0].querySelector('strong')!.textContent).toBe('7')
     // Rejected returns whose package back to the customer is not with the cargo yet, not every rejected return (4).
     expect(cards[2].querySelector('strong')!.textContent).toBe('3')
