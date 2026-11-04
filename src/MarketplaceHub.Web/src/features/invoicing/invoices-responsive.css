@@ -233,7 +233,7 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { margin: 12px 12px 0 0; }
 }
 
-/* Invoices follow the orders pattern on phones: no checkbox or "select all" row; long-press starts
+/* Invoices follow the orders pattern on phones: no "select all" row; the round dot left of the logo starts
    selection mode (tinted cards), a bottom bar offers İptal / count / Tümünü Seç, tapping a card
    opens its detail and tapping the number copies it. */
 @media (max-width: 760px) {
@@ -448,3 +448,12 @@
 .app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary > svg { transition: rotate .18s ease; }
 .app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary[aria-expanded="true"] { background: color-mix(in srgb, var(--rv-color-primary) 16%, transparent); }
 .app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary[aria-expanded="true"] > svg { rotate: 180deg; }
+/* Phones: the card is picked with a round dot left of the platform logo, as on Siparişler (owner, 5 Nov 2026); holding
+   the card no longer starts selection. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order { grid-template-columns: auto auto minmax(0, 1fr) !important; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > .invoice-reference-select { display: inline-block !important; position: relative !important; align-self: center; width: 20px; min-width: 20px; height: 20px; min-height: 20px; border-radius: 50%; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > .invoice-reference-select:checked { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
+  .app-shell.stitch-shell main .invoices-page .invoice-reference-row { -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > .invoice-reference-select:checked::after { left: 6.5px; top: 3px; width: 4.5px; height: 9px; border-color: #fff; opacity: 1; }
+}

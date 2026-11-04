@@ -445,3 +445,23 @@ html body .app-shell .rv-drawer.rv-mobile-drawer { width: min(264px, 82vw); }
 @media (max-width: 760px) {
   html body .rv-drawer-overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+/* Filters on phones open the same way everywhere (owner, 5 Nov 2026: "her yerde filtreler böyle açılacak"): a sheet that
+   slides up from the bottom over a darkened page, with a grab handle and its title, like Siparişler's Filtre. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .mfs-scrim { position: fixed; inset: 0; z-index: calc(var(--rv-z-modal) + 4); background: rgb(0 0 0 / 55%); animation: rv-fade-in var(--rv-motion-modal) ease-out; }
+  html body .app-shell.stitch-shell main .mfs.is-open {
+    inset: auto 0 0; max-height: 86dvh; padding: 0 16px; border-top: 1px solid var(--rv-color-border); border-radius: 14px 14px 0 0;
+    box-shadow: 0 -12px 32px rgb(0 0 0 / 30%); animation: rv-rise var(--rv-motion-sheet) var(--rv-ease-sheet);
+  }
+  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-header { padding: 22px 16px 12px; border-bottom: 0; }
+  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-header::before { content: ""; position: absolute; top: 8px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--rv-color-border-strong); }
+  html body .app-shell.stitch-shell main .mfs.is-open .mfs-back { display: none; }
+  html body .app-shell.stitch-shell main .mfs.is-open > .mfs-footer { position: sticky; inset: auto 0 0; margin: 0 -16px; }
+}
+@media (max-width: 760px) and (prefers-reduced-motion: reduce) {
+  html body .app-shell.stitch-shell main :is(.mfs-scrim, .mfs.is-open) { animation: none; }
+}
+/* The date picker on a phone scrolls inside itself, with a visible bar, and the page behind it does not scroll along. */
+@media (max-width: 760px) {
+  html body .date-range-picker-popover { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--rv-color-border-strong) transparent; }
+}

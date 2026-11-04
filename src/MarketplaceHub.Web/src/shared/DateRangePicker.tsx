@@ -36,7 +36,8 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
       const viewportHeight = window.innerHeight || 768
       const width = Math.min(500, viewportWidth - 32)
       const left = Math.max(16, Math.min(bounds.left, viewportWidth - width - 16))
-      const desiredHeight = Math.min(330, viewportHeight - 32)
+      // A phone stacks the presets over the calendar (about 600px): it takes the room it has and scrolls the rest.
+      const desiredHeight = Math.min(viewportWidth <= 760 ? 640 : 330, viewportHeight - 32)
       const spaceBelow = viewportHeight - bounds.bottom - 16
       const spaceAbove = bounds.top - 16
       const openAbove = spaceBelow < desiredHeight && spaceAbove > spaceBelow

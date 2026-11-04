@@ -399,20 +399,13 @@ describe('InvoicesPage on a phone (375 px)', () => {
     return Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row')).find(item => item.textContent?.includes(orderNumber))!
   }
 
-  it('starts bulk selection with a long press and picks cards with a tap', async () => {
+  it('starts bulk selection from a card round dot and picks cards with a tap', async () => {
     const media = phoneViewport()
     try {
-      const first = row('SH-1001').querySelector<HTMLElement>('.invoice-reference-buyer')!
-      act(() => { first.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientX: 20, clientY: 20 })) })
-      await act(async () => { await new Promise(resolve => setTimeout(resolve, 600)) })
-      act(() => {
-        first.dispatchEvent(new MouseEvent('pointerup', { bubbles: true }))
-        first.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-      })
+      act(() => { row('SH-1001').querySelector<HTMLInputElement>('.invoice-reference-select')!.click() })
 
       expect(container.querySelector('.invoice-selection-bar')?.textContent).toContain('1 sipariş seçildi')
       expect(row('SH-1001').classList.contains('is-selected')).toBe(true)
-      // The press that started the mode does not also open the detail window.
       expect(container.querySelector('.invoice-detail-modal')).toBeNull()
 
       act(() => { row('TY-1003').querySelector<HTMLElement>('.invoice-reference-buyer')!.dispatchEvent(new MouseEvent('click', { bubbles: true })) })

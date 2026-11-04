@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { copyText } from '../../shared/copy-text'
 import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
@@ -156,7 +156,6 @@ async function uploadManualInvoiceDocument(item: InvoiceWorkspace, file: File | 
   if (file) form.append('file', file)
   await hubApi('/invoice-workspace/manual-documents', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(`manual-invoice-document:${item.orderId}`) }, body: form })
 }
-const longPressDelayMs = 500
 const interactiveRowTargets = 'button, a, input, select, textarea, label, .invoice-order-number'
 function isPhoneViewport() { return window.matchMedia('(max-width: 760px)').matches }
 function requiresInvoiceAction(item: InvoiceWorkspace) { return item.canCreateInvoice || item.invoiceStatus === 'FATURA_REDDEDILDI' }
@@ -549,33 +548,15 @@ export function InvoicesPage() {
   const [selectionMode, setSelectionMode] = useState(false)
   function exitSelectionMode() { setSelectionMode(false); setSelectedPackages(new Set()) }
   function togglePackage(packageId: string) { setSelectedPackages(current => { const next = new Set(current); if (next.has(packageId)) next.delete(packageId); else next.add(packageId); return next }) }
-  // Phones have no checkboxes: holding a card starts selection mode with that card picked; then a tap picks or drops a card.
-  const longPress = useRef<{ timer: number; x: number; y: number } | null>(null)
-  const longPressFired = useRef(false)
-  function cancelLongPress() { if (longPress.current) { window.clearTimeout(longPress.current.timer); longPress.current = null } }
-  function startLongPress(event: ReactPointerEvent, item: InvoiceWorkspace) {
-    if (event.pointerType === 'mouse' || !isPhoneViewport() || (event.target as Element).closest(interactiveRowTargets)) return
-    cancelLongPress()
-    longPressFired.current = false
-    longPress.current = { x: event.clientX, y: event.clientY, timer: window.setTimeout(() => {
-      longPress.current = null
-      longPressFired.current = true
-      setSelectionMode(true)
-      setSelectedPackages(current => new Set(current).add(item.packageId))
-    }, longPressDelayMs) }
-  }
-  function moveLongPress(event: ReactPointerEvent) {
-    const press = longPress.current
-    if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10) cancelLongPress()
-  }
+  // Phones pick a card with the round dot at its left (owner, 5 Nov 2026), not by holding the card: the first dot opens
+  // selection mode, then a tap on a card picks or drops it, and the mode closes with the last card dropped.
   function tapRow(event: ReactMouseEvent, item: InvoiceWorkspace) {
     if (!isPhoneViewport()) return
-    if (longPressFired.current) { longPressFired.current = false; return }
     if ((event.target as Element).closest(interactiveRowTargets)) return
     // A tap on a card selects it only in selection mode; the details open from the card's Detayları Aç button.
     if (selectionMode) togglePackage(item.packageId)
   }
-  useEffect(() => { const press = longPress; return () => { if (press.current) window.clearTimeout(press.current.timer) } }, [])
+  useEffect(() => { if (selectionMode && selectedPackages.size === 0) setSelectionMode(false) }, [selectionMode, selectedPackages])
   // The search goes out once typing pauses, not on every key (W27).
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
   useEffect(() => { setPageNumber(1) }, [searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize])
@@ -628,8 +609,8 @@ export function InvoicesPage() {
           <div className={`order-column-filter${invoiceActionFilter !== 'ALL' ? ' has-filter' : ''}`}><span className="order-column-filter-label">İşlemler</span><button type="button" className="order-column-filter-trigger" aria-label="Fatura oluşturma filtresini aç" aria-expanded={columnFilterOpen === 'action'} aria-controls={columnFilterOpen === 'action' ? 'invoices-action-filter' : undefined} onClick={() => setColumnFilterOpen(current => current === 'action' ? null : 'action')}><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg></button>{columnFilterOpen === 'action' && <div id="invoices-action-filter" className="order-column-filter-popover invoice-filter-popover" role="dialog" aria-label="Fatura oluşturma uygunluğu filtreleri"><ColumnFilterChoices label="Oluşturma Durumu" value={invoiceActionFilter} options={[['ALL', 'Tüm İşlem Durumları'], ['CREATABLE', 'Fatura Oluşturulabilir'], ['NOT_CREATABLE', 'Fatura Oluşturulamaz']]} onChange={value => { setInvoiceActionFilter(value as typeof invoiceActionFilter); setColumnFilterOpen(null) }} />{invoiceActionFilter !== 'ALL' && <button type="button" className="order-column-filter-reset" onClick={() => { setInvoiceActionFilter('ALL'); setColumnFilterOpen(null) }}>Filtreyi Temizle</button>}</div>}</div>
         </div>
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-to-interactive-role -- phone tap target that selects the row; its checkbox and buttons are the keyboard controls */}
-        {!pageItems.length && <div className="invoice-reference-state" role="row"><div className="empty"><span className="empty-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Kayıt yok</strong><p>Seçili fatura sekmesi ve filtrelerle eşleşen paket bulunamadı.</p></div></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onPointerDown={event => startLongPress(event, item)} onPointerMove={moveLongPress} onPointerUp={cancelLongPress} onPointerCancel={cancelLongPress} onPointerLeave={cancelLongPress} onContextMenu={event => { if (isPhoneViewport()) event.preventDefault() }} onClick={event => tapRow(event, item)}>
-          <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => togglePackage(item.packageId)} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{formatIstanbul(item.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{item.invoiceNumber?.trim() ? ` · ${item.invoiceNumber}` : ''}</small></div></div>
+        {!pageItems.length && <div className="invoice-reference-state" role="row"><div className="empty"><span className="empty-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Kayıt yok</strong><p>Seçili fatura sekmesi ve filtrelerle eşleşen paket bulunamadı.</p></div></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onClick={event => tapRow(event, item)}>
+          <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => { togglePackage(item.packageId); if (isPhoneViewport()) setSelectionMode(true) }} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{formatIstanbul(item.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{item.invoiceNumber?.trim() ? ` · ${item.invoiceNumber}` : ''}</small></div></div>
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
           <div className="invoice-reference-shipment">{(() => { const kind = badgeGlyphKind(item.shipmentStatus, 'neutral'); return <StatusRing kind={kind} progress={orderStatusProgress(kind)} label={statusLabel(item.shipmentStatus)} detail={orderRingDetail(item, kind)} /> })()}</div>

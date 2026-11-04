@@ -23,7 +23,7 @@ type MobileFilterShellProps = Omit<ComponentPropsWithoutRef<'div'>, 'title'> & {
 /**
  * Wraps an existing filter bar. On desktop it renders exactly the bar it was given. On phones the
  * bar collapses to the field marked `data-mfs-search`, an optional sort button and a filter button;
- * the filter button opens every field as a full-screen "Filtrele" sheet with Temizle / Filtrele
+ * the filter button opens every field as a "Filtrele" sheet that slides up from the bottom (as on Siparişler) with Temizle / Filtrele
  * actions, and the sort button opens a bottom action sheet.
  */
 export function MobileFilterShell({ as = 'div', className, children, activeCount = 0, title = 'Filtrele', onClear, onApply, sort, ...rest }: MobileFilterShellProps) {
@@ -42,7 +42,7 @@ export function MobileFilterShell({ as = 'div', className, children, activeCount
     document.addEventListener('keydown', closeOnEscape)
     return () => document.removeEventListener('keydown', closeOnEscape)
   }, [open, sortOpen])
-  return <>{open && spacer > 0 && <div className="mfs-spacer" aria-hidden="true" style={{ height: spacer }} />}<Tag ref={bar} className={`mfs${open ? ' is-open' : ''}${className ? ` ${className}` : ''}`} {...rest} {...(open ? { role: 'dialog', 'aria-modal': true, 'aria-label': title } : {})}>
+  return <>{open && spacer > 0 && <div className="mfs-spacer" aria-hidden="true" style={{ height: spacer }} />}{open && <div className="mfs-scrim" aria-hidden="true" onClick={() => setOpen(false)} />}<Tag ref={bar} className={`mfs${open ? ' is-open' : ''}${className ? ` ${className}` : ''}`} {...rest} {...(open ? { role: 'dialog', 'aria-modal': true, 'aria-label': title } : {})}>
     <div className="mfs-header"><button type="button" className="mfs-back" aria-label="Filtreleri kapat" onClick={() => setOpen(false)}><UiIcon name="arrowLeft" size={20} /></button><strong>{title}</strong></div>
     {children}
     {sort && <button type="button" className="mfs-sort" aria-haspopup="dialog" aria-expanded={sortOpen} aria-label="Sırala" onClick={() => setSortOpen(true)}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 4v16m0 0-4-4m4 4 4-4M16 20V4m0 0-4 4m4-4 4 4" /></svg></button>}
