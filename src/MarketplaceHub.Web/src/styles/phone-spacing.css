@@ -48,7 +48,6 @@
   :root .app-shell.stitch-shell main .rr-pf-body { gap: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .reference-integration-card > :is(header, div, footer) { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .reference-integration-card > footer { padding-block: 10px !important; }
-  :root .app-shell.stitch-shell main .job-queue-metrics > summary { padding: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main :is(.order-pagination, .rr-pager) { padding-inline: var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .qi-foot { padding: 10px var(--m-pad) !important; }
   :root .app-shell.stitch-shell main .ss-card > .ss-stabs { padding: var(--m-pad) var(--m-pad) 0 !important; }
