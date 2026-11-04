@@ -667,3 +667,24 @@
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools.mapping-saved-header-tools > :is(input, .mapping-sort-button) { height: 36px !important; min-height: 0 !important; }
   .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools.mapping-saved-header-tools > .mapping-platform-tabs { box-sizing: border-box; height: 36px; min-height: 36px; }
 }
+
+/* Phones (owner, 5 Nov 2026): the saved panel attributes show three rows in two columns and scroll the rest; the
+   category library shows three rows of its two columns and scrolls the rest. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .panel-attribute-records { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 56px; max-height: calc(3 * 56px + 2 * 8px + 2px); overflow-y: auto; overscroll-behavior: contain; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .panel-attribute-records > article { min-height: 0; padding: 8px 10px; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .panel-attribute-records .panel-attribute-record-main > :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .category-library-list { max-height: calc(3 * 36px + 2 * 8px + 2px); overflow-y: auto; overscroll-behavior: contain; }
+
+  /* Saved mappings, one card each: the panel category and its state on the first line, the platform path under them,
+     then the platform (logo and name) on the left and Kategori Özellikleri with the × on the right. */
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr { display: grid !important; grid-template-columns: auto minmax(0, 1fr) auto !important; grid-template-areas: "panel panel status" "target target target" "platform actions actions" !important; align-items: center; gap: 8px 12px; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td { width: auto !important; max-width: none !important; white-space: normal; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(1) { grid-area: panel !important; font-size: 15px; line-height: 1.3; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(4) { grid-area: status !important; justify-self: end; white-space: nowrap; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(3) { grid-area: target !important; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(2) { grid-area: platform !important; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(2) .ms-platform { display: inline-flex; align-items: center; gap: 0; font-size: 0; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(5) { grid-area: actions !important; justify-self: end; }
+  .app-shell.stitch-shell main section.mapping-page.mapping-page .mapping-saved-table tbody > tr > td:nth-child(5) .mapping-row-actions > button { height: 36px; min-height: 0; }
+}
