@@ -13,5 +13,5 @@
 .rv-card-bg ~ * { position: relative; z-index: 1; }
 /* Small cards: a smaller icon, so it never reaches the figure. */
 @media (max-width: 760px) {
-  .rv-card-bg > svg { right: -6px; width: min(var(--rv-card-bg-size, 124px), 90px); height: min(var(--rv-card-bg-size, 124px), 90px); opacity: .11; }
+  .rv-card-bg > svg { right: -6px; width: min(var(--rv-card-bg-size, 124px), 90px); height: min(var(--rv-card-bg-size, 124px), 90px); opacity: .08; }
 }
