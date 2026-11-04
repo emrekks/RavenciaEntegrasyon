@@ -6,7 +6,7 @@ namespace MarketplaceHub.Application;
 public sealed record PayoutQuery(IReadOnlyList<string>? PlatformCodes, IReadOnlyList<Guid>? ConnectionIds, bool IncludeTest);
 
 // The records of one group (a store's due day in a region, or one payout), or every record matching a search.
-// Kind: the group's kind (PAYOUT_DAY, DUE_DAY, OVERDUE) when a day is asked; null takes them all.
+// Kind: the group's kind (PAYOUT_DAY, DUE_DAY, OVERDUE, PAID_DAY) when a day is asked; null takes the open ones.
 public sealed record PayoutLinesQuery(Guid? ConnectionId, string? PayoutId, DateOnly? Day, string? Region, string? Search, int Page, string? Kind = null);
 
 // Expected: the balance, every record not paid yet (Trendyol's "Toplam Güncel Bakiye" is the same sum). Unknown: its
@@ -38,7 +38,7 @@ public sealed record PayoutPlatformView(string PlatformCode, decimal Expected, i
 
 // Kind PAYOUT_DAY: a store's open records expected on an estimated payout day in a region (Trendyol Türkiye-Körfez);
 // DUE_DAY: on their due day (the other regions and marketplaces; Status EXPECTED, an estimate; for paid agreements and
-// records of the other marketplaces Status PAID); OVERDUE: past their due day with no payout day known (left out of the
+// records of the other marketplaces: PAID_DAY, Status PAID); OVERDUE: past their due day with no payout day known (left out of the
 // next payout). Region NONE: a marketplace that pays without regions. Kind PAYOUT: a payout the marketplace made (Status
 // PAID); Amount is the marketplace's own figure, LinesAmount what the records it paid add up to (null when none was read
 // yet). RegionName: as the marketplace named the payout's region.

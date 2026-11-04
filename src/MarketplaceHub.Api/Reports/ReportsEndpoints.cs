@@ -64,7 +64,7 @@ public static class ReportsEndpoints
                     return MarketplaceHub.Api.Security.ApiProblems.Of(http, "REPORT_RANGE_INVALID", "Tarihler yyyy-AA-gg biçiminde olmalıdır.", 400);
                 due = parsed;
             }
-            if (page is < 0 or > 10_000 || q?.Length > 64 || payoutId?.Length > 64 || region?.Length > 16 || kind is not (null or "" or "PAYOUT_DAY" or "DUE_DAY" or "OVERDUE"))
+            if (page is < 0 or > 10_000 || q?.Length > 64 || payoutId?.Length > 64 || region?.Length > 16 || kind is not (null or "" or "PAYOUT_DAY" or "DUE_DAY" or "OVERDUE" or "PAID_DAY"))
                 return MarketplaceHub.Api.Security.ApiProblems.Of(http, "PAYOUT_LINES_QUERY_INVALID", "Sorgu geçersiz.", 400);
             var result = await service.LinesAsync(tenant.TenantId, new PayoutQuery(Split(platformCodes), null, false),
                 new PayoutLinesQuery(connectionId, payoutId, due, region, q, page ?? 0, string.IsNullOrEmpty(kind) ? null : kind), http.RequestAborted);

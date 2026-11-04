@@ -302,3 +302,9 @@
 @media (pointer: coarse) {
   .app-shell.stitch-shell main .product-add-page .media-preview-strip .image-preview-card :is(.image-remove-btn, .image-zoom-btn) { opacity: 1; }
 }
+
+/* Phones: the variant table's head (Stok / Fiyat and their bulk pencils) stays under the top bar while the rows scroll
+   by under it. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .product-add-page .variant-table-editor > .variant-table-head { position: sticky; top: var(--rv-topbar-height, 60px); z-index: 3; }
+}

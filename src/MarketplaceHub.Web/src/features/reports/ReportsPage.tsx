@@ -218,7 +218,7 @@ function Panel({ title, description, actions, children, className }: { title: st
   return <section className={`reports-panel${className ? ` ${className}` : ''}`}>
     <header>
       {description ? <div className="reports-tip-host reports-panel-title">
-        <h2><button type="button" className="reports-tip-trigger" aria-describedby={tip}>{title}</button></h2>
+        <h2><button type="button" className="reports-tip-trigger" aria-describedby={tip}>{title}<TipMark /></button></h2>
         <span role="tooltip" id={tip} className="reports-hover-tip"><TipText text={description} /></span>
       </div> : <div className="reports-panel-title"><h2>{title}</h2></div>}
       {actions && <div className="reports-panel-actions">{actions}</div>}
@@ -289,6 +289,9 @@ type OpenDetail = (key: DetailKey) => void
 // An explanation shown under the pointer: its first line (before a line break) says what the figure is, in bold, and
 // the lines after it how it is worked out.
 // Each sentence of the working goes on a line of its own.
+// The round "?" beside a name: its explanation opens while the pointer is on it (or the name has the keyboard focus).
+const TipMark = () => <UiIcon name="help" size={15} className="reports-qmark" />
+
 function TipText({ text }: { text: string }) {
   const [what, ...how] = text.split('\n')
   const sentences = (lines: string[]) => lines.flatMap(line => line.split(/(?<=\.)\s+(?=[A-ZÇĞİÖŞÜ0-9₺%])/u)).filter(Boolean)
@@ -378,14 +381,14 @@ function PeriodCard({ data }: { data: ReportSales }) {
       {/* Three tiles: the best bucket's figure and its date, the average against the previous period's, and how many
           buckets beat the same bucket of the previous period, drawn as a share of the period. */}
       <dl className="reports-period-facts">
-        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-best`}>En İyi {names.unit}</button></dt>
+        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-best`}>En İyi {names.unit}<TipMark /></button></dt>
           <dd><strong>{hasBest && best ? format(best.value) : '—'}</strong><small>{hasBest && best ? bestWhen(best) : 'Bu dönemde veri yok'}</small></dd>
           <span role="tooltip" id={`${tip}-best`} className="reports-hover-tip"><TipText text={`Dönemin ${measureOf[measure]} en yüksek ${names.its}.\nGrafikte mor sütunla gösterilir.`} /></span></div>
-        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-average`}>{names.every} Ortalama</button></dt>
+        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-average`}>{names.every} Ortalama<TipMark /></button></dt>
           <dd><strong>{noAmount || average === null ? '—' : format(average)}{!noAmount && average !== null && <Delta delta={change(average, previousAverage)} />}</strong>
             <small>{previousAverage === null ? 'Önceki dönemde veri yok' : `Önceki dönem ${format(previousAverage)}`}</small></dd>
           <span role="tooltip" id={`${tip}-average`} className="reports-hover-tip"><TipText text={`Bir ${names.of} ortalama ${measureOf[measure]}.\nDönem toplamı ÷ ${unit} sayısı; önceki dönemin ortalamasıyla karşılaştırılır.`} /></span></div>
-        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-ahead`}>Önceki Döneme Göre</button></dt>
+        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-ahead`}>Önceki Döneme Göre<TipMark /></button></dt>
           <dd><strong>{noAmount || !compared.length ? '—' : `${ahead} ${unit} önde`}</strong>
             {!noAmount && compared.length > 0 && <Progress value={ahead / compared.length} shown={shown} tone="good" />}
             <small>{noAmount || !compared.length ? 'Önceki dönemde veri yok' : `${compared.length - ahead} ${unit} geride; toplam ${compared.length} ${unit}`}</small></dd>
@@ -631,7 +634,7 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
       <ul className="reports-costlines">{lines.map(line => <li key={line.key} className={`reports-tip-host${line.value === null || line.value === 0 ? ' is-zero' : ''}${line.key === picked?.key ? ' is-active' : ''}`}
         onMouseEnter={() => pick(line.key)} onMouseLeave={() => setActive(null)}>
         <i className={`is-${line.value ? line.tone : 'none'}`} aria-hidden="true" />
-        <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${line.key}`} onFocus={() => pick(line.key)} onBlur={() => setActive(null)}>{line.label}</button>
+        <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${line.key}`} onFocus={() => pick(line.key)} onBlur={() => setActive(null)}>{line.label}<TipMark /></button>
         <b>{line.value === null ? '—' : signedTl(line.value)}</b>
         <em>{line.value !== null && line.value > 0 && total > 0 ? formatPercent(line.value / total) : ''}</em>
         <span role="tooltip" id={`${tip}-${line.key}`} className="reports-hover-tip"><TipText text={line.note} /></span>
@@ -688,8 +691,8 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
         const width = Math.abs(row.to - row.from) / span * 100
         return <li key={row.key} className={`reports-tip-host is-${row.kind}${row.kind === 'end' && row.to < 0 ? ' is-negative' : ''}`}>
           <span className="reports-bridge-label">{row.key === 'sales'
-            ? <button type="button" onClick={() => setOpen(true)} aria-label="Satış tutarı: platformlara göre aç" aria-describedby={`${tip}-${row.key}`}>{row.label}<UiIcon name="chevronRight" size={14} /></button>
-            : <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${row.key}`}>{`${row.kind === 'minus' ? (row.to < row.from ? '+ ' : '− ') : ''}${row.label}`}</button>}</span>
+            ? <><button type="button" onClick={() => setOpen(true)} aria-label="Satış tutarı: platformlara göre aç" aria-describedby={`${tip}-${row.key}`}>{row.label}<UiIcon name="chevronRight" size={14} /></button><TipMark /></>
+            : <button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${row.key}`}>{`${row.kind === 'minus' ? (row.to < row.from ? '+ ' : '− ') : ''}${row.label}`}<TipMark /></button>}</span>
           <span className="reports-bridge-track" aria-hidden="true"><i style={{ left: `${(start - low) / span * 100}%`, width: shown ? `${Math.max(0.5, width)}%` : '0%', transitionDelay: `${index * 80}ms` }} /></span>
           <b>{row.kind === 'minus' ? `${row.to < row.from ? '+' : '−'} ${formatTl(Math.abs(row.to - row.from))}` : signedTl(row.to)}</b>
           <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip"><TipText text={row.note} /></span>
@@ -745,7 +748,7 @@ function ProfitLedger({ money }: { money: Money }) {
   const share = (value: number) => `Satış tutarının ${money.total > 0 ? formatPercent(Math.abs(value) / money.total) : '—'} kadarı.`
   const row = (key: string, className: string | undefined, label: string, value: string, note: string, extra?: ReactNode) =>
     <div key={key} className={`reports-tip-host${className ? ` ${className}` : ''}`}>
-      <dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${key}`}>{label}</button>{extra}</dt>
+      <dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${key}`}>{label}<TipMark /></button>{extra}</dt>
       <dd>{value}</dd>
       <span role="tooltip" id={`${tip}-${key}`} className="reports-hover-tip"><TipText text={note} /></span>
     </div>
@@ -771,10 +774,10 @@ function MetricCard({ title, icon, tone, rows, onMore, hints = true }: { title: 
     {() => <ul className="reports-metrics">{rows.map(row => {
       const id = `${tip}-${row.key}`
       const detail = row.detail
-      // Only a label with an explanation is underlined.
+      // Only a label with an explanation carries the "?".
       const explained = hints && Boolean(row.note)
       const body = <>
-        <span className={`reports-metric-label${explained ? ' has-tip' : ''}`}>{row.label}</span>
+        <span className="reports-metric-label">{row.label}{explained && <TipMark />}</span>
         <span className="reports-metric-value">{row.delta !== undefined && <Delta delta={row.delta} invert={row.invert} previous={row.previous} />}<strong>{row.value}</strong></span>
       </>
       return <li key={row.key} className={`reports-tip-host${row.tone ? ` is-${row.tone}` : ''}`}>
@@ -1865,9 +1868,14 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
       note: overdue < 0 ? 'Bekleyen kesinti' : overdue > 0 ? 'Ödeme bekliyor' : 'Yok',
       tip: 'Bakiyenin vadesi geçmiş ama henüz bir ödemeye bağlanmamış kısmı; eksi ise sıradaki ödemeden düşülecek kesintilerdir.\nÖdenmeyecek demek değildir: Avrupa ayda bir ödenir, ödeme kaydı ödemeden bir gün sonra okunur.' }
   ]
-  const listed = filterGroups(tab === 'upcoming' ? upcoming : past, { ...applied, region: 'ALL' })
-  const waiting = applied.sort === 'date' ? listed.filter(group => group.kind === 'OVERDUE') : []
-  const days = byDay(applied.sort === 'date' ? listed.filter(group => group.kind !== 'OVERDUE') : listed)
+  // A group netting to nothing pays nothing and is left out; one below zero (a marketplace's deductions) is no payout day:
+  // the marketplace takes it off a later payout, so it waits apart, as the overdue records do.
+  const listed = filterGroups(tab === 'upcoming' ? upcoming : past, { ...applied, region: 'ALL' }).filter(group => Math.abs(group.amount) >= 0.005)
+  const byDate = applied.sort === 'date'
+  const deducting = (group: PayoutGroup) => tab === 'upcoming' && group.kind !== 'OVERDUE' && group.amount < 0
+  const waiting = byDate ? listed.filter(group => group.kind === 'OVERDUE') : []
+  const deductions = byDate ? listed.filter(deducting) : []
+  const days = byDay(byDate ? listed.filter(group => group.kind !== 'OVERDUE' && !deducting(group)) : listed)
   const filtered = [applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max)].some(Boolean)
   const activeCount = [platforms.length > 0, region !== 'ALL', applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max), Boolean(search.trim()), applied.sort !== 'date'].filter(Boolean).length
   const read = data?.coverage.filter(store => store.state === 'READ') ?? []
@@ -1881,12 +1889,13 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
     const gap = payoutGap(group)
     const area = regionLabel(group)
     return <li key={group.key} className={expanded ? 'is-open' : undefined}>
+      {/* Names on the left, the money on the right, in line with the day's total. */}
       <button type="button" className="reports-payout-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : group.key)}>
-        <strong className="reports-payout-amount">{formatTl(group.amount)}</strong>
         <span className="reports-payout-store"><PlatformSquareMark code={group.platformCode} name={platformName(group.platformCode)} /><span>{group.storeName}</span>
           {area && <em className="reports-payout-chip is-region">{area}</em>}</span>
         <span className="reports-payout-state">{applied.sort === 'amount' && <small>{shortDay(group.day, false)}</small>}
           {payoutState(group) !== 'EXPECTED' && <em className={`reports-payout-chip is-${payoutState(group).toLowerCase()}`}>{payoutStateLabels[payoutState(group)]}</em>}</span>
+        <strong className="reports-payout-amount">{formatTl(group.amount)}</strong>
         <UiIcon name="chevronDown" size={16} />
       </button>
       {expanded && <div className="reports-payout-detail">
@@ -1942,7 +1951,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
         : <>
           <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
             items={[{ value: 'upcoming', label: 'Gelecek Ödemeler', icon: 'calendarClock' }, { value: 'past', label: 'Geçmiş Ödemeler', icon: 'circleCheck' }]} />
-          {days.length === 0 && waiting.length === 0
+          {days.length === 0 && waiting.length === 0 && deductions.length === 0
             ? <div className="reports-empty reports-payout-empty"><p>{filtered || none || region !== 'ALL' ? 'Bu filtrelerle ödeme yok.' : tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data?.daysBack ?? 90} günde okunmuş ödeme yok.`}</p>
               {activeCount > 0 && <button type="button" className="secondary reports-payout-all" onClick={clear}>Filtreleri Temizle</button>}</div>
             : <div className="reports-payout-days">
@@ -1961,6 +1970,14 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
                   <ul className="reports-payout-rows">{item.groups.map(row)}</ul>
                 </section>
               })}
+              {deductions.length > 0 && <section className="reports-payout-day is-deduction" aria-label="Bekleyen kesinti">
+                <header>
+                  <UiIcon name="alertTriangle" size={16} />
+                  <span className="reports-payout-day-name"><b>Bekleyen Kesinti</b><small>Sonraki ödemeden düşülür</small></span>
+                  <strong>{formatTl(deductions.reduce((sum, group) => sum + group.amount, 0))}</strong>
+                </header>
+                <ul className="reports-payout-rows">{deductions.map(row)}</ul>
+              </section>}
               {waiting.length > 0 && <section className="reports-payout-day is-waiting" aria-label="Vadesi geçmiş, ödeme bekleyen">
                 <header>
                   <UiIcon name="alertTriangle" size={16} />

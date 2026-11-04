@@ -63,7 +63,8 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
             .Where(PayoutBuilder.Counts)
             .Select(row => (Row: row, Line: PayoutBuilder.Line(row, today)))
             .Where(x => !string.IsNullOrEmpty(search) || !string.IsNullOrEmpty(query.PayoutId)
-                || PayoutBuilder.Open(x.Line) && PayoutBuilder.Expect(x.Row, x.Line, today) is var expect && expect.Day == query.Day && (query.Kind is null || expect.Kind == query.Kind))
+                || query.Kind == "PAID_DAY" && x.Line.Status == PayoutBuilder.Paid && x.Line.DueDay == query.Day
+                || query.Kind != "PAID_DAY" && PayoutBuilder.Open(x.Line) && PayoutBuilder.Expect(x.Row, x.Line, today) is var expect && expect.Day == query.Day && (query.Kind is null || expect.Kind == query.Kind))
             .Select(x => x.Line)
             .Where(line => query.Region is null || !string.IsNullOrEmpty(search) || line.Region == query.Region)
             .ToList();
@@ -193,7 +194,13 @@ internal static class PayoutBuilder
     public static bool Counts(PayoutRow row) =>
         row.Source != MarketplaceFinanceSources.MoneyMovements
         && !(row.Source == TrendyolFinanceRequestContract.OtherFinancials && string.Equals(row.RequestedType, TrendyolFinanceCategorizer.DeductionInvoices, StringComparison.OrdinalIgnoreCase)
-             && row.Category == MarketplaceFinanceCategories.Commission);
+             && row.Category == MarketplaceFinanceCategories.Commission)
+        && !IsHepsiburadaTotal(row);
+
+    // Hepsiburada writes each payout once more as a TotalPayment record, the sum of the records it paid (to the kuruş on
+    // every week read in Sep-Nov 2026): the payout's own figure, never one more record.
+    internal static bool IsHepsiburadaTotal(PayoutRow row) =>
+        row.Source == HepsiburadaFinanceSyncJobHandler.Source && string.Equals(row.TransactionType, "TotalPayment", StringComparison.OrdinalIgnoreCase);
 
     // What a record adds to the payout: a statement line its seller revenue (commission off), signed by its debt or
     // credit; any other record its credit less its debt. Pazarama's agreement and n11's settlement line carry the net
@@ -250,10 +257,19 @@ internal static class PayoutBuilder
         var due = line.DueDay!.Value;
         // A record past its due day with no payout day known (Avrupa is paid about monthly, Pazarama when it says) waits
         // apart, OVERDUE, never in the next payout's estimate.
+        // Hepsiburada pays every Tuesday the records due since the Tuesday before (Sep-Nov 2026: due Wednesday 28 Oct, paid
+        // Tuesday 3 Nov; due on a Tuesday, paid that day), deductions with them.
+        if (row.PlatformCode == "HEPSIBURADA")
+        {
+            var tuesday = WeekdayOnOrAfter(due, DayOfWeek.Tuesday);
+            return (tuesday < today ? WeekdayOnOrAfter(today, DayOfWeek.Tuesday) : tuesday, "PAYOUT_DAY");
+        }
         if (row.PlatformCode != "TRENDYOL" || line.Region != TrGulf) return due < today ? (today, "OVERDUE") : (due, "DUE_DAY");
         var day = row.Source == TrendyolFinanceRequestContract.Settlements ? PayoutDayOnOrBefore(due) : PayoutDayOnOrAfter(due);
         return (day < today ? PayoutDayOnOrAfter(today) : day, "PAYOUT_DAY");
     }
+
+    private static DateOnly WeekdayOnOrAfter(DateOnly day, DayOfWeek weekday) => day.AddDays(((int)weekday - (int)day.DayOfWeek + 7) % 7);
 
     private static DateOnly PayoutDayOnOrBefore(DateOnly day) => day.DayOfWeek switch
     {
@@ -288,6 +304,8 @@ internal static class PayoutBuilder
                 group.Key.Day, group.Sum(x => x.Line.Net), null, group.Count(), Expected))
             .OrderBy(x => x.Day).ThenBy(x => x.PlatformCode).ThenBy(x => x.Region).ToList();
 
+        var totals = rows.Where(row => IsHepsiburadaTotal(row) && row.PaymentDate is not null)
+            .GroupBy(row => (row.ConnectionId, Day: Day(row.PaymentDate!.Value))).ToDictionary(group => group.Key, group => group.Sum(row => row.Credit - row.Debt));
         var paidLines = lines.Where(x => !string.IsNullOrEmpty(x.Row.PaymentOrderId))
             .GroupBy(x => (x.Row.ConnectionId, x.Row.PaymentOrderId!))
             .ToDictionary(group => group.Key, group => (Net: group.Sum(x => x.Line.Net), Count: group.Count()));
@@ -298,10 +316,12 @@ internal static class PayoutBuilder
                 return Group($"payout:{payout.ConnectionId:N}:{payout.ExternalId}", "PAYOUT", stores, payout.ConnectionId, PayoutRegion(payout.RegionCode, payout.RegionName), payout.RegionName ?? payout.RegionCode,
                     Day(payout.PayoutDate!.Value), payout.Amount, read?.Net, read?.Count ?? 0, Paid);
             })
-            // Pazarama's paid agreements, n11's and Hepsiburada's paid records, a store's day at a time.
+            // Pazarama's paid agreements, n11's and Hepsiburada's paid records, a store's day at a time; a Hepsiburada payout shows its
+            // own TotalPayment figure, its records' sum beside it.
             .Concat(lines.Where(x => x.Row.Source is PazaramaFinanceSyncJobHandler.Source or N11SettlementSyncJobHandler.Source or HepsiburadaFinanceSyncJobHandler.Source && x.Line.Status == Paid && x.Line.DueDay is { } day && day >= today.AddDays(-daysBack))
                 .GroupBy(x => (x.Row.ConnectionId, Day: x.Line.DueDay!.Value))
-                .Select(group => Group($"paid:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}", "DUE_DAY", stores, group.Key.ConnectionId, NoRegion, null, group.Key.Day,
+                .Select(group => Group($"paid:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}", "PAID_DAY", stores, group.Key.ConnectionId, NoRegion, null, group.Key.Day,
+                    totals.TryGetValue((group.Key.ConnectionId, group.Key.Day), out var total) ? total :
                     group.Sum(x => x.Line.Net), group.Sum(x => x.Line.Net), group.Count(), Paid)))
             .OrderByDescending(x => x.Day).ThenBy(x => x.PlatformCode).ToList();
 
@@ -309,7 +329,7 @@ internal static class PayoutBuilder
             .Select(region =>
             {
                 var due = open.Where(x => x.Line.Region == region).ToList();
-                var next = upcoming.Where(x => x.Region == region && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault();
+                var next = upcoming.Where(x => x.Region == region && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0);
                 return new PayoutRegionView(region, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
                     overdue.Where(x => x.Line.Region == region).Sum(x => x.Line.Net));
             })
@@ -321,7 +341,7 @@ internal static class PayoutBuilder
             .Select(code =>
             {
                 var due = open.Where(x => x.Row.PlatformCode == code).ToList();
-                var next = upcoming.Where(x => x.PlatformCode == code && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault();
+                var next = upcoming.Where(x => x.PlatformCode == code && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0);
                 return new PayoutPlatformView(code, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
                     overdue.Where(x => x.Row.PlatformCode == code).Sum(x => x.Line.Net));
             })
@@ -329,8 +349,9 @@ internal static class PayoutBuilder
 
         var early = rows.Where(x => x.Source == MarketplaceFinanceSources.MoneyMovements && string.Equals(x.RequestedType, "CashAdvance", StringComparison.OrdinalIgnoreCase)
             && Day(x.TransactionDate) >= today.AddDays(-daysBack)).ToList();
-        // The next payout: the first day to come with an estimate, the waiting overdue records left out.
-        var nextDay = upcoming.FirstOrDefault(x => x.Kind != "OVERDUE")?.Day;
+        // The next payout: the first day to come whose estimate is above zero (a day that nets to nothing or less pays
+        // nothing: the marketplace takes it off a later payout), the waiting overdue records left out.
+        var nextDay = upcoming.Where(x => x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0)?.Key;
         var next = nextDay is { } first
             ? upcoming.Where(x => x.Day == first && x.Kind != "OVERDUE").GroupBy(x => 1).Select(group => group.First() with { Key = $"next:{first:yyyy-MM-dd}", Amount = group.Sum(x => x.Amount), Records = group.Sum(x => x.Records) }).Single()
             : null;

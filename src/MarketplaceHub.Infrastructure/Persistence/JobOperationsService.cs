@@ -516,7 +516,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
         var rows = await db.JobVariantResults.AsNoTracking()
             .Where(x => x.TenantId == job.TenantId && x.JobId == job.Id)
-            .Select(x => new { x.VariantId, x.Barcode, x.StockCode, x.Status, x.Reason })
+            .Select(x => new { x.VariantId, x.Barcode, x.StockCode, x.Status, x.Reason, At = (DateTimeOffset?)x.RecordedAt })
             .ToListAsync(cancellationToken);
         var source = rows.Count > 0 ? "RECORDED" : "NONE";
         if (rows.Count == 0 && profileId is { } cardId && !string.IsNullOrWhiteSpace(publicationHash))
@@ -539,7 +539,8 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
                         Barcode = x.ExternalBarcode ?? x.ExternalSku ?? "",
                         StockCode = x.ExternalSku,
                         Status = status,
-                        Reason = status is JobVariantResultPolicy.Rejected or JobVariantResultPolicy.Pending ? x.RejectionCode : null
+                        Reason = status is JobVariantResultPolicy.Rejected or JobVariantResultPolicy.Pending ? x.RejectionCode : null,
+                        At = (DateTimeOffset?)null
                     };
                 }).ToList();
             }
@@ -552,7 +553,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             {
                 Order = row.VariantId is { } id && sortOrder.TryGetValue(id, out var order) ? order : int.MaxValue,
                 View = new JobVariantResultView(row.Barcode, row.StockCode,
-                    row.VariantId is { } variantId ? optionsByVariant.GetValueOrDefault(variantId) : null, row.Status, row.Reason)
+                    row.VariantId is { } variantId ? optionsByVariant.GetValueOrDefault(variantId) : null, row.Status, row.Reason, row.At)
             })
             .ToList();
         var carried = rows.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).ToHashSet();

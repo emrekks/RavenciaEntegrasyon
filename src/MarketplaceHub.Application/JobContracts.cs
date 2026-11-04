@@ -177,7 +177,8 @@ public sealed record JobDetailView(
 // NOT_SENT; its Reason is null when the reason is not known.
 public sealed record JobVariantResultsView(string Source, IReadOnlyList<JobVariantResultView> Items);
 
-public sealed record JobVariantResultView(string? Barcode, string? StockCode, string? Options, string Status, string? Reason);
+// At: when the marketplace gave this answer (the recorded result's time); null when it is read from the card state, which keeps no time.
+public sealed record JobVariantResultView(string? Barcode, string? StockCode, string? Options, string Status, string? Reason, DateTimeOffset? At = null);
 
 // The job list returns at most Limit of the newest matching jobs (default 200, max 1,000)
 // instead of the whole history. After is the NextCursor of the previous page (paged list only):
