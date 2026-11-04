@@ -88,7 +88,9 @@
     border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard),
     opacity var(--rv-motion-fast) var(--rv-ease-standard), scale var(--rv-motion-press-duration) var(--rv-ease-enter);
 }
-:where(button, [role="button"]):not(:disabled, [aria-disabled="true"], [role="switch"]):active { scale: var(--rv-motion-press); }
+/* A press shrinks a button a little, but not one that only shows a tip, an info row or a wide row or card (owner, 5 Nov
+   2026: "tıklayınca gereksiz animasyon"): those stay still. */
+:where(button, [role="button"]):not(:disabled, [aria-disabled="true"], [role="switch"], .reports-tip-trigger, .reports-metric, .title-hint, .field-help, [class*="field-help"], [class*="help-mark"], .reports-payout-row, .reports-payout-region, .rr-metric-open, .commission-period-main, .commission-model-toggle, [class*="-row"], [class*="-card"]):active { scale: var(--rv-motion-press); }
 
 /* Table rows ease into their hover colour. */
 :where(tbody tr) { transition: background-color var(--rv-motion-fast) var(--rv-ease-standard); }
