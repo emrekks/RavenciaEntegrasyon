@@ -1,11 +1,38 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import type { AtRule, Plugin as PostcssPlugin } from 'postcss'
+
+// Touch screens keep :hover on the last element touched, so a tapped card or row stayed lit after the finger lifted.
+// Every :hover selector is moved into @media (hover: hover) at build time: pointers that can hover keep every hover
+// effect as written, touch screens never get one (taps, focus and the open states still work). A rule that mixes
+// :hover with other selectors keeps the others where they were. Rules already under (hover: hover) and keyframes stay.
+const hoverOnlyOnPointers: PostcssPlugin = {
+  postcssPlugin: 'hover-only-on-pointers',
+  Once(root, helpers) {
+    root.walkRules(rule => {
+      if (!rule.selector.includes(':hover')) return
+      for (let parent = rule.parent; parent && parent.type !== 'root'; parent = parent.parent) {
+        if (parent.type !== 'atrule') continue
+        const at = parent as AtRule
+        if (at.name.endsWith('keyframes') || (at.name === 'media' && /\(\s*hover\s*:\s*hover\s*\)/.test(at.params))) return
+      }
+      const hover = rule.selectors.filter(selector => selector.includes(':hover'))
+      const rest = rule.selectors.filter(selector => !selector.includes(':hover'))
+      const media = new helpers.AtRule({ name: 'media', params: '(hover: hover)' })
+      media.append(rule.clone({ selectors: hover }))
+      rule.after(media)
+      if (rest.length) rule.selectors = rest
+      else rule.remove()
+    })
+  },
+}
 
 export default defineConfig(({ mode }) => {
   const apiProxy = loadEnv(mode, '.', '').VITE_API_PROXY ?? 'http://localhost:5192'
 
   return {
     plugins: [react()],
+    css: { postcss: { plugins: [hoverOnlyOnPointers] } },
     build: {
       rollupOptions: {
         output: {

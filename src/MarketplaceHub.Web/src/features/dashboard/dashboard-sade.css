@@ -410,3 +410,12 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bad:not(.rr-nodot):hover:not(:focus-visible) { border-color: color-mix(in srgb, var(--rr-bad) 38%, var(--rr-surface)); background: color-mix(in srgb, var(--rr-bad) 5%, var(--rr-surface)); }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt.rr-mxt tbody tr:hover td { background: none; }
 }
+/* The operation card's "?" (touch screens only): beside the card's name, it opens the store breakdown in place; a tap on
+   the rest of the card still opens its list. */
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-q { display: none; }
+@media (hover: none) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-t small { display: inline-flex; align-items: center; gap: 4px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-op-q { display: inline-grid; place-items: center; width: 22px; height: 22px; margin: -4px 0; color: var(--rr-subtle); border-radius: 999px; cursor: pointer; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bd-open .rr-op-q { color: var(--rr-primary); }
+html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard.rr-bd-open > .rr-tip.rr-bd { display: grid !important; opacity: 1; visibility: visible; pointer-events: auto; transform: none; }
+}

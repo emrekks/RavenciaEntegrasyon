@@ -587,3 +587,11 @@
    shown muted as "Kategori #<id>". */
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-table :is(.mapping-saved-loading, .mapping-saved-fallback) { color: var(--rv-color-muted); }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-table .mapping-saved-loading { animation: rv-motion-fade var(--rv-motion-base, .2s) ease-out 120ms backwards; }
+
+/* Phones: the panel category list shows two per row, and a numbered section title ("4. Kategori Özellikleri ve
+   Değerleri") stays on one line beside its icon and question mark. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; }
+  .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list > span { width: auto; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-section-heading h2 { font-size: 14.5px; letter-spacing: -.1px; white-space: nowrap; }
+}

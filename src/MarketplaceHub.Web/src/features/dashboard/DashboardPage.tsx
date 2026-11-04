@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
@@ -6,6 +6,7 @@ import type { Product } from '../catalog/shared'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { CardBackgroundIcon, type CardIconName } from '../../shared/components/CardBackgroundIcon'
+import { UiIcon } from '../../shared/components/UiIcon'
 import { dashboardOperationalLinks, dayCancellationsLink } from '../../shared/dashboard-operational-links'
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
@@ -185,6 +186,15 @@ export function DashboardPage() {
   // The store picked in the channel list filters the whole performance card; the metric picks what the chart draws.
   const [channel, setChannel] = useState('ALL')
   const [lowStockOpen, setLowStockOpen] = useState(false)
+  // Touch screens: the operation card whose store breakdown is open from its "?" (a tap on the card itself opens its list).
+  const [breakdownOpen, setBreakdownOpen] = useState<string | null>(null)
+  useEffect(() => {
+    if (!breakdownOpen) return
+    const close = (event: Event) => { if (!(event.target instanceof Element && event.target.closest('.rr-op-q'))) setBreakdownOpen(null) }
+    document.addEventListener('pointerdown', close)
+    window.addEventListener('scroll', close, { passive: true })
+    return () => { document.removeEventListener('pointerdown', close); window.removeEventListener('scroll', close) }
+  }, [breakdownOpen])
   const lowStock = useQuery({ queryKey: ['products', 'low-stock-details'], queryFn: () => loadAllPages<Product>('/products?stock=LOW', 200), enabled: lowStockOpen, staleTime: 15_000 })
   const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
@@ -323,9 +333,13 @@ export function DashboardPage() {
     </div></div>
     {errors.length > 0 && !noticeClosed && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span><b>Bazı rapor verileri alınamadı.</b> Görünen değerler kısmi olabilir; birkaç dakika içinde tekrar denenir.</span><button type="button" className="rr-icon-btn" onClick={() => setNoticeClosed(true)} aria-label="Uyarıyı kapat"><RrIcon name="close" /></button></div>}
     <section className="rr-dsect"><header><h2>Operasyon Metrikleri</h2></header><div className="rr-opgrid">{ops.map(([kind, label, value, tone, to, byConnection, detail]) => {
-      const body = <><CardBackgroundIcon name={kind} tone={tone && value ? tone : undefined} /><span className="rr-op-t"><small>{label}</small><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong></span><RrIcon name="arrowR" /><Breakdown rows={Array.isArray(byConnection) ? byConnection : breakdown(byConnection)} /></>
+      const breakdownRows = Array.isArray(byConnection) ? byConnection : breakdown(byConnection)
+      const toggleBreakdown = (event: ReactMouseEvent | ReactKeyboardEvent) => { event.preventDefault(); event.stopPropagation(); setBreakdownOpen(open => open === kind ? null : kind) }
+      // On touch screens the card's "?" shows which stores the figure comes from, without opening the card's list.
+      const mark = breakdownRows.length ? <span className="rr-op-q" role="button" tabIndex={0} aria-label={`${label}: mağazalara göre`} aria-expanded={breakdownOpen === kind} onClick={toggleBreakdown} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') toggleBreakdown(event) }}><UiIcon name="help" size={14} /></span> : null
+      const body = <><CardBackgroundIcon name={kind} tone={tone && value ? tone : undefined} /><span className="rr-op-t"><small>{label}{mark}</small><strong className="rr-num">{value == null ? '—' : count(value)}{value != null && detail && <span className="rr-op-x">{detail}</span>}</strong></span><RrIcon name="arrowR" /><Breakdown rows={breakdownRows} /></>
       // The İptal card is red when it counts any, but its pulsing dot only marks orders cancelled in part.
-      const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'packageX' && !partialCancels ? ' rr-nodot' : ''}`
+      const className = `rr-opcard${tone && value ? ` rr-${tone}` : ''}${kind === 'packageX' && !partialCancels ? ' rr-nodot' : ''}${breakdownOpen === kind ? ' rr-bd-open' : ''}`
       // Low stock opens its window here instead of taking the user to the products page.
       return kind === 'alertTriangle'
         ? <button key={kind} type="button" className={className} aria-haspopup="dialog" onClick={() => setLowStockOpen(true)}>{body}</button>
