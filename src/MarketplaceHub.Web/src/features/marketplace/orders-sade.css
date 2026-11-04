@@ -296,3 +296,10 @@
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-b > :last-child { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom-color: transparent; }
   :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-sheet.rr-sheet-full > .rr-sheet-f.rr-sheet-f { margin: 0 12px calc(12px + env(safe-area-inset-bottom)); padding: 10px 12px; border: 1px solid var(--rr-line); border-radius: 0 0 14px 14px; }
 }
+/* Phones, order cards: the invoice state sits on the amount's line (bottom-aligned with ₺554,69), its label row above
+   left to "Faturalanacak Tutar", so the two read as one row. */
+@media (max-width: 760px) {
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell.rr-invcell { align-items: end; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell > :is(.rr-ring, .rr-reason-tip) { align-self: end; padding-bottom: 1px; }
+  :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-invcell > .rr-anchor { align-self: start; }
+}
