@@ -561,6 +561,14 @@ describe('ReportsPage', () => {
     expect(empty.querySelector('.reports-payout-empty')?.textContent).toContain('Bu filtrelerle ödeme yok.')
     await act(async () => { (empty.querySelector('.reports-payout-empty button') as HTMLButtonElement).click() })
     expect(texts(empty, '.reports-payout-row')).toHaveLength(4)
+    act(() => root?.unmount())
+    // The explanations follow the picked marketplace: Hepsiburada's payout day, no Trendyol balance claim.
+    const hepsiburada = await open('?view=payouts&hp=HEPSIBURADA')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    const tips = texts(hepsiburada, '.reports-kpis > div')
+    expect(tips[1]).toContain('Hepsiburada her salı öder')
+    expect(tips[1]).not.toContain('Trendyol Türkiye-Körfez')
+    expect(tips[0]).not.toContain("Trendyol'un Toplam Güncel Bakiye")
   })
 
   it('opens the stock tab with its capital, value, breakdowns and dead stock, asking for the picked platforms', async () => {

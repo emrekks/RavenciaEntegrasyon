@@ -106,3 +106,11 @@ export function filterGroups(groups: PayoutGroup[], filters: PayoutFilters) {
     && (min === null || group.amount >= min) && (max === null || group.amount <= max))
   return filters.sort === 'amount' ? [...kept].sort((a, b) => b.amount - a.amount) : kept
 }
+
+// When each marketplace pays, as read from its paid records (Oct-Nov 2026), for the next payout's explanation.
+export const payoutRuleText: Record<string, string> = {
+  TRENDYOL: 'Trendyol Türkiye-Körfez pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder (resmi tatil kaydırır); Azerbaycan ve Avrupa vade gününde gösterilir.',
+  HEPSIBURADA: 'Hepsiburada her salı öder: kayıt, vadesinden sonraki ilk salı (vade salıysa o gün) ödenir.',
+  N11: 'n11 havale tarihinde öder.',
+  PAZARAMA: 'Pazarama aktarım tarihinde öder.'
+}
