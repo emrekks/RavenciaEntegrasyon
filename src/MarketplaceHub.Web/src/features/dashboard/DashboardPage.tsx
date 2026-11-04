@@ -306,7 +306,7 @@ export function DashboardPage() {
     ['returns', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
     // "N Bekleyen | M Yaklaşan": M is the former Yaklaşan Faturalar count (delivered 5+ days ago, still awaiting an invoice),
     // left out while it is not known, never shown as 0. The card opens the pending list; the due list is a tab there.
-    ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <>Bekleyen{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(dueSoon)} Yaklaşan</>}</>],
+    ['invoicePending', 'Faturalar', knownCount(invoiceSummary.isLoading, invoiceSummary.data?.uninvoicedCount), '', dashboardOperationalLinks.pendingInvoices, undefined, <><span className="rr-op-x-word">Bekleyen</span>{dueSoon !== null && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(dueSoon)} Yaklaşan</>}</>],
     // Today's cancellations; the section is about today, so the label does not repeat it.
     ['packageX', cancelLabel, knownCount(cancellations.isLoading, cancelled ? cancelTotal(row => row.cancelledOrders) : undefined), 'bad', dayCancellationsLink(today), cancelRows],
     // The same count as the product list's low-stock filter it opens.

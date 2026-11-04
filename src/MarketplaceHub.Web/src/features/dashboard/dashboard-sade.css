@@ -426,3 +426,10 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
   .app-shell.stitch-shell main section.content.rr-dashboard > .rr-ph > .rr-acts { flex: none; width: auto; }
   .app-shell.stitch-shell main section.content.rr-dashboard > .rr-ph > .rr-acts > .rr-btn { width: auto; height: 36px; min-height: 0; padding: 0 12px; }
 }
+/* Phones: a card's small note (Paket | 5 Adet Ürün) is 12px, weight 500, as on the order cards. On Faturalar the word
+   "Bekleyen" gives way so "| 0 Yaklaşan" still fits the line (the figure is the waiting count). */
+@media (max-width: 760px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x { font-size: 12px; font-weight: 500; letter-spacing: 0; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-x-word { display: none; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opcard .rr-op-x .rr-op-x-word + .rr-op-sep { margin-left: 0; }
+}
