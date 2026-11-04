@@ -204,7 +204,11 @@
 
 /* Value tools on the table's own columns: the same column template, the same side padding and the same
    scrollbar gutter, so the search starts and "Birebir eşle" ends exactly with the select column. */
-.app-shell .panel.mapping-step.cm-card .cm-vtools { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 28px; column-gap: 16px; padding: 0 17px; overflow: hidden; scrollbar-gutter: stable; }
+/* Same columns as the field row above: the title under the marketplace field, the search and buttons under the panel field to the right edge. */
+.app-shell .panel.mapping-step.cm-card .cm-vtools { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr) auto; column-gap: 12px; padding: 0; overflow: hidden; scrollbar-gutter: auto; }
+.app-shell .panel.mapping-step.cm-card .cm-vtools > .cm-vtools-actions { grid-column: 3 / -1; display: flex; justify-content: flex-end; gap: 8px; min-width: 0; }
+.app-shell .panel.mapping-step.cm-card .cm-vtools > .cm-vtools-actions > .cm-search { flex: 1 1 auto; min-width: 0; width: auto; }
+@media (max-width: 900px) { .app-shell .panel.mapping-step.cm-card .cm-vtools { grid-template-columns: minmax(0, 1fr); row-gap: 8px; } .app-shell .panel.mapping-step.cm-card .cm-vtools > .cm-vtools-actions { grid-column: auto; flex-wrap: wrap; justify-content: flex-start; } }
 .app-shell .panel.mapping-step.cm-card .cm-vrow.is-head { overflow: hidden; scrollbar-gutter: stable; font-size: 13px; }
 .app-shell .panel.mapping-step.cm-card .cm-vscroll { scrollbar-gutter: stable; }
 .app-shell .panel.mapping-step.cm-card .cm-vtools-actions { gap: 8px; }
