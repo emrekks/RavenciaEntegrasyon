@@ -210,7 +210,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, con
         <p><SettingsIcon name="info" /><span>Sipariş, iade ve fatura kayıtları her platform için ayrı silinir: <b>Entegrasyonlar</b> sayfasında bağlantının menüsünden <b>Verileri Sıfırla</b>.</span></p>
       </div>
     </div>
-    <div className="ss-bar ss-dr-bar">
+    <StickyActionBar label="Silinecekler" className="ss-bar ss-dr-bar">
       <div className="ss-dr-sum" role="status">
         <div className="ss-dr-sum-head"><strong>Silinecekler</strong><span className="ss-dr-total">Toplam <b>{going.length && !known ? '…' : `${resetNumber(total)} kayıt`}</b></span></div>
         {going.length > 0 && <div className="ss-dr-chips">{going.map(option => <span key={option.scope} className="ss-dr-chip">{option.label}{counts?.[option.scope] !== undefined ? <b>{resetNumber(counts[option.scope])}</b> : null}</span>)}</div>}
@@ -219,7 +219,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, con
         <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={`${resetConfirmWord} yazın`} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
         <button type="button" className="ss-btn is-danger is-solid ss-dr-go" disabled={!going.length || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
       </div>
-    </div>
+    </StickyActionBar>
   </>
 }
 
