@@ -1211,3 +1211,14 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
 @media (max-width: 760px) {
   html body .app-shell.stitch-shell main .product-page-heading .product-page-heading-title > h1 { font-size: 18px; line-height: 1.3; letter-spacing: -.1px; }
 }
+/* Phones, variant table: a column's tool (bulk pencil, paste menu) sits right beside its name, smaller, with the same
+   6px gap in every column and beside every row's option text. */
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-head .variant-table-header-with-action { display: inline-flex; justify-content: flex-start; align-items: center; gap: 6px; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-head :is(.variant-bulk-edit-trigger, .variant-header-action) { width: 22px; height: 22px; min-width: 0; min-height: 0; padding: 0; margin: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-head :is(.variant-bulk-edit-trigger, .variant-header-action) svg { width: 13px; height: 13px; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-table-head .variant-header-action-shell { display: inline-flex; margin: 0; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-option-cell { gap: 6px; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-option-cell > .variant-option-edit-button { width: 22px; height: 22px; }
+  html body .app-shell.stitch-shell main .product-add-page .variant-option-cell > .variant-option-edit-button svg { width: 13px; height: 13px; }
+}
