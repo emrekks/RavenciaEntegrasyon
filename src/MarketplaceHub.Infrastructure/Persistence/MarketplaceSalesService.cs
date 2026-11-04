@@ -2268,6 +2268,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var orderLineIds = sourceLines.Select(x => x.OrderLineId).ToArray();
         var orderLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && orderLineIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var dispositions = await db.ReturnStockDispositions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == id).GroupBy(x => x.ReturnLineId).Select(x => new { ReturnLineId = x.Key, Quantity = x.Sum(y => y.Quantity) }).ToDictionaryAsync(x => x.ReturnLineId, x => x.Quantity, cancellationToken);
+        var pendingStockLineIds = (await db.ReturnDecisions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ClaimId == id && x.StockStatus == ReturnPendingStockPolicy.Pending)
+                .Select(x => x.StockLinesJson)
+                .ToListAsync(cancellationToken))
+            .SelectMany(json => ReturnPendingStock.Read(json).Select(line => line.ReturnLineId))
+            .ToHashSet();
         var lineSkuKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Sku, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var lineBarcodeKeys = orderLines.Values.SelectMany(x => CatalogLookupKeys(x.Barcode, 160)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var linkKeys = lineSkuKeys.Concat(orderLines.Values.SelectMany(LineMarketplaceIdentities)).Distinct(StringComparer.Ordinal).ToArray();
@@ -2325,7 +2331,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)),
                 source is null ? null : ReturnMarketplaceAmounts.Line(platformCode, source.SourceSnapshotJson, line.Quantity, claim.ExternalClaimId),
                 line.AcceptDetail, line.MarketplaceNote, line.Resolved, line.AcceptedBySeller,
-                HeldByDecision(line.Id), ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus));
+                HeldByDecision(line.Id), ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus), pendingStockLineIds.Contains(line.Id));
         }).ToList();
         var stockDispositionAvailable = sourceLines.Count == 0
             ? ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, null)
@@ -2513,6 +2519,13 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             CreatedAt = now,
             ReturnLineIds = returnLineIds
         };
+        // The stock choice is kept with the decision before anything is sent, so an approval whose answer is unclear
+        // keeps it until a later read of the claim settles it (ReturnPendingStock).
+        if (stockTargets.Count > 0)
+        {
+            decision.StockLinesJson = ReturnPendingStock.Serialize(stockTargets.Select(target => new ReturnPendingStockLine(target.Line.Id, stockPlan[target.Line.Id])).ToList());
+            decision.StockStatus = ReturnPendingStockPolicy.Pending;
+        }
         db.ReturnDecisions.Add(decision);
 
         var evidenceFiles = new List<ReturnEvidenceFile>(); long totalBytes = 0;
@@ -2556,6 +2569,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             }
             db.ExternalEffectRecords.Remove(effect);
             decision.Status = "FAILED";
+            ReturnPendingStock.Drop(decision, decision.CompletedAt.Value);
             await db.SaveChangesAsync(cancellationToken);
             return ServiceResult<ReturnDetailView>.Fail(error.Code, error.SafeMessage, error.HttpStatus is >= 400 and <= 599 ? error.HttpStatus.Value : 502);
         }
@@ -2576,23 +2590,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             "REJECT" => "REJECTED",
             _ => "PREAPPROVAL_CONFIRM_SUBMITTED"
         });
-        var restocked = new List<StockProjectionChange>();
-        foreach (var (stockLine, stockItem) in stockTargets)
-        {
-            var alreadyReceived = await db.ReturnStockDispositions.Where(x => x.TenantId == tenantId && x.ReturnLineId == stockLine.Id).SumAsync(x => x.Quantity, cancellationToken);
-            var receivable = stockLine.Quantity - alreadyReceived;
-            if (stockPlan[stockLine.Id] is { } plannedUnits) receivable = Math.Min(receivable, plannedUnits);
-            if (receivable <= 0) continue;
-            var stockKey = $"{normalizedKey}:stock:{stockLine.Id:N}";
-            var stockAt = effect.CompletedAt.Value;
-            db.ReturnStockDispositions.Add(new ReturnStockDisposition { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claimId, ReturnLineId = stockLine.Id, InventoryItemId = stockItem.Id, Disposition = ReturnStockDispositionKind.Pass, Quantity = receivable, IdempotencyKey = stockKey, Reason = "İade kabulünde stoğa eklendi", ActorUserId = userId, CreatedAt = stockAt });
-            stockItem.OnHand += receivable; stockItem.Available = Math.Max(0, stockItem.OnHand - stockItem.Reserved); stockItem.ProjectionVersion++; stockItem.Version++;
-            db.StockLedgerEntries.Add(new StockLedgerEntry { Id = Guid.CreateVersion7(), TenantId = tenantId, InventoryItemId = stockItem.Id, MovementType = "RETURN_PASS", QuantityDelta = receivable, SourceType = "RETURN_CLAIM", SourceId = claim.ExternalClaimId, SourceEventId = stockKey, IdempotencyKey = stockKey, OccurredAt = stockAt, RecordedAt = stockAt, ActorUserId = userId, CorrelationId = correlationId });
-            restocked.Add(new StockProjectionChange(stockItem.VariantId, stockItem.ProjectionVersion, stockKey));
-        }
-        // Restocked units go to every connection selling the variant, committed with the restock.
-        await StockProjectionOutbox.EnqueueAsync(db, tenantId, restocked, effect.CompletedAt.Value, cancellationToken);
-        if (stockTargets.Count > 0) db.AuditLogs.Add(new AuditLog { TenantId = tenantId, ActorUserId = userId, Action = "RETURN_STOCK_DISPOSITION", TargetType = "ReturnClaim", TargetId = claimId.ToString("D"), Reason = "İade kabulünde stoğa eklendi", CorrelationId = correlationId, CreatedAt = effect.CompletedAt.Value });
+        // The marketplace accepted the approval: the chosen lines go back to stock now, once.
+        await ReturnPendingStock.SettleAsync(db, decision, force: action == "APPROVE", correlationId, effect.CompletedAt.Value, cancellationToken);
         claim.UpdatedAt = effect.CompletedAt.Value;
         claim.Version++;
         await db.SaveChangesAsync(cancellationToken);

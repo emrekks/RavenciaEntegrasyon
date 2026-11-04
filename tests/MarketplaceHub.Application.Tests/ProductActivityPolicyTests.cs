@@ -16,6 +16,7 @@ public sealed class ProductActivityPolicyTests
     [InlineData("MARKETPLACE_STOCK_IMPORT", "MARKETPLACE_CATALOG", "c", ProductActivitySources.MarketplaceImport)]
     [InlineData("IMPORT_OPENING", "MARKETPLACE_CATALOG", "c", ProductActivitySources.MarketplaceImport)]
     [InlineData("IMPORT_OPENING", "IMPORT", "session", ProductActivitySources.ClassicImport)]
+    [InlineData("IMPORT_OPENING", OpeningStockLedger.EditorSourceType, "İlk ürün stoğu", ProductActivitySources.Editor)]
     [InlineData("MANUAL_ADJUSTMENT", "MANUAL", "Toplu ürün stok düzenleme", ProductActivitySources.BulkEdit)]
     [InlineData("MANUAL_ADJUSTMENT", "MANUAL", "Ürün düzenleme stoğu", ProductActivitySources.Editor)]
     [InlineData("MANUAL_ADJUSTMENT", "MANUAL", "İlk ürün stoğu", ProductActivitySources.Editor)]

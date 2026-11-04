@@ -219,6 +219,42 @@ public sealed class ReturnDecision
     public DateTimeOffset? CompletedAt { get; set; }
     // The return lines the decision was sent for (ReturnDecisionLinePolicy); null on decisions made before they were kept.
     public Guid[]? ReturnLineIds { get; set; }
+    // "Stoğa Ekle" chosen with an approval (ReturnPendingStockPolicy): the lines and units to put back, as JSON
+    // [{"returnLineId":…,"quantity":…|null}] (null quantity: the whole line). Kept with the decision so a choice made
+    // while the marketplace's answer is unclear is applied once the approval is confirmed. Null: no stock chosen.
+    public string? StockLinesJson { get; set; }
+    // PENDING until the approval is settled, then APPLIED (stock added) or DROPPED (rejected, failed, cancelled).
+    public string? StockStatus { get; set; }
+    public DateTimeOffset? StockSettledAt { get; set; }
+}
+
+public sealed record ReturnPendingStockLine(Guid ReturnLineId, decimal? Quantity);
+
+public enum ReturnPendingStockVerdict { Wait, Apply, Drop }
+
+// What a decision's pending "Stoğa Ekle" does once the marketplace has spoken. Stock comes back exactly when the line
+// is approved (ReturnDecisionLinePolicy.StockDispositionAllowed), whether the approval came from the panel's own call
+// or from the marketplace approving the claim itself; a rejected or cancelled line, or a decision that clearly did not
+// reach the marketplace, drops the choice. Anything else waits for the next read of the claim.
+public static class ReturnPendingStockPolicy
+{
+    public const string Pending = "PENDING";
+    public const string Applied = "APPLIED";
+    public const string Dropped = "DROPPED";
+
+    // The decision codes that still let a later claim read confirm the approval (ReconciledReturnDecision).
+    public static bool DecisionStillOpen(string decisionStatus, string? errorCode) =>
+        decisionStatus is "PENDING" or "SUBMITTED" or "SUCCEEDED" or "MANUAL_REVIEW"
+        || decisionStatus == "FAILED" && errorCode == "EXTERNAL_EFFECT_UNRESOLVED";
+
+    public static ReturnPendingStockVerdict Settle(string decisionStatus, string? decisionErrorCode, ReturnClaimStatus claimStatus, string? lineRawStatus)
+    {
+        if (!DecisionStillOpen(decisionStatus, decisionErrorCode)) return ReturnPendingStockVerdict.Drop;
+        if (claimStatus == ReturnClaimStatus.Cancelled) return ReturnPendingStockVerdict.Drop;
+        if (ReturnDecisionLinePolicy.StockDispositionAllowed(claimStatus, lineRawStatus)) return ReturnPendingStockVerdict.Apply;
+        var line = string.IsNullOrWhiteSpace(lineRawStatus) ? claimStatus : MarketplaceReturnStatus.Canonicalize(lineRawStatus);
+        return line is ReturnClaimStatus.Rejected or ReturnClaimStatus.Cancelled ? ReturnPendingStockVerdict.Drop : ReturnPendingStockVerdict.Wait;
+    }
 }
 
 public sealed class ReturnEvidence

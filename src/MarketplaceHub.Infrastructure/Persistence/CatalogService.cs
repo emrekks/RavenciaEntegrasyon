@@ -922,7 +922,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return ServiceResult<ProductDeleteResult>.Ok(new(products.Count, pendingJobs.Count));
     }
 
-    public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken)
+    public async Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null)
     {
         if (command.DefaultListPrice is < 0 || command.DefaultSalePrice is < 0) return Invalid<ProductView>("prices", "Fiyat negatif olamaz.");
         if (command.WarrantyMonths is < 0 or > 240) return Invalid<ProductView>("warrantyMonths", "Garanti süresi 0-240 ay arasında olmalıdır.");
@@ -942,6 +942,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (validation is not null) return ServiceResult<ProductView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         if (command.Variants.Count == 0) return Invalid<ProductView>("variants", "Ürün en az bir satış varyantı ister.");
         if (command.Variants.Count > 1000) return Invalid<ProductView>("variants", "Tek ürün kaydında en fazla 1000 varyant oluşturulabilir.");
+        if (command.Variants.Any(variant => !OpeningStockValid(variant.OnHand))) return Invalid<ProductView>("stock", OpeningStockInvalid);
 
         var globalAssignments = command.Attributes ?? [];
         var globalAttributeValidation = await ValidateAttributeValuesAsync(tenantId, globalAssignments, cancellationToken);
@@ -993,7 +994,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         db.ProductAttributeAssignments.AddRange(globalAssignments.Select(x => Assignment(tenantId, product.Id, null, x)));
         for (var index = 0; index < variants.Count; index++) db.ProductAttributeAssignments.AddRange((command.Variants[index].Attributes ?? []).Select(x => Assignment(tenantId, product.Id, variants[index].Id, x)));
         await PersistVariantOptionsAsync(tenantId, product.Id, variants, command.Variants, cancellationToken);
-        await EnsureMainInventoryAsync(tenantId, variants, cancellationToken);
+        await EnsureMainInventoryAsync(tenantId, variants, command.Variants.Select(x => x.OnHand).ToList(), actorUserId,
+            string.IsNullOrWhiteSpace(correlationId) ? Guid.NewGuid().ToString("N") : correlationId, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return await GetProductAsync(tenantId, product.Id, cancellationToken);
     }
@@ -1211,6 +1213,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var variantsToCreate = command.VariantsToCreate ?? [];
         var variantUpdates = command.VariantUpdates ?? [];
         if (variantUpdates.Any(variant => variant.CostPrice is < 0) || variantsToCreate.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
+        if (variantsToCreate.Any(variant => !OpeningStockValid(variant.OnHand))) return Invalid<ProductView>("stock", OpeningStockInvalid);
         if (variantUpdates.Any(variant => variant.Desi is <= 0)) return Invalid<ProductView>("variants", "Desi sıfırdan büyük olmalıdır.");
         if (variantUpdates.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0) || variantsToCreate.Any(variant => variant.DefaultListPrice is < 0 || variant.DefaultSalePrice is < 0)) return Invalid<ProductView>("variants", "Varyant fiyatı negatif olamaz.");
         if (variantsToCreate.Any(variant => variant.DefaultListPrice is decimal variantList && variant.DefaultSalePrice is decimal variantSale && variantList < variantSale)) return Invalid<ProductView>("variantsToCreate", "Varyant liste fiyatı satış fiyatından küçük olamaz.");
@@ -1367,7 +1370,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             db.ProductVariants.AddRange(newVariants);
             for (var index = 0; index < newVariants.Count; index++) db.ProductAttributeAssignments.AddRange((variantsToCreate[index].Attributes ?? []).Select(x => Assignment(tenantId, id, newVariants[index].Id, x)));
             await PersistVariantOptionsAsync(tenantId, id, newVariants, variantsToCreate, cancellationToken);
-            await EnsureMainInventoryAsync(tenantId, newVariants, cancellationToken);
+            await EnsureMainInventoryAsync(tenantId, newVariants, variantsToCreate.Select(x => x.OnHand).ToList(), actorUserId, correlation, now, cancellationToken);
         }
         // O15: the editor always sends the status it shows, which is the edited product's. A status the
         // user did not change touches nothing; a changed one moves the edited product, its rows and the
@@ -2692,11 +2695,23 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         SortOrder = value.SortOrder
     };
 
-    private async Task EnsureMainInventoryAsync(Guid tenantId, IEnumerable<ProductVariant> variants, CancellationToken cancellationToken)
+    private const string OpeningStockInvalid = "Açılış stoğu 0 ile 1.000.000.000 arasında olmalıdır.";
+    private static bool OpeningStockValid(decimal? onHand) => onHand is null or (>= 0 and <= 1_000_000_000m);
+
+    // Every new variant gets its MAIN stock row; an opening stock is saved with it, together with its opening ledger row
+    // (Açılış Stoğu), in the same save. A new variant sells nowhere yet, so nothing goes to a marketplace.
+    private async Task EnsureMainInventoryAsync(Guid tenantId, IReadOnlyList<ProductVariant> variants, IReadOnlyList<decimal?> openingStocks, Guid? actorUserId, string correlationId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var location = await db.InventoryLocations.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Code == "MAIN", cancellationToken);
         if (location is null) { location = new InventoryLocation { Id = Guid.CreateVersion7(), TenantId = tenantId, Code = "MAIN", Name = "Ana Depo", Status = "ACTIVE", Priority = 1 }; db.InventoryLocations.Add(location); }
-        foreach (var variant in variants) db.InventoryItems.Add(new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenantId, VariantId = variant.Id, LocationCode = "MAIN", Available = 0 });
+        for (var index = 0; index < variants.Count; index++)
+        {
+            var variant = variants[index];
+            var opening = decimal.Round(index < openingStocks.Count ? openingStocks[index] ?? 0m : 0m, 4, MidpointRounding.ToEven);
+            var item = new InventoryItem { Id = Guid.CreateVersion7(), TenantId = tenantId, VariantId = variant.Id, LocationCode = "MAIN", OnHand = opening, Reserved = 0, Available = InventoryProjection.Available(opening, 0) };
+            db.InventoryItems.Add(item);
+            if (OpeningStockLedger.FromEditor(tenantId, item.Id, variant.Id, opening, actorUserId, correlationId, now) is { } openingRow) db.StockLedgerEntries.Add(openingRow);
+        }
     }
 
     private async Task<HashSet<Guid>> DescendantIdsAsync(Guid tenantId, Guid parentId, CancellationToken cancellationToken)

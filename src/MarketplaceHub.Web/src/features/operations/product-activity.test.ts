@@ -34,6 +34,12 @@ describe('product activity change chip', () => {
     expect(activityTypeLabel(entry({ type: 'ORDER_RECEIVED', quantityDelta: -1 }))).toBe('Satış')
     expect(activityTypeLabel(entry({ type: 'ORDER_RECEIVED', quantityDelta: 1 }))).toBe('Sipariş İptali / Değişikliği')
   })
+
+  it('names a first stock Açılış Stoğu, the opening row and the editor\'s older manual first stock alike', () => {
+    expect(activityTypeLabel(entry({ type: 'IMPORT_OPENING', quantityDelta: 5 }))).toBe('Açılış Stoğu')
+    expect(activityTypeLabel(entry({ type: 'MANUAL_ADJUSTMENT', quantityDelta: 5, note: 'İlk ürün stoğu' }))).toBe('Açılış Stoğu')
+    expect(activityTypeLabel(entry({ type: 'MANUAL_ADJUSTMENT', quantityDelta: 5, note: 'Ürün düzenleme stoğu' }))).toBe('Stok Düzenleme')
+  })
 })
 
 describe('product activity source', () => {

@@ -150,7 +150,8 @@ public sealed record ReorderAttributeValuesCommand(IReadOnlyList<Guid> ValueIds)
 public sealed record CreateAttributeCommand(string Code, string Name, string DataType, string? SelectionMode, string? Unit, IReadOnlyList<CreateAttributeValueCommand> Values);
 public sealed record AttributeRequirementCommand(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, string Role = "ATTRIBUTE");
 public sealed record CategoryAttributeRequirementView(Guid AttributeId, bool IsRequired, bool AllowsCustomValue, int DisplayOrder, AttributeView Attribute, string Role = "ATTRIBUTE", bool IsWebColor = false);
-public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null, decimal? Desi = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null, int SortOrder = 0, decimal? CostPrice = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null);
+public sealed record CreateVariantCommand(string Sku, string? Barcode, string? ModelCode, IReadOnlyDictionary<string, string>? Options = null, decimal? Weight = null, decimal? Width = null, decimal? Height = null, decimal? Length = null, decimal? Desi = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null, int SortOrder = 0, decimal? CostPrice = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, decimal? OnHand = null);
+// OnHand: a new variant's opening stock, saved with the variant together with its opening stock ledger row (null or 0: none).
 // CostPrice: null leaves the stored cost as it is. A sent cost carries LoadedCostPrice, the cost the editor was
 // loaded with (null: it was empty); the update is refused when the stored cost is no longer that one (K2). Desi works
 // the same way with LoadedDesi, since the products import writes desi too.
@@ -230,7 +231,7 @@ public interface ICatalogService
     Task<ServiceResult<ProductDeleteResult>> BulkDeleteProductsAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<ProductDeletePreview>> PreviewProductDeleteAsync(Guid tenantId, BulkProductDeleteCommand command, CancellationToken cancellationToken);
     Task<ServiceResult<BulkProductVatResult>> BulkSetVatAsync(Guid tenantId, BulkProductVatCommand command, CancellationToken cancellationToken);
-    Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken);
+    Task<ServiceResult<ProductView>> CreateProductAsync(Guid tenantId, CreateProductCommand command, CancellationToken cancellationToken, Guid? actorUserId = null, string? correlationId = null);
     Task<ServiceResult<ProductView>> GetProductAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ProductMarketplaceCodesView>> GetProductMarketplaceCodesAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<ProductMarketplaceCodesView>> UpdateProductMarketplaceCodesAsync(Guid tenantId, Guid id, UpdateMarketplaceCodesCommand command, CancellationToken cancellationToken);

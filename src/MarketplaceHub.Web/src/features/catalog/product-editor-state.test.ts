@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
+import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
 
 describe('saved variant rows and code conflicts', () => {
   it('gives rows still under a temporary key the id of the saved variant with their stock code', () => {
@@ -41,7 +41,17 @@ describe('product editor state', () => {
     expect(editorDataStamp([{ ...base[0], platformStatuses: [{ ...base[0].platformStatuses[0], followsPanelPrice: false }, base[0].platformStatuses[1]] }])).not.toBe(followed)
   })
 
-  it('sends stock only for edited rows, against the stock loaded into the form', () => {
+  it('carries a new variant\'s opening stock as a non-negative number', () => {
+    expect(editorOpeningStock(7)).toBe(7)
+    expect(editorOpeningStock('12')).toBe(12)
+    expect(editorOpeningStock(0)).toBe(0)
+    expect(editorOpeningStock(-3)).toBe(0)
+    expect(editorOpeningStock('')).toBe(0)
+    expect(editorOpeningStock(undefined)).toBe(0)
+  })
+
+  it('sends stock only for edited existing rows, against the stock loaded into the form', () => {
+    // A new row's stock went with the variant (its opening stock), so it is not set again afterwards.
     const updates = editorStockUpdates([
       { key: 'v1', sku: 'A-1', stock: 5, loadedStock: 5 },
       { key: 'v2', sku: 'a-2', stock: 9, loadedStock: 4 },
@@ -49,8 +59,7 @@ describe('product editor state', () => {
       { key: 'new-zero', sku: 'A-4', stock: 0 }
     ], [{ id: 'v1', sku: 'A-1' }, { id: 'v2', sku: 'A-2' }, { id: 'v3', sku: 'A-3' }, { id: 'v4', sku: 'A-4' }])
     expect(updates).toEqual([
-      { variantId: 'v2', sku: 'A-2', onHand: 9, expectedOnHand: 4 },
-      { variantId: 'v3', sku: 'A-3', onHand: 3, expectedOnHand: 0 }
+      { variantId: 'v2', sku: 'A-2', onHand: 9, expectedOnHand: 4 }
     ])
   })
 

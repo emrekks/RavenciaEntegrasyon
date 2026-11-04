@@ -1954,6 +1954,55 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(3, await db.ProductVariants.CountAsync(x => x.TenantId == tenant.Id && x.ModelCode == modelCode));
     }
 
+    // Açılış Stoğu: a new card's and an added variant's first stock is saved with the variant together with its opening
+    // ledger row (IMPORT_OPENING from the editor, the user named); no stock writes no row; a negative stock is refused.
+    [PostgreSqlFact]
+    public async Task NewVariantStock_IsWrittenWithItsOpeningLedgerRow()
+    {
+        var tenant = NewTenant("opening-stock");
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            await seed.SaveChangesAsync();
+        }
+        await using var db = fixture.CreateContext();
+        var service = NewCatalogService(db);
+        var userId = Guid.CreateVersion7();
+        var suffix = Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+
+        var refused = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Açılış Bluz", "Açıklama", null, null, [new CreateVariantCommand($"AO-X-{suffix}", null, null, OnHand: -1m)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None, userId, "opening-refused");
+        Assert.Equal(422, refused.Error!.Status);
+
+        db.ChangeTracker.Clear();
+        var created = await service.CreateProductAsync(tenant.Id, new CreateProductCommand("Açılış Bluz", "Açıklama", null, null,
+            [new CreateVariantCommand($"AO-S-{suffix}", null, null, OnHand: 7m), new CreateVariantCommand($"AO-M-{suffix}", null, null, OnHand: 0m)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None, userId, "opening-create");
+        Assert.True(created.Succeeded, created.Error?.Message);
+        db.ChangeTracker.Clear();
+        var added = await service.UpdateProductAsync(tenant.Id, created.Value!.Id, created.Value.Version, new UpdateProductCommand("Açılış Bluz", "Açıklama", null, null,
+            VariantsToCreate: [new CreateVariantCommand($"AO-L-{suffix}", null, null, OnHand: 3m)], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None, userId, "opening-update");
+        Assert.True(added.Succeeded, added.Error?.Message);
+
+        var stock = await (from item in db.InventoryItems.AsNoTracking()
+                           join variant in db.ProductVariants.AsNoTracking() on item.VariantId equals variant.Id
+                           where item.TenantId == tenant.Id
+                           select new { variant.Sku, item.Id, item.OnHand, item.Available }).ToDictionaryAsync(x => x.Sku);
+        Assert.Equal((7m, 7m), (stock[$"AO-S-{suffix}"].OnHand, stock[$"AO-S-{suffix}"].Available));
+        Assert.Equal(0m, stock[$"AO-M-{suffix}"].OnHand);
+        Assert.Equal(3m, stock[$"AO-L-{suffix}"].OnHand);
+        var ledger = await db.StockLedgerEntries.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+        Assert.Equal(2, ledger.Count);
+        Assert.All(ledger, row =>
+        {
+            Assert.Equal(ProductActivityTypes.ImportOpening, row.MovementType);
+            Assert.Equal(OpeningStockLedger.EditorSourceType, row.SourceType);
+            Assert.Equal(userId, row.ActorUserId);
+            Assert.Equal(ProductActivitySources.Editor, ProductActivityPolicy.LedgerSource(row.MovementType, row.SourceType, row.SourceId));
+        });
+        Assert.Equal(7m, ledger.Single(x => x.InventoryItemId == stock[$"AO-S-{suffix}"].Id).QuantityDelta);
+        Assert.Equal(3m, ledger.Single(x => x.InventoryItemId == stock[$"AO-L-{suffix}"].Id).QuantityDelta);
+        Assert.Equal("opening-update", ledger.Single(x => x.InventoryItemId == stock[$"AO-L-{suffix}"].Id).CorrelationId);
+    }
+
     // Taslak Olarak Kaydet: a draft is saved without its KDV, stays a draft without it, goes on sale only with every rule
     // met, is never sent nor flipped by the bulk status change, and a card on sale never goes back to draft.
     [PostgreSqlFact]

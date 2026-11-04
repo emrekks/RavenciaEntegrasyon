@@ -52,7 +52,7 @@ import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemoved
 import { clearAllMediaConfirmationText, clearAllMediaFeedbackText, familyItemsShownInStrip, familyMediaClearPlan, removePendingFamilyMedia, withPendingFamilyMediaRemovals } from '../family-media-clear'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
-import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, TURKISH_VAT_RATES, variantCodeConflictsFrom, variantCodeKey, type EditorFieldErrors } from '../product-editor-state'
+import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, TURKISH_VAT_RATES, variantCodeConflictsFrom, variantCodeKey, type EditorFieldErrors } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
@@ -2662,7 +2662,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         optionRequirements: optionRequirementsForSubmit
       })
       const safeDescription = sanitizeRichText(form.description)
-      const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, options: row.options, attributes: variantAttributesForPayload(row) })
+      const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, options: row.options, attributes: variantAttributesForPayload(row), onHand: editorOpeningStock(row.stock) })
       const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
       const modelCodeForRow = (variantId: string) => modelCodeForExistingVariant(
         form.modelCode,
@@ -2801,7 +2801,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const targetConnectionIds = createOnly || saveDraft ? [] : platformUpdate?.connectionIds ?? selectedChannelIds.filter(id => !gapCards[id])
       // Only rows whose stock the user changed are sent, as absolute values against the stock loaded into the form;
       // a stock changed meanwhile (order, return, another tab) is refused for that row instead of being overwritten.
-      const stockResult = await applyVariantStockSets(editorStockUpdates(rows, product.variants), update => setVariantOnHand(update, productToEdit.data ? 'Ürün düzenleme stoğu' : 'İlk ürün stoğu'))
+      // A new variant's stock went with the variant itself (its Açılış Stoğu).
+      const stockResult = await applyVariantStockSets(editorStockUpdates(rows, product.variants), update => setVariantOnHand(update, 'Ürün düzenleme stoğu'))
       if (stockResult.failed.length) warnings.push(`Stok kaydedilemedi: ${stockResult.failed.map(item => `${item.sku}: ${item.message}`).join(' · ')}`)
       // A marketplace switched to or from "Özel Fiyat" stores the choice on the card's offers there, even when no price
       // is written to it (no price changes, nothing goes to the marketplace).
@@ -2843,7 +2844,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         if (offerWrites.length > channelOfferWriteConcurrency) showProgress(mediaSaveProgressMessage('prices', offersWritten, offerWrites.length))
       })
       // An edit names the stock only when a changed stock was written; a new product names the stock it opened with.
-      if (editProductId ? stockResult.saved.length > 0 : rows.some(row => row.stock > 0)) completed.push('stok')
+      if (stockResult.saved.length > 0 || rows.some(row => !existingVariantIds.has(row.key) && editorOpeningStock(row.stock) > 0)) completed.push('stok')
       if (!editProductId && targetConnectionIds.length) completed.push('kanal fiyatları')
       const publicationConnectionIds = productPublicationTargets(saveAndStay, targetConnectionIds)
       // A card already matched there is not sent again: its links are read from the latest product (a status check or a

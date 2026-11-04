@@ -53,8 +53,8 @@ export function editorSnapshot(state: {
 }
 
 // Stock changes the editor sends after the product itself was saved: only rows whose stock the user changed, each as
-// an absolute value against the stock loaded into the form. A row without a loaded value is a new variant, whose
-// stock the server created at 0.
+// an absolute value against the stock loaded into the form. A row without a loaded value is a new variant: its stock
+// went with the variant itself (editorOpeningStock), saved by the server with its Açılış Stoğu row, so it is not sent again.
 export function editorStockUpdates(
   rows: Array<{ key: string; sku: string; stock: number; loadedStock?: number }>,
   savedVariants: Array<{ id: string; sku: string }>
@@ -62,11 +62,16 @@ export function editorStockUpdates(
   const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
   return savedVariants.flatMap(variant => {
     const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
-    if (!row) return []
-    const expectedOnHand = row.key === variant.id && row.loadedStock != null ? row.loadedStock : 0
-    if (row.stock === expectedOnHand) return []
-    return [{ variantId: variant.id, sku: variant.sku, onHand: row.stock, expectedOnHand }]
+    if (!row || row.key !== variant.id || row.loadedStock == null) return []
+    if (row.stock === row.loadedStock) return []
+    return [{ variantId: variant.id, sku: variant.sku, onHand: row.stock, expectedOnHand: row.loadedStock }]
   })
+}
+
+// A new variant's opening stock as the create payload carries it: a whole, non-negative number (0: none).
+export function editorOpeningStock(stock: number | string | null | undefined) {
+  const value = Number(stock)
+  return Number.isFinite(value) && value > 0 ? value : 0
 }
 
 // The cost fields of an existing variant's update. Only a cost the user changed is sent (null: leave the stored cost

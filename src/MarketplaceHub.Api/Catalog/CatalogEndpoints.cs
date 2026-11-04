@@ -105,7 +105,7 @@ public static class CatalogEndpoints
         api.MapPut("/products/{id:guid}/marketplace-codes", async (Guid id, UpdateMarketplaceCodesCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Result(await service.UpdateProductMarketplaceCodesAsync(tenant.TenantId, id, command, http.RequestAborted), Results.Ok) : MissingContext(http));
         api.MapPost("/products", async (CreateProductCommand command, HttpContext http, ICatalogService service) =>
-            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted), "/api/v1/products") : MissingContext(http));
+            Tenant(http) is { } tenant && RequireIdempotency(http) is null ? Created(await service.CreateProductAsync(tenant.TenantId, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), "/api/v1/products") : MissingContext(http));
         api.MapPatch("/products/{id:guid}", async (Guid id, UpdateProductCommand command, HttpContext http, ICatalogService service) =>
             Tenant(http) is { } tenant ? (TryIfMatch(http, out var version, out var failure) ? WithEtag(http, await service.UpdateProductAsync(tenant.TenantId, id, version, command, http.RequestAborted, tenant.UserId, http.TraceIdentifier), x => x.Version) : failure!) : Unauthorized(http));
         // The panel's own price of a variant; If-Match carries the variant version. Nothing is sent to a marketplace.
