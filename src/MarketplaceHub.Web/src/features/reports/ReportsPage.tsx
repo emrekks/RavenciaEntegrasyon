@@ -1252,12 +1252,28 @@ function groupColumns(first: Column<ReportGroup>, options: { commission?: boolea
 
 const labelColumn = (header: string, label: (row: ReportGroup) => string = row => row.label): Column<ReportGroup> => ({ key: 'label', header, value: label, render: row => <span className="reports-cell-label">{label(row)}{row.isTest && <em className="reports-tag">Test</em>}</span> })
 
+
+// The platforms added up into one row under the table: counts and amounts summed, the rates worked out again from the
+// sums (İade Oranı = returned ÷ sold, as on each row), never summed.
+function groupTotal(rows: ReportGroup[]): ReportGroup {
+  const sum = (pick: (row: ReportGroup) => number) => rows.reduce((total, row) => total + pick(row), 0)
+  const sold = sum(row => row.soldQuantity), returned = sum(row => row.returnedQuantity)
+  return { key: 'total', label: 'Toplam', known: true, isTest: false, orders: sum(row => row.orders), soldQuantity: sold, returnedQuantity: returned, returnClaims: sum(row => row.returnClaims),
+    returnRate: sold > 0 ? returned / sold : null, ordersWithAmount: sum(row => row.ordersWithAmount), grossSales: sum(row => row.grossSales), netRevenue: sum(row => row.netRevenue),
+    estimatedCommission: sum(row => row.estimatedCommission), commissionCoveredRevenue: sum(row => row.commissionCoveredRevenue), children: [], split: [] }
+}
+
+function TotalRow({ rows, columns, expand }: { rows: ReportGroup[]; columns: Column<ReportGroup>[]; expand?: boolean }) {
+  const total = groupTotal(rows)
+  return <tr className="reports-total-row">{expand && <td className="reports-expand-col" />}{columns.map(item => <td key={item.key} className={item.numeric ? 'is-num' : undefined}>{item.key === 'label' ? <strong>Toplam</strong> : item.render ? item.render(total) : item.value(total) ?? '—'}</td>)}</tr>
+}
 // The marketplaces' account statements (one picked at a time), then the platforms' summary, each across the tab.
 function Platforms({ data }: { data: ReportSales }) {
+  const columns = groupColumns(labelColumn('Platform', row => platformName(row.label)), { commission: true, share: data.summary.netRevenue })
   return <div className="reports-grid">
     <div className="is-wide"><StatementLines data={data} /></div>
     <div className="is-wide"><DataTable title="Platform Özeti" csvName="rapor-platformlar" rows={data.platforms} rowKey={row => row.key} unknown={row => !row.known} initialSort="sold"
-      columns={groupColumns(labelColumn('Platform', row => platformName(row.label)), { commission: true, share: data.summary.netRevenue })}
+      columns={columns} footer={data.platforms.length > 1 && <TotalRow rows={data.platforms} columns={columns} expand />}
       expand={row => <DataTable title={`${platformName(row.label)} Mağazaları`} csvName={`rapor-${row.key.toLowerCase()}-magazalar`} rows={row.children} rowKey={child => child.key} initialSort="sold"
         columns={groupColumns(labelColumn('Mağaza'), { commission: true })} />} /></div>
   </div>
