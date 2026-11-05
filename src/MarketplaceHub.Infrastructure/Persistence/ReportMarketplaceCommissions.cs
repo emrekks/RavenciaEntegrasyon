@@ -24,7 +24,7 @@ internal static class ReportMarketplaceCommissions
     public static string SourceLabel(string platformCode) => platformCode switch
     {
         "HEPSIBURADA" => "Hepsiburada muhasebe kayıtlarından (komisyon faturası, iadesi ve düzeltmesi)",
-        "N11" => "n11 hakediş kayıtlarından",
+        "N11" => "n11 hakediş kaydındaki oran ve tahsil edilen tutardan",
         "PAZARAMA" => "Pazarama finans hareketlerinden",
         _ => "Pazaryerinin finans kayıtlarından"
     };
@@ -34,8 +34,9 @@ internal static class ReportMarketplaceCommissions
     internal sealed record Order(Guid Id, Guid ConnectionId, string PlatformCode, string OrderNumber, int ActiveLines, IReadOnlyCollection<string> Packages);
 
     // A finance record as the reports read it. PackageNumber: Hepsiburada's packageNumber (ShipmentPackageId).
+    // CommissionRate: n11's settlement rate (N11SettlementSyncJobHandler.Commission).
     internal sealed record Record(Guid ConnectionId, string Source, string ExternalId, string? TransactionType, string Category, string? OrderNumber, string? PackageNumber,
-        decimal Debt, decimal Credit, decimal? CommissionAmount);
+        decimal Debt, decimal Credit, decimal? CommissionAmount, decimal? CommissionRate = null);
 
     public static Dictionary<Guid, decimal> ByOrder(IReadOnlyList<Order> orders, IReadOnlyList<Record> records)
     {
@@ -72,18 +73,20 @@ internal static class ReportMarketplaceCommissions
         return movements.Sum(record => record.CommissionAmount!.Value);
     }
 
-    // n11: each order item's settlement line carries its commission (n11's "commission"; a fee it leaves out is read as
-    // 0, N11SettlementMapper). A sale line charges it, a return line (negative settlement) gives it back, whatever sign
-    // n11 writes it with. Real only when n11 settled at least as many items as the order has lines (an order whose items
-    // settle on different days is not cut short) and when some line names a commission: all 0 is n11 leaving it out.
+    // n11: each order item's settlement line carries its commission rate (n11's "commission" is a per-cent rate; a fee
+    // it leaves out is read as 0, N11SettlementMapper); the commission is the line's paid amount at that rate, charged
+    // on a sale line and given back on a return line (N11SettlementSyncJobHandler.Commission). Real only when n11
+    // settled at least as many items as the order has lines (an order whose items settle on different days is not cut
+    // short) and when some line names a rate: all 0 is n11 leaving it out.
     private static decimal? N11(IReadOnlyList<Record> own, int activeLines)
     {
         var lines = own.Where(record => record.Source == N11SettlementSyncJobHandler.Source).ToList();
-        if (lines.Count == 0 || lines.All(record => (record.CommissionAmount ?? 0m) == 0m)) return null;
+        decimal? Rate(Record record) => record.CommissionRate ?? record.CommissionAmount;
+        if (lines.Count == 0 || lines.All(record => (Rate(record) ?? 0m) == 0m)) return null;
         var items = lines.Where(record => record.Category != Domain.MarketplaceFinanceCategories.Return)
             .Select(record => ItemId(record.ExternalId)).Distinct(StringComparer.Ordinal).Count();
         if (items < activeLines) return null;
-        return lines.Sum(record => (record.Category == Domain.MarketplaceFinanceCategories.Return ? -1m : 1m) * Math.Abs(record.CommissionAmount ?? 0m));
+        return lines.Sum(record => N11SettlementSyncJobHandler.Commission(record.CommissionRate, record.CommissionRate is null ? record.CommissionAmount : null, record.Credit, record.Category) ?? 0m);
     }
 
     // Hepsiburada: the commission records of the order, net (an expense is debt, an income credit). Real only with a

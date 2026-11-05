@@ -15,9 +15,10 @@ public sealed class ReportMarketplaceCommissionsTests
     private static ReportMarketplaceCommissions.Record Hb(string id, string type, string? order, string? package, decimal debt, decimal credit) =>
         new(Store, HepsiburadaFinanceSyncJobHandler.Source, id, type, HepsiburadaFinanceSyncJobHandler.Category(type), order, package, debt, credit, null);
 
-    private static ReportMarketplaceCommissions.Record N11(string item, string day, string order, decimal commission, bool returned = false) =>
+    // n11's settlement "commission" is a rate; paid: the line's paymentAmount (stored as Credit).
+    private static ReportMarketplaceCommissions.Record N11(string item, string day, string order, decimal rate, decimal paid, bool returned = false) =>
         new(Store, N11SettlementSyncJobHandler.Source, $"{item}:{day}", "Ödendi", returned ? MarketplaceFinanceCategories.Return : MarketplaceFinanceCategories.Sale, order, null,
-            0m, 0m, commission);
+            0m, paid, N11SettlementSyncJobHandler.Commission(rate, null, paid, returned ? MarketplaceFinanceCategories.Return : MarketplaceFinanceCategories.Sale), rate);
 
     private static ReportMarketplaceCommissions.Record Pz(string code, string order, decimal? commission) =>
         new(Store, PazaramaFinanceSyncJobHandler.Source, code, "Ödeme Yapıldı", MarketplaceFinanceCategories.Sale, order, null, 0m, 0m, commission);
@@ -59,35 +60,52 @@ public sealed class ReportMarketplaceCommissionsTests
     }
 
     [Fact]
-    public void N11_charges_a_sale_lines_commission_and_gives_a_return_lines_back()
+    public void N11_charges_a_sale_lines_paid_amount_at_its_rate_and_gives_a_return_lines_back()
     {
-        var (sold, returned, waiting, silent) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var (sold, returned, waiting, silent, legacy) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         var orders = new List<ReportMarketplaceCommissions.Order>
         {
             new(sold, Store, "N11", "N-1", 2, []),
             new(returned, Store, "N11", "N-2", 1, []),
             new(waiting, Store, "N11", "N-3", 2, []),
-            new(silent, Store, "N11", "N-4", 1, [])
+            new(silent, Store, "N11", "N-4", 1, []),
+            new(legacy, Store, "N11", "N-5", 1, [])
         };
         var records = new List<ReportMarketplaceCommissions.Record>
         {
-            N11("11", "20261101", "N-1", 30m),
-            N11("12", "20261102", "N-1", 12.5m),
-            N11("21", "20261101", "N-2", 40m),
-            // The return line: n11's sign does not matter, it gives the commission back.
-            N11("21", "20261104", "N-2", 40m, returned: true),
+            // Live, 5 Nov 2026: "commission" 20.34 is the rate; 799 paid → 162.52 (deductionAmount 185.76 adds the fees).
+            N11("11", "20261101", "N-1", 20.34m, 799m),
+            N11("12", "20261102", "N-1", 20.34m, 800.01m),
+            N11("21", "20261101", "N-2", 20.34m, 875m),
+            // The return line gives the commission back, whatever sign n11 writes it with.
+            N11("21", "20261104", "N-2", 20.34m, -875m, returned: true),
             // One of two items settled so far.
-            N11("31", "20261101", "N-3", 25m),
-            // n11 left the commission out (read as 0): unknown, not 0.
-            N11("41", "20261101", "N-4", 0m)
+            N11("31", "20261101", "N-3", 20.34m, 899m),
+            // n11 left the rate out (read as 0): unknown, not 0.
+            N11("41", "20261101", "N-4", 0m, 500m),
+            // A row stored before 5 Nov 2026: the rate in CommissionAmount, no CommissionRate.
+            new(Store, N11SettlementSyncJobHandler.Source, "51:20261101", "Ödendi", MarketplaceFinanceCategories.Sale, "N-5", null, 0m, 799m, 20.34m)
         };
 
         var real = ReportMarketplaceCommissions.ByOrder(orders, records);
 
-        Assert.Equal(42.5m, real[sold]);
+        Assert.Equal(162.52m, N11SettlementSyncJobHandler.Commission(20.34m, null, 799m, MarketplaceFinanceCategories.Sale));
+        Assert.Equal(162.52m + 162.72m, real[sold]);
         Assert.Equal(0m, real[returned]);
         Assert.False(real.ContainsKey(waiting));
         Assert.False(real.ContainsKey(silent));
+        Assert.Equal(162.52m, real[legacy]);
+    }
+
+    [Fact]
+    public void The_payouts_show_an_n11_lines_commission_in_lira_not_its_rate()
+    {
+        var row = new PayoutRow { Source = N11SettlementSyncJobHandler.Source, PlatformCode = "N11", Category = MarketplaceFinanceCategories.Sale, Credit = 799m, Debt = 185.76m, CommissionRate = 20.34m, CommissionAmount = 162.52m };
+        Assert.Equal(162.52m, PayoutBuilder.Line(row, new DateOnly(2026, 11, 5)).Commission);
+        // Stored before 5 Nov 2026: the rate sat in CommissionAmount.
+        Assert.Equal(162.52m, PayoutBuilder.Line(row with { CommissionRate = null, CommissionAmount = 20.34m }, new DateOnly(2026, 11, 5)).Commission);
+        // The payout itself is untouched: n11's settlement amount.
+        Assert.Equal(613.24m, PayoutBuilder.Net(row with { SellerRevenue = 613.24m }));
     }
 
     [Fact]

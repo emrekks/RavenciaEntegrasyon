@@ -496,7 +496,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
             .Where(x => x.TenantId == tenantId && storeIds.Contains(x.ConnectionId) && sources.Contains(x.Source)
                 && ((x.OrderNumber != null && numbers.Contains(x.OrderNumber)) || (x.OrderNumber == null && x.ShipmentPackageId != null && packageNumbers.Contains(x.ShipmentPackageId))))
             .Select(x => new ReportMarketplaceCommissions.Record(x.ConnectionId, x.Source, x.ExternalId, x.TransactionType, x.Category, x.OrderNumber, x.ShipmentPackageId,
-                x.Debt, x.Credit, x.CommissionAmount))
+                x.Debt, x.Credit, x.CommissionAmount, x.CommissionRate))
             .ToListAsync(cancellationToken);
         var activeLines = lines.Where(line => line.OrderedQuantity - line.CancelledQuantity > 0).GroupBy(line => line.OrderId).ToDictionary(group => group.Key, group => group.Count());
         return ReportMarketplaceCommissions.ByOrder(
