@@ -58,6 +58,7 @@ describe('daily order cards', () => {
     expect(storeUnits({ pz: 1, ty: 36, gone: 0 }, channels)).toEqual({ units: 37, rows: [{ key: 'ty', code: 'TRENDYOL', name: 'Trendyol', units: 36 }, { key: 'pz', code: 'PAZARAMA', name: 'Pazarama', units: 1 }] })
     // A store that is no longer listed keeps its products and is named so; unread or older answers give nothing.
     expect(storeUnits({ x: 3 }, undefined)?.rows).toEqual([{ key: 'x', code: '', name: 'Kaldırılmış mağaza', units: 3 }])
+    expect(storeUnits({ ty: 36 }, channels, { ty: 30 })?.rows[0]).toMatchObject({ units: 36, packages: 30 })
     expect(storeUnits({}, channels)).toEqual({ units: 0, rows: [] })
     expect(storeUnits(null, channels)).toBeUndefined()
     expect(storeUnits(undefined, channels)).toBeUndefined()

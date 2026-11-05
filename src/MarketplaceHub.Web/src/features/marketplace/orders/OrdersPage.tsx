@@ -856,8 +856,8 @@ export function OrdersPage() {
   // The bootstrap names the stores of the cards' hover lists; its unfiltered late total is never shown for the list.
   const lateOrdersQuery = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000 })
   // The Yeni Sipariş and İşleme Alınan cards' products per store: the filtered summary's units, named by the bootstrap's stores.
-  const newUnits = storeUnits(summary.data?.newUnitsByConnection, lateOrdersQuery.data?.channels)
-  const processingUnits = storeUnits(summary.data?.processingUnitsByConnection, lateOrdersQuery.data?.channels)
+  const newUnits = storeUnits(summary.data?.newUnitsByConnection, lateOrdersQuery.data?.channels, summary.data?.newByConnection)
+  const processingUnits = storeUnits(summary.data?.processingUnitsByConnection, lateOrdersQuery.data?.channels, summary.data?.processingByConnection)
   // The stores of the Geciken, İptal and Yeniden Gönderim cards (their hover).
   const channels = lateOrdersQuery.data?.channels
   const lateStores = storeCounts(summary.data?.lateByConnection, channels)

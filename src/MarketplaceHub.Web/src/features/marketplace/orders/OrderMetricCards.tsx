@@ -24,7 +24,7 @@ import './order-metrics.css'
 // error: the count could not be read; shown as "—", never as 0 or an endless "…".
 type Metric = { value: number | undefined; loading: boolean; error?: boolean }
 type Store = { key: string; code: string; name: string }
-type UnitRow = Store & { units: number }
+type UnitRow = Store & { units: number; packages?: number }
 type PackageRow = Store & { packages: number }
 type CancelRow = Store & { packages: number; units?: number; partial: number; partialUnits?: number }
 type TipRow = Store & { value: ReactNode }
@@ -67,7 +67,7 @@ function StoreTip({ rows, cargo = [] }: { rows: TipRow[]; cargo?: OrderCargoCoun
   // Below the stores, after a line, the cargo companies in words (owner, 5 Nov 2026: "logo olarak değil yazıyla").
   return <div className="rr-metric-tip" role="tooltip">{rows.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}
     {cargo.length > 0 && <div className="rr-metric-tip-sep" aria-hidden="true" />}
-    {cargo.map(row => <div className="rr-metric-tip-r rr-metric-tip-cargo" key={`cargo:${row.cargo}`}><span>{row.cargo ? cargoLabel(row.cargo) : "Kargo Belirlenmedi"}</span><b className="rr-num">{count(row.orders)} paket · {count(row.units)} adet</b></div>)}</div>
+    {cargo.map(row => <div className="rr-metric-tip-r rr-metric-tip-cargo" key={`cargo:${row.cargo}`}><span>{row.cargo ? cargoLabel(row.cargo) : "Kargo Belirlenmedi"}</span><b className="rr-num">{count(row.orders)} paket</b></div>)}</div>
 }
 
 const tipped = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ') || undefined
@@ -78,7 +78,7 @@ function UnitsCard({ title, icon, tone, packages, units, rows, cargo }: { title:
   return <article className={tipped(tone && `rr-${tone}`, stores.length > 0 && 'rr-metric-tipped')} tabIndex={stores.length > 0 ? 0 : undefined}>
     <CardBackgroundIcon name={icon} tone={tone} />
     <small>{title}</small><Packages packages={packages} units={units} />
-    {stores.length > 0 && <StoreTip rows={stores.map(row => ({ ...row, value: `${count(row.units)} adet` }))} cargo={(cargo ?? []).filter(row => row.orders > 0)} />}
+    {stores.length > 0 && <StoreTip rows={stores.map(row => ({ ...row, value: row.packages !== undefined ? `${count(row.packages)} paket · ${count(row.units)} adet` : `${count(row.units)} adet` }))} cargo={(cargo ?? []).filter(row => row.orders > 0)} />}
   </article>
 }
 

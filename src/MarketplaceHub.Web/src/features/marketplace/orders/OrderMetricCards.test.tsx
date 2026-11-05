@@ -12,12 +12,17 @@ const open = (host: HTMLElement, title: string) => card(host, title).querySelect
 
 describe('order summary cards', () => {
 
+  it('reads a store row as packages and units when the packages are known', () => {
+    const { host } = render(<OrderMetricCards {...props({ newRows: [{ key: 'ty', code: 'TRENDYOL', name: 'Trendyol', units: 25, packages: 19 }] })} />)
+    expect(card(host, 'Yeni Sipariş').querySelector('.rr-metric-tip-r b')?.textContent).toBe('19 paket · 25 adet')
+  })
+
   it('lists the cargo companies in words under the stores, after a line', () => {
     const { host } = render(<OrderMetricCards {...props({ newCargo: [{ cargo: 'Trendyol Express Marketplace', orders: 11, units: 30 }, { cargo: '', orders: 1, units: 7 }] })} />)
 
     const tip = card(host, 'Yeni Sipariş').querySelector('.rr-metric-tip')!
     expect(tip.querySelector('.rr-metric-tip-sep')).not.toBeNull()
-    expect(Array.from(tip.querySelectorAll('.rr-metric-tip-cargo')).map(row => row.textContent)).toEqual(['Trendyol Express11 paket · 30 adet', 'Kargo Belirlenmedi1 paket · 7 adet'])
+    expect(Array.from(tip.querySelectorAll('.rr-metric-tip-cargo')).map(row => row.textContent)).toEqual(['Trendyol Express11 paket', 'Kargo Belirlenmedi1 paket'])
     expect(tip.querySelector('.rr-metric-tip-cargo img')).toBeNull()
   })
   it('shows six cards in one grid, a title and a package count each, with their products on Yeni Sipariş and İşleme Alınan', () => {

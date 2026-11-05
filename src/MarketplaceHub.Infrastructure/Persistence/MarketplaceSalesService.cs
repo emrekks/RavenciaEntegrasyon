@@ -751,7 +751,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries, newUnits, processingUnits,
             lateStores ?? (requested.Contains("LATE") && !includeMicro ? new Dictionary<string, int>() : null), resentStores,
             !includeMicro && requested.Contains("NEW") ? await TabByCargoAsync(tenantId, options, "NEW", cancellationToken) : null,
-            !includeMicro && requested.Contains("PROCESSING") ? await TabByCargoAsync(tenantId, options, "PROCESSING", cancellationToken) : null);
+            !includeMicro && requested.Contains("PROCESSING") ? await TabByCargoAsync(tenantId, options, "PROCESSING", cancellationToken) : null,
+            !includeMicro && requested.Contains("NEW") ? await TabOrdersByConnectionAsync(tenantId, options, "NEW", cancellationToken) : null,
+            !includeMicro && requested.Contains("PROCESSING") ? await TabOrdersByConnectionAsync(tenantId, options, "PROCESSING", cancellationToken) : null);
     }
 
 

@@ -1339,7 +1339,10 @@ public sealed record OrderSummaryView(
     // The New and İşleme Alınanlar tabs' orders by the cargo company of their current package (empty: none known yet),
     // with their products; null when that tab was not counted. An order at two companies counts under each.
     IReadOnlyList<OrderCargoCountView>? NewByCargo = null,
-    IReadOnlyList<OrderCargoCountView>? ProcessingByCargo = null);
+    IReadOnlyList<OrderCargoCountView>? ProcessingByCargo = null,
+    // The New and İşleme Alınanlar tabs' orders per store id (the cards' "N paket · M adet" rows); null when not counted.
+    IReadOnlyDictionary<string, int>? NewByConnection = null,
+    IReadOnlyDictionary<string, int>? ProcessingByConnection = null);
 public sealed record OrderCargoCountView(string Cargo, int Orders, decimal Units);
 public sealed record OrderLineView(
     Guid Id,
