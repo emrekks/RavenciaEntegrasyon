@@ -53,6 +53,9 @@ UTC, ISO with Z.
   stops the page; an order that still cannot be mapped is skipped with an issue and read again by id; a line without
   a SKU keeps none (no "SHOPIFY-LINE" code since 5 Nov 2026) (`ShopifyHttpClient.PollAsync`, `MapOrder`).
 - `returnDeclineRequest` notifies the customer only with `notifyCustomer: true`.
+- A return is approved or declined as a whole (`shopify-rehberler-son.md:18614`): the panel locks the line choice
+  (`ReturnDecisionScope`, as Hepsiburada). A claim left at PARTIAL_LINE_DECISION_PENDING by the older line choice
+  follows Shopify's status on the next read (5 Nov 2026).
 - Webhooks: stale `X-Shopify-Triggered-At` deliveries are dropped; 8 consecutive failures delete the subscription.
 - Invoice data lives in order metafields `ravencia.invoice_number` and `ravencia.invoice_pdf_url`.
 - No label API.

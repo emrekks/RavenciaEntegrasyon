@@ -359,6 +359,8 @@ public interface IReferenceDataService
     Task<ServiceResult<ReferenceSliceView>> SearchBrandsAsync(Guid tenantId, Guid connectionId, string? query, int? limit, CancellationToken cancellationToken);
     // Brands of the current snapshot with the given ids; an id it does not hold is left out.
     Task<ServiceResult<ReferenceSliceView>> LookupBrandsAsync(Guid tenantId, Guid connectionId, IReadOnlyCollection<string> externalIds, CancellationToken cancellationToken);
+    // The marketplace brands a catalog import met that no panel brand is mapped to on this connection (ImportedBrandRule).
+    Task<ServiceResult<IReadOnlyList<UnmappedMarketplaceBrandView>>> UnmappedBrandsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<CatalogMappingView>>> ListMappingsAsync(Guid tenantId, string mappingType, Guid connectionId, string? scopeExternalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView?>> GetMappingAsync(Guid tenantId, string mappingType, Guid localId, Guid connectionId, string? scopeExternalId, string? externalId, CancellationToken cancellationToken);
     Task<ServiceResult<CatalogMappingView>> UpsertMappingAsync(Guid tenantId, string mappingType, Guid localId, long? expectedVersion, UpsertCatalogMappingCommand command, CancellationToken cancellationToken);

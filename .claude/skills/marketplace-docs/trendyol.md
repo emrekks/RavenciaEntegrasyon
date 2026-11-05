@@ -117,6 +117,13 @@ purpose (`TurkeyTime.cs`).
   `Tarife Seçimi` ("3 Günlük Fiyat", "4 Günlük Fiyat", "7 Günlük Fiyat", "Trendyol Satış Fiyatı"): one price per row,
   so a product priced alike in both periods is "7 Günlük Fiyat" (`TrendyolTariffWorkbook`). A file uploaded before
   31 Oct 2026 03:02 kept only its first period and not the file itself; uploading the same file again adds the second.
+- Catalog import and brands (owner decision 28 Oct 2026; report item 19, 5 Nov 2026): a listing carries `brandId` and
+  `brand`; the import never looks a panel brand up by name, never opens one and never writes a brand mapping. The
+  product takes the panel brand whose VERIFIED mapping on the connection points at that `brandId` (exactly one active
+  brand); otherwise a new product has no brand, an existing one keeps its own, and the brand is listed as unmapped
+  (BRAND_MAPPING_MISSING issue, `GET /reference-data/brands/unmapped`, Marka Eşleme card 2). The import no longer
+  syncs the brand list itself. It does not change the panel product's or variant's status either; the listing's sale
+  state stays on its link (`SaleState`) and offer. Source: `MarketplaceJobProcessor.MappedImportBrandId`.
 
 ## Job types
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),
