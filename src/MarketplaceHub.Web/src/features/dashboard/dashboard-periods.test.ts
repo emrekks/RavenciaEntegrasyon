@@ -66,8 +66,8 @@ describe('dashboard performance', () => {
     const rows = [row('2026-10-20', 'ty-1', 300), row('2026-10-20', 'ty-1', 0, { orderCount: 1, returnedAmount: 500, returnedOrderCount: 1 })]
     const figures = periodFigures(daySeries(rows, '2026-10-19', '2026-10-20', 'ALL', 'TRY'))
 
-    expect(figures).toEqual({ amount: 800, orders: 2, basket: 400 })
-    expect(periodFigures([])).toEqual({ amount: 0, orders: 0, basket: 0 })
+    expect(figures).toMatchObject({ amount: 800, orders: 2, basket: 400 })
+    expect(periodFigures([])).toEqual({ amount: 0, orders: 0, units: 0, basket: 0 })
   })
 
   it('exports the chosen period and store with its counts and the day as sent', () => {

@@ -155,10 +155,10 @@ function RevenueChart({ points, previous, currency, value = point => point.amoun
 // Option A of genel-bakis-platform-sekmeleri.html: one metric of the performance card. The cells that can be drawn
 // pick the chart's metric; the bar shows where the latest day sits between the weakest and the strongest one.
 // hint is a word or two beside the label ("İadeler Dahil"); tip says under the pointer how the figure is worked out.
-function KpiCell({ icon: cardIcon, label, hint, tip, value, delta, note, avgLabel = 'Günlük Ortalama', avg, min, max, position, on, onPick, loading }: { icon: CardIconName; loading?: boolean; label: string; hint?: string; tip?: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
+function KpiCell({ icon: cardIcon, label, hint, tip, value, delta, note, avgLabel = 'Günlük Ortalama', avg, min, max, position, on, onPick, loading, unit }: { icon: CardIconName; loading?: boolean; unit?: ReactNode; label: string; hint?: string; tip?: string; value: string; delta: [string, boolean] | null; note?: string; avgLabel?: string; avg: string; min: string; max: string; position: number; on?: boolean; onPick?: () => void }) {
   return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} title={tip} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
     <CardBackgroundIcon name={cardIcon} />
-    <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className="rr-num">{loading ? <span className="rr-kc-skel" role="status" aria-label="Yükleniyor" /> : value}</strong>
+    <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className="rr-num">{loading ? <span className="rr-kc-skel" role="status" aria-label="Yükleniyor" /> : <>{value}{unit && <span className="rr-op-x">{unit}</span>}</>}</strong>
     {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span><em>önceki döneme göre</em></span>
       : note !== undefined ? <span className="rr-trend"><em>{note}</em></span> : <span className="rr-trend"><span className="rr-trend-v">—</span><em>önceki dönemde veri yok</em></span>}
     <span className="rr-avg">{avgLabel} <b className="rr-num">{avg}</b></span>
@@ -232,7 +232,7 @@ export function DashboardPage() {
   const series = data ? (hourly ? hourSeries(data.currentHours ?? [], data.from, channel, currency, lastHour) : daySeries(data.current, data.from, data.to, channel, currency)) : []
   const previousSeries = data ? (hourly ? hourSeries(data.previousHours ?? [], data.previousFrom, channel, currency, lastHour) : daySeries(data.previous, data.previousFrom, data.previousTo, channel, currency)) : []
   // Ciro, Toplam Sipariş and Ortalama Sepet on one basis, returns included (the report's Net Ciro takes them off).
-  const { amount: total, orders, basket } = periodFigures(series)
+  const { amount: total, orders, units, basket } = periodFigures(series)
   const { amount: previousTotal, orders: previousOrders, basket: previousBasket } = periodFigures(previousSeries)
   const foreign = data ? otherCurrencies(data.current, channel, currency) : []
   const dayCount = Math.max(1, series.length)
@@ -352,7 +352,7 @@ export function DashboardPage() {
       {days === null && <p className="rr-pf-note" role="status">Raporu görmek için bitiş tarihini de seçin.</p>}
       <div className="rr-kgrid" role="tablist" aria-label="Grafikte gösterilecek metrik">
         <KpiCell icon="lira" loading={loading} label="Satış" tip={'Dönemde satılan her şey, iadeler dahil; iptaller hariç.\nRaporlardaki Net Ciro iadeler düşülmüş tutardır.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(total, currency)} delta={trend(total, previousTotal)} {...revenueStats} on={metric === 0} onPick={() => setMetric(0)} />
-        <KpiCell icon="orders" loading={loading} label="Toplam Sipariş" tip={'Tutarı olan siparişler, iade edilenler dahil; iptaller hariç.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
+        <KpiCell icon="orders" loading={loading} unit={<>Sipariş{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(units)} Adet Ürün</>} label="Toplam Sipariş" tip={'Tutarı olan siparişler, iade edilenler dahil; iptaller hariç.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loadingValue(loading, orders)} delta={trend(orders, previousOrders)} {...orderStats} on={metric === 1} onPick={() => setMetric(1)} />
         <KpiCell icon="bag" loading={loading} label="Ortalama Sepet" tip={'Ciro ÷ Toplam Sipariş, ikisi de iadeler dahil.'} avgLabel={hourly ? 'Saatlik Ortalama' : 'Günlük Ortalama'} value={loading ? '—' : money(basket, currency)} delta={trend(basket, previousBasket)} {...basketStats} on={metric === 2} onPick={() => setMetric(2)} />
         <KpiCell icon="products" loading={productSummary.isLoading} label="Aktif Ürün" value={loadingValue(productSummary.isLoading, products?.activeCount)} delta={null} note={channel === 'ALL' ? 'Katalogdaki güncel durum' : 'Tüm platformlar'} avgLabel="Stoksuz ürün" avg={loadingValue(productSummary.isLoading, products?.outOfStockCount)} min={`Düşük stok ${loadingValue(productSummary.isLoading, products?.lowStockCount)}`} max={`Toplam ${loadingValue(productSummary.isLoading, products?.totalCount)}`} position={products?.totalCount ? products.activeCount / products.totalCount : 0} />
       </div>

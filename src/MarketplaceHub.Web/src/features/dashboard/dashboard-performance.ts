@@ -77,7 +77,8 @@ export function daySeries(rows: PerformanceRow[], from: string, to: string, chan
 export function periodFigures(points: DayPoint[]) {
   const amount = points.reduce((total, point) => total + point.amount, 0)
   const orders = points.reduce((total, point) => total + point.orderCount, 0)
-  return { amount, orders, basket: orders ? amount / orders : 0 }
+  const units = points.reduce((total, point) => total + point.productQuantity, 0)
+  return { amount, orders, units, basket: orders ? amount / orders : 0 }
 }
 
 /** Revenue in currencies other than the panel's, which is never added into its total. */
