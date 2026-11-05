@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VariantPlatformStatus } from '../shared'
-import { publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
+import { publishCardPlan, publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
 
 const status = (connectionId: string, extra: Partial<VariantPlatformStatus> = {}): VariantPlatformStatus => ({ platform: 'PTT AVM', platformCode: 'PTTAVM', isLinked: false, connectionId, ...extra })
 const row = (...platformStatuses: VariantPlatformStatus[]) => ({ platformStatuses })
@@ -32,5 +32,47 @@ describe('publish card variant presence', () => {
   it('never reads a variant without a link as missing', () => {
     expect(publishCardVariantPresence(publishCardVariantLinks([row(status('c1')), row()], 'c1'))).toEqual({ allLinked: false, someLinked: false, noneFound: false })
     expect(publishCardVariantPresence(undefined)).toEqual({ allLinked: false, someLinked: false, noneFound: false })
+  })
+})
+
+describe('publish card plan', () => {
+  const matched = (connectionId: string) => status(connectionId, { isLinked: true, isMatched: true })
+  const coloured = (color: string, ...platformStatuses: VariantPlatformStatus[]) => ({ color, platformStatuses })
+
+  it('leaves a card whose every variant is there as it is', () => {
+    expect(publishCardPlan([coloured('Mavi', matched('c1')), coloured('Mavi', matched('c1'))], 'c1')).toEqual({ send: false, reason: 'matched' })
+  })
+
+  it('sends a card none of whose variants is there whole', () => {
+    expect(publishCardPlan([coloured('Mavi', status('c1')), coloured('Mavi')], 'c1')).toEqual({ send: true, variants: 2, addsToListing: false, hasMissingVariant: false })
+  })
+
+  it('sends only the variants a matched card lacks, on every marketplace', () => {
+    // MZ021Y-CD on Trendyol: three sizes matched, three new sizes of the same colour added since.
+    const rows = [
+      coloured('Mavi', matched('c1')), coloured('Mavi', matched('c1')), coloured('Mavi', matched('c1')),
+      coloured('Mavi'), coloured('Mavi', status('c1')), coloured('mavi')
+    ]
+    expect(publishCardPlan(rows, 'c1')).toEqual({ send: true, variants: 3, addsToListing: true, hasMissingVariant: false })
+  })
+
+  it('counts a variant the marketplace lost among those sent again', () => {
+    const rows = [coloured('Mavi', matched('c1')), coloured('Mavi', status('c1', { isMissing: true }))]
+    expect(publishCardPlan(rows, 'c1')).toEqual({ send: true, variants: 1, addsToListing: true, hasMissingVariant: true })
+  })
+
+  it('does not send variants of another colour saved into a matched card', () => {
+    // Live 2026-11-05: Bordo, Haki, Kahverengi … sizes were saved into the Mavi card; sent with it they would open under
+    // the Mavi card's title and images.
+    const plan = publishCardPlan([coloured('Mavi', matched('c1')), coloured('Mavi'), coloured('Bordo'), coloured('Haki'), coloured('Bordo')], 'c1')
+    expect(plan).toEqual({
+      send: false,
+      reason: 'colour-mismatch',
+      message: 'Kart pazaryerinde Mavi rengiyle eşleşmiş; eklenen 4 varyanttan 3 tanesi başka renkte (Bordo, Haki). Bu kartla gönderilirlerse bu kartın adı ve görselleriyle açılırlar; kart gönderilmedi. Bu varyantları kendi renk kartlarına ekleyin.'
+    })
+  })
+
+  it('sends the new variants of a card without a colour option', () => {
+    expect(publishCardPlan([{ platformStatuses: [matched('c1')] }, { platformStatuses: [] }], 'c1')).toEqual({ send: true, variants: 1, addsToListing: true, hasMissingVariant: false })
   })
 })

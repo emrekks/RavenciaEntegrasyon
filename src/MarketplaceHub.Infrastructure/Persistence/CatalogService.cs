@@ -1739,6 +1739,22 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     public Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
         EnqueuePublicationAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, shopifyUpdateOnly: false, cancellationToken);
 
+    internal const string ShopifyMatchedOutsidePanelMessage = "Bu renk kartı Shopify'da panelden açılmamış bir ürüne eşleşmiş; eksik varyantlar o ürüne panelden eklenemez (yanına ikinci bir ürün açılırdı), gönderim yapılmadı. Eksik varyantları Shopify yönetim panelinden ürüne ekleyin.";
+
+    // The card has a variant Shopify knows (a link not broken) but none the panel's own send put live there.
+    private async Task<bool> ShopifyCardMatchedOutsidePanelAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var variantIds = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).Select(x => x.Id).ToListAsync(cancellationToken);
+        var matched = await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(link => link.TenantId == tenantId && link.ConnectionId == connectionId && variantIds.Contains(link.VariantId)
+            && link.HealthStatus != MarketplaceVariantLinkHealth.NotFound && link.HealthStatus != MarketplaceVariantLinkHealth.Rejected, cancellationToken);
+        if (!matched) return false;
+        var publishedHere = await (from listing in db.ChannelListingVariants.AsNoTracking()
+                                   join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
+                                   where listing.TenantId == tenantId && profile.ConnectionId == connectionId && profile.ProductId == productId && listing.ActualStatus == "LIVE"
+                                   select listing.Id).AnyAsync(cancellationToken);
+        return !publishedHere;
+    }
+
     // shopifyUpdateOnly: "Platformlarda Güncelle" on Shopify, the same productSet marked so it only writes a product that is
     // already there (ShopifyHttpClient.UpdateOnlyKey).
     private async Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, bool shopifyUpdateOnly, CancellationToken cancellationToken)
@@ -1769,9 +1785,15 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .Select(x => (bool?)x.Enabled)
                 .SingleOrDefaultAsync(cancellationToken)) != PttAvmManualWriteDecision.Allowed)
             return ServiceResult<Guid>.Fail(PttAvmManualWritePolicy.DisabledCode, PttAvmManualWritePolicy.DisabledMessage, 422);
+        // A Shopify product the panel did not open (matched by an import) has another handle: the family's productSet
+        // would open a second product beside it instead of adding the missing variants to it.
+        if (connection.PlatformCode == "SHOPIFY" && !shopifyUpdateOnly && await ShopifyCardMatchedOutsidePanelAsync(tenantId, productId, connectionId, cancellationToken))
+            return ServiceResult<Guid>.Fail("SHOPIFY_PRODUCT_NOT_PANEL_OWNED", ShopifyMatchedOutsidePanelMessage, 409);
+        // Yayınla sends a matched card's variants not on the marketplace yet (PublicationUnsentVariants); n11 keeps its own
+        // rule, and PTT AVM and Shopify send the whole family, their adapters adding only what the product lacks.
         var draftResult = connection.PlatformCode == "SHOPIFY"
             ? await new ShopifyProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken)
-            : await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+            : await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, onlyUnsentVariants: true);
         if (!draftResult.Succeeded) return ServiceResult<Guid>.Fail(draftResult.Error!.Code, draftResult.Error.Message, draftResult.Error.Status, draftResult.Error.FieldErrors);
         var draft = draftResult.Value!;
         if (shopifyUpdateOnly) draft = draft with { PayloadJson = ShopifyHttpClient.MarkUpdateOnly(draft.PayloadJson) };
