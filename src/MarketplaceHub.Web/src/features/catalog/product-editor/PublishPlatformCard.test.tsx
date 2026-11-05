@@ -5,14 +5,15 @@ import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Each status request waits until the test answers it, so the first frames can be read before the data is in.
-// A job's detail is answered from `jobs` at once; every path asked is kept in `calls`.
-const apiState = vi.hoisted(() => ({ pending: new Map<string, (value: unknown) => void>(), jobs: new Map<string, unknown>(), calls: [] as string[] }))
+// A job's detail is answered from `jobs` at once; a POST is answered from `accepted`; every path asked is kept in `calls`.
+const apiState = vi.hoisted(() => ({ pending: new Map<string, (value: unknown) => void>(), jobs: new Map<string, unknown>(), accepted: new Map<string, unknown>(), calls: [] as string[] }))
 
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
   const respond = (path: string) => {
     apiState.calls.push(path)
     if (path.startsWith('/jobs/')) return Promise.resolve(apiState.jobs.get(path) ?? null)
+    if (apiState.accepted.has(path)) return Promise.resolve(apiState.accepted.get(path))
     if (path.includes('/publication-status/') || path.startsWith('/mappings/categories/')) return new Promise(resolve => apiState.pending.set(path, resolve))
     return Promise.resolve(null)
   }
@@ -29,10 +30,10 @@ let client: QueryClient
 
 const card = { code: 'trendyol', name: 'Trendyol', initial: 'T', tone: 'trendyol', mode: 'PUBLISH' as const, connection: { id: 'c1', platformCode: 'TRENDYOL', displayName: 'Mağaza', externalStoreId: '930112', status: 'ACTIVE' } }
 
-async function render(props: { onSelect?: () => void; variantLinks?: { linked: number; total: number; missing?: number }; familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }>; categoryId?: string } = {}) {
+async function render(props: { onSelect?: () => void; variantLinks?: { linked: number; total: number; missing?: number }; familyProductIds?: string[]; settling?: boolean; selected?: boolean; onDeselect?: () => void; onBlockedChange?: (gaps: number) => void; productChecks?: Array<{ title: string; detail: string; ok: boolean }>; categoryId?: string; onFeedback?: (feedback: { title?: string; kind: string }) => void } = {}) {
   await act(async () => {
     root.render(<QueryClientProvider client={client}><MemoryRouter>
-      <PublishPlatformCard card={card} selected={props.selected ?? false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} variantLinks={props.variantLinks} categoryId={props.categoryId ?? ''} productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={props.onSelect ?? vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onBlockedChange={props.onBlockedChange} onFeedback={vi.fn()} />
+      <PublishPlatformCard card={card} selected={props.selected ?? false} settling={props.settling} productId="p1" familyProductIds={props.familyProductIds} variantLinks={props.variantLinks} categoryId={props.categoryId ?? ''} productChecks={props.productChecks ?? []} selectedAttributes={[]} onSelect={props.onSelect ?? vi.fn()} onDeselect={props.onDeselect ?? vi.fn()} onBlockedChange={props.onBlockedChange} onFeedback={props.onFeedback ?? vi.fn()} />
     </MemoryRouter></QueryClientProvider>)
   })
 }
@@ -63,6 +64,7 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   apiState.pending.clear()
   apiState.jobs.clear()
+  apiState.accepted.clear()
   apiState.calls.length = 0
 })
 
@@ -219,6 +221,20 @@ describe('PublishPlatformCard status steps', () => {
     await act(async () => { refresh.click(); await new Promise(resolve => setTimeout(resolve, 10)) })
     expect(apiState.calls).toContain('/products/p1/publication-status/c1/refresh')
     expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('says when the refresh it started has ended, not only when it failed', async () => {
+    const onFeedback = vi.fn()
+    apiState.accepted.set('/products/p1/publication-status/c1/refresh', { jobId: 'r1' })
+    apiState.jobs.set('/jobs/r1', { job: { id: 'r1', jobType: 'PRODUCT_APPROVAL_RECONCILE', status: 'SUCCEEDED', progressCurrent: 0, progressTotal: null, progressPercent: null, progressLabel: null, lastErrorCode: null, lastErrorSummary: null } })
+    await render({ productChecks: ok, onFeedback })
+    await answer('p1', { actualStatus: 'APPROVAL_PENDING', profileId: 'pr1', lastJobId: 'j1', lastJobStatus: 'SUCCEEDED' })
+    const refresh = container.querySelector<HTMLButtonElement>('button.publish-platform-card-refresh')!
+    await act(async () => { refresh.click(); await new Promise(resolve => setTimeout(resolve, 10)) })
+    // The start and the end each read the card's status again before they speak.
+    for (let round = 0; round < 4 && [...apiState.pending.keys()].some(path => path.startsWith('/products/p1/publication-status/')); round++)
+      await answer('p1', { actualStatus: 'APPROVAL_PENDING', profileId: 'pr1', lastJobId: 'j1', lastJobStatus: 'SUCCEEDED' })
+    expect(onFeedback.mock.calls.map(([feedback]) => `${feedback.kind} ${feedback.title}`)).toEqual(['info Durum Sorgulanıyor', 'success Sorgu Tamamlandı'])
   })
 
   it('marks the step a failed job stopped at and moves its reason into the popover', async () => {

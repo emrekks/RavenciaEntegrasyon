@@ -899,7 +899,10 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     await Promise.all([statusKey, ...otherFamilyIds.map(id => ['publication-status', id, card.connection.id]), ['product', productId]]
       .map(queryKey => client.invalidateQueries({ queryKey })))
     const status = job?.status.trim().toUpperCase()
-    if (status && status !== 'SUCCEEDED' && status !== 'CANCELLED')
+    // The start said "aranıyor" / "sorgulanıyor"; the end says so too, not only when it failed.
+    if (status === 'SUCCEEDED')
+      onFeedback({ title: 'Sorgu Tamamlandı', message: `${platformName} durumu güncellendi; kart ve varyantlar yeniden okundu.`, kind: 'success' })
+    else if (status && status !== 'CANCELLED')
       onFeedback({ title: 'Sorgu Tamamlanamadı', message: `${platformName}: ${job?.lastErrorSummary?.trim() || statusLabel(status)}`, kind: 'error', persistent: true, context: { operation: 'Yayın durumu sorgulama', code: job?.lastErrorCode ?? undefined } })
   }, {
     onCancelled: () => onFeedback({ title: 'Sorgu Durduruldu', message: `${platformName} sorgusu durduruldu.`, kind: 'info' }),
