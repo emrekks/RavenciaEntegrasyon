@@ -222,7 +222,7 @@ describe('ReportsPage', () => {
     expect(page.querySelector('.reports-card-unlinked')).toBeNull()
     // Returns and cancellations: eight rows, no explanation under the pointer; the change names the previous rate.
     expect(metricRows(page, 'returns')).toHaveLength(8)
-    expect(metricRows(page, 'returns')[3]).toContain('İade Edilen Tutar₺')
+    expect(metricRows(page, 'returns')[3]).toContain('İade Liste Tutarı₺')
     expect(metricRows(page, 'returns')[4]).toContain('İade Kargo Zararı—')
     expect(metricRows(page, 'returns')[5]).toContain('İptal Oranı%20,0')
     expect(metricRows(page, 'returns')[6]).toContain('İptal Edilen Sipariş')
@@ -320,6 +320,36 @@ describe('ReportsPage', () => {
     expect(loss.textContent).toContain('− ₺112')
     await act(async () => { (loss.querySelector('.reports-kpi-delta-toggle') as HTMLButtonElement).click() })
     expect(loss.textContent).toContain('Önceki dönem − ₺112')
+  })
+
+  it('draws the cost ring to the total it writes, the net VAT to pay among its slices', async () => {
+    const page = await open('', { ...withFinance, costs: { ...withFinance.costs!, netVat: { salesVat: 60, productCostVat: 10, expenseVat: 30, net: 20 } } })
+    // 226,68 cargo + 100 returns + 80 cost + 41,50 commission + 12,50 fee + 1 withholding + 20 VAT = 481,68.
+    const card = page.querySelector('.reports-card-costlines')!
+    expect(card.querySelector('.reports-donut-centre')?.textContent).toContain('₺482')
+    const shares = [...card.querySelectorAll('.reports-costlines li em')].map(cell => cell.textContent).filter(Boolean)
+    expect(shares).toContain('%4,2')
+    expect(shares.reduce((sum, text) => sum + Number(text!.replace('%', '').replace(',', '.')), 0)).toBeCloseTo(100, 0)
+  })
+
+  it('ends the bridge where its steps end when no product cost is entered, the net VAT taken off', async () => {
+    const page = await open('', { ...withFinance, cost: { ...withFinance.cost, costedQuantity: 0, coverage: 0, costTotal: 0 },
+      costs: { ...withFinance.costs!, netVat: { salesVat: 60, productCostVat: 0, expenseVat: 50, net: 10 } } })
+    // 350 − 100 − 226,68 − 54 − 1 − 10 = −41,68.
+    const rows = bridgeRows(page)
+    expect(rows).toContain('− Net KDV − ₺10,00')
+    expect(rows.at(-1)).toBe('Masraflar Sonrası − ₺41,68')
+  })
+
+  it('adds a deduction credited back to the profit, on the bridge and in the account alike', async () => {
+    const costs = withFinance.costs!
+    const page = await open('', { ...withFinance, costs: { ...costs, lines: [...costs.lines,
+      { category: 'PENALTY', label: 'Ceza', isCost: true, amount: -20, records: 1, orderLinked: -20 }] } })
+    // The fees net to 12,50 + 1 − 20 = −6,50, added back rather than dropped: 350 − 100 − 41,50 − 226,68 + 6,50 − 80 =
+    // −91,68, on the bridge (Pazaryeri Masrafları 41,50 + 12,50 − 20, then 1 of withholding) and the strip alike.
+    const rows = bridgeRows(page)
+    expect(rows.at(-1)).toBe('Tahmini Zarar − ₺91,68')
+    expect(page.querySelectorAll('.reports-kpis > div')[1].textContent).toContain('− ₺92')
   })
 
   it('takes the net VAT off the profit after the deductions, and adds a carried-forward one back', async () => {
@@ -602,6 +632,17 @@ describe('ReportsPage', () => {
     expect(texts(page, '.reports-payout-day > header')[0]).toContain('29 Eki Per2026Ödendi')
     expect(texts(page, '.reports-payout-row')[0]).toContain('Ödendi')
     expect(page.querySelector('.reports-payout-coverage')?.textContent).toContain('Henüz okunmayanlar: PTT AVM')
+  })
+
+  it('follows the page\'s Platform filter on the payouts tab while it is open', async () => {
+    const page = await open('?view=payouts')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(requests).toContain('/reports/payouts?')
+    await act(async () => { page.querySelector<HTMLButtonElement>('.reports-period-platforms .platform-multi-select-trigger')!.click() })
+    const trendyol = [...document.querySelectorAll<HTMLLabelElement>('.platform-multi-select-option')].find(option => option.textContent === 'Trendyol')!
+    await act(async () => { trendyol.querySelector('input')!.click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(requests).toContain('/reports/payouts?platformCodes=TRENDYOL')
   })
 
   it('narrows the payments by the filters kept in the address and says so when none is left', async () => {

@@ -418,7 +418,8 @@ function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
   if (!flow.steps) return null
   const now = data.summary
   const finance = financeCosts(data)
-  const deductions: MoneyPart[] = flow.steps.filter(step => step.kind === 'minus' && step.value !== null && step.value > 0)
+  // Every deduction that is not zero: one below zero (a fee credited back) adds to what is left, as on the bridge.
+  const deductions: MoneyPart[] = flow.steps.filter(step => step.kind === 'minus' && step.value !== null && step.value !== 0)
     .map(step => ({ key: step.key, label: step.label, value: step.value ?? 0, tone: deductionTones[step.key] ?? 'fees', note: step.note }))
   const deducted = deductions.reduce((sum, part) => sum + part.value, 0)
   const left = now.grossSales - deducted
@@ -621,8 +622,9 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
   const [active, setActive] = useState<string | null>(null)
   if (!money) return <Card title="Masraf Kalemleri" className="reports-card-costlines">{() => <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}</Card>
   const lines = costLines(data, money)
-  const total = money.deducted + (money.cost ?? 0)
   const parts: Part[] = lines.filter(line => line.value !== null && line.value > 0).map(line => ({ key: line.key, label: line.label, value: line.value ?? 0, tone: line.tone }))
+  // The total is what the ring draws, so the shares add up to 100 %.
+  const total = parts.reduce((sum, part) => sum + part.value, 0)
   const picked = parts.find(part => part.key === active) ?? null
   const pick = (key: string) => parts.some(part => part.key === key) ? setActive(key) : undefined
   return <Card title="Masraf Kalemleri" className="reports-card-costlines">
@@ -727,7 +729,8 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
     rows.push({ key: item.key, label: item.label, from: at - item.value, to: at, kind: 'minus', note: item.note })
     at -= item.value
   }
-  const result = money.profit ?? money.left
+  // Without a product cost the steps still take the net VAT off, so the result is where they end, not Masraflar Sonrası.
+  const result = money.profit ?? money.left - (money.tax ?? 0)
   // What the account could not take off is said on the result as well, not only in the deductions' own notes.
   const leftOut = money.leftNote.split(' Düşülmeyenler: ')[1]
   rows.push({ key: 'result', label: money.profit === null ? 'Masraflar Sonrası' : result < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', from: 0, to: result, kind: 'end',
@@ -805,7 +808,7 @@ function ProfitLedger({ money }: { money: Money }) {
     </div>
   return <dl className="reports-ledger">
     {row('sales', undefined, 'Satış Tutarı', formatTl(money.total), 'Liste fiyatından satıcı indirimi düşülmüş satış.\nPazaryerinin kendi indirimi dahildir. İptaller hariç, iadeler düşülmeden.')}
-    {money.deductions.map(part => row(part.key, 'is-minus', part.label, `− ${formatTl(part.value)}`, `${costMeaning[part.key] ?? part.label}\n${share(part.value)}`))}
+    {money.deductions.map(part => row(part.key, part.value < 0 ? undefined : 'is-minus', part.label, part.value < 0 ? `+ ${formatTl(-part.value)}` : `− ${formatTl(part.value)}`, `${costMeaning[part.key] ?? part.label}\n${share(part.value)}`))}
     {row('left', `is-total is-${money.left < 0 ? 'bad' : 'good'}`, 'Masraflar Sonrası', amount(money.left), `Satıştan iade ve pazaryeri masrafları düştükten sonra kalan.\n${share(money.left)}`)}
     {money.tax !== null && row('vat', money.tax < 0 ? undefined : 'is-minus', 'Net KDV', money.tax < 0 ? `+ ${formatTl(-money.tax)}` : `− ${formatTl(money.tax)}`,
       `${costMeaning.vat}\n${share(money.tax)}${money.tax < 0 ? ' Eksi çıktığı için devreden KDV\'dir ve kârı artırır.' : ''}`)}
@@ -911,7 +914,7 @@ function returnMetrics(data: ReportSales): Metric[] {
       note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi. Önceki dönem ${formatPercent(before.returnRate)}.` },
     { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'units', label: 'İade Edilen Adet', value: `${formatNumber(now.returnedQuantity)} adet`, detail: 'returns', note: 'İade edilen ürün adedi.' },
-    { key: 'returned', label: 'İade Edilen Tutar', value: formatTl(returnedAtList(now)), detail: 'returns', note: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nSatıştan ödenen tutarı düşülür.' },
+    { key: 'returned', label: 'İade Liste Tutarı', value: formatTl(returnedAtList(now)), detail: 'returns', note: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nMasraf Kalemleri ve Kâr Köprüsü\'ndeki İade Edilen Tutar müşterinin ödediğidir; satıştan o düşülür.' },
     { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nİade kargosu kargo faturasında ayrı okunamadığı için gösterilemiyor.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil); uyarı eşiği ${formatPercent(warning)}.` },
@@ -1394,7 +1397,7 @@ function Returns({ data }: { data: ReportSales }) {
       note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.\nKabul edilen iadeler sayılır.' },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
       note: previousText(formatPercent(then.returnRate)), tip: 'Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi.' },
-    { key: 'amount', label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? returnedAtList(now) : null, format: formatTl, empty: 'Tutar yok',
+    { key: 'amount', label: 'İade Liste Tutarı', value: now.ordersWithAmount > 0 ? returnedAtList(now) : null, format: formatTl, empty: 'Tutar yok',
       delta: now.ordersWithAmount > 0 ? change(returnedAtList(now), returnedAtList(then)) : null, invert: true,
       note: previousText(then.ordersWithAmount > 0 ? formatTl(returnedAtList(then)) : null), tip: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nSatış tutarından ödenen tutarı düşülür.' }
   ]
@@ -1878,6 +1881,14 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const [search, setSearch] = useState(() => readUrlText(params, 'hq'))
   const [draft, setDraft] = useState({ ...applied, platforms, search })
   const [tab, setTab] = useState<'upcoming' | 'past'>(() => applied.state === 'PAID' ? 'past' : 'upcoming')
+  // The page's Platform filter, once changed while the tab is open, sets the marketplaces here too (the address's hp
+  // only picks them when the tab opens).
+  const [pageSeen, setPageSeen] = useState(pagePlatforms)
+  if (pageSeen !== pagePlatforms) {
+    setPageSeen(pagePlatforms)
+    setPlatforms(pagePlatforms ?? [])
+    setDraft(current => ({ ...current, platforms: pagePlatforms ?? [] }))
+  }
   const [open, setOpen] = useState<string | null>(null)
   // Trendyol's regions open under its card on a click of its Bölgeler button and close on the next click (or Escape).
   const [regionsOpen, setRegionsOpen] = useState(false)
@@ -2052,7 +2063,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
           <div className="rr-fbtns"><button type="button" className="rr-btn" onClick={clear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => apply(draft)}>Filtrele</button></div>
         </div></RrFilterCard>
       </div>
-      {search.trim() ? <PayoutLinesTable platforms={platforms.length ? platforms : null} search={search} />
+      {search.trim() ? <PayoutLinesTable key={`${search}|${platforms.join(',')}`} platforms={platforms.length ? platforms : null} search={search} />
         : <>
           <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
             items={[{ value: 'upcoming', label: 'Gelecek Ödemeler', icon: 'calendarClock' }, { value: 'past', label: 'Geçmiş Ödemeler', icon: 'circleCheck' }]} />

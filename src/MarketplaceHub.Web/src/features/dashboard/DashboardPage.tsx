@@ -13,7 +13,7 @@ import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { periodTrend as trend, channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
 import { webhookCell } from './integration-health'
 import type { Connection } from '../marketplace/shared'
@@ -49,11 +49,6 @@ const ICONS = {
 
 const money = (amount: number, currency = 'TRY') => formatMoney(amount, currency || 'TRY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const count = (value: number) => value.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
-function trend(current: number, previous: number): [string, boolean] {
-  if (previous <= 0) return [current > 0 ? '%100' : '%0', true]
-  const delta = ((current - previous) / previous) * 100
-  return [`${delta < 0 ? '-' : ''}%${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, delta >= 0]
-}
 function age(timestamp: string | null) {
   if (!timestamp) return null
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 60_000))
@@ -164,7 +159,8 @@ function KpiCell({ icon: cardIcon, label, hint, tip, value, delta, note, avgLabe
   return <div className={`rr-kc${on ? ' rr-on' : ''}${onPick ? ' rr-pick' : ''}${loading ? ' rr-kc-wait' : ''}`} title={tip} role={onPick ? 'tab' : undefined} aria-selected={onPick ? Boolean(on) : undefined} tabIndex={onPick ? 0 : undefined} onClick={onPick} onKeyDown={event => { if (onPick && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onPick() } }}>
     <CardBackgroundIcon name={cardIcon} />
     <small>{label}{hint && <span className="rr-kc-hint"> · {hint}</span>}</small><strong className="rr-num">{loading ? <span className="rr-kc-skel" role="status" aria-label="Yükleniyor" /> : value}</strong>
-    {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span><em>önceki döneme göre</em></span> : <span className="rr-trend"><em>{note}</em></span>}
+    {delta ? <span className={`rr-trend ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? ICONS.up : ICONS.down}<span className="rr-trend-v">{delta[0]}</span><em>önceki döneme göre</em></span>
+      : note !== undefined ? <span className="rr-trend"><em>{note}</em></span> : <span className="rr-trend"><span className="rr-trend-v">—</span><em>önceki dönemde veri yok</em></span>}
     <span className="rr-avg">{avgLabel} <b className="rr-num">{avg}</b></span>
     <div className="rr-krange" role="img" aria-label={`${min} – ${max}`}><span className="rr-kbar"><i style={{ left: `${Math.max(0, Math.min(1, position)) * 100}%` }} /></span><span className="rr-kends"><span className="rr-num">{min}</span><span className="rr-num">{max}</span></span></div>
   </div>
@@ -371,7 +367,7 @@ export function DashboardPage() {
           <div className="rr-pf-chan-h"><b>Kanallara Göre Ciro</b>{selected && <span className="rr-ftag"><RrLogo code={selected.platformCode} />{selectedName}<button type="button" onClick={() => setChannel('ALL')} aria-label="Mağaza süzgecini kaldır"><RrIcon name="close" /></button></span>}</div>
           {channelShares.length ? <>
             <span className="rr-stack" aria-hidden="true">{channelShares.map(item => <i key={item.connectionId} style={{ width: `${item.share}%`, background: item.color }} />)}</span>
-            <div className={`rr-crows${performance.isPlaceholderData ? ' rr-crows-wait' : ''}`}>{channelShares.map(item => { const on = channel === item.connectionId; const delta = trend(item.amount, item.previousAmount); return <button key={item.connectionId} type="button" className={`rr-crow${on ? ' rr-on' : channel !== 'ALL' ? ' rr-dim' : ''}`} aria-pressed={on} onClick={() => setChannel(on ? 'ALL' : item.connectionId)}><RrLogo code={item.platformCode} /><span className="rr-ct"><span><b>{item.name}</b><small className="rr-num">{money(item.amount, currency)}</small></span><span className="rr-cbar"><i style={{ width: `${item.share}%`, background: item.color }} /></span></span><span className="rr-cv"><b className="rr-num">%{item.share.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</b><small className={`rr-num ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? '+' : ''}{delta[0]}</small></span></button> })}</div>
+            <div className={`rr-crows${performance.isPlaceholderData ? ' rr-crows-wait' : ''}`}>{channelShares.map(item => { const on = channel === item.connectionId; const delta = trend(item.amount, item.previousAmount); return <button key={item.connectionId} type="button" className={`rr-crow${on ? ' rr-on' : channel !== 'ALL' ? ' rr-dim' : ''}`} aria-pressed={on} onClick={() => setChannel(on ? 'ALL' : item.connectionId)}><RrLogo code={item.platformCode} /><span className="rr-ct"><span><b>{item.name}</b><small className="rr-num">{money(item.amount, currency)}</small></span><span className="rr-cbar"><i style={{ width: `${item.share}%`, background: item.color }} /></span></span><span className="rr-cv"><b className="rr-num">%{item.share.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</b>{delta ? <small className={`rr-num ${delta[1] ? 'rr-up' : 'rr-down'}`}>{delta[1] ? '+' : ''}{delta[0]}</small> : <small className="rr-num">—</small>}</span></button> })}</div>
           </> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Kanal Dağılımı Yok</b><span className="rr-lead">Bu dönem için kanal dağılımı bulunmuyor.</span></div>}
           <Link className="rr-btn rr-link" to="/integrations">Kanalları Yönet <RrIcon name="arrowR" /></Link>
         </div>
