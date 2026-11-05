@@ -310,6 +310,14 @@ describe('ReportsPage', () => {
     expect(body(page)).toContain('Shopify cari hesabı henüz okunmuyor')
   })
 
+  it('says which cargo is a return\'s estimate and which could not be estimated', async () => {
+    const costs = withFinance.costs!
+    const page = await open('', { ...withFinance, costs: { ...costs, cargo: { ...costs.cargo!, unbilledReturns: 1, unestimatedOrders: 1 } } })
+    const tip = page.querySelector('.reports-costlines li:first-child .reports-hover-tip')?.textContent ?? ''
+    expect(tip).toContain('Faturası henüz gelmeyen 2 sipariş ve 1 iadenin dönüş kargosu, mağazanın kargo tarifesiyle tahmin edildi')
+    expect(tip).toContain('1 siparişin kargosu tahmin edilemedi')
+  })
+
   it('counts a deduction invoice of an unnamed kind among the Kesintiler', async () => {
     const costs = withFinance.costs!
     const page = await open('', { ...withFinance, costs: { ...costs, realCostTotal: 68, lines: [...costs.lines,

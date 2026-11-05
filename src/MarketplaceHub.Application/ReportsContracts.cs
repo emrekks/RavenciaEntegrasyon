@@ -105,7 +105,7 @@ public sealed record ReportSummaryView(
 // NetRevenue. EstimatedPayout = CoveredRevenue - EstimatedCommission: an estimate, never the settled payment.
 public sealed record ReportCommissionView(decimal CoveredRevenue, decimal? Coverage, decimal EstimatedCommission, decimal EstimatedPayout, decimal? EffectiveRate);
 
-// Cost only over kept units whose variant has a cost price (the current one, not the one at the sale). CostedRevenue
+// Cost only over kept units with a cost price (the one the line kept at the sale, else the variant's current one). CostedRevenue
 // is those units' share of the order's revenue (GrossSales); GrossProfit = CostedRevenue - CostTotal. NetProfit is over units
 // that carry both a cost and a commission: their revenue - cost - estimated commission (before cargo and VAT).
 public sealed record ReportCostView(
@@ -280,21 +280,26 @@ public sealed record ReportCostLineView(string Category, string Label, bool IsCo
 
 // The commission of the period's orders, real where Trendyol settled it: Real over the orders with settlement records
 // (RealOrders), what the estimate said for those same orders, the estimate for every other order (all platforms), and
-// Combined = Real + EstimatedForUnsettled.
-public sealed record ReportRealCommissionView(decimal Real, int RealOrders, decimal EstimatedForSettled, decimal EstimatedForUnsettled, decimal Combined);
+// Combined = Real + EstimatedForUnsettled. MissingOrders: the orders without a record whose commission is unknown (a
+// line with no commission and no rate of its store in the period to estimate it at): left out of the estimate, so
+// EstimatedForUnsettled and Combined are short of them (Shopify's lack of a commission is a known 0, not counted).
+public sealed record ReportRealCommissionView(decimal Real, int RealOrders, decimal EstimatedForSettled, decimal EstimatedForUnsettled, decimal Combined, int MissingOrders = 0);
 
 // The cargo of the period's Trendyol orders. Trendyol bills cargo weeks after shipping, so a recent order
 // often has no cargo invoice line yet. Real: the cargo invoice lines counted (BilledOrders of the period have one);
 // UnbilledOrders: the period's Trendyol orders without one, estimated at the store's cargo tariff: the amount most
-// shipping lines of its last 30 days were billed at (AveragePerOrder; SampleOrders billed orders behind it). Estimated is null when no store has such a sample;
-// Combined = Real + Estimated.
+// shipping lines of its last 30 days were billed at (AveragePerOrder; SampleOrders billed orders behind it). UnbilledReturns:
+// the period's returned Trendyol orders without a return cargo line, whose return cargo is estimated at the same tariff
+// (as the order profit has it). UnestimatedOrders: the orders of those whose cargo could not be estimated (their store
+// has no tariff): the estimate is short of them, so Estimated and Combined are partial while it is above 0. Estimated is
+// null when no store has such a sample; Combined = Real + Estimated.
 // PlatformOrders / PlatformEstimated: the orders of the platforms whose statement is not read (Hepsiburada, n11,
 // Pazarama, PTT AVM, Shopify) and their cargo from the platforms' tariffs; part of Estimated and Combined.
 // DesiSources: of those orders, how many had their parcel's desi from the marketplace's order (MARKETPLACE), the
 // products' entered desi (MANUAL), the desi measured on billed Trendyol parcels (MEASURED) or a store-wide default
 // (DEFAULT); MeasuredParcels: the billed parcels the measured desi was learned from.
 public sealed record ReportCargoCostView(decimal Real, int BilledOrders, int UnbilledOrders, decimal? AveragePerOrder, int SampleOrders, decimal? Estimated, decimal Combined,
-    int PlatformOrders = 0, decimal PlatformEstimated = 0m, ReportDesiSourcesView? DesiSources = null);
+    int PlatformOrders = 0, decimal PlatformEstimated = 0m, ReportDesiSourcesView? DesiSources = null, int UnbilledReturns = 0, int UnestimatedOrders = 0);
 
 public sealed record ReportDesiSourcesView(int Marketplace, int Manual, int Measured, int Default, int MeasuredParcels);
 
@@ -319,7 +324,7 @@ public sealed record ReportOrderProfitQuery(DateOnly? From, DateOnly? To, IReadO
 public sealed record ReportOrderProfitCostView(string Key, string Label, decimal? Amount, bool Estimated, string? Source);
 
 // One line: the kept units and their paid amount, the commission rate and amount the marketplace sent (null: none), the
-// variant's current cost and VAT rate.
+// cost at the sale (else the variant's current one) and the VAT rate.
 public sealed record ReportOrderProfitLineView(Guid? VariantId, Guid? ProductId, string Title, string? Barcode, string Sku, decimal Quantity, decimal ReturnedQuantity,
     decimal Amount, decimal? CommissionRate, decimal? Commission, decimal? CostPrice, decimal VatRate, string? ImageUrl = null, string? Options = null);
 
@@ -334,9 +339,10 @@ public sealed record ReportOrderProfitView(Guid OrderId, string OrderNumber, str
 
 // A page of orders and the totals of every order the filter keeps. Amount: all of them. Profit, ProfitAmount (their
 // amount) and Margin = Profit / ProfitAmount: only the ProfitOrders whose profit is known (Profit null when none is).
-// MissingCost: orders with a line without a product cost; MissingCargo: orders whose cargo is unknown.
+// MissingCost: orders with a line without a product cost; MissingCargo: orders whose cargo is unknown; MissingCommission:
+// orders whose commission is unknown (no commission on a line and no rate of its store in the period).
 public sealed record ReportOrderProfitPage(IReadOnlyList<ReportOrderProfitView> Items, int TotalCount, int Page, int PageSize, decimal Amount, decimal? Profit, int MissingCost,
-    decimal ProfitAmount, int ProfitOrders, decimal? Margin, int MissingCargo);
+    decimal ProfitAmount, int ProfitOrders, decimal? Margin, int MissingCargo, int MissingCommission = 0);
 
 // Stok raporu: the stock on hand now (one warehouse, MAIN) with its cost and its sale value, and how fast it sells. Stock is
 // a point-in-time value; the period (From-To) only sets the sales used for the cover days. With platforms picked, only

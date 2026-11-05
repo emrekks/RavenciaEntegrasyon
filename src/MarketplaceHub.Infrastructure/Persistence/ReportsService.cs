@@ -167,7 +167,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         }).ToList();
         var totals = ReportOrderProfit.Totals(all);
         return ServiceResult<ReportOrderProfitPage>.Ok(new(page, ordered.Count, query.Page, query.PageSize, totals.Amount, totals.Profit, totals.MissingCost,
-            totals.ProfitAmount, totals.ProfitOrders, totals.Margin, totals.MissingCargo));
+            totals.ProfitAmount, totals.ProfitOrders, totals.Margin, totals.MissingCargo, totals.MissingCommission));
     }
 
     // The listed products' catalogue details, as the product list shows them: the variant's model code and options
@@ -307,7 +307,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                       }).ToListAsync(cancellationToken);
     }
 
-    // One row per order line, with the units accepted back by return claims, the variant's current cost price and
+    // One row per order line, with the units accepted back by return claims, the cost price and desi the line kept
+    // from its variant at the sale (OrderLineCostSnapshot; the variant's current ones when it kept none) and
     // its product's brand and category. A Trendyol micro-export order's accepted claim counts only once Trendyol's
     // statement records the return: 23-30 Sep 2026, a Saudi order's three accepted units had no
     // refund and Trendyol's sales report did not count them (17 units back, the panel 20).
@@ -346,9 +347,9 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                                           ? acceptedClaims.Contains(claim.Status)
                                           : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
                               .Sum(returned => (decimal?)returned.Quantity) ?? 0m,
-                          CostPrice = variant == null ? null : variant.CostPrice,
+                          CostPrice = line.UnitCostSnapshot ?? (variant == null ? null : variant.CostPrice),
                           VatRate = line.VatRate,
-                          Desi = variant == null ? null : variant.Desi
+                          Desi = line.DesiSnapshot ?? (variant == null ? null : variant.Desi)
                       }).ToListAsync(cancellationToken);
     }
 

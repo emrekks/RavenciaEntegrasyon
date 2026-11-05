@@ -77,8 +77,12 @@ export function desiSourcesNote(sources: ReportDesiSources | null | undefined) {
 export type ReportCosts = {
   source: 'trendyol-finance' | 'estimate'; lastSyncedAt: string | null; coveredFrom: string | null; coveredThrough: string | null
   financeOrders: number; settledOrders: number; coverage: number | null; realCostTotal: number | null
-  commission: { real: number; realOrders: number; estimatedForSettled: number; estimatedForUnsettled: number; combined: number } | null
-  cargo: { real: number; billedOrders: number; unbilledOrders: number; averagePerOrder: number | null; sampleOrders: number; estimated: number | null; combined: number; platformOrders?: number; platformEstimated?: number; desiSources?: ReportDesiSources | null } | null
+  // missingOrders: orders whose commission is unknown (no rate on the order nor of its store), left out of the estimate.
+  commission: { real: number; realOrders: number; estimatedForSettled: number; estimatedForUnsettled: number; combined: number; missingOrders?: number } | null
+  cargo: { real: number; billedOrders: number; unbilledOrders: number; averagePerOrder: number | null; sampleOrders: number; estimated: number | null; combined: number; platformOrders?: number; platformEstimated?: number; desiSources?: ReportDesiSources | null
+    // unbilledReturns: returned orders whose return cargo is estimated; unestimatedOrders: orders whose cargo could not be
+    // estimated (store without a tariff), so estimated and combined are short of them.
+    unbilledReturns?: number; unestimatedOrders?: number } | null
   // The costs of the period's orders only: amount = orderLinked (their own records) + estimated (orders without one).
   lines: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number; orderLinked: number; estimated?: number }>
   // The records of the period's dates tied to no order of the period (the previous payment day's service fee and

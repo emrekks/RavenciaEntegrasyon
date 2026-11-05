@@ -88,10 +88,12 @@ public sealed class ReportPlatformCostsTests
 
         var report = ReportBuilder.Build(input, previous, new Dictionary<Guid, decimal>());
 
-        // 96 TL as the payout takes it off, shared 3 : 1 over the lines; the order not read yet has no commission.
+        // 96 TL as the payout takes it off, shared 3 : 1 over the lines; the order not read yet carries no commission of
+        // its own, so its cost is estimated at the store's rate over the period (96 / 800 = 12 %: 60 TL), as its order
+        // profit is (ReportOrderProfit), never taken as 0.
         Assert.Equal(96m, report.Commission.EstimatedCommission);
         Assert.Equal(800m, report.Commission.CoveredRevenue);
-        Assert.Equal(96m, report.Costs.Commission!.Combined);
+        Assert.Equal((96m, 60m, 156m, 0), (report.Costs.Commission!.Real, report.Costs.Commission.EstimatedForUnsettled, report.Costs.Commission.Combined, report.Costs.Commission.MissingOrders));
     }
 
     [Fact]

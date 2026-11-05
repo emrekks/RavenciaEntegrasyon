@@ -551,6 +551,11 @@ public sealed class OrderLine
     // the marketplace does not say (unknown, never taken as 0 from a missing field). Only Trendyol fills it so far.
     public decimal? PlatformDiscount { get; set; }
     public decimal VatRate { get; set; }
+    // The variant's cost price and desi when the line was first tied to it (the sale, or a late match), so a later
+    // edit of the variant does not move a past period's report (OrderLineCostSnapshot). Null: the variant had none
+    // then; the reports then take the variant's current value.
+    public decimal? UnitCostSnapshot { get; set; }
+    public decimal? DesiSnapshot { get; set; }
     public required string RawStatus { get; set; }
     public long Version { get; set; } = 1;
 }

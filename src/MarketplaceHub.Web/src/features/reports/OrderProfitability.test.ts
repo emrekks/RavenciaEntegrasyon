@@ -19,7 +19,10 @@ describe('order profitability', () => {
   })
 
   it('tells why an order\'s profit is unknown', () => {
-    expect(unknownProfit({ cost: null } as OrderProfit)).toBe('Maliyet eksik')
-    expect(unknownProfit({ cost: 160 } as OrderProfit)).toBe('Kargo bilinmiyor')
+    const cost = (key: string, amount: number | null) => ({ key, label: key, amount, estimated: true, source: null })
+    expect(unknownProfit({ cost: null, costs: [] } as unknown as OrderProfit)).toBe('Maliyet eksik')
+    expect(unknownProfit({ cost: 160, costs: [cost('commission', 96), cost('cargo', null)] } as unknown as OrderProfit)).toBe('Kargo bilinmiyor')
+    // A commission nobody knows (no rate on the order nor of its store) is not taken as 0.
+    expect(unknownProfit({ cost: 160, costs: [cost('commission', null), cost('cargo', 98.34)] } as unknown as OrderProfit)).toBe('Komisyon eksik')
   })
 })

@@ -4373,6 +4373,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("numeric(19,4)");
 
+                    b.Property<decimal?>("DesiSnapshot")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
+
                     b.Property<string>("ExternalLineId")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -4417,6 +4421,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(512)
                         .HasColumnType("character varying(512)");
+
+                    b.Property<decimal?>("UnitCostSnapshot")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("numeric(19,4)");
 
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(19, 4)
