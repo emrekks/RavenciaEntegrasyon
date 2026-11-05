@@ -106,7 +106,7 @@ public static class N11QuestionMapper
         if (text is null) return null;
         var subject = Value("questionSubject");
         var answer = Value("answer");
-        var asked = N11ReturnMapper.Date(N11HttpClient.Child(detail, "questionDate")) ?? DateTimeOffset.UnixEpoch;
+        var asked = N11ReturnMapper.Date(N11HttpClient.Child(detail, "questionDate"));
         var answered = N11ReturnMapper.Date(N11HttpClient.Child(detail, "answeredDate"));
         var status = N11HttpClient.Child(detail, "status")?.ToUpperInvariant();
         var isAnswered = answer is not null || status is "CLOSED" or "ANSWERED";

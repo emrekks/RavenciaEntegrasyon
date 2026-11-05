@@ -66,7 +66,7 @@ public sealed class PazaramaQuestionTests
         var question = PazaramaQuestionMapper.Question(Parse(Row))!;
 
         // 09:12 in Turkey (UTC+3) is 06:12 UTC; PostgreSQL only accepts zero offsets.
-        Assert.Equal(TimeSpan.Zero, question.CreatedAt.Offset);
+        Assert.Equal(TimeSpan.Zero, question.CreatedAt!.Value.Offset);
         Assert.Equal(new DateTimeOffset(2023, 12, 28, 6, 12, 16, 333, TimeSpan.Zero), question.CreatedAt);
         Assert.Equal(new DateTimeOffset(2023, 12, 28, 7, 17, 13, 23, TimeSpan.Zero), question.LastModifiedAt);
     }

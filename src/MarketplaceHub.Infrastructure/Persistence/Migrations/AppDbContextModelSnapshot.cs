@@ -3869,7 +3869,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ConnectionId")
                         .HasColumnType("uuid");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
+                    b.Property<DateTimeOffset?>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("CustomerKey")
@@ -3900,7 +3900,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
-                    b.Property<DateTimeOffset>("LastRemoteModifiedAt")
+                    b.Property<DateTimeOffset?>("LastRemoteModifiedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTimeOffset>("LastSyncedAt")
@@ -5746,7 +5746,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
-                    b.Property<DateTimeOffset>("LastRemoteModifiedAt")
+                    b.Property<DateTimeOffset?>("LastRemoteModifiedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("OrderId")

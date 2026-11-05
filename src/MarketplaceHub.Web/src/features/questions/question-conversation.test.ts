@@ -25,4 +25,13 @@ describe('visibleQuestionConversation', () => {
     expect(visible[0].rejectionReason).toBe('Kısa açıklama.')
     expect(visible[1].createdAt).toBe('2026-10-09T09:16:01Z')
   })
+
+  it('puts a message with an unknown time last and keeps it', () => {
+    const visible = visibleQuestionConversation([
+      { author: 'Merchant', text: 'Tam kalıptır.', createdAt: null },
+      { author: 'Customer', text: 'Başka soru', createdAt: '2026-10-09T09:00:00Z' },
+    ], 'Ölçüsü nedir?')
+
+    expect(visible.map(message => message.createdAt)).toEqual(['2026-10-09T09:00:00Z', null])
+  })
 })

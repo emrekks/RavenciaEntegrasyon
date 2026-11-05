@@ -155,7 +155,7 @@ public static class PazaramaQuestionMapper
         var text = Text(row, "question");
         if (id is null || text is null) return null;
         var status = (int?)Number(row, "questionStatus");
-        var asked = Instant(Text(row, "questionDate")) ?? DateTimeOffset.UnixEpoch;
+        var asked = Instant(Text(row, "questionDate"));
         var answer = Text(row, "answer");
         var answered = Instant(Text(row, "answerDate"));
         var conversations = new List<RemoteQuestionConversation>();
@@ -177,7 +177,7 @@ public static class PazaramaQuestionMapper
         var text = Text(data, "question");
         if (id is null || text is null) return null;
         var topic = Text(data, "topicName");
-        var asked = Instant(Text(data, "questionDate")) ?? DateTimeOffset.UnixEpoch;
+        var asked = Instant(Text(data, "questionDate"));
         return new RemoteMarketplaceQuestion(
             id, KindOf(Text(data, "orderNumber")), PanelStatus((int?)Number(data, "questionStatus")),
             topic is null ? text : $"{topic}: {text}",

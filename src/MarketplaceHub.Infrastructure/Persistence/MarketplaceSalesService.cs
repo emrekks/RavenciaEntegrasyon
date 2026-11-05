@@ -2018,7 +2018,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var query = ReturnBaseQuery(tenantId);
         ApplyReturnFilters(ref query, options);
         var totalCount = await query.CountAsync(cancellationToken);
-        var claims = await query.OrderByDescending(x => x.LastRemoteModifiedAt).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
+        var claims = await query.OrderBy(x => x.LastRemoteModifiedAt == null).ThenByDescending(x => x.LastRemoteModifiedAt).ThenByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).Take(limit + 1).ToListAsync(cancellationToken);
         var rows = await ReturnViewsAsync(tenantId, claims, cancellationToken);
         return new(rows.Take(limit).ToList(), null, rows.Count > limit, totalCount);
     }
@@ -2172,17 +2172,17 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             ? ReturnActionDueAt(platformCode, claim.RawStatus, null, claim.LastRemoteModifiedAt) is not null
             : claim.ActionDueAtEstimated;
 
-    internal static DateTimeOffset? ReturnActionDueAt(string? platformCode, string? rawStatus, DateTimeOffset? actionDueAt, DateTimeOffset lastRemoteModifiedAt)
+    internal static DateTimeOffset? ReturnActionDueAt(string? platformCode, string? rawStatus, DateTimeOffset? actionDueAt, DateTimeOffset? lastRemoteModifiedAt)
     {
         if (actionDueAt is not null) return actionDueAt;
         var isTrendyolWaitingInAction = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
             && (string.Equals(rawStatus?.Trim(), "WaitingInAction", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(rawStatus?.Trim(), "WAITING_IN_ACTION", StringComparison.OrdinalIgnoreCase));
-        if (isTrendyolWaitingInAction) return lastRemoteModifiedAt.AddHours(48);
+        if (isTrendyolWaitingInAction) return lastRemoteModifiedAt?.AddHours(48);
         var isTrendyolRejected = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
             && (string.Equals(rawStatus?.Trim(), "Rejected", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(rawStatus?.Trim(), "REJECTED", StringComparison.OrdinalIgnoreCase));
-        return isTrendyolRejected ? lastRemoteModifiedAt.AddDays(7) : null;
+        return isTrendyolRejected ? lastRemoteModifiedAt?.AddDays(7) : null;
     }
 
     private void ApplyReturnFilters(ref IQueryable<ReturnClaim> query, ReturnListQuery options)
@@ -2662,7 +2662,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             claim.ReasonCode = readback.Value.ReasonCode;
             claim.ReasonText = readback.Value.ReasonText;
             claim.ActionDueAt = readback.Value.ActionDueAt;
-            claim.LastRemoteModifiedAt = readback.Value.LastModifiedAt;
+            claim.LastRemoteModifiedAt = readback.Value.LastModifiedAt ?? claim.LastRemoteModifiedAt;
             claim.UpdatedAt = timeProvider.GetUtcNow();
             claim.Version++;
             // The decision is judged by its own lines: Trendyol's claim status is the first item's, which may be a line

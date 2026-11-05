@@ -28,9 +28,9 @@ public sealed class MarketplaceQuestion
     public string? PendingAnswerText { get; set; }
     public string? AnswerSubmissionStatus { get; set; }
     public string? AnswerSubmissionKey { get; set; }
-    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? CreatedAt { get; set; }
     public DateTimeOffset? ExpiresAt { get; set; }
-    public DateTimeOffset LastRemoteModifiedAt { get; set; }
+    public DateTimeOffset? LastRemoteModifiedAt { get; set; }
     public DateTimeOffset LastSyncedAt { get; set; }
     public long Version { get; set; } = 1;
 }

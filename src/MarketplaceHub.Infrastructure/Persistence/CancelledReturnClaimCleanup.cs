@@ -12,7 +12,7 @@ internal static class CancelledReturnClaimCleanup
     // history (and the idempotency keys it holds) must survive: the claim is
     // kept as Cancelled and an operational issue asks for the stock to be
     // checked. Returns true when the claim was kept.
-    public static async Task<bool> RemoveOrRetainAsync(AppDbContext db, Guid tenantId, Guid claimId, string remoteRawStatus, DateTimeOffset remoteModifiedAt, DateTimeOffset now, CancellationToken cancellationToken)
+    public static async Task<bool> RemoveOrRetainAsync(AppDbContext db, Guid tenantId, Guid claimId, string remoteRawStatus, DateTimeOffset? remoteModifiedAt, DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (!await HasHistoryAsync(db, tenantId, claimId, cancellationToken))
         {
@@ -27,7 +27,7 @@ internal static class CancelledReturnClaimCleanup
         if (claim.Status == ReturnClaimStatus.Cancelled) return true;
         claim.Status = ReturnClaimStatus.Cancelled;
         claim.RawStatus = remoteRawStatus;
-        if (remoteModifiedAt > claim.LastRemoteModifiedAt) claim.LastRemoteModifiedAt = remoteModifiedAt;
+        if (remoteModifiedAt is { } modifiedAt && (claim.LastRemoteModifiedAt is null || modifiedAt > claim.LastRemoteModifiedAt)) claim.LastRemoteModifiedAt = modifiedAt;
         claim.UpdatedAt = now;
         claim.Version++;
 
