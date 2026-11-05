@@ -80,3 +80,25 @@ export function OrderRowMarkIcons({ marks, unreadableLines = 0, amountMayBeIncom
     {fastLabel && <Mark kind="fast" tip={fastLabel}><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5" /><circle cx="4.5" cy="11.8" r="1.2" /><circle cx="11.8" cy="11.8" r="1.2" /></svg></Mark>}
   </span>
 }
+
+// The buyer kind of the order (OrderBuyerTypeView on the API), decided by the invoice's own rule: the marketplace's
+// flag, then the tax number, then a company name. The reason shows on hover, keyboard focus or a tap.
+export type OrderBuyerType = { kind: string; reason: string }
+
+const buyerTypeLabels: Record<string, { label: string; tone: string }> = {
+  Individual: { label: 'Bireysel', tone: 'individual' },
+  Corporate: { label: 'Kurumsal', tone: 'corporate' },
+  CorporateTaxIdMissing: { label: 'Kurumsal · Vergi No Yok', tone: 'missing' },
+}
+
+export function buyerTypeLabel(kind: string | null | undefined) {
+  return kind ? buyerTypeLabels[kind]?.label ?? null : null
+}
+
+export function BuyerTypeTag({ buyerType }: { buyerType: OrderBuyerType | null | undefined }) {
+  const known = buyerType ? buyerTypeLabels[buyerType.kind] : undefined
+  if (!buyerType || !known) return null
+  const tip = buyerType.reason ? `${known.label}: ${buyerType.reason}` : known.label
+  // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards and taps can read the reason
+  return <span className={`rr-buyer-tag rr-buyer-${known.tone}`} tabIndex={0} title={tip} aria-label={tip} data-tip={tip}>{known.label}</span>
+}

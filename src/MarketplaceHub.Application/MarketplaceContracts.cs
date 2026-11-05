@@ -1278,7 +1278,18 @@ public sealed record OrderListView(
     int UnreadableLineCount = 0,
     // True when such an order's amount is only the read lines' sum: the marketplace sends no order total (PTT AVM), so
     // the amount may be short until a read fills the line in (UnreadableOrderLines.AmountIssueCode).
-    bool AmountMayBeIncomplete = false);
+    bool AmountMayBeIncomplete = false,
+    // Bireysel / kurumsal by the invoice's own rule (OrderBuyerTypeView).
+    OrderBuyerTypeView? BuyerType = null);
+// The buyer kind of an order, decided by the same rule the invoice uses (TrendyolEFaturamCanonicalPayload.ResolveBuyerType,
+// report item 12): Individual, Corporate, or CorporateTaxIdMissing (a corporate buyer without a tax number: the invoice
+// stops and asks the owner). Reason is a short Turkish explanation of what decided it.
+public sealed record OrderBuyerTypeView(string Kind, string Reason)
+{
+    public const string Individual = "Individual";
+    public const string Corporate = "Corporate";
+    public const string CorporateTaxIdMissing = "CorporateTaxIdMissing";
+}
 // Facts the marketplace states about an order, shown as icons in the order row. Each is set only from a field the
 // marketplace sent: a missing field leaves the mark out (unknown), it never means "no".
 // MicroExport: Trendyol micro=true; MicroExportCountryCode: the buyer's country (ISO alpha-2) when known.
@@ -1435,7 +1446,9 @@ public sealed record OrderDetailView(
     // As on OrderListView: product lines of the live packages the panel could not read.
     int UnreadableLineCount = 0,
     // As on OrderListView: the amount may be short (no marketplace order total with a line unread).
-    bool AmountMayBeIncomplete = false);
+    bool AmountMayBeIncomplete = false,
+    // As on OrderListView: bireysel / kurumsal by the invoice's rule.
+    OrderBuyerTypeView? BuyerType = null);
 public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, bool IsStageConnection, IReadOnlyList<ShipmentDocumentView> Documents, string PlatformCode = "TRENDYOL");
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);

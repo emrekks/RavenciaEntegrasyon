@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '../../../test/render'
-import { OrderRowMarkIcons, unreadableLinesLabel, type OrderRowMarks } from './order-row-marks'
+import { BuyerTypeTag, buyerTypeLabel, OrderRowMarkIcons, unreadableLinesLabel, type OrderRowMarks } from './order-row-marks'
 
 afterEach(cleanup)
 
@@ -75,5 +75,29 @@ describe('order row marks', () => {
     expect(tips(withOthers).map(([tip]) => tip)).toEqual([unreadableLinesLabel(1), 'Teslimat Noktası Siparişi'])
     cleanup()
     expect(render(<OrderRowMarkIcons marks={none} unreadableLines={0} />).host.querySelector('.rr-omarks')).toBeNull()
+  })
+})
+
+// The buyer kind by the invoice's rule, on every marketplace: one tag, its tone, the reason as the tooltip.
+describe('buyer type tag', () => {
+  it.each([
+    ['Individual', 'Pazaryeri bireysel olarak işaretledi', 'Bireysel', 'rr-buyer-individual'],
+    ['Corporate', 'Vergi numarası var', 'Kurumsal', 'rr-buyer-corporate'],
+    ['CorporateTaxIdMissing', 'Şirket adı var, vergi numarası yok — fatura kesilirken sorulacak', 'Kurumsal · Vergi No Yok', 'rr-buyer-missing'],
+  ])('shows %s as its label with the reason', (kind, reason, label, tone) => {
+    const { host } = render(<BuyerTypeTag buyerType={{ kind, reason }} />)
+    const tag = host.querySelector('.rr-buyer-tag')
+    expect(tag?.textContent).toBe(label)
+    expect(tag?.classList.contains(tone)).toBe(true)
+    expect(tag?.getAttribute('title')).toBe(`${label}: ${reason}`)
+    expect(tag?.getAttribute('data-tip')).toBe(`${label}: ${reason}`)
+    expect(buyerTypeLabel(kind)).toBe(label)
+  })
+
+  it('shows nothing when the buyer type is missing or unknown', () => {
+    expect(render(<BuyerTypeTag buyerType={null} />).host.querySelector('.rr-buyer-tag')).toBeNull()
+    expect(render(<BuyerTypeTag buyerType={undefined} />).host.querySelector('.rr-buyer-tag')).toBeNull()
+    expect(render(<BuyerTypeTag buyerType={{ kind: 'Other', reason: '' }} />).host.querySelector('.rr-buyer-tag')).toBeNull()
+    expect(buyerTypeLabel(null)).toBeNull()
   })
 })

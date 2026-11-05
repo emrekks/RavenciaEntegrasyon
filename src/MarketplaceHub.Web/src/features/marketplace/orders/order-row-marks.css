@@ -19,3 +19,15 @@
 tbody > tr:first-child .rr-omark[data-tip]:is(:hover, :focus)::after { top: calc(100% + 6px); bottom: auto; }
 /* a narrow order column moves the marks under the number instead of letting them run into the next column */
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ordercell .rr-on-no:has(> .rr-omarks) { flex-wrap: wrap; }
+/* The buyer kind tag (Bireysel / Kurumsal / Kurumsal · Vergi No Yok) beside the buyer's name: a compact 20 px chip;
+   the reason shows in the same kind of tooltip as the marks. */
+.rr-buyer-tag { position: relative; display: inline-flex; align-items: center; width: max-content; height: 20px; min-height: 0; padding: 0 7px; color: var(--rr-muted); white-space: nowrap; background: none; border: 1px solid var(--rr-line-strong); border-radius: 7px; outline: none; font-size: 11.5px; font-weight: 500; line-height: 1; vertical-align: middle; cursor: default; }
+.rr-buyer-tag:focus-visible { box-shadow: 0 0 0 2px var(--rr-info); }
+.rr-buyer-corporate { color: var(--rr-primary); background: var(--rr-primary-soft); border-color: color-mix(in srgb, var(--rr-primary) 35%, transparent); }
+.rr-buyer-missing { color: var(--rr-warn); background: color-mix(in srgb, var(--rr-warn) 12%, transparent); border-color: color-mix(in srgb, var(--rr-warn) 40%, transparent); }
+.rr-buyer-tag[data-tip]:hover::after,
+.rr-buyer-tag[data-tip]:focus::after { content: attr(data-tip); position: absolute; z-index: 70; bottom: calc(100% + 6px); left: 0; width: max-content; max-width: 280px; padding: 6px 10px; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; white-space: normal; pointer-events: none; }
+tbody > tr:first-child .rr-buyer-tag[data-tip]:is(:hover, :focus)::after { top: calc(100% + 6px); bottom: auto; }
+/* under the buyer's name in the Alıcı column; the order detail writes the reason beside the tag */
+.rr-cust .rr-buyer-tag { margin-top: 4px; }
+.rr-buyer-reason { color: var(--rr-muted); font-size: 12px; }

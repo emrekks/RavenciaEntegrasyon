@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
+using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 
@@ -295,13 +297,63 @@ public static class TrendyolEFaturamCanonicalPayload
     // such a flag the tax identity decides: a 10-digit VKN is a company, an 11-digit TCKN a person. Without either, a
     // company name (Shopify sends one with no tax number) makes the buyer corporate, and the invoice then stops for the
     // owner because a corporate invoice needs the tax number; with no company name the buyer is a person.
-    private static bool IsCorporateRecipient(JsonElement customer, JsonElement address, string taxId)
+    private static bool IsCorporateRecipient(JsonElement customer, JsonElement address, string taxId) =>
+        RecipientKind(customer, address, taxId).IsCorporate;
+
+    private enum BuyerKindSource { MarketplaceFlag, TaxNumber, IdentityNumber, CompanyName, NoInformation }
+
+    // The one buyer-kind rule (see above), with what decided it; the invoice and the order's label both read it.
+    private static (bool IsCorporate, BuyerKindSource Source) RecipientKind(JsonElement customer, JsonElement address, string taxId)
     {
-        if ((ExplicitBuyerKind(customer) ?? ExplicitBuyerKind(address)) is { } stated) return stated;
-        if (HasCorporateMarker(customer) || HasCorporateMarker(address)) return true;
-        if (HasIndividualMarker(customer) || HasIndividualMarker(address)) return false;
-        if (ValidTaxId(taxId)) return taxId.Length == 10;
-        return HasCompanyDetails(customer) || HasCompanyDetails(address);
+        if ((ExplicitBuyerKind(customer) ?? ExplicitBuyerKind(address)) is { } stated) return (stated, BuyerKindSource.MarketplaceFlag);
+        if (HasCorporateMarker(customer) || HasCorporateMarker(address)) return (true, BuyerKindSource.MarketplaceFlag);
+        if (HasIndividualMarker(customer) || HasIndividualMarker(address)) return (false, BuyerKindSource.MarketplaceFlag);
+        if (ValidTaxId(taxId)) return taxId.Length == 10 ? (true, BuyerKindSource.TaxNumber) : (false, BuyerKindSource.IdentityNumber);
+        return HasCompanyDetails(customer) || HasCompanyDetails(address) ? (true, BuyerKindSource.CompanyName) : (false, BuyerKindSource.NoInformation);
+    }
+
+    /// <summary>
+    /// The order's buyer kind for the order list and detail, by exactly the rule the invoice uses (report item 12):
+    /// Individual, Corporate, or CorporateTaxIdMissing when the buyer is corporate but no tax number is on the order
+    /// (the invoice then stops and asks the owner), with a short Turkish reason. Unreadable snapshots count as
+    /// individual, as they do for the invoice.
+    /// </summary>
+    public static OrderBuyerTypeView ResolveBuyerType(string? customerSnapshotJson, string? invoiceAddressSnapshotJson)
+    {
+        bool isCorporate;
+        BuyerKindSource source;
+        string taxId;
+        try
+        {
+            using var customer = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerSnapshotJson) ? "{}" : customerSnapshotJson);
+            using var addressSnapshot = JsonDocument.Parse(string.IsNullOrWhiteSpace(invoiceAddressSnapshotJson) ? "{}" : invoiceAddressSnapshotJson);
+            using var normalizedAddress = NormalizeAddressSnapshot(addressSnapshot.RootElement);
+            var addressRoot = normalizedAddress.RootElement;
+            // The same tax number the invoice sends (RecipientTaxIdentity): the invoice address first, then the customer.
+            taxId = FindTaxId(addressRoot);
+            if (!ValidTaxId(taxId)) taxId = FindTaxId(customer.RootElement);
+            (isCorporate, source) = RecipientKind(customer.RootElement, addressRoot, taxId);
+        }
+        catch (JsonException)
+        {
+            return new(OrderBuyerTypeView.Individual, "Bilgi yok, bireysel sayıldı");
+        }
+
+        if (!isCorporate)
+            return new(OrderBuyerTypeView.Individual, source switch
+            {
+                BuyerKindSource.MarketplaceFlag => "Pazaryeri bireysel olarak işaretledi",
+                BuyerKindSource.IdentityNumber => "TC kimlik numarası var",
+                _ => "Bilgi yok, bireysel sayıldı"
+            });
+        if (!ValidTaxId(taxId))
+            return new(OrderBuyerTypeView.CorporateTaxIdMissing, source == BuyerKindSource.MarketplaceFlag
+                ? "Pazaryeri kurumsal olarak işaretledi, vergi numarası yok — fatura kesilirken sorulacak"
+                : "Şirket adı var, vergi numarası yok — fatura kesilirken sorulacak");
+        // The invoice also checks the number's check digits (InvoicingBillingService.RecipientTaxIdentityIsValid).
+        if (!TurkishTaxIdentity.IsValid(taxId))
+            return new(OrderBuyerTypeView.CorporateTaxIdMissing, "Vergi numarası geçersiz — fatura kesilirken sorulacak");
+        return new(OrderBuyerTypeView.Corporate, source == BuyerKindSource.MarketplaceFlag ? "Pazaryeri kurumsal olarak işaretledi" : "Vergi numarası var");
     }
 
     /// <summary>

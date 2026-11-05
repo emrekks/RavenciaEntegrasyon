@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
+using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.Configuration;
@@ -171,6 +172,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 .FirstOrDefault(x => x is not null)
                 ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
+            var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, customer.IsMicroExport);
             var dueAt = order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson);
             var unverifiedWithoutPackage = OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
                 connection?.PlatformCode,
@@ -194,7 +196,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 order.Id, order.OrderNumber, displayStatus, order.Currency, order.NetAmount, order.OrderedAt,
                 orderLines.Count, orderPackages.Count, order.Version,
                 order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
-                customer.Name, customer.OrderType, customer.IsMicroExport, dueAt,
+                customer.Name, buyer.OrderType, customer.IsMicroExport, dueAt,
                 OpenOrderLifecyclePolicy.ShouldShowShipmentDeadlineWarning(connection?.PlatformCode, displayStatus, dueAt, now, unverifiedWithoutPackage), PackageInvoiceLabel(package, invoice, order.CustomerSnapshotJson, orderPackages.Select(x => x.RawStatus), connection?.PlatformCode, invoice is not null && confirmedDeliveryInvoiceIds.Contains(invoice.Id)),
                 package?.CargoProviderExternalId ?? JsonText(order.CustomerSnapshotJson, "marketplaceCargoProviderName"), package?.CargoTrackingNumber,
                 orderLines.Select(x => catalog.CatalogImageUrl(catalog.Variant(x))).FirstOrDefault(x => x is not null),
@@ -206,7 +208,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 order.LabelPrintedAt,
                 RowMarks(connection?.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson),
                 UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? []),
-                AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? [])));
+                AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? [])),
+                buyer.BuyerType);
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -966,14 +969,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             .FirstOrDefault(x => x is not null)
             ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
+        var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, customer.IsMicroExport);
         return ServiceResult<OrderDetailView>.Ok(new(
             order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.GrossAmount, order.DiscountAmount, order.NetAmount, order.OrderedAt,
             lines, visiblePackages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
-            customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
+            customer.Name, customer.Email, customer.TaxOrIdentityNumber, buyer.OrderType, customer.IsMicroExport,
             order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), PackageInvoiceLabel(displayPackage, invoice, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
             customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl, ListAddress(order.ShipmentAddressSnapshotJson),
-            UnreadableLineCount(packages), AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packages))));
+            UnreadableLineCount(packages), AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packages)), buyer.BuyerType));
     }
 
     // An order with an unread product line whose amount is the read lines' sum: PTT AVM sends no order total
@@ -3182,7 +3186,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     // The marketplace's own photo address in a line snapshot, ready to show; null when the line carries none.
     internal static string? SourceLineImageUrl(string? json) => NormalizeImageUrl(SourceImageUrl(json ?? "{}"));
 
-    private static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, string OrderType, bool IsMicroExport, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson, string shipmentAddressJson)
+    // The order's buyer kind by the invoice's rule (report item 12), and the order type that follows from it: a micro
+    // export first, then KURUMSAL for a corporate buyer (with or without its tax number), else BIREYSEL.
+    internal static (OrderBuyerTypeView BuyerType, string OrderType) BuyerType(string customerJson, string invoiceAddressJson, bool isMicroExport)
+    {
+        var buyer = TrendyolEFaturamCanonicalPayload.ResolveBuyerType(customerJson, invoiceAddressJson);
+        return (buyer, isMicroExport ? "MIKRO_IHRACAT" : buyer.Kind == OrderBuyerTypeView.Individual ? "BIREYSEL" : "KURUMSAL");
+    }
+
+    private static (string Name, string? Email, string? Phone, string? TaxOrIdentityNumber, bool IsMicroExport, bool? IsEInvoiceAvailable) Customer(string customerJson, string invoiceAddressJson, string shipmentAddressJson)
     {
         var name = ResolveCustomerName(customerJson, invoiceAddressJson, shipmentAddressJson);
         var email = JsonText(customerJson, "customerEmail", "email") ?? JsonText(invoiceAddressJson, "email") ?? JsonText(shipmentAddressJson, "email");
@@ -3196,9 +3208,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         // existing export orders are not presented as domestic orders.
         var legacyExportPartner = IsLegacyTrendyolExportPartner(name);
         var micro = JsonBool(customerJson, "micro", "microExport", "3pByTrendyol") || microText?.Contains("MICRO", StringComparison.OrdinalIgnoreCase) == true || microText?.Contains("İHRAC", StringComparison.OrdinalIgnoreCase) == true || legacyExportPartner;
-        var commercial = JsonBool(customerJson, "commercial") || !string.IsNullOrWhiteSpace(JsonText(invoiceAddressJson, "company", "companyName", "taxOffice"));
         var eInvoice = JsonNullableBool(customerJson, "eInvoiceAvailable", "isEInvoice") ?? JsonNullableBool(invoiceAddressJson, "eInvoiceAvailable", "isEInvoice");
-        return (name, email, phone, tax, micro ? "MIKRO_IHRACAT" : commercial ? "KURUMSAL" : "BIREYSEL", micro, eInvoice);
+        return (name, email, phone, tax, micro, eInvoice);
     }
 
     private static readonly HashSet<string> FastDeliveryTypes = new(["TodayDelivery", "SameDayShipping", "FastDelivery"], StringComparer.OrdinalIgnoreCase);
