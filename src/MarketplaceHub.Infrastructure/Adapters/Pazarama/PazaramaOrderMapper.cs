@@ -27,7 +27,8 @@ public static class PazaramaOrderMapper
                 issues.Add(new("ORDER_PACKAGE_INVALID", Text(order, "orderId") ?? "unknown", "Pazarama siparişi içeri alınmadı: sipariş numarası yok."));
                 continue;
             }
-            try { rows.Add(Order(order, orderNumber)); }
+            var lineIssues = new List<AdapterPageIssue>();
+            try { rows.Add(Order(order, orderNumber, lineIssues)); issues.AddRange(lineIssues); }
             catch (JsonException exception)
             {
                 issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"Pazarama siparişi {orderNumber} içeri alınmadı: {exception.Message}"));
@@ -50,9 +51,10 @@ public static class PazaramaOrderMapper
         return null;
     }
 
-    private static RemoteOrder Order(JsonElement order, string orderNumber)
+    private static RemoteOrder Order(JsonElement order, string orderNumber, List<AdapterPageIssue> issues)
     {
         var lines = new List<RemoteOrderLine>();
+        var unreadable = 0;
         var allocations = new List<RemotePackageAllocation>();
         var itemStatuses = new List<string>();
         // Cancelled items are no part of the order value or its deadline while another item is live;
@@ -71,14 +73,18 @@ public static class PazaramaOrderMapper
                 var product = item.TryGetProperty("product", out var productValue) && productValue.ValueKind == JsonValueKind.Object ? productValue : default;
                 var quantity = Decimal(item, "quantity");
                 var unitPrice = Money(item, "salePrice");
-                // O12: an order with a line that cannot be read is not imported at all. Dropping the line would store the
-                // order with a lower total and fewer items than the buyer paid for; the page records the issue and the
-                // order is read again by a later poll (the window overlaps), so its value stays unknown, not wrong.
-                if (itemId is null || quantity is not > 0 || unitPrice is null or < 0)
-                    throw new JsonException($"bir ürün satırında (kalem {itemId ?? "?"}) kalem kimliği, adet veya fiyat okunamadı; sipariş sonraki okumada yeniden denenecek.");
                 var statusCode = (int?)Decimal(item, "orderItemStatus") ?? 0;
                 var raw = ItemStatus(statusCode);
+                // An unreadable item still has its status: the package is where its items are, read or not.
                 itemStatuses.Add(raw);
+                // A line that cannot be read does not stop the order (UnreadableOrderLines, replacing O12's refusal): the
+                // order is imported for shipping without it, the package counts it, and nothing of it is guessed.
+                if (itemId is null || quantity is not > 0 || unitPrice is null or < 0)
+                {
+                    unreadable++;
+                    issues.Add(UnreadableOrderLines.Issue("Pazarama", $"order:{orderNumber}", itemId, "kalem kimliği, adet veya fiyat okunamadı."));
+                    continue;
+                }
                 var stockCode = Text(product, "stockCode");
                 var barcode = Text(product, "code");
                 var sku = stockCode ?? barcode ?? "";
@@ -116,7 +122,7 @@ public static class PazaramaOrderMapper
                 if (LatestHistory(item) is { } changed && (lastItemChange is null || changed > lastItemChange)) lastItemChange = changed;
             }
         }
-        if (lines.Count == 0) throw new JsonException("order has no usable item");
+        if (lines.Count == 0 && unreadable == 0) throw new JsonException("order has no usable item");
 
         if (hasLiveItem) (gross, discount, net, dueAt) = (liveGross, liveDiscount, liveNet, liveDueAt);
         if (!hasItemTotals) net = gross - discount;
@@ -126,7 +132,7 @@ public static class PazaramaOrderMapper
         var modified = lastItemChange ?? ordered;
         var packageStatus = PackageStatus(itemStatuses);
         // Contracted cargo: the shipment code (PZ...) is what the label and the cargo process use.
-        var package = new RemotePackage($"order:{orderNumber}", null, packageStatus, modified, carrierName, shipmentCode ?? trackingNumber, allocations, gross, gross - net, net);
+        var package = new RemotePackage($"order:{orderNumber}", null, packageStatus, modified, carrierName, shipmentCode ?? trackingNumber, allocations, gross, gross - net, net, UnreadableLineCount: unreadable);
         var shipmentAddress = AddressSnapshot(order, "shipmentAddress");
         var billingAddress = AddressSnapshot(order, "billingAddress");
         return new(orderNumber, orderNumber, ordered, modified, "TRY", gross, gross - net, net,

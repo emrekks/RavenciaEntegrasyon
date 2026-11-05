@@ -5881,6 +5881,79 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // One rule for every marketplace (5 Nov 2026): a package read with a product line the adapter could not read is
+    // stored for shipping with the line counted, the order gets an open "okunamayan satır" issue and joins the re-read
+    // list; a later read with every line clears the count and resolves the issue.
+    [PostgreSqlFact]
+    public async Task OrderSync_KeepsAPackageWithAnUnreadableLineCountedUntilARereadFillsItIn()
+    {
+        var tenant = NewTenant("unreadable-line");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        const string externalOrderId = "11600000001";
+        var occurredAt = fixture.Now.AddMinutes(-10);
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
+        order.LastRemoteModifiedAt = occurredAt.AddMinutes(-5);
+        var line = new OrderLine { Id = Guid.CreateVersion7(), TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Created", Version = 1 };
+        RemoteOrder Read(int unreadable)
+        {
+            var package = new RemotePackage("4200000001", null, "Created", occurredAt, null, null, [new RemotePackageAllocation("line-1", 1m, 0m, 0m, 0m, 0m)], GrossAmount: 250m, NetAmount: 250m, UnreadableLineCount: unreadable);
+            return new RemoteOrder(externalOrderId, externalOrderId, occurredAt.AddDays(-1), occurredAt, "TRY", 250m, 0m, 250m, "{}", "{}", "{}",
+                [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 1m, 100m, 10m, "Created", """{"vatRate":10}""")], [package], "{}");
+        }
+
+        async Task SyncAsync(RemoteOrder remote, string correlation)
+        {
+            await using var processorDb = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(
+                processorDb,
+                null!, null!, null!, null!, new ReadOnlyOrderTestPort(remote.Packages[0], externalOrderId: externalOrderId, directOrderResult: remote), null!, null!, null!, null!, null!,
+                new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                $$"""{"externalOrderId":"{{externalOrderId}}","full":false}""", correlation, CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+        }
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(line);
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await SyncAsync(Read(1), "unreadable-line-1");
+
+            await using (var verifyDb = fixture.CreateContext())
+            {
+                var package = await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.OrderId == orderId);
+                Assert.Equal(1, package.UnreadableLineCount);
+                var issue = await verifyDb.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Code == "ORDER_PACKAGE_LINE_INVALID");
+                Assert.Equal(IssueStatus.Open, issue.Status);
+                Assert.Equal($"unreadable-lines:{connection.Id}:4200000001", issue.DedupeKey);
+                var reread = await verifyDb.SyncCursors.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == connection.Id && x.ResourceType == RejectedOrderRereadPolicy.CursorResource);
+                Assert.Contains(externalOrderId, reread.OpaqueCursor, StringComparison.Ordinal);
+                Assert.True(await InvoicePreIssueCheck.HasUnreadableLinesAsync(verifyDb, tenant.Id, orderId, CancellationToken.None));
+            }
+
+            await SyncAsync(Read(0), "unreadable-line-2");
+
+            await using (var verifyDb = fixture.CreateContext())
+            {
+                Assert.Equal(0, (await verifyDb.ShipmentPackages.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.OrderId == orderId)).UnreadableLineCount);
+                Assert.Equal(IssueStatus.Resolved, (await verifyDb.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Code == "ORDER_PACKAGE_LINE_INVALID")).Status);
+                Assert.False(await InvoicePreIssueCheck.HasUnreadableLinesAsync(verifyDb, tenant.Id, orderId, CancellationToken.None));
+            }
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task TrendyolOrderSync_RepairsLegacyZeroPackageHoldWhenRealPackageExists()
     {

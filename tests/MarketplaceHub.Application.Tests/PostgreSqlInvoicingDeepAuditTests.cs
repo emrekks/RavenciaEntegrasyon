@@ -793,6 +793,45 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         }
     }
 
+    // One rule for every marketplace (5 Nov 2026): a package holding a product line that could not be read is kept for
+    // shipping, but the last check before issuing stops the invoice with Okunamayan Ürün Satırı until a read fills it in.
+    [PostgreSqlTheory]
+    [InlineData("TRENDYOL")]
+    [InlineData("PAZARAMA")]
+    public async Task UnreadableLine_TheLastCheckStopsTheInvoiceUntilTheLineIsRead(string platformCode)
+    {
+        var seed = NewSeed($"unread-{platformCode}", InvoiceStatus.Ready, platformCode);
+        seed.Package.UnreadableLineCount = 1;
+        await SeedAsync(seed);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var invoice = await db.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id);
+                var refusal = await InvoicePreIssueCheck.CheckAsync(db, invoice, CancellationToken.None);
+                Assert.Equal(InvoiceIssuePolicy.OrderLineUnreadableCode, refusal?.Code);
+                Assert.Contains("Okunamayan Ürün Satırı", refusal!.Message, StringComparison.Ordinal);
+                Assert.True(await InvoicePreIssueCheck.HasUnreadableLinesAsync(db, seed.Tenant.Id, seed.Order.Id, CancellationToken.None));
+            }
+
+            await using (var db = fixture.CreateContext())
+            {
+                var package = await db.ShipmentPackages.SingleAsync(item => item.Id == seed.Package.Id);
+                package.UnreadableLineCount = 0;
+                await db.SaveChangesAsync();
+            }
+
+            await using var verification = fixture.CreateContext();
+            var reread = await verification.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id);
+            Assert.NotEqual(InvoiceIssuePolicy.OrderLineUnreadableCode, (await InvoicePreIssueCheck.CheckAsync(verification, reread, CancellationToken.None))?.Code);
+            Assert.False(await InvoicePreIssueCheck.HasUnreadableLinesAsync(verification, seed.Tenant.Id, seed.Order.Id, CancellationToken.None));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     private OrderLine NewOrderLine(Seed seed, string externalLineId, decimal unitPrice) => new()
     {
         Id = Guid.CreateVersion7(),

@@ -28,7 +28,8 @@ public static class N11OrderMapper
                 issues.Add(new("ORDER_PACKAGE_INVALID", Text(package, "id") ?? "unknown", "N11 sipariş paketi içeri alınmadı: sipariş numarası yok."));
                 continue;
             }
-            try { rows.Add(Package(package, orderNumber)); }
+            var lineIssues = new List<AdapterPageIssue>();
+            try { rows.Add(Package(package, orderNumber, lineIssues)); issues.AddRange(lineIssues); }
             catch (JsonException exception)
             {
                 issues.Add(new("ORDER_PACKAGE_INVALID", Text(package, "id") ?? orderNumber, $"N11 sipariş paketi {orderNumber} içeri alınmadı: {exception.Message}"));
@@ -42,8 +43,9 @@ public static class N11OrderMapper
         return new(LinkSplitPackages(rows), hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore, total is > int.MaxValue ? int.MaxValue : (int?)total, issues);
     }
 
-    private static RemoteOrder Package(JsonElement package, string orderNumber)
+    private static RemoteOrder Package(JsonElement package, string orderNumber, List<AdapterPageIssue> issues)
     {
+        var unreadable = 0;
         var cargoCode = Text(package, "cargoTrackingNumber");
         // Location-specific deliveries come without a package number; the
         // cargo campaign code (or the order itself) identifies them instead.
@@ -57,10 +59,14 @@ public static class N11OrderMapper
             foreach (var line in lineArray.EnumerateArray())
             {
                 var lineId = Text(line, "orderLineId");
-                // O12: a package with a line that cannot be read is not imported at all (dropping the line would store a lower
-                // total); the page records the issue and a later read takes the package again.
+                // A line that cannot be read does not stop the package (UnreadableOrderLines, replacing O12's refusal): the
+                // package is imported for shipping without it, counts it, and nothing of it is guessed.
                 if (lineId is null || Decimal(line, "quantity") is not { } quantity || quantity <= 0 || Decimal(line, "price") is not { } price || price < 0)
-                    throw new JsonException($"bir ürün satırında (satır {lineId ?? "?"}) satır kimliği, adet veya fiyat okunamadı; paket sonraki okumada yeniden denenecek.");
+                {
+                    unreadable++;
+                    issues.Add(UnreadableOrderLines.Issue("N11", packageId, lineId, "satır kimliği, adet veya fiyat okunamadı."));
+                    continue;
+                }
                 var barcode = Text(line, "barcode");
                 var sku = Text(line, "stockCode") ?? barcode ?? "";
                 var title = Text(line, "productName") ?? sku;
@@ -71,7 +77,7 @@ public static class N11OrderMapper
                 else hasInvoiceAmounts = false;
             }
         }
-        if (lines.Count == 0) throw new JsonException("package has no usable product line");
+        if (lines.Count == 0 && unreadable == 0) throw new JsonException("package has no usable product line");
 
         // sellerInvoiceAmount is the store's billable amount per line: price x
         // quantity minus the store's own discounts (n11 discounts are not the
@@ -84,7 +90,7 @@ public static class N11OrderMapper
         var ordered = created ?? modified;
         var status = Text(package, "shipmentPackageStatus") ?? "";
         var remotePackage = new RemotePackage(packageId, null, status, modified, Text(package, "cargoProviderName") ?? Text(package, "shipmentCompanyId"), cargoCode, allocations, gross, gross - net, net, Invoice(package),
-            CancelledAt: CancelledAt(package, status));
+            CancelledAt: CancelledAt(package, status), UnreadableLineCount: unreadable);
         return new(orderNumber, orderNumber, ordered, modified, "TRY", gross, gross - net, net,
             CustomerSnapshot(package), AddressSnapshot(package, "shippingAddress"), AddressSnapshot(package, "billingAddress"),
             lines, [remotePackage], package.GetRawText(), Instant(package, "agreedDeliveryDate"));

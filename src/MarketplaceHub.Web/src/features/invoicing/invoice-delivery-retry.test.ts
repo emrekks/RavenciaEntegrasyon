@@ -25,6 +25,7 @@ describe('invoice delivery retry copy', () => {
     expect(invoiceFailureReason('INVOICE_PRE_ISSUE_ORDER_CHANGED')).toContain('yeniden onayınızı bekliyor')
     expect(invoiceFailureReason('HEPSIBURADA_INVOICE_INFO_MISSING')).toContain('fatura bilgisi')
     expect(invoiceFailureReason('ORDER_LINE_VAT_RATE_UNKNOWN')).toContain('KDV Oranı Bilinmiyor')
+    expect(invoiceFailureReason('ORDER_LINE_UNREADABLE')).toContain('Okunamayan Ürün Satırı')
   })
 
   it('no longer promises a retry in the error text itself', () => {

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters;
 using MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 using MarketplaceHub.Infrastructure.Adapters.N11;
 using MarketplaceHub.Infrastructure.Adapters.Pazarama;
@@ -31,8 +32,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private readonly IReadOnlyList<IJobHandler> jobHandlers = handlers?.ToArray() ?? [new MarketplaceHub.Infrastructure.Jobs.Handlers.QuestionSyncJobHandler(questions)];
     // When the marketplace stock of the model group being finalized was read (K-2); null outside a catalog import.
     private DateTimeOffset? catalogStockReadAt;
-    // Trendyol orders an integrity check refused during this job (T2-O8); the order read hands them to its re-read list.
-    private readonly HashSet<string> rejectedTrendyolOrderIds = new(StringComparer.Ordinal);
+    // Trendyol orders an integrity check refused during this job (T2-O8), and orders of any marketplace stored with a
+    // product line that could not be read; the order read hands them to its re-read list.
+    private readonly HashSet<string> rereadOrderIds = new(StringComparer.Ordinal);
+    private bool orderRereadRan;
     private int telemetryRequestCount;
     private int telemetryReceivedCount;
     private int telemetryChangedCount;
@@ -3574,7 +3577,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // (RematchUnmatchedOrderLines): the variant or its link may have been created after the line was read.
     private async Task<bool> SyncOrdersAndMatchLines(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, string cursorResourceType, bool allowBaseline, CancellationToken cancellationToken)
     {
+        orderRereadRan = false;
         var synced = await SyncOrders(tenantId, connectionId, payloadJson, correlationId, cursorResourceType, allowBaseline, cancellationToken);
+        // Every marketplace: orders stored with an unreadable product line are read again by number (UnreadableOrderLines).
+        // The Trendyol stream read does this itself once its read completed (it also re-reads the orders it refused).
+        if (synced && !orderRereadRan && !cancellationToken.IsCancellationRequested) await RereadOrders(tenantId, connectionId, correlationId, cancellationToken);
         if (synced) await RematchUnmatchedOrderLines(tenantId, connectionId, cancellationToken);
         return synced;
     }
@@ -3843,7 +3850,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
         }
         if (completed && !cancellationToken.IsCancellationRequested)
-            await RereadRejectedTrendyolOrders(tenantId, connectionId, correlationId, cancellationToken);
+            await RereadOrders(tenantId, connectionId, correlationId, cancellationToken);
         return true;
 
         // False when the read failed for another reason than a rejected storefront: it is retried on the next run
@@ -3893,13 +3900,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // T2-O8: a Trendyol order an integrity check refused stays behind the stream watermark once the window moves past
     // it. At the end of an order read it is read again by its number, a few times and far apart
     // (RejectedOrderRereadPolicy): an order Trendyol has completed since then lands, one still refused after the last
-    // try is left to its open issue. A read that fails for another reason waits for the next run and counts no try.
-    private async Task RereadRejectedTrendyolOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    // try is left to its open issue. An order of any marketplace stored with an unreadable product line is read again the
+    // same way until a read fills the line in (UnreadableOrderLines). A read that fails for another reason waits for the
+    // next run and counts no try.
+    private async Task RereadOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
     {
+        orderRereadRan = true;
         var now = timeProvider.GetUtcNow();
         var saved = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == RejectedOrderRereadPolicy.CursorResource, cancellationToken);
-        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(saved?.OpaqueCursor), rejectedTrendyolOrderIds, now);
-        rejectedTrendyolOrderIds.Clear();
+        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(saved?.OpaqueCursor), rereadOrderIds, now);
+        rereadOrderIds.Clear();
         if (saved is null && entries.Count == 0) return;
         var cursor = saved ?? await Cursor(tenantId, connectionId, RejectedOrderRereadPolicy.CursorResource, cancellationToken);
         foreach (var entry in RejectedOrderRereadPolicy.Due(entries, now))
@@ -3912,13 +3922,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 TrackReceived();
                 await UpsertOrder(tenantId, connectionId, read.Value!, cancellationToken);
-                stillRefused = rejectedTrendyolOrderIds.Remove(entry.OrderId);
+                stillRefused = rereadOrderIds.Remove(entry.OrderId);
             }
             else if (read.Error?.Class == AdapterErrorClass.NotFound || read.Error?.HttpStatus == 404) stillRefused = true;
             else break;
             entries = RejectedOrderRereadPolicy.AfterRead(entries, entry, stillRefused, now);
         }
-        rejectedTrendyolOrderIds.Clear();
+        rereadOrderIds.Clear();
         var serialized = RejectedOrderRereadPolicy.Serialize(entries);
         if (serialized == cursor.OpaqueCursor && db.Entry(cursor).State != EntityState.Added) return;
         cursor.OpaqueCursor = serialized;
@@ -9671,9 +9681,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
-        if ((!isTrendyol && remote.Lines.Count == 0) || remote.Packages.Count == 0 && !isHepsiburada)
+        // A package whose every product line was unreadable is still stored for shipping, with no lines (UnreadableOrderLines).
+        var keptWithUnreadableLines = remote.Packages.Any(package => package.UnreadableLineCount > 0);
+        if ((!isTrendyol && remote.Lines.Count == 0 && !keptWithUnreadableLines) || remote.Packages.Count == 0 && !isHepsiburada)
         {
-            if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
+            if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
             await RecordIssue(tenantId, $"order-contract:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_CONTRACT_INVALID", "Pazar yeri siparişinde satır veya paket verisi eksikti; eksik sipariş projeksiyonu uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
@@ -9683,7 +9695,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             remoteLineQuantities = new Dictionary<string, decimal>(StringComparer.Ordinal);
             if (remote.Lines.Count > 0 && !PackageIngestionSafety.TryGetOrderedQuantities(remote.Lines, out remoteLineQuantities))
             {
-                if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
+                if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
                 await RecordIssue(tenantId, $"order-lines:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_QUANTITY_INVARIANT_REJECTED", "Sipariş satır kimliği veya miktarı geçersizdi; olayın hiçbir parçası uygulanmadı.", cancellationToken);
                 if (saveChanges) await db.SaveChangesAsync(cancellationToken);
                 return false;
@@ -9702,11 +9714,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return true;
         }
+        // A package kept without a product line it could not read is stored (it still has to be shipped), and its order
+        // joins the re-read list (RejectedOrderRereadPolicy) so a later read can fill the line in; the line is never
+        // guessed meanwhile and the order gets no invoice (InvoiceIssuePolicy.OrderLineUnreadable). Every marketplace.
+        if (remote.Packages.Any(package => package.UnreadableLineCount > 0)) rereadOrderIds.Add(remote.ExternalOrderId);
         var detailedPackages = remote.Packages.Where(package => !package.IsStatusObservation).ToArray();
         var allocatedLineIds = detailedPackages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
         if (remoteLineQuantities.Count > 0 && detailedPackages.Length > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
         {
-            if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
+            if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
             await RecordIssue(tenantId, $"order-coverage:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_COVERAGE_INVALID", "Pazar yeri cevabındaki sipariş satırlarının tamamı paket tahsisinde yer almıyordu; eksik veri uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
@@ -9725,7 +9741,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var rejectedEventId = remote.Packages.Count > 0
                 ? PackageIngestionSafety.EventId(remote.Packages[0].ExternalPackageId, remote.Packages[0].OccurredAt)
                 : remote.ExternalOrderId;
-            if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
+            if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
             await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Paket miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
@@ -9907,7 +9923,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, packageAllocations, target, out safeAllocations))
                 {
-                    if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
+                    if (isTrendyol) rereadOrderIds.Add(remote.ExternalOrderId);
                     await RecordIssue(tenantId, $"package-quantity:{connectionId}:{eventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
                     continue;
                 }
@@ -9916,6 +9932,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // The amounts are not a status: a fresh detailed read refreshes them also when its status event is
             // already recorded or refused, so the order totals below are rebuilt from what the marketplace says now.
             if (package is not null && usesTrendyolPackageStatuses && orderIsFresh && PackageAmountPolicy.Apply(package, remotePackage))
+            {
+                package.UpdatedAt = now;
+                if (db.Entry(package).State != EntityState.Added) package.Version++;
+                telemetryUpdatedCount++;
+            }
+            // Like the amounts, the package's unreadable lines follow every fresh detailed read, whatever its status event.
+            if (package is not null && orderIsFresh && await ApplyUnreadableLines(tenantId, connectionId, platformCode, order.OrderNumber, package, remotePackage, cancellationToken))
             {
                 package.UpdatedAt = now;
                 if (db.Entry(package).State != EntityState.Added) package.Version++;
@@ -10031,7 +10054,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : PackageIngestionSafety.ShouldAccept(package.Status, package.StatusOccurredAt, target, statusAt, remotePackage.RawStatus));
             // A newer modification date with the same status is not a status change: no history row for it.
             var statusUnchanged = package is not null && package.Status == target && string.Equals(package.RawStatus, remotePackage.RawStatus, StringComparison.Ordinal);
-            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = statusAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); }
+            if (package is null) { package = new ShipmentPackage { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, OrderId = order.Id, ExternalPackageId = remotePackage.ExternalPackageId, CreatedBy = remotePackage.CreatedBy, Status = target, RawStatus = remotePackage.RawStatus, StatusOccurredAt = statusAt, CreatedAt = now, Version = 1 }; db.ShipmentPackages.Add(package); packagesByExternalId[remotePackage.ExternalPackageId] = package; telemetryInsertedCount++; await MergeMarketplaceInvoiceState(package, remotePackage, cancellationToken, isTrendyol ? "stream" : null); await ApplyUnreadableLines(tenantId, connectionId, platformCode, order.OrderNumber, package, remotePackage, cancellationToken); }
             else if (accept) { package.Status = target; package.RawStatus = remotePackage.RawStatus; package.StatusOccurredAt = statusAt; package.Version++; }
             else if (remotePackage.IsStatusObservation && statusAt >= package.StatusOccurredAt && package.Status != target)
                 // Status observations carry the read time, not an event time:
@@ -12930,6 +12953,35 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         .Where(package => !string.IsNullOrWhiteSpace(package.OriginExternalPackageId) && !string.Equals(package.OriginExternalPackageId, package.ExternalPackageId, StringComparison.Ordinal))
         .Select(package => package.OriginExternalPackageId!)
         .ToHashSet(StringComparer.Ordinal);
+
+    // The package's unreadable product lines as a detailed read found them (RemotePackage.UnreadableLineCount; null: the
+    // read does not judge them), the same for every marketplace (UnreadableOrderLines). While lines are unreadable the
+    // order carries an open issue that says so; a read that finds every line again clears the count and resolves it, and
+    // the line issues the adapters raised for the package (whatever the read: order poll, notification, package list).
+    // True when the count changed.
+    private async Task<bool> ApplyUnreadableLines(Guid tenantId, Guid connectionId, string? platformCode, string orderNumber, ShipmentPackage package, RemotePackage remote, CancellationToken cancellationToken)
+    {
+        if (remote.UnreadableLineCount is not { } count) return false;
+        var issueKey = UnreadableOrderLines.PackageIssueKey(connectionId, package.ExternalPackageId);
+        if (count > 0)
+            await RecordIssue(tenantId, issueKey, UnreadableOrderLines.IssueCode, UnreadableOrderLines.PackageIssueSummary(platformCode, orderNumber, package.ExternalPackageId, count), cancellationToken);
+        if (package.UnreadableLineCount == count) return false;
+        var cleared = package.UnreadableLineCount > 0 && count == 0;
+        package.UnreadableLineCount = count;
+        if (!cleared) return true;
+        // The adapters' line issues are keyed {source}:{connection}:{package}[:{line}]:{code}.
+        var packageKey = $":{connectionId}:{package.ExternalPackageId}:";
+        var now = timeProvider.GetUtcNow();
+        foreach (var issue in await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved
+                && (x.DedupeKey == issueKey || (x.Code == UnreadableOrderLines.IssueCode || x.Code == MissingLinesIssueCode) && x.DedupeKey.Contains(packageKey))).ToListAsync(cancellationToken))
+        {
+            issue.Status = IssueStatus.Resolved;
+            issue.ResolvedAt = now;
+        }
+        return true;
+    }
+
+    private const string MissingLinesIssueCode = "ORDER_PACKAGE_LINES_MISSING";
 
     // Every open quantity refusal of the package, whatever event it was raised for.
     private async Task ResolvePackageQuantityIssues(Guid tenantId, Guid connectionId, string externalPackageId, CancellationToken cancellationToken)

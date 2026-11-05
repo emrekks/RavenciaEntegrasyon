@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '../../../test/render'
-import { OrderRowMarkIcons, type OrderRowMarks } from './order-row-marks'
+import { OrderRowMarkIcons, unreadableLinesLabel, type OrderRowMarks } from './order-row-marks'
 
 afterEach(cleanup)
 
@@ -57,5 +57,18 @@ describe('order row marks', () => {
     const { host } = render(<OrderRowMarkIcons marks={{ ...none, microExport: true, microExportCountryCode: code }} />)
     expect(tips(host)).toEqual([[`Mikro İhracat · ${name}`, `Mikro İhracat · ${name}`]])
     expect(host.querySelector('.rr-omark-flag')).not.toBeNull()
+  })
+
+  // Every marketplace: a product line that could not be read marks the order, with or without other marks.
+  it('marks an order with unreadable product lines, first, and says no invoice is issued', () => {
+    const alone = render(<OrderRowMarkIcons marks={null} unreadableLines={2} />).host
+    expect(tips(alone)).toEqual([[unreadableLinesLabel(2), unreadableLinesLabel(2)]])
+    expect(unreadableLinesLabel(2)).toContain('Okunamayan Ürün Satırı (2)')
+    expect(unreadableLinesLabel(2)).toContain('fatura kesilmez')
+    cleanup()
+    const withOthers = render(<OrderRowMarkIcons marks={{ ...none, deliveryPoint: true }} unreadableLines={1} />).host
+    expect(tips(withOthers).map(([tip]) => tip)).toEqual([unreadableLinesLabel(1), 'Teslimat Noktası Siparişi'])
+    cleanup()
+    expect(render(<OrderRowMarkIcons marks={none} unreadableLines={0} />).host.querySelector('.rr-omarks')).toBeNull()
   })
 })

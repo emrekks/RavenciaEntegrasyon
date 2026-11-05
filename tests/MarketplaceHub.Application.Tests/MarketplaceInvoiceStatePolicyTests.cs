@@ -284,6 +284,8 @@ public sealed class MarketplaceInvoiceStatePolicyTests
         Assert.Equal("ord-1", order.ExternalOrderId);
         Assert.Empty(order.Lines);
         Assert.Equal("pkg-1", Assert.Single(order.Packages).ExternalPackageId);
+        // Kept for shipping, but never silently incomplete: the package counts the line it could not read.
+        Assert.Equal(1, order.Packages[0].UnreadableLineCount);
         var issue = Assert.Single(result.Issues!);
         Assert.Equal("ORDER_PACKAGE_LINE_INVALID", issue.Code);
         Assert.Equal("pkg-1:line-1", issue.Identity);
@@ -303,8 +305,8 @@ public sealed class MarketplaceInvoiceStatePolicyTests
         var result = TrendyolJsonMapper.Orders(json);
 
         Assert.Equal(2, result.Items.Count);
-        Assert.Contains(result.Items, order => order.Packages.Single().ExternalPackageId == "bad-pkg" && order.Lines.Count == 0);
-        Assert.Contains(result.Items, order => order.Packages.Single().ExternalPackageId == "good-pkg" && order.Lines.Count == 1);
+        Assert.Contains(result.Items, order => order.Packages.Single().ExternalPackageId == "bad-pkg" && order.Lines.Count == 0 && order.Packages.Single().UnreadableLineCount == 1);
+        Assert.Contains(result.Items, order => order.Packages.Single().ExternalPackageId == "good-pkg" && order.Lines.Count == 1 && order.Packages.Single().UnreadableLineCount == 0);
         var issue = Assert.Single(result.Issues!);
         Assert.Equal("bad-pkg:bad-line", issue.Identity);
     }
@@ -324,6 +326,8 @@ public sealed class MarketplaceInvoiceStatePolicyTests
         var order = Assert.Single(result.Items);
         Assert.Equal("pkg-1", Assert.Single(order.Packages).ExternalPackageId);
         Assert.Equal("good-line", Assert.Single(order.Lines).ExternalLineId);
+        Assert.Equal(1, order.Packages[0].UnreadableLineCount);
+        Assert.Equal("good-line", Assert.Single(order.Packages[0].Allocations).ExternalLineId);
         Assert.Equal("ORDER_PACKAGE_LINE_INVALID", Assert.Single(result.Issues!).Code);
     }
 

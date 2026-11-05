@@ -573,6 +573,10 @@ public sealed class ShipmentPackage
     public DateTimeOffset? MarketplaceInvoiceSourceUpdatedAt { get; set; }
     public DateTimeOffset? MarketplaceInvoiceObservedAt { get; set; }
     public string? RemoteVersion { get; set; }
+    // Product lines the marketplace listed in the package that the last detailed read could not read (Trendyol keeps
+    // such a package for shipping without them). While above 0 the package is incomplete: the order shows it and no
+    // sale invoice is drafted or issued for it (InvoiceIssuePolicy.OrderLineUnreadable); a read with every line clears it.
+    public int UnreadableLineCount { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;

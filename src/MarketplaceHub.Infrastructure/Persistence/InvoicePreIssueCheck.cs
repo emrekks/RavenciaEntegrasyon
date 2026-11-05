@@ -7,7 +7,7 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 /// <summary>
 /// The last check right before an approved sale invoice is sent to the provider (owner's rule of 5 Nov 2026): the
 /// draft gates are applied again to the order as it is now. The order or a line cancelled, a package returned,
-/// undelivered or waiting for payment, the line VAT unknown, or the amounts the order gives now differing from the
+/// undelivered or waiting for payment, the line VAT unknown, a product line that could not be read, or the amounts the order gives now differing from the
 /// approved draft (its lines, quantities, prices, VAT and totals) all stop the issue: the invoice goes back to wait
 /// for the owner's approval with the reason, and is never issued with an amount recomputed on its own.
 /// </summary>
@@ -27,6 +27,9 @@ internal static class InvoicePreIssueCheck
         if (packages.Count == 0) return Changed("Siparişte faturalanabilir etkin paket kalmadı (paketler iptal edildi).");
         if (packages.FirstOrDefault(x => DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(x.Status)) is { } blocked)
             return Changed($"{blocked.ExternalPackageId} paketi artık {PackageStatusText(blocked.Status)}.");
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == order.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        // A package holding a product line that could not be read is incomplete: nothing is issued until a read fills it in.
+        if (packages.Any(x => x.UnreadableLineCount > 0)) return InvoiceIssuePolicy.OrderLineUnreadableFor(platformCode);
         // A legacy invoice bound to one package was drafted from that package; only the status gates apply to it.
         if (invoice.PackageId is not null) return null;
 
@@ -35,7 +38,6 @@ internal static class InvoicePreIssueCheck
         var allocations = await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId)).ToListAsync(cancellationToken);
         if (!InvoicingBillingService.TryResolveWholeOrderInvoiceLines(orderLines, allocations, packageIds, out var activeLines, out var allocationError))
             return Changed(allocationError ?? "Sipariş satırları paketlerle eşleşmiyor.");
-        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == order.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         var rates = await InvoiceLineVatRates.ResolveAsync(db, tenantId, platformCode, order.ConnectionId, activeLines, cancellationToken);
         if (!InvoiceLineVatRates.TryApply(activeLines, rates, out var vatRates)) return InvoiceIssuePolicy.LineVatRateUnknownFor(platformCode);
         var totals = InvoiceAmounts.ResolveOrderTotals(order.NetAmount, order.GrossAmount, order.DiscountAmount,
@@ -48,6 +50,12 @@ internal static class InvoicePreIssueCheck
         var invoiceLines = await db.InvoiceLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id).OrderBy(x => x.LineSequence).ToListAsync(cancellationToken);
         return Describe(invoice, invoiceLines, calculated!) is { } difference ? Changed(difference) : null;
     }
+
+    // A current, not cancelled package of the order holds a product line the marketplace listed but the panel could not
+    // read (ShipmentPackage.UnreadableLineCount): the draft gates refuse the order with InvoiceIssuePolicy.OrderLineUnreadable.
+    public static Task<bool> HasUnreadableLinesAsync(AppDbContext db, Guid tenantId, Guid orderId, CancellationToken cancellationToken) =>
+        MarketplaceSalesService.CurrentShipmentPackages(db).AnyAsync(x => x.TenantId == tenantId && x.OrderId == orderId
+            && x.Status != ShipmentPackageStatus.Cancelled && x.UnreadableLineCount > 0, cancellationToken);
 
     // What differs between the approved draft and the order as it is now, in words; null when they are the same.
     internal static string? Describe(Invoice invoice, IReadOnlyList<InvoiceLine> invoiceLines, InvoicePackageCalculation now)

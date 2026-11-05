@@ -294,11 +294,16 @@ public sealed partial class InvoicingBillingService
         // neither, the preview still shows the line but cannot be confirmed ("KDV Oranı Bilinmiyor").
         var lineVatRates = await InvoiceLineVatRates.ResolveAsync(db, tenantId, marketplace.PlatformCode, order.ConnectionId, activeLines, cancellationToken);
         var vatRateKnown = InvoiceLineVatRates.TryApply(activeLines, lineVatRates, out _);
+        // A package holding a product line that could not be read: the preview shows what is known but cannot be
+        // confirmed ("Okunamayan Ürün Satırı"); when the known lines do not even add up to the order, that is the reason.
+        var unreadableLine = activePackages.Any(item => item.UnreadableLineCount > 0);
         if (!InvoiceAmounts.TryCalculatePackage(
             activeLines.Select(line => new InvoicePackageLineSource(line.Id, line.TitleSnapshot, line.Sku,
                 remainingByLine[line.Id], line.UnitPrice, lineVatRates.GetValueOrDefault(line.Id) ?? line.VatRate)).ToArray(),
             orderGross, orderDiscount, packageTotal, out var calculated, out var calculationError))
-            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_TOTAL_MISMATCH", calculationError ?? "Sipariş ürün toplamı ile sipariş/paket toplamı eşleşmiyor.", 422);
+            return unreadableLine
+                ? ServiceResult<InvoiceWorkspacePreviewItem>.Fail(InvoiceIssuePolicy.OrderLineUnreadableCode, InvoiceIssuePolicy.OrderLineUnreadableFor(marketplace.PlatformCode).Message, 422)
+                : ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_TOTAL_MISMATCH", calculationError ?? "Sipariş ürün toplamı ile sipariş/paket toplamı eşleşmiyor.", 422);
 
         var lines = calculated!.Lines.Select(line => new InvoiceWorkspacePreviewLine(line.Description, line.Sku, line.Quantity, "ADET", line.VatRate,
             line.UnitPrice, line.DiscountAmount, line.VatAmount, line.PayableAmount)).ToArray();
@@ -366,6 +371,11 @@ public sealed partial class InvoicingBillingService
         {
             canCreate = false;
             blockedReason = issueRefusal.Message;
+        }
+        else if ((existing is null || CanRetryPreProviderFailure(existing.Status, existing.LastErrorCode, existing.ExternalReference)) && unreadableLine)
+        {
+            canCreate = false;
+            blockedReason = InvoiceIssuePolicy.OrderLineUnreadableFor(marketplace.PlatformCode).Message;
         }
         else if ((existing is null || CanRetryPreProviderFailure(existing.Status, existing.LastErrorCode, existing.ExternalReference)) && !vatRateKnown)
         {

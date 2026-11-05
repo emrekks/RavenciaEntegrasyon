@@ -43,6 +43,8 @@ public static class PttAvmOrderMapper
         var lines = new List<RemoteOrderLine>();
         var allocations = new List<RemotePackageAllocation>();
         var lineStatuses = new List<string>();
+        var unreadable = 0;
+        var lineIssues = new List<AdapterPageIssue>();
         // Cancelled lines are no part of the order value while another line is live; a fully cancelled order keeps
         // the value it was placed with (as for Pazarama, audit 2026-10-20 S21).
         decimal gross = 0, discount = 0, liveGross = 0, liveDiscount = 0;
@@ -55,17 +57,19 @@ public static class PttAvmOrderMapper
             // KdvDahilToplamTutar is the line total the customer paid (quantity × VAT-inclusive price, after the
             // discounts); IndirimToplam is the discount on it (PTT AVM's and the store's share together).
             var paid = Number(line, "KdvDahilToplamTutar");
-            // O12: an order with a line that cannot be read is not imported at all. Dropping the line would store the order
-            // with a lower total than the customer paid; the issue is recorded and the next poll of the window reads it again.
+            var raw = LineStatus(Value(line, "SiparisDurumu"));
+            // An unreadable line still has its status: the package is where its lines are, read or not.
+            lineStatuses.Add(raw);
+            // A line that cannot be read does not stop the order (UnreadableOrderLines, replacing O12's refusal): the
+            // order is imported for shipping without it, the package counts it, and nothing of it is guessed.
             if (lineId is null || quantity is not > 0 || paid is null or < 0)
             {
-                issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: bir ürün satırında (satır {lineId ?? "?"}) satır kimliği, adet veya tutar okunamadı; sipariş sonraki okumada yeniden denenecek."));
-                return null;
+                unreadable++;
+                lineIssues.Add(UnreadableOrderLines.Issue("PTT AVM", $"order:{orderNumber}", lineId, "satır kimliği, adet veya tutar okunamadı."));
+                continue;
             }
             var lineDiscount = Math.Max(Number(line, "IndirimToplam") ?? 0, 0);
             var lineGross = paid.Value + lineDiscount;
-            var raw = LineStatus(Value(line, "SiparisDurumu"));
-            lineStatuses.Add(raw);
             // UrunBarkod is the product's barcode (for a model, the model code); the variant sold carries its own in
             // VariantBarkod (live: RYP001 / RYP00105). The documentation calls VariantBarkod a comma list of variant
             // ids, so a value with a comma is not taken as a barcode.
@@ -85,11 +89,12 @@ public static class PttAvmOrderMapper
                 liveDiscount += lineDiscount;
             }
         }
-        if (lines.Count == 0)
+        if (lines.Count == 0 && unreadable == 0)
         {
             issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: kullanılabilir ürün satırı yok."));
             return null;
         }
+        issues.AddRange(lineIssues);
 
         if (hasLiveLine) (gross, discount) = (liveGross, liveDiscount);
         discount = Math.Clamp(discount, 0, gross);
@@ -97,14 +102,15 @@ public static class PttAvmOrderMapper
         var packageStatus = PackageStatus(lineStatuses);
         var trackingNumber = Value(order, "KargoBarkod") ?? CargoBarcodes(order).FirstOrDefault();
         var occurredAt = StatusObservedAt(ordered.Value, packageStatus);
-        var package = new RemotePackage($"order:{orderNumber}", null, packageStatus, occurredAt, trackingNumber is null ? null : "PTT Kargo", trackingNumber, allocations, gross, discount, net, StatusTimeUnknown: true);
+        var package = new RemotePackage($"order:{orderNumber}", null, packageStatus, occurredAt, trackingNumber is null ? null : "PTT Kargo", trackingNumber, allocations, gross, discount, net, StatusTimeUnknown: true, UnreadableLineCount: unreadable);
         var remote = new RemoteOrder(orderNumber, orderNumber, ordered.Value, occurredAt, "TRY", gross, discount, net,
             CustomerSnapshot(order), Address(order, "Siparis", Value(order, "MusteriAdi"), Value(order, "MusteriSoyadi")),
             Address(order, "Fatura", Value(order, "FaturaMusteriAdi") ?? Value(order, "MusteriAdi"), Value(order, "FaturaMusteriSoyadi") ?? Value(order, "MusteriSoyadi")),
             lines, [package], OrderSnapshot(order).ToJsonString());
         // PTT AVM's IsInvoice: every live line true means it holds an invoice. A false proves nothing: an invoice
         // uploaded in PTT AVM's own seller panel leaves the lines false (live, 23 Oct 2026), so it gives no observation.
-        return PttAvmInvoiceMapper.Invoiced(remote) == true
+        // A line that could not be read says nothing about its invoice, so the known lines alone never conclude it.
+        return unreadable == 0 && PttAvmInvoiceMapper.Invoiced(remote) == true
             ? remote with { Packages = [package with { Invoice = new("INVOICED", null, null, null) }] }
             : remote;
     }

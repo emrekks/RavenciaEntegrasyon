@@ -1125,11 +1125,15 @@ internal static class HepsiburadaJsonMapper
         if (occurredAt is null) throw new JsonException("Hepsiburada paket yanıtında kullanılabilir tarih alanı yok.");
 
         var allocations = new List<RemotePackageAllocation>();
+        // A line item that cannot be read (no id, SKU, quantity or price) is neither allocated nor kept as a line: the
+        // package counts it (UnreadableOrderLines), so it is not silently incomplete.
+        var unreadable = 0;
         var items = Find(item, "lineItems", "LineItems", "items", "Items", "orderItems", "OrderItems");
         if (items.ValueKind == JsonValueKind.Array)
         {
             foreach (var line in items.EnumerateArray())
             {
+                if (!TryMapLine(line, out _, out _)) { unreadable++; continue; }
                 var lineId = Text(line, "lineItemId", "LineItemId", "orderLineId", "OrderLineId", "orderItemId", "OrderItemId");
                 var quantity = Decimal(line, "quantity", "Quantity", "allocatedQuantity", "AllocatedQuantity");
                 if (!string.IsNullOrWhiteSpace(lineId) && quantity is > 0)
@@ -1147,7 +1151,8 @@ internal static class HepsiburadaJsonMapper
             allocations,
             GrossAmount: Money(item, "totalPrice", "TotalPrice", "totalAmount", "TotalAmount") ?? 0m,
             NetAmount: Money(item, "netAmount", "NetAmount", "totalPrice", "TotalPrice") ?? 0m,
-            Invoice: InvoiceObservation(item));
+            Invoice: InvoiceObservation(item),
+            UnreadableLineCount: unreadable);
         return new(orderNumber, package, PackageOrderSnapshot(item, orderNumber, package));
     }
 
@@ -1247,7 +1252,7 @@ internal static class HepsiburadaJsonMapper
         var orderedAt = Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt", "createdAt", "CreatedAt") ?? package.OccurredAt;
         var itemArray = Find(item, "lineItems", "LineItems", "items", "Items", "orderItems", "OrderItems");
         IReadOnlyList<RemoteOrderLine> lines = itemArray.ValueKind == JsonValueKind.Array
-            ? itemArray.EnumerateArray().Select(line => MapLine(line)).GroupBy(line => line.ExternalLineId, StringComparer.Ordinal).Select(group => group.First()).ToArray()
+            ? ReadableLines(itemArray.EnumerateArray(), "Open").Lines.GroupBy(line => line.ExternalLineId, StringComparer.Ordinal).Select(group => group.First()).ToArray()
             : [];
         if (lines.Count == 0 && !string.IsNullOrWhiteSpace(Text(item, "lineItemId", "LineItemId", "orderLineId", "OrderLineId")))
             lines = [MapLine(item)];
@@ -1461,8 +1466,9 @@ internal static class HepsiburadaJsonMapper
         if (linesElement.ValueKind == JsonValueKind.Object && TryFind(linesElement, out var nested, "items", "Items", "lineItems", "LineItems")) linesElement = nested;
         if (linesElement.ValueKind != JsonValueKind.Array) throw new JsonException("Hepsiburada sipariş yanıtında satır listesi yok.");
 
-        var lineItems = linesElement.EnumerateArray().ToArray();
-        var lines = lineItems.Select(item => MapLine(item, missingStatus: null)).ToList();
+        var allLineItems = linesElement.EnumerateArray().ToArray();
+        // A line item that cannot be read is left out, never filled in; the package holding it counts it (Packages).
+        var (lineItems, lines, _) = ReadableLines(allLineItems, missingStatus: null);
         var gross = Money(order, "totalPrice", "TotalPrice", "totalAmount", "TotalAmount", "grossAmount", "GrossAmount")
             ?? lines.Sum(line => line.UnitPrice * line.Quantity);
         var discount = Money(order, "discountAmount", "DiscountAmount", "totalDiscount", "TotalDiscount") ?? 0m;
@@ -1489,7 +1495,7 @@ internal static class HepsiburadaJsonMapper
         var modified = Date(order, "lastStatusUpdateDate", "LastStatusUpdateDate", "lastModifiedAt", "LastModifiedAt") ?? orderedAt.Value;
         // Without an order-level flag the order counts as invoiced only when every line agrees; a
         // multi-package order whose packages differ has no single answer.
-        var lineInvoiceFlags = lineItems.Select(item => Boolean(item, "hasInvoice", "HasInvoice")).Distinct().ToArray();
+        var lineInvoiceFlags = allLineItems.Select(item => Boolean(item, "hasInvoice", "HasInvoice")).Distinct().ToArray();
         var invoiceUploaded = Boolean(order, "hasInvoice", "HasInvoice")
             ?? (lineInvoiceFlags.Length == 1 ? lineInvoiceFlags[0] : null);
         var packages = Packages(order, LineAliases(lineItems, lines), orderedAt.Value, invoiceUploaded);
@@ -1533,19 +1539,26 @@ internal static class HepsiburadaJsonMapper
         return statuses.Length == 1 ? statuses[0] : null;
     }
 
-    private static RemoteOrderLine MapLine(JsonElement line, string? missingStatus = "Open")
+    private static RemoteOrderLine MapLine(JsonElement line, string? missingStatus = "Open") =>
+        TryMapLine(line, out var mapped, out var reason, missingStatus) ? mapped! : throw new JsonException($"Hepsiburada sipariş satırı okunamadı: {reason}");
+
+    // The line, or why it cannot be read: no line id, no SKU, no positive quantity or no price (neither a unit price nor
+    // a line total). Such a line is never filled in with 0 (UnreadableOrderLines): the order is kept without it.
+    private static bool TryMapLine(JsonElement line, out RemoteOrderLine? mapped, out string reason, string? missingStatus = "Open")
     {
+        mapped = null;
+        reason = "";
+        if (line.ValueKind != JsonValueKind.Object) { reason = "satır nesne değil."; return false; }
         var lineId = Text(line, "id", "Id", "lineItemId", "LineItemId", "orderLineId", "OrderLineId");
         var sku = Text(line, "merchantSku", "MerchantSku", "sellerSku", "SellerSku")
             ?? Text(line, "sku", "Sku", "hbSku", "HBSku");
-        if (string.IsNullOrWhiteSpace(lineId) || string.IsNullOrWhiteSpace(sku)) throw new JsonException("Hepsiburada sipariş satırının kimlik veya SKU alanı eksik.");
-        var quantity = Decimal(line, "quantity", "Quantity") ?? 0m;
-        var unitPrice = Money(line, "price", "Price", "unitPrice", "UnitPrice") ?? 0m;
-        if (unitPrice == 0m)
-        {
-            var total = Money(line, "totalPrice", "TotalPrice", "lineTotal", "LineTotal");
-            if (total is not null && quantity > 0) unitPrice = total.Value / quantity;
-        }
+        if (string.IsNullOrWhiteSpace(lineId) || string.IsNullOrWhiteSpace(sku)) { reason = "kimlik veya SKU alanı eksik."; return false; }
+        if (Decimal(line, "quantity", "Quantity") is not { } quantity || quantity <= 0) { reason = "adet yok veya geçersiz."; return false; }
+        var price = Money(line, "price", "Price", "unitPrice", "UnitPrice");
+        var total = Money(line, "totalPrice", "TotalPrice", "lineTotal", "LineTotal");
+        if (price is null && total is null) { reason = "fiyat yok."; return false; }
+        var unitPrice = price ?? 0m;
+        if (unitPrice == 0m && total is not null) unitPrice = total.Value / quantity;
         var status = Text(line, "status", "Status", "lineStatus", "LineStatus") ?? missingStatus ?? string.Empty;
         var cancelled = status.Contains("cancel", StringComparison.OrdinalIgnoreCase) ? quantity : 0m;
         var snapshot = EnrichSnapshot(line.GetRawText(), ("imageUrl", ImageUrl(line)));
@@ -1553,7 +1566,23 @@ internal static class HepsiburadaJsonMapper
         // product's own barcode is "productBarcode".
         var productBarcode = Text(line, "productBarcode", "ProductBarcode");
         var barcode = string.IsNullOrWhiteSpace(productBarcode) ? Text(line, "barcode", "Barcode") : productBarcode;
-        return new(lineId, sku, barcode, Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate"), status, snapshot, cancelled);
+        mapped = new(lineId, sku, barcode, Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate"), status, snapshot, cancelled);
+        return true;
+    }
+
+    // The order detail's readable line items with their lines, in order (LineAliases pairs them by position), and how
+    // many could not be read.
+    private static (IReadOnlyList<JsonElement> Items, List<RemoteOrderLine> Lines, int Unreadable) ReadableLines(IEnumerable<JsonElement> lineItems, string? missingStatus)
+    {
+        var items = new List<JsonElement>();
+        var lines = new List<RemoteOrderLine>();
+        var unreadable = 0;
+        foreach (var item in lineItems)
+        {
+            if (TryMapLine(item, out var line, out _, missingStatus)) { items.Add(item); lines.Add(line!); }
+            else unreadable++;
+        }
+        return (items, lines, unreadable);
     }
 
     // Every identity a line is known by (id, lineItemId, orderLineId) leads to its ExternalLineId, so a package
@@ -1586,6 +1615,9 @@ internal static class HepsiburadaJsonMapper
                 ? new RemotePackageInvoiceObservation(hasInvoice ? "INVOICED" : "NOT_INVOICED", null, null, null)
                 : null);
             var allocations = new List<RemotePackageAllocation>();
+            // An item of the package that names no readable line of the order, or no quantity, is a line the panel
+            // could not read: the package counts it (UnreadableOrderLines) instead of dropping it silently.
+            var unreadable = 0;
             foreach (var item in packageItems.EnumerateArray())
             {
                 var lineId = new[] { "orderLineId", "lineItemId", "orderItemId", "id" }
@@ -1593,12 +1625,12 @@ internal static class HepsiburadaJsonMapper
                     .Select(alias => alias is not null && lineAliases.TryGetValue(alias, out var known) ? known : null)
                     .FirstOrDefault(known => known is not null);
                 var quantity = Decimal(item, "quantity", "Quantity", "allocatedQuantity", "AllocatedQuantity");
-                if (lineId is null || quantity is null || quantity <= 0) continue;
+                if (lineId is null || quantity is null || quantity <= 0) { unreadable++; continue; }
                 allocations.Add(new(lineId, quantity.Value, 0, 0, 0, 0));
             }
-            if (allocations.Count == 0) continue;
+            if (allocations.Count == 0 && unreadable == 0) continue;
             var occurred = Date(package, "shippedDate", "ShippedDate", "createdAt", "CreatedAt") ?? orderDate;
-            packages.Add(new RemotePackage(packageId, null, status, occurred, Text(package, "cargoCompany", "CargoCompany"), tracking, allocations, Invoice: invoice));
+            packages.Add(new RemotePackage(packageId, null, status, occurred, Text(package, "cargoCompany", "CargoCompany"), tracking, allocations, Invoice: invoice, UnreadableLineCount: unreadable));
         }
         return packages;
     }
