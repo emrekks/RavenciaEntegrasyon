@@ -664,6 +664,13 @@
 @media (max-width: 1440px) {
   .app-shell.stitch-shell main .reports-page .reports-kpis strong { font-size: 22px; }
 }
+/* A strip whose labels can wrap (Kârlılık's "Net Kâr / Satış Fiyatı Oranı"): each cell takes four rows of the strip
+   (label, figure, change, previous value) as a subgrid, so the figures and changes stay level. On a phone the labels
+   stay on one line instead. */
+@media (min-width: 761px) {
+  .app-shell.stitch-shell main .reports-page .reports-kpis.is-aligned > div { grid-row: span 4; grid-template-rows: subgrid; align-content: stretch; row-gap: 6px; }
+  .app-shell.stitch-shell main .reports-page .reports-kpis.is-aligned .reports-kpi-label { align-self: start; }
+}
 @media (max-width: 1200px) {
   .app-shell.stitch-shell main .reports-page .reports-kpis:is(.is-5, .is-6) { --kpi-columns: 3; }
   .app-shell.stitch-shell main .reports-page .reports-kpis.is-5 > :last-child { grid-column: span 2; }
