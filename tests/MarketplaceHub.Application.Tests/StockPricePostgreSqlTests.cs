@@ -520,6 +520,63 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.DoesNotContain("/7101", draft.Value.PayloadJson, StringComparison.Ordinal);
     }
 
+    // A PTT AVM model variant that cannot be named (no colour or size), and a model whose variant stocks add up to more
+    // than PTT AVM holds, are reported as offers that cannot be sent instead of being dropped without a word (audit C4).
+    [PostgreSqlFact]
+    public async Task PttAvmPriceStock_ReportsModelVariantsItCannotSend()
+    {
+        var tenant = NewTenant("pttavm-model-unsendable");
+        var pttAvm = NewConnection(tenant, "PTTAVM", writesEnabled: true);
+        var (named, small) = NewVariant(tenant, "FK7000-S", "8690000000301");
+        var unnamed = NewVariant(tenant, "FK7000-X", "8690000000302", named.Id).Variant;
+        small.OptionSignature = "Renk: Siyah | Beden: S";
+        unnamed.OptionSignature = "Model: Klasik";
+        var (large, first) = NewVariant(tenant, "FK7100-S", "8690000000311");
+        var second = NewVariant(tenant, "FK7100-M", "8690000000312", large.Id).Variant;
+        first.OptionSignature = "Renk: Mavi | Beden: S";
+        second.OptionSignature = "Renk: Mavi | Beden: M";
+        foreach (var variant in new[] { small, unnamed }) variant.ModelCode = "FK7000";
+        foreach (var variant in new[] { first, second }) variant.ModelCode = "FK7100";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(pttAvm);
+            seed.Products.AddRange(named, large);
+            seed.ProductVariants.AddRange(small, unnamed, first, second);
+            seed.InventoryItems.AddRange(NewInventory(tenant, small, 4m), NewInventory(tenant, unnamed, 2m), NewInventory(tenant, first, 6000m), NewInventory(tenant, second, 5000m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, pttAvm, small), NewOffer(tenant, pttAvm, unnamed), NewOffer(tenant, pttAvm, first), NewOffer(tenant, pttAvm, second));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = small.Id, ExternalId = "FK7000-S" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = unnamed.Id, ExternalId = "FK7000-X" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = first.Id, ExternalId = "FK7100-S" },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, VariantId = second.Id, ExternalId = "FK7100-M" });
+            seed.MarketplaceProductLinks.AddRange(
+                new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, ProductId = named.Id, ExternalId = "1523599001", ExternalCode = "FK7000" },
+                new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = pttAvm.Id, ProductId = large.Id, ExternalId = "1523599002", ExternalCode = "FK7100" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var automatic = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, pttAvm.Id, CancellationToken.None, automatic: true);
+
+        Assert.True(automatic.Succeeded, automatic.Error?.Message);
+        var item = Assert.Single(PttAvmPriceInventoryRules.Items(automatic.Value!.PayloadJson)!);
+        Assert.Equal("FK7000", item.Barcode);
+        Assert.Equal(new PttAvmPriceInventoryRules.VariantItem([new("Renk", "Siyah"), new("Beden", "S")], 4, 0m), Assert.Single(item.Variants!));
+        Assert.Equal([small.Id], automatic.Value.Lines.Select(line => line.VariantId).ToArray());
+        var invalid = automatic.Value.InvalidOffers.ToDictionary(x => x.VariantId);
+        Assert.Equal(new[] { unnamed.Id, first.Id, second.Id }.Order(), invalid.Keys.Order());
+        Assert.All(invalid.Values, x => Assert.Equal("CHANNEL_OFFER_INVALID", x.Code));
+        Assert.Contains("renk", invalid[unnamed.Id].Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("9999", invalid[first.Id].Message, StringComparison.Ordinal);
+
+        // A send from the panel is refused with the reason instead of reporting nothing to send.
+        var panel = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, pttAvm.Id, CancellationToken.None, productId: large.Id);
+        Assert.False(panel.Succeeded);
+        Assert.Equal("CHANNEL_OFFER_INVALID", panel.Error!.Code);
+        Assert.Contains("9999", panel.Error.Message, StringComparison.Ordinal);
+    }
+
     // An imported Trendyol variant has no listing rows; its price and stock go by the barcode Trendyol holds,
     // which differs from the panel's when the seller keyed it differently there.
     [PostgreSqlFact]
