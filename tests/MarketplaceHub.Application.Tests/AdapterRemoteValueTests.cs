@@ -127,9 +127,10 @@ public sealed class AdapterRemoteValueTests
         Assert.Equal("ORDER_PACKAGE_INVALID", Assert.Single(result.Issues!).Code);
     }
 
-    // O12 (same pattern in n11): one unreadable line keeps the package out instead of storing a lower total.
+    // One rule for every marketplace (5 Nov 2026, replacing O12's refusal): the package is kept for shipping with its
+    // readable line, counts the unreadable one, and the line is never guessed.
     [Fact]
-    public void AnN11PackageWithOneUnreadableLineIsNotImported()
+    public void AnN11PackageWithOneUnreadableLineIsKeptWithTheLineCounted()
     {
         const string page = """
             {"page":0,"totalPages":1,"content":[{"orderNumber":"203872347999","id":"112999455244999","lastModifiedDate":1724323386203,
@@ -140,10 +141,13 @@ public sealed class AdapterRemoteValueTests
 
         var result = N11OrderMapper.Packages(page);
 
-        Assert.Empty(result.Items);
+        var order = Assert.Single(result.Items);
+        Assert.Equal("L1", Assert.Single(order.Lines).ExternalLineId);
+        var package = Assert.Single(order.Packages);
+        Assert.Equal(1, package.UnreadableLineCount);
+        Assert.Equal("L1", Assert.Single(package.Allocations).ExternalLineId);
         var issue = Assert.Single(result.Issues!);
-        Assert.Equal("ORDER_PACKAGE_INVALID", issue.Code);
-        Assert.Contains("L2", issue.Message, StringComparison.Ordinal);
+        Assert.Equal(("ORDER_PACKAGE_LINE_INVALID", "112999455244999:L2"), (issue.Code, issue.Identity));
     }
 
     // O5: an n11 settlement amount that is there but unreadable is a page error, not 0 or a hundred times itself.

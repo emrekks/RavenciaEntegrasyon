@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace MarketplaceHub.Infrastructure.Persistence;
 
 // T2-O8: the Trendyol orders an integrity check refused (package quantities, line coverage, a read without lines or
-// packages) and the order stream has since moved past. Each is read again by its number at most four times, 30 minutes,
+// packages), or stored with a product line that could not be read, and the order stream has since moved past. Each is read again by its number at most four times, 30 minutes,
 // 2, 8 and 24 hours after the previous try (about a day and a half in all), three per order read, so a refusal never
 // costs more than a handful of requests. Kept on the connection's ORDERS_REJECTED_REREAD cursor.
 internal static class RejectedOrderRereadPolicy

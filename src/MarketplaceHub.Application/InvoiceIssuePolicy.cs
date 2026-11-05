@@ -67,6 +67,17 @@ public static class InvoiceIssuePolicy
     public static InvoiceIssueRefusal LineVatRateUnknownFor(string? platformCode) => new(LineVatRateUnknownCode,
         $"{PlatformName(platformCode)} siparişin en az bir ürün satırında KDV oranını bildirmedi ve satırın ürün kartında da KDV oranı yok (KDV Oranı Bilinmiyor). KDV oranı bilinmeyen satırla fatura kesilmez; ürün kartına KDV oranını girip önizlemeyi yeniden açın ya da faturayı E-Faturam portalında doğru KDV ile düzenleyip siparişe manuel belge olarak ekleyin.");
 
+    // A package of the order holds a product line the marketplace listed but the panel could not read
+    // (ShipmentPackage.UnreadableLineCount): its lines and amounts are incomplete, so no invoice is drafted, approved or
+    // issued until a later read fills the line in. The line is never guessed.
+    public const string OrderLineUnreadableCode = "ORDER_LINE_UNREADABLE";
+
+    /// <summary>The refusal without the marketplace's name, for a stored validation code.</summary>
+    public static readonly InvoiceIssueRefusal OrderLineUnreadable = OrderLineUnreadableFor(null);
+
+    public static InvoiceIssueRefusal OrderLineUnreadableFor(string? platformCode) => new(OrderLineUnreadableCode,
+        $"{PlatformName(platformCode)} siparişin bir paketinde en az bir ürün satırı okunamadı (Okunamayan Ürün Satırı). Satırları eksik siparişe yanlış tutarla fatura kesilmez; sipariş pazaryerinden yeniden okunuyor, satır gelince önizlemeyi yeniden açın. Satır gelmezse faturayı E-Faturam portalında düzenleyip siparişe manuel belge olarak ekleyin.");
+
     // The last check right before the provider request (InvoicePreIssueCheck) found the order changed since the owner's
     // approval: nothing was issued and the invoice waits for a new approval.
     public const string PreIssueChangedCode = "INVOICE_PRE_ISSUE_ORDER_CHANGED";
@@ -177,6 +188,7 @@ public static class InvoiceIssuePolicy
         ExportFlowRequiredCode => ExportFlowRequired.Message,
         AdjustmentFlowUnavailableCode => AdjustmentFlowUnavailable.Message,
         LineVatRateUnknownCode => LineVatRateUnknown.Message,
+        OrderLineUnreadableCode => OrderLineUnreadable.Message,
         PreIssueChangedCode => "Fatura kesilmeden hemen önceki son kontrolde sipariş onaydan sonra değişmiş bulundu (iptal, iade, teslim edilemeyen veya ödemesi beklenen paket, ya da tutar). Fatura kesilmedi; güncel önizlemeyi açıp yeniden onaylayın.",
         RecipientTaxIdInvalidCode => "Alıcının vergi numarası veya T.C. kimlik numarası geçersiz (kontrol hanesi tutmuyor). Sipariş bilgisini pazaryerinde düzeltip yeniden eşitleyin.",
         null or "" => "Fatura doğrulanamadı.",

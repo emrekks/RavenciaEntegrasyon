@@ -25,6 +25,7 @@ public static class TrendyolJsonMapper
             try
             {
                 var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>(); var linesWithoutVat = new List<int>();
+                var unreadableLines = 0;
                 if (package.TryGetProperty("lines", out var lineArray) && lineArray.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var line in lineArray.EnumerateArray())
@@ -62,11 +63,9 @@ public static class TrendyolJsonMapper
                         }
                         catch (JsonException exception)
                         {
-                            // Keep the order and shipment package even when one product line is incomplete.
-                            issues.Add(new(
-                                "ORDER_PACKAGE_LINE_INVALID",
-                                string.IsNullOrWhiteSpace(externalLineId) ? externalPackageId : $"{externalPackageId}:{externalLineId}",
-                                $"Sipariş paketi {externalPackageId} alındı ancak ürün satırı eşlenemedi: {exception.Message}"));
+                            // The package is kept for shipping without the line, but not silently incomplete (UnreadableOrderLines).
+                            unreadableLines++;
+                            issues.Add(UnreadableOrderLines.Issue("Trendyol", externalPackageId, externalLineId, exception.Message));
                         }
                     }
                     ApplyPackageVatRate(lines, linesWithoutVat, externalPackageId, issues);
@@ -75,7 +74,11 @@ public static class TrendyolJsonMapper
                     && (!package.TryGetProperty("lines", out var rawLines)
                         || rawLines.ValueKind != JsonValueKind.Array
                         || rawLines.GetArrayLength() == 0))
+                {
+                    // A package without its product lines is incomplete too (a split parent holds none of its own).
+                    if (!MarketplaceHub.Domain.ShipmentPackageSupersession.IsSplitParentRawStatus(Text(package, "status", "shipmentPackageStatus"))) unreadableLines = Math.Max(unreadableLines, 1);
                     issues.Add(new("ORDER_PACKAGE_LINES_MISSING", externalPackageId, $"Sipariş paketi {externalPackageId} alındı ancak eşlenebilir ürün satırı bulunamadı."));
+                }
                 var (gross, discount, net) = PackageAmounts(package, lines);
                 // Trendyol's Yeni tab is driven by the top-level package status.
                 // For newly created packages shipmentPackageStatus may already be
@@ -89,7 +92,7 @@ public static class TrendyolJsonMapper
                     FlexibleInstant(package, "invoiceUpdatedAt") ?? modified,
                     ReferencesAreAuthoritative: HasAnyProperty(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber")
                         && HasAnyProperty(package, "invoiceLink", "invoiceUrl", "invoiceDocumentUrl"));
-                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, OrderCargoProvider(package), ScalarText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber", "trackingInfoCode"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")), CancelledAt: CancelledAt(package, rawStatusPackage));
+                var remotePackage = new RemotePackage(externalPackageId, FirstArrayText(package, "originPackageIds"), rawStatusPackage, modified, OrderCargoProvider(package), ScalarText(package, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber", "trackingInfoCode"), allocations, gross, discount, net, invoice, NormalizeCreatedBy(NullText(package, "createdBy")), CancelledAt: CancelledAt(package, rawStatusPackage), UnreadableLineCount: unreadableLines);
                 // The shipping deadline is the agreed hand-over date (extended when the seller extended it).
                 // The estimated delivery dates are the customer's delivery window, not a deadline for the seller.
                 var dueAt = FlexibleInstant(package, "extendedAgreedDeliveryDate", "agreedDeliveryDate");

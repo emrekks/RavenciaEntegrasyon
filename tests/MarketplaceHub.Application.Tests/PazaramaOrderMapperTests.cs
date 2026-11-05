@@ -254,30 +254,48 @@ public sealed class PazaramaOrderMapperTests
         Assert.Equal("Ayşe Nur", root.GetProperty("firstName").GetString());
     }
 
+    // One rule for every marketplace (5 Nov 2026, replacing O12's refusal): an item that cannot be read does not keep
+    // the order out. The order is imported for shipping, the package counts the item, nothing of it is guessed.
     [Fact]
-    public void AnItemWithoutIdOrPriceIsReportedAndTheOrderIsSkippedWhenNothingIsLeft()
+    public void AnOrderWhoseOnlyItemCannotBeReadIsKeptForShippingWithTheItemCounted()
     {
         using var json = JsonDocument.Parse(Order("""{"orderItemStatus":3,"quantity":1}"""));
 
         var page = PazaramaOrderMapper.Page(json.RootElement, 100);
 
-        Assert.Empty(page.Items);
-        Assert.Equal("ORDER_PACKAGE_INVALID", Assert.Single(page.Issues!).Code);
+        var order = Assert.Single(page.Items);
+        Assert.Empty(order.Lines);
+        var package = Assert.Single(order.Packages);
+        Assert.Equal(1, package.UnreadableLineCount);
+        Assert.Equal("Created", package.RawStatus);
+        var issue = Assert.Single(page.Issues!);
+        Assert.Equal(("ORDER_PACKAGE_LINE_INVALID", "order:283534307"), (issue.Code, issue.Identity));
     }
 
-    // O12: one unreadable line (salePrice null) keeps the whole order out; dropping the line would store a lower total.
     [Fact]
-    public void AnOrderWithOneUnreadableLineIsNotImportedWithALowerTotal()
+    public void AnOrderWithOneUnreadableLineIsKeptWithTheReadableLineAndTheOtherCounted()
     {
         var broken = Item("a2", 3).Replace("\"salePrice\":" + Money7, "\"salePrice\":null", StringComparison.Ordinal);
         using var json = JsonDocument.Parse(Order(Item("a1", 3) + "," + broken));
 
         var page = PazaramaOrderMapper.Page(json.RootElement, 100);
 
-        Assert.Empty(page.Items);
+        var order = Assert.Single(page.Items);
+        Assert.Equal("a1", Assert.Single(order.Lines).ExternalLineId);
+        var package = Assert.Single(order.Packages);
+        Assert.Equal(1, package.UnreadableLineCount);
+        Assert.Equal("a1", Assert.Single(package.Allocations).ExternalLineId);
         var issue = Assert.Single(page.Issues!);
-        Assert.Equal(("ORDER_PACKAGE_INVALID", "283534307"), (issue.Code, issue.Identity));
-        Assert.Contains("a2", issue.Message, StringComparison.Ordinal);
+        Assert.Equal(("ORDER_PACKAGE_LINE_INVALID", "order:283534307:a2"), (issue.Code, issue.Identity));
+        Assert.Contains("fatura kesilmez", issue.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnOrderWithEveryLineReadCountsNoUnreadableLine()
+    {
+        using var json = JsonDocument.Parse(Order(Item("a1", 3)));
+
+        Assert.Equal(0, Assert.Single(Assert.Single(PazaramaOrderMapper.Page(json.RootElement, 100).Items).Packages).UnreadableLineCount);
     }
 
     // D13: an order without a date anywhere is not stored as placed in 1970.
@@ -303,8 +321,10 @@ public sealed class PazaramaOrderMapperTests
 
         var page = PazaramaOrderMapper.Page(json.RootElement, 100);
 
-        Assert.Empty(page.Items);
-        Assert.Equal("ORDER_PACKAGE_INVALID", Assert.Single(page.Issues!).Code);
+        // The quantity is not read as 1000: the item stays unknown and the package counts it.
+        Assert.Empty(Assert.Single(page.Items).Lines);
+        Assert.Equal(1, Assert.Single(page.Items[0].Packages).UnreadableLineCount);
+        Assert.Equal("ORDER_PACKAGE_LINE_INVALID", Assert.Single(page.Issues!).Code);
     }
 
     [Fact]

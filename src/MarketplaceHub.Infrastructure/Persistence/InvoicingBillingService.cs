@@ -1115,6 +1115,9 @@ public sealed partial class InvoicingBillingService(
             .ToListAsync(cancellationToken);
         if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(item.Status)))
             return ServiceResult<InvoiceDetailView>.Fail(DashboardMetricPolicy.SaleInvoiceStatusBlockedCode, SaleInvoiceStatusBlockedMessage, 422);
+        // A package with a product line that could not be read: its lines and amounts are incomplete, so no sale invoice.
+        if (command.OriginalInvoiceId is null && activePackagesForOrder.Any(item => item.UnreadableLineCount > 0))
+            return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.OrderLineUnreadableFor(orderPlatform));
         var recipient = await EInvoiceRecipientResolver.ResolveAsync(invoiceProvider,
             new AdapterContext(tenantId, provider.Id, "invoice-draft", $"invoice-draft:{order.Id:N}", timeProvider.GetUtcNow().AddMinutes(1)),
             orderPlatform, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, fresh: false, cancellationToken);
@@ -1757,7 +1760,7 @@ public sealed partial class InvoicingBillingService(
                 or InvoiceIssuePolicy.EInvoiceRecipientReviewCode or InvoiceIssuePolicy.EInvoiceTaxpayerChangedCode
                 // The last check before issuing found the order changed (or a line's VAT rate unknown): nothing reached
                 // the provider and the invoice waits for the owner's new approval.
-                or InvoiceIssuePolicy.PreIssueChangedCode or InvoiceIssuePolicy.LineVatRateUnknownCode
+                or InvoiceIssuePolicy.PreIssueChangedCode or InvoiceIssuePolicy.LineVatRateUnknownCode or InvoiceIssuePolicy.OrderLineUnreadableCode
                 or InvoiceIssuePolicy.EInvoiceTargetAliasUnresolvedCode or InvoiceIssuePolicy.EInvoiceTaxpayerConflictCode));
 
     // Submit leaves an invoice in Submitting with an error code only when the provider definitely did not
@@ -2013,6 +2016,8 @@ public sealed partial class InvoicingBillingService(
         if (order is null) return InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, null);
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == order.ConnectionId)
             .Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (await InvoicePreIssueCheck.HasUnreadableLinesAsync(db, tenantId, invoice.OrderId, cancellationToken))
+            return InvoiceIssuePolicy.OrderLineUnreadableFor(platformCode);
         var recipient = await EInvoiceRecipientResolver.ResolveAsync(invoiceProvider,
             new AdapterContext(tenantId, invoice.ProviderConnectionId, "invoice-submit-gate", $"invoice-submit-gate:{invoice.Id:N}", timeProvider.GetUtcNow().AddMinutes(1)),
             platformCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, fresh: false, cancellationToken);

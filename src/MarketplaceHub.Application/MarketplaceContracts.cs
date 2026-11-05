@@ -700,7 +700,10 @@ public static class TrendyolInvoiceReconciliationPolicy
 // package keeps the time the status was first seen instead (PTT AVM). CancelledAt: when the marketplace says the
 // package's cancelled quantities were cancelled; null when it does not say (a last-modified time is one only where
 // nothing else can change the package after it, as on a Trendyol package that ends cancelled).
-public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false, bool StatusTimeUnknown = false, DateTimeOffset? CancelledAt = null);
+// UnreadableLineCount: product lines the marketplace listed in the package that could not be read (no id, quantity,
+// price, SKU or name), so the package is kept without them; 0 when every line was read; null when this read does not
+// judge the package's lines (a status observation, a claim, a marketplace that refuses such a package instead).
+public sealed record RemotePackage(string ExternalPackageId, string? OriginExternalPackageId, string RawStatus, DateTimeOffset OccurredAt, string? CargoProviderExternalId, string? CargoTrackingNumber, IReadOnlyList<RemotePackageAllocation> Allocations, decimal GrossAmount = 0, decimal DiscountAmount = 0, decimal NetAmount = 0, RemotePackageInvoiceObservation? Invoice = null, string? CreatedBy = null, bool IsStatusObservation = false, bool StatusTimeUnknown = false, DateTimeOffset? CancelledAt = null, int? UnreadableLineCount = null);
 public sealed record RemoteOrderRefund(string ExternalRefundId, DateTimeOffset OccurredAt, decimal Amount, string Currency, string RawJson);
 public sealed record RemoteOrder(string ExternalOrderId, string OrderNumber, DateTimeOffset OrderedAt, DateTimeOffset LastModifiedAt, string Currency, decimal GrossAmount, decimal DiscountAmount, decimal NetAmount, string CustomerSnapshotJson, string ShipmentAddressSnapshotJson, string InvoiceAddressSnapshotJson, IReadOnlyList<RemoteOrderLine> Lines, IReadOnlyList<RemotePackage> Packages, string RawJson, DateTimeOffset? ShipmentDueAt = null, string PaymentStatus = "UNKNOWN", string CancellationStatus = "NOT_CANCELLED", string RefundStatus = "NOT_REFUNDED", decimal RefundedAmount = 0, IReadOnlyList<RemoteOrderRefund>? Refunds = null, string? LifecycleStatus = null, string? StoreFrontCode = null);
 // The order as the panel last saw it: when it was placed, last changed and which storefront it belongs to.
@@ -1246,7 +1249,10 @@ public sealed record OrderListView(
     // When a shipping label of the order was first printed from the panel (any computer).
     DateTimeOffset? LabelPrintedAt = null,
     // The small marks beside the order number; null when the order has none.
-    OrderRowMarks? Marks = null);
+    OrderRowMarks? Marks = null,
+    // Product lines the marketplace listed in the order's live packages that the panel could not read (every
+    // marketplace; the packages are kept for shipping without them and no invoice is issued). 0 when all were read.
+    int UnreadableLineCount = 0);
 // Facts the marketplace states about an order, shown as icons in the order row. Each is set only from a field the
 // marketplace sent: a missing field leaves the mark out (unknown), it never means "no".
 // MicroExport: Trendyol micro=true; MicroExportCountryCode: the buyer's country (ISO alpha-2) when known.
@@ -1359,7 +1365,10 @@ public sealed record ShipmentView(
     DateTimeOffset StatusOccurredAt,
     long Version,
     string? CargoProviderName = null,
-    bool IsResend = false);
+    bool IsResend = false,
+    // Product lines of the package the marketplace listed but the panel could not read (kept without them; no
+    // invoice until a later read fills them in). 0 when every line was read.
+    int UnreadableLineCount = 0);
 public sealed record OrderDetailView(
     Guid Id,
     string OrderNumber,
@@ -1388,7 +1397,9 @@ public sealed record OrderDetailView(
     bool? IsEInvoiceAvailable = null,
     string? InvoiceDocumentUrl = null,
     // The delivery address in the list's shape, for the shipping label printed from the detail.
-    OrderAddressView? ShipmentAddress = null);
+    OrderAddressView? ShipmentAddress = null,
+    // As on OrderListView: product lines of the live packages the panel could not read.
+    int UnreadableLineCount = 0);
 public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, bool IsStageConnection, IReadOnlyList<ShipmentDocumentView> Documents, string PlatformCode = "TRENDYOL");
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);

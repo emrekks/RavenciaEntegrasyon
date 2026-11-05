@@ -1344,7 +1344,11 @@ public sealed partial class ShopifyHttpClient(
         // connection and is mapped from nodes below.
         var fulfillments = order.GetProperty("fulfillments").EnumerateArray().ToList();
         var fulfilledByLine = FulfilledQuantities(fulfillments);
-        var lineNodes = order.GetProperty("lineItems").GetProperty("nodes").EnumerateArray().ToList();
+        // A line item without an id, a quantity or a unit price cannot be read: it is left out, never filled in with 0,
+        // and the package that holds it (its fulfillment, else the unfulfilled remainder) counts it (UnreadableOrderLines).
+        var allLineNodes = order.GetProperty("lineItems").GetProperty("nodes").EnumerateArray().ToList();
+        var lineNodes = allLineNodes.Where(IsReadableOrderLine).ToList();
+        var unreadableLineIds = allLineNodes.Where(node => !IsReadableOrderLine(node)).Select(OrderLineIdOrNull).ToList();
         var lines = lineNodes
             .Select(line => MapOrderLine(line, financialStatus, fulfilledByLine))
             .Select(line => line.CancelledQuantity > 0 && orderCancelledAt is not null ? line with { CancelledAt = orderCancelledAt } : line)
@@ -1359,11 +1363,20 @@ public sealed partial class ShopifyHttpClient(
             .GroupBy(item => item.Line.ExternalLineId, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Sum(item => item.Quantity), StringComparer.Ordinal);
         var packages = new List<RemotePackage>();
+        var readableLineIds = lines.Select(line => line.ExternalLineId).ToHashSet(StringComparer.Ordinal);
+        var unreadableLeft = unreadableLineIds.Count;
         foreach (var fulfillment in fulfillments)
         {
             var rawStatus = FulfillmentStatus(fulfillment);
             var tracking = fulfillment.GetProperty("trackingInfo").EnumerateArray().FirstOrDefault();
-            var allocations = fulfillment.GetProperty("fulfillmentLineItems").GetProperty("nodes").EnumerateArray().Select(item =>
+            var fulfillmentItems = fulfillment.GetProperty("fulfillmentLineItems").GetProperty("nodes").EnumerateArray().ToList();
+            var fulfilledUnreadable = fulfillmentItems
+                .Select(item => ShortId(item.GetProperty("lineItem").GetProperty("id").GetString()))
+                .Where(lineId => !readableLineIds.Contains(lineId) && unreadableLineIds.Contains(lineId))
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+            unreadableLeft = Math.Max(0, unreadableLeft - fulfilledUnreadable);
+            var allocations = fulfillmentItems.Where(item => readableLineIds.Contains(ShortId(item.GetProperty("lineItem").GetProperty("id").GetString()))).Select(item =>
             {
                 var lineId = ShortId(item.GetProperty("lineItem").GetProperty("id").GetString());
                 var quantity = DecimalOrNull(item, "quantity") ?? 0m;
@@ -1383,7 +1396,8 @@ public sealed partial class ShopifyHttpClient(
                 FulfillmentStatusOccurredAt(fulfillment, rawStatus),
                 tracking.ValueKind == JsonValueKind.Object && tracking.TryGetProperty("company", out var company) ? company.GetString() : null,
                 tracking.ValueKind == JsonValueKind.Object && tracking.TryGetProperty("number", out var number) ? number.GetString() : null,
-                allocations));
+                allocations,
+                UnreadableLineCount: fulfilledUnreadable));
         }
 
         // Shopify exposes the original line quantity and the current quantity
@@ -1395,9 +1409,10 @@ public sealed partial class ShopifyHttpClient(
             var remaining = Math.Max(0, line.Quantity - line.CancelledQuantity - fulfilledByLine.GetValueOrDefault(line.ExternalLineId));
             return new RemotePackageAllocation(line.ExternalLineId, remaining, line.CancelledQuantity, 0, 0, 0);
         }).Where(allocation => allocation.AllocatedQuantity > 0 || allocation.CancelledQuantity > 0).ToList();
-        if (remainderAllocations.Count > 0)
+        // Unreadable lines no fulfillment holds are still to be fulfilled: the remainder holds and counts them.
+        if (remainderAllocations.Count > 0 || unreadableLeft > 0)
         {
-            var allCancelled = remainderAllocations.All(allocation => allocation.AllocatedQuantity == 0);
+            var allCancelled = remainderAllocations.Count > 0 && unreadableLeft == 0 && remainderAllocations.All(allocation => allocation.AllocatedQuantity == 0);
             // Only the remainder holds the lines' own cancelled quantity; a cancelled fulfillment returns its items
             // to the order and is not a line cancellation, so it carries no cancellation time.
             var remainderCancelledAt = remainderAllocations.Any(allocation => allocation.CancelledQuantity > 0) ? orderCancelledAt : null;
@@ -1409,7 +1424,8 @@ public sealed partial class ShopifyHttpClient(
                 null,
                 null,
                 remainderAllocations,
-                CancelledAt: remainderCancelledAt));
+                CancelledAt: remainderCancelledAt,
+                UnreadableLineCount: unreadableLeft));
         }
 
         var (grossAmount, discountAmount, netAmount) = OrderAmounts(order, lines, returnedLines.Select(item => (item.Line, item.Quantity)).ToList());
@@ -1577,6 +1593,20 @@ public sealed partial class ShopifyHttpClient(
     // A fulfilled unit is never cancelled: an order edit changes only unfulfilled units and a CANCEL restock is
     // for unfulfilled ones (RETURN is for fulfilled ones). Of the removed units, only those no fulfillment holds
     // are cancelled; the rest were refunded or returned after fulfillment.
+    // A line item the panel can read: an id, a quantity (quantity or currentQuantity) and a unit price.
+    internal static bool IsReadableOrderLine(JsonElement line) =>
+        line.ValueKind == JsonValueKind.Object
+        && OrderLineIdOrNull(line) is not null
+        && (DecimalOrNull(line, "quantity") ?? DecimalOrNull(line, "currentQuantity")) is not null
+        && line.TryGetProperty("originalUnitPriceSet", out var priceSet) && priceSet.ValueKind == JsonValueKind.Object
+        && priceSet.TryGetProperty("shopMoney", out var shopMoney) && shopMoney.ValueKind == JsonValueKind.Object
+        && DecimalOrNull(shopMoney, "amount") is not null;
+
+    private static string? OrderLineIdOrNull(JsonElement line) =>
+        line.ValueKind == JsonValueKind.Object && line.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(id.GetString())
+            ? ShortId(id.GetString())
+            : null;
+
     private static RemoteOrderLine MapOrderLine(JsonElement line, string financialStatus, IReadOnlyDictionary<string, decimal> fulfilledByLine)
     {
         var variant = line.TryGetProperty("variant", out var variantElement) && variantElement.ValueKind == JsonValueKind.Object ? variantElement : default;

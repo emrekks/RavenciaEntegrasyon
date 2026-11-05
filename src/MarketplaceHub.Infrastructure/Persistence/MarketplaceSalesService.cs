@@ -204,7 +204,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 connection?.PlatformCode == "N11" ? N11OrderInfo(orderLines.Select(x => x.SourceSnapshotJson), order.CustomerSnapshotJson) : null,
                 shippedAtByOrder.TryGetValue(order.Id, out var shippedAt) ? shippedAt : null,
                 order.LabelPrintedAt,
-                RowMarks(connection?.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson));
+                RowMarks(connection?.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson),
+                UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? []));
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -945,8 +946,14 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             order.ConnectionId, connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol",
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
             order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), PackageInvoiceLabel(displayPackage, invoice, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
-            customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl, ListAddress(order.ShipmentAddressSnapshotJson)));
+            customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl, ListAddress(order.ShipmentAddressSnapshotJson),
+            UnreadableLineCount(packages)));
     }
+
+    // Product lines of the order's live packages the panel could not read (UnreadableOrderLines); a cancelled package's
+    // lines no longer matter. Shopify's hidden remainder package counts too: it holds the unfulfilled lines.
+    internal static int UnreadableLineCount(IEnumerable<ShipmentPackage> packages) =>
+        packages.Where(package => package.Status != ShipmentPackageStatus.Cancelled).Sum(package => package.UnreadableLineCount);
 
     public async Task<ServiceResult<string>> ProductImageAsync(Guid tenantId, string? barcode, string correlationId, CancellationToken cancellationToken, Guid? connectionId = null, string? productName = null)
     {
@@ -3693,7 +3700,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                orderby connection.Id
                select connection).FirstOrDefaultAsync(cancellationToken);
 
-    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId));
+    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId), x.UnreadableLineCount);
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
     private const string VerifyingCode = "EXTERNAL_EFFECT_VERIFYING";
     private const string VerifyingMessage = "Pazaryerinin yanıtı kesinleşmedi; sonuç birkaç saniye içinde pazaryerinden okunup panel güncellenecek. İşlemi yeniden göndermeyin.";
