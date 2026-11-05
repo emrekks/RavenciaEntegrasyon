@@ -69,10 +69,10 @@ export type DashboardBootstrap = {
 
 // The Yeni Sipariş and İşleme Alınan cards' products: the summary's units per store summed, and a row per store (biggest first) for the
 // hover. undefined while the summary is not read or an older answer holds no units.
-export function storeUnits(unitsByConnection: Record<string, number> | null | undefined, channels: DashboardBootstrap['channels']) {
+export function storeUnits(unitsByConnection: Record<string, number> | null | undefined, channels: DashboardBootstrap['channels'], packagesByConnection?: Record<string, number> | null) {
   if (!unitsByConnection) return undefined
   const byId = new Map((channels ?? []).map(channel => [channel.connectionId, channel]))
-  const rows = Object.entries(unitsByConnection).filter(([, value]) => value > 0).map(([connectionId, value]) => ({ key: connectionId, code: byId.get(connectionId)?.platformCode ?? '', name: byId.get(connectionId)?.displayName ?? 'Kaldırılmış mağaza', units: value }))
+  const rows = Object.entries(unitsByConnection).filter(([, value]) => value > 0).map(([connectionId, value]) => ({ key: connectionId, code: byId.get(connectionId)?.platformCode ?? '', name: byId.get(connectionId)?.displayName ?? 'Kaldırılmış mağaza', units: value, ...(packagesByConnection?.[connectionId] !== undefined ? { packages: packagesByConnection[connectionId] } : {}) }))
     .sort((left, right) => right.units - left.units || left.name.localeCompare(right.name, 'tr-TR'))
   return { units: rows.reduce((sum, row) => sum + row.units, 0), rows }
 }
