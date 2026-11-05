@@ -282,6 +282,9 @@ public static class CatalogEndpoints
             Tenant(http) is { } tenant ? Result(await service.BrandSummaryAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/reference-data/brands/search", async (Guid connectionId, string? q, int? limit, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.SearchBrandsAsync(tenant.TenantId, connectionId, q, limit, http.RequestAborted), Results.Ok) : Unauthorized(http));
+        // Marketplace brands a catalog import met that the user has not mapped yet; the import never maps by name.
+        api.MapGet("/reference-data/brands/unmapped", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>
+            Tenant(http) is { } tenant ? Result(await service.UnmappedBrandsAsync(tenant.TenantId, connectionId, http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/reference-data/brands/lookup", async (Guid connectionId, string? ids, HttpContext http, IReferenceDataService service) =>
             Tenant(http) is { } tenant ? Result(await service.LookupBrandsAsync(tenant.TenantId, connectionId, (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries), http.RequestAborted), Results.Ok) : Unauthorized(http));
         api.MapGet("/connections/{connectionId:guid}/attribute-defaults", async (Guid connectionId, HttpContext http, IReferenceDataService service) =>

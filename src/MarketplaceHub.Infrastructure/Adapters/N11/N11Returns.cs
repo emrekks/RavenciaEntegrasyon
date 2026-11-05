@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json;
 using System.Xml.Linq;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
@@ -66,22 +67,63 @@ public sealed partial class N11HttpClient : IReturnPort
             .ToList();
     }
 
-    // Approve is sent as ClaimReturnApprove. Deny needs the return shipment type, cargo company and
-    // tracking data, whose accepted values n11 does not document, so it stays on n11's own panel.
+    // Approve is sent as ClaimReturnApprove, deny as ClaimReturnDeny (N11ReturnDenyRule): never CAMPAIGN, which n11
+    // turns into an approval once the seller ships with the campaign code. Both are only sent from a user's decision.
     public async Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken)
     {
-        if (!string.Equals(command.Action, "APPROVE", StringComparison.OrdinalIgnoreCase))
-            return Failure<ReturnActionResult>(AdapterErrorClass.NotSupported, "N11_RETURN_ACTION_UNSUPPORTED", "N11 iadesini reddetmek için N11 satıcı panelini kullanın; panelden yalnız onay gönderilir.", HttpStatusCode.NotImplemented);
+        var deny = string.Equals(command.Action, "REJECT", StringComparison.OrdinalIgnoreCase);
+        if (!deny && !string.Equals(command.Action, "APPROVE", StringComparison.OrdinalIgnoreCase))
+            return Failure<ReturnActionResult>(AdapterErrorClass.NotSupported, "N11_RETURN_ACTION_UNSUPPORTED", "N11 iadesine yalnız onay veya ret gönderilir.", HttpStatusCode.NotImplemented);
         if (!long.TryParse(command.ExternalClaimId, NumberStyles.None, CultureInfo.InvariantCulture, out _))
             return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "N11_RETURN_ID_INVALID", "N11 iade numarası geçersiz.", HttpStatusCode.BadRequest);
+        if (deny && N11ReturnDenyRule.Problem(command.ReasonCode, command.Explanation, command.ReturnShipment?.ShipmentCompanyId, command.ReturnShipment?.TrackingNumber) is { } problem)
+            return Failure<ReturnActionResult>(AdapterErrorClass.Validation, "N11_RETURN_DENY_INVALID", problem, HttpStatusCode.BadRequest);
         var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
         if (account is null) return CredentialMissing<ReturnActionResult>();
-        if (WriteBlocked<ReturnActionResult>(account, "iade onayı") is { } blocked) return blocked;
-        var approved = await SendSoapAsync(account, ReturnService, "ClaimReturnApprove", SoapElement("claimReturnId", command.ExternalClaimId) + SoapElement("splitQuantity", ""), cancellationToken);
-        return approved.IsSuccess
-            ? AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, "APPROVED", null))
-            : AdapterResult<ReturnActionResult>.Failure(approved.Error!, approved.RateLimit);
+        if (WriteBlocked<ReturnActionResult>(account, deny ? "iade reddi" : "iade onayı") is { } blocked) return blocked;
+        var sent = deny
+            ? await SendSoapAsync(account, ReturnService, "ClaimReturnDeny", ClaimReturnDenyBody(command), cancellationToken)
+            : await SendSoapAsync(account, ReturnService, "ClaimReturnApprove", SoapElement("claimReturnId", command.ExternalClaimId) + SoapElement("splitQuantity", ""), cancellationToken);
+        return sent.IsSuccess
+            ? AdapterResult<ReturnActionResult>.Success(new(command.ExternalClaimId, deny ? "Rejected" : "APPROVED", null))
+            : AdapterResult<ReturnActionResult>.Failure(sent.Error!, sent.RateLimit);
     }
+
+    // ClaimReturnDeny body in the order of n11's example. Reason 41 (the product did not reach the store) leaves the
+    // return shipment empty; every other reason sends CUSTOM with the carrier and tracking number of the shipment back.
+    internal static string ClaimReturnDenyBody(ReturnActionCommand command)
+    {
+        var shipment = N11ReturnDenyRule.NeedsReturnShipment(command.ReasonCode) ? command.ReturnShipment : null;
+        return SoapElement("claimReturnId", command.ExternalClaimId)
+            + SoapElement("denyReasonId", command.ReasonCode?.Trim())
+            + SoapElement("denyReasonNote", command.Explanation?.Trim())
+            + SoapElement("returnShipmentType", shipment is null ? "" : N11ReturnDenyRule.CustomShipment)
+            + SoapElement("shipmentCompanyId", shipment?.ShipmentCompanyId?.Trim())
+            + SoapElement("trackingNumber", shipment?.TrackingNumber?.Trim())
+            + SoapElement("deliveryReceiptNumber", shipment?.DeliveryReceiptNumber?.Trim())
+            + SoapElement("imageFirstUrl", "") + SoapElement("imageSecondUrl", "") + SoapElement("imageThirdUrl", "") + SoapElement("videoUrl", "");
+    }
+
+    // ShipmentCompanyService GetShipmentCompanies: the carriers a denial's return shipment can name. The portal does not
+    // document the answer; each company is read from an element that carries an id and a name (or shortName).
+    public async Task<AdapterResult<IReadOnlyList<ReturnShipmentCompany>>> ReturnShipmentCompaniesAsync(AdapterContext context, CancellationToken cancellationToken)
+    {
+        var account = await authentication.LoadAsync(context.TenantId, context.ConnectionId, cancellationToken);
+        if (account is null) return CredentialMissing<IReadOnlyList<ReturnShipmentCompany>>();
+        var companies = await SendSoapAsync(account, "ws/shipmentCompanyService/", "GetShipmentCompanies", "", cancellationToken);
+        if (!companies.IsSuccess) return AdapterResult<IReadOnlyList<ReturnShipmentCompany>>.Failure(companies.Error!, companies.RateLimit);
+        return AdapterResult<IReadOnlyList<ReturnShipmentCompany>>.Success(ShipmentCompanies(companies.Value!));
+    }
+
+    internal static IReadOnlyList<ReturnShipmentCompany> ShipmentCompanies(XElement response) =>
+        response.Descendants()
+            .Where(x => x.Elements().Any(child => child.Name.LocalName == "id") && x.Elements().Any(child => child.Name.LocalName is "name" or "shortName"))
+            .Select(x => (Id: Child(x, "id"), Name: Child(x, "name") ?? Child(x, "shortName")))
+            .Where(x => x.Id is not null && x.Name is not null)
+            .GroupBy(x => x.Id!, StringComparer.Ordinal)
+            .Select(x => new ReturnShipmentCompany(x.Key, x.First().Name!))
+            .OrderBy(x => x.Name, StringComparer.Create(CultureInfo.GetCultureInfo("tr-TR"), false))
+            .ToList();
 }
 
 public static class N11ReturnMapper

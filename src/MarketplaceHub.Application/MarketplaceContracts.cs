@@ -779,7 +779,10 @@ public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewSta
 // CustomerRequest: what the customer asked for (ReturnCustomerRequestPolicy: REFUND or CHANGE); only Hepsiburada says it, null = unknown.
 public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
-public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null);
+// ReturnShipment: the seller's shipment of the product back to the buyer that a denial names (n11 ClaimReturnDeny CUSTOM).
+public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null, ReturnShipmentCommand? ReturnShipment = null);
+public sealed record ReturnShipmentCommand(string? ShipmentCompanyId, string? TrackingNumber, string? DeliveryReceiptNumber = null);
+public sealed record ReturnShipmentCompany(string Id, string Name);
 public sealed record ReturnActionResult(string ExternalClaimId, string Status, string? ExternalOperationId);
 public sealed record ReturnIssueReason(string Id, string Name, bool EvidenceRequired);
 public sealed record VerifiedWebhookEnvelope(string ExternalMessageId, string PayloadHash, string ResourceType, string RawJson);
@@ -914,6 +917,9 @@ public interface IReturnPort
     Task<AdapterResult<RemoteReturnClaim>> GetAsync(AdapterContext context, string externalReturnId, CancellationToken cancellationToken);
     Task<AdapterResult<IReadOnlyList<ReturnIssueReason>>> IssueReasonsAsync(AdapterContext context, CancellationToken cancellationToken);
     Task<AdapterResult<ReturnActionResult>> ExecuteAsync(AdapterContext context, ReturnActionCommand command, CancellationToken cancellationToken);
+    // The carriers a denial can name for the shipment back to the buyer; only n11 asks for one (ClaimReturnDeny).
+    Task<AdapterResult<IReadOnlyList<ReturnShipmentCompany>>> ReturnShipmentCompaniesAsync(AdapterContext context, CancellationToken cancellationToken) =>
+        Task.FromResult(AdapterResult<IReadOnlyList<ReturnShipmentCompany>>.Success([]));
 }
 
 public sealed record QuestionPollRequest(string Kind, string? Status, DateTimeOffset? StartDate, DateTimeOffset? EndDate, int Page, int Size);
@@ -1496,7 +1502,9 @@ public sealed record ReturnListView(
     // Set when a claim is shown as more than one card (its accepted lines apart from the waiting ones).
     string? RowKey = null,
     // What the customer asked for (REFUND or CHANGE, ReturnCustomerRequestPolicy); null when unknown. Hepsiburada only.
-    string? CustomerRequest = null);
+    string? CustomerRequest = null,
+    // PARTIALLY_APPROVED when the order's claims together were decided both ways (OrderReturnPartialApprovalPolicy).
+    string? OrderReturnStatus = null);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
@@ -1569,8 +1577,12 @@ public sealed record ReturnDetailView(
     // The return's amounts as the marketplace wrote them for its lines, in Currency; a figure a line lacks stays null.
     ReturnAmountsView? ReturnAmounts = null,
     // What the customer asked for (REFUND or CHANGE, ReturnCustomerRequestPolicy); null when unknown. Hepsiburada only.
-    string? CustomerRequest = null);
-public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null);
+    string? CustomerRequest = null,
+    // The marketplace decides the whole claim at once (ReturnDecisionScope): the screens lock the line choice.
+    bool WholeClaimDecision = false,
+    // A denial must name the shipment of the product back to the buyer (n11 ClaimReturnDeny, N11ReturnDenyRule).
+    bool RejectNeedsReturnShipment = false);
+public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null, ReturnShipmentCommand? ReturnShipment = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);
 
@@ -1605,6 +1617,7 @@ public interface IMarketplaceSalesService
     Task<ReturnSummaryView> ReturnSummaryAsync(Guid tenantId, ReturnListQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> ReturnAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
     Task<ServiceResult<IReadOnlyList<ReturnIssueReason>>> ReturnIssueReasonsAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken);
+    Task<ServiceResult<IReadOnlyList<ReturnShipmentCompany>>> ReturnShipmentCompaniesAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueReturnSyncAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueQuestionSyncAsync(Guid tenantId, Guid connectionId, string? kind, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<ReturnDetailView>> MarkReturnReceivedAsync(Guid tenantId, Guid userId, Guid claimId, long expectedVersion, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
