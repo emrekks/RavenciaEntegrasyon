@@ -847,12 +847,13 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
       })
     },
     onSuccess: async accepted => {
+      // The start is said before the statuses are read again, so a check that ends quickly never says it ended first.
+      onFeedback({ title: 'Durum Sorgulanıyor', message: publicationRefreshMessage(platformName, card.connection.platformCode, (familyProductIds ?? []).filter(id => id !== productId).length + 1), kind: 'info' })
       setRefreshJobId(accepted?.jobId ?? null)
       // The refresh checks every colour card of the family: their statuses are read again too, not only this card's
       // (live 2026-10-28: all eight MZ054YNC cards LIVE on the server, the card showed "1/8 renk" from cached siblings).
       await Promise.all([statusKey, ...otherFamilyIds.map(id => ['publication-status', id, card.connection.id])]
         .map(queryKey => client.invalidateQueries({ queryKey })))
-      onFeedback({ title: 'Durum Sorgulanıyor', message: publicationRefreshMessage(platformName, card.connection.platformCode, (familyProductIds ?? []).filter(id => id !== productId).length + 1), kind: 'info' })
     },
     onError: reason => {
       // Several cards refused in one go (a family, repeated clicks) collapse into one notice listing the products.
@@ -865,9 +866,9 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const lookupProduct = useMutation({
     mutationFn: () => hubApi<AcceptedJob>(`/connections/${card.connection.id}/product-sync-jobs?${new URLSearchParams({ lookup: lookupKey ?? '', includeArchived: 'true' }).toString()}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
     onSuccess: async accepted => {
+      onFeedback({ title: 'Ürün Pazaryerinde Aranıyor', message: `${platformName} mağazasında ${lookupKey} aranıyor; bulunursa varyantlar eşleştirilir ve durum güncellenir. Ürün bilgileri değiştirilmez.`, kind: 'info' })
       setRefreshJobId(accepted?.jobId ?? null)
       await client.invalidateQueries({ queryKey: statusKey })
-      onFeedback({ title: 'Ürün Pazaryerinde Aranıyor', message: `${platformName} mağazasında ${lookupKey} aranıyor; bulunursa varyantlar eşleştirilir ve durum güncellenir. Ürün bilgileri değiştirilmez.`, kind: 'info' })
     },
     onError: reason => {
       const failure = notificationError(reason, 'Pazaryeri yanıt vermedi.')
