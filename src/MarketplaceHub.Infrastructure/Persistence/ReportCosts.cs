@@ -57,6 +57,10 @@ internal sealed class ReportFinanceRow
     public decimal Debt { get; init; }
     public decimal Credit { get; init; }
     public decimal? CommissionAmount { get; init; }
+    // The payout the record was paid in or taken from (Trendyol's paymentOrderId).
+    public string? PaymentOrderId { get; init; }
+    // A share of a per-sale fee invoice split over the orders of its payout (ReportFeeAllocation): the invoice's id.
+    public string? AllocatedFrom { get; init; }
 }
 
 internal sealed class ReportCargoItemRow
@@ -131,15 +135,17 @@ internal static class ReportCosts
         // The costs of the period's orders: their own records and, where there is none, the estimates.
         var lines = new Dictionary<string, LineTotal>(StringComparer.Ordinal);
         LineTotal Line(string category) => lines.TryGetValue(category, out var total) ? total : lines[category] = new();
-        // The records of the period's dates tied to no order of the period (the service fee and withholding tax invoices
-        // of a payment day, advertising, a record of an order never imported): shown apart, in no profit figure
-        // (owner, 5 Nov 2026; 5 Nov they turned the day's +4,922 TL profit into a 633 TL loss).
+        // The records of the period's dates tied to no order of the period (advertising, a penalty, a record of an order
+        // never imported, a service fee or withholding tax invoice whose payout's orders are not read yet or that names
+        // no payout): shown apart, in no profit figure (owner, 5 Nov 2026; 5 Nov they turned the day's +4,922 TL profit
+        // into a 633 TL loss). The service fee and withholding tax invoices of a read payout are split over its orders
+        // (ReportFeeAllocation) and count with those orders, in their period.
         var unlinked = new Dictionary<string, LineTotal>(StringComparer.Ordinal);
         LineTotal Unlinked(string category) => unlinked.TryGetValue(category, out var total) ? total : unlinked[category] = new();
         var realCommission = new Dictionary<Guid, decimal>();
         var settled = new HashSet<Guid>();
-        // The period's orders with a service fee or withholding tax record of their own (Trendyol ties none to an order
-        // today), whose fee is then not estimated, and the VAT-bearing service fee of those records.
+        // The period's orders with a service fee or withholding tax record of their own (a share of their payout's
+        // invoice, ReportFeeAllocation), whose fee is then not estimated, and the VAT-bearing service fee of those records.
         var linkedFees = new HashSet<(Guid Order, string Category)>();
         var linkedDomesticFees = 0m;
         var channelCosts = new Dictionary<(Guid ConnectionId, string Category), decimal>();
@@ -373,7 +379,16 @@ internal static class ReportCosts
             yield break;
         }
         if (PlatformNote(costs, tr) is { } platforms) yield return platforms;
-        yield return $"Gerçek masraflar Trendyol cari hesap ekstresinden okunur{(costs.LastSyncedAt is { } synced ? $" (son okuma {Time(synced)})" : " (okuma sürüyor)")}: siparişe bağlı kalemler siparişin dönemine yazılır. Dönemde kesilip dönemin siparişlerine bağlı olmayan kesintiler (önceki ödeme gününün hizmet bedeli ve stopajı, reklam, ceza) kâra dahil edilmez, ayrıca gösterilir{(costs.UnlinkedTotal != 0m ? $" ({Money(costs.UnlinkedTotal)})" : "")}; dönemin siparişlerinin hizmet bedeli ve stopajı tahmin edilir.";
+        yield return $"Gerçek masraflar Trendyol cari hesap ekstresinden okunur{(costs.LastSyncedAt is { } synced ? $" (son okuma {Time(synced)})" : " (okuma sürüyor)")}: siparişe bağlı kalemler siparişin dönemine yazılır. Trendyol hizmet bedelini ve stopajı ödeme günü faturasıyla keser; bu faturalar ödemenin siparişlerine paylaştırılır (hizmet bedeli paket başına, uluslararası hizmet bedeli yurt dışı satışa, stopaj satışa göre) ve o siparişlerle kâra girer. Faturası henüz gelmeyen siparişlerin hizmet bedeli ve stopajı tahmin edilir. Dönemin siparişlerine bağlı olmayan kesintiler (reklam, ceza) kâra dahil edilmez, ayrıca gösterilir{(costs.UnlinkedTotal != 0m ? $" ({Money(costs.UnlinkedTotal)})" : "")}.";
+        // The per-sale fee invoices left with no order: their payout's orders are not read yet, or they name no payout.
+        var unsplit = input.Finance!.Rows.Where(row => row.Source == TrendyolFinanceRequestContract.OtherFinancials && row.OrderNumber is null
+            && row.Category is MarketplaceFinanceCategories.ServiceFee or MarketplaceFinanceCategories.Stoppage).ToList();
+        var awaiting = unsplit.Where(ReportFeeAllocation.IsPerSaleInvoice).Sum(row => TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit));
+        var unreferenced = unsplit.Where(row => string.IsNullOrEmpty(row.PaymentOrderId)).Sum(row => TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit));
+        if (awaiting != 0m)
+            yield return $"Siparişe bağlı olmayan kesintilerdeki hizmet bedeli ve stopajın {Money(awaiting)} kadarı, Trendyol'un ödeme kayıtlarını henüz vermediği ödemelere ait; ödeme kayıtları okununca (ödemeden bir gün sonra) siparişlerine paylaştırılır ve bu listeden çıkar.";
+        if (unreferenced != 0m)
+            yield return $"{Money(unreferenced)} hizmet bedeli ve stopaj faturasında Trendyol ne sipariş ne ödeme bilgisi veriyor; hangi siparişe ait olduğu bilinmediği için siparişe bağlı olmayan kesintilerde kalır.";
         if (costs.Coverage is { } coverage)
             yield return $"Trendyol siparişlerinin {costs.SettledOrders.ToString("N0", tr)} / {costs.FinanceOrders.ToString("N0", tr)} kadarında (%{coverage * 100:N1}) hesap kesimi var; Trendyol kaydı teslimattan sonra yazar, kalan siparişlerin komisyonu tahminidir.";
         if (costs.Commission is { RealOrders: > 0 } commission)
