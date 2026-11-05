@@ -617,9 +617,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             ? new[] { legacyPackageId }
             : requestedPackageId is { } selectedPackageId
                 ? new[] { selectedPackageId }
-                : await db.ShipmentPackages.AsNoTracking()
-                    .Where(item => item.TenantId == tenantId && item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled)
-                    .OrderBy(item => item.Id).Select(item => item.Id).ToArrayAsync(cancellationToken);
+                : await DeliveryTargetPackages(db, tenantId, invoice).Select(item => item.Id).ToArrayAsync(cancellationToken);
         if (packageIds.Length == 0 || oneTimeAuthorization is not null && packageIds.Length != 1) return false;
 
         foreach (var packageId in packageIds)
@@ -1898,9 +1896,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     {
         var packageIds = invoice.PackageId is { } packageId
             ? new[] { packageId }
-            : await db.ShipmentPackages.AsNoTracking()
-                .Where(item => item.TenantId == tenantId && item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled)
-                .Select(item => item.Id).ToArrayAsync(cancellationToken);
+            // The packages the delivery targets: one a resend or a split replaced is not waited for.
+            : await DeliveryTargetPackages(db, tenantId, invoice).Select(item => item.Id).ToArrayAsync(cancellationToken);
         var persistedStates = await db.MarketplaceDeliveryStates
             .Where(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id && state.PackageId != null && packageIds.Contains(state.PackageId.Value))
             .ToListAsync(cancellationToken);
@@ -1963,11 +1960,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         // a delivery state, InvoiceDeliveryRetryReader), never one in review or being cancelled.
         var retrying = !string.IsNullOrEmpty(retryKey);
         if (!(invoice.Status == InvoiceStatus.Accepted || retrying && invoice.Status is InvoiceStatus.MarketplaceFailed or InvoiceStatus.MarketplacePending)) return;
-        var packages = await db.ShipmentPackages.AsNoTracking()
-            .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
-                ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
-                : item.Id == invoice.PackageId.Value))
-            .OrderBy(item => item.Id).ToListAsync(cancellationToken);
+        var packages = await DeliveryTargetPackages(db, tenantId, invoice).ToListAsync(cancellationToken);
         var marketplaceConnectionIds = packages.Select(item => item.ConnectionId).Distinct().ToArray();
         if (marketplaceConnectionIds.Length == 0)
         {
@@ -2251,8 +2244,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         // queries instead of several queries per invoice.
         var neverOrderIds = acceptedNeverDelivered.Select(invoice => invoice.OrderId).Distinct().ToArray();
         var neverPackageIds = acceptedNeverDelivered.Where(invoice => invoice.PackageId != null).Select(invoice => invoice.PackageId!.Value).Distinct().ToArray();
-        var targetPackages = acceptedNeverDelivered.Count == 0 ? [] : await db.ShipmentPackages.AsNoTracking()
-            .Where(package => package.TenantId == tenantId && (neverOrderIds.Contains(package.OrderId) || neverPackageIds.Contains(package.Id)))
+        // As DeliveryTargetPackages: an order-level invoice targets the order's current packages (one a resend or a
+        // split replaced is left out), a package-level invoice its own package.
+        var orderTargetPackages = neverOrderIds.Length == 0 ? [] : await MarketplaceSalesService.CurrentShipmentPackages(db)
+            .Where(package => package.TenantId == tenantId && neverOrderIds.Contains(package.OrderId))
+            .Select(package => new RecoveryTargetPackage(package.Id, package.OrderId, package.ConnectionId, package.Status)).ToListAsync(cancellationToken);
+        var ownTargetPackages = neverPackageIds.Length == 0 ? [] : await db.ShipmentPackages.AsNoTracking()
+            .Where(package => package.TenantId == tenantId && neverPackageIds.Contains(package.Id))
             .Select(package => new RecoveryTargetPackage(package.Id, package.OrderId, package.ConnectionId, package.Status)).ToListAsync(cancellationToken);
         // The same gate as the delivery after the document (InvoiceMarketplaceAutoDeliveryPolicy): the documents read
         // above all have their link, and the server switches were checked at the top.
@@ -2276,7 +2274,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var neverQueued = new List<(Guid InvoiceId, Guid ConnectionId)>();
         foreach (var invoice in acceptedNeverDelivered)
         {
-            var targetConnections = targetPackages
+            var targetConnections = (invoice.PackageId == null ? orderTargetPackages : ownTargetPackages)
                 .Where(package => invoice.PackageId == null
                     ? package.OrderId == invoice.OrderId && package.Status != ShipmentPackageStatus.Cancelled
                     : package.Id == invoice.PackageId.Value)
@@ -2336,10 +2334,64 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     // written, so a package already STARTED, SUBMITTED or CONFIRMED is never sent twice. No invoice is issued here.
     private async Task QueueDeliveryRetries(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        // At most this many retries are queued per scan. The candidates are read page by page in id order (a stable
+        // keyset cursor) until that many are queued or none are left, so candidates that need nothing (a delivery
+        // skipped on purpose, a stored document) never hold back the ones behind them.
         const int batchSize = 50;
+        const int pageSize = 200;
         var issuedSince = now - InvoiceDeliveryAutoRetryPolicy.Window;
         var settledBefore = now - InvoiceDeliveryAutoRetryPolicy.SettleDelay;
-        var dueIds = await db.Invoices.AsNoTracking()
+        var deliveryAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
+            configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+            configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
+        var queued = 0;
+        Guid? afterId = null;
+        while (queued < batchSize)
+        {
+            var pageIds = await DeliveryRetryCandidates(tenantId, now, issuedSince, settledBefore, afterId)
+                .OrderBy(invoice => invoice.Id)
+                .Select(invoice => invoice.Id)
+                .Take(pageSize)
+                .ToListAsync(cancellationToken);
+            if (pageIds.Count == 0) return;
+            afterId = pageIds[^1];
+            var entries = await InvoiceDeliveryRetryReader.LoadAsync(db, tenantId, pageIds, now, cancellationToken);
+            foreach (var invoiceId in pageIds)
+            {
+                if (queued >= batchSize) return;
+                if (!entries.TryGetValue(invoiceId, out var entry)) continue;
+                if (entry.HasActiveJob || entry.Need == InvoiceDeliveryRetryNeed.None || entry.View.State != InvoiceDeliveryAutoRetryPolicy.Scheduled) continue;
+                if (entry.Need == InvoiceDeliveryRetryNeed.Deliver && !deliveryAllowed) continue;
+                await QueueDeliveryRetry(tenantId, entry, now, cancellationToken);
+                queued++;
+            }
+            if (pageIds.Count < pageSize) return;
+        }
+    }
+
+    private async Task QueueDeliveryRetry(Guid tenantId, InvoiceDeliveryRetryReader.Entry entry, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == entry.InvoiceId, cancellationToken);
+        InvoiceDeliveryRetryReader.RecordAutomaticAttempt(invoice, now);
+        var retryKey = $"delivery-retry:{invoice.DeliveryRetryAttempts}:{now.ToUnixTimeSeconds()}";
+        var correlationId = $"invoice-delivery-retry:{invoice.Id:N}:{invoice.DeliveryRetryAttempts}";
+        // A retry nobody clicked: it yields to single user actions in the user lane.
+        var priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery, bulk: true);
+        if (entry.Need == InvoiceDeliveryRetryNeed.FetchDocument)
+            db.IntegrationJobs.Add(InvoiceDeliveryRetryReader.NewDocumentFetchJob(invoice, retryKey, priority, correlationId, now));
+        else
+        {
+            var permanentUrl = await db.InvoiceDocuments.AsNoTracking()
+                .Where(document => document.TenantId == tenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
+                .OrderByDescending(document => document.CreatedAt).Select(document => document.PermanentUrl).FirstAsync(cancellationToken);
+            await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, permanentUrl, correlationId, cancellationToken, retryKey);
+        }
+    }
+
+    // The issued sale invoices a delivery retry may be due for, after the keyset cursor (afterId) when one is given.
+    private IQueryable<Invoice> DeliveryRetryCandidates(Guid tenantId, DateTimeOffset now, DateTimeOffset issuedSince, DateTimeOffset settledBefore, Guid? afterId)
+    {
+        var query = db.Invoices.AsNoTracking()
             .Where(invoice => invoice.TenantId == tenantId
                 && invoice.SequencePurpose == "SALE" && invoice.OriginalInvoiceId == null
                 && invoice.ExternalReference != null
@@ -2351,36 +2403,21 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 && (invoice.IssuedAt ?? invoice.CreatedAt) >= issuedSince
                 && invoice.UpdatedAt <= settledBefore
                 && invoice.DeliveryRetryAttempts < InvoiceDeliveryAutoRetryPolicy.MaxAttempts
-                && (invoice.DeliveryRetryNextAt == null || invoice.DeliveryRetryNextAt <= now))
-            .OrderBy(invoice => invoice.DeliveryRetryNextAt ?? invoice.UpdatedAt)
-            .Select(invoice => invoice.Id)
-            .Take(batchSize)
-            .ToListAsync(cancellationToken);
-        if (dueIds.Count == 0) return;
-        var entries = await InvoiceDeliveryRetryReader.LoadAsync(db, tenantId, dueIds, now, cancellationToken);
-        var deliveryAllowed = IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
-            configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
-            configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
-        foreach (var entry in entries.Values)
-        {
-            if (entry.HasActiveJob || entry.Need == InvoiceDeliveryRetryNeed.None || entry.View.State != InvoiceDeliveryAutoRetryPolicy.Scheduled) continue;
-            if (entry.Need == InvoiceDeliveryRetryNeed.Deliver && !deliveryAllowed) continue;
-            var invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == entry.InvoiceId, cancellationToken);
-            InvoiceDeliveryRetryReader.RecordAutomaticAttempt(invoice, now);
-            var retryKey = $"delivery-retry:{invoice.DeliveryRetryAttempts}:{now.ToUnixTimeSeconds()}";
-            var correlationId = $"invoice-delivery-retry:{invoice.Id:N}:{invoice.DeliveryRetryAttempts}";
-            // A retry nobody clicked: it yields to single user actions in the user lane.
-            var priority = InvoicingBillingService.InvoiceJobPriority(InvoicingJobTypes.MarketplaceDelivery, bulk: true);
-            if (entry.Need == InvoiceDeliveryRetryNeed.FetchDocument)
-                db.IntegrationJobs.Add(InvoiceDeliveryRetryReader.NewDocumentFetchJob(invoice, retryKey, priority, correlationId, now));
-            else
-            {
-                var permanentUrl = await db.InvoiceDocuments.AsNoTracking()
-                    .Where(document => document.TenantId == tenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
-                    .OrderByDescending(document => document.CreatedAt).Select(document => document.PermanentUrl).FirstAsync(cancellationToken);
-                await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, permanentUrl, correlationId, cancellationToken, retryKey);
-            }
-        }
+                && (invoice.DeliveryRetryNextAt == null || invoice.DeliveryRetryNextAt <= now));
+        return afterId is { } after ? query.Where(invoice => invoice.Id.CompareTo(after) > 0) : query;
+    }
+
+    // The packages an invoice's marketplace delivery targets: a package-level invoice its own package; an order-level
+    // one the order's current, non-cancelled packages (MarketplaceSalesService.CurrentShipmentPackages, the set the
+    // issuing step checks), so a package a resend or a split replaced is never sent the link. The owner's manual
+    // resend (InvoicingBillingService.EnqueueDeliveryAsync) uses the same set.
+    internal static IQueryable<ShipmentPackage> DeliveryTargetPackages(AppDbContext db, Guid tenantId, Invoice invoice)
+    {
+        var packages = invoice.PackageId is { } packageId
+            ? db.ShipmentPackages.AsNoTracking().Where(item => item.TenantId == tenantId && item.Id == packageId)
+            : MarketplaceSalesService.CurrentShipmentPackages(db)
+                .Where(item => item.TenantId == tenantId && item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled);
+        return packages.OrderBy(item => item.Id);
     }
 
     private sealed record RecoveryTargetPackage(Guid Id, Guid OrderId, Guid ConnectionId, ShipmentPackageStatus Status);

@@ -48,13 +48,22 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             return;
         }
         context.Request.Body.Position = 0;
-        var route = context.Request.Path.Value ?? string.Empty;
-        var secretResponse = SecretResponseRoutes.Matches(context.Request.Method, route);
+        var rawRoute = context.Request.Path.Value ?? string.Empty;
+        var secretResponse = SecretResponseRoutes.Matches(context.Request.Method, rawRoute);
+        // Routing matches a path whatever its case and with empty segments or a trailing slash, so the key is held for
+        // the path in one form (YENİ-06): "/Settings/Shipping-Label/" and "/settings/shipping-label" share one record and
+        // the action runs once. The request digest keeps the path's case (a path value may be a case-sensitive code),
+        // so the same key on a path that differs only in case is refused as reused, never replayed nor run again.
+        var segments = rawRoute.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var requestPath = "/" + string.Join('/', segments);
+        var route = requestPath.ToLowerInvariant();
+        // Records written before the path was normalised hold the path as it was sent.
+        string[] routes = route == rawRoute ? [route] : [route, rawRoute];
         // The version the request was made against is part of it: the same key with another If-Match is a
         // different request, not a replay.
         var ifMatch = context.Request.Headers.IfMatch.ToString();
         var versionLine = string.IsNullOrEmpty(ifMatch) ? string.Empty : $"if-match:{ifMatch}\n";
-        var hashInput = Encoding.UTF8.GetBytes($"{context.Request.Method}\n{route}\n{context.Request.QueryString}\n{versionLine}");
+        var hashInput = Encoding.UTF8.GetBytes($"{context.Request.Method}\n{requestPath}\n{context.Request.QueryString}\n{versionLine}");
         var combined = new byte[hashInput.Length + requestBytes.Length];
         hashInput.CopyTo(combined, 0); requestBytes.ToArray().CopyTo(combined, hashInput.Length);
         // Bodies can carry credentials (connection keys, webhook passwords). A plain SHA-256 of them, kept
@@ -66,7 +75,9 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
         var storedKey = IdempotencyRequestDigest.StoredKey(tenant.UserId, key);
 
         var now = timeProvider.GetUtcNow();
-        var existing = await db.ApiIdempotencyRecords.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.RouteTemplate == route && x.IdempotencyKey == storedKey, context.RequestAborted);
+        var existing = await db.ApiIdempotencyRecords
+            .Where(x => x.TenantId == tenant.TenantId && routes.Contains(x.RouteTemplate) && x.IdempotencyKey == storedKey)
+            .OrderBy(x => x.CreatedAt).FirstOrDefaultAsync(context.RequestAborted);
         // Expired rows are swept hourly (ApiIdempotencyRetentionService), not on every request; a row
         // the sweep has not reached yet is settled here, for this key only. A completed record is
         // disposable after its replay window. An unfinished one is evidence that the endpoint may
@@ -94,7 +105,7 @@ public sealed class IdempotencyMiddleware(RequestDelegate next)
             // (the request was running, or failed, across the deploy) must still stop a blind replay; its
             // request digest may be of an older form, so its state alone decides.
             var legacy = await db.ApiIdempotencyRecords.AsNoTracking()
-                .Where(x => x.TenantId == tenant.TenantId && x.RouteTemplate == route && x.IdempotencyKey == key && (x.State == "IN_PROGRESS" || x.State == "UNKNOWN"))
+                .Where(x => x.TenantId == tenant.TenantId && routes.Contains(x.RouteTemplate) && x.IdempotencyKey == key && (x.State == "IN_PROGRESS" || x.State == "UNKNOWN"))
                 .Select(x => new { x.State, x.ResponseStatus, x.ResourceId, x.JobId, x.ExpiresAt })
                 .FirstOrDefaultAsync(context.RequestAborted);
             if (legacy is not null)

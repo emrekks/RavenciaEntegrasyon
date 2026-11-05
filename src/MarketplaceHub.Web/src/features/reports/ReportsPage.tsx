@@ -15,7 +15,7 @@ import {
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
 import { transactionLabel } from './transaction-labels'
-import { byDay, emptyPayoutFilters, filterGroups, isRolledToPayoutDay, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
+import { byDay, emptyPayoutFilters, filterGroups, isRolledToPayoutDay, isWaitingPayout, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
 import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../shared/list-url-state'
 import { RrAnchor, RrFilterCard, RrIcon } from '../marketplace/returns-ui'
 import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../marketplace/shared'
@@ -2009,7 +2009,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const past = none ? [] : (data?.past ?? []).filter(group => region === 'ALL' || group.region === region)
   // The figures for the chosen region come from the server's region totals and groups, so they stay exact.
   const picked = region === 'ALL' ? null : regions.find(item => item.region === region) ?? null
-  const nextGroups = upcoming.filter(group => group.kind !== 'OVERDUE')
+  const nextGroups = upcoming.filter(group => !isWaitingPayout(group))
   const nextDay = region === 'ALL' ? data?.next?.day ?? null : nextGroups[0]?.day ?? null
   const nextAmount = region === 'ALL' ? data?.next?.amount ?? null : nextDay ? nextGroups.filter(group => group.day === nextDay).reduce((sum, group) => sum + group.amount, 0) : null
   const lastPaid = region === 'ALL' ? data?.lastPaid ?? null : past[0] ?? null
@@ -2041,10 +2041,11 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   // the marketplace takes it off a later payout, so it waits apart, as the overdue records do.
   const listed = filterGroups(tab === 'upcoming' ? upcoming : past, { ...applied, region: 'ALL' }).filter(group => Math.abs(group.amount) >= 0.005)
   const byDate = applied.sort === 'date'
-  const deducting = (group: PayoutGroup) => tab === 'upcoming' && group.kind !== 'OVERDUE' && group.amount < 0
+  const deducting = (group: PayoutGroup) => tab === 'upcoming' && !isWaitingPayout(group) && group.amount < 0
   const waiting = byDate ? listed.filter(group => group.kind === 'OVERDUE') : []
+  const undated = byDate ? listed.filter(group => group.kind === 'UNDATED') : []
   const deductions = byDate ? listed.filter(deducting) : []
-  const days = byDay(byDate ? listed.filter(group => group.kind !== 'OVERDUE' && !deducting(group)) : listed)
+  const days = byDay(byDate ? listed.filter(group => !isWaitingPayout(group) && !deducting(group)) : listed)
   const filtered = [applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max)].some(Boolean)
   const activeCount = [platforms.length > 0, region !== 'ALL', applied.state !== 'ALL', Boolean(applied.from || applied.to), Boolean(applied.min || applied.max), Boolean(search.trim()), applied.sort !== 'date'].filter(Boolean).length
   const read = data?.coverage.filter(store => store.state === 'READ') ?? []
@@ -2127,7 +2128,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
         : <>
           <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
             items={[{ value: 'upcoming', label: 'Gelecek Ödemeler', icon: 'calendarClock' }, { value: 'past', label: 'Geçmiş Ödemeler', icon: 'circleCheck' }]} />
-          <TabSlidePanel active={tab} order={['upcoming', 'past']} role="tabpanel">{days.length === 0 && waiting.length === 0 && deductions.length === 0
+          <TabSlidePanel active={tab} order={['upcoming', 'past']} role="tabpanel">{days.length === 0 && waiting.length === 0 && undated.length === 0 && deductions.length === 0
             ? <div className="reports-empty reports-payout-empty"><p>{filtered || none || region !== 'ALL' ? 'Bu filtrelerle ödeme yok.' : tab === 'upcoming' ? 'Bekleyen ödeme yok.' : `Son ${data?.daysBack ?? 90} günde okunmuş ödeme yok.`}</p>
               {activeCount > 0 && <button type="button" className="secondary reports-payout-all" onClick={clear}>Filtreleri Temizle</button>}</div>
             : <div className="reports-payout-days">
@@ -2162,6 +2163,14 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
                   <strong>{formatTl(waiting.reduce((sum, group) => sum + group.amount, 0))}</strong>
                 </header>
                 <ul className="reports-payout-rows">{waiting.map(row)}</ul>
+              </section>}
+              {undated.length > 0 && <section className="reports-payout-day is-waiting" aria-label="Vade tarihi belli olmayan, ödeme bekleyen">
+                <header>
+                  <UiIcon name="alertTriangle" size={16} />
+                  <span className="reports-payout-day-name"><b>Vade Tarihi Belli Değil</b><small>Pazaryeri ödeme tarihini bildirmedi</small></span>
+                  <strong>{formatTl(undated.reduce((sum, group) => sum + group.amount, 0))}</strong>
+                </header>
+                <ul className="reports-payout-rows">{undated.map(row)}</ul>
               </section>}
             </div>}</TabSlidePanel>
         </>}
