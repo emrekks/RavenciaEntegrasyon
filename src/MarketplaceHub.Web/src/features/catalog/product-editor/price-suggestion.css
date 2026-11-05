@@ -29,7 +29,6 @@ button.price-suggestion-link:focus-visible { outline: 2px solid var(--rv-color-p
 .price-suggestion-modal .price-suggestion-result dt { font-size: 12px; font-weight: 500; opacity: .85; }
 .price-suggestion-modal .price-suggestion-result dd { margin: 0; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .price-suggestion-modal .price-suggestion-empty { margin: 0; padding: 12px; color: var(--rv-color-muted); font-size: 13px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.price-suggestion-modal .price-suggestion-note { margin: 0; color: var(--rv-color-muted); font-size: 12px; line-height: 1.5; }
 
 @media (max-width: 760px) {
   .price-suggestion-modal .price-suggestion-fields { gap: 10px; }
@@ -39,3 +38,10 @@ button.price-suggestion-link:focus-visible { outline: 2px solid var(--rv-color-p
 .editor-section-title > .price-suggestion-title { flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; column-gap: 8px; }
 .editor-section-title > .price-suggestion-title > h2 { white-space: nowrap; }
 .editor-section-title > .price-suggestion-title > button.price-suggestion-link.price-suggestion-link { flex: none; width: auto; height: 24px; min-height: 0; margin: 0 0 0 auto; padding: 2px 0; white-space: nowrap; }
+/* Tighter vertically (owner, 5 Nov 2026: "fazla gapı azalt dikeyde"): a shorter header and footer, smaller gaps. */
+.rv-modal.price-suggestion-modal > header { padding-block: 14px; }
+.rv-modal.price-suggestion-modal > .rv-modal-body { gap: 10px; padding-block: 14px; }
+.rv-modal.price-suggestion-modal > footer { padding-block: 12px; }
+.price-suggestion-modal .price-suggestion-fields { row-gap: 8px; }
+.price-suggestion-modal .price-suggestion-fields label { gap: 4px; }
+.price-suggestion-modal .price-suggestion-result { gap: 6px; padding: 10px 12px; }

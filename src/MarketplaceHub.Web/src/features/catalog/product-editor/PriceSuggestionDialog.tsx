@@ -39,7 +39,6 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
   const [targetRate, setTargetRate] = useState('50')
   const [assumptions, setAssumptions] = useState(readAssumptions)
   const vatRate = numberOf(fields.vatRate) ?? DEFAULT_VAT_RATE
-  const vatKnown = numberOf(fields.vatRate) !== null
   const updateAssumption = (name: keyof Assumptions, value: string) => setAssumptions(current => { const next = { ...current, [name]: value }; writeAssumptions(next); return next })
 
   const suggestion = useMemo(() => {
@@ -73,9 +72,5 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
         <div><dt>Satışa Göre</dt><dd>{percent(suggestion.margin)}</dd></div>
       </dl>
     </div> : <p className="price-suggestion-empty" aria-live="polite">{missing}</p>}
-    <p className="price-suggestion-note">
-      Öneri; KDV %{vatRate.toLocaleString('tr-TR')} ({fields.vatIncluded ? 'fiyata dahil' : 'fiyata eklenir'}{vatKnown ? '' : ', KDV oranı seçilmediği için varsayıldı'}), komisyon %{assumptions.commissionRate || '0'}, kargo {assumptions.cargo || '0'} ₺, hizmet bedeli {assumptions.serviceFee || '0'} ₺, KDV hariç fiyatın %1'i stopaj ve net KDV varsayar.
-      Pazaryerinin gerçek komisyonu ve mağazanızın kargo tarifesi farklıysa sonuç değişir.
-    </p>
   </Modal>
 }
