@@ -275,8 +275,7 @@ public static class PazaramaProductMapper
     {
         if (!element.TryGetProperty(property, out var value)) return null;
         if (value.ValueKind == JsonValueKind.Object && value.TryGetProperty("value", out var inner)) value = inner;
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number;
-        return value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+        return RemoteJson.Decimal(value);
     }
 
     private static long? Number(JsonElement element, string property) =>

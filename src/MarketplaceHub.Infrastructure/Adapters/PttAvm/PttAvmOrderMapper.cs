@@ -55,10 +55,12 @@ public static class PttAvmOrderMapper
             // KdvDahilToplamTutar is the line total the customer paid (quantity × VAT-inclusive price, after the
             // discounts); IndirimToplam is the discount on it (PTT AVM's and the store's share together).
             var paid = Number(line, "KdvDahilToplamTutar");
+            // O12: an order with a line that cannot be read is not imported at all. Dropping the line would store the order
+            // with a lower total than the customer paid; the issue is recorded and the next poll of the window reads it again.
             if (lineId is null || quantity is not > 0 || paid is null or < 0)
             {
-                issues.Add(new("ORDER_PACKAGE_LINE_INVALID", $"{orderNumber}:{lineId ?? "?"}", $"PTT AVM siparişi {orderNumber} alındı ancak bir ürün satırında satır kimliği, adet veya tutar eksik."));
-                continue;
+                issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: bir ürün satırında (satır {lineId ?? "?"}) satır kimliği, adet veya tutar okunamadı; sipariş sonraki okumada yeniden denenecek."));
+                return null;
             }
             var lineDiscount = Math.Max(Number(line, "IndirimToplam") ?? 0, 0);
             var lineGross = paid.Value + lineDiscount;
@@ -231,8 +233,8 @@ public static class PttAvmOrderMapper
 
     private static string? Value(XElement element, string name) => PttAvmHttpClient.ContractValue(element, name);
 
-    private static decimal? Number(XElement element, string name) =>
-        decimal.TryParse(Value(element, name), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : null;
+    // O5: xs:decimal is dot-decimal; a comma value stays unknown instead of being read as a hundred times itself.
+    private static decimal? Number(XElement element, string name) => RemoteJson.ParseDecimal(Value(element, name));
 
     // Lower case without Turkish letters: "Gönderilmiş" → "gonderilmis".
     internal static string Fold(string? value)

@@ -160,7 +160,7 @@ public static class PttAvmVariantMapper
         names.Select(name => PttAvmHttpClient.ContractValue(element, name)).FirstOrDefault(x => x is not null);
 
     private static decimal? Number(XElement element, params string[] names) =>
-        names.Select(name => decimal.TryParse(PttAvmHttpClient.ContractValue(element, name), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : (decimal?)null).FirstOrDefault(x => x is not null);
+        names.Select(name => RemoteJson.ParseDecimal(PttAvmHttpClient.ContractValue(element, name))).FirstOrDefault(x => x is not null);
 
     private static bool? Bool(XElement element, string name) => bool.TryParse(PttAvmHttpClient.ContractValue(element, name), out var value) ? value : null;
 }

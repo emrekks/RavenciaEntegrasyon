@@ -320,7 +320,7 @@ public static class PttAvmProductPayloadRules
             using var document = JsonDocument.Parse(payloadJson);
             var root = document.RootElement;
             string? Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
-            decimal? Number(string name) => root.TryGetProperty(name, out var value) && value.TryGetDecimal(out var number) ? number : null;
+            decimal? Number(string name) => RemoteJson.NumberDecimal(root, name);
             var images = root.TryGetProperty("images", out var list) && list.ValueKind == JsonValueKind.Array
                 ? list.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.String ? x.GetString()?.Trim() : null).OfType<string>().ToList()
                 : [];
@@ -359,7 +359,7 @@ public static class PttAvmProductPayloadRules
         foreach (var entry in list.EnumerateArray())
         {
             string? Text(string name) => entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
-            var quantity = entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty("quantity", out var number) && number.TryGetInt32(out var parsed) ? parsed : (int?)null;
+            var quantity = RemoteJson.Int32(entry, "quantity");
             var (barcode, color, size) = (Text("barcode"), Text("color"), Text("size"));
             if (string.IsNullOrEmpty(barcode) || barcode.Length > PttAvmPriceInventoryRules.MaxBarcodeLength
                 || string.IsNullOrEmpty(color) || color.Length > MaxVariantValueLength || string.IsNullOrEmpty(size) || size.Length > MaxVariantValueLength
@@ -447,7 +447,7 @@ public static class PttAvmProductPayloadRules
         {
             if (JsonNode.Parse(rawJson) is not JsonObject snapshot) return (null, null, null);
             string? Text(params string[] names) => names.Select(name => snapshot[name] is JsonValue value && value.TryGetValue<string>(out var text) ? text.Trim() : null).FirstOrDefault(x => !string.IsNullOrEmpty(x));
-            decimal? price = decimal.TryParse(Text("Fiyat", "FiyatFarki", "PriceDifference", "Price"), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : null;
+            var price = RemoteJson.ParseDecimal(Text("Fiyat", "FiyatFarki", "PriceDifference", "Price"));
             bool? Flag(string name) => bool.TryParse(Text(name), out var flag) ? flag : null;
             return (price, Flag("FiyatFarkiMi"), Flag("Aktif"));
         }

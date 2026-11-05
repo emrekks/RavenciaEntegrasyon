@@ -38,8 +38,11 @@ public sealed partial class N11HttpClient
             var body = await response.Content.ReadAsStringAsync(timeout.Token);
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
                 return AdapterResult<XElement>.Failure(new(AdapterErrorClass.RateLimit, "N11_RATE_LIMITED", "N11 istek sınırına ulaşıldı; işlem biraz sonra yeniden denenecek.", 429, response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(60), null));
-            if ((int)response.StatusCode >= 500 && !body.Contains(operation + "Response", StringComparison.Ordinal))
-                return AdapterResult<XElement>.Failure(new(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR", "N11 servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)response.StatusCode, TimeSpan.FromSeconds(30), null));
+            if (SoapHttpError(response.StatusCode, body, operation) is { } httpError)
+            {
+                logger.LogWarning("N11 SOAP isteği başarısız. ConnectionId: {ConnectionId}, Operation: {Operation}, Status: {Status}, Code: {Code}", account.Connection.Id, operation, (int)response.StatusCode, httpError.Code);
+                return AdapterResult<XElement>.Failure(httpError);
+            }
             var parsed = SoapResponse(body, operation, requireResult);
             if (parsed.Error is { } error)
             {
@@ -66,11 +69,7 @@ public sealed partial class N11HttpClient
         try { document = XDocument.Parse(body); }
         catch (XmlException) { return (null, new(AdapterErrorClass.ContractViolation, "N11_SOAP_INVALID", "N11 geçerli bir SOAP yanıtı vermedi.", null, null, null)); }
         var fault = document.Descendants().FirstOrDefault(x => x.Name.LocalName == "Fault");
-        if (fault is not null)
-        {
-            var reason = fault.Descendants().FirstOrDefault(x => x.Name.LocalName == "faultstring")?.Value.Trim();
-            return (null, new(AdapterErrorClass.Validation, "N11_SOAP_FAULT", $"N11 isteği reddetti: {Trim(reason ?? "SOAP hatası")}", null, null, null));
-        }
+        if (fault is not null) return (null, FaultError(fault, null));
         var response = document.Descendants().FirstOrDefault(x => x.Name.LocalName == operation + "Response");
         var result = response?.Elements().FirstOrDefault(x => x.Name.LocalName == "result");
         var status = Child(result, "status");
@@ -88,6 +87,45 @@ public sealed partial class N11HttpClient
         return (null, new(authentication ? AdapterErrorClass.Authentication : AdapterErrorClass.Validation,
             authentication ? "N11_CREDENTIALS_REJECTED" : "N11_REQUEST_REJECTED",
             string.IsNullOrWhiteSpace(message) ? "N11 isteği reddetti." : $"N11 isteği reddetti: {Trim(message)}", null, null, null));
+    }
+
+    // D18: the HTTP status alone does not decide. A SOAP service answers a fault with HTTP 500, so the fault is read
+    // first and classified; only a 5xx without a fault and without the operation's answer is the service's own trouble.
+    // A 401/403 (n11's gateway answers it with an HTML page) is the credentials, not a contract or server error. Null
+    // when the body is to be read as a SOAP answer (SoapResponse).
+    internal static AdapterError? SoapHttpError(HttpStatusCode status, string body, string operation)
+    {
+        var answered = body.Contains(operation + "Response", StringComparison.Ordinal);
+        if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden && !answered)
+            return new(AdapterErrorClass.Authentication, "N11_CREDENTIALS_REJECTED", "N11 API anahtarı veya şifresi reddedildi. N11 satıcı panelinde Hesabım > API Hesapları altındaki güncel bilgileri girin.", (int)status, null, null);
+        if ((int)status < 500 || answered) return null;
+        XElement? fault = null;
+        try { fault = XDocument.Parse(body).Descendants().FirstOrDefault(x => x.Name.LocalName == "Fault"); }
+        catch (XmlException) { }
+        return fault is not null
+            ? FaultError(fault, (int)status)
+            : new(AdapterErrorClass.Remote5xx, "N11_REMOTE_ERROR", "N11 servisi geçici olarak hata veriyor; işlem yeniden denenecek.", (int)status, TimeSpan.FromSeconds(30), null);
+    }
+
+    // A SOAP fault: the credentials (an auth/security code or text), the service's own trouble (a Server fault that names
+    // no cause, or a timeout/unavailable text: tried again), or a rejection of the request (a Client fault, or a Server
+    // fault with a reason: not repeated unchanged).
+    internal static AdapterError FaultError(XElement fault, int? status)
+    {
+        // SOAP 1.1 faultcode/faultstring; SOAP 1.2 Code/Value and Reason/Text are read too.
+        var codes = string.Join(" ", fault.Descendants().Where(x => x.Name.LocalName is "faultcode" or "Value").Select(x => x.Value.Trim()));
+        var reason = fault.Descendants().FirstOrDefault(x => x.Name.LocalName is "faultstring" or "Text")?.Value.Trim();
+        static bool Has(string? text, params string[] markers) => text is not null && markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+        if (Has(codes, "Security", "Authentication", "Unauthorized") || Has(reason, "authenticat", "unauthorized", "appKey", "appSecret", "yetkisiz", "kimlik doğrulama"))
+            return new(AdapterErrorClass.Authentication, "N11_CREDENTIALS_REJECTED", "N11 API anahtarı veya şifresi reddedildi. N11 satıcı panelinde Hesabım > API Hesapları altındaki güncel bilgileri girin.", status, null, null);
+        var serverFault = Has(codes, "Server", "Receiver");
+        var transient = Has(reason, "timeout", "timed out", "zaman aşımı", "unavailable", "geçici", "try again", "tekrar deneyin")
+            || serverFault && (string.IsNullOrWhiteSpace(reason) || Has(reason, "internal", "unexpected", "beklenmeyen", "bilinmeyen", "unknown error", "sistem hatası", "NullPointer", "Exception"));
+        if (transient)
+            return new(AdapterErrorClass.Remote5xx, "N11_REMOTE_FAULT",
+                string.IsNullOrWhiteSpace(reason) ? "N11 servisi nedeni belirtilmeyen bir hata döndü; işlem yeniden denenecek." : $"N11 servisi geçici bir hata döndü ({Trim(reason)}); işlem yeniden denenecek.",
+                status, TimeSpan.FromSeconds(30), null);
+        return new(AdapterErrorClass.Validation, "N11_SOAP_FAULT", $"N11 isteği reddetti: {Trim(reason ?? "SOAP hatası")}", status, null, null);
     }
 
     internal static string? Child(XElement? element, string name)

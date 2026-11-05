@@ -160,6 +160,52 @@ public sealed class TrendyolEFaturamSessionTests
         Assert.Equal("EFATURAM_NETWORK_ERROR", large.Error!.Code);
     }
 
+    // Y4: the gateway sends an x-request-id with its problem answers; the problem type is still read, so a
+    // tax-payer-not-found or earchive-not-found keeps its meaning instead of becoming a bare 404.
+    [Theory]
+    [InlineData("tax-payer-not-found", TrendyolEFaturamProblemDetails.TaxPayerNotFoundReference)]
+    [InlineData("earchive-not-found", TrendyolEFaturamProblemDetails.EArchiveNotFoundReference)]
+    public async Task A_problem_type_is_read_even_when_a_request_id_header_is_present(string problem, string expected)
+    {
+        var handler = new SessionHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/signin", StringComparison.Ordinal)) return SignInResponse(Start.AddMinutes(30));
+            var response = new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent($$"""{"type":"https://api.trendyol.com/etransformation/gateway/{{problem}}","title":"Not Found","status":404}""", Encoding.UTF8, "application/problem+json")
+            };
+            response.Headers.TryAddWithoutValidation("x-request-id", "req-123");
+            return response;
+        });
+        var (client, _) = Client(handler);
+        var context = Context(Guid.NewGuid());
+        var access = await client.AcquireAccess(context, CancellationToken.None);
+
+        var answer = await client.SendAuthorized(context, access.Value!.AccessToken, HttpMethod.Get, "api/x", null, CancellationToken.None);
+
+        Assert.Equal(expected, answer.Error!.RemoteRequestId);
+        Assert.Equal(404, answer.Error.HttpStatus);
+    }
+
+    [Fact]
+    public async Task The_request_id_stays_when_the_problem_body_names_nothing()
+    {
+        var handler = new SessionHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/signin", StringComparison.Ordinal)) return SignInResponse(Start.AddMinutes(30));
+            var response = new HttpResponseMessage(HttpStatusCode.InternalServerError) { Content = new StringContent("not json") };
+            response.Headers.TryAddWithoutValidation("x-request-id", "req-123");
+            return response;
+        });
+        var (client, _) = Client(handler);
+        var context = Context(Guid.NewGuid());
+        var access = await client.AcquireAccess(context, CancellationToken.None);
+
+        var answer = await client.SendAuthorized(context, access.Value!.AccessToken, HttpMethod.Get, "api/x", null, CancellationToken.None);
+
+        Assert.Equal("req-123", answer.Error!.RemoteRequestId);
+    }
+
     [Fact]
     public async Task Token_without_exp_is_not_cached()
     {

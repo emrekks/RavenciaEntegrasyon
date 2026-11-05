@@ -168,7 +168,11 @@ internal static class HepsiburadaQuestionMapper
         var status = rawStatus.Replace("_", "", StringComparison.Ordinal).Replace("-", "", StringComparison.Ordinal).ToUpperInvariant() switch
         // C33: 7 is "Satıcı iletişime geçti" (the seller contacted the customer): the question is handled.
         { "1" or "WAITINGFORANSWER" => "WAITING_FOR_ANSWER", "2" or "ANSWERED" or "7" or "SELLERCONTACTED" => "ANSWERED", "3" or "REJECTED" => "REJECTED", "4" or "AUTOCLOSED" => "EXPIRED", _ => rawStatus.ToUpperInvariant() };
-        var created = Date(item, "createdAt", "creationDate", "createdDate") ?? DateTimeOffset.UnixEpoch; var modified = Date(item, "lastModifiedAt", "lastModifiedDate", "modifiedAt") ?? created;
+        // D13: a question with no date at all is not stored as asked in 1970; it is left for a later read. One that names
+        // only its last change is dated by that.
+        var lastChange = Date(item, "lastModifiedAt", "lastModifiedDate", "modifiedAt");
+        if ((Date(item, "createdAt", "creationDate", "createdDate") ?? lastChange) is not { } created) return null;
+        var modified = lastChange ?? created;
         var conversations = FindArray(item, "conversations").Select(message => new RemoteQuestionConversation(Text(message, "from", "author", "sender") ?? "Customer", Text(message, "content", "text", "message") ?? "", Date(message, "createdAt", "creationDate", "date") ?? created, Text(message, "rejectReason", "rejectionReason", "reason"))).ToList();
         if (conversations.Count == 0 && Text(item, "lastContent") is { Length: > 0 } latest) conversations.Add(new(status == "WAITING_FOR_ANSWER" ? "Customer" : "Merchant", latest, modified, Text(item, "rejectReason", "rejectionReason")));
         var customerQuestion = conversations.FirstOrDefault(message => message.Author.Contains("customer", StringComparison.OrdinalIgnoreCase))?.Text

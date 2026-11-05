@@ -191,6 +191,120 @@ public sealed class TrendyolAdapterAuditTests
         Assert.Equal(2, handler.Requests);
     }
 
+    // O6: a page Trendyol refuses after the first one leaves the order half read; the packages read so far are no order.
+    [Fact]
+    public async Task TheOrderStreamLookupRefusedAfterTheFirstPageIsAnIncompleteScanNotASuccess()
+    {
+        var handler = new StatusStream(page => page == 1
+            ? (HttpStatusCode.OK, """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","status":"Created","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}""")
+            : (HttpStatusCode.BadRequest, """{"errors":[{"message":"cursor expired"}]}"""));
+        var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        var scan = await Client(handler).ScanOrderStreamAsync(Account(), "ORD-1", end.AddDays(-12), end, "TR", null, CancellationToken.None);
+
+        Assert.False(scan.Result!.IsSuccess);
+        Assert.Equal(TrendyolHttpClient.OrderScanIncompleteCode, scan.Result.Error!.Code);
+        Assert.Equal(AdapterErrorClass.TransientNetwork, scan.Result.Error.Class);
+        Assert.Equal(2, handler.Requests);
+    }
+
+    // A refusal of the very first page still means the stream does not serve the window: "not found", not an error.
+    [Fact]
+    public async Task TheOrderStreamLookupRefusedOnTheFirstPageEndsWithoutAResult()
+    {
+        var handler = new StatusStream(_ => (HttpStatusCode.NotFound, "{}"));
+        var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        var scan = await Client(handler).ScanOrderStreamAsync(Account(), "ORD-1", end.AddDays(-12), end, "TR", null, CancellationToken.None);
+
+        Assert.Null(scan.Result);
+        Assert.Equal(1, handler.Requests);
+    }
+
+    // O6/D17: a cancelled read never hands back the packages it had read as the order.
+    [Fact]
+    public async Task ACancelledOrderStreamLookupDoesNotReturnTheFirstPagesPackagesAsTheOrder()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var handler = new StatusStream(_ =>
+        {
+            cancellation.Cancel();
+            return (HttpStatusCode.OK, """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","status":"Created","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}""");
+        });
+        var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            Client(handler).ScanOrderStreamAsync(Account(), "ORD-1", end.AddDays(-12), end, "TR", null, cancellation.Token));
+    }
+
+    // O9: a claim audit entry whose date is null is left out, not a crash of the whole read.
+    [Fact]
+    public void AClaimAuditEntryWithANullDateIsLeftOut()
+    {
+        const string json = """
+        [{"newStatus":"Created","date":null},{"newStatus":"Accepted","date":"1761500000000"},{"newStatus":"Unresolved","date":1761500000000}]
+        """;
+
+        var audit = Assert.Single(TrendyolJsonMapper.ReturnLineAudits(json));
+
+        Assert.Equal("Unresolved", audit.NewStatus);
+    }
+
+    // O9: a null invoiceDateTime is left out of the invoice-link body instead of throwing.
+    [Fact]
+    public void AnInvoiceLinkPayloadWithANullInvoiceDateLeavesTheDateOut()
+    {
+        using var payload = System.Text.Json.JsonDocument.Parse("""{"shipmentPackageId":"123","invoiceLink":"https://example.test/i.pdf","invoiceDateTime":null}""");
+
+        var body = TrendyolHttpClient.InvoiceLinkBody(payload.RootElement);
+
+        Assert.NotNull(body);
+        Assert.False(body.ContainsKey("invoiceDateTime"));
+        Assert.Equal(123L, body["shipmentPackageId"]);
+    }
+
+    // O5: a text amount with a decimal comma stays unknown instead of becoming a hundred times itself.
+    [Fact]
+    public void ACommaTextAmountIsNotReadAsAHundredTimesItself()
+    {
+        const string json = """
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"grossAmount":"1234,50","totalPrice":"1234.50","lines":[
+          {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":"1234.50","price":"1234.50","vatRate":10}
+        ]}]}
+        """;
+
+        var order = Assert.Single(TrendyolJsonMapper.Orders(json).Items);
+
+        Assert.Equal(1234.50m, order.GrossAmount);
+        Assert.Equal(1234.50m, order.NetAmount);
+    }
+
+    // D12: a text deadline with an offset is stored as its UTC instant (Npgsql timestamptz takes offset 0 only).
+    [Fact]
+    public void ATextClaimDateWithAnOffsetIsReadAsUtc()
+    {
+        const string json = """
+        {"page":0,"totalPages":1,"content":[{"id":"c1","claimId":"c1","orderNumber":"o1","lastModifiedDate":1760000000000,"autoApproveDate":"2026-11-01T10:00:00+03:00","items":[]}]}
+        """;
+
+        var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
+
+        Assert.Equal(TimeSpan.Zero, claim.ActionDueAt!.Value.Offset);
+        Assert.Equal(new DateTimeOffset(2026, 11, 1, 7, 0, 0, TimeSpan.Zero), claim.ActionDueAt);
+    }
+
+    private sealed class StatusStream(Func<int, (HttpStatusCode Status, string Body)> answer) : HttpMessageHandler
+    {
+        private int requests;
+        public int Requests => requests;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var (status, body) = answer(Interlocked.Increment(ref requests));
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
+        }
+    }
+
     private static TrendyolHttpClient Client(HttpMessageHandler handler) =>
         new(new Factory(handler), null!, new ConfigurationBuilder().Build(), Options.Create(new TrendyolOptions()), TimeProvider.System, NullLogger<TrendyolHttpClient>.Instance);
 

@@ -262,7 +262,49 @@ public sealed class PazaramaOrderMapperTests
         var page = PazaramaOrderMapper.Page(json.RootElement, 100);
 
         Assert.Empty(page.Items);
-        Assert.Equal(2, page.Issues!.Count);
+        Assert.Equal("ORDER_PACKAGE_INVALID", Assert.Single(page.Issues!).Code);
+    }
+
+    // O12: one unreadable line (salePrice null) keeps the whole order out; dropping the line would store a lower total.
+    [Fact]
+    public void AnOrderWithOneUnreadableLineIsNotImportedWithALowerTotal()
+    {
+        var broken = Item("a2", 3).Replace("\"salePrice\":" + Money7, "\"salePrice\":null", StringComparison.Ordinal);
+        using var json = JsonDocument.Parse(Order(Item("a1", 3) + "," + broken));
+
+        var page = PazaramaOrderMapper.Page(json.RootElement, 100);
+
+        Assert.Empty(page.Items);
+        var issue = Assert.Single(page.Issues!);
+        Assert.Equal(("ORDER_PACKAGE_INVALID", "283534307"), (issue.Code, issue.Identity));
+        Assert.Contains("a2", issue.Message, StringComparison.Ordinal);
+    }
+
+    // D13: an order without a date anywhere is not stored as placed in 1970.
+    [Fact]
+    public void AnOrderWithoutAnyDateIsNotImported()
+    {
+        var json = Order(Item("a1", 3, history: "[]")).Replace("\"orderDate\":\"2026-02-17 17:23\",", "", StringComparison.Ordinal);
+        using var document = JsonDocument.Parse(json);
+
+        var page = PazaramaOrderMapper.Page(document.RootElement, 100);
+
+        Assert.Empty(page.Items);
+        Assert.Equal("ORDER_PACKAGE_INVALID", Assert.Single(page.Issues!).Code);
+    }
+
+    // O5: a text number with a comma is not read with the comma as a thousands separator ("1,000" was read as 1000).
+    [Fact]
+    public void ACommaNumberIsNotReadWithTheCommaAsAThousandsSeparator()
+    {
+        var item = Item("a1", 3).Replace("\"quantity\":1,", "\"quantity\":\"1,000\",", StringComparison.Ordinal);
+        Assert.Contains("\"1,000\"", item, StringComparison.Ordinal);
+        using var json = JsonDocument.Parse(Order(item));
+
+        var page = PazaramaOrderMapper.Page(json.RootElement, 100);
+
+        Assert.Empty(page.Items);
+        Assert.Equal("ORDER_PACKAGE_INVALID", Assert.Single(page.Issues!).Code);
     }
 
     [Fact]

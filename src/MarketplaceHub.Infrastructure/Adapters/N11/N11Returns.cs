@@ -108,7 +108,7 @@ public static class N11ReturnMapper
         var orderNumber = N11HttpClient.Child(element, "orderNumber");
         if (claimId is null || orderNumber is null) return null;
         var rawStatus = N11HttpClient.Child(element, "status") ?? "";
-        var quantity = decimal.TryParse(N11HttpClient.Child(element, "quantity"), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) && parsed > 0 ? parsed : 1;
+        var quantity = RemoteJson.ParseDecimal(N11HttpClient.Child(element, "quantity")) is > 0 and var parsed ? parsed : 1;
         var dates = new[] { "requestDate", "pendingRequestDate", "pendedDate", "approvedDate", "deniedDate", "cancelledDate" }
             .Select(name => Date(N11HttpClient.Child(element, name)))
             .Where(x => x is not null)

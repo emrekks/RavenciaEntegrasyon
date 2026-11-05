@@ -109,8 +109,8 @@ public static class PttAvmProductMapper
 
     private static string? FirstValue(XElement element, params string[] names) => names.Select(name => Value(element, name)).FirstOrDefault(x => x is not null);
 
-    private static decimal? Number(XElement element, string name) =>
-        decimal.TryParse(Value(element, name), NumberStyles.Number, CultureInfo.InvariantCulture, out var number) ? number : null;
+    // O5: xs:decimal is dot-decimal; a comma value stays unknown instead of being read as a hundred times itself.
+    private static decimal? Number(XElement element, string name) => RemoteJson.ParseDecimal(Value(element, name));
 
     private static bool? Bool(XElement element, string name) => bool.TryParse(Value(element, name), out var value) ? value : null;
 }

@@ -142,9 +142,9 @@ public static class PttAvmPriceInventoryRules
             foreach (var entry in list.EnumerateArray())
             {
                 var barcode = entry.TryGetProperty("barcode", out var code) && code.ValueKind == JsonValueKind.String ? code.GetString()?.Trim() : null;
-                var price = entry.TryGetProperty("priceWithVat", out var priceValue) && priceValue.TryGetDecimal(out var parsedPrice) ? parsedPrice : (decimal?)null;
-                var quantity = entry.TryGetProperty("quantity", out var quantityValue) && quantityValue.TryGetInt32(out var parsedQuantity) ? parsedQuantity : (int?)null;
-                decimal? vat = entry.TryGetProperty("vatRate", out var vatValue) && vatValue.TryGetDecimal(out var parsedVat) ? parsedVat : null;
+                var price = RemoteJson.NumberDecimal(entry, "priceWithVat");
+                var quantity = RemoteJson.Int32(entry, "quantity");
+                var vat = RemoteJson.NumberDecimal(entry, "vatRate");
                 var hasVariants = entry.TryGetProperty("variants", out var variantValue);
                 var variants = hasVariants && variantValue.ValueKind == JsonValueKind.Array ? Variants(variantValue) : null;
                 // PTT AVM refuses a price of 1 or less; a product without variants carries its stock, one with variants does not.
@@ -173,8 +173,8 @@ public static class PttAvmPriceInventoryRules
                 if (string.IsNullOrEmpty(definition) || string.IsNullOrEmpty(value) || definition.Length > 100 || value.Length > 100) return null;
                 attributes.Add(new(definition, value));
             }
-            var quantity = entry.TryGetProperty("quantity", out var quantityValue) && quantityValue.TryGetInt32(out var parsedQuantity) ? parsedQuantity : (int?)null;
-            var price = entry.TryGetProperty("price", out var priceValue) && priceValue.TryGetDecimal(out var parsedPrice) ? parsedPrice : (decimal?)null;
+            var quantity = RemoteJson.Int32(entry, "quantity");
+            var price = RemoteJson.NumberDecimal(entry, "price");
             if (attributes.Count == 0 || quantity is not (>= 0 and <= MaxQuantity) || price is null) return null;
             variants.Add(new(attributes, quantity.Value, Price(price.Value)));
         }

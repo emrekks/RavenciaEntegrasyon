@@ -172,9 +172,7 @@ internal static class TrendyolFinanceMapper
     internal static decimal? Number(JsonElement element, string name)
     {
         if (!element.TryGetProperty(name, out var value)) return null;
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number;
-        if (value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) return parsed;
-        return null;
+        return RemoteJson.Decimal(value);
     }
 
     private static int? Int(JsonElement element, string name) => Number(element, name) is { } number ? (int)Math.Clamp(Math.Truncate(number), int.MinValue, int.MaxValue) : null;
