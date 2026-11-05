@@ -98,17 +98,20 @@ public static class InvoiceIssuePolicy
         "N11" => "N11",
         "PAZARAMA" => "Pazarama",
         "PTTAVM" => "PTT AVM",
+        "SHOPIFY" => "Shopify",
         _ => "Pazaryeri"
     };
 
     // Where each marketplace reports a line's VAT rate inside the raw line JSON the order line keeps (alternatives,
-    // each a property path). Shopify reports none (its lines carry 0), so its lines are not judged here.
+    // each a property path). A step that meets a list (Shopify's taxLines) needs every item of a non-empty list to
+    // report the rest of the path.
     private static string[][]? VatRatePaths(string? platformCode) => platformCode switch
     {
         "TRENDYOL" or "N11" => [["vatRate"]],
         "HEPSIBURADA" => [["vatRate"], ["VatRate"]],
         "PAZARAMA" => [["product", "vatRate"]],
         "PTTAVM" => [["KdvOrani"]],
+        "SHOPIFY" => [["taxLines", "rate"]],
         _ => null
     };
 
@@ -116,8 +119,8 @@ public static class InvoiceIssuePolicy
     /// True when the marketplace did not report the line's VAT rate. Order lines keep their raw JSON; a line whose
     /// JSON has no numeric rate was kept with an inferred rate (Trendyol, G30), with 0, or with the rate an earlier
     /// read reported (T-2), none of which may reach a fiscal invoice. A line without a raw snapshot, with an empty one
-    /// or with one that cannot be read says nothing about its rate either: unknown too. Shopify reports no line VAT
-    /// rate at all, so its lines are not judged here.
+    /// or with one that cannot be read says nothing about its rate either: unknown too. A Shopify line reports its rate
+    /// in the taxLines list: an empty list or a tax line without a numeric rate is unknown as well.
     /// </summary>
     public static bool IsLineVatRateUnknown(string? platformCode, string? lineSourceSnapshotJson)
     {
@@ -136,11 +139,18 @@ public static class InvoiceIssuePolicy
         }
     }
 
-    private static bool IsReportedRate(JsonElement root, string[] path)
+    private static bool IsReportedRate(JsonElement element, string[] path, int step = 0)
     {
-        var vatRate = root;
-        foreach (var name in path)
-            if (vatRate.ValueKind != JsonValueKind.Object || !vatRate.TryGetProperty(name, out vatRate)) return false;
+        var vatRate = element;
+        for (var index = step; index < path.Length; index++)
+        {
+            if (vatRate.ValueKind == JsonValueKind.Array)
+            {
+                var next = index;
+                return vatRate.GetArrayLength() > 0 && vatRate.EnumerateArray().All(item => IsReportedRate(item, path, next));
+            }
+            if (vatRate.ValueKind != JsonValueKind.Object || !vatRate.TryGetProperty(path[index], out vatRate)) return false;
+        }
         return vatRate.ValueKind switch
         {
             JsonValueKind.Number => true,

@@ -40,25 +40,33 @@ public static class HepsiburadaFinanceMapper
 {
     private const string Lira = "949";
 
-    // A record without an id cannot be stored once and only once: the page is then a contract error.
+    // A record without an id, a readable amount or any of its days (invoice, order, due) is not stored: it is listed in
+    // Skipped and the page's other records are kept (one such record used to stop the whole 60-day read).
     public static RemoteFinanceRecordPage Page(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object) throw new JsonException("Finance page is not an object.");
         var items = new List<RemoteFinanceRecord>();
+        var skipped = new List<RemoteSkippedFinanceRecord>();
         if (root.TryGetProperty("items", out var list) && list.ValueKind == JsonValueKind.Array)
             foreach (var item in list.EnumerateArray())
             {
                 if (item.ValueKind != JsonValueKind.Object) throw new JsonException("Finance record is not an object.");
-                var id = Text(item, "id") ?? throw new JsonException("Finance record has no id.");
+                var id = Text(item, "id");
                 var amount = Money(item, "amount");
+                var dated = Time(item, "invoiceDate") ?? Time(item, "orderDate") ?? Time(item, "dueDate");
+                if (id is null || amount.Value is null || dated is null)
+                {
+                    skipped.Add(SkippedFinanceRecords.Skip(id, item.GetRawText(), Text(item, "orderNumber"), Text(item, "transactionType"), id is null, amount.Value is null, dated is null));
+                    continue;
+                }
                 var currency = amount.Currency is null ? null : amount.Currency == Lira ? "TRY" : amount.Currency == "840" ? "USD" : amount.Currency;
                 items.Add(new(id, Text(item, "transactionType"), Text(item, "transactionTypeCategory"), Text(item, "status"), Text(item, "orderNumber"), Text(item, "packageNumber"),
                     Text(item, "invoiceNumber"), Text(item, "sku"), amount.Value, Money(item, "netAmount").Value, currency, Bool(item, "isIncome"),
                     Time(item, "orderDate"), Time(item, "invoiceDate"), Time(item, "dueDate"), Time(item, "paymentDate"), item.GetRawText()));
             }
         // A null count is no count (TryGetInt32 would throw on it): the page's own size stands in, as when it is missing.
-        var count = RemoteJson.Int32(root, "count") ?? items.Count;
-        return new(items, count);
+        var count = RemoteJson.Int32(root, "count") ?? items.Count + skipped.Count;
+        return new(items, count, skipped);
     }
 
     private static (decimal? Value, string? Currency) Money(JsonElement item, string name)

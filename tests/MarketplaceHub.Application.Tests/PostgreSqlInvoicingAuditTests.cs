@@ -623,11 +623,14 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         {
             ("HEPSIBURADA", """{"lineItemId":"1","merchantSku":"AUDIT-SKU","quantity":1}"""),
             ("N11", """{"orderLineId":"1","stockCode":"AUDIT-SKU","quantity":1,"price":120}"""),
-            ("PAZARAMA", """{"orderItemId":"1","quantity":1,"product":{"stockCode":"AUDIT-SKU"}}""")
+            ("PAZARAMA", """{"orderItemId":"1","quantity":1,"product":{"stockCode":"AUDIT-SKU"}}"""),
+            ("SHOPIFY", """{"id":"gid://shopify/LineItem/1","sku":"AUDIT-SKU","quantity":1,"taxLines":[]}""")
         })
         {
             var seed = NewSeed($"audit-vat-unknown-{platformCode.ToLowerInvariant()}");
             seed.Marketplace.PlatformCode = platformCode;
+            // Shopify's invoicing switch is off unless turned on (MarketplaceInvoiceCreationPolicy).
+            if (platformCode == "SHOPIFY") seed.Marketplace.SettingsJson = """{"InvoiceCreationEnabled":true}""";
             var line = NewLine(seed.Tenant.Id, seed.Order.Id);
             line.VatRate = 0m;
             line.SourceSnapshotJson = snapshot;

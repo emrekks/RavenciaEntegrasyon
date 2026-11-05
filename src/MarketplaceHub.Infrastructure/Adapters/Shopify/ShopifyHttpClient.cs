@@ -35,7 +35,8 @@ public sealed partial class ShopifyHttpClient(
     private const string OrderRichCustomerFields = " email phone customer { id displayName firstName lastName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone }";
     private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
     private const string OrderAddressOnlyFields = " shippingAddress { firstName lastName name } billingAddress { firstName lastName name }";
-    private const string OrderFinancialFields = " currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } currentTotalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } variant { sku barcodes(first:1) { nodes { value } } } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt updatedAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
+    // taxesIncluded says whether the line prices carry the tax; each line's taxLines report its tax rates (fractions).
+    private const string OrderFinancialFields = " taxesIncluded currentTotalPriceSet { shopMoney { amount currencyCode } } totalDiscountsSet { shopMoney { amount currencyCode } } currentTotalDiscountsSet { shopMoney { amount currencyCode } } lineItems(first:250) { nodes { id name sku quantity currentQuantity originalUnitPriceSet { shopMoney { amount currencyCode } } taxLines { rate } variant { sku barcodes(first:1) { nodes { value } } } } } fulfillments(first:50) { id status displayStatus deliveredAt createdAt updatedAt trackingInfo { number company url } events(first:50) { nodes { status happenedAt } } fulfillmentLineItems(first:250) { nodes { id quantity lineItem { id } } } } refunds(first:100) { id createdAt totalRefundedSet { shopMoney { amount currencyCode } } }";
     // The store's own product types are the categories mapped for Shopify (productTypes, 2026-10, read_products).
     private const string ProductTypesQuery = "query($first:Int!, $after:String) { productTypes(first:$first, after:$after) { nodes pageInfo { hasNextPage endCursor } } }";
 
@@ -1356,8 +1357,14 @@ public sealed partial class ShopifyHttpClient(
         var allLineNodes = order.GetProperty("lineItems").GetProperty("nodes").EnumerateArray().ToList();
         var lineNodes = allLineNodes.Where(IsReadableOrderLine).ToList();
         var unreadableLineIds = allLineNodes.Where(node => !IsReadableOrderLine(node)).Select(OrderLineIdOrNull).ToList();
+        // Order.taxesIncluded: true when the line prices and the order totals both carry the tax. When false, the line
+        // prices leave the tax out while currentTotalPriceSet still holds it; every line price then has its own
+        // reported tax added (MapOrderLine), so a line carries what the customer paid per unit, as on every other
+        // marketplace, and the invoice (which reads unit prices as VAT inclusive) agrees with the order total. A read
+        // without the field keeps the prices as they came.
+        var taxesIncluded = !(order.TryGetProperty("taxesIncluded", out var taxesIncludedElement) && taxesIncludedElement.ValueKind == JsonValueKind.False);
         var lines = lineNodes
-            .Select(line => MapOrderLine(line, financialStatus, fulfilledByLine))
+            .Select(line => MapOrderLine(line, financialStatus, fulfilledByLine, taxesIncluded))
             .Select(line => line.CancelledQuantity > 0 && orderCancelledAt is not null ? line with { CancelledAt = orderCancelledAt } : line)
             .ToList();
         // currentQuantity also leaves out refunded units. A removed unit that had been fulfilled is a return (or a
@@ -1435,7 +1442,11 @@ public sealed partial class ShopifyHttpClient(
                 UnreadableLineCount: unreadableLeft));
         }
 
-        var (grossAmount, discountAmount, netAmount) = OrderAmounts(order, lines, returnedLines.Select(item => (item.Line, item.Quantity)).ToList());
+        // Without taxes included, the discounts Shopify reports leave the tax out too: they take the lines' share of tax.
+        var lineTotalBeforeTax = lineNodes.Sum(node => (DecimalOrNull(node, "quantity") ?? DecimalOrNull(node, "currentQuantity") ?? 0m) * UnitPriceAsReported(node));
+        var lineTotalWithTax = lines.Sum(line => line.Quantity * line.UnitPrice);
+        var discountTaxFactor = !taxesIncluded && lineTotalBeforeTax > 0 ? lineTotalWithTax / lineTotalBeforeTax : 1m;
+        var (grossAmount, discountAmount, netAmount) = OrderAmounts(order, lines, returnedLines.Select(item => (item.Line, item.Quantity)).ToList(), discountTaxFactor);
         packages = SplitOrderAmounts(packages, lines, grossAmount, discountAmount);
 
         var refunds = order.TryGetProperty("refunds", out var refundsElement) && refundsElement.ValueKind == JsonValueKind.Array
@@ -1576,11 +1587,14 @@ public sealed partial class ShopifyHttpClient(
     // are after cancellations, edits and returns alike; the original totalDiscountsSet still holds the discount of
     // a cancelled line, so pairing it with the current total overstated the gross (gross = net + discount). A
     // returned unit stays in the sale, so its value is added back with its share of the original discount.
-    internal static (decimal Gross, decimal Discount, decimal Net) OrderAmounts(JsonElement order, IReadOnlyList<RemoteOrderLine> lines, IReadOnlyList<(RemoteOrderLine Line, decimal Quantity)> returned)
+    // discountTaxFactor turns a discount reported without tax (Order.taxesIncluded false) into one with tax, the way
+    // the line prices were (1 when taxes are included).
+    internal static (decimal Gross, decimal Discount, decimal Net) OrderAmounts(JsonElement order, IReadOnlyList<RemoteOrderLine> lines, IReadOnlyList<(RemoteOrderLine Line, decimal Quantity)> returned, decimal discountTaxFactor = 1m)
     {
         var currentTotal = MoneyAmount(order, "currentTotalPriceSet") ?? 0m;
-        var originalDiscount = MoneyAmount(order, "totalDiscountsSet");
-        var currentDiscount = MoneyAmount(order, "currentTotalDiscountsSet") ?? originalDiscount ?? 0m;
+        var originalDiscount = MoneyAmount(order, "totalDiscountsSet") is { } reportedOriginal ? Math.Round(reportedOriginal * discountTaxFactor, 2, MidpointRounding.AwayFromZero) : (decimal?)null;
+        var reportedCurrent = MoneyAmount(order, "currentTotalDiscountsSet");
+        var currentDiscount = (reportedCurrent is { } current ? Math.Round(current * discountTaxFactor, 2, MidpointRounding.AwayFromZero) : (decimal?)null) ?? originalDiscount ?? 0m;
         var returnedValue = returned.Sum(item => item.Line.UnitPrice * item.Quantity);
         var originalValue = lines.Sum(line => line.UnitPrice * line.Quantity);
         var returnedDiscount = returnedValue > 0 && originalValue > 0
@@ -1614,7 +1628,38 @@ public sealed partial class ShopifyHttpClient(
             ? ShortId(id.GetString())
             : null;
 
-    private static RemoteOrderLine MapOrderLine(JsonElement line, string financialStatus, IReadOnlyDictionary<string, decimal> fulfilledByLine)
+    private static decimal UnitPriceAsReported(JsonElement line) =>
+        line.TryGetProperty("originalUnitPriceSet", out var priceSet) && priceSet.ValueKind == JsonValueKind.Object
+        && priceSet.TryGetProperty("shopMoney", out var shopMoney) && shopMoney.ValueKind == JsonValueKind.Object
+            ? DecimalOrNull(shopMoney, "amount") ?? 0m
+            : 0m;
+
+    /// <summary>
+    /// The line's tax rate as a percentage: the sum of the rates of its taxLines (LineItem.taxLines, each rate a
+    /// fraction, 0.2 = 20%). Null when the line reports no tax line or a tax line without a numeric rate: the rate is
+    /// unknown then, never 0 (InvoiceIssuePolicy judges the same raw line JSON).
+    /// </summary>
+    internal static decimal? LineTaxRatePercent(JsonElement line)
+    {
+        if (!line.TryGetProperty("taxLines", out var taxLines)) return null;
+        // The list InvoiceIssuePolicy reads: a single object counts as one tax line there too.
+        IEnumerable<JsonElement> items = taxLines.ValueKind switch
+        {
+            JsonValueKind.Array => taxLines.EnumerateArray().ToList(),
+            JsonValueKind.Object => [taxLines],
+            _ => []
+        };
+        if (!items.Any()) return null;
+        var total = 0m;
+        foreach (var taxLine in items)
+        {
+            if (taxLine.ValueKind != JsonValueKind.Object || DecimalOrNull(taxLine, "rate") is not { } rate) return null;
+            total += rate;
+        }
+        return Math.Round(total * 100m, 4, MidpointRounding.AwayFromZero);
+    }
+
+    private static RemoteOrderLine MapOrderLine(JsonElement line, string financialStatus, IReadOnlyDictionary<string, decimal> fulfilledByLine, bool taxesIncluded = true)
     {
         var variant = line.TryGetProperty("variant", out var variantElement) && variantElement.ValueKind == JsonValueKind.Object ? variantElement : default;
         var lineSku = line.TryGetProperty("sku", out var skuElement) && skuElement.ValueKind == JsonValueKind.String ? skuElement.GetString() : null;
@@ -1625,8 +1670,13 @@ public sealed partial class ShopifyHttpClient(
         var orderedQuantity = DecimalOrNull(line, "quantity") ?? DecimalOrNull(line, "currentQuantity") ?? 0m;
         var unfulfilled = Math.Max(0m, orderedQuantity - fulfilledByLine.GetValueOrDefault(lineId));
         var cancelledQuantity = Math.Min(RemovedQuantity(line), unfulfilled);
-        var unitPrice = DecimalOrNull(line.GetProperty("originalUnitPriceSet").GetProperty("shopMoney"), "amount") ?? 0m;
-        return new(lineId, string.IsNullOrWhiteSpace(sku) ? "SHOPIFY-LINE" : sku!, barcode, line.GetProperty("name").GetString() ?? "Shopify ürünü", orderedQuantity, unitPrice, 0m, financialStatus, line.GetRawText(), cancelledQuantity);
+        var vatRate = LineTaxRatePercent(line);
+        var unitPrice = UnitPriceAsReported(line);
+        // Prices without tax take the line's own reported tax, so the line carries what the customer paid per unit (the
+        // raw snapshot keeps Shopify's price before tax). A line without a reported rate was charged no tax: its price
+        // is already what was paid.
+        if (!taxesIncluded && vatRate is > 0) unitPrice = Math.Round(unitPrice * (1m + vatRate.Value / 100m), 4, MidpointRounding.AwayFromZero);
+        return new(lineId, string.IsNullOrWhiteSpace(sku) ? "SHOPIFY-LINE" : sku!, barcode, line.GetProperty("name").GetString() ?? "Shopify ürünü", orderedQuantity, unitPrice, vatRate, financialStatus, line.GetRawText(), cancelledQuantity);
     }
 
     internal static string FulfillmentStatus(JsonElement fulfillment)

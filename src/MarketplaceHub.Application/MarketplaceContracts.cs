@@ -790,10 +790,14 @@ public interface IConnectionPort
     Task<AdapterResult<IReadOnlyList<CapabilityEvidence>>> DiscoverCapabilitiesAsync(AdapterContext context, CancellationToken cancellationToken);
 }
 
-// Order finance (commission, allowance, transfer date): read-only, asked for one order at a time.
-public sealed record RemoteFinanceTransaction(string TransactionCode, string Status, decimal Amount, decimal Commission, decimal Allowance, decimal CouponDiscount, decimal IntegrationAmount, decimal CargoDebt, decimal Stoppage, int Installments, DateTimeOffset? TransactionDate, DateTimeOffset? TransferredDate);
+// Order finance (commission, allowance, transfer date): read-only, asked for one order at a time. A movement always has
+// its code, amount, allowance and date (one without them is in Skipped instead); Commission is null when not sent.
+public sealed record RemoteFinanceTransaction(string TransactionCode, string Status, decimal Amount, decimal? Commission, decimal Allowance, decimal CouponDiscount, decimal IntegrationAmount, decimal CargoDebt, decimal Stoppage, int Installments, DateTimeOffset TransactionDate, DateTimeOffset? TransferredDate);
 public sealed record RemoteCommissionInvoice(string OrderNumber, string? InvoiceNumber, DateTimeOffset? InvoiceDate, decimal VatAmount, string? OperationStatus);
-public sealed record RemoteOrderFinance(IReadOnlyList<RemoteFinanceTransaction> Transactions, IReadOnlyList<RemoteCommissionInvoice> CommissionInvoices);
+public sealed record RemoteOrderFinance(IReadOnlyList<RemoteFinanceTransaction> Transactions, IReadOnlyList<RemoteCommissionInvoice> CommissionInvoices, IReadOnlyList<RemoteSkippedFinanceRecord>? Skipped = null)
+{
+    public IReadOnlyList<RemoteSkippedFinanceRecord> Skipped { get; init; } = Skipped ?? [];
+}
 
 public interface IOrderFinancePort
 {
