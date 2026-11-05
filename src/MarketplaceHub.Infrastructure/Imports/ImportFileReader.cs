@@ -47,11 +47,11 @@ public static class ImportFileReader
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true); ValidateArchive(archive, maximumBytes);
         var sharedStrings = ReadSharedStrings(archive); var sheet = archive.Entries.Where(entry => entry.FullName.StartsWith("xl/worksheets/sheet", StringComparison.OrdinalIgnoreCase) && entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).OrderBy(entry => entry.FullName, StringComparer.Ordinal).FirstOrDefault() ?? throw new InvalidDataException("XLSX worksheet bulunamadı.");
         using var source = sheet.Open(); using var reader = XmlReader.Create(source, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, IgnoreComments = true });
-        List<string>? headers = null; var rowNumber = 0;
+        List<string>? headers = null; var rowNumber = 0; var budget = new XlsxBudget();
         while (reader.Read())
         {
-            if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "row") continue; rowNumber = int.TryParse(reader.GetAttribute("r"), NumberStyles.None, CultureInfo.InvariantCulture, out var parsedRow) ? parsedRow : rowNumber + 1; var cells = ReadXlsxRow(reader.ReadSubtree(), sharedStrings);
-            if (headers is null) { headers = Dense(cells); if (headers.Count == 0 || headers.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("XLSX başlıkları geçersiz."); continue; }
+            if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "row") continue; rowNumber = RowNumber(reader, rowNumber, budget); var cells = ReadXlsxRow(reader.ReadSubtree(), sharedStrings, budget);
+            if (headers is null) { headers = Dense(cells, budget); if (headers.Count == 0 || headers.Any(string.IsNullOrWhiteSpace)) throw new InvalidDataException("XLSX başlıkları geçersiz."); continue; }
             var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase); var errors = new List<string>();
             foreach (var (index, cell) in cells)
             {
@@ -70,13 +70,13 @@ public static class ImportFileReader
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true); ValidateArchive(archive, maximumBytes);
         var sharedStrings = ReadSharedStrings(archive); var sheet = archive.Entries.Where(entry => entry.FullName.StartsWith("xl/worksheets/sheet", StringComparison.OrdinalIgnoreCase) && entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)).OrderBy(entry => entry.FullName, StringComparer.Ordinal).FirstOrDefault() ?? throw new InvalidDataException("XLSX worksheet bulunamadı.");
         using var source = sheet.Open(); using var reader = XmlReader.Create(source, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, IgnoreComments = true });
-        List<string>? headers = null; var rows = new List<XlsxTableRow>(); var rowNumber = 0;
+        List<string>? headers = null; var rows = new List<XlsxTableRow>(); var rowNumber = 0; var budget = new XlsxBudget();
         while (reader.Read())
         {
-            if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "row") continue; rowNumber = int.TryParse(reader.GetAttribute("r"), NumberStyles.None, CultureInfo.InvariantCulture, out var parsedRow) ? parsedRow : rowNumber + 1; var cells = ReadXlsxRow(reader.ReadSubtree(), sharedStrings);
-            if (headers is null) { headers = Dense(cells); continue; }
+            if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "row") continue; rowNumber = RowNumber(reader, rowNumber, budget); var cells = ReadXlsxRow(reader.ReadSubtree(), sharedStrings, budget);
+            if (headers is null) { headers = Dense(cells, budget); continue; }
             if (cells.Values.All(cell => string.IsNullOrWhiteSpace(cell.Value))) continue;
-            rows.Add(new XlsxTableRow(rowNumber, Dense(cells), cells.Where(cell => cell.Value.IsFormula).Select(cell => cell.Key).ToArray()));
+            rows.Add(new XlsxTableRow(rowNumber, Dense(cells, budget), cells.Where(cell => cell.Value.IsFormula).Select(cell => cell.Key).ToArray()));
         }
         return new XlsxTable(headers ?? [], rows);
     }
@@ -191,14 +191,45 @@ public static class ImportFileReader
         return result;
     }
 
-    private static Dictionary<int, XlsxCell> ReadXlsxRow(XmlReader reader, IReadOnlyList<string> sharedStrings)
+    // Excel's own sheet limits, and the reader's caps on what a file may make it hold. A cell reference names its column
+    // with one to three letters (A..XFD) and its row with digits; a row or cell past them, or a file with more rows,
+    // columns or cells than the caps, is refused as invalid (the upload answers 422) instead of being expanded into
+    // memory. The files read here (product transfer up to 20,000 rows, commission tariffs, promotion offers, the catalog
+    // import) stay far below the caps.
+    internal const int ExcelMaximumColumns = 16_384;
+    internal const int ExcelMaximumRows = 1_048_576;
+    internal const int MaximumRows = 200_000;
+    internal const int MaximumColumns = 512;
+    internal const long MaximumCells = 5_000_000;
+
+    private sealed class XlsxBudget
     {
-        var result = new Dictionary<int, XlsxCell>();
+        public int Rows;
+        public long Cells;
+    }
+
+    private static int RowNumber(XmlReader reader, int previous, XlsxBudget budget)
+    {
+        if (++budget.Rows > MaximumRows) throw new InvalidDataException($"XLSX en fazla {MaximumRows:N0} satır içerebilir; dosyayı bölerek yükleyin.");
+        var text = reader.GetAttribute("r");
+        if (text is null) return previous + 1;
+        if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var number) || number is < 1 or > ExcelMaximumRows)
+            throw new InvalidDataException($"XLSX satır numarası geçersiz: \"{Shorten(text)}\".");
+        return number;
+    }
+
+    private static Dictionary<int, XlsxCell> ReadXlsxRow(XmlReader reader, IReadOnlyList<string> sharedStrings, XlsxBudget budget)
+    {
+        var result = new Dictionary<int, XlsxCell>(); var previous = -1;
         using (reader)
         {
             while (reader.Read())
             {
-                if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "c") continue; var reference = reader.GetAttribute("r") ?? string.Empty; var type = reader.GetAttribute("t"); var index = ColumnIndex(reference); var value = string.Empty; var formula = false;
+                // A cell without a reference (it is optional) sits right after the one before it.
+                if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "c") continue; var reference = reader.GetAttribute("r"); var type = reader.GetAttribute("t"); var index = reference is null ? previous + 1 : ColumnIndex(reference); var value = string.Empty; var formula = false;
+                if (index >= MaximumColumns) throw new InvalidDataException($"XLSX en fazla {MaximumColumns:N0} sütun içerebilir.");
+                if (++budget.Cells > MaximumCells) throw new InvalidDataException($"XLSX en fazla {MaximumCells:N0} hücre içerebilir; dosyayı bölerek yükleyin.");
+                previous = index;
                 using var cellReader = reader.ReadSubtree(); while (cellReader.Read()) { if (cellReader.NodeType == XmlNodeType.Element && cellReader.LocalName == "f") { formula = true; cellReader.Skip(); } else if (cellReader.NodeType == XmlNodeType.Element && cellReader.LocalName is "v" or "t") value = cellReader.ReadElementContentAsString(); }
                 if (type == "s" && int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var sharedIndex) && sharedIndex >= 0 && sharedIndex < sharedStrings.Count) value = sharedStrings[sharedIndex]; result[index] = new XlsxCell(value, formula);
             }
@@ -206,8 +237,34 @@ public static class ImportFileReader
         return result;
     }
 
-    private static int ColumnIndex(string reference) { var index = 0; foreach (var character in reference.TakeWhile(char.IsLetter)) index = checked(index * 26 + char.ToUpperInvariant(character) - 'A' + 1); return Math.Max(0, index - 1); }
-    private static List<string> Dense(Dictionary<int, XlsxCell> cells) { var result = new List<string>(); for (var index = 0; index <= cells.Keys.DefaultIfEmpty(-1).Max(); index++) result.Add(cells.TryGetValue(index, out var cell) ? cell.Value.Trim() : string.Empty); return result; }
+    // The zero-based column of an A1 reference ("B7" -> 1). Anything but one to three ASCII letters followed by a row
+    // number within Excel's sheet is refused, and so is a column past XFD.
+    internal static int ColumnIndex(string reference)
+    {
+        var letters = 0;
+        while (letters < reference.Length && char.IsAsciiLetter(reference[letters])) letters++;
+        var digits = reference.AsSpan(letters);
+        if (letters is < 1 or > 3 || digits.Length is < 1 or > 7 || digits.ContainsAnyExceptInRange('0', '9') || digits[0] == '0'
+            || int.Parse(digits, NumberStyles.None, CultureInfo.InvariantCulture) > ExcelMaximumRows)
+            throw new InvalidDataException($"XLSX hücre başvurusu geçersiz: \"{Shorten(reference)}\".");
+        var index = 0;
+        for (var position = 0; position < letters; position++) index = index * 26 + char.ToUpperInvariant(reference[position]) - 'A' + 1;
+        if (index > ExcelMaximumColumns) throw new InvalidDataException($"XLSX hücre başvurusu Excel'in son sütununu (XFD) aşıyor: \"{Shorten(reference)}\".");
+        return index - 1;
+    }
+
+    private static string Shorten(string text) => text.Length <= 16 ? text : text[..16] + "…";
+
+    // A row as a list up to its last cell; the empty columns before that cell count toward the cell cap.
+    private static List<string> Dense(Dictionary<int, XlsxCell> cells, XlsxBudget budget)
+    {
+        var width = cells.Keys.DefaultIfEmpty(-1).Max() + 1;
+        budget.Cells += width - cells.Count;
+        if (budget.Cells > MaximumCells) throw new InvalidDataException($"XLSX en fazla {MaximumCells:N0} hücre içerebilir; dosyayı bölerek yükleyin.");
+        var result = new List<string>(width);
+        for (var index = 0; index < width; index++) result.Add(cells.TryGetValue(index, out var cell) ? cell.Value.Trim() : string.Empty);
+        return result;
+    }
     private static void ValidateRequired(IReadOnlyDictionary<string, string> values, ICollection<string> errors) { if (!values.TryGetValue("title", out var title) || string.IsNullOrWhiteSpace(title)) errors.Add("title: zorunlu"); if (!values.TryGetValue("sku", out var sku) || string.IsNullOrWhiteSpace(sku)) errors.Add("sku: zorunlu"); }
 
     // A spreadsheet runs a cell that starts with '=', '@', or '+'/'-' followed by something that is not a

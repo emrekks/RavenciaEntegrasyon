@@ -280,17 +280,19 @@ internal static class PayoutBuilder
         : row.CommissionAmount;
 
     // Whether a record still waits for its payout: not paid, whatever its due day (Avrupa is paid about monthly, so a
-    // record past its due day may simply wait for the next payout).
-    public static bool Open(PayoutLineView line) => line.Status is Expected or Unknown && line.DueDay is not null;
+    // record past its due day may simply wait for the next payout). One with no due day read (Pazarama and Hepsiburada
+    // can write one) is unpaid too: it counts in the balance and waits apart, UNDATED.
+    public static bool Open(PayoutLineView line) => line.Status is Expected or Unknown;
 
     // The day an open record is expected to be paid on. Türkiye-Körfez, as Trendyol paid it in October-November 2026:
     // Monday's payout carries the sales due Monday to Wednesday, Thursday's those due Thursday to Sunday, and a deduction
     // goes with the first payout on or after its due day. A public holiday moves a payout (29 Oct 2026 to the 30th), so
     // the day is an estimate. The other regions' payout days are not known: their records stand on their due day.
-    // A day already past moves to the next one to come. Kind: PAYOUT_DAY (estimated payout day) or DUE_DAY.
+    // A day already past moves to the next one to come. Kind: PAYOUT_DAY (estimated payout day) or DUE_DAY; a record
+    // with no due day is UNDATED (shown on today, never in a payout's estimate).
     public static (DateOnly Day, string Kind) Expect(PayoutRow row, PayoutLineView line, DateOnly today)
     {
-        var due = line.DueDay!.Value;
+        if (line.DueDay is not { } due) return (today, Undated);
         // A record past its due day with no payout day known (Avrupa is paid about monthly, Pazarama when it says) waits
         // apart, OVERDUE, never in the next payout's estimate.
         // Hepsiburada pays every Tuesday the records due since the Tuesday before (Sep-Nov 2026: due Wednesday 28 Oct, paid
@@ -363,13 +365,14 @@ internal static class PayoutBuilder
                 .Select(group => Group($"paid:{group.Key.ConnectionId:N}:{group.Key.Day:yyyy-MM-dd}", "PAID_DAY", stores, group.Key.ConnectionId, NoRegion, null, group.Key.Day,
                     totals.TryGetValue((group.Key.ConnectionId, group.Key.Day), out var total) ? total :
                     group.Sum(x => x.Line.Net), group.Sum(x => x.Line.Net), group.Count(), Paid)))
-            .OrderByDescending(x => x.Day).ThenBy(x => x.PlatformCode).ToList();
+            // Newest first; on one day the larger payout first, then a fixed key, so the order never depends on the query.
+            .OrderByDescending(x => x.Day).ThenByDescending(x => x.Amount).ThenBy(x => x.Key, StringComparer.Ordinal).ToList();
 
         var regions = new[] { TrGulf, Europe, Azerbaijan, UnknownRegion }
             .Select(region =>
             {
                 var due = open.Where(x => x.Line.Region == region).ToList();
-                var next = upcoming.Where(x => x.Region == region && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0);
+                var next = upcoming.Where(x => x.Region == region && !Waiting(x.Kind)).GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0);
                 var waiting = pending.Where(x => x.Region == region).ToList();
                 return new PayoutRegionView(region, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
                     overdue.Where(x => x.Line.Region == region).Sum(x => x.Line.Net), waiting.Sum(x => x.Amount), waiting.Count);
@@ -382,7 +385,7 @@ internal static class PayoutBuilder
             .Select(code =>
             {
                 var due = open.Where(x => x.Row.PlatformCode == code).ToList();
-                var next = upcoming.Where(x => x.PlatformCode == code && x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0);
+                var next = upcoming.Where(x => x.PlatformCode == code && !Waiting(x.Kind)).GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0);
                 var waiting = pending.Where(x => x.Platform == code).ToList();
                 return new PayoutPlatformView(code, due.Sum(x => x.Line.Net), due.Count, next?.Key, next?.Sum(x => x.Amount),
                     overdue.Where(x => x.Row.PlatformCode == code).Sum(x => x.Line.Net), waiting.Sum(x => x.Amount), waiting.Count);
@@ -393,14 +396,20 @@ internal static class PayoutBuilder
             && Day(x.TransactionDate) >= today.AddDays(-daysBack)).ToList();
         // The next payout: the first day to come whose estimate is above zero (a day that nets to nothing or less pays
         // nothing: the marketplace takes it off a later payout), the waiting overdue records left out.
-        var nextDay = upcoming.Where(x => x.Kind != "OVERDUE").GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0)?.Key;
+        var nextDay = upcoming.Where(x => !Waiting(x.Kind)).GroupBy(x => x.Day).OrderBy(x => x.Key).FirstOrDefault(day => day.Sum(x => x.Amount) > 0)?.Key;
         var next = nextDay is { } first
-            ? upcoming.Where(x => x.Day == first && x.Kind != "OVERDUE").GroupBy(x => 1).Select(group => group.First() with { Key = $"next:{first:yyyy-MM-dd}", Amount = group.Sum(x => x.Amount), Records = group.Sum(x => x.Records) }).Single()
+            ? upcoming.Where(x => x.Day == first && !Waiting(x.Kind)).GroupBy(x => 1).Select(group => group.First() with { Key = $"next:{first:yyyy-MM-dd}", Amount = group.Sum(x => x.Amount), Records = group.Sum(x => x.Records) }).Single()
             : null;
-        return new(today, daysBack, open.Sum(x => x.Line.Net), open.Count, next, past.FirstOrDefault(x => x.Kind == "PAYOUT") ?? past.FirstOrDefault(),
+        return new(today, daysBack, open.Sum(x => x.Line.Net), open.Count, next, past.FirstOrDefault(x => x.Amount > 0) ?? past.FirstOrDefault(),
             overdue.Sum(x => x.Line.Net), overdue.Count, early.Sum(x => Math.Abs(x.Credit - x.Debt)), early.Count, regions, marketplaces, upcoming, past, coverage,
             pending.Sum(x => x.Amount), pending.Count);
     }
+
+    public const string Undated = "UNDATED";
+
+    // The open records that wait apart, in no payout's estimate: past their due day with no payout day known, or with no
+    // due day at all.
+    private static bool Waiting(string kind) => kind is "OVERDUE" or Undated;
 
     // A payout's region by Trendyol's code or name; live since Nov 2026: TR "Türkiye, Körfez", AZ "Azerbaycan",
     // CEE "Avrupa". One no rule names stays UNKNOWN and is shown by the name Trendyol gave it.

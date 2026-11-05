@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using MarketplaceHub.Application;
 
 namespace MarketplaceHub.Api.Security;
 
@@ -99,7 +100,10 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
                 // changes to other roles (IsElevated), and environment and store changes to everyone.
                 // Credentials, stage test orders, deleting or emptying a connection's data, and registering the
                 // marketplace's notifications (a setting on the store's side) are for administrators.
+                // A write switch (PUT /connections/{id}/sync-policies/PRICE_WRITE, STOCK_WRITE, ...) is a permission like
+                // the master external-write switch, and as elevated (YENİ-03).
                 return last is "credential" or "stage-test-order-jobs" or "deep-delete" or "data-reset" or "full-reset" or "instant-notifications"
+                        || segments.Length == 6 && segments[4].Equals("sync-policies", StringComparison.OrdinalIgnoreCase) && MarketplaceExternalWritePolicies.IsPermissionPolicy(last)
                     ? ElevatedRoles
                     : OperationalRoles;
             case "shipments":
@@ -113,6 +117,10 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
 
     // Owner or administrator: for the checks an endpoint makes on what a request changes, not only on its path (G5).
     internal static bool IsElevated(string? role) => Normalize(role) is { Length: > 0 } normalized && ElevatedRoles.Contains(normalized);
+
+    // The roles that may open invoice documents (the panel's /content routes). A bearer invoice link opens the same
+    // document without a session, so it is shown only to them (InvoiceLinkVisibility, YENİ-02).
+    internal static bool CanOpenInvoiceDocuments(string? role) => Normalize(role) is { Length: > 0 } normalized && InvoiceRoles.Contains(normalized);
 
     private static string Normalize(string? role) => role?.Replace("_", string.Empty, StringComparison.Ordinal).ToUpperInvariant() switch
     {

@@ -88,12 +88,14 @@ public static class MarketplaceEndpoints
         api.MapPut("/connections/{id:guid}/sync-policies/{resourceType}", async (Guid id, string resourceType, UpdateSyncPolicyCommand command, HttpContext http, IMarketplaceConnectionService service) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http); var expected = OptionalIfMatch(http, out var malformed); if (malformed is not null) return malformed;
-            return Result(await service.UpsertSyncPolicyAsync(tenant.TenantId, id, resourceType, expected, command, http.RequestAborted), value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); });
+            var result = await service.UpsertSyncPolicyAsync(tenant.TenantId, id, resourceType, expected, command, http.RequestAborted, RoleAuthorizationMiddleware.IsElevated(tenant.Role));
+            if (result.Error is { Code: "PERMISSION_DENIED" } denied) return Problem(http, denied);
+            return Result(result, value => { http.Response.Headers.ETag = $"\"v{value.Version}\""; return Results.Ok(value); });
         });
 
         api.MapGet("/orders", async (HttpContext http, IMarketplaceSalesService service, int? limit, int? page, string? after, string? status, string? search, string? platform, string? platforms, string? listing, string? cargo, string? invoice, string? invoiceType, string? invoiceRegion, DateTimeOffset? dateFrom, DateTimeOffset? dateTo, string? sort, bool? labelPrinted, DateTimeOffset? cancelFrom, DateTimeOffset? cancelTo, bool? partialCancel, bool? micro, bool? resentNotShipped) =>
             Tenant(http) is { } tenant
-                ? Results.Ok(await service.OrdersAsync(tenant.TenantId, PageSize(limit), PageNumber(page), after, OrderQuery(status, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, labelPrinted, cancelFrom, cancelTo, partialCancel, micro, resentNotShipped), http.RequestAborted))
+                ? Results.Ok(InvoiceLinkVisibility.ForRole(await service.OrdersAsync(tenant.TenantId, PageSize(limit), PageNumber(page), after, OrderQuery(status, search, platform, platforms, listing, cargo, invoice, invoiceType, invoiceRegion, dateFrom, dateTo, sort, labelPrinted, cancelFrom, cancelTo, partialCancel, micro, resentNotShipped), http.RequestAborted), tenant.Role))
                 : Unauthorized(http));
         // Records that a shipping label of the order was printed, so every computer sees it.
         api.MapPost("/orders/{id:guid}/label-printed", async (Guid id, HttpContext http, IMarketplaceSalesService service) =>
@@ -115,7 +117,7 @@ public static class MarketplaceEndpoints
                 : Unauthorized(http));
         api.MapPost("/orders/shopify-csv-import", ImportShopifyOrdersAsync).DisableAntiforgery();
         api.MapGet("/orders/product-image", async (HttpContext http, IMarketplaceSalesService service, string? barcode, Guid? connectionId, string? productName) => Tenant(http) is { } tenant ? Result(await service.ProductImageAsync(tenant.TenantId, barcode, http.TraceIdentifier, http.RequestAborted, connectionId, productName), value => Results.Redirect(value)) : Unauthorized(http)).RequireSameOriginFetch();
-        api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), x => x.Version) : Unauthorized(http));
+        api.MapGet("/orders/{id:guid}", async (Guid id, HttpContext http, IMarketplaceSalesService service) => Tenant(http) is { } tenant ? WithEtag(http, InvoiceLinkVisibility.ForRole(await service.OrderAsync(tenant.TenantId, id, http.RequestAborted), tenant.Role), x => x.Version) : Unauthorized(http));
         api.MapGet("/orders/{id:guid}/finance", async (Guid id, HttpContext http, AppDbContext db, IOrderFinancePort finance, TimeProvider clock) =>
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
