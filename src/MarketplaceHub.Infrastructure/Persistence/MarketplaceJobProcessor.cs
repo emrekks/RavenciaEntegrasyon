@@ -12493,7 +12493,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var claimChanged = false;
             var previousRawStatus = claim.RawStatus;
             var previousClaimStatus = claim.Status;
-            var remoteIsFresh = remote.LastModifiedAt >= claim.LastRemoteModifiedAt;
+            // A claim read without a change time cannot be called stale: unknown stays unknown, so it is taken as fresh.
+            var remoteIsFresh = remote.LastModifiedAt is not { } remoteModifiedAt || claim.LastRemoteModifiedAt is not { } storedModifiedAt || remoteModifiedAt >= storedModifiedAt;
             var partialLineDecisionPending = string.Equals(claim.RawStatus, "PARTIAL_LINE_DECISION_PENDING", StringComparison.Ordinal) && !allLinesKnown;
             if (remoteIsFresh && !partialLineDecisionPending && (lineStatusOverrides || ReturnClaimStateMachine.CanTransition(claim.Status, target)))
             {
@@ -12502,10 +12503,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 claimChanged = ReturnStatusObservationChanges(claim, target, remote.RawStatus, remote.LastModifiedAt);
                 claim.Status = target;
                 claim.RawStatus = remote.RawStatus;
-                claim.LastRemoteModifiedAt = remote.LastModifiedAt;
+                claim.LastRemoteModifiedAt = remote.LastModifiedAt ?? claim.LastRemoteModifiedAt;
             }
             else if (remoteIsFresh && !partialLineDecisionPending
-                && (claim.Status != target || !string.Equals(claim.RawStatus, remote.RawStatus, StringComparison.Ordinal) || claim.LastRemoteModifiedAt != remote.LastModifiedAt))
+                && (claim.Status != target || !string.Equals(claim.RawStatus, remote.RawStatus, StringComparison.Ordinal) || (remote.LastModifiedAt is not null && claim.LastRemoteModifiedAt != remote.LastModifiedAt)))
             {
                 // A refused transition still records what the marketplace
                 // reports, so the claim is not re-read as unchanged forever;
@@ -12515,7 +12516,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var previousStatus = claim.Status;
                 if (authoritative) claim.Status = target;
                 claim.RawStatus = remote.RawStatus;
-                claim.LastRemoteModifiedAt = remote.LastModifiedAt;
+                claim.LastRemoteModifiedAt = remote.LastModifiedAt ?? claim.LastRemoteModifiedAt;
                 claimChanged = true;
                 if (previousStatus != target)
                     await RecordIssue(tenantId, $"return-transition:{claim.Id:N}:{Wire(target)}", "RETURN_STATUS_TRANSITION_REFUSED",
@@ -12641,10 +12642,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     // Whether a read of a claim says anything new about its status: another status, raw status or marketplace change time.
-    internal static bool ReturnStatusObservationChanges(ReturnClaim claim, ReturnClaimStatus target, string remoteRawStatus, DateTimeOffset remoteLastModifiedAt) =>
+    internal static bool ReturnStatusObservationChanges(ReturnClaim claim, ReturnClaimStatus target, string remoteRawStatus, DateTimeOffset? remoteLastModifiedAt) =>
         claim.Status != target
         || !string.Equals(claim.RawStatus, remoteRawStatus, StringComparison.Ordinal)
-        || claim.LastRemoteModifiedAt != remoteLastModifiedAt;
+        || (remoteLastModifiedAt is not null && claim.LastRemoteModifiedAt != remoteLastModifiedAt);
 
     internal static ReturnClaim NewReturnClaim(Guid tenantId, Guid connectionId, Guid orderId, RemoteReturnClaim remote, ReturnClaimStatus status, DateTimeOffset now) => new()
     {

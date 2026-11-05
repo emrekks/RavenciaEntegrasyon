@@ -72,9 +72,9 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         var page = Math.Max(1, query.Page); var limit = Math.Clamp(query.Limit, 1, 100);
         var orderedRows = query.Sort.Trim().ToUpperInvariant() switch
         {
-            "OLDEST" => rows.OrderBy(row => row.Question.CreatedAt).ThenBy(row => row.Question.Id),
-            "UPDATED" => rows.OrderByDescending(row => row.Question.LastRemoteModifiedAt).ThenByDescending(row => row.Question.CreatedAt),
-            _ => rows.OrderByDescending(row => row.Question.CreatedAt).ThenByDescending(row => row.Question.Id)
+            "OLDEST" => rows.OrderBy(row => row.Question.CreatedAt == null).ThenBy(row => row.Question.CreatedAt).ThenBy(row => row.Question.Id),
+            "UPDATED" => rows.OrderBy(row => row.Question.LastRemoteModifiedAt == null).ThenByDescending(row => row.Question.LastRemoteModifiedAt).ThenByDescending(row => row.Question.CreatedAt),
+            _ => rows.OrderBy(row => row.Question.CreatedAt == null).ThenByDescending(row => row.Question.CreatedAt).ThenByDescending(row => row.Question.Id)
         };
         var items = await orderedRows
             .Skip((page - 1) * limit).Take(limit).Select(row => Map(row.Question, row.Connection.PlatformCode, row.Connection.DisplayName)).ToListAsync(cancellationToken);
@@ -618,7 +618,8 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         var row = await db.MarketplaceQuestions.SingleOrDefaultAsync(candidate => candidate.TenantId == tenantId && candidate.ConnectionId == connectionId && candidate.ExternalQuestionId == remote.Id, cancellationToken);
         var isNew = row is null;
         row ??= new MarketplaceQuestion { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ExternalQuestionId = remote.Id, Kind = remote.Kind, QuestionText = remote.Text, QuestionSubject = remote.Subject, Status = remote.Status, CreatedAt = remote.CreatedAt, LastRemoteModifiedAt = remote.LastModifiedAt };
-        if (remote.LastModifiedAt >= row.LastRemoteModifiedAt)
+        // A read without a change time cannot be called stale: unknown stays unknown, so it is taken as fresh.
+        if (remote.LastModifiedAt is not { } remoteModifiedAt || row.LastRemoteModifiedAt is not { } storedModifiedAt || remoteModifiedAt >= storedModifiedAt)
         {
             row.Kind = remote.Kind; row.Status = remote.Status;
             if (remote.Text.Length > 0) { row.QuestionText = remote.Text; row.QuestionSubject = remote.Subject; }
@@ -629,7 +630,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
             // serialized form, or every re-read would look like a change.
             var history = MergeHistory(row.HistoryJson, remote.Conversations);
             if (history != MergeHistory(row.HistoryJson, [])) row.HistoryJson = history;
-            row.ExpiresAt = remote.ExpiresAt; row.LastRemoteModifiedAt = remote.LastModifiedAt;
+            row.ExpiresAt = remote.ExpiresAt; row.LastRemoteModifiedAt = remote.LastModifiedAt ?? row.LastRemoteModifiedAt; row.CreatedAt ??= remote.CreatedAt;
             ReconcileAnswerSubmission(row, remote, now);
             row.LastSyncedAt = now;
             // The version moves only when the question really changed. Re-reading an unchanged question every
@@ -706,7 +707,7 @@ public sealed class MarketplaceQuestionService(AppDbContext db, IQuestionPort po
         {
             history = MarketplaceQuestionHistory.Deduplicate(history.Append(message)).ToList();
         }
-        return history.Count == 0 ? null : JsonSerializer.Serialize(history.OrderBy(message => message.CreatedAt));
+        return history.Count == 0 ? null : JsonSerializer.Serialize(history.OrderBy(message => message.CreatedAt is null).ThenBy(message => message.CreatedAt));
     }
     private static IReadOnlyList<RemoteQuestionConversation> ReadHistory(string? json) { try { return MarketplaceQuestionHistory.Deduplicate(json is null ? [] : JsonSerializer.Deserialize<RemoteQuestionConversation[]>(json, JsonOptions) ?? []); } catch (JsonException) { return []; } }
     private async Task<MarketplaceQuestionView> WithProductImageAsync(Guid tenantId, MarketplaceQuestionView view, CancellationToken cancellationToken) =>

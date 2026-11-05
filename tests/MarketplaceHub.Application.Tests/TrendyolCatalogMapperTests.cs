@@ -269,7 +269,7 @@ public sealed class TrendyolCatalogMapperTests
 
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);
 
-        Assert.Equal(claim.LastModifiedAt.AddHours(48), claim.ActionDueAt);
+        Assert.Equal(claim.LastModifiedAt!.Value.AddHours(48), claim.ActionDueAt);
         Assert.True(claim.ActionDueAtEstimated);
     }
 

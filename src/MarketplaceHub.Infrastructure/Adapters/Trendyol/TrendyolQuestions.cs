@@ -89,7 +89,7 @@ internal static class TrendyolQuestionMapper
     public static RemoteMarketplaceQuestion? Map(JsonElement item, string kind)
     {
         var id = Text(item, "id"); if (string.IsNullOrWhiteSpace(id)) return null;
-        var created = Date(item, "creationDate") ?? DateTimeOffset.UnixEpoch;
+        var created = Date(item, "creationDate");
         var status = (Text(item, "status") ?? "WAITING_FOR_ANSWER").Trim().ToUpperInvariant();
         var history = new List<RemoteQuestionConversation> { new("Customer", Text(item, "text") ?? "", created) };
         AppendAnswer(history, Property(item, "answer"), "Merchant", created);
@@ -103,7 +103,7 @@ internal static class TrendyolQuestionMapper
     private static string? CustomerKey(string? value) => string.IsNullOrWhiteSpace(value) || value.Trim() == "0" ? null : value.Trim();
     private static string? ProductPage(string? value) => Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps && uri.Host.EndsWith("trendyol.com", StringComparison.OrdinalIgnoreCase) ? uri.AbsoluteUri : null;
     public static string? Text(JsonElement item, params string[] names) { foreach (var name in names) { var value = Property(item, name); if (value.ValueKind == JsonValueKind.String) return value.GetString(); if (value.ValueKind is JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False) return value.ToString(); } return null; }
-    private static void AppendAnswer(List<RemoteQuestionConversation> history, JsonElement answer, string author, DateTimeOffset fallback, string? reason = null)
+    private static void AppendAnswer(List<RemoteQuestionConversation> history, JsonElement answer, string author, DateTimeOffset? fallback, string? reason = null)
     {
         if (answer.ValueKind != JsonValueKind.Object) return; var text = Text(answer, "text"); if (!string.IsNullOrWhiteSpace(text)) history.Add(new(author, text, Date(answer, "creationDate") ?? fallback, reason));
     }

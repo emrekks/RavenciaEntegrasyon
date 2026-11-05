@@ -952,7 +952,8 @@ internal static class HepsiburadaJsonMapper
         if (string.IsNullOrWhiteSpace(orderNumber)) return null;
 
         var claimDate = Date(root, "claimDate", "ClaimDate");
-        var orderedAt = Date(root, "orderDate", "OrderDate") ?? claimDate ?? DateTimeOffset.UnixEpoch;
+        // D13: a claim with neither an order date nor a claim date is not projected as an order placed in 1970.
+        if ((Date(root, "orderDate", "OrderDate") ?? claimDate) is not { } orderedAt) return null;
         var modifiedAt = Date(root, "lastModifiedAt", "LastModifiedAt", "updatedAt", "UpdatedAt") ?? claimDate ?? orderedAt;
         var lineElements = new List<JsonElement>();
         var linesElement = Find(root, "lines", "Lines");
@@ -1069,7 +1070,8 @@ internal static class HepsiburadaJsonMapper
             throw new JsonException("Hepsiburada talep paketi geçerli sipariş kalemi içermiyor.");
 
         var occurredAt = Date(root, "createdDate", "CreatedDate", "createdAt", "CreatedAt", "packageDate", "PackageDate")
-            ?? parsedClaims.Max(item => item.Claim.LastModifiedAt);
+            ?? parsedClaims.Max(item => item.Claim.LastModifiedAt)
+            ?? throw new JsonException("Hepsiburada talep paketi hiçbir tarih içermiyor.");
         var package = new RemotePackage(
             packageNumber,
             null,

@@ -48,7 +48,7 @@ public sealed class PazaramaReturnTests
 
         // 19:46 in Turkey (UTC+3) is 16:46 UTC; PostgreSQL only accepts zero offsets.
         Assert.Equal(new DateTimeOffset(2021, 10, 6, 16, 46, 0, TimeSpan.Zero), claim.LastModifiedAt);
-        Assert.Equal(TimeSpan.Zero, claim.LastModifiedAt.Offset);
+        Assert.Equal(TimeSpan.Zero, claim.LastModifiedAt!.Value.Offset);
         Assert.Equal(new DateTimeOffset(2021, 10, 6, 11, 53, 0, TimeSpan.Zero), claim.OrderCreatedAt);
         Assert.Equal(TimeSpan.Zero, claim.OrderCreatedAt!.Value.Offset);
     }
@@ -73,11 +73,11 @@ public sealed class PazaramaReturnTests
     public void Unreadable_instants_are_missing(string? value) => Assert.Null(PazaramaReturnMapper.Instant(value));
 
     [Fact]
-    public void A_refund_with_an_unreadable_date_falls_back_to_now()
+    public void A_refund_with_an_unreadable_date_has_no_change_time()
     {
         var claim = PazaramaReturnMapper.Claim(Parse("""{"refundId":"r","orderNumber":1,"refundStatus":1,"refundDate":"belirsiz"}"""), Now)!;
 
-        Assert.Equal(Now, claim.LastModifiedAt);
+        Assert.Null(claim.LastModifiedAt);
     }
 
     [Theory]

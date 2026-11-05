@@ -123,7 +123,7 @@ public static class N11ReturnMapper
             N11HttpClient.Child(element, "returnReasonType"),
             N11HttpClient.Child(element, "returnReasonDescription"),
             null,
-            dates.Count > 0 ? dates.Max() : DateTimeOffset.UnixEpoch,
+            dates.Count > 0 ? dates.Max() : null,
             [new RemoteReturnLine(claimId, "", quantity, RawStatus: CanonicalStatus(rawStatus))],
             raw,
             N11HttpClient.Child(element, "shipmentCompany"),

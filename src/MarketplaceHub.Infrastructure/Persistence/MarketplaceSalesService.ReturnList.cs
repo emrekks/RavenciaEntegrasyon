@@ -16,7 +16,7 @@ public sealed partial class MarketplaceSalesService
     internal static readonly string[] ReturnTabs = ["ALL", "REQUESTED", "SHIPPING", "ACTION_REQUIRED", "APPROVED", "REJECTED", "REVIEW", "DISPUTED", "SUSPENDED"];
     private static readonly CultureInfo TurkishCulture = CultureInfo.GetCultureInfo("tr-TR");
 
-    private sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null);
+    private sealed record ReturnClaimRow(Guid Id, ReturnClaimStatus Status, Guid OrderId, Guid ConnectionId, string ExternalClaimId, string? CargoProviderName, string? ReasonCode, string? ReasonText, DateTimeOffset? LastRemoteModifiedAt, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null);
 
     // One row of the Returns page. LineIds are the card's order lines (a claim's view lines).
     internal sealed record ReturnCard(Guid ClaimId, int Kind, string Status, string PlatformCode, string PlatformName, string? CargoProviderName, string? ReasonCode, string? ReasonText, IReadOnlyList<Guid> LineIds)

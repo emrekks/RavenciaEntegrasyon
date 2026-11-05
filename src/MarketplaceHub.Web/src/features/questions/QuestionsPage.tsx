@@ -26,7 +26,7 @@ type MarketplaceQuestion = {
   id: string; connectionId: string; platformCode: string; storeName: string; externalQuestionId: string; kind: string; status: string
   questionText: string; subject?: string | null; productName?: string | null; productImageUrl?: string | null; productSku?: string | null; productBarcode?: string | null
   productModelCode?: string | null; productUrl?: string | null; customerName?: string | null; externalOrderNumber?: string | null; conversations: QuestionConversation[]
-  createdAt: string; expiresAt?: string | null; lastRemoteModifiedAt: string; lastSyncedAt: string; version: number
+  createdAt: string | null; expiresAt?: string | null; lastRemoteModifiedAt: string | null; lastSyncedAt: string; version: number
   // NOT_DELIVERED: an earlier answer never reached the marketplace; pendingAnswerText is its text, kept as a draft.
   answerSubmissionStatus?: string | null; pendingAnswerText?: string | null
 }
@@ -307,7 +307,7 @@ export function QuestionsPage() {
     const send = () => { if (length >= minLength && length <= 2000 && !sendAnswer.isPending) { const warning = answerWarning(row.platformCode); if (warning) setConfirmAnswer({ id: row.id, version: row.version, text: draft, ...warning }); else sendAnswer.mutate({ id: row.id, version: row.version, text: draft }) } }
     const next = nextWaiting(row.id)
     const earlier = customerHistory.data && customerHistory.data.length > 0 && selected.id === row.id ? [...customerHistory.data].reverse() : []
-    const thread = (message: QuestionConversation, key: string) => { const seller = isSeller(message.author); return <article className={`rv-question-thread-message ${seller ? 'is-seller' : 'is-customer'}`} key={key}><header><strong>{seller ? 'Satıcı Cevabı' : message.author || 'Müşteri'}</strong><time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time></header><p>{message.text}</p>{message.rejectionReason && <small className="rv-question-rejection">Ret nedeni: {message.rejectionReason}</small>}</article> }
+    const thread = (message: QuestionConversation, key: string) => { const seller = isSeller(message.author); return <article className={`rv-question-thread-message ${seller ? 'is-seller' : 'is-customer'}`} key={key}><header><strong>{seller ? 'Satıcı Cevabı' : message.author || 'Müşteri'}</strong><time dateTime={message.createdAt ?? undefined}>{formatDate(message.createdAt)}</time></header><p>{message.text}</p>{message.rejectionReason && <small className="rv-question-rejection">Ret nedeni: {message.rejectionReason}</small>}</article> }
     return <article className="qi-detail" aria-label="Seçili soru">
       <div className="qi-detail-head">
         <button type="button" className="qi-back" onClick={() => setDetailOpen(false)}><UiIcon name="chevronLeft" size={16} />Sorular</button>
@@ -326,7 +326,7 @@ export function QuestionsPage() {
           </div> })}
           <p className="qi-history-divider"><span>Yeni Soru</span></p>
         </section>}
-        <div className="rv-question-thread-message is-customer is-question"><header><strong>{row.customerName || 'Müşteri Sorusu'}</strong><time dateTime={row.createdAt}>{formatDate(row.createdAt)}</time></header>{row.subject && <span className="qi-tag qi-subject" title="Müşterinin yazdığı konu">Konu: {row.subject}</span>}<p>{row.questionText}</p></div>
+        <div className="rv-question-thread-message is-customer is-question"><header><strong>{row.customerName || 'Müşteri Sorusu'}</strong><time dateTime={row.createdAt ?? undefined}>{formatDate(row.createdAt)}</time></header>{row.subject && <span className="qi-tag qi-subject" title="Müşterinin yazdığı konu">Konu: {row.subject}</span>}<p>{row.questionText}</p></div>
         {previousMessages.length > 0 && <div className="rv-question-conversation" aria-label="Konuşma geçmişi">{previousMessages.map((message, index) => thread(message, `${message.createdAt}-${index}`))}</div>}
         <p className="qi-note"><UiIcon name="info" size={14} />Cevabınız yalnızca soruyu soran müşteri tarafından görüntülenir.</p>
       </div>
@@ -378,7 +378,7 @@ export function QuestionsPage() {
             return <button type="button" className={`qi-item rv-question-card${selected?.id === row.id ? ' is-on' : ''}`} key={row.id} aria-current={selected?.id === row.id ? 'true' : undefined} onClick={() => openQuestion(row.id)}>
               <span className="qi-item-logo"><img className={platformLogoClass(row.platformCode)} src={platformLogoSource(row.platformCode) ?? undefined} alt={displayPlatform(row.platformCode)} /></span>
               <span className="qi-item-top"><b>{row.customerName || 'Müşteri'}</b><span>{row.productName || (row.kind === 'ORDER' ? 'Sipariş Sorusu' : 'Ürün')}</span></span>
-              <time dateTime={row.createdAt}>{formatDate(row.createdAt).split(' · ')[1] ?? ''}</time>
+              <time dateTime={row.createdAt ?? undefined}>{formatDate(row.createdAt).split(' · ')[1] ?? ''}</time>
               <span className="qi-item-text">{row.questionText}</span>
               <span className="qi-item-meta">{deadline ? <span className={`qi-deadline${deadline.urgent ? ' is-urgent' : ''}`}><UiIcon name="clock" size={13} />{deadline.text === 'Süre doldu' ? 'Süre doldu' : `${deadline.text} kaldı`}</span> : <span className="qi-item-state"><StateGlyph state={state.glyph} />{state.label}</span>}{row.kind === 'ORDER' && row.externalOrderNumber && <span>Sipariş #{row.externalOrderNumber}</span>}{(answerDrafts[row.id] ?? '').trim() && <span className="qi-draft">Taslak</span>}</span>
             </button>

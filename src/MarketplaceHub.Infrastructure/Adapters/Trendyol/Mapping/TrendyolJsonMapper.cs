@@ -749,7 +749,7 @@ public static class TrendyolJsonMapper
             var actionDueAt = remoteDueAt
                 ?? (IsWaitingInAction(status) && lastModifiedAt is { } waitingInActionAt ? (DateTimeOffset?)waitingInActionAt.AddHours(48) : null)
                 ?? (claimDate is { } requestedAt ? (DateTimeOffset?)requestedAt.AddDays(7) : null);
-            rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), actionDueAt, lastModifiedAt ?? DateTimeOffset.UnixEpoch, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink"),
+            rows.Add(new(claimId, orderNumber, status, ClaimReasonCode(claim), ClaimReasonText(claim), actionDueAt, lastModifiedAt, lines, claim.GetRawText(), ReturnCargoProvider(claim), ReturnCargoField(claim, "cargoTrackingNumber", "cargoSenderNumber", "trackingNumber"), ReturnCargoField(claim, "cargoTrackingLink", "trackingLink"),
                 ActionDueAtEstimated: remoteDueAt is null && actionDueAt is not null, RejectedPackageState: RejectedPackageState(claim, status)));
         }
         var page = Long(root, "page"); var totalPages = Long(root, "totalPages"); var hasMore = totalPages > 0 && page + 1 < totalPages;
@@ -825,7 +825,8 @@ public static class TrendyolJsonMapper
         var orderNumber = Text(claim, "orderNumber");
         if (string.IsNullOrWhiteSpace(orderNumber)) return null;
 
-        var ordered = OrderDate(claim) ?? Instant(claim, "claimDate") ?? DateTimeOffset.UnixEpoch;
+        // D13: a claim with neither an order date nor a claim date is not projected as an order placed in 1970.
+        if ((OrderDate(claim) ?? Instant(claim, "claimDate")) is not { } ordered) return null;
         var packageOccurredAt = Instant(claim, "lastModifiedDate") ?? Instant(claim, "claimDate") ?? ordered;
         // This is a partial order projection reconstructed from a return claim.
         // Its claim timestamp can be newer than the original order timestamp,

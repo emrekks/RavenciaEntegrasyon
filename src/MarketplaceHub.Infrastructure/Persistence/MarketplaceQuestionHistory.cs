@@ -19,12 +19,13 @@ internal static class MarketplaceQuestionHistory
         {
             var author = NormalizeAuthor(message.Author);
             var text = NormalizeText(message.Text);
-            var createdAt = message.CreatedAt.ToUniversalTime();
+            var createdAt = message.CreatedAt?.ToUniversalTime();
             // A rejected answer and a later resend of the same text are two
             // messages; only an unrejected copy absorbs a near-time duplicate.
             var index = rows.FindIndex(row => row.Author == author && row.Text == text
-                && (row.Message.CreatedAt.ToUniversalTime() == createdAt
-                    || string.IsNullOrWhiteSpace(row.Message.RejectionReason) && (row.Message.CreatedAt - message.CreatedAt).Duration() <= DuplicateWindow));
+                && (row.Message.CreatedAt?.ToUniversalTime() == createdAt
+                    || string.IsNullOrWhiteSpace(row.Message.RejectionReason)
+                        && (row.Message.CreatedAt is not { } rowTime || message.CreatedAt is not { } messageTime || (rowTime - messageTime).Duration() <= DuplicateWindow)));
             if (index < 0)
             {
                 rows.Add((author, text, message));
@@ -35,7 +36,7 @@ internal static class MarketplaceQuestionHistory
                 rows[index] = (author, text, message);
         }
 
-        return rows.Select(row => row.Message).OrderBy(message => message.CreatedAt).ToArray();
+        return rows.Select(row => row.Message).OrderBy(message => message.CreatedAt is null).ThenBy(message => message.CreatedAt).ToArray();
     }
 
     private static string NormalizeAuthor(string value)

@@ -1,4 +1,4 @@
-export type QuestionConversation = { author: string; text: string; createdAt: string; rejectionReason?: string | null }
+export type QuestionConversation = { author: string; text: string; createdAt: string | null; rejectionReason?: string | null }
 
 function isSellerMessage(message: QuestionConversation) {
   const author = message.author.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('tr-TR')
@@ -6,8 +6,8 @@ function isSellerMessage(message: QuestionConversation) {
 }
 
 function sellerMessageKey(message: QuestionConversation) {
-  const timestamp = Date.parse(message.createdAt)
-  const displayedMinute = Number.isFinite(timestamp) ? Math.floor(timestamp / 60_000) : message.createdAt
+  const timestamp = message.createdAt ? Date.parse(message.createdAt) : Number.NaN
+  const displayedMinute = Number.isFinite(timestamp) ? Math.floor(timestamp / 60_000) : (message.createdAt ?? 'unknown')
   const normalizedText = message.text.normalize('NFC').trim().replace(/\s+/g, ' ')
   return `${displayedMinute}\u0000${normalizedText}`
 }
@@ -17,7 +17,14 @@ function sellerMessageKey(message: QuestionConversation) {
  * Marketplaces can include the same sent answer more than once in conversation history.
  */
 export function visibleQuestionConversation(messages: QuestionConversation[], questionText: string) {
-  const ordered = [...messages].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+  // A message with no known time goes last: unknown stays unknown.
+  const timeOf = (message: QuestionConversation) => (message.createdAt ? Date.parse(message.createdAt) : Number.NaN)
+  const ordered = [...messages].sort((a, b) => {
+    const left = timeOf(a)
+    const right = timeOf(b)
+    if (Number.isNaN(left) || Number.isNaN(right)) return Number.isNaN(left) === Number.isNaN(right) ? 0 : Number.isNaN(left) ? 1 : -1
+    return left - right
+  })
   const questionIndex = ordered.findIndex(message => message.text.trim() === questionText.trim())
   const visible: QuestionConversation[] = []
   const sellerPositions = new Map<string, number>()

@@ -220,7 +220,7 @@ public sealed class ReturnClaim
     // from its usual rule (Trendyol: 48 hours after WaitingInAction, a week
     // after the claim); shown as an estimate, never as the marketplace's date.
     public bool ActionDueAtEstimated { get; set; }
-    public DateTimeOffset LastRemoteModifiedAt { get; set; }
+    public DateTimeOffset? LastRemoteModifiedAt { get; set; }
     // Where a rejected return's package back to the customer stands (ReturnRejectedPackageStates). Only Trendyol
     // reports it (getClaims rejectedPackageInfo); null on the other marketplaces and on a claim not read since.
     public string? RejectedPackageState { get; set; }

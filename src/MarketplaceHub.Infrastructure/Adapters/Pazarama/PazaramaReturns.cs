@@ -164,7 +164,7 @@ public static class PazaramaReturnMapper
             Text(row, "refundType"),
             Text(row, "description") ?? Text(row, "boDescription"),
             null,
-            requested ?? now,
+            requested,
             [new RemoteReturnLine(refundId, "", 1, RawStatus: status)],
             row.GetRawText(),
             Text(row, "shipmentCompanyName"),
