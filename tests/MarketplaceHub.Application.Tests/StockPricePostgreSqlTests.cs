@@ -1581,7 +1581,8 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         var trendyol = NewConnection(tenant, "TRENDYOL");
         var (listedProduct, listedVariant) = NewVariant(tenant, "DUPC-OLD", "AB-1000-X");
         var (importedProduct, importedVariant) = NewVariant(tenant, "DUPC-IMP", "local-imported");
-        var (newProduct, newVariant) = NewVariant(tenant, "DUPC-NEW", "ab-1000-x");
+        // Its own stored barcode differs (the panel keeps barcodes unique case-insensitively); the code it would publish is checked.
+        var (newProduct, newVariant) = NewVariant(tenant, "DUPC-NEW", "local-new");
         var profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, ProductId = listedProduct.Id, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "LIVE" };
         await using (var seed = fixture.CreateContext())
         {

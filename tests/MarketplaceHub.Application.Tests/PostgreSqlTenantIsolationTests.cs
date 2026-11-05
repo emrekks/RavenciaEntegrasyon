@@ -2303,8 +2303,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.False(await sales.MarkLabelPrintedAsync(tenant.Id, Guid.CreateVersion7(), CancellationToken.None));
             // The first print is announced once to the other screens (an "orders" outbox event); printing again is not.
             var announced = await db.IntegrationOutboxEvents.AsNoTracking()
-                .Where(x => x.TenantId == tenant.Id && x.ResourceType == "orders" && x.AggregateId == printed.Id && x.PayloadJson.Contains("labelPrinted"))
+                .Where(x => x.TenantId == tenant.Id && x.ResourceType == "orders" && x.AggregateId == printed.Id)
                 .ToListAsync();
+            // PayloadJson is jsonb: the text match runs here, not in SQL (jsonb has no LIKE).
+            announced = announced.Where(x => x.PayloadJson.Contains("labelPrinted")).ToList();
             var announcement = Assert.Single(announced);
             Assert.Equal("updated", announcement.OperationType);
             Assert.Null(announcement.PublishedAt);
