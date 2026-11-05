@@ -613,6 +613,9 @@ public sealed class PostgreSqlInvoicingManualStatusTests(PostgreSqlTenantIsolati
             OrderedQuantity = 1,
             UnitPrice = 120m,
             VatRate = 20m,
+            // The marketplace reported the rate (owner rule 7, 5 Nov 2026: a line without a reported rate is unknown).
+            SourceSnapshotJson = seed.Marketplace.PlatformCode == "PAZARAMA" ? """{"product":{"vatRate":20}}"""
+                : seed.Marketplace.PlatformCode == "PTTAVM" ? """{"KdvOrani":20}""" : """{"vatRate":20}""",
             RawStatus = "Delivered",
             Version = 1
         });

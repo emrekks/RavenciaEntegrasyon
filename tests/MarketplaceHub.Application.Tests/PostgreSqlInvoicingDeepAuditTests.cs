@@ -614,7 +614,8 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
                 Assert.StartsWith("delivery-retry:1:", InvoiceDeliveryRetryReader.ReadRetryKey(fetch.PayloadJson), StringComparison.Ordinal);
                 var invoice = await db.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id);
                 Assert.Equal(1, invoice.DeliveryRetryAttempts);
-                Assert.InRange(invoice.DeliveryRetryNextAt!.Value, DateTimeOffset.UtcNow.AddMinutes(55), DateTimeOffset.UtcNow.AddMinutes(61));
+                // Owner rule 4 (5 Nov 2026): the next attempt waits 15 minutes after the first.
+                Assert.InRange(invoice.DeliveryRetryNextAt!.Value, DateTimeOffset.UtcNow.AddMinutes(10), DateTimeOffset.UtcNow.AddMinutes(16));
                 Assert.Equal(InvoiceStatus.MarketplaceFailed, invoice.Status);
                 Assert.False(await db.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceSubmit));
                 Assert.DoesNotContain(InvoicingBillingService.RetryDeliveryAction, (await NewBillingService(db, OpenWrites).GetAsync(seed.Tenant.Id, seed.Invoice.Id, CancellationToken.None)).Value!.AllowedActions);
@@ -644,7 +645,7 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
             Assert.Equal("user", manualJob.TriggerType);
             var reset = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
             Assert.Equal(0, reset.DeliveryRetryAttempts);
-            Assert.InRange(reset.DeliveryRetryNextAt!.Value, DateTimeOffset.UtcNow.AddMinutes(55), DateTimeOffset.UtcNow.AddMinutes(61));
+            Assert.InRange(reset.DeliveryRetryNextAt!.Value, DateTimeOffset.UtcNow.AddMinutes(10), DateTimeOffset.UtcNow.AddMinutes(16));
         }
         finally
         {
@@ -761,7 +762,7 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
             db.InvoiceLines.AddRange(NewInvoiceLine(seed, lineA, 1), NewInvoiceLine(seed, lineB, 2));
             db.ReturnClaims.Add(claim);
             db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ClaimId = claim.Id, OrderLineId = lineA.Id, ExternalLineId = "A", Quantity = 1, RawStatus = "Accepted" });
-            db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ClaimId = claim.Id, OrderLineId = lineB.Id, ExternalLineId = "B", Quantity = 1, RawStatus = returnEverything ? "Accepted" : "Rejected" });
+            db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ClaimId = claim.Id, OrderLineId = lineB.Id, ExternalLineId = "B", Quantity = lineB.OrderedQuantity, RawStatus = returnEverything ? "Accepted" : "Rejected" });
         });
         try
         {

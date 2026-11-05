@@ -110,11 +110,19 @@ public sealed class PostgreSqlInvoiceDeliveryIdentityTests(PostgreSqlTenantIsola
                 Assert.True(InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode));
                 Assert.Equal(state.RequestHash, (await db.MarketplaceDeliveryStates.SingleAsync(item => item.Id == state.Id)).RequestHash);
 
-                // A job that runs again on its own (not the owner's retry) still sends nothing.
+                // A job that runs again on its own (not the owner's retry) still sends nothing: the invoice is in review
+                // and only the owner takes it out (owner rule 5, 5 Nov 2026), so the job stops before reading anything
+                // and the stop stays as it was.
                 var again = await NewProcessor(db, marketplace).ProcessAsync(seed.Tenant.Id, seed.Marketplace.Id, InvoicingJobTypes.MarketplaceDelivery,
                     DeliveryPayload(seed), "identity-changed-again", CancellationToken.None);
-                Assert.Equal(JobCompletionKind.ManualReview, again.Kind);
+                Assert.Equal(JobCompletionKind.Blocked, again.Kind);
+                Assert.Equal(InvoiceDeliveryGuardPolicy.ManualReviewOwnerOnlyCode, again.ErrorCode);
                 Assert.Empty(marketplace.Deliveries);
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                var invoice = await db.Invoices.AsNoTracking().SingleAsync(item => item.Id == seed.Invoice.Id);
+                Assert.Equal((InvoiceStatus.ManualReview, InvoiceMarketplaceRetryPolicy.DeliveryIdentityChanged), (invoice.Status, invoice.LastErrorCode));
             }
 
             // The owner's "Tekrar Dene" (EnqueueDeliveryAsync) puts the invoice back on its way with the stop's code and

@@ -70,11 +70,34 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
             CreatedAt = fixture.Now,
             UpdatedAt = fixture.Now
         };
+        // Owner rule 1 (5 Nov 2026): only a return of every invoiced line in full adjusts the invoice; the returned order's
+        // one invoiced line comes back whole.
+        var returnedLine = NewLine(seed.Tenant.Id, returnedOrder.Id);
+        var returnedInvoiceLine = new InvoiceLine
+        {
+            Id = Guid.CreateVersion7(),
+            TenantId = seed.Tenant.Id,
+            InvoiceId = returnedInvoice.Id,
+            OrderLineId = returnedLine.Id,
+            LineSequence = 1,
+            DescriptionSnapshot = returnedLine.TitleSnapshot,
+            SkuSnapshot = returnedLine.Sku,
+            UnitSnapshot = "ADET",
+            Quantity = returnedLine.OrderedQuantity,
+            UnitPrice = 100m,
+            VatRate = 20m,
+            VatAmount = 20m,
+            LineTotal = 120m
+        };
+        var returnLine = new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ClaimId = claim.Id, OrderLineId = returnedLine.Id, ExternalLineId = returnedLine.ExternalLineId, Quantity = returnedLine.OrderedQuantity, RawStatus = "Accepted" };
         await SeedAsync(seed, db =>
         {
             db.Orders.AddRange(cancelledOrder, returnedOrder);
+            db.OrderLines.Add(returnedLine);
             db.Invoices.AddRange(untouched, cancelledInvoice, returnedInvoice);
+            db.InvoiceLines.Add(returnedInvoiceLine);
             db.ReturnClaims.Add(claim);
+            db.ReturnLines.Add(returnLine);
         });
 
         try
@@ -1058,6 +1081,8 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         OrderedQuantity = 1,
         UnitPrice = 120m,
         VatRate = 20m,
+        // Trendyol reported the rate (owner rule 7, 5 Nov 2026: a line without a reported rate is unknown).
+        SourceSnapshotJson = """{"vatRate":20}""",
         RawStatus = "Delivered"
     };
 
@@ -1147,6 +1172,7 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         await db.Invoices.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoicePolicies.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.LegalEntityProfiles.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ReturnLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ReturnClaims.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformCredentials.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformCapabilities.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();

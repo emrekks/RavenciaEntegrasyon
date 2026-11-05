@@ -3402,8 +3402,11 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await db.SaveChangesAsync();
         db.ChangeTracker.Clear();
 
+        // ExecuteSqlRaw formats its text like string.Format, so the regex quantifiers ({1,18}) are escaped here; the
+        // migration itself runs the text as it is (migrationBuilder.Sql does not format).
+        var collapse = MarketplaceHub.Infrastructure.Persistence.Migrations.CollapsePackageLineAllocations.Collapse.Replace("{", "{{").Replace("}", "}}");
         for (var run = 0; run < 2; run++)
-            await db.Database.ExecuteSqlRawAsync(MarketplaceHub.Infrastructure.Persistence.Migrations.CollapsePackageLineAllocations.Collapse);
+            await db.Database.ExecuteSqlRawAsync(collapse);
 
         var left = await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
         Assert.Equal(kept.Id, Assert.Single(left).Id);
@@ -5865,7 +5868,8 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             seedDb.Tenants.Add(tenant);
             seedDb.PlatformConnections.Add(connection);
             seedDb.Orders.Add(order);
-            seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Delivered", Version = 1 });
+            // The line as the child's delivered allocation projected it; the skipped parent must leave it so.
+            seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Delivered", Version = 1 });
             seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = childId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = "4111016887", OriginExternalPackageId = "4110933059", GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = occurredAt.AddMinutes(-5), CreatedAt = occurredAt.AddMinutes(-5), UpdatedAt = occurredAt.AddMinutes(-5), Version = 1 });
             seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = childId, OrderLineId = lineId, AllocatedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, SourceEventId = PackageIngestionSafety.EventId("4111016887", occurredAt.AddMinutes(-5)) });
             await seedDb.SaveChangesAsync();
