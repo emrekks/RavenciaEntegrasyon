@@ -499,6 +499,111 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(0m, alone.Costs.UnlinkedTotal);
     }
 
+    // Live payout 78542975 (2 Nov 2026): one 488.03 TL platform fee invoice for 37 packages, i.e. 13.19 each.
+    [Fact]
+    public void A_platform_fee_invoice_is_split_equally_over_the_packages_of_its_payout()
+    {
+        var store = Guid.NewGuid();
+        var invoice = Invoice(store, "SF-1", MarketplaceFinanceCategories.ServiceFee, "Platform Hizmet Bedeli", "PO-1", 39.57m);
+        List<ReportPayoutLine> lines =
+        [
+            // A has two packages, B one; two lines of one package count once; another payout's line is not read.
+            new(store, "PO-1", "A", "P-1", "Sale", "Türkiye", 0m, 100m),
+            new(store, "PO-1", "A", "P-1", "Sale", "Türkiye", 0m, 20m),
+            new(store, "PO-1", "A", "P-2", "Sale", "Türkiye", 0m, 80m),
+            new(store, "PO-1", "B", "P-3", "Sale", "Türkiye", 0m, 50m),
+            new(store, "PO-1", "C", "P-4", "Return", "Türkiye", 70m, 0m),
+            new(store, "PO-2", "D", "P-5", "Sale", "Türkiye", 0m, 90m)
+        ];
+
+        var shares = ReportFeeAllocation.Split(invoice, lines)!;
+
+        Assert.Equal([("A", 26.38m), ("B", 13.19m)], shares.Select(share => (share.OrderNumber!, share.Debt)).ToList());
+        Assert.All(shares, share => Assert.Equal((MarketplaceFinanceCategories.ServiceFee, "PO-1", "SF-1", "Platform Hizmet Bedeli"), (share.Category, share.PaymentOrderId, share.AllocatedFrom, share.TransactionType)));
+    }
+
+    [Fact]
+    public void An_international_fee_follows_the_sales_abroad_and_the_withholding_tax_the_sales_less_returns()
+    {
+        var store = Guid.NewGuid();
+        List<ReportPayoutLine> lines =
+        [
+            new(store, "PO-1", "TR-1", "P-1", "Sale", "Türkiye", 0m, 300m),
+            new(store, "PO-1", "SA-1", "P-2", "Sale", "Suudi Arabistan", 0m, 200m),
+            new(store, "PO-1", "RO-1", "P-3", "Sale", "Romanya", 0m, 100m),
+            // A return taken back in this payout gets its tax back.
+            new(store, "PO-1", "TR-0", "P-0", "Return", "Türkiye", 100m, 0m)
+        ];
+
+        var international = ReportFeeAllocation.Split(Invoice(store, "UF-1", MarketplaceFinanceCategories.ServiceFee, "Uluslararası Hizmet Bedeli", "PO-1", 15.81m), lines)!;
+        // 2 : 1 over the two orders abroad; the rounding left over goes to the largest share.
+        Assert.Equal([("SA-1", 10.54m), ("RO-1", 5.27m)], international.Select(share => (share.OrderNumber!, share.Debt)).ToList());
+
+        var tax = ReportFeeAllocation.Split(Invoice(store, "ST-1", MarketplaceFinanceCategories.Stoppage, "E-ticaret Stopajı", "PO-1", 5m), lines)!;
+        // 300 : 200 : 100 : -100 over a net 500.
+        Assert.Equal([("TR-1", 3m, 0m), ("SA-1", 2m, 0m), ("RO-1", 1m, 0m), ("TR-0", 0m, 1m)], tax.Select(share => (share.OrderNumber!, share.Debt, share.Credit)).ToList());
+        Assert.Equal(5m, tax.Sum(share => share.Debt - share.Credit));
+
+        // Thirds that do not round evenly still add up to the invoice.
+        List<ReportPayoutLine> thirds = [new(store, "PO-3", "X", "1", "Sale", "Türkiye", 0m, 10m), new(store, "PO-3", "Y", "2", "Sale", "Türkiye", 0m, 10m), new(store, "PO-3", "Z", "3", "Sale", "Türkiye", 0m, 10m)];
+        Assert.Equal(1m, ReportFeeAllocation.Split(Invoice(store, "ST-3", MarketplaceFinanceCategories.Stoppage, "E-ticaret Stopajı", "PO-3", 1m), thirds)!.Sum(share => share.Debt));
+    }
+
+    [Fact]
+    public void An_invoice_whose_payout_lines_are_not_read_or_that_names_no_payout_is_not_split()
+    {
+        var store = Guid.NewGuid();
+        List<ReportPayoutLine> lines = [new(store, "PO-1", "A", "P-1", "Sale", "Türkiye", 0m, 100m)];
+
+        Assert.Null(ReportFeeAllocation.Split(Invoice(store, "SF-9", MarketplaceFinanceCategories.ServiceFee, "Platform Hizmet Bedeli", "PO-9", 13.19m), lines));
+        Assert.Null(ReportFeeAllocation.Split(Invoice(store, "SF-N", MarketplaceFinanceCategories.ServiceFee, "Platform Hizmet Bedeli", null, 13.19m), lines));
+        // Another store's payout of the same id, and a charge that is not per sale (advertising).
+        Assert.Null(ReportFeeAllocation.Split(Invoice(Guid.NewGuid(), "SF-1", MarketplaceFinanceCategories.ServiceFee, "Platform Hizmet Bedeli", "PO-1", 13.19m), lines));
+        Assert.Null(ReportFeeAllocation.Split(Invoice(store, "AD-1", MarketplaceFinanceCategories.Advertising, "Reklam Bedeli", "PO-1", 5_000m), lines));
+    }
+
+    [Fact]
+    public void The_shares_of_a_payout_invoice_replace_the_estimates_of_their_orders()
+    {
+        var (input, orderA, orderB, store) = ReportFixture();
+        var states = new Dictionary<Guid, MarketplaceFinanceSyncState?>
+        {
+            [store] = new() { TenantId = Guid.NewGuid(), ConnectionId = store, CoveredFrom = input.Period.Start.AddDays(-90), CoveredThrough = input.Period.End.AddDays(1), LastSyncedAt = input.Period.End.AddDays(1) }
+        };
+        List<ReportPayoutLine> payout = [new(store, "PO-1", "A-1", "P-A", "Sale", "Türkiye", 0m, 100m), new(store, "PO-1", "B-1", "P-B", "Sale", "Türkiye", 0m, 50m)];
+        List<ReportFinanceRow> rows =
+        [
+            Row(store, Settlements, "1", "Sale", MarketplaceFinanceCategories.Sale, "A-1", "BAR-1", credit: 100m, commission: 18m),
+            .. ReportFeeAllocation.Split(Invoice(store, "SF-1", MarketplaceFinanceCategories.ServiceFee, "Platform Hizmet Bedeli", "PO-1", 26.38m), payout)!,
+            .. ReportFeeAllocation.Split(Invoice(store, "ST-1", MarketplaceFinanceCategories.Stoppage, "E-ticaret Stopajı", "PO-1", 1.20m), payout)!
+        ];
+        var withFinance = input with { Finance = new ReportFinance(rows, [], new HashSet<(Guid, string)>(), states, new Dictionary<Guid, ReportCargoSample> { [store] = new(196.68m, 2) }) };
+
+        var costs = ReportBuilder.Build(withFinance, Empty(input), new Dictionary<Guid, decimal>()).Costs;
+        var orders = ReportOrderProfit.Build(withFinance, ReportBuilder.Facts(withFinance).Orders);
+
+        Assert.Equal((26.38m, 0m, 2), Fee(costs, MarketplaceFinanceCategories.ServiceFee));
+        Assert.Equal((1.20m, 0m, 2), Fee(costs, MarketplaceFinanceCategories.Stoppage));
+        Assert.Empty(costs.Unlinked!);
+        var a = orders.Single(order => order.OrderId == orderA).Costs;
+        var b = orders.Single(order => order.OrderId == orderB).Costs;
+        Assert.Equal((13.19m, false, 0.80m, false), (a.Single(cost => cost.Key == "serviceFee").Amount, a.Single(cost => cost.Key == "serviceFee").Estimated, a.Single(cost => cost.Key == "stoppage").Amount, a.Single(cost => cost.Key == "stoppage").Estimated));
+        Assert.Equal((13.19m, false, 0.40m, false), (b.Single(cost => cost.Key == "serviceFee").Amount, b.Single(cost => cost.Key == "serviceFee").Estimated, b.Single(cost => cost.Key == "stoppage").Amount, b.Single(cost => cost.Key == "stoppage").Estimated));
+    }
+
+    private static ReportFinanceRow Invoice(Guid store, string id, string category, string type, string? payout, decimal debt) => new()
+    {
+        ConnectionId = store,
+        Source = Others,
+        ExternalId = id,
+        RequestedType = category == MarketplaceFinanceCategories.Stoppage ? "Stoppage" : TrendyolFinanceCategorizer.DeductionInvoices,
+        TransactionType = type,
+        Category = category,
+        TransactionDate = new DateTimeOffset(2026, 10, 18, 21, 35, 0, TimeSpan.Zero),
+        PaymentOrderId = payout,
+        Debt = debt
+    };
+
     private sealed record ReportBuildResult(ReportCostsView Costs, List<ReportOrderProfitView> Orders);
 
     private static (decimal Amount, decimal Estimated, int Records) Fee(ReportCostsView costs, string category) =>

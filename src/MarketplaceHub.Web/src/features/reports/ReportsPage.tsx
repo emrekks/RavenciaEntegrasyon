@@ -656,8 +656,8 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
 
 // What each deduction tied to no order of the period is, under the pointer.
 const unlinkedMeaning: Record<string, string> = {
-  SERVICE_FEE: 'Trendyol\'un ödeme günü faturasıyla kestiği platform ve uluslararası hizmet bedeli.\nÖnceki ödeme gününün siparişlerine aittir; dönemin siparişlerininki Masraf Kalemleri\'nde tahmin edilir.',
-  STOPPAGE: 'Ödeme günü kesilen e-ticaret stopajı.\nÖnceki ödeme gününün siparişlerine aittir; dönemin siparişlerininki Masraf Kalemleri\'nde tahmin edilir.',
+  SERVICE_FEE: 'Siparişlerine henüz paylaştırılamayan hizmet bedeli faturaları.\nTrendyol ödemenin kayıtlarını verince (ödemeden bir gün sonra) siparişlerine paylaştırılır; ödeme bilgisi olmayan fatura burada kalır.',
+  STOPPAGE: 'Siparişlerine henüz paylaştırılamayan e-ticaret stopajı.\nTrendyol ödemenin kayıtlarını verince (ödemeden bir gün sonra) siparişlerine paylaştırılır.',
   ADVERTISING: 'Reklam bütçesi satın alımları ve reklam bedelleri.\nBir siparişe bağlı değildir.',
   CARGO: 'Dönemin siparişlerine bağlanamayan kargo faturası satırları.\nPanelde olmayan siparişlerin ya da satırları okunamayan faturaların kargosu.',
   COMMISSION: 'Dönemin siparişlerine bağlı olmayan komisyon kayıtları.\nPanelde olmayan siparişlerin komisyonu ya da düzeltmeler.',
@@ -666,7 +666,7 @@ const unlinkedMeaning: Record<string, string> = {
   OTHER_DEDUCTION: 'Trendyol\'un türünü belirtmeden kestiği kesinti faturaları.\nBir siparişe bağlı değildir.'
 }
 const unlinkedLabels: Record<string, string> = { SERVICE_FEE: 'Hizmet Bedeli', STOPPAGE: 'Stopaj', ADVERTISING: 'Reklam', CARGO: 'Kargo', COMMISSION: 'Komisyon', PENALTY: 'Ceza', EARLY_PAYMENT: 'Erken Ödeme Kesintisi', OTHER_DEDUCTION: 'Diğer Kesinti', PAYMENT_FEE: 'Ödeme Komisyonu' }
-const unlinkedTip = 'Bu dönemde kesilen ama dönemin siparişlerine bağlı olmayan kesintiler.\nÖr. önceki ödeme gününün hizmet bedeli ve stopajı, reklam bütçesi. Kâra dahil edilmez.'
+const unlinkedTip = 'Bu dönemde kesilen ama dönemin siparişlerine bağlı olmayan kesintiler.\nÖr. reklam bütçesi, ceza. Hizmet bedeli ve stopaj ödemenin siparişlerine paylaştırılır; burada yalnız henüz paylaştırılamayanlar kalır. Kâra dahil edilmez.'
 
 // The deductions of the period's dates tied to no order of the period (only from Trendyol's statement), largest first.
 function unlinkedDeductions(costs: ReportCosts | null | undefined) {
@@ -1147,7 +1147,7 @@ function profitSteps(data: ReportSales): ProfitSteps {
   const finance = financeCosts(data)
   const unread = unreadFeePlatforms(data)
   const description = finance
-    ? `${trendyolRead(data) ? 'Trendyol\'da komisyon ve kargo gerçek tutarla, henüz kesinleşmeyenler tahmini; hizmet bedeli ve stopaj sipariş başına tahmini. Siparişe bağlı olmayan kesintiler (reklam, önceki ödeme gününün faturaları) kâra dahil edilmez.' : 'Komisyon siparişteki orandan tahmini.'} Diğer platformların kargo ve kesintileri 2026 tarifelerinden tahmini.${unread.length ? ` ${unread.join(', ')} kargo ve hizmet bedeli düşülmedi.` : ''}`
+    ? `${trendyolRead(data) ? 'Trendyol\'da komisyon ve kargo gerçek tutarla, henüz kesinleşmeyenler tahmini; hizmet bedeli ve stopaj ödeme günü faturasından siparişlerine paylaştırılır, faturası gelmeyenlerde tahmini. Siparişe bağlı olmayan kesintiler (reklam, ceza, henüz paylaştırılamayan faturalar) kâra dahil edilmez.' : 'Komisyon siparişteki orandan tahmini.'} Diğer platformların kargo ve kesintileri 2026 tarifelerinden tahmini.${unread.length ? ` ${unread.join(', ')} kargo ve hizmet bedeli düşülmedi.` : ''}`
     : 'Yalnız okunabilen kalemlerle; kargo, hizmet bedeli, stopaj, reklam ve ceza düşülmedi.'
   if (now.ordersWithAmount === 0) return { steps: null, description }
   const hasCommission = commission.coveredRevenue > 0

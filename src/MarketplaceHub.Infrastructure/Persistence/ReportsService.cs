@@ -592,10 +592,11 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                     Barcode = x.Barcode,
                     Debt = x.Debt,
                     Credit = x.Credit,
-                    CommissionAmount = x.CommissionAmount
+                    CommissionAmount = x.CommissionAmount,
+                    PaymentOrderId = x.PaymentOrderId
                 })
                 .ToListAsync(cancellationToken);
-            rows.AddRange(storeRows);
+            rows.AddRange(await AllocateFeesAsync(tenantId, storeId, storeRows, numbers, start, end, cancellationToken));
             // The cargo invoices counted by date: their lines of orders the panel does not know count with them, and an
             // invoice that has lines counts through them instead of as a whole.
             var datedInvoices = storeRows.Where(x => TrendyolFinanceCategorizer.IsCargoInvoice(x.Source, x.RequestedType, x.Category))
@@ -616,6 +617,73 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
             if (await CargoTariffAsync(db, tenantId, storeId, end, cancellationToken) is { } sample) samples[storeId] = sample;
         }
         return new(rows, items, itemized, states, samples);
+    }
+
+    // The store's records with every per-sale fee invoice (service fee, withholding tax) of a read payout replaced by its
+    // shares in the payout's orders (ReportFeeAllocation): the shares of the period's orders, also from invoices dated
+    // outside the period (an October order's fee billed on a November payment day), and, for an invoice dated in the
+    // period, the shares of orders the panel never imported. The shares of the panel's orders of another period count
+    // in that period. An invoice that cannot be split stays as it is.
+    private async Task<List<ReportFinanceRow>> AllocateFeesAsync(Guid tenantId, Guid storeId, List<ReportFinanceRow> storeRows, string[] numbers,
+        DateTimeOffset start, DateTimeOffset end, CancellationToken cancellationToken)
+    {
+        var periodNumbers = numbers.ToHashSet(StringComparer.Ordinal);
+        // The payouts that paid an order of the period, and their fee invoices not read with the period's dates.
+        var paying = storeRows.Where(x => x.Source == TrendyolFinanceRequestContract.Settlements && x.OrderNumber is not null
+                && periodNumbers.Contains(x.OrderNumber) && !string.IsNullOrEmpty(x.PaymentOrderId))
+            .Select(x => x.PaymentOrderId!).Distinct(StringComparer.Ordinal).ToArray();
+        var loaded = storeRows.Select(x => (x.Source, x.ExternalId)).ToHashSet();
+        var invoices = storeRows.Where(ReportFeeAllocation.IsPerSaleInvoice).ToList();
+        if (paying.Length > 0)
+            invoices.AddRange((await db.MarketplaceFinanceTransactions.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ConnectionId == storeId && x.Source == TrendyolFinanceRequestContract.OtherFinancials
+                        && x.OrderNumber == null && x.PaymentOrderId != null && paying.Contains(x.PaymentOrderId)
+                        && (x.Category == MarketplaceFinanceCategories.ServiceFee || x.Category == MarketplaceFinanceCategories.Stoppage))
+                    .Select(x => new ReportFinanceRow
+                    {
+                        ConnectionId = x.ConnectionId,
+                        Source = x.Source,
+                        ExternalId = x.ExternalId,
+                        RequestedType = x.RequestedType,
+                        TransactionType = x.TransactionType,
+                        Category = x.Category,
+                        TransactionDate = x.TransactionDate,
+                        Debt = x.Debt,
+                        Credit = x.Credit,
+                        PaymentOrderId = x.PaymentOrderId
+                    })
+                    .ToListAsync(cancellationToken))
+                .Where(x => !loaded.Contains((x.Source, x.ExternalId))));
+        if (invoices.Count == 0) return storeRows;
+
+        var payouts = invoices.Select(x => x.PaymentOrderId!).Distinct(StringComparer.Ordinal).ToArray();
+        var payoutLines = await db.MarketplaceFinanceTransactions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == storeId && x.Source == TrendyolFinanceRequestContract.Settlements
+                && x.PaymentOrderId != null && payouts.Contains(x.PaymentOrderId) && x.OrderNumber != null
+                && (x.RequestedType == "Sale" || x.RequestedType == "Return"))
+            .Select(x => new ReportPayoutLine(x.ConnectionId, x.PaymentOrderId!, x.OrderNumber!, x.ShipmentPackageId, x.RequestedType, x.Country, x.Debt, x.Credit))
+            .ToListAsync(cancellationToken);
+
+        var split = invoices.Select(invoice => (Invoice: invoice, Shares: ReportFeeAllocation.Split(invoice, payoutLines))).ToList();
+        // Which of the other orders the panel knows (their shares count in their own period).
+        var others = split.Where(x => x.Shares is not null).SelectMany(x => x.Shares!).Select(x => x.OrderNumber!)
+            .Where(number => !periodNumbers.Contains(number)).Distinct(StringComparer.Ordinal).ToArray();
+        var known = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var chunk in others.Chunk(2_000))
+            known.UnionWith(await db.Orders.AsNoTracking()
+                .Where(order => order.TenantId == tenantId && order.ConnectionId == storeId && chunk.Contains(order.OrderNumber))
+                .Select(order => order.OrderNumber)
+                .ToListAsync(cancellationToken));
+
+        var replaced = split.Where(x => x.Shares is not null).Select(x => (x.Invoice.Source, x.Invoice.ExternalId)).ToHashSet();
+        var result = storeRows.Where(x => !replaced.Contains((x.Source, x.ExternalId))).ToList();
+        foreach (var (invoice, shares) in split)
+        {
+            if (shares is null) continue;
+            var dated = invoice.TransactionDate >= start && invoice.TransactionDate < end;
+            result.AddRange(shares.Where(share => periodNumbers.Contains(share.OrderNumber!) || dated && !known.Contains(share.OrderNumber!)));
+        }
+        return result;
     }
 
     // A Trendyol store's cargo tariff, for orders it has not billed cargo for yet (and a price not sold yet): the shipping

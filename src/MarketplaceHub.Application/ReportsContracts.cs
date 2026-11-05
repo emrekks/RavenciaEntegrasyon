@@ -230,9 +230,10 @@ public sealed record ReportChannelView(Guid Id, string PlatformCode, string Disp
 // Real marketplace costs, read from the marketplace's own accounting (today Trendyol's current account statement of
 // production stores), next to the estimates above, which keep their meaning. Source is "trendyol-finance" when the
 // period has real records, else "estimate": then RealCostTotal and Commission are null and the lists are empty, never
-// zeros. A record tied to an order counts in the period of the order. A record tied to no order of the period (Trendyol's
-// service fee and withholding tax invoices of a payment day, advertising, penalties, a record of an order never imported)
-// counts by its own date in Unlinked only (owner, 5 Nov 2026): it never enters Lines, Channels, Commission, Cargo,
+// zeros. A record tied to an order counts in the period of the order; Trendyol's service fee and withholding tax invoices
+// of a payment day are split over the orders of their payout and count with them. A record tied to no order of the
+// period (advertising, penalties, a record of an order never imported, a fee invoice whose payout's orders are not read
+// yet or that names no payout) counts by its own date in Unlinked only (owner, 5 Nov 2026): it never enters Lines, Channels, Commission, Cargo,
 // NetVat or RealCostTotal, so every profit figure carries only the costs of the period's own orders (their records, or
 // the estimates when there is none). Amounts are what the seller was charged (debt - credit); a negative amount was
 // paid back or credited (sales are negative).

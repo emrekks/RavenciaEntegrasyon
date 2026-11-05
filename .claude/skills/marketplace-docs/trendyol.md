@@ -40,6 +40,15 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
 - Claims `GET order/sellers/{id}/claims`: dates filter the claim's lastModifiedDate; one cursor bucket per
   `claimItemStatus`; page 200 and 3-month depth **unverified**; no storeFrontCode sent (TR only).
 - Finance `finance/che`: max 15-day window, page 500 or 1000, `supplierId` required.
+- Platform service fee ("Platform Hizmet Bedeli", DeductionInvoices/PlatformServiceFee), international service fee
+  ("Uluslararası Hizmet Bedeli") and e-commerce withholding tax (Stoppage, "E-ticaret Stopajı") come as invoices of a
+  payment day: `orderNumber`, `shipmentPackageId`, `orderLineItemId` and `orderDate` are null; only `paymentOrderId`
+  ties them to the payout, and the settlement lines of the orders that payout paid carry the same `paymentOrderId`
+  once the payout is read (Trendyol lists a payout after paying it; its lines are read a day later). A few fee invoices
+  carry no `paymentOrderId` either. Live, 30 payouts Aug–Nov 2026: platform fee = 13.19 TL (10.99 + VAT) × the payout's
+  sale packages (10.99 on AZ payouts), international fee ≈ 5.1–5.9 % of its sales abroad, withholding tax ≈ 0.7–0.9 %
+  of its sales less returns. The report splits them over the payout's orders (`ReportFeeAllocation`). Source: live
+  `sales.marketplace_finance_transactions`, 5 Nov 2026.
 - Questions: default from now − 7 days; ≤ 14 days per request, page ≤ 50, older ranges silently trimmed.
 
 ## Time

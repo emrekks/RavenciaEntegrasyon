@@ -513,6 +513,116 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         }
     }
 
+    // Trendyol's service fee and withholding tax invoices name only their payout: they are split over the orders that
+    // payout paid and count with those orders (owner, 5 Nov 2026), whatever day they were billed on. A share of an order
+    // of another period stays out of this one, a share of an order never imported and an invoice whose payout lines are
+    // not read yet or that names no payout stay apart, unlinked.
+    [PostgreSqlFact]
+    public async Task Per_sale_fee_invoices_are_split_over_the_orders_of_their_payout()
+    {
+        var tenant = NewTenant("rep-fee-split");
+        var trendyol = NewConnection(tenant.Id, "TRENDYOL", "PRODUCTION");
+        var orderA = NewOrder(tenant.Id, trendyol.Id, "t-a", TrendyolNoon, 100m, "DELIVERED", """{"city":"Ankara"}""", "{}");
+        var lineA = NewLine(orderA, "t-a-1", 100m, 1m, """{"commission":20}""", null);
+        var orderB = NewOrder(tenant.Id, trendyol.Id, "t-b", TrendyolNoon, 50m, "DELIVERED", """{"city":"İzmir"}""", "{}");
+        var lineB = NewLine(orderB, "t-b-1", 50m, 1m, """{"commission":20}""", null);
+        // An order of 10 Oct, another period.
+        var old = NewOrder(tenant.Id, trendyol.Id, "t-old", TrendyolNoon.AddDays(-5), 150m, "DELIVERED", """{"city":"Bursa"}""", "{}");
+        var oldLine = NewLine(old, "t-old-1", 150m, 1m, """{"commission":20}""", null);
+        var billed = TrendyolNoon.AddDays(3);
+        MarketplaceFinanceTransaction Record(string id, string source, string requestedType, string? type, string category, DateTimeOffset at,
+            string? orderNumber = null, string? package = null, string? payout = null, decimal debt = 0m, decimal credit = 0m, decimal? commission = null) => new()
+            {
+                Id = Guid.CreateVersion7(),
+                TenantId = tenant.Id,
+                ConnectionId = trendyol.Id,
+                PlatformCode = "TRENDYOL",
+                Source = source,
+                ExternalId = id,
+                RequestedType = requestedType,
+                TransactionType = type,
+                Category = category,
+                TransactionDate = at,
+                OrderNumber = orderNumber,
+                ShipmentPackageId = package,
+                PaymentOrderId = payout,
+                Country = source == "SETTLEMENTS" ? "Türkiye" : null,
+                Debt = debt,
+                Credit = credit,
+                CommissionAmount = commission,
+                RawJson = "{}",
+                FirstSeenAt = Now,
+                UpdatedAt = Now
+            };
+        const string Others = "OTHER_FINANCIALS";
+        const string Fee = "Platform Hizmet Bedeli";
+        var records = new[]
+        {
+            // Payout PO-1 paid both orders of the period (packages P-A and P-B).
+            Record("s-a", "SETTLEMENTS", "Sale", "Satış", MarketplaceFinanceCategories.Sale, TrendyolNoon, "t-a", "P-A", "PO-1", credit: 100m, commission: 20m),
+            Record("s-b", "SETTLEMENTS", "Sale", "Satış", MarketplaceFinanceCategories.Sale, TrendyolNoon, "t-b", "P-B", "PO-1", credit: 50m, commission: 10m),
+            // Payout PO-0 paid the old order and one the panel never imported.
+            Record("s-old", "SETTLEMENTS", "Sale", "Satış", MarketplaceFinanceCategories.Sale, TrendyolNoon.AddDays(-5), "t-old", "P-O", "PO-0", credit: 150m, commission: 30m),
+            Record("s-ghost", "SETTLEMENTS", "Sale", "Satış", MarketplaceFinanceCategories.Sale, TrendyolNoon.AddDays(-5), "t-ghost", "P-G", "PO-0", credit: 50m, commission: 10m),
+            // PO-1's invoices, billed three days after the period.
+            Record("SF-1", Others, "DeductionInvoices", Fee, MarketplaceFinanceCategories.ServiceFee, billed, payout: "PO-1", debt: 26.38m),
+            Record("ST-1", Others, "Stoppage", "E-ticaret Stopajı", MarketplaceFinanceCategories.Stoppage, billed, payout: "PO-1", debt: 1.25m),
+            // Billed in the period: PO-0's fee, a fee of a payout whose lines are not read yet, and one naming no payout.
+            Record("SF-0", Others, "DeductionInvoices", Fee, MarketplaceFinanceCategories.ServiceFee, TrendyolNoon, payout: "PO-0", debt: 26.38m),
+            Record("SF-9", Others, "DeductionInvoices", Fee, MarketplaceFinanceCategories.ServiceFee, TrendyolNoon, payout: "PO-9", debt: 39.57m),
+            Record("SF-N", Others, "DeductionInvoices", Fee, MarketplaceFinanceCategories.ServiceFee, TrendyolNoon, debt: 13.19m)
+        };
+        try
+        {
+            await using (var seed = fixture.CreateContext())
+            {
+                seed.Tenants.Add(tenant);
+                seed.PlatformConnections.Add(trendyol);
+                seed.Orders.AddRange(orderA, orderB, old);
+                seed.OrderLines.AddRange(lineA, lineB, oldLine);
+                seed.MarketplaceFinanceTransactions.AddRange(records);
+                seed.MarketplaceFinanceSyncStates.Add(new MarketplaceFinanceSyncState
+                {
+                    TenantId = tenant.Id,
+                    ConnectionId = trendyol.Id,
+                    CoveredFrom = Now.AddDays(-90),
+                    CoveredThrough = Now,
+                    LastSyncedAt = Now
+                });
+                await seed.SaveChangesAsync();
+            }
+
+            var report = await ReportAsync(tenant.Id, includeTest: false);
+            var fee = report.Costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee);
+            var tax = report.Costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.Stoppage);
+            // 13.19 a package, nothing estimated; the tax by sale, 100 : 50.
+            Assert.Equal((26.38m, 26.38m, 0m, 2), (fee.Amount, fee.OrderLinked, fee.Estimated, fee.Records));
+            Assert.Equal((1.25m, 1.25m, 0m, 2), (tax.Amount, tax.OrderLinked, tax.Estimated, tax.Records));
+            // Apart: the never-imported order's share (13.19), the unread payout's 39.57 and the 13.19 naming no payout;
+            // the old order's share is in its own period. No withholding tax is left apart.
+            var apart = report.Costs.Unlinked!.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee);
+            Assert.Equal((65.95m, 3), (apart.Amount, apart.Records));
+            Assert.DoesNotContain(report.Costs.Unlinked!, line => line.Category == MarketplaceFinanceCategories.Stoppage);
+            Assert.Contains(report.DataNotes, note => note.Contains("39,57 ₺", StringComparison.Ordinal) && note.Contains("ödeme kayıtları okununca", StringComparison.Ordinal));
+            Assert.Contains(report.DataNotes, note => note.StartsWith("13,19 ₺", StringComparison.Ordinal));
+
+            await using var db = fixture.CreateContext();
+            var page = await new ReportsService(db, new FixedClock(Now)).OrderProfitabilityAsync(tenant.Id,
+                new ReportOrderProfitQuery(Day, Day, null, null, null, false, 0, 50), CancellationToken.None);
+            Assert.True(page.Succeeded, page.Error?.Message);
+            var a = page.Value!.Items.Single(order => order.OrderNumber == "t-a").Costs;
+            var b = page.Value!.Items.Single(order => order.OrderNumber == "t-b").Costs;
+            Assert.Equal((13.19m, false), (a.Single(cost => cost.Key == "serviceFee").Amount, a.Single(cost => cost.Key == "serviceFee").Estimated));
+            Assert.Equal((0.83m, false), (a.Single(cost => cost.Key == "stoppage").Amount, a.Single(cost => cost.Key == "stoppage").Estimated));
+            Assert.Equal((13.19m, false), (b.Single(cost => cost.Key == "serviceFee").Amount, b.Single(cost => cost.Key == "serviceFee").Estimated));
+            Assert.Equal((0.42m, false), (b.Single(cost => cost.Key == "stoppage").Amount, b.Single(cost => cost.Key == "stoppage").Estimated));
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task<ReportSalesView> ReportAsync(Guid tenantId, bool includeTest)
     {
         await using var db = fixture.CreateContext();
@@ -616,6 +726,7 @@ public sealed class PostgreSqlReportsTests(PostgreSqlTenantIsolationFixture fixt
         await db.MarketplaceCargoInvoiceItems.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderStatusHistory.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.MarketplaceFinanceTransactions.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.MarketplaceFinanceSyncStates.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ReturnLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ReturnClaims.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
