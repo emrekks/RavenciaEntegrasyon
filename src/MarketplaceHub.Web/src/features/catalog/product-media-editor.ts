@@ -52,6 +52,34 @@ export function mediaUrlsInPreferredOrder(currentUrls: string[], preferredUrls: 
   return [...ordered, ...remaining]
 }
 
+// The "Görseller" strip as one ordered list: saved pictures ('url|…') and new files not saved yet ('file|<id>'). `order`
+// is the strip as the user last arranged it and keeps where the files stand among the pictures; the pictures' own order
+// comes from `urls`. A picture it does not know goes after the last picture it places, a file it does not know at the end.
+export function mediaStripRefs(urls: readonly string[], fileIds: readonly string[], order: readonly string[]): string[] {
+  const urlQueue = urls.map(url => `url|${url}`)
+  const fileQueue = fileIds.map(id => `file|${id}`)
+  const urlKeys = new Set(urls.map(mediaImageKey))
+  const knownFileIds = new Set(fileIds)
+  const strip: string[] = []
+  let lastUrlIndex = -1
+  for (const ref of order) {
+    const isFile = ref.startsWith('file|') && knownFileIds.has(ref.slice(5))
+    const isUrl = ref.startsWith('url|') && urlKeys.has(mediaImageKey(ref.slice(4)))
+    const next = isFile ? fileQueue.shift() : isUrl ? urlQueue.shift() : undefined
+    if (!next) continue
+    strip.push(next)
+    if (isUrl) lastUrlIndex = strip.length - 1
+  }
+  strip.splice(lastUrlIndex + 1, 0, ...urlQueue)
+  return [...strip, ...fileQueue]
+}
+
+// A strip tile's place among the card's own pictures, new files included (the family's other colours do not count):
+// 0 is the main picture ("Ana görsel"), whatever its kind.
+export function mediaStripOwnPosition(strip: readonly string[], index: number, ownUrlKeys: ReadonlySet<string>): number {
+  return strip.slice(0, index).filter(ref => ref.startsWith('file|') || ownUrlKeys.has(mediaImageKey(ref.slice(4)))).length
+}
+
 export function mediaRefsEqual(current: string[], original: string[]): boolean {
   return current.length === original.length && current.every((reference, index) => reference === original[index])
 }

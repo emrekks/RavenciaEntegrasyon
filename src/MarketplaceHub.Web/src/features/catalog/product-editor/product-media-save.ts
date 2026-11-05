@@ -3,7 +3,9 @@
 // product sent 72 uploads of 18 files). The server already stores one file per content hash, so the saved media
 // are the same either way.
 
-export type ReconcileItem = { url: string; sortOrder: number }
+import { uniqueMediaUrls } from '../product-media-editor'
+
+export type ReconcileItem ={ url: string; sortOrder: number }
 export type PendingVariantUpload = { fileId: string; sortOrder: number }
 
 // The address the reconcile endpoint accepts for an image already stored on this tenant's products.
@@ -26,6 +28,16 @@ export function variantMediaReconcilePlan(mediaRefs: readonly string[], storedUr
     }
   })
   return { items, uploads }
+}
+
+// The strip's refs ('url|…', 'file|<pending id>') as the URLs the save writes, in the order shown: a link as it is, a
+// new file by the stored copy its upload made (a file without one is left out), each picture once.
+export function savedMediaOrder(stripRefs: readonly string[], storedUrlByFileId: ReadonlyMap<string, string>): string[] {
+  return uniqueMediaUrls(stripRefs.flatMap(ref => {
+    if (ref.startsWith('url|')) return [ref.slice(4)]
+    const storedUrl = ref.startsWith('file|') ? storedUrlByFileId.get(ref.slice(5)) : undefined
+    return storedUrl ? [storedUrl] : []
+  }))
 }
 
 // Runs the tasks at most `limit` at a time and keeps the results in input order; the first failure is thrown

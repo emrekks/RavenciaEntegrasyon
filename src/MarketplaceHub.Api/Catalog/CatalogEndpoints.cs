@@ -362,7 +362,13 @@ public static class CatalogEndpoints
             }
         }
         var isCustomProductGallery = variantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
-        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(form["mediaRole"].ToString());
+        // A new picture never takes the place of a live one (another colour's included): it goes after the gallery then.
+        var requestedSortOrder = sortOrder;
+        sortOrder = ProductFamilyMediaOrdering.UploadSortOrder(sortOrder, (await db.ProductMedia.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId)
+            .Select(x => new { x.SortOrder, x.Status, x.FileAssetId }).ToListAsync(http.RequestAborted))
+            .Select(x => (x.SortOrder, x.Status == "ACTIVE", x.FileAssetId)), asset.Id);
+        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(sortOrder == requestedSortOrder ? form["mediaRole"].ToString() : "GALLERY");
         var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == productId && x.VariantId == variantId && x.SortOrder == sortOrder, http.RequestAborted);
         if (media is null) { media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = productId, VariantId = variantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = sortOrder, AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(), Status = "ACTIVE" }; db.ProductMedia.Add(media); }
         else { media.FileAssetId = asset.Id; media.MediaRole = mediaRole; media.AltText = string.IsNullOrWhiteSpace(form["altText"]) ? null : form["altText"].ToString().Trim(); media.Status = "ACTIVE"; }
@@ -821,11 +827,16 @@ public static class CatalogEndpoints
         // K27: a product gallery the user has ordered keeps its ORDERED_* roles for URL images too, the same
         // rule the upload path applies.
         var isCustomProductGallery = command.VariantId is null && await db.ProductMedia.AnyAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == null && x.Status == "ACTIVE" && x.MediaRole.StartsWith("ORDERED_"), http.RequestAborted);
-        var mediaRole = isCustomProductGallery ? command.SortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(command.MediaRole);
-        var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == command.VariantId && x.SortOrder == command.SortOrder, http.RequestAborted);
+        // Like an upload: a new link never takes the place of a live picture; it goes after the gallery then.
+        var sortOrder = ProductFamilyMediaOrdering.UploadSortOrder(command.SortOrder, (await db.ProductMedia.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == command.VariantId)
+            .Select(x => new { x.SortOrder, x.Status, x.FileAssetId }).ToListAsync(http.RequestAborted))
+            .Select(x => (x.SortOrder, x.Status == "ACTIVE", x.FileAssetId)), asset.Id);
+        var mediaRole = isCustomProductGallery ? sortOrder == 0 ? "ORDERED_PRIMARY" : "ORDERED_GALLERY" : MediaRole(sortOrder == command.SortOrder ? command.MediaRole : "GALLERY");
+        var media = await db.ProductMedia.SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.ProductId == command.ProductId && x.VariantId == command.VariantId && x.SortOrder == sortOrder, http.RequestAborted);
         if (media is null)
         {
-            media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = command.ProductId, VariantId = command.VariantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = command.SortOrder, AltText = SafeAltText(command.AltText), Status = "ACTIVE" };
+            media = new ProductMedia { Id = Guid.CreateVersion7(), TenantId = tenant.TenantId, ProductId = command.ProductId, VariantId = command.VariantId, FileAssetId = asset.Id, MediaRole = mediaRole, SortOrder = sortOrder, AltText = SafeAltText(command.AltText), Status = "ACTIVE" };
             db.ProductMedia.Add(media);
         }
         else
