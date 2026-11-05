@@ -245,6 +245,44 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
     // The note of a scheduled read folded into the same read already running: it succeeded without reading anything.
     public const string CoalescedCode = "SYNC_COALESCED";
 
+    // The reconcile reads of one type come in several scopes (ScheduledJobProducer: 1, 3 and 90 days of returns and
+    // orders, 1, 6 and 720 hours of stock). A running one stands for a requested one only when its window and batch
+    // are at least as wide and every other setting is the same; anything unreadable is not taken as covered. Other
+    // reads of one type read the same thing whatever their payload, as before.
+    private static readonly string[] WidthSettings = ["lookbackDays", "lookbackHours", "batchSize"];
+
+    internal static bool RunningScopeCovers(string jobType, string runningPayloadJson, string requestedPayloadJson)
+    {
+        if (jobType is not (MarketplaceJobTypes.ReturnReconciliation or MarketplaceJobTypes.OrderReconciliation
+            or MarketplaceJobTypes.ShopifyOrderReconciliation or MarketplaceJobTypes.StockReconciliation)) return true;
+        try
+        {
+            using var running = JsonDocument.Parse(runningPayloadJson);
+            using var requested = JsonDocument.Parse(requestedPayloadJson);
+            if (running.RootElement.ValueKind != JsonValueKind.Object || requested.RootElement.ValueKind != JsonValueKind.Object) return false;
+            var names = running.RootElement.EnumerateObject().Select(x => x.Name)
+                .Concat(requested.RootElement.EnumerateObject().Select(x => x.Name))
+                .Where(name => !string.Equals(name, "connectionId", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.Ordinal);
+            foreach (var name in names)
+            {
+                var runningHas = running.RootElement.TryGetProperty(name, out var runningValue);
+                var requestedHas = requested.RootElement.TryGetProperty(name, out var requestedValue);
+                if (WidthSettings.Contains(name, StringComparer.Ordinal))
+                {
+                    if (!requestedHas || requestedValue.ValueKind == JsonValueKind.Null) { if (runningHas && runningValue.ValueKind != JsonValueKind.Null) return false; continue; }
+                    if (!runningHas || !runningValue.TryGetDecimal(out var runningWidth) || !requestedValue.TryGetDecimal(out var requestedWidth) || runningWidth < requestedWidth) return false;
+                    continue;
+                }
+                var runningText = runningHas ? runningValue.GetRawText() : "null";
+                var requestedText = requestedHas ? requestedValue.GetRawText() : "null";
+                if (!string.Equals(runningText, requestedText, StringComparison.Ordinal)) return false;
+            }
+            return true;
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException) { return false; }
+    }
+
     internal static bool IsCoalescableRead(string jobType) => jobType is
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync
         or MarketplaceJobTypes.OrderRecoverySync or MarketplaceJobTypes.ShopifyOrderRecoverySync or MarketplaceJobTypes.HepsiburadaOrderRecoverySync or MarketplaceJobTypes.N11OrderRecoverySync or MarketplaceJobTypes.PazaramaOrderRecoverySync or MarketplaceJobTypes.PttAvmOrderRecoverySync

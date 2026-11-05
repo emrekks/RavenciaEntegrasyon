@@ -84,10 +84,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 ? await db.IntegrationJobs.AsNoTracking().Where(x => x.Id == leasedJobId).Select(x => x.TriggerType).FirstOrDefaultAsync(cancellationToken)
                 : null;
             // A recurring read is folded into the run holding the lock only when that run reads the same thing
-            // (a job of the same type of the connection is running); otherwise it waits its turn.
+            // (a job of the same type of the connection is running, over a scope that covers this one: a running
+            // 1-day reconcile does not stand for a 90-day one); otherwise it waits its turn.
             var sameTypeRunning = MarketplaceSyncExecutionLock.IsCoalescableRead(jobType)
-                && await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId
-                    && x.JobType == jobType && x.Status == JobStatus.Leased && x.Id != jobId, cancellationToken);
+                && (await db.IntegrationJobs.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
+                        && x.JobType == jobType && x.Status == JobStatus.Leased && x.Id != jobId)
+                    .Select(x => x.PayloadJson).ToListAsync(cancellationToken))
+                .Any(runningPayload => MarketplaceSyncExecutionLock.RunningScopeCovers(jobType, runningPayload, payloadJson));
             var contention = MarketplaceSyncExecutionLock.ContentionResult(jobType, payloadJson, triggerType, sameTypeRunning);
             MarketplaceHub.Infrastructure.Telemetry.MarketplaceHubTelemetry.JobLockContention.Add(1, new System.Diagnostics.TagList
             {
@@ -12579,14 +12582,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var storedStatusUnknown = claim is not null && (claim.Status == ReturnClaimStatus.Unknown || MarketplaceReturnStatus.Canonicalize(claim.RawStatus) == ReturnClaimStatus.Unknown);
         var remoteCargoProvider = string.IsNullOrWhiteSpace(remote.CargoProviderName) ? null : remote.CargoProviderName.Trim();
         var remoteCargoTracking = string.IsNullOrWhiteSpace(remote.CargoTrackingNumber) ? null : remote.CargoTrackingNumber.Trim();
+        // Freshness is decided once for the whole read: an older snapshot than the one stored changes neither the
+        // claim's status, its lines, its open decisions nor a pending "Stoğa Ekle"; only non-empty cargo facts merge.
+        var remoteIsFresh = claim is null || !IsStaleReturnObservation(claim.LastRemoteModifiedAt, remote.LastModifiedAt);
         if (claim is null) { claim = NewReturnClaim(tenantId, connectionId, order.Id, remote, target, now); db.ReturnClaims.Add(claim); telemetryInsertedCount++; }
         else
         {
             var claimChanged = false;
             var previousRawStatus = claim.RawStatus;
             var previousClaimStatus = claim.Status;
-            // A claim read without a change time cannot be called stale: unknown stays unknown, so it is taken as fresh.
-            var remoteIsFresh = remote.LastModifiedAt is not { } remoteModifiedAt || claim.LastRemoteModifiedAt is not { } storedModifiedAt || remoteModifiedAt >= storedModifiedAt;
             // A partial line decision waits for the lines' own statuses, except on a marketplace that decides the whole
             // claim (Shopify, Hepsiburada; ReturnDecisionScope): it never reports a line apart, so the claim follows what
             // the marketplace says on the next read instead of waiting forever (report item 8).
@@ -12643,6 +12647,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
+        if (!remoteIsFresh)
+        {
+            // An older snapshot: its lines, its status word and its outcome are history the stored read already
+            // replaced, so they neither rewrite a line nor settle a decision or a pending stock choice.
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
         // A status word the panel does not know leaves the claim Unknown, without Onayla/Reddet (report item 9); the
         // issue tells the owner which word came, and the next read with a known word closes it.
         var unknownStatusIssueKey = $"return-status-unknown:{connectionId:N}:{remote.ExternalClaimId}";
@@ -12693,10 +12704,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         await ReconcileReturnDecisionAsync(tenantId, claim.Id, target, remote.RawStatus, lineStatuses, now, cancellationToken);
         // A "Stoğa Ekle" kept while the approval was unclear is applied once this read shows the lines approved, or
-        // dropped when it shows them rejected; committed with the read.
-        await ReturnPendingStock.SettleClaimAsync(db, tenantId, claim.Id, $"return-stock:{claim.Id:N}", now, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        // dropped when it shows them rejected; committed with the read, under the lines' locks.
+        var claimId = claim.Id;
+        await ReturnPendingStock.SettleAndSaveAsync(db, () => ReturnPendingStock.SettleClaimAsync(db, tenantId, claimId, $"return-stock:{claimId:N}", now, cancellationToken), cancellationToken);
     }
+
+    // A read whose marketplace change time is older than the one stored is stale. A read without a change time (or a
+    // claim stored without one) cannot be called stale: unknown stays unknown, so it is taken as fresh.
+    internal static bool IsStaleReturnObservation(DateTimeOffset? storedModifiedAt, DateTimeOffset? remoteModifiedAt) =>
+        remoteModifiedAt is { } remoteAt && storedModifiedAt is { } storedAt && remoteAt < storedAt;
 
     // A decision whose outcome is still open: sent (PENDING/SUBMITTED),
     // waiting on an unclear marketplace answer (MANUAL_REVIEW with an
@@ -12747,16 +12763,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // Returns true when the claim was kept as Cancelled because it has history.
     private async Task<bool> RemoveCancelledReturnClaim(Guid tenantId, Guid connectionId, RemoteReturnClaim remote, CancellationToken cancellationToken)
     {
-        var claimId = await db.ReturnClaims.AsNoTracking()
+        var stored = await db.ReturnClaims.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == remote.ExternalClaimId)
-            .Select(x => (Guid?)x.Id)
+            .Select(x => new { x.Id, x.LastRemoteModifiedAt })
             .SingleOrDefaultAsync(cancellationToken);
-        if (claimId is null) return false;
+        if (stored is null) return false;
+        // An older "cancelled" read than the stored one neither deletes the claim nor cancels it (RET-01).
+        if (IsStaleReturnObservation(stored.LastRemoteModifiedAt, remote.LastModifiedAt)) return false;
+        var claimId = stored.Id;
         var now = timeProvider.GetUtcNow();
-        if (!await CancelledReturnClaimCleanup.RemoveOrRetainAsync(db, tenantId, claimId.Value, remote.RawStatus, remote.LastModifiedAt, now, cancellationToken)) return false;
-        await ReconcileReturnDecisionAsync(tenantId, claimId.Value, ReturnClaimStatus.Cancelled, remote.RawStatus, new Dictionary<Guid, string?>(), now, cancellationToken);
-        await ReturnPendingStock.SettleClaimAsync(db, tenantId, claimId.Value, $"return-stock:{claimId.Value:N}", now, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        if (!await CancelledReturnClaimCleanup.RemoveOrRetainAsync(db, tenantId, claimId, remote.RawStatus, remote.LastModifiedAt, now, cancellationToken)) return false;
+        await ReconcileReturnDecisionAsync(tenantId, claimId, ReturnClaimStatus.Cancelled, remote.RawStatus, new Dictionary<Guid, string?>(), now, cancellationToken);
+        await ReturnPendingStock.SettleAndSaveAsync(db, () => ReturnPendingStock.SettleClaimAsync(db, tenantId, claimId, $"return-stock:{claimId:N}", now, cancellationToken), cancellationToken);
         return true;
     }
 

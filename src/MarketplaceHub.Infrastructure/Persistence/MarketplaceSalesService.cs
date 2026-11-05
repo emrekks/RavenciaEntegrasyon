@@ -2649,12 +2649,26 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
         var effect = new ExternalEffectRecord { Id = Guid.CreateVersion7(), TenantId = tenantId, EffectType = effectType, IdempotencyKey = normalizedKey, CreatedAt = now, ConnectionId = claim.ConnectionId, TargetId = claim.Id, Action = $"RETURN_{action}" };
         db.ExternalEffectRecords.Add(effect);
-        await db.SaveChangesAsync(cancellationToken);
+        if (await ReserveReturnDecisionAsync(tenantId, claimId, decision, isHepsiburada, cancellationToken) is { } reservationError) return reservationError;
 
         var lineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
         var context = new AdapterContext(tenantId, claim.ConnectionId, correlationId, normalizedKey, now.AddSeconds(30));
-        var result = await returns.ExecuteAsync(context, new(claim.ExternalClaimId, lineIds, action, action == "APPROVE" && isHepsiburada ? null : decision.ReasonCode, decision.Explanation, evidenceFiles, isHepsiburada ? finalizedWith : null,
-            action == "REJECT" && isN11 ? command.ReturnShipment : null), cancellationToken);
+        AdapterResult<ReturnActionResult> result;
+        try
+        {
+            result = await returns.ExecuteAsync(context, new(claim.ExternalClaimId, lineIds, action, action == "APPROVE" && isHepsiburada ? null : decision.ReasonCode, decision.Explanation, evidenceFiles, isHepsiburada ? finalizedWith : null,
+                action == "REJECT" && isN11 ? command.ReturnShipment : null), cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // The call may or may not have reached the marketplace: the reserved decision is not left PENDING but
+            // waits for the effect check, like an unclear answer, and the claim stays held until it settles.
+            decision.Status = "MANUAL_REVIEW";
+            decision.ErrorCode = "EXTERNAL_EFFECT_VERIFYING";
+            decision.CompletedAt = timeProvider.GetUtcNow();
+            await db.SaveChangesAsync(CancellationToken.None);
+            return await VerifyLaterAsync<ReturnDetailView>(effect, CancellationToken.None);
+        }
         if (!result.IsSuccess)
         {
             var error = result.Error;
@@ -2697,10 +2711,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             _ => "PREAPPROVAL_CONFIRM_SUBMITTED"
         });
         // The marketplace accepted the approval: the chosen lines go back to stock now, once.
-        await ReturnPendingStock.SettleAsync(db, decision, force: action == "APPROVE", correlationId, effect.CompletedAt.Value, cancellationToken);
         claim.UpdatedAt = effect.CompletedAt.Value;
         claim.Version++;
-        await db.SaveChangesAsync(cancellationToken);
+        await ReturnPendingStock.SettleAndSaveAsync(db, () => ReturnPendingStock.SettleAsync(db, decision, force: action == "APPROVE", correlationId, effect.CompletedAt.Value, cancellationToken), cancellationToken);
 
         // The action itself is already complete. Read-back is best-effort and
         // only refines the local status; it must not put the user action in a
@@ -2754,17 +2767,59 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         return await ReturnAsync(tenantId, claimId, cancellationToken);
     }
 
+    // Reserves a return decision before the marketplace is called (RET-02). In one short transaction the claim's
+    // version moves on only while it is still the one this request read (Version is the claim's concurrency token, so
+    // the UPDATE is conditional and holds the row), the open decisions are read again under that lock, and the PENDING
+    // decision commits with its effect record. Of two requests that read the same claim only one is reserved; the other
+    // calls nothing and gets a conflict. Null when reserved.
+    private async Task<ServiceResult<ReturnDetailView>?> ReserveReturnDecisionAsync(Guid tenantId, Guid claimId, ReturnDecision decision, bool sentDecisionHoldsClaim, CancellationToken cancellationToken)
+    {
+        var claim = db.ReturnClaims.Local.Single(x => x.TenantId == tenantId && x.Id == claimId);
+        var lineIds = decision.ReturnLineIds ?? [];
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
+        {
+            try
+            {
+                claim.Version++;
+                claim.UpdatedAt = decision.CreatedAt;
+                await db.SaveChangesAsync(cancellationToken);
+                var openLines = await OpenReturnDecisions(tenantId, claimId, sentDecisionHoldsClaim).Where(x => x.Id != decision.Id).Select(x => x.ReturnLineIds).ToListAsync(cancellationToken);
+                if (!openLines.Any(open => ReturnDecisionLinePolicy.Overlaps(open, lineIds)))
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                    return null;
+                }
+            }
+            catch (DbUpdateException)
+            {
+                // Another request moved the claim on first (or reserved the same Idempotency-Key): answered below.
+            }
+            await transaction.RollbackAsync(CancellationToken.None);
+        }
+        db.ChangeTracker.Clear();
+        var prior = await db.ReturnDecisions.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == decision.IdempotencyKey, cancellationToken);
+        if (prior is not null && prior.ClaimId == claimId && prior.Status is "SUCCEEDED" or "SUBMITTED") return await ReturnAsync(tenantId, claimId, cancellationToken);
+        var stillOpen = await OpenReturnDecisions(tenantId, claimId, sentDecisionHoldsClaim).Select(x => x.ReturnLineIds).ToListAsync(cancellationToken);
+        if (prior is not null || stillOpen.Any(open => ReturnDecisionLinePolicy.Overlaps(open, lineIds)))
+            return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade için başka bir karar az önce pazaryerine gönderildi; sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
+        var currentVersion = await db.ReturnClaims.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == claimId).Select(x => x.Version).FirstOrDefaultAsync(cancellationToken);
+        return ServiceResult<ReturnDetailView>.Fail("CONCURRENCY_CONFLICT", $"İade bu sırada değişti; güncel sürüm v{currentVersion}. Sayfayı yenileyip tekrar deneyin.", 409);
+    }
+
     public async Task<ServiceResult<ReturnDetailView>> ApplyDispositionAsync(Guid tenantId, Guid userId, Guid claimId, ReturnDispositionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
     {
         if (!Enum.TryParse<ReturnStockDispositionKind>(command.Disposition, true, out var disposition)) return Invalid<ReturnDetailView>("disposition", "Disposition PASS, QUARANTINE, DAMAGED veya NOT_RECEIVED olmalıdır.");
         if (command.Quantity <= 0 || string.IsNullOrWhiteSpace(command.Reason)) return Invalid<ReturnDetailView>("quantity", "Pozitif quantity ve açıklama zorunludur.");
 
-        // Idempotency and quantity reservation must share one serializable
-        // transaction. Otherwise two concurrent operators can both observe
-        // the same remaining quantity and increase inventory twice.
-        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        // The return line is locked before anything is read, and held until the disposition commits: two operators,
+        // or an operator and the automatic "Stoğa Ekle" settlement (ReturnPendingStock, which takes the same lock),
+        // put the line's units somewhere one after the other, each reading what the other already did (YENİ-04).
+        // Read committed, so the read after the lock sees the other's committed rows; a serializable snapshot taken
+        // before the wait would not.
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         try
         {
+            await ReturnPendingStock.LockLinesAsync(db, tenantId, [command.ReturnLineId], cancellationToken);
             var existing = await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
             if (existing)
             {
@@ -2778,7 +2833,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             if (line is null) return NotFound<ReturnDetailView>();
             // Decided per line: a line approved on its own takes stock while the claim's other lines still wait.
             if (!ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus)) return ServiceResult<ReturnDetailView>.Fail("RETURN_DISPOSITION_NOT_ALLOWED", "Stok kararı yalnız onaylanan iade ürünlerine uygulanabilir.", 409);
-            var already = await db.ReturnStockDispositions.Where(x => x.TenantId == tenantId && x.ReturnLineId == line.Id).SumAsync(x => x.Quantity, cancellationToken);
+            var already = await ReturnPendingStock.DisposedQuantityAsync(db, tenantId, line.Id, cancellationToken);
             if (already + command.Quantity > line.Quantity) return ServiceResult<ReturnDetailView>.Fail("RETURN_QUANTITY_EXCEEDED", "Disposition toplamı iade satırı miktarını aşamaz.", 409);
             var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == line.OrderLineId).Select(x => x.VariantId).SingleAsync(cancellationToken);
             if (variantId is null) return ServiceResult<ReturnDetailView>.Fail("INVENTORY_MAPPING_REQUIRED", "İade satırı yerel varyantla eşleşmiyor.", 422);
