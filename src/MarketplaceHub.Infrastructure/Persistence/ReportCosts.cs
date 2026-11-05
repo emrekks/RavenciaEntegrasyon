@@ -137,8 +137,9 @@ internal static class ReportCosts
         LineTotal Line(string category) => lines.TryGetValue(category, out var total) ? total : lines[category] = new();
         // The records of the period's dates tied to no order of the period (advertising, a penalty, a record of an order
         // never imported, a service fee or withholding tax invoice whose payout's orders are not read yet or that names
-        // no payout): shown apart, in no profit figure (owner, 5 Nov 2026; 5 Nov they turned the day's +4,922 TL profit
-        // into a 633 TL loss). The service fee and withholding tax invoices of a read payout are split over its orders
+        // no payout): kept apart from the period's orders' costs (5 Nov 2026 they turned the day's +4,922 TL order profit
+        // into a 633 TL loss); the panel takes their total off the net profit in a line of its own after the product cost
+        // (owner, 5 Nov 2026: every expense is off Net Kâr), and never off a single order's profit. The service fee and withholding tax invoices of a read payout are split over its orders
         // (ReportFeeAllocation) and count with those orders, in their period.
         var unlinked = new Dictionary<string, LineTotal>(StringComparer.Ordinal);
         LineTotal Unlinked(string category) => unlinked.TryGetValue(category, out var total) ? total : unlinked[category] = new();

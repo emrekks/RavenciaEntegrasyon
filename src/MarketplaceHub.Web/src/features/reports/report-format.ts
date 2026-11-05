@@ -82,7 +82,8 @@ export type ReportCosts = {
   // The costs of the period's orders only: amount = orderLinked (their own records) + estimated (orders without one).
   lines: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number; orderLinked: number; estimated?: number }>
   // The records of the period's dates tied to no order of the period (the previous payment day's service fee and
-  // withholding tax, advertising): never in a profit figure, shown apart; unlinkedTotal adds up the deductions (isCost).
+  // withholding tax, advertising): shown apart and taken off the net profit in a line of their own (never off an order's
+  // profit); unlinkedTotal adds up the deductions (isCost).
   unlinked?: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number }> | null
   unlinkedTotal?: number
   // The net VAT of the Trendyol orders (server-side estimate): sales VAT less the VAT in the product cost and in Trendyol's
