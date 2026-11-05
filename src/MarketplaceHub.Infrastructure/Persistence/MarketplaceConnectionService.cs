@@ -669,9 +669,14 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
         return ServiceResult<IReadOnlyList<SyncPolicyView>>.Ok(rows);
     }
 
-    public async Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken)
+    public async Task<ServiceResult<SyncPolicyView>> UpsertSyncPolicyAsync(Guid tenantId, Guid id, string resourceType, long? expectedVersion, UpdateSyncPolicyCommand command, CancellationToken cancellationToken, bool elevated = true)
     {
-        var normalized = resourceType.Trim().ToUpperInvariant(); if (normalized == "PRODUCTS") return ServiceResult<SyncPolicyView>.Fail("PRODUCT_SYNC_MANUAL_ONLY", "Ürün aktarımı yalnızca panelden manuel başlatılabilir.", 422); if (!ResourceTypes.Contains(normalized)) return Invalid<SyncPolicyView>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
+        var normalized = resourceType.Trim().ToUpperInvariant();
+        // A write switch (price, stock, shipment, return, PTT AVM manual) is a permission like the master external-write
+        // switch, so it is the owner's or an administrator's to change (YENİ-03), in either direction.
+        if (!elevated && MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized))
+            return ServiceResult<SyncPolicyView>.Fail("PERMISSION_DENIED", "Dış yazma akışlarını yalnız sahip veya yönetici değiştirebilir.", 403);
+        if (normalized == "PRODUCTS") return ServiceResult<SyncPolicyView>.Fail("PRODUCT_SYNC_MANUAL_ONLY", "Ürün aktarımı yalnızca panelden manuel başlatılabilir.", 422); if (!ResourceTypes.Contains(normalized)) return Invalid<SyncPolicyView>("resourceType", "Bu bağlantı için desteklenen sync resource türü değil.");
         var minimumInterval = MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? 0 : 30;
         var maximumInterval = MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? 86_400 : ScheduledOrderPollingCadencePolicy.MaximumIntervalSeconds;
         if (!command.ResetToDefault && (command.IntervalSeconds < minimumInterval || command.IntervalSeconds > maximumInterval || command.OverlapSeconds is < 0 or > 1_209_599 || command.JitterSeconds is < 0 or > 3_600)) return Invalid<SyncPolicyView>("interval", MarketplaceExternalWritePolicies.IsPermissionPolicy(normalized) ? "Dış yazma sıklığı anında veya 30 saniye-24 saat arasında olmalıdır." : "Sync aralığı 30 saniye-72 saat, overlap 0-14 gün ve jitter 0-1 saat arasında olmalıdır.");

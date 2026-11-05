@@ -62,7 +62,7 @@ public static class InvoicingEndpoints
                 to,
                 providerHasCredential ?? false,
                 sort);
-            return Results.Ok(await service.WorkspacePageAsync(tenant.TenantId, filter, http.RequestAborted));
+            return Results.Ok(MarketplaceHub.Api.Security.InvoiceLinkVisibility.ForRole(await service.WorkspacePageAsync(tenant.TenantId, filter, http.RequestAborted), tenant.Role));
         });
         api.MapPut("/invoice-workspace/hidden", UpdateInvoiceWorkspaceHiddenAsync);
         api.MapPut("/invoice-workspace/manual-status", UpdateInvoiceWorkspaceManualStatusAsync);
@@ -265,6 +265,20 @@ public static class InvoicingEndpoints
             old.UpdatedAt = now;
             old.Version++;
         }
+        // A replaced PDF is no longer served (YENİ-01): its stored file is archived, kept on disk as a record, and its
+        // public link answers 404 like any other unknown link.
+        var replacedAssetIds = activeDocuments.Where(x => x.FileAssetId is not null).Select(x => x.FileAssetId!.Value).ToList();
+        if (replacedAssetIds.Count > 0)
+        {
+            var replacedAssets = await db.FileAssets
+                .Where(x => x.TenantId == tenant.TenantId && replacedAssetIds.Contains(x.Id) && x.Status == "ACTIVE")
+                .ToListAsync(http.RequestAborted);
+            foreach (var asset in replacedAssets)
+            {
+                asset.Status = "ARCHIVED";
+                asset.ArchivedAt = now;
+            }
+        }
         var document = new ManualOrderInvoiceDocument
         {
             Id = documentId,
@@ -396,7 +410,7 @@ public static class InvoicingEndpoints
         var row = await (from document in db.ManualOrderInvoiceDocuments.AsNoTracking()
                          join asset in db.FileAssets.AsNoTracking() on new { document.TenantId, Id = document.FileAssetId } equals new { asset.TenantId, Id = (Guid?)asset.Id }
                          where document.TenantId == tenantId && document.Id == documentId && document.DocumentType == "PDF"
-                             && asset.Status == "ACTIVE"
+                             && document.Status == "ACTIVE" && asset.Status == "ACTIVE"
                          select new { asset.RelativePath, asset.MimeType, asset.OriginalNameSafe, document.DocumentUrl }).SingleOrDefaultAsync(http.RequestAborted);
         if (row is null || !Uri.TryCreate(row.DocumentUrl, UriKind.Absolute, out var storedUri)
             || !string.Equals(storedUri.AbsolutePath, expectedPath, StringComparison.Ordinal)
