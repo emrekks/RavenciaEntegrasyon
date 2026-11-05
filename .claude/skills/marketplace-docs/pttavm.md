@@ -23,6 +23,8 @@ may not repeat within 5 min (`PTTAVM_REPEAT_REQUEST_WAIT`). Price/stock ≤ 1000
 ## Windows and paging
 - `SiparisKontrolListesiV2 (BaslangicTarihi, BitisTarihi, AktifSiparisler)`: no paging, one call returns the whole
   window. Documented max 40 days, code 35. First read 3 months; incremental re-reads 2 days.
+- No paging means the whole window is one answer, capped at 16 MB by `MarketplaceResponseLimits`; an answer over it
+  fails as PTTAVM_NETWORK_ERROR on every retry and the window is not split (2 orders live, 6 Nov 2026: not reached).
 - One order is found by reading the day in its number (`PTT-…-ddMMyy`) ±1 day.
 - `GetProductsWithVariants(page, size)` pages from 1; `StokKontrolListesi` read until `RowCount`.
 

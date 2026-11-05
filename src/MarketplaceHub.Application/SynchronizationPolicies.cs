@@ -478,6 +478,15 @@ public static class ProductImportScanPolicy
     // appear in a modified-since page again.
     public static bool RequiresFullCatalogForMapping(bool mappingOnly, bool includeArchived, bool includeDrafts) =>
         mappingOnly && (includeArchived || includeDrafts);
+
+    // The PRODUCTS watermark a finished catalog read leaves behind, which the next incremental read starts from (less
+    // two minutes). It is the moment the scan began, less a minute: a product changed while its page was already behind
+    // the scan is read again next time. Before 6 Nov 2026 it was the moment the job ended, so changes made during a long
+    // scan (11 minutes live, 31 Oct) were never read. A scoped read (new only, existing only, mapping, options) skips
+    // part of the catalog and leaves the watermark where it was; before, it moved it, and the next incremental read
+    // missed the products it had skipped.
+    public static DateTimeOffset? CompletedWatermark(DateTimeOffset scanStartedAt, DateTimeOffset? current, bool scoped) =>
+        scoped ? current : scanStartedAt.ToUniversalTime().AddSeconds(-60);
 }
 
 public static class ProductImportConcurrencyPolicy
