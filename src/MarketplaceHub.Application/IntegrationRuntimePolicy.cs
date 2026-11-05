@@ -102,6 +102,22 @@ public static class ManualInvoiceDeliveryPolicy
     public static bool CanSubmitAfterPrecheck(string? previousStatus, MarketplaceInvoiceStatus currentMarketplaceStatus) =>
         !RequiresReadOnlyInspection(previousStatus)
         && currentMarketplaceStatus == MarketplaceInvoiceStatus.NotInvoiced;
+
+    // Report item 11: an owner-uploaded document goes to every marketplace with an invoice link service, under that
+    // marketplace's rules (n11: an https link to a pdf, png or jpeg and the 16-character number; Pazarama and PTT AVM:
+    // an https link to a document, as their automatic delivery sends it).
+    public static bool SupportsManualDocument(string? platformCode) =>
+        platformCode is "TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM";
+
+    // n11, Pazarama and PTT AVM cannot read an invoice back before the write (UNVERIFIED): the owner's local state (an
+    // observed invoice, a hand-set "uploaded") decides, as in the automatic delivery.
+    public static bool ReadsUnverified(string? platformCode) => platformCode is "N11" or "PAZARAMA" or "PTTAVM";
+
+    public static bool RequiresDocumentExtension(string? platformCode) => ReadsUnverified(platformCode);
+
+    public static bool HasDocumentExtension(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && new[] { ".pdf", ".png", ".jpeg", ".jpg" }.Any(extension => uri.AbsolutePath.EndsWith(extension, StringComparison.OrdinalIgnoreCase));
 }
 
 public enum IntegrationOperation { Manual, Automatic }

@@ -142,7 +142,7 @@ public sealed partial class InvoicingBillingService
 
                     if (invoice is not null)
                     {
-                        invoice.IncludeInternetSalesInfo = request.IncludeInternetSalesInfo;
+                        invoice.IncludeInternetSalesInfo = preview.IncludeInternetSalesInfo;
                         invoice.UpdatedAt = timeProvider.GetUtcNow();
                         invoice.Version++;
                         await db.SaveChangesAsync(cancellationToken);
@@ -174,7 +174,7 @@ public sealed partial class InvoicingBillingService
                     foreach (var replaced in replacedWithKey) replaced.IdempotencyKey = $"replaced:{replaced.Id:N}";
                     if (replacedWithKey.Count > 0) await db.SaveChangesAsync(cancellationToken);
                     var created = await CreateDraftAsync(tenantId,
-                        new(confirmation.OrderId, confirmation.PackageId, confirmation.ProviderConnectionId, null, request.IncludeInternetSalesInfo),
+                        new(confirmation.OrderId, confirmation.PackageId, confirmation.ProviderConnectionId, null, preview.IncludeInternetSalesInfo),
                         $"invoice-workspace-order:{confirmation.OrderId:N}", cancellationToken);
                     if (!created.Succeeded)
                     {
@@ -342,6 +342,19 @@ public sealed partial class InvoicingBillingService
                 deliveryCarrierName = carrier.Name;
             }
         }
+        // Report item 18: the E-Arşiv internet sale info is filled the same way on every marketplace; when it cannot be
+        // filled yet the option is turned off here with the reason, so the invoice is never refused for it later.
+        string? internetSalesInfoBlockedReason = null;
+        if (existing is null && invoiceType == "EARSIVFATURA")
+        {
+            if (deliveryBlockedReason is not null)
+                internetSalesInfoBlockedReason = "Taşıyıcı henüz belli değil (PTT AVM'de takip numarası, Shopify'da gönderim gelmeden bulunamaz); internet satış bilgisi gönderimden sonra eklenebilir.";
+            else if (TrendyolEFaturamCanonicalPayload.InternetSalePayment(marketplace.PlatformCode, order.CustomerSnapshotJson, order.OrderedAt, out _) is null)
+                internetSalesInfoBlockedReason = string.Equals(marketplace.PlatformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase)
+                    ? "Shopify mağaza adresi veya siparişin ödeme yöntemi okunamadı; sipariş yeniden eşitlendikten sonra internet satış bilgisi eklenebilir."
+                    : "Bu pazaryeri için internet satış bilgisi doldurulamıyor.";
+        }
+        if (internetSalesInfoBlockedReason is not null) includeInternetSalesInfo = false;
         var taxTotal = calculated.TaxTotal;
         var taxExclusive = calculated.TaxExclusiveTotal;
         // A package the seller reopened after a cancelled invoice (n11, Pazarama, PTT AVM) holds no invoice any more.
@@ -461,7 +474,7 @@ public sealed partial class InvoicingBillingService
                 EInvoiceTaxpayerState.Unknown => "UNKNOWN",
                 _ => null
             },
-            recipient.TaxpayerTitle, recipient.TargetAlias);
+            recipient.TaxpayerTitle, recipient.TargetAlias, internetSalesInfoBlockedReason);
         return ServiceResult<InvoiceWorkspacePreviewItem>.Ok(view);
     }
 

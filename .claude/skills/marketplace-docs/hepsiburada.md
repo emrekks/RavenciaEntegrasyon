@@ -118,3 +118,7 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
 ## Job types
 HEPSIBURADA_CONNECTION_TEST, _REFERENCE_SYNC, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC (also reads packages,
 cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_INVOICE_RECONCILIATION.
+
+## Buyer kind (stage 5, 5 Nov 2026)
+- No corporate flag; an individual buyer comes with `identityNo: "11111111111"` and may still carry a `companyName`
+  (the sample has "Test User"): that placeholder is the "individual" flag (`hepsiburada-api-son.md:13394`).

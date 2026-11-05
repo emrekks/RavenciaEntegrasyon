@@ -424,10 +424,10 @@ public interface IHepsiburadaInvoiceStatusPort
 
 public sealed record RemoteCancelledOrderLine(string OrderNumber, string? LineItemId, DateTimeOffset? CancelledAt);
 
-public sealed record CreateInvoiceCommand(Guid OrderId, Guid? PackageId, Guid ProviderConnectionId, Guid? OriginalInvoiceId, bool IncludeInternetSalesInfo = true);
-public sealed record InvoiceWorkspacePreviewRequest(IReadOnlyList<InvoiceWorkspacePreviewTarget> Items, bool IncludeInternetSalesInfo = true);
+public sealed record CreateInvoiceCommand(Guid OrderId, Guid? PackageId, Guid ProviderConnectionId, Guid? OriginalInvoiceId, bool IncludeInternetSalesInfo = false);
+public sealed record InvoiceWorkspacePreviewRequest(IReadOnlyList<InvoiceWorkspacePreviewTarget> Items, bool IncludeInternetSalesInfo = false);
 public sealed record InvoiceWorkspacePreviewTarget(Guid OrderId, Guid PackageId, Guid ProviderConnectionId);
-public sealed record InvoiceWorkspacePreviewConfirmRequest(IReadOnlyList<InvoiceWorkspacePreviewConfirmation> Items, bool IncludeInternetSalesInfo = true);
+public sealed record InvoiceWorkspacePreviewConfirmRequest(IReadOnlyList<InvoiceWorkspacePreviewConfirmation> Items, bool IncludeInternetSalesInfo = false);
 public sealed record InvoiceWorkspacePreviewConfirmation(Guid OrderId, Guid PackageId, Guid ProviderConnectionId, string PreviewDigest);
 public sealed record InvoiceWorkspacePreviewLine(string Description, string? Sku, decimal Quantity, string Unit, decimal VatRate, decimal UnitPrice, decimal DiscountAmount, decimal VatAmount, decimal Total);
 public sealed record InvoiceWorkspacePreviewItem(
@@ -463,7 +463,9 @@ public sealed record InvoiceWorkspacePreviewItem(
     // The E-Faturam taxpayer lookup that chose InvoiceType: REGISTERED, NOT_REGISTERED, UNKNOWN; null when not looked up.
     string? TaxpayerStatus = null,
     string? TaxpayerTitle = null,
-    string? TargetAlias = null);
+    string? TargetAlias = null,
+    // Why the E-Arşiv internet sale info cannot be added yet (report item 18); the option is then off. Null when it can.
+    string? InternetSalesInfoBlockedReason = null);
 public sealed record InvoiceWorkspaceConfirmResult(IReadOnlyList<InvoiceWorkspaceConfirmItemResult> Items);
 public sealed record InvoiceWorkspaceConfirmItemResult(Guid PackageId, Guid? InvoiceId, Guid? JobId, string Status, string Action, string Message);
 public sealed record InvoiceListView(Guid Id, string OrderNumber, string InvoiceType, string Status, string Currency, decimal PayableTotal, string? InvoiceNumber, DateTimeOffset? DueAt, DateTimeOffset CreatedAt, long Version);

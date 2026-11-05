@@ -36,10 +36,19 @@ internal static class InvoiceDeliveryRetryReader
                 .Where(document => document.TenantId == tenantId && candidateIds.Contains(document.InvoiceId) && document.PermanentUrl != null)
                 .Select(document => document.InvoiceId).Distinct().ToListAsync(cancellationToken))
             .ToHashSet();
-        var states = (await db.MarketplaceDeliveryStates.AsNoTracking()
-                .Where(state => state.TenantId == tenantId && candidateIds.Contains(state.InvoiceId))
-                .Select(state => new { state.InvoiceId, state.Status }).ToListAsync(cancellationToken))
-            .ToLookup(state => state.InvoiceId, state => state.Status);
+        var stateRows = await db.MarketplaceDeliveryStates.AsNoTracking()
+            .Where(state => state.TenantId == tenantId && candidateIds.Contains(state.InvoiceId))
+            .Select(state => new { state.InvoiceId, state.Status, state.ConnectionId }).ToListAsync(cancellationToken);
+        var states = stateRows.ToLookup(state => state.InvoiceId, state => state.Status);
+        // n11, Pazarama and PTT AVM settle an uncertain delivery by sending it again (report item 11).
+        var stateConnectionIds = stateRows.Select(state => state.ConnectionId).Distinct().ToArray();
+        var uncertainRetriedConnections = stateConnectionIds.Length == 0 ? [] : (await db.PlatformConnections.AsNoTracking()
+                .Where(connection => connection.TenantId == tenantId && stateConnectionIds.Contains(connection.Id))
+                .Select(connection => new { connection.Id, connection.PlatformCode }).ToListAsync(cancellationToken))
+            .Where(connection => InvoiceDeliveryAutoRetryPolicy.RetriesUncertainDelivery(connection.PlatformCode))
+            .Select(connection => connection.Id).ToHashSet();
+        var uncertainRetried = stateRows.GroupBy(state => state.InvoiceId)
+            .ToDictionary(group => group.Key, group => group.All(state => uncertainRetriedConnections.Contains(state.ConnectionId)));
         var entries = new Dictionary<Guid, Entry>();
         foreach (var invoice in invoices)
         {
@@ -62,13 +71,15 @@ internal static class InvoiceDeliveryRetryReader
                 .OrderByDescending(job => job.CreatedAt).Select(job => (JobStatus?)job.Status).FirstOrDefault();
             var latestEnded = latestDeliveryJob is { } latest && latest is not (JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled);
             var deliveryStates = states[invoice.Id].ToArray();
+            var retriesUncertain = uncertainRetried.GetValueOrDefault(invoice.Id);
             var need = InvoiceDeliveryAutoRetryPolicy.Need(invoice.Status, true, documented.Contains(invoice.Id),
-                deliveryStates, latestEnded, invoice.LastErrorCode, latestDeliveryJobDead: latestDeliveryJob == JobStatus.Dead);
+                deliveryStates, latestEnded, invoice.LastErrorCode, latestDeliveryJobDead: latestDeliveryJob == JobStatus.Dead, uncertainRetried: retriesUncertain);
             // The owner's "Tekrar Gönder" stands for an issued invoice that did not reach the marketplace: a failed one
-            // (also one the marketplace refused), and a pending one that sent nothing once its delivery job ended. An
-            // Accepted one keeps the scheduler's path (its first delivery may still be on its way).
+            // (also one the marketplace refused), a pending one that sent nothing once its delivery job ended, and on n11,
+            // Pazarama and PTT AVM a pending one whose delivery is uncertain. An Accepted one keeps the scheduler's path
+            // (its first delivery may still be on its way).
             var ownerNeed = invoice.Status == InvoiceStatus.MarketplaceFailed || invoice.Status == InvoiceStatus.MarketplacePending && latestEnded
-                ? InvoiceDeliveryAutoRetryPolicy.Need(invoice.Status, true, documented.Contains(invoice.Id), deliveryStates, latestEnded, invoice.LastErrorCode, owner: true)
+                ? InvoiceDeliveryAutoRetryPolicy.Need(invoice.Status, true, documented.Contains(invoice.Id), deliveryStates, latestEnded, invoice.LastErrorCode, owner: true, uncertainRetried: retriesUncertain)
                 : InvoiceDeliveryRetryNeed.None;
             if (need == InvoiceDeliveryRetryNeed.None && ownerNeed == InvoiceDeliveryRetryNeed.None) continue;
             var view = InvoiceDeliveryAutoRetryPolicy.Describe(invoice.DeliveryRetryAttempts, invoice.DeliveryRetryNextAt,

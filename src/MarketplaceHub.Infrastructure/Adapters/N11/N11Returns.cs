@@ -150,7 +150,9 @@ public static class N11ReturnMapper
         var orderNumber = N11HttpClient.Child(element, "orderNumber");
         if (claimId is null || orderNumber is null) return null;
         var rawStatus = N11HttpClient.Child(element, "status") ?? "";
-        var quantity = RemoteJson.ParseDecimal(N11HttpClient.Child(element, "quantity")) is > 0 and var parsed ? parsed : 1;
+        // No quantity is unknown (0), not 1: the processor takes 1 only for an order line of one unit, otherwise it
+        // records "adet bilinmiyor" (report item 10).
+        var quantity = RemoteJson.ParseDecimal(N11HttpClient.Child(element, "quantity")) is > 0 and var parsed ? parsed : 0m;
         var dates = new[] { "requestDate", "pendingRequestDate", "pendedDate", "approvedDate", "deniedDate", "cancelledDate" }
             .Select(name => Date(N11HttpClient.Child(element, name)))
             .Where(x => x is not null)
@@ -166,7 +168,7 @@ public static class N11ReturnMapper
             N11HttpClient.Child(element, "returnReasonDescription"),
             null,
             dates.Count > 0 ? dates.Max() : null,
-            [new RemoteReturnLine(claimId, "", quantity, RawStatus: CanonicalStatus(rawStatus))],
+            [new RemoteReturnLine(claimId, "", quantity, RawStatus: CanonicalStatus(rawStatus), ProductCode: N11HttpClient.Child(element, "productId"))],
             raw,
             N11HttpClient.Child(element, "shipmentCompany"),
             N11HttpClient.Child(element, "trackingNumber"),

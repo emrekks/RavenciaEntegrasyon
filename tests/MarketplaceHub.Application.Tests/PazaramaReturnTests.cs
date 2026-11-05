@@ -96,8 +96,8 @@ public sealed class PazaramaReturnTests
     }
 
     [Fact]
-    public void An_unknown_state_waits_for_the_seller() =>
-        Assert.Equal(ReturnClaimStatus.ActionRequired, MarketplaceReturnStatus.Canonicalize(PazaramaReturnMapper.CanonicalStatus(99)));
+    public void An_unknown_state_stays_unknown_and_offers_no_decision() =>
+        Assert.Equal(ReturnClaimStatus.Unknown, MarketplaceReturnStatus.Canonicalize(PazaramaReturnMapper.CanonicalStatus(99)));
 
     [Fact]
     public void Refund_without_ids_is_reported_not_imported()

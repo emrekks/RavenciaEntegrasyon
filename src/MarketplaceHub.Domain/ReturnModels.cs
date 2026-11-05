@@ -10,7 +10,10 @@ public enum ReturnClaimStatus
     Rejected,
     Disputed,
     Completed,
-    Cancelled
+    Cancelled,
+    // A status word the panel does not know (MarketplaceReturnStatus): no actions, an issue is recorded, and the next
+    // read that brings a known word settles it.
+    Unknown
 }
 
 public static class MarketplaceReturnStatus
@@ -21,21 +24,28 @@ public static class MarketplaceReturnStatus
         return normalized switch
         {
             "CREATED" when !string.IsNullOrWhiteSpace(cargoTrackingLink) => ReturnClaimStatus.InTransit,
+            // Trendyol Created, Hepsiburada NewRequest; n11 REQUESTED arrives as Created (N11ReturnMapper.CanonicalStatus).
             "CREATED" or "NEWREQUEST" => ReturnClaimStatus.Requested,
-            "AWAITINGPREAPPROVAL" or "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" or "WAITINGFORSELLERACTION" => ReturnClaimStatus.ActionRequired,
+            // Waiting for the seller: Trendyol WaitingInAction/InAnalysis/WaitingFraudCheck, Hepsiburada AwaitingAction/
+            // AwaitingPreApproval, n11 PENDING/PENDED/APPROVAL_WAITING and Pazarama 1 (both arrive as WaitingInAction).
+            // Shopify REQUESTED is a return the customer asked for that waits for the seller's approve or decline.
+            "AWAITINGPREAPPROVAL" or "WAITINGINACTION" or "AWAITINGACTION" or "INANALYSIS" or "WAITINGFRAUDCHECK" or "WAITINGFORSELLERACTION" or "REQUESTED" => ReturnClaimStatus.ActionRequired,
             "WAITINGFORSHIPMENT" => ReturnClaimStatus.AwaitingShipment,
             "WAITINGINCARGO" or "INTRANSIT" or "RETURNINTRANSIT" or "SHIPPED" => ReturnClaimStatus.InTransit,
             "ACCEPTED" or "APPROVED" => ReturnClaimStatus.Approved,
             "REJECTED" => ReturnClaimStatus.Rejected,
             "UNRESOLVED" or "INDISPUTE" or "DISPUTED" => ReturnClaimStatus.Disputed,
+            // n11 MANUAL_REFUND arrives as Refunded; PTT AVM returned lines are Completed.
             "COMPLETED" or "REFUNDED" => ReturnClaimStatus.Completed,
             "CANCELLED" or "CANCELED" => ReturnClaimStatus.Cancelled,
             // Shopify ReturnStatus (only Shopify reports these words for returns): OPEN is an approved return in progress,
-            // CLOSED a finished one, DECLINED a refused request. REQUESTED still waits for the seller (default below).
+            // CLOSED a finished one, DECLINED a refused request.
             "OPEN" => ReturnClaimStatus.Approved,
             "CLOSED" => ReturnClaimStatus.Completed,
             "DECLINED" => ReturnClaimStatus.Rejected,
-            _ => ReturnClaimStatus.ActionRequired
+            // Anything else (no status, a word not listed above) is unknown: unknown stays unknown, the claim offers no
+            // Onayla/Reddet and the read records an issue (report item 9).
+            _ => ReturnClaimStatus.Unknown
         };
     }
 }
@@ -130,11 +140,20 @@ public static class ReturnClaimStateMachine
             [ReturnClaimStatus.ActionRequired] = [ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed],
             [ReturnClaimStatus.Approved] = [ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed],
             [ReturnClaimStatus.Rejected] = [ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed],
-            [ReturnClaimStatus.Disputed] = [ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Completed]
+            [ReturnClaimStatus.Disputed] = [ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Completed],
+            // An unknown status settles to whatever the next read knows.
+            [ReturnClaimStatus.Unknown] = [ReturnClaimStatus.Requested, ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Approved, ReturnClaimStatus.Rejected, ReturnClaimStatus.Disputed, ReturnClaimStatus.Completed, ReturnClaimStatus.Cancelled]
         };
 
+    // An open claim the marketplace now reports with an unknown word becomes Unknown, so its buttons go away. A decided
+    // claim (approved, rejected, completed, cancelled) keeps its known outcome; only the raw word is recorded.
+    private static readonly ReturnClaimStatus[] OpenStatuses =
+        [ReturnClaimStatus.Requested, ReturnClaimStatus.AwaitingShipment, ReturnClaimStatus.InTransit, ReturnClaimStatus.ActionRequired, ReturnClaimStatus.Disputed];
+
     public static bool CanTransition(ReturnClaimStatus current, ReturnClaimStatus next) =>
-        current == next || Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next);
+        current == next
+        || next == ReturnClaimStatus.Unknown && OpenStatuses.Contains(current)
+        || Allowed.TryGetValue(current, out var allowed) && allowed.Contains(next);
 
     // The marketplace decides a claim's outcome: a newer Approved, Rejected or
     // Completed applies even where the local workflow would not reach it (a

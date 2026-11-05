@@ -775,7 +775,10 @@ public sealed record ReturnPollWindow(
     DateTimeOffset? StatusModifiedBefore = null);
 // AcceptDetail, Note, Resolved and AcceptedBySeller: how Trendyol settled the line (getClaims claimItems); null when the
 // marketplace does not say (unknown stays unknown).
-public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null, string? RawStatus = null, string? AcceptDetail = null, string? Note = null, bool? Resolved = null, bool? AcceptedBySeller = null);
+// Quantity 0 means the marketplace did not say how many units came back: the line is not stored and an issue
+// ("adet bilinmiyor") is recorded instead of guessing. ProductCode/StockCode: the product the marketplace names on a claim
+// that does not name the order line (n11 productId, Pazarama productCode/productStockCode), used to find that line.
+public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrderLineId, decimal Quantity, IReadOnlyList<string>? AlternateExternalOrderLineIds = null, string? RawStatus = null, string? AcceptDetail = null, string? Note = null, bool? Resolved = null, bool? AcceptedBySeller = null, string? ProductCode = null, string? StockCode = null);
 // One status change of a return line as the marketplace keeps it (Trendyol getClaimItemAudits).
 public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
 // ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.

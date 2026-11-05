@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { handSetInvoiceStatusPlatforms, invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceReopenNote, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, taxpayerStatusLabel, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
+import { handSetInvoiceStatusPlatforms, platformInvoiceCheckAvailable, platformInvoiceCheckUnavailableReason, invoiceAwaitsProviderAnswer, invoiceConfirmResultLabel, invoiceReopenNote, invoiceDetailActionLabel, invoiceEnvironmentLabel, invoiceErrorText, invoiceTypeLabel, manualDeliveryIdempotencyKey, taxpayerStatusLabel, providerAnswerAwaitedStatus, workspaceInvoiceStatusFilterLabel } from './invoice-copy'
 import { invoiceGlyphKind } from './invoice-state-glyph'
 
 import { invoiceStatusLabel, invoiceStatusTone } from '../../shared/status-labels'
@@ -69,5 +69,11 @@ describe('invoice copy', () => {
     const second = manualDeliveryIdempotencyKey('doc-1')
     expect(first).toMatch(/^manual-invoice-delivery:doc-1:[0-9a-f-]{36}$/)
     expect(second).not.toBe(first)
+  })
+
+  it('keeps the platform invoice check visible but disabled with its reason on Pazarama, which cannot read a link back', () => {
+    expect(platformInvoiceCheckAvailable('PAZARAMA')).toBe(false)
+    expect(platformInvoiceCheckUnavailableReason('PAZARAMA')).toContain('Pazarama')
+    for (const platform of ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PTTAVM', 'SHOPIFY']) expect(platformInvoiceCheckAvailable(platform)).toBe(true)
   })
 })

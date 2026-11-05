@@ -104,7 +104,8 @@ public sealed class Invoice
     public decimal TaxTotal { get; set; }
     public decimal PayableTotal { get; set; }
     public required string Note { get; set; }
-    public bool IncludeInternetSalesInfo { get; set; } = true;
+    // Off unless the owner turns it on (report item 18), as the invoice preview starts.
+    public bool IncludeInternetSalesInfo { get; set; }
     public required string IdempotencyKey { get; set; }
     public string? ExternalReference { get; set; }
     public string? InvoiceNumber { get; set; }

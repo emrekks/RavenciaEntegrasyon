@@ -83,3 +83,14 @@ UTC, ISO with Z.
 ## Job types
 SHOPIFY_CONNECTION_TEST, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORDER_STATUS_SYNC, _ORDER_RECONCILIATION,
 _ORDER_INVOICE_RECONCILIATION, _WEBHOOK_INGEST, _ORDER_CSV_IMPORT.
+
+## Returns, invoices, buyer (stage 5, 5 Nov 2026)
+- ReturnStatus REQUESTED waits for the seller (ActionRequired); OPEN approved, CLOSED completed, DECLINED rejected,
+  CANCELED cancelled; anything else Unknown. An `UnverifiedReturnLineItem` (no fulfillmentLineItem) is reported as an
+  issue instead of being dropped.
+- Buyer kind: no flag and no tax-id field. A billing `company` without a tax number stops the invoice for the owner;
+  no company means an individual buyer.
+- E-Arşiv internet sale: the order query also reads `paymentGatewayNames` (Order) and `shop { primaryDomain { url } }`
+  (`shopify-admin-graphql-referans-son.md:41841`), kept on the customer snapshot as `paymentGatewayNames` and
+  `shopPrimaryDomainUrl`. Means: cash on delivery ON_DELIVERY, bank deposit EFT, card gateways (Shopify Payments,
+  iyzico, PayTR, Stripe) CREDIT_CARD, others OTHER. The carrier is known only after a fulfillment.

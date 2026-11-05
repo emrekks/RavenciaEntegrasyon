@@ -21,9 +21,12 @@ internal static class EInvoiceRecipientResolver
         CancellationToken cancellationToken)
     {
         var marketplaceType = InvoiceAmounts.InvoiceDocumentType(platformCode, customerSnapshotJson, invoiceAddressSnapshotJson);
-        // The identity the e-Invoice would be sent to (never the consumer placeholder) and both corporate readings.
+        // The identity the e-Invoice would be sent to (never the consumer placeholder) and the buyer kind. The kind the
+        // marketplace states decides (report item 12); without it the wider reading (a VKN, a company name next to a tax
+        // or identity number) still asks the taxpayer lookup.
         var (taxId, corporateRecipient) = TrendyolEFaturamCanonicalPayload.ResolveRecipientTaxIdentity(customerSnapshotJson, invoiceAddressSnapshotJson, EInvoiceRecipientPolicy.EInvoiceType);
-        var corporate = corporateRecipient || InvoiceAmounts.IsCorporateBuyer(customerSnapshotJson, invoiceAddressSnapshotJson);
+        var corporate = TrendyolEFaturamCanonicalPayload.ExplicitBuyerKind(customerSnapshotJson, invoiceAddressSnapshotJson)
+            ?? corporateRecipient || InvoiceAmounts.IsCorporateBuyer(customerSnapshotJson, invoiceAddressSnapshotJson);
         if (!EInvoiceRecipientPolicy.RequiresLookup(marketplaceType, corporate)) return EInvoiceRecipientDecision.WithoutLookup(marketplaceType);
         var lookup = provider is null
             ? EInvoiceTaxpayerLookup.Unknown("EINVOICE_TAXPAYER_LOOKUP_UNAVAILABLE")

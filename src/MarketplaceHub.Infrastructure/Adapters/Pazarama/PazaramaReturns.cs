@@ -157,6 +157,11 @@ public static class PazaramaReturnMapper
         var status = CanonicalStatus((int?)Number(row, "refundStatus"));
         var requested = Instant(Text(row, "refundDate"));
         var orderedAt = Instant(Text(row, "orderDate"));
+        // The refund names the product by barcode (productCode) and stock code (productStockCode; the field table spells
+        // it ProductStockCode). The quantity is read when the answer carries it (the SplitItems note speaks of a
+        // "quantity"; the field table has none); otherwise it stays 0 (unknown) and the processor works it out from the
+        // refund amount and the order line (ResolveQuantity) or records "adet bilinmiyor" (report item 10).
+        var quantity = Decimal(row, "quantity") is > 0 and var read ? read : 0m;
         return new RemoteReturnClaim(
             refundId,
             orderNumber,
@@ -165,7 +170,7 @@ public static class PazaramaReturnMapper
             Text(row, "description") ?? Text(row, "boDescription"),
             null,
             requested,
-            [new RemoteReturnLine(refundId, "", 1, RawStatus: status)],
+            [new RemoteReturnLine(refundId, "", quantity, RawStatus: status, ProductCode: Text(row, "productCode") ?? Text(row, "ProductCode"), StockCode: Text(row, "productStockCode") ?? Text(row, "ProductStockCode"))],
             row.GetRawText(),
             Text(row, "shipmentCompanyName"),
             Text(row, "shipmentCode"),
@@ -182,8 +187,37 @@ public static class PazaramaReturnMapper
         2 or 4 or 6 or 8 => "Accepted",
         3 or 5 => "Rejected",
         7 => "Cancelled",
-        _ => "WaitingInAction"
+        // An undocumented code is unknown, not "waiting for the seller": no Onayla/Reddet, an issue is recorded.
+        null => "Unknown",
+        var other => $"Unknown_{other}"
     };
+
+    // The refund amount (refundAmount.value, or a plain number), null when it is missing.
+    public static decimal? RefundAmount(JsonElement row)
+    {
+        if (row.ValueKind != JsonValueKind.Object || !row.TryGetProperty("refundAmount", out var amount)) return null;
+        if (amount.ValueKind == JsonValueKind.Object) return Decimal(amount, "value");
+        return amount.ValueKind == JsonValueKind.Number && amount.TryGetDecimal(out var plain) ? plain : null;
+    }
+
+    // How many units the refund covers: the quantity Pazarama sent; else 1 for an order line of one unit (nothing else
+    // can come back); else the refund amount over the line's unit price when that is a whole number of units no larger
+    // than the line. Null when none of these tells it: the line is then not stored and "adet bilinmiyor" is recorded.
+    public static decimal? ResolveQuantity(decimal sentQuantity, decimal? refundAmount, decimal unitPrice, decimal orderLineQuantity)
+    {
+        if (sentQuantity > 0) return sentQuantity;
+        if (orderLineQuantity == 1) return 1;
+        if (refundAmount is not > 0 || unitPrice <= 0) return null;
+        var units = refundAmount.Value / unitPrice;
+        return units == decimal.Truncate(units) && units >= 1 && (orderLineQuantity <= 0 || units <= orderLineQuantity) ? units : null;
+    }
+
+    private static decimal? Decimal(JsonElement element, string property)
+    {
+        if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number;
+        return value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+    }
 
     // "6 Ekim 2021 19:46" (Turkish month names) or an ISO instant; Pazarama's clock is Turkey time.
     public static DateTimeOffset? Instant(string? value)

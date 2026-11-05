@@ -73,3 +73,11 @@ least advanced known line decides. Code: `PttAvmOrderMapper.PackageStatus`.
 
 ## Job types
 PTTAVM_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORDER_STATUS_SYNC.
+
+## Invoices, buyer (stage 5, 5 Nov 2026)
+- SaveInvoince answering Success=false with "işlem gerçekleştirilmiştir" is an uncertain delivery (BusinessConflict),
+  settled by reading the order's per-line `IsInvoice` (true: confirmed; false: sent again on the automatic schedule).
+- Buyer kind: `FaturaTip`/`faturaTip` ("Bireysel", "Kurumsal"; `pttavm-api-son.md:1644,1859`), kept as invoiceType.
+  The sample sends it null: then the TCKN/VKN decides.
+- E-Arşiv internet sale: purchaseUrl `https://www.pttavm.com`, paymentMeans MEDIATOR; the carrier (needed for the
+  e-Arşiv delivery info) is known only once the tracking number comes.

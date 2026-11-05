@@ -31,7 +31,10 @@ public sealed partial class ShopifyHttpClient(
     // rich customer projection first, then a name/address projection, and
     // finally the order-only projection. A token with read_customers still
     // gets the full customer snapshot without any special configuration.
-    private const string OrderIdentityFields = "id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus";
+    // paymentGatewayNames (Order) and the shop's primaryDomain url: the E-Arşiv internet sale's payment means and site
+    // (report item 18), kept on the customer snapshot.
+    private const string OrderIdentityFields = "id name createdAt updatedAt cancelledAt currencyCode displayFinancialStatus displayFulfillmentStatus paymentGatewayNames";
+    private const string ShopDomainField = "shop { primaryDomain { url } } ";
     private const string OrderRichCustomerFields = " email phone customer { id displayName firstName lastName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country phone }";
     private const string OrderReducedCustomerFields = " customer { id displayName firstName lastName } shippingAddress { firstName lastName name company address1 address2 city province provinceCode zip country } billingAddress { firstName lastName name company address1 address2 city province provinceCode zip country }";
     private const string OrderAddressOnlyFields = " shippingAddress { firstName lastName name } billingAddress { firstName lastName name }";
@@ -41,8 +44,14 @@ public sealed partial class ShopifyHttpClient(
     private const string ProductTypesQuery = "query($first:Int!, $after:String) { productTypes(first:$first, after:$after) { nodes pageInfo { hasNextPage endCursor } } }";
 
     private static string OrderFields(string customerFields) => $"{OrderIdentityFields}{customerFields}{OrderFinancialFields}";
-    private static string OrderPageQuery(string fields) => "query($first:Int!, $after:String, $query:String) { orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { " + fields + " } } pageInfo { hasNextPage endCursor } } }";
-    private static string SingleOrderQuery(string fields) => "query($id:ID!) { order(id:$id) { " + fields + " } }";
+    private static string OrderPageQuery(string fields) => "query($first:Int!, $after:String, $query:String) { " + ShopDomainField + "orders(first:$first, after:$after, query:$query, sortKey:UPDATED_AT, reverse:false) { edges { cursor node { " + fields + " } } pageInfo { hasNextPage endCursor } } }";
+    private static string SingleOrderQuery(string fields) => "query($id:ID!) { " + ShopDomainField + "order(id:$id) { " + fields + " } }";
+
+    // The shop's primary domain (https://...) from an order query's root; null when it is missing.
+    internal static string? ShopPrimaryDomainUrl(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty("shop", out var shop) && shop.ValueKind == JsonValueKind.Object
+            ? NestedText(shop, "primaryDomain", "url")
+            : null;
 
     private async Task<AdapterResult<JsonDocument>> QueryOrderAsync(ShopifyRequestContext context, object variables, bool single, CancellationToken cancellationToken)
     {
@@ -754,6 +763,7 @@ public sealed partial class ShopifyHttpClient(
         try
         {
             var orders = result.Value!.RootElement.GetProperty("orders");
+            var shopUrl = ShopPrimaryDomainUrl(result.Value!.RootElement);
             // One order the mapper cannot take does not stop the page (5 Nov 2026): it is skipped with an issue and, when
             // its id is readable, read again by number (RefusedOrders). An unreadable line alone never refuses an order:
             // the line is counted on its package (UnreadableOrderLines).
@@ -762,7 +772,7 @@ public sealed partial class ShopifyHttpClient(
             foreach (var edge in orders.GetProperty("edges").EnumerateArray())
             {
                 var node = edge.TryGetProperty("node", out var value) && value.ValueKind == JsonValueKind.Object ? value : default;
-                try { items.Add(MapOrder(node)); }
+                try { items.Add(MapOrder(node, shopUrl)); }
                 catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException or FormatException)
                 {
                     var orderId = node.ValueKind == JsonValueKind.Object ? TextValue(node, "id") : null;
@@ -792,7 +802,7 @@ public sealed partial class ShopifyHttpClient(
         if (order.ValueKind == JsonValueKind.Null) return Fail<RemoteOrder>(AdapterErrorClass.NotFound, "SHOPIFY_ORDER_NOT_FOUND", "Shopify siparişi bulunamadı.", HttpStatusCode.NotFound);
         RemoteOrder mapped;
         // Found but not readable: a contract error, not "not found" (RefusedOrders).
-        try { mapped = MapOrder(order); }
+        try { mapped = MapOrder(order, ShopPrimaryDomainUrl(result.Value!.RootElement)); }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException or FormatException)
         {
             return Fail<RemoteOrder>(AdapterErrorClass.ContractViolation, "SHOPIFY_ORDER_CONTRACT_INVALID", "Shopify siparişi bulundu ancak yanıtta beklenen bir alan eksik veya okunamadı.", HttpStatusCode.BadGateway);
@@ -1371,7 +1381,21 @@ public sealed partial class ShopifyHttpClient(
         return new(ShortId(variant.GetProperty("id").GetString()), variant.GetProperty("sku").GetString() ?? ShortId(variant.GetProperty("id").GetString()), barcode, null, options, productArchived, price, compareAt, null, inventory, currency, variant.GetRawText(), image is null ? [] : [image], levels);
     }
 
-    internal static RemoteOrder MapOrder(JsonElement order)
+    // The E-Arşiv internet sale facts (report item 18), added only when Shopify sent them: the payment gateways of the
+    // order (paymentGatewayNames) and the shop's primary domain (shop.primaryDomain.url of the same query).
+    internal static string WithInternetSaleFacts(string customerJson, JsonElement order, string? shopUrl)
+    {
+        var gateways = order.TryGetProperty("paymentGatewayNames", out var names) && names.ValueKind == JsonValueKind.Array
+            ? names.EnumerateArray().Where(name => name.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(name.GetString())).Select(name => name.GetString()!.Trim()).ToArray()
+            : [];
+        if (gateways.Length == 0 && string.IsNullOrWhiteSpace(shopUrl)) return customerJson;
+        var snapshot = System.Text.Json.Nodes.JsonNode.Parse(customerJson)!.AsObject();
+        if (gateways.Length > 0) snapshot["paymentGatewayNames"] = new System.Text.Json.Nodes.JsonArray([.. gateways.Select(name => (System.Text.Json.Nodes.JsonNode)System.Text.Json.Nodes.JsonValue.Create(name)!)]);
+        if (!string.IsNullOrWhiteSpace(shopUrl)) snapshot["shopPrimaryDomainUrl"] = shopUrl.Trim();
+        return snapshot.ToJsonString();
+    }
+
+    internal static RemoteOrder MapOrder(JsonElement order, string? shopUrl = null)
     {
         var money = order.GetProperty("currentTotalPriceSet").GetProperty("shopMoney");
         var currency = money.GetProperty("currencyCode").GetString() ?? "TRY";
@@ -1528,6 +1552,7 @@ public sealed partial class ShopifyHttpClient(
                 email = orderEmail,
                 phone = orderPhone
             });
+        customerJson = WithInternetSaleFacts(customerJson, order, shopUrl);
         return new(
             ShortId(order.GetProperty("id").GetString()),
             order.GetProperty("name").GetString() ?? ShortId(order.GetProperty("id").GetString()),
@@ -1557,8 +1582,10 @@ public sealed partial class ShopifyHttpClient(
         {
             var fulfillment = line.TryGetProperty("fulfillmentLineItem", out var fulfillmentLine) && fulfillmentLine.ValueKind == JsonValueKind.Object ? fulfillmentLine : default;
             var orderLine = fulfillment.ValueKind == JsonValueKind.Object && fulfillment.TryGetProperty("lineItem", out var lineItem) && lineItem.ValueKind == JsonValueKind.Object ? lineItem : default;
+            // An UnverifiedReturnLineItem (no fulfillmentLineItem) names no order line; it is kept with an empty order line
+            // so the read records it as an issue instead of dropping it without a trace (report item 10).
             return new RemoteReturnLine(ShortId(TextValue(line, "id")), orderLine.ValueKind == JsonValueKind.Object ? ShortId(TextValue(orderLine, "id")) : string.Empty, DecimalOrNull(line, "quantity") ?? 0m);
-        }).Where(line => !string.IsNullOrWhiteSpace(line.ExternalLineId) && !string.IsNullOrWhiteSpace(line.ExternalOrderLineId)).ToArray();
+        }).Where(line => !string.IsNullOrWhiteSpace(line.ExternalLineId)).ToArray();
         var createdAt = item.GetProperty("createdAt").GetDateTimeOffset();
         // Shopify keeps the reason on each line (returnReasonDefinition); the claim carries the first line's reason.
         var reasonLine = lineNodes.FirstOrDefault(line => NestedText(line, "returnReasonDefinition", "handle") is not null || TextValue(line, "returnReasonNote") is not null);
