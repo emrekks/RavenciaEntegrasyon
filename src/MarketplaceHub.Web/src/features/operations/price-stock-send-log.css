@@ -64,8 +64,12 @@
 .app-shell.stitch-shell main .jobs-reference-page td.psl-platform .platform-square-mark { display: inline-grid; place-items: center; vertical-align: middle; }
 .app-shell.stitch-shell main .jobs-reference-page td.psl-platform > span:last-child { display: inline-block; max-width: 130px; margin-left: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
 .app-shell.stitch-shell main .jobs-reference-page .psl-product { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 340px; }
-.app-shell.stitch-shell main .jobs-reference-page .psl-product img,
-.app-shell.stitch-shell main .jobs-reference-page .psl-product-placeholder { flex: none; width: 32px; height: 32px; border: 1px solid var(--rv-color-border); border-radius: 7px; object-fit: cover; background: var(--rv-color-surface-raised); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-thumb { flex: none; display: block; width: 30px; min-height: 0; height: 45px; padding: 0; overflow: hidden; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 7px; cursor: zoom-in; transition: transform var(--rv-motion-fast) var(--rv-ease-out), border-color var(--rv-motion-fast); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-thumb:hover { transform: scale(1.06); border-color: var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .jobs-reference-page .psl-thumb:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-product img:not(.psl-thumb img),
+.app-shell.stitch-shell main .jobs-reference-page .psl-product-placeholder { flex: none; width: 30px; height: 45px; border: 1px solid var(--rv-color-border); border-radius: 7px; object-fit: cover; background: var(--rv-color-surface-raised); }
 .app-shell.stitch-shell main .jobs-reference-page .psl-product-placeholder { display: grid; place-items: center; color: var(--rv-color-subtle); }
 .app-shell.stitch-shell main .jobs-reference-page .psl-product-text { display: grid; min-width: 0; }
 .app-shell.stitch-shell main .jobs-reference-page .psl-product-text strong { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }

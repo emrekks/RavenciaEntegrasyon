@@ -14,10 +14,11 @@ import { relativeAgeText } from '../marketplace/integrations/integration-helpers
 import { jobTimeRanges } from './job-list-query'
 import { FilterMenu, type FilterMenuGroup } from './log-filter-menu'
 import {
-  activityActor, activityChange, activityCountsQueryString, activityFilterCount, activityKindCounts, activityKinds, activityLink, activityPanelFilterCount,
+  activityActor, activityChange, activityVariantText, activityCountsQueryString, activityFilterCount, activityKindCounts, activityKinds, activityLink, activityPanelFilterCount,
   activityQueryString, activityRangeLabel, activitySourceText, activityTypeLabel, emptyActivityFilters, toggleActivityKind,
   type ActivityFilters, type ProductActivityEntry, type ProductActivityPage
 } from './product-activity'
+import { ProductThumb } from './ProductThumb'
 import './price-stock-send-log.css'
 import './product-activity-log.css'
 
@@ -29,12 +30,9 @@ const exactTime: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit'
 const dayOptions: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
 
 function ProductCell({ entry }: { entry: ProductActivityEntry }) {
-  const [broken, setBroken] = useState(false)
-  const codes = [entry.optionText, entry.barcode ?? entry.sku, entry.modelCode].filter(Boolean).join(' · ')
+  const codes = [activityVariantText(entry.optionText), entry.barcode ?? entry.sku, entry.modelCode].filter(Boolean).join(' · ')
   return <div className="psl-product">
-    {entry.imageUrl && !broken
-      ? <img src={entry.imageUrl} alt="" loading="lazy" onError={() => setBroken(true)} />
-      : <span className="psl-product-placeholder" aria-hidden="true"><UiIcon name="image" size={16} /></span>}
+    <ProductThumb url={entry.imageUrl} title={entry.productTitle ?? 'Ürün'} />
     <span className="psl-product-text">
       {entry.productId && entry.productTitle
         ? <Link to={`/products/${encodeURIComponent(entry.productId)}`} className="pal-product-link" title={entry.productTitle}>{entry.productTitle}</Link>
@@ -46,20 +44,19 @@ function ProductCell({ entry }: { entry: ProductActivityEntry }) {
 
 function ChangeChip({ entry }: { entry: ProductActivityEntry }) {
   const change = activityChange(entry)
-  // What it was → what it became, each part kept whole; a narrow card wraps between the parts, never inside one.
-  // The parts are spaced by text too, so the chip reads (and copies) as "+1 · 4 → 5".
-  const parts: Array<[string, string]> = change.to === undefined
-    ? [['', change.text]]
-    : [
-      ...(change.delta ? [['pal-change-delta', change.delta], ['pal-change-mark', '·']] as Array<[string, string]> : []),
-      ...(change.label ? [['pal-change-label', change.label]] as Array<[string, string]> : []),
-      ...(change.from !== undefined ? [['pal-change-from', change.from], ['pal-change-mark', '→']] as Array<[string, string]> : []),
-      ['pal-change-to', change.to]
-    ]
-  return <span className="pal-change-cell">
-    <span className={`pal-change is-${change.tone}`} title={change.title ?? change.text}>
-      {parts.map(([part, text], index) => <span key={index} className={`pal-change-part ${part}`.trim()}>{index > 0 ? ' ' : ''}{text}</span>)}
-    </span>
+  // Before → after in plain numbers, the new value strongest; how much it moved is a small coloured tag beside it,
+  // and why it changed sits underneath. A change without numbers (a shortfall, a return kept out) is its text.
+  return <span className="pal-change-cell" title={change.title ?? change.text}>
+    {change.to === undefined
+      ? <span className={`pal-change-text is-${change.tone}`}>{change.text}</span>
+      : <span className="pal-change-line">
+        <span className="pal-change-flow">
+          {change.label && <span className="pal-change-label">{change.label} </span>}
+          {change.from !== undefined && <><span className="pal-change-from">{change.from}</span><span className="pal-change-arrow" aria-label="iken"> → </span></>}
+          <span className="pal-change-to">{change.to}</span>
+        </span>
+        {change.delta && <span className={`pal-change-delta is-${change.tone}`}>{change.delta}</span>}
+      </span>}
     <small>{activityTypeLabel(entry)}</small>
   </span>
 }

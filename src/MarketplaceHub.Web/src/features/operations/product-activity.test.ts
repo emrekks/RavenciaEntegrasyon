@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   activityActor, activityChange, activityCountsQueryString, activityFilterCount, activityKindCounts, activityLink, activityQueryString, activitySourceText,
-  activityTypeLabel, emptyActivityFilters, toggleActivityKind, type ProductActivityEntry
+  activityTypeLabel, activityVariantText, emptyActivityFilters, toggleActivityKind, type ProductActivityEntry
 } from './product-activity'
 
 function entry(patch: Partial<ProductActivityEntry>): ProductActivityEntry {
@@ -17,7 +17,7 @@ describe('product activity change chip', () => {
   it('signs a stock change and says when a row changed no stock', () => {
     expect(activityChange(entry({ quantityDelta: 1 }))).toMatchObject({ text: '+1 Stok', tone: 'up' })
     expect(activityChange(entry({ quantityDelta: -2.5 }))).toMatchObject({ text: '−2,5 Stok', tone: 'down' })
-    expect(activityChange(entry({ type: 'ORDER_STOCK_SHORTFALL', quantityDelta: 1 }))).toMatchObject({ text: 'Stok Yetersiz · 1 Eksik', tone: 'info' })
+    expect(activityChange(entry({ type: 'ORDER_STOCK_SHORTFALL', quantityDelta: 1 }))).toMatchObject({ text: '1 Adet Eksik', tone: 'info' })
     expect(activityChange(entry({ type: 'RETURN_QUARANTINE', kind: 'RETURN', quantityDelta: 1 }))).toMatchObject({ text: '1 Adet Karantinada', tone: 'info' })
     // Information rows carry no numbers change even if a balance came along.
     expect(activityChange(entry({ type: 'ORDER_STOCK_SHORTFALL', quantityDelta: 1, stockBefore: 0, stockAfter: 0 })).from).toBeUndefined()
@@ -93,5 +93,13 @@ describe('product activity request', () => {
     expect(days.get('to')).toBe('2026-11-04T20:59:59.999Z')
     const range = new URLSearchParams(activityQueryString({ ...emptyActivityFilters, range: '24h' }, null, 50, now).slice(1))
     expect(range.get('from')).toBe('2026-11-03T12:00:00.000Z')
+  })
+})
+
+describe('activityVariantText', () => {
+  it('reads the option values only, joined by a slash', () => {
+    expect(activityVariantText('Renk: Siyah | Beden: M')).toBe('Varyant: Siyah / M')
+    expect(activityVariantText('Standart')).toBe('Varyant: Standart')
+    expect(activityVariantText(null)).toBeNull()
   })
 })

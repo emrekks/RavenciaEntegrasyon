@@ -130,7 +130,7 @@ export function activityChange(entry: ProductActivityEntry): ActivityChange {
   const amount = entry.quantityDelta === null ? '' : quantityFormat.format(Math.abs(entry.quantityDelta))
   switch (entry.type) {
     case 'ORDER_STOCK_SHORTFALL':
-      return { text: `Stok Yetersiz · ${amount} Eksik`, tone: 'info', title: 'Sipariş geldiğinde stok yetmedi; stok değişmedi, eksik adet stok gelince düşülür.' }
+      return { text: `${amount} Adet Eksik`, tone: 'info', title: 'Sipariş geldiğinde stok yetmedi; stok değişmedi, eksik adet stok gelince düşülür.' }
     case 'RETURN_QUARANTINE':
       return { text: `${amount} Adet Karantinada`, tone: 'info', title: 'İade ürün stoğa eklenmedi.' }
     case 'RETURN_DAMAGED':
@@ -265,4 +265,10 @@ export function activityCountsQueryString(filters: ActivityFilters, now = Date.n
   commonParams(params, filters, now)
   const query = params.toString()
   return query ? `?${query}` : ''
+}
+
+/** The variant as the owner reads it: "Renk: Siyah | Beden: M" → "Varyant: Siyah / M". */
+export function activityVariantText(optionText: string | null | undefined) {
+  const values = (optionText ?? '').split('|').map(part => { const index = part.indexOf(':'); return (index >= 0 ? part.slice(index + 1) : part).trim() }).filter(Boolean)
+  return values.length ? `Varyant: ${values.join(' / ')}` : null
 }

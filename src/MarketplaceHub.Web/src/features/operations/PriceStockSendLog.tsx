@@ -18,6 +18,7 @@ import {
   sendLogSummaryOn, sendLogTriggerGroups, sendLogTriggerLabel, toggleSendLogSummary,
   type PriceStockSendLogEntry, type PriceStockSendLogPage, type SendLogFilters, type ValueChange
 } from './price-stock-send-log'
+import { ProductThumb } from './ProductThumb'
 import './price-stock-send-log.css'
 
 // İşlem Takibi › Loglar: every price/stock line sent to a marketplace, newest first, like an API log. The first page is
@@ -43,12 +44,9 @@ function ResultPill({ entry }: { entry: PriceStockSendLogEntry }) {
 }
 
 function ProductCell({ entry }: { entry: PriceStockSendLogEntry }) {
-  const [broken, setBroken] = useState(false)
   const codes = [entry.barcode, entry.stockCode && entry.stockCode !== entry.barcode ? entry.stockCode : null].filter(Boolean).join(' · ')
   return <div className="psl-product">
-    {entry.imageUrl && !broken
-      ? <img src={entry.imageUrl} alt="" loading="lazy" onError={() => setBroken(true)} />
-      : <span className="psl-product-placeholder" aria-hidden="true"><UiIcon name="image" size={16} /></span>}
+    <ProductThumb url={entry.imageUrl} title={entry.productTitle ?? 'Ürün'} />
     <span className="psl-product-text">
       <strong title={entry.productTitle ?? undefined}>{entry.productTitle ?? 'Ürün bilgisi yok'}</strong>
       <small>{codes}{entry.modelCode ? ` · ${entry.modelCode}` : ''}</small>
