@@ -60,6 +60,8 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-on i { background: #22c55e; }
 /* A light yellow reads as "partly live" on the small dot; the dark warn tone looked brown. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-part i { background: #facc15; }
+/* Listed but closed to sale there (Satışa Kapalı): orange, apart from the yellow "partly live" and the red errors. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-off i { background: #f97316; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-link i { background: var(--rr-info); }
 /* An update on its way: the dot cycles red, green and blue until the marketplace answers. */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-busy i { background: var(--rr-info); animation: rr-pm-rgb 1.8s linear infinite; }

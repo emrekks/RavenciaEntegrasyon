@@ -37,6 +37,11 @@ UTC, ISO with Z.
   `@idempotent` key since 2026-04), `publishablePublish`, `metafieldsSet`, `fulfillmentTrackingInfoUpdate`,
   `returnApproveRequest`, `returnDeclineRequest`, `webhookSubscriptionCreate` / `Delete`.
 
+## Sale state (T2-D30, 2026-11-05)
+- Product `status` (ACTIVE/DRAFT/ARCHIVED) "controls visibility across all sales channels" (offline reference). DRAFT
+  and ARCHIVED are closed; ACTIVE stays unknown because channel publication (`publishedOnCurrentPublication`,
+  `publishedAt`) is not read. Code: `ShopifyHttpClient.MapProduct`.
+
 ## Statuses
 - Fulfillment: CANCELLED → CANCELLED; OPEN/PENDING/IN_PROGRESS → PROCESSING; SUCCESS/FULFILLED → SHIPPED;
   ERROR/FAILURE → FULFILLMENT_FAILED; a DELIVERED event → DELIVERED.

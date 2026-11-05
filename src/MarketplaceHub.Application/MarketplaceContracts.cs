@@ -581,7 +581,11 @@ public sealed record RemoteCatalogVariant(
     decimal? Desi = null,
     // The marketplace keeps and ships this variant's stock (n11depom, isFulfilledByHB): the stock is not the seller's to
     // send. Null when the marketplace answer does not say.
-    bool? FulfilledByMarketplace = null);
+    bool? FulfilledByMarketplace = null,
+    // Whether the marketplace sells the variant now (ListingSaleState.OnSale / OffSale) and, when closed, why
+    // (ListingSaleState reasons). Null when the answer does not say: unknown, never inferred.
+    string? SaleState = null,
+    string? SaleStateReason = null);
 
 // A desi read from a marketplace or an import file counts only when it is a real measurement: Trendyol
 // answers 0 for a product whose desi was never entered.

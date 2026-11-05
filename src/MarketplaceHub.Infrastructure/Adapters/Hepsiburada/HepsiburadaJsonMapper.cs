@@ -198,7 +198,9 @@ internal static class HepsiburadaJsonMapper
             // Hepsiburada names the desi "kg" in its catalog attributes (the publication sends it so).
             Desi: Desi(item),
             // A listing Hepsiburada stocks and ships itself: the panel sends its price only. Absent stays unknown.
-            FulfilledByMarketplace: Boolean(item, "isFulfilledByHB"));
+            FulfilledByMarketplace: Boolean(item, "isFulfilledByHB"),
+            SaleState: ListingSaleState.From(Boolean(item, "isSalable", "IsSalable")),
+            SaleStateReason: SaleStateReason(item));
         return new(
             simple.ExternalProductId,
             Text(item, "productMainId", "ProductMainId", "productId", "ProductId"),
@@ -213,6 +215,24 @@ internal static class HepsiburadaJsonMapper
             item.GetRawText());
     }
 
+
+    // Why a listing is not salable (Listing Bilgilerini Çekme: isSalable, isSuspended, isLocked, isFrozen,
+    // deactivationReasons). Live 2026-10-22: StockIsLessThanOrEqualToZero, PriceIsLessThanOrEqualToZero, ByMerchant.
+    // A seller's own closing outranks the stock and price reasons it comes with; stock is the reason only when it is
+    // the only one named.
+    internal static string? SaleStateReason(JsonElement item)
+    {
+        if (Boolean(item, "isSalable", "IsSalable") != false) return null;
+        if (Boolean(item, "isSuspended", "IsSuspended") == true) return ListingSaleState.Suspended;
+        if (Boolean(item, "isLocked", "IsLocked") == true) return ListingSaleState.Locked;
+        if (Boolean(item, "isFrozen", "IsFrozen") == true) return ListingSaleState.Frozen;
+        var reasons = Strings(item, "deactivationReasons", "DeactivationReasons");
+        bool Named(string reason) => reasons.Any(value => string.Equals(value, reason, StringComparison.OrdinalIgnoreCase));
+        if (Named("ByMerchant")) return ListingSaleState.BySeller;
+        if (Named("PriceIsLessThanOrEqualToZero")) return ListingSaleState.PriceZero;
+        if (reasons.Count > 0 && reasons.All(value => string.Equals(value, "StockIsLessThanOrEqualToZero", StringComparison.OrdinalIgnoreCase))) return ListingSaleState.StockZero;
+        return null;
+    }
 
     // all-products-of-merchant: the portal documents the endpoint without a response
     // example, so field discovery is deliberately tolerant. Category and attribute

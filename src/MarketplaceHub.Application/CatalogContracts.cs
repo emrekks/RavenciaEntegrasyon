@@ -79,7 +79,11 @@ public sealed record ProductVariantPlatformStatusView(
     string? OfferStatus = null,
     // The offer's stored "Özel Fiyat" choice: true follows the panel price, false keeps its own, null was never chosen
     // (the screens then read it from the prices).
-    bool? FollowsPanelPrice = null);
+    bool? FollowsPanelPrice = null,
+    // Whether the marketplace sells the matched variant now (ListingSaleState ON_SALE / OFF_SALE, null unknown) and,
+    // when closed, the reason it named. Beside Status, never part of it.
+    string? SaleState = null,
+    string? SaleStateReason = null);
 public sealed record ProductPlatformStatusView(
     string Platform,
     string Status,
@@ -88,7 +92,12 @@ public sealed record ProductPlatformStatusView(
     bool IsChecking = false,
     string PlatformCode = "TRENDYOL",
     // Variants the marketplace no longer knows (link NOT_FOUND or REJECTED); they are not in MatchedVariantCount.
-    int MissingVariantCount = 0);
+    int MissingVariantCount = 0,
+    // Matched variants the marketplace says are on sale / closed to sale; the rest of the matched ones are unknown.
+    // OffSaleStockZeroVariantCount: those of the closed ones whose only named reason is a stock of 0.
+    int OnSaleVariantCount = 0,
+    int OffSaleVariantCount = 0,
+    int OffSaleStockZeroVariantCount = 0);
 public sealed record ProductView(
     Guid Id,
     string Title,

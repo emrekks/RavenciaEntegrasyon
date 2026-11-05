@@ -4,11 +4,14 @@ export type ProductPlatformFilterGroup = {
 }
 
 // NOT_FOUND: every variant once matched or published there is one the marketplace no longer knows.
+// OFF_SALE: a matched variant the marketplace closed to sale for a reason other than a stock of 0 (the stock filter
+// finds those).
 const platformFilterStates = [
   { state: 'ACTIVE', label: 'Aktif' },
   { state: 'PARTIAL', label: 'Kısmi' },
   { state: 'PASSIVE', label: 'Pasif' },
-  { state: 'NOT_FOUND', label: 'Bulunamadı' }
+  { state: 'NOT_FOUND', label: 'Bulunamadı' },
+  { state: 'OFF_SALE', label: 'Satışa Kapalı' }
 ]
 
 const platformFilterPlatforms = [

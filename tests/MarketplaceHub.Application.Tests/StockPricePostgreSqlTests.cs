@@ -2404,6 +2404,40 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(1, settled.LastStockProjectionVersion);
     }
 
+    // T2-D30: a listing the marketplace closed to sale keeps its publication state, so its price and stock are composed
+    // exactly as an open one's (the sale state is shown, never a send rule).
+    [PostgreSqlFact]
+    public async Task ASaleStateNeverChangesWhichVariantsGetPriceAndStock()
+    {
+        var tenant = NewTenant("sale-state");
+        var n11 = NewConnection(tenant, "N11", writesEnabled: true);
+        var (product, closed) = NewVariant(tenant, "N11-OFF", "8690000000501");
+        var open = NewVariant(tenant, "N11-ON", "8690000000502", product.Id).Variant;
+        var unknown = NewVariant(tenant, "N11-UNK", "8690000000503", product.Id).Variant;
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(n11);
+            seed.Products.Add(product);
+            seed.ProductVariants.AddRange(closed, open, unknown);
+            seed.InventoryItems.AddRange(NewInventory(tenant, closed, 4m), NewInventory(tenant, open, 4m), NewInventory(tenant, unknown, 4m));
+            seed.ChannelOffers.AddRange(NewOffer(tenant, n11, closed), NewOffer(tenant, n11, open), NewOffer(tenant, n11, unknown));
+            seed.MarketplaceVariantLinks.AddRange(
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = closed.Id, ExternalId = "N11-OFF", SaleState = ListingSaleState.OffSale, SaleStateReason = ListingSaleState.BySeller },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = open.Id, ExternalId = "N11-ON", SaleState = ListingSaleState.OnSale },
+                new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = n11.Id, VariantId = unknown.Id, ExternalId = "N11-UNK" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        var draft = await new PriceInventoryComposer(db).BuildAsync(tenant.Id, n11.Id, CancellationToken.None);
+
+        Assert.True(draft.Succeeded, draft.Error?.Message);
+        var lines = draft.Value!.Lines.ToDictionary(x => x.VariantId);
+        Assert.Equal(3, lines.Count);
+        Assert.All(new[] { closed.Id, open.Id, unknown.Id }, id => Assert.Equal((false, false), (lines[id].QuantityOmitted, lines[id].PriceOmitted)));
+    }
+
     private static IConfiguration WritesOnConfiguration() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build();
 

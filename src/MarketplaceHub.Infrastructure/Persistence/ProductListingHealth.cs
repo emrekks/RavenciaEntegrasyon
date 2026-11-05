@@ -42,13 +42,18 @@ internal static class ProductListingHealth
         return normalized is not null && LiveStatuses.Contains(normalized) ? "PARTIAL_LIVE" : "PARTIAL_LINKED";
     }
 
+    // The products filter's "Satışa Kapalı": a matched variant the marketplace closed to sale (ListingSaleState) for a
+    // reason other than a stock of 0. The sale state never changes Status, so price/stock eligibility stays as it was.
+    public const string OffSale = "OFF_SALE";
+
     // The products list's platform filter over a family's variants on one marketplace.
-    public static bool MatchesFilter(string platformState, int variantCount, int matchedVariantCount, int missingVariantCount) => platformState switch
+    public static bool MatchesFilter(string platformState, int variantCount, int matchedVariantCount, int missingVariantCount, int offSaleVariantCount = 0) => platformState switch
     {
         "ACTIVE" => variantCount > 0 && matchedVariantCount == variantCount,
         "PARTIAL" => matchedVariantCount > 0 && matchedVariantCount < variantCount,
         NotFound => matchedVariantCount == 0 && missingVariantCount > 0,
         "PASSIVE" => matchedVariantCount == 0 && missingVariantCount == 0,
+        OffSale => offSaleVariantCount > 0,
         _ => true
     };
 

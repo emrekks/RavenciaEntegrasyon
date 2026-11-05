@@ -22,6 +22,9 @@ export type PublishStepsInput = {
   optionalWarnings: number
   /** Every variant is live and none is missing. */
   live: boolean
+  /** Live, but the marketplace says every variant is closed to sale: the label it reads instead of "Yayında" ("Satışa
+   *  Kapalı"). The steps stay done: the listing is there. */
+  saleClosedLabel?: string | null
   /** Partly live: how many of how many (variants, or colour cards of the family). */
   partial?: { live: number; total: number; unit: 'varyant' | 'renk' } | null
   /** Nothing the card once had is known to the marketplace any more. */
@@ -86,7 +89,7 @@ export function publishStatusSteps(input: PublishStepsInput): PublishSteps {
 
   const prepFailed = input.requiredGaps > 0
   const jobRunning = Boolean(input.job?.running)
-  if (input.live) return build(['done', 'done', 'done', 'done'], 'Yayında')
+  if (input.live) return build(['done', 'done', 'done', 'done'], input.saleClosedLabel || 'Yayında')
   if (input.notFound) return build(['done', 'done', 'done', 'fail'], 'Bulunamadı')
 
   if (partial) {

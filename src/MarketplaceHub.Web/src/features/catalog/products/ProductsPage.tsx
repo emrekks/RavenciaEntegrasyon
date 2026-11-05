@@ -13,7 +13,8 @@ import { productStatusLabel } from '../../../shared/status-labels'
 import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIcon, RrLoading, RrLogo, RrModal, RrPageSize, RrRing, RrThumb, titleTr, type RingTone } from '../../marketplace/returns-ui'
 import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
 import { toggleVariantGroupRow, updateVariantGroupSelection, variantGroupRowMates, variantGroupSelectionState, variantShortcutLabel, variantShortcutSelection } from '../variant-bulk-edit'
-import { productPlatformDisplayLabel, productPlatformDisplayState } from '../product-platform-status'
+import { productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState } from '../product-platform-status'
+import { offSaleSummary } from '../sale-state'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockErrorMessage, stockTarget, type VariantStockSet } from '../variant-stock-set'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsPath, settleTrackedProductSyncJobs, trackProductSyncJobs } from '../product-sync-tracking'
@@ -618,7 +619,7 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   const navigate = useNavigate()
   const product = group.primary
   const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
-  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean }>()
+  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; offSale: number; offSaleStockZero: number }>()
   for (const item of platformStatuses) {
     const platform = item.platform?.trim() || 'Platform'
     const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : platform.toUpperCase().includes('N11') ? 'N11' : platform.toUpperCase().includes('PAZARAMA') ? 'PAZARAMA' : platform.toUpperCase().replace(/\s/g, '').includes('PTTAVM') ? 'PTTAVM' : 'UNKNOWN')
@@ -629,13 +630,17 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
       current.matchedVariantCount += item.matchedVariantCount ?? 0
       current.variantCount += item.variantCount ?? 0
       current.isChecking ||= Boolean(item.isChecking)
+      current.offSale += item.offSaleVariantCount ?? 0
+      current.offSaleStockZero += item.offSaleStockZeroVariantCount ?? 0
     } else {
-      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking) })
+      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0 })
     }
   }
   const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
-    const state = productPlatformDisplayState(item.statuses, item.isChecking, item.matchedVariantCount)
-    const label = productPlatformDisplayLabel(item.platform, item.statuses, item.matchedVariantCount, item.variantCount, state)
+    const publicationState = productPlatformDisplayState(item.statuses, item.isChecking, item.matchedVariantCount)
+    const publicationLabel = productPlatformDisplayLabel(item.platform, item.statuses, item.matchedVariantCount, item.variantCount, publicationState)
+    // A listing the marketplace closed to sale is not "yayında": the sale state goes over the publication state.
+    const { state, label } = withProductPlatformSaleState(item.platform, publicationState, publicationLabel, offSaleSummary(item.matchedVariantCount, item.offSale, item.offSaleStockZero))
     return { key, platform: item.platform, platformCode: item.platformCode, state, label, matchedVariantCount: item.matchedVariantCount, variantCount: item.variantCount }
   })
   const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)
@@ -654,12 +659,13 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   const modelCode = group.products.map(item => item.modelCode).find(value => value?.trim()) ?? '—'
   // Every marketplace is listed, those without a match greyed out. The dot is green when every variant is live or
   // connected there, yellow when only some are (or some failed), red when all failed or the marketplace no longer
-  // knows any of them (Bulunamadı), and cycles while it updates.
+  // knows any of them (Bulunamadı), orange when it is listed there but closed to sale (Satışa Kapalı), and cycles
+  // while it updates.
   const platformMarks = (['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY'] as const).map(code => {
     const card = platformCards.find(item => item.platformCode === code)
     const name = code === 'N11' ? 'N11' : code === 'PTTAVM' ? 'PTT AVM' : code.charAt(0) + code.slice(1).toLocaleLowerCase('tr-TR')
     const linkedTone = card && card.variantCount > 0 && card.matchedVariantCount < card.variantCount ? 'part' : 'on'
-    const state = card ? ({ active: 'on', partial: 'part', linked: linkedTone, processing: 'busy', error: 'err', missing: 'err', inactive: 'none' } as Record<string, string>)[card.state] ?? 'none' : 'none'
+    const state = card ? ({ active: 'on', partial: 'part', linked: linkedTone, processing: 'busy', error: 'err', missing: 'err', inactive: 'none', closed: 'off' } as Record<string, string>)[card.state] ?? 'none' : 'none'
     return { code, state, label: card?.label ?? `${name} ürün eşleşmesi bulunamadı` }
   })
   const [ringTone, ringProgress] = ({ ACTIVE: ['ok', 1], DRAFT: ['prog', 0.3], ARCHIVED: ['off', 0], MIXED: ['bad', 0.66] } as Record<string, [RingTone, number]>)[status] ?? ['off', 0]

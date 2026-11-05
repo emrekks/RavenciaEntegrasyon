@@ -32,7 +32,9 @@ export type Variant = Versioned & {
   mediaUrls?: string[]; options?: Record<string, string>; platformStatuses?: VariantPlatformStatus[]; attributes?: ProductAttributeAssignment[]
 }
 // missingVariantCount: variants the marketplace no longer knows (link NOT_FOUND or REJECTED), not in matchedVariantCount.
-export type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean; missingVariantCount?: number }
+// onSale/offSale…VariantCount: matched variants the marketplace says are on sale / closed to sale (the rest unknown);
+// offSaleStockZeroVariantCount: the closed ones whose only named reason is a stock of 0 (sale-state.ts).
+export type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean; missingVariantCount?: number; onSaleVariantCount?: number; offSaleVariantCount?: number; offSaleStockZeroVariantCount?: number }
 export type VariantPlatformStatus = {
   platform: string; platformCode: string; isLinked: boolean; status?: string
   // Present at the marketplace (a variant link or a LIVE listing); isLinked also counts a variant only queued for
@@ -46,6 +48,9 @@ export type VariantPlatformStatus = {
   // The offer's stored "Özel Fiyat" choice (true follows the panel price); null was never chosen. Read it through
   // offerFollowsPanel (quick-price-edit.ts), never on its own.
   followsPanelPrice?: boolean | null
+  // Whether the marketplace sells the variant now (ON_SALE / OFF_SALE; null unknown) and why it is closed, beside the
+  // publication status and never part of it (sale-state.ts).
+  saleState?: string | null; saleStateReason?: string | null
 }
 export type Product = Versioned & {
   title: string; description: string; brandId: string | null; categoryId: string | null; status: string; updatedAt: string

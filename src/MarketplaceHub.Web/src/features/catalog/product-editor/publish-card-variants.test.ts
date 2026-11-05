@@ -13,8 +13,19 @@ describe('publish card variant presence', () => {
       row(status('c1')),
       row()
     ]
-    expect(publishCardVariantLinks(rows, 'c1')).toEqual({ total: 4, linked: 1, missing: 1 })
-    expect(publishCardVariantLinks(rows, 'c2')).toEqual({ total: 4, linked: 0, missing: 1 })
+    expect(publishCardVariantLinks(rows, 'c1')).toEqual({ total: 4, linked: 1, missing: 1, offSale: 0, offSaleStockZero: 0 })
+    expect(publishCardVariantLinks(rows, 'c2')).toEqual({ total: 4, linked: 0, missing: 1, offSale: 0, offSaleStockZero: 0 })
+  })
+
+  it('counts the present variants the marketplace closed to sale, never a missing one or an unknown state', () => {
+    const rows = [
+      row(status('c1', { isLinked: true, isMatched: true, saleState: 'OFF_SALE', saleStateReason: 'STOCK_ZERO' })),
+      row(status('c1', { isLinked: true, isMatched: true, saleState: 'OFF_SALE', saleStateReason: 'BY_SELLER' })),
+      row(status('c1', { isLinked: true, isMatched: true, saleState: 'ON_SALE' })),
+      row(status('c1', { isLinked: true, isMatched: true, saleState: null })),
+      row(status('c1', { isMissing: true, saleState: 'OFF_SALE' }))
+    ]
+    expect(publishCardVariantLinks(rows, 'c1')).toEqual({ total: 5, linked: 4, missing: 1, offSale: 2, offSaleStockZero: 1 })
   })
 
   it('reads a card with every variant present as live, even without links (a family send)', () => {

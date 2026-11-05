@@ -1698,6 +1698,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var seen = db.MarketplaceVariantLinks
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId
                 && (codes.Contains(x.ExternalId) || x.ExternalSku != null && codes.Contains(x.ExternalSku) || x.ExternalBarcode != null && codes.Contains(x.ExternalBarcode)));
+        // The sale state is only read, so an observing run records it too.
+        await RecordVariantSaleStates(seen, page, now, cancellationToken);
         if (!heal)
         {
             await seen.ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastSeenAt, now), cancellationToken);
@@ -1709,6 +1711,35 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .SetProperty(x => x.HealthChangedAt, x => x.HealthStatus != null ? now : x.HealthChangedAt)
                 .SetProperty(x => x.HealthReason, x => x.HealthStatus != null ? null : x.HealthReason)
                 .SetProperty(x => x.HealthStatus, (string?)null), cancellationToken);
+    }
+
+    // The sale state the page gives each link it names (ListingSaleStateReads): what the marketplace says now, unknown
+    // when its answer does not say. One update per distinct state on the page; the publication state and everything
+    // price/stock sends check are left alone.
+    private static async Task RecordVariantSaleStates(IQueryable<MarketplaceVariantLink> seen, IReadOnlyList<RemoteCatalogProduct> page, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // A product on the pending-approval list says nothing about the sale of an approved listing of the same code
+        // (Trendyol lists a product under review on both lists).
+        var variants = page.Where(product => !product.IsPendingApproval).SelectMany(product => product.Variants).ToList();
+        if (variants.Count == 0) return;
+        var links = await seen.AsNoTracking()
+            .Select(x => new { x.Id, x.ExternalId, x.ExternalBarcode, x.ExternalSku })
+            .ToListAsync(cancellationToken);
+        var groups = links
+            .Select(link => (link.Id, Read: ListingSaleStateReads.For(link.ExternalId, link.ExternalBarcode, link.ExternalSku, variants)))
+            .Where(item => item.Read is not null)
+            .GroupBy(item => item.Read!, item => item.Id);
+        foreach (var group in groups)
+        {
+            var ids = group.ToArray();
+            var (state, reason) = (group.Key.State, group.Key.Reason);
+            DateTimeOffset? readAt = state is null ? null : now;
+            await seen.Where(x => ids.Contains(x.Id))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(x => x.SaleState, state)
+                    .SetProperty(x => x.SaleStateReason, reason)
+                    .SetProperty(x => x.SaleStateReadAt, readAt), cancellationToken);
+        }
     }
 
     // After a complete catalog scan: a healthy link the scan never saw is gone from the marketplace. A scan that saw

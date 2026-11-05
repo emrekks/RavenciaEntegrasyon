@@ -1,5 +1,8 @@
+import type { OffSaleSummary } from './sale-state'
+
 // missing: every variant once matched or published there is one the marketplace no longer knows (server NOT_FOUND).
-export type ProductPlatformDisplayState = 'active' | 'linked' | 'partial' | 'processing' | 'error' | 'missing' | 'inactive'
+// closed: listed there, but the marketplace says every matched variant is closed to sale (Satışa Kapalı).
+export type ProductPlatformDisplayState = 'active' | 'linked' | 'partial' | 'processing' | 'error' | 'missing' | 'inactive' | 'closed'
 
 // A record with nothing there (no match, no publication) says nothing about the others: a family whose published cards
 // are all gone and whose other cards were never sent reads "Bulunamadı", not "kısmen".
@@ -98,4 +101,18 @@ export function productPlatformDisplayLabel(
   }
 
   return `${platform} ürün eşleşmesi bulunamadı`
+}
+
+// The sale state over the publication state: a listing that is there (live, matched or partly) but that the
+// marketplace closed to sale is not "yayında". Every matched variant closed reads "Satışa Kapalı"; some closed keep
+// the state and name how many. A card being processed, failed or gone keeps its own words.
+export function withProductPlatformSaleState(
+  platform: string,
+  state: ProductPlatformDisplayState,
+  label: string,
+  sale: OffSaleSummary | null
+): { state: ProductPlatformDisplayState; label: string } {
+  if (!sale || !['active', 'linked', 'partial'].includes(state)) return { state, label }
+  if (sale.allClosed) return { state: 'closed', label: `${platform}: ${sale.label} (${sale.closed}/${sale.matched} varyant)` }
+  return { state, label: `${label}; ${sale.label}` }
 }
