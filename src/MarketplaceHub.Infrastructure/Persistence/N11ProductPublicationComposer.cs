@@ -108,8 +108,7 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
                 return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı {offer.VatRate.ToString("0.##", CultureInfo.InvariantCulture)}; N11 yalnız 0, 1, 10 veya 20 kabul eder.");
 
             // Explicit variant media replaces the product gallery for that variant.
-            var assignedMedia = media.Where(x => x.VariantId == variant.Id).ToList();
-            var relevantMedia = assignedMedia.Count > 0 ? assignedMedia : media.Where(x => x.VariantId is null).ToList();
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
             if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
                 return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
             var imageUrls = ProductPublicationComposer.SelectPublicationImageUrls(relevantMedia

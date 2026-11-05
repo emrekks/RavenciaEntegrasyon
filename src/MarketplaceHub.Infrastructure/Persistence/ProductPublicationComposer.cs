@@ -176,10 +176,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             // Explicit variant media replaces the product gallery for that
             // variant. This keeps marketplace colors from receiving every
             // product image while preserving the old product-level fallback.
-            var assignedMedia = media.Where(x => x.VariantId == variant.Id).ToList();
-            var relevantMedia = assignedMedia.Count > 0
-                ? assignedMedia
-                : media.Where(x => x.VariantId is null).ToList();
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
             var relevantUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (relevantUrls.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
             var imageUrls = SelectPublicationImageUrls(relevantMedia

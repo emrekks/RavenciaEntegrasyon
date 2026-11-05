@@ -153,8 +153,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
             if (variant.Desi is not > 0) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için Pazarama'nın zorunlu desi değeri girilmemiş.");
             var desi = (int)Math.Ceiling(variant.Desi.Value);
 
-            var assignedMedia = media.Where(x => x.VariantId == variant.Id).ToList();
-            var relevantMedia = assignedMedia.Count > 0 ? assignedMedia : media.Where(x => x.VariantId is null).ToList();
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
             if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
                 return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
             var imageUrls = ProductPublicationComposer.SelectPublicationImageUrls(relevantMedia

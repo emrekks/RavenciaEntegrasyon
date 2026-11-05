@@ -138,8 +138,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             if (offer.VatRate < 0 || offer.VatRate > 100 || decimal.Truncate(offer.VatRate) != offer.VatRate)
                 return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı 0-100 arasında tam sayı olmalıdır.");
 
-            var assignedMedia = media.Where(x => x.VariantId == variant.Id).ToList();
-            var relevantMedia = assignedMedia.Count > 0 ? assignedMedia : media.Where(x => x.VariantId is null).ToList();
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
             // Only uploaded files have a verified MIME type; a registered URL is stored as image/remote and
             // Hepsiburada fetches and checks it itself (K4).
             if (relevantMedia.Any(item => item.Classification == "PRODUCT_MEDIA" && !string.Equals(item.MimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase) && !string.Equals(item.MimeType, "image/png", StringComparison.OrdinalIgnoreCase))) return Fail("PRODUCT_MEDIA_MIME_INVALID", $"'{variant.Sku}' ürün görselleri JPEG veya PNG olmalıdır.");
