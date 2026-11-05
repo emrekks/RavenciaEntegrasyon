@@ -479,6 +479,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.Classification).HasMaxLength(48); entity.Property(x => x.RelativePath).HasMaxLength(512); entity.Property(x => x.OriginalNameSafe).HasMaxLength(256); entity.Property(x => x.MimeType).HasMaxLength(128); entity.Property(x => x.Status).HasMaxLength(24);
             entity.HasIndex(x => new { x.TenantId, x.RelativePath }).IsUnique();
             entity.HasIndex(x => new { x.TenantId, x.Sha256, x.Classification });
+            // K11: one active upload per image content, so a parallel upload of the same picture fails on save and reuses
+            // the first one (CatalogEndpoints) instead of storing a second asset. Live had no duplicates when it was added.
+            entity.HasIndex(x => new { x.TenantId, x.Sha256 }, "UX_file_assets_active_product_media_sha256").IsUnique().HasFilter("\"Classification\" = 'PRODUCT_MEDIA' AND \"ArchivedAt\" IS NULL");
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ApiIdempotencyRecord>(entity =>

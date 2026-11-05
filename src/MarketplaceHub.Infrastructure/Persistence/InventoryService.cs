@@ -34,7 +34,15 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
             var prior = await FindItemAsync(tenantId, existing.InventoryItemId, cancellationToken);
             return prior is null ? NotFound<InventoryItemView>() : ServiceResult<InventoryItemView>.Ok(prior);
         }
+        return await SerializableWriteRetry.RunAsync(db, token => AdjustOnceAsync(tenantId, userId, variantId, command, idempotencyKey, correlationId, token), StockWriteCollided, cancellationToken);
+    }
 
+    // K6: a stock write that kept colliding with the worker's order and reservation writes wrote nothing.
+    private static ServiceResult<InventoryItemView> StockWriteCollided() =>
+        ServiceResult<InventoryItemView>.Fail("STOCK_CHANGED", "Stok aynı anda başka bir işlemle (ör. yeni sipariş) değiştiği için kaydedilemedi. Sayfayı yenileyip tekrar deneyin.", 409);
+
+    private async Task<ServiceResult<InventoryItemView>> AdjustOnceAsync(Guid tenantId, Guid userId, Guid variantId, StockAdjustmentCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         var item = await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
         if (item is null) return NotFound<InventoryItemView>();
@@ -87,7 +95,13 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
             var prior = await FindItemAsync(tenantId, existing.InventoryItemId, cancellationToken);
             return prior is null ? NotFound<InventoryItemView>() : ServiceResult<InventoryItemView>.Ok(prior);
         }
+        return await SerializableWriteRetry.RunAsync(db, token => SetOnHandOnceAsync(tenantId, userId, variantId, command, idempotencyKey, correlationId, token), StockWriteCollided, cancellationToken);
+    }
 
+    // Run again by SetOnHandAsync after a collision: the compare-and-set then reads the fresh on-hand, so a sale in
+    // between still ends in 409 STOCK_CHANGED and only a change that left the on-hand alone (a reservation) is retried.
+    private async Task<ServiceResult<InventoryItemView>> SetOnHandOnceAsync(Guid tenantId, Guid userId, Guid variantId, StockSetCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
+    {
         await using var transaction = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
         var item = await db.InventoryItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.VariantId == variantId && x.LocationCode == "MAIN", cancellationToken);
         if (item is null) return NotFound<InventoryItemView>();
