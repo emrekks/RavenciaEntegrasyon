@@ -448,25 +448,25 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
                         || unpackagedNew.Any(newOrder => newOrder.Id == order.Id),
+                    // A Hepsiburada undelivered package is Teslim Edilemedi like every other marketplace's (it was
+                    // listed under Askıda instead of Kargoda before 5 Nov 2026).
                     "ON_HOLD" => order => currentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
-                            && (packageStatuses.Contains(package.Status)
-                                || package.Status == ShipmentPackageStatus.Undelivered
-                                    && db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
-                                        && connection.Id == package.ConnectionId
-                                        && connection.PlatformCode == "HEPSIBURADA")))
+                            && packageStatuses.Contains(package.Status))
                         || unpackagedOnHold.Any(holdOrder => holdOrder.Id == order.Id),
                     "DELIVERED" => order => currentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
                         || unpackagedDelivered.Any(deliveredOrder => deliveredOrder.Id == order.Id),
-                    "SHIPPED" => order => currentPackages.Any(package => package.TenantId == order.TenantId
-                        && package.OrderId == order.Id
-                        && packageStatuses.Contains(package.Status)
-                        && (package.Status != ShipmentPackageStatus.Undelivered
-                            || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
-                                && connection.Id == package.ConnectionId
-                                && connection.PlatformCode == "HEPSIBURADA"))),
+                    // An order without a live package that is reviewed because its marketplace status is unknown
+                    // (a Hepsiburada lifecycle status the panel cannot read) is listed here too.
+                    "MANUAL_REVIEW" => order => currentPackages.Any(package => package.TenantId == order.TenantId
+                            && package.OrderId == order.Id
+                            && packageStatuses.Contains(package.Status))
+                        || order.DerivedStatus == "MANUAL_REVIEW"
+                            && !currentPackages.Any(package => package.TenantId == order.TenantId
+                                && package.OrderId == order.Id
+                                && package.Status != ShipmentPackageStatus.Cancelled),
                     _ => order => currentPackages.Any(package => package.TenantId == order.TenantId
                         && package.OrderId == order.Id
                         && packageStatuses.Contains(package.Status))

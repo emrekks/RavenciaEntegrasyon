@@ -32,6 +32,13 @@ describe('order delivery line', () => {
     expect(deliveryDueLine(delivery)).toBeNull()
   })
 
+  it('shows an undelivered Hepsiburada order as on every other marketplace', () => {
+    const hepsiburada = deliveryText(order({ derivedStatus: 'UNDELIVERED', platformCode: 'HEPSIBURADA', packages: [{ rawStatus: 'Undelivered' }] as Order['packages'] }))
+    const trendyol = deliveryText(order({ derivedStatus: 'UNDELIVERED', platformCode: 'TRENDYOL' }))
+    expect(hepsiburada).toEqual(trendyol)
+    expect(hepsiburada.kind).toBe('shipping')
+  })
+
   it('counts the days an overdue order is late', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-11-05T09:00:00Z'))

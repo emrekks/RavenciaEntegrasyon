@@ -4,6 +4,8 @@ export function onHoldOrderStatusText(platformCode: string, rawStatuses: readonl
   if (platformCode.trim().toUpperCase() !== 'HEPSIBURADA') return 'Askıda'
 
   const statuses = rawStatuses.map(status => status.trim().toUpperCase().replace(/[\s_-]/g, ''))
+  // An undelivered Hepsiburada order is UNDELIVERED since 5 Nov 2026; an older row still ON_HOLD until its next read
+  // keeps saying what it is.
   if (statuses.includes('UNDELIVERED')) return 'Teslim edilemedi'
   if (statuses.includes('CLAIMCREATED')) return 'Talep açıldı'
   return 'Askıda'

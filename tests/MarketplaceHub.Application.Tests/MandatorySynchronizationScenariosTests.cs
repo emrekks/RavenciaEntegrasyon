@@ -133,6 +133,7 @@ public sealed class MandatorySynchronizationScenariosTests
     [InlineData("hepsiburada", " new ", true)]
     [InlineData("HEPSIBURADA", "ON_HOLD", true)]
     [InlineData("hepsiburada", " on_hold ", true)]
+    [InlineData("HEPSIBURADA", "MANUAL_REVIEW", true)]
     [InlineData("HEPSIBURADA", "UNVERIFIED", false)]
     [InlineData("TRENDYOL", "NEW", false)]
     [InlineData("TRENDYOL", "UNVERIFIED", false)]
@@ -147,7 +148,7 @@ public sealed class MandatorySynchronizationScenariosTests
     [InlineData("Packaged", ShipmentPackageStatus.ReadyToShip)]
     [InlineData("InTransit", ShipmentPackageStatus.Shipped)]
     [InlineData("Delivered", ShipmentPackageStatus.Delivered)]
-    [InlineData("Undelivered", ShipmentPackageStatus.OnHold)]
+    [InlineData("Undelivered", ShipmentPackageStatus.Undelivered)]
     [InlineData("CancelledByCustomer", ShipmentPackageStatus.Cancelled)]
     public void HepsiburadaOrderLifecycleMapsDocumentedStatuses(string remoteStatus, ShipmentPackageStatus expected) =>
         Assert.Equal(expected, HepsiburadaOrderLifecycleStatusPolicy.FromRemote(remoteStatus));

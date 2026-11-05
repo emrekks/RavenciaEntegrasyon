@@ -981,13 +981,44 @@ public sealed class HepsiburadaAdapterTests
     }
 
     [Fact]
-    public void HepsiburadaUndeliveredPackagesKeepTheirOwnStatusButPutTheOrderOnHold()
+    // Item 6: an undelivered Hepsiburada order is Teslim Edilemedi like every other marketplace's, not Askıda, so the
+    // sale-invoice gate stops it.
+    public void HepsiburadaUndeliveredPackagesMakeAnUndeliveredOrderAsElsewhere()
     {
         Assert.Equal(ShipmentPackageStatus.Undelivered, ShipmentPackageStatusPolicy.FromRemote("Undelivered"));
-        Assert.Equal(ShipmentPackageStatus.OnHold,
+        Assert.Equal(ShipmentPackageStatus.Undelivered,
+            HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages([ShipmentPackageStatus.Shipped, ShipmentPackageStatus.Undelivered]));
+        Assert.Equal(ShipmentPackageStatusPolicy.Aggregate([ShipmentPackageStatus.Delivered, ShipmentPackageStatus.Undelivered]),
             HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages([ShipmentPackageStatus.Delivered, ShipmentPackageStatus.Undelivered]));
         Assert.Equal(ShipmentPackageStatus.Delivered,
             HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages([ShipmentPackageStatus.Delivered]));
+        Assert.Equal(ShipmentPackageStatus.ManualReview,
+            HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages([ShipmentPackageStatus.ManualReview, ShipmentPackageStatus.Undelivered]));
+
+        var lifecycle = HepsiburadaOrderLifecycleStatusPolicy.FromRemote("Undelivered");
+        Assert.Equal(ShipmentPackageStatus.Undelivered, lifecycle);
+        Assert.Equal(ShipmentPackageStatus.Undelivered, HepsiburadaOrderLifecycleStatusPolicy.Reconcile("SHIPPED", "Undelivered"));
+        Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(lifecycle!.Value));
+        Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedOrder("UNDELIVERED"));
+        Assert.False(DashboardMetricPolicy.IsSaleInvoiceBlockedOrder("ON_HOLD"));
+    }
+
+    // Item 6: without a package an unknown lifecycle status is reviewed, never a new order; a read of a known order
+    // that carries no status keeps the order's status; a known status replaces the review.
+    [Fact]
+    public void AnUnknownLifecycleStatusWithoutAPackageIsReviewedNotNew()
+    {
+        Assert.Equal("MANUAL_REVIEW", HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus("NEW", isNewOrder: true, isFresh: true, "FutureProviderStatus"));
+        Assert.Equal("MANUAL_REVIEW", HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus("NEW", isNewOrder: true, isFresh: true, null));
+        Assert.Equal("MANUAL_REVIEW", HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus("NEW", isNewOrder: false, isFresh: true, "FutureProviderStatus"));
+        Assert.Equal("SHIPPED", HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus("SHIPPED", isNewOrder: false, isFresh: true, null));
+        Assert.Equal("SHIPPED", HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus("SHIPPED", isNewOrder: false, isFresh: false, "FutureProviderStatus"));
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus("NEW", isNewOrder: true, isFresh: true, "Open"));
+
+        Assert.Null(HepsiburadaOrderLifecycleStatusPolicy.UnpackagedBaseline("MANUAL_REVIEW"));
+        Assert.Equal(ShipmentPackageStatus.Shipped, HepsiburadaOrderLifecycleStatusPolicy.Reconcile(
+            HepsiburadaOrderLifecycleStatusPolicy.UnpackagedBaseline("MANUAL_REVIEW"), "Shipped"));
+        Assert.Equal("NEW", HepsiburadaOrderLifecycleStatusPolicy.UnpackagedBaseline("NEW"));
     }
 
     [Fact]

@@ -76,7 +76,13 @@ Turkey time (`HepsiburadaJsonMapper.QueryTime`). Migration `20261019140000_Corre
 
 ## Statuses (own mapping in `OrderModels.cs`)
 OPEN/UNPACKED → New; PROCESSING → Processing; PACKAGED/INVOICED/READY_TO_SHIP → ReadyToShip; SHIPPED/INTRANSIT →
-Shipped; DELIVERED; UNDELIVERED → **OnHold**; CANCELLED* (BYMERCHANT/BYCUSTOMER/BYSAP) → Cancelled; RETURNED.
+Shipped; DELIVERED; UNDELIVERED → Undelivered (Teslim Edilemedi, as elsewhere; it was OnHold/Askıda before 5 Nov 2026,
+so a sale invoice was not stopped); CANCELLED* (BYMERCHANT/BYCUSTOMER/BYSAP) → Cancelled; RETURNED.
+An order without packages whose lifecycle status is unknown (or a new order read without one) is MANUAL_REVIEW, never
+NEW; a read of a known order carrying no status keeps its status; the lifecycle sweep re-reads unpackaged
+MANUAL_REVIEW orders. Code: `HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus`.
+Defaults kept on purpose: a package of the open-packages list without a status is "Open" (the list returns only open
+packages), and a paid-list order without paymentStatus is "Received" (only Shopify uses the payment status).
 A line in `ClaimCreated` must not put the order on hold.
 Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Cancelled, AwaitingPreApproval.
 
