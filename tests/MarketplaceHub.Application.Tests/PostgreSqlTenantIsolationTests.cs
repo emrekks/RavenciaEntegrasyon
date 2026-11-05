@@ -8411,10 +8411,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         {
             var content = request.RequestUri!.AbsolutePath.EndsWith("/v2/orders", StringComparison.Ordinal)
                 ? """
-                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"lines":[]}],"page":0,"totalPages":1}
+                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","lines":[]}],"page":0,"totalPages":1}
                   """
                 : """
-                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"cargoTrackingNumber":62755229958101,"cargoProviderName":"hepsiJET","invoiceStatus":"Invoiced","invoiceNumber":"INV-42","invoiceUrl":"https://example.invalid/invoice/42","lines":[]}],"nextCursor":null,"hasMore":false}
+                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","cargoTrackingNumber":62755229958101,"cargoProviderName":"hepsiJET","invoiceStatus":"Invoiced","invoiceNumber":"INV-42","invoiceUrl":"https://example.invalid/invoice/42","lines":[]}],"nextCursor":null,"hasMore":false}
                   """;
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -8508,7 +8508,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             storeFrontCodes.Add(storeFrontCode);
             var content = storeFrontCode == "AE"
                 ? """
-                  {"content":[{"shipmentPackageId":419428742,"orderNumber":"116483573775","status":"Shipped","lastModifiedDate":1790899200000,"lines":[]}],"page":0,"totalPages":1}
+                  {"content":[{"shipmentPackageId":419428742,"orderNumber":"116483573775","status":"Shipped","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","lines":[]}],"page":0,"totalPages":1}
                   """
                 : """
                   {"content":[],"page":0,"totalPages":0}
