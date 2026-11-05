@@ -1,5 +1,7 @@
+using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace MarketplaceHub.Application.Tests;
@@ -65,4 +67,61 @@ public sealed class OrderBuyerTypeLabelTests
     [InlineData("""{"commercial":true}""", """{"company":"Firma"}""", true, "MIKRO_IHRACAT")]
     public void Order_type_follows_the_same_buyer_rule_after_micro_export(string customer, string address, bool micro, string orderType) =>
         Assert.Equal(orderType, MarketplaceSalesService.BuyerType(customer, address, micro).OrderType);
+
+    // The "Fatura Türü" filter reads Order.BuyerType; the label reads the same stored value, with the rule's reason.
+    [Fact]
+    public void The_label_shows_the_stored_kind_with_the_rules_reason_and_the_rule_when_nothing_is_stored()
+    {
+        const string customer = """{"commercial":true}""";
+        const string address = """{"company":"Firma A.Ş.","taxNumber":"1234567890"}""";
+        Assert.Equal(new OrderBuyerTypeView(Corporate, "Pazaryeri kurumsal olarak işaretledi"), MarketplaceSalesService.BuyerType(customer, address, false, Corporate).BuyerType);
+        Assert.Equal(new OrderBuyerTypeView(Corporate, "Pazaryeri kurumsal olarak işaretledi"), MarketplaceSalesService.BuyerType(customer, address, false, null).BuyerType);
+        // A stored kind the current rule no longer gives (the rule changed and the column was not cleared) still decides
+        // the label and the order type, so the row never contradicts the filter it matched.
+        var stale = MarketplaceSalesService.BuyerType(customer, address, false, Individual);
+        Assert.Equal(Individual, stale.BuyerType.Kind);
+        Assert.Equal("BIREYSEL", stale.OrderType);
+    }
+
+    [Fact]
+    public void Every_save_of_a_new_order_or_a_changed_snapshot_keeps_the_kind_by_the_rule()
+    {
+        using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseNpgsql("Host=localhost;Database=unused").Options);
+        var added = TestOrder("""{"commercial":true}""", """{"company":"Firma","taxNumber":""}""");
+        db.Orders.Add(added);
+        var changed = TestOrder("{}", """{"firstName":"Ayşe"}""", Individual);
+        db.Orders.Attach(changed);
+        changed.InvoiceAddressSnapshotJson = """{"company":"Firma Ltd","taxNumber":"1234567890"}""";
+        var untouched = TestOrder("{}", """{"company":"Firma Ltd","taxNumber":"1234567890"}""", Individual);
+        db.Orders.Attach(untouched);
+        untouched.DerivedStatus = "SHIPPED";
+        var notYetFilled = TestOrder("""{"invoiceType":"Bireysel"}""", "{}");
+        db.Orders.Attach(notYetFilled);
+        notYetFilled.DerivedStatus = "SHIPPED";
+        db.ChangeTracker.DetectChanges();
+
+        OrderBuyerTypes.Apply(db.ChangeTracker);
+
+        Assert.Equal(Missing, added.BuyerType);
+        Assert.Equal(Corporate, changed.BuyerType);
+        // A save that touches no snapshot leaves the stored kind alone.
+        Assert.Equal(Individual, untouched.BuyerType);
+        Assert.False(db.Entry(untouched).Property(x => x.BuyerType).IsModified);
+        Assert.Equal(Individual, notYetFilled.BuyerType);
+    }
+
+    private static Order TestOrder(string customer, string address, string? buyerType = null) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = Guid.CreateVersion7(),
+        ConnectionId = Guid.CreateVersion7(),
+        ExternalOrderId = Guid.NewGuid().ToString("N"),
+        OrderNumber = "1",
+        Currency = "TRY",
+        CustomerSnapshotJson = customer,
+        ShipmentAddressSnapshotJson = "{}",
+        InvoiceAddressSnapshotJson = address,
+        DerivedStatus = "NEW",
+        BuyerType = buyerType
+    };
 }

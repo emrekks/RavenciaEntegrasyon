@@ -155,8 +155,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
         builder.ConfigureMarketplaceFinanceModels();
     }
 
-    public override int SaveChanges(bool acceptAllChangesOnSuccess) { ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
-    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
+    public override int SaveChanges(bool acceptAllChangesOnSuccess) { ResetReaddressedOfferMarks(); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return base.SaveChanges(acceptAllChangesOnSuccess); }
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default) { await ResetReaddressedOfferMarksAsync(cancellationToken); TrackSyncCursorProgress(); ApplyIntegrationJobMetadata(); OrderBuyerTypes.Apply(ChangeTracker); AppendDataChangeOutboxEvents(); GuardAppendOnlyAudit(); return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken); }
 
     // K-3: offers of a variant link that now points elsewhere are unsent again (ChannelOfferSendMarks).
     private void ResetReaddressedOfferMarks()

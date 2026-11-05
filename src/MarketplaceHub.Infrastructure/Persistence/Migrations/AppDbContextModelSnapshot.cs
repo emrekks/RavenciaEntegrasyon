@@ -4206,6 +4206,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BuyerType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<Guid>("ConnectionId")
                         .HasColumnType("uuid");
 
@@ -4282,6 +4286,8 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "BuyerType");
 
                     b.HasIndex("TenantId", "ConnectionId", "CreatedAt");
 

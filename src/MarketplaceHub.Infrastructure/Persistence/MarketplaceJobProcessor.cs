@@ -5506,7 +5506,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static readonly IReadOnlySet<string> OrderSnapshotColumns = new HashSet<string>(StringComparer.Ordinal)
     {
         nameof(Order.CustomerSnapshotJson), nameof(Order.ShipmentAddressSnapshotJson), nameof(Order.InvoiceAddressSnapshotJson),
-        nameof(Order.LastRemoteModifiedAt), nameof(Order.UpdatedAt), nameof(Order.Version), nameof(Order.StoreFrontCode)
+        nameof(Order.LastRemoteModifiedAt), nameof(Order.UpdatedAt), nameof(Order.Version), nameof(Order.StoreFrontCode), nameof(Order.BuyerType)
     };
 
     internal static bool OnlyChanges(IEnumerable<string> modifiedProperties, IReadOnlySet<string> allowed) => modifiedProperties.All(allowed.Contains);
@@ -5596,12 +5596,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var order = entry.Entity;
             var storeFrontCode = order.StoreFrontCode;
+            // Written outside the change tracker, so the buyer kind (OrderBuyerTypes) is set here from the new snapshots.
+            order.BuyerType = OrderBuyerTypes.Resolve(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson);
             await db.Orders.Where(x => x.TenantId == order.TenantId && x.Id == order.Id).ExecuteUpdateAsync(setters => setters
                 // An order never changes storefront: a storefront an order read stored meanwhile stays.
                 .SetProperty(x => x.StoreFrontCode, x => x.StoreFrontCode ?? storeFrontCode)
                 .SetProperty(x => x.CustomerSnapshotJson, order.CustomerSnapshotJson)
                 .SetProperty(x => x.ShipmentAddressSnapshotJson, order.ShipmentAddressSnapshotJson)
                 .SetProperty(x => x.InvoiceAddressSnapshotJson, order.InvoiceAddressSnapshotJson)
+                .SetProperty(x => x.BuyerType, order.BuyerType)
                 .SetProperty(x => x.LastRemoteModifiedAt, order.LastRemoteModifiedAt)
                 .SetProperty(x => x.UpdatedAt, order.UpdatedAt), cancellationToken);
             order.Version = entry.Property(x => x.Version).OriginalValue;

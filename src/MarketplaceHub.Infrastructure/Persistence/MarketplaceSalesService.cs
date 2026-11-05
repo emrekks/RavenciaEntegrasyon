@@ -7,7 +7,6 @@ using System.Text.RegularExpressions;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
-using MarketplaceHub.Infrastructure.Adapters.TrendyolEFaturam.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.Extensions.Configuration;
@@ -172,7 +171,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 .FirstOrDefault(x => x is not null)
                 ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
             var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-            var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, customer.IsMicroExport);
+            var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, customer.IsMicroExport, order.BuyerType);
             var dueAt = order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson);
             var unverifiedWithoutPackage = OpenOrderLifecyclePolicy.IsHepsiburadaOrderUnverifiedWithoutPackage(
                 connection?.PlatformCode,
@@ -386,29 +385,15 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         }
 
         var invoiceType = options.InvoiceType?.Trim().ToUpperInvariant();
-        // Trendyol always sends the company fields, often as empty strings.
-        // Checking only for the property name therefore classified nearly every
-        // individual order as corporate. Match a non-empty JSON value instead.
+        // The buyer kind stored on the order by the invoice's own rule (OrderBuyerTypes), the value the row label shows:
+        // Kurumsal is a corporate buyer with or without its tax number, "Kurumsal · Vergi No Yok" only the latter. An
+        // order the backfill has not reached yet (BuyerType null, minutes after the column is added) matches no kind.
         if (invoiceType == "KURUMSAL")
-            query = query.Where(x =>
-                x.CustomerSnapshotJson.Contains("\"commercial\":true")
-                || x.CustomerSnapshotJson.Contains("\"commercial\": true")
-                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"company\":\"_%")
-                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"company\": \"_%")
-                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"companyName\":\"_%")
-                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"companyName\": \"_%")
-                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"taxOffice\":\"_%")
-                || EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"taxOffice\": \"_%"));
+            query = query.Where(x => x.BuyerType == OrderBuyerTypeView.Corporate || x.BuyerType == OrderBuyerTypeView.CorporateTaxIdMissing);
+        else if (invoiceType == "KURUMSAL_VERGI_NO_YOK")
+            query = query.Where(x => x.BuyerType == OrderBuyerTypeView.CorporateTaxIdMissing);
         else if (invoiceType == "BIREYSEL")
-            query = query.Where(x =>
-                !x.CustomerSnapshotJson.Contains("\"commercial\":true")
-                && !x.CustomerSnapshotJson.Contains("\"commercial\": true")
-                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"company\":\"_%")
-                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"company\": \"_%")
-                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"companyName\":\"_%")
-                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"companyName\": \"_%")
-                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"taxOffice\":\"_%")
-                && !EF.Functions.Like(x.InvoiceAddressSnapshotJson, "%\"taxOffice\": \"_%"));
+            query = query.Where(x => x.BuyerType == OrderBuyerTypeView.Individual);
 
         var invoiceRegion = options.InvoiceRegion?.Trim().ToUpperInvariant();
         if (invoiceRegion == "MICRO_EXPORT")
@@ -969,7 +954,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             .FirstOrDefault(x => x is not null)
             ?? InvoiceDocumentUrl(order.CustomerSnapshotJson);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-        var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, customer.IsMicroExport);
+        var buyer = BuyerType(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, customer.IsMicroExport, order.BuyerType);
         return ServiceResult<OrderDetailView>.Ok(new(
             order.Id, order.OrderNumber, order.DerivedStatus, order.Currency, order.GrossAmount, order.DiscountAmount, order.NetAmount, order.OrderedAt,
             lines, visiblePackages.Select(x => Map(x, order.OrderNumber)).ToList(), order.Version,
@@ -3187,10 +3172,11 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     internal static string? SourceLineImageUrl(string? json) => NormalizeImageUrl(SourceImageUrl(json ?? "{}"));
 
     // The order's buyer kind by the invoice's rule (report item 12), and the order type that follows from it: a micro
-    // export first, then KURUMSAL for a corporate buyer (with or without its tax number), else BIREYSEL.
-    internal static (OrderBuyerTypeView BuyerType, string OrderType) BuyerType(string customerJson, string invoiceAddressJson, bool isMicroExport)
+    // export first, then KURUMSAL for a corporate buyer (with or without its tax number), else BIREYSEL. The kind stored
+    // on the order (Order.BuyerType) decides when set, so the label always equals what the "Fatura Türü" filter matched.
+    internal static (OrderBuyerTypeView BuyerType, string OrderType) BuyerType(string customerJson, string invoiceAddressJson, bool isMicroExport, string? storedKind = null)
     {
-        var buyer = TrendyolEFaturamCanonicalPayload.ResolveBuyerType(customerJson, invoiceAddressJson);
+        var buyer = OrderBuyerTypes.Label(storedKind, customerJson, invoiceAddressJson);
         return (buyer, isMicroExport ? "MIKRO_IHRACAT" : buyer.Kind == OrderBuyerTypeView.Individual ? "BIREYSEL" : "KURUMSAL");
     }
 

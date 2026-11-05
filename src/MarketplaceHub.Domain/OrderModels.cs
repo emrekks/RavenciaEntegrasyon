@@ -513,6 +513,10 @@ public sealed class Order
     public required string CustomerSnapshotJson { get; set; }
     public required string ShipmentAddressSnapshotJson { get; set; }
     public required string InvoiceAddressSnapshotJson { get; set; }
+    // The buyer kind of the order by the invoice's own rule (Individual, Corporate, CorporateTaxIdMissing), kept from
+    // the customer and invoice address snapshots on every save (OrderBuyerTypes) so the order list's "Fatura Türü"
+    // filter and the row label read one value; null only until the maintenance backfill reaches an older order.
+    public string? BuyerType { get; set; }
     public required string DerivedStatus { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }

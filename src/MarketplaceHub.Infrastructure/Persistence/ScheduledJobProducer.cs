@@ -51,6 +51,13 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             }
             catch (Exception exception) when (exception is not OperationCanceledException) { }
             db.ChangeTracker.Clear();
+            // Orders saved before their buyer kind was kept get it, by the invoice's rule (the "Fatura Türü" filter).
+            try
+            {
+                await OrderBuyerTypes.BackfillAsync(db, cancellationToken);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException) { }
+            db.ChangeTracker.Clear();
         }
     }
 

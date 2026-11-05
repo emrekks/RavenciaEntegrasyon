@@ -999,7 +999,7 @@ export function OrdersPage() {
 
   const cargoOptions = [{ value: 'ALL', label: 'Tüm Kargolar' }, ...cargos.map(value => ({ value, label: cargoLabel(value) }))]
   const invoiceOptions = [{ value: 'ALL', label: 'Tüm Fatura Durumları' }, ...invoiceStatuses.map(([value, label]) => ({ value, label }))]
-  const invoiceTypeOptions = [{ value: 'ALL', label: 'Tüm Türler' }, { value: 'BIREYSEL', label: 'Bireysel' }, { value: 'KURUMSAL', label: 'Kurumsal' }]
+  const invoiceTypeOptions = [{ value: 'ALL', label: 'Tüm Türler' }, { value: 'BIREYSEL', label: 'Bireysel' }, { value: 'KURUMSAL', label: 'Kurumsal' }, { value: 'KURUMSAL_VERGI_NO_YOK', label: 'Kurumsal · Vergi No Yok' }]
   const invoiceRegionOptions = [{ value: 'ALL', label: 'Tüm Bölgeler' }, { value: 'TR', label: 'Türkiye' }, { value: 'MICRO_EXPORT', label: 'Mikro İhracat' }]
   const cancelPartOptions = [{ value: 'ALL', label: 'Tüm Siparişler' }, { value: 'PARTIAL', label: 'Kısmi İptali Olanlar' }]
   // Sipariş Türü: every order, the micro-export ones, and (in Yeniden Gönderimler only) the resends not yet handed to the carrier.
