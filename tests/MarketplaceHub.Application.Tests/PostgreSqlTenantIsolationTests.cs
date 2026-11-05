@@ -2301,6 +2301,13 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             Assert.True(await sales.MarkLabelPrintedAsync(tenant.Id, printed.Id, CancellationToken.None));
             Assert.Equal(firstPrint, (await db.Orders.AsNoTracking().SingleAsync(x => x.Id == printed.Id)).LabelPrintedAt);
             Assert.False(await sales.MarkLabelPrintedAsync(tenant.Id, Guid.CreateVersion7(), CancellationToken.None));
+            // The first print is announced once to the other screens (an "orders" outbox event); printing again is not.
+            var announced = await db.IntegrationOutboxEvents.AsNoTracking()
+                .Where(x => x.TenantId == tenant.Id && x.ResourceType == "orders" && x.AggregateId == printed.Id && x.PayloadJson.Contains("labelPrinted"))
+                .ToListAsync();
+            var announcement = Assert.Single(announced);
+            Assert.Equal("updated", announcement.OperationType);
+            Assert.Null(announcement.PublishedAt);
 
             var onlyPrinted = await sales.OrdersAsync(tenant.Id, 20, 1, null, new OrderListQuery(LabelPrinted: true), CancellationToken.None);
             Assert.Equal(["label-printed"], onlyPrinted.Items.Select(order => order.OrderNumber));

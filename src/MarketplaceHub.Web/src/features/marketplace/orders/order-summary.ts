@@ -8,12 +8,26 @@ export type OrderFacets = { platforms: Record<string, number>; cargos: Record<st
 
 const summaryKeys: Record<string, keyof OrderSummary | undefined> = { ALL: 'all', NEW: 'new', UNVERIFIED: 'unverified', PROCESSING: 'processing', SHIPPED: 'shipped', DELIVERED: 'delivered', RESENT: 'resent', ON_HOLD: 'onHold', CANCELLED: 'cancelled', RETURNED: 'returned', RETURN_IN_TRANSIT: 'returnInTransit', PARTIALLY_CANCELLED: 'partiallyCancelled', MANUAL_REVIEW: 'manualReview', PAYMENT_PENDING: 'paymentPending', UNDELIVERED: 'undelivered', PENDING: 'pending', LATE: 'late' }
 
-// A tab's counter. The Geciken tab counts the filtered late orders like every other tab; the unfiltered dashboard
-// count stands in only while an older API answers without `late`.
-export function orderTabCount(tab: string, summary: OrderSummary | undefined, dashboardLate?: number) {
+// A tab's counter under the list's filters, or undefined when the summary does not say it (no summary, a tab it has no
+// counter for): shown as "—", never as 0 and never as an unfiltered count from elsewhere (the dashboard's late total).
+export function orderTabCount(tab: string, summary: OrderSummary | undefined): number | undefined {
   const key = summaryKeys[tab]
   const value = summary && key ? summary[key] : undefined
-  if (typeof value === 'number') return value
-  if (tab === 'LATE') return dashboardLate ?? 0
-  return 0
+  return typeof value === 'number' ? value : undefined
+}
+
+// What a tab or card shows for a counter: "…" while the first answer is on its way, "—" when the summary could not be
+// read or does not say it, the number otherwise.
+export function orderCountText(value: number | undefined, state: { loading: boolean; error: boolean }) {
+  if (state.error) return '—'
+  if (state.loading) return '…'
+  return value === undefined ? '—' : value.toLocaleString('tr-TR')
+}
+
+// A summary card's state from its query: an error wins over anything shown before (with keepPreviousData that would be
+// another filter's number); loading only while no answer has come yet, so a failed request never spins forever.
+export function summaryMetric(query: { data?: OrderSummary; isError: boolean; isPending: boolean }, pick: (summary: OrderSummary) => number | undefined) {
+  if (query.isError) return { value: undefined, loading: false, error: true }
+  if (!query.data) return { value: undefined, loading: query.isPending, error: !query.isPending }
+  return { value: pick(query.data), loading: false, error: false }
 }

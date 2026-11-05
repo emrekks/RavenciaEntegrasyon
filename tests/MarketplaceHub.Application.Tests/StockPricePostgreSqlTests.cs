@@ -1525,6 +1525,36 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Null(await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenant.Id, otherStore.Id, [newVariant.Id], ["8690000000042"], [], CancellationToken.None));
     }
 
+    // T2-D29: the connection-wide check ignores case and counts the barcodes an import linked to another variant.
+    [PostgreSqlFact]
+    public async Task Publication_RefusesABarcodeInAnotherCaseOrHeldByAnImportedLink()
+    {
+        var tenant = NewTenant("barcode-duplicate-case");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var (listedProduct, listedVariant) = NewVariant(tenant, "DUPC-OLD", "AB-1000-X");
+        var (importedProduct, importedVariant) = NewVariant(tenant, "DUPC-IMP", "local-imported");
+        var (newProduct, newVariant) = NewVariant(tenant, "DUPC-NEW", "ab-1000-x");
+        var profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, ProductId = listedProduct.Id, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "LIVE" };
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.Products.AddRange(listedProduct, importedProduct, newProduct);
+            seed.ProductVariants.AddRange(listedVariant, importedVariant, newVariant);
+            seed.ChannelListingProfiles.Add(profile);
+            seed.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProfileId = profile.Id, VariantId = listedVariant.Id, ExternalBarcode = "AB-1000-X", DesiredStatus = "LIVE", ActualStatus = "LIVE" });
+            // An import linked another local variant to the marketplace's "IMP-77" (no panel publication of it).
+            seed.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = trendyol.Id, VariantId = importedVariant.Id, ExternalId = "998877", ExternalBarcode = "IMP-77" });
+            await seed.SaveChangesAsync();
+        }
+
+        await using var db = fixture.CreateContext();
+        Assert.Equal("AB-1000-X", await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenant.Id, trendyol.Id, [newVariant.Id], ["ab-1000-x"], [], CancellationToken.None));
+        Assert.Equal("IMP-77", await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenant.Id, trendyol.Id, [newVariant.Id], ["imp-77"], [], CancellationToken.None));
+        // The imported variant itself publishing its own code is no duplicate.
+        Assert.Null(await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenant.Id, trendyol.Id, [importedVariant.Id], ["IMP-77"], [], CancellationToken.None));
+    }
+
     // K11: an active offer without a MAIN stock row is reported instead of silently skipped.
     [PostgreSqlFact]
     public async Task PriceInventoryBuild_ReportsAnOfferWithoutInventory()

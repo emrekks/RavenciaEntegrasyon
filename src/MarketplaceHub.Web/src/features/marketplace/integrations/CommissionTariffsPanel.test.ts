@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { amountRange, bandLimitHint, bandLimitText, bestTiers, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, noFilter, groupByModel, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, mostProfit, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
+import { amountRange, bandLimitHint, bandLimitText, bestTiers, commissionTariffPlatforms, defaultPeriod, exportMessage, groupRangeText, periodDays, periodTabLabel, tariffGroups, weekAverage, weekTabLabel, type CommissionTariff, selectionBody, selectionState, type TariffPick, filterQuery, nextSort, ownPriceValue, noFilter, groupByModel, noBulk, ownChoice, pickedTier, priceRange, rateDisagrees, rateText, mostProfit, type CommissionTariffRow, type TariffBulk } from './CommissionTariffsPanel'
 
 describe('commission tariff models', () => {
   const row = (id: string, modelCode: string | null) => ({ id, barcode: `B${id}`, modelCode }) as CommissionTariffRow
@@ -130,6 +130,15 @@ describe('commission tariff profit range', () => {
     expect(filterQuery({ ...noFilter, profitTier: '2', minProfit: '−20' })).toEqual({ profitTier: '2', minProfit: '-20' })
     expect(filterQuery({ ...noFilter, profitTier: '4' })).toEqual({})
     expect(filterQuery({ ...noFilter, minProfit: '100' })).toEqual({})
+  })
+
+  it('reads thresholds as Turkish: "1.250" is 1250, never 1.25', () => {
+    expect(filterQuery({ ...noFilter, minStock: '1.250', maxStock: '1.250,5' })).toEqual({ minStock: '1250', maxStock: '1250.5' })
+    expect(filterQuery({ ...noFilter, profitTier: '1', minProfit: '1.250', maxProfit: '−1.250,50', minShare: '0.125' })).toEqual({ profitTier: '1', minProfit: '1250', maxProfit: '-1250.5' })
+    expect(ownPriceValue('1.250')).toBe(1250)
+    expect(ownPriceValue('1.250,50')).toBe(1250.5)
+    expect(ownPriceValue('0')).toBeNull()
+    expect(ownPriceValue('1,250.50')).toBeNull()
   })
 })
 

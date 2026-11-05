@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceTarget } from './quick-price-edit'
+import { bulkEditValues, channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, priceFieldText, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceTarget } from './quick-price-edit'
 
 describe('panel price choice', () => {
   const product = { defaultListPrice: 300, defaultSalePrice: 250 }
@@ -63,8 +63,18 @@ describe('panel price choice', () => {
     expect(inlinePrices('100', '150')).toEqual({ ok: false, message: 'Liste fiyatı satış fiyatından küçük olamaz.' })
     expect(inlinePrices('100', '0').ok).toBe(false)
     expect(inlinePrices('100', '').ok).toBe(false)
-    expect(inlinePrices('100.005', '90').ok).toBe(false)
+    expect(inlinePrices('100,005', '90').ok).toBe(false)
     expect(hasAtMostTwoDecimals(19.99)).toBe(true)
+  })
+
+  it('reads the typed prices as Turkish: a thousands point is never a decimal point', () => {
+    expect(inlinePrices('1.250', '1.250')).toEqual({ ok: true, listPrice: 1250, salePrice: 1250 })
+    expect(inlinePrices('1.250,50', '1.199,90')).toEqual({ ok: true, listPrice: 1250.5, salePrice: 1199.9 })
+    expect(inlinePrices('1250,5', '1250.50')).toEqual({ ok: true, listPrice: 1250.5, salePrice: 1250.5 })
+    expect(inlinePrices('', '1.250')).toEqual({ ok: true, listPrice: 1250, salePrice: 1250 })
+    expect(inlinePrices('1,250.50', '100')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde girin.' })
+    expect(inlinePrices('', '0.125')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde girin.' })
+    expect(inlinePrices('', '12abc')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde girin.' })
     expect(hasAtMostTwoDecimals(0.1 + 0.2)).toBe(true)
     expect(hasAtMostTwoDecimals(1.234)).toBe(false)
   })
@@ -263,8 +273,36 @@ describe('Özel Fiyat: marketplaces that follow the panel price', () => {
   it('formats prices outside editing and reads a Turkish decimal comma', () => {
     expect(formatPriceField('1249.9')).toBe('1.249,90')
     expect(formatPriceField('')).toBe('')
-    expect(normalizePriceInput('1.249,90')).toBe('1249.90')
-    expect(normalizePriceInput('249,5 ₺')).toBe('249.5')
-    expect(normalizePriceInput('249.5')).toBe('249.5')
+    expect(formatPriceField(1249.9)).toBe('1.249,90')
+    expect(formatPriceField('1.250')).toBe('1.250,00')
+    expect(formatPriceField('1.249,9 ₺')).toBe('1.249,90')
+    expect(formatPriceField('1,250.50')).toBe('1,250.50')
+    expect(priceFieldText(1249.9)).toBe('1249,9')
+    expect(priceFieldText(null)).toBe('')
+    // The text a field starts with reads back as the same price.
+    expect(inlinePrices(priceFieldText(1.13), priceFieldText(1.13))).toEqual({ ok: true, listPrice: 1.13, salePrice: 1.13 })
+  })
+})
+
+describe('Toplu Fiyat/Stok values', () => {
+  const values = (listPrice: string, salePrice: string, stockAmount: string, showListPrice = true) => bulkEditValues({ showListPrice, listPrice, salePrice, stockAmount })
+
+  it('reads prices and stock as Turkish', () => {
+    expect(values('1.250', '1.199,90', '1.250')).toEqual({ ok: true, list: 1250, sale: 1199.9, amount: 1250 })
+    expect(values('', '1250.50', '')).toEqual({ ok: true, list: null, sale: 1250.5, amount: null })
+    expect(values('999', '1.250', '', false)).toEqual({ ok: true, list: 1250, sale: 1250, amount: null })
+  })
+
+  it('refuses a stock fraction instead of rounding it', () => {
+    expect(values('', '', '2,5')).toEqual({ ok: false, message: 'Stok miktarı tam sayı olmalıdır; kesirli bir değer (ör. 2,5) girilemez.' })
+    expect(values('', '', '2.5')).toMatchObject({ ok: false, message: expect.stringContaining('tam sayı') })
+    expect(values('', '', '-3')).toEqual({ ok: false, message: 'Stok miktarı negatif olamaz.' })
+    expect(values('', '', 'beş')).toMatchObject({ ok: false, message: expect.stringContaining('okunamadı') })
+  })
+
+  it('refuses an unreadable or wrong price', () => {
+    expect(values('1,250.50', '100', '')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde girin.' })
+    expect(values('100', '150', '')).toMatchObject({ ok: false })
+    expect(values('', '0', '')).toMatchObject({ ok: false })
   })
 })

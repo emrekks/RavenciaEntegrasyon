@@ -1,6 +1,7 @@
 // Where a quick price change on the products list goes: the offer the variant has on the channel the person picked
 // (at the version the list loaded), or a new offer on that channel. The channel is always the person's choice; the
 // screen never prices a channel it picked by itself.
+import { parseTrCount, parseTrNumber, trNumberInput } from '../../shared/tr-number'
 
 export type QuickPriceOffer = {
   offerId: string; offerVersion: number | null
@@ -211,19 +212,17 @@ function samePrice(left: number, right: number) {
   return Math.abs(left - right) < 0.005
 }
 
-// A price as the table shows it outside editing: Turkish digits, two decimals ("1.249,90"); empty for none.
-export function formatPriceField(value: string): string {
-  if (value.trim() === '') return ''
-  const number = Number(value)
-  return Number.isFinite(number) ? number.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value
+// A price as the table shows it outside editing: Turkish digits, two decimals ("1.249,90"); empty for none. A number
+// is shown as it is; a field's text is read as Turkish ("1.250" is 1250), and text that is not a price is shown as typed.
+export function formatPriceField(value: string | number): string {
+  if (typeof value === 'string' && value.trim() === '') return ''
+  const number = typeof value === 'number' ? value : parseTrNumber(value)
+  return number !== null && Number.isFinite(number) ? number.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(value)
 }
 
-// A price typed into the table, as the number fields take it: a decimal comma becomes a point and thousands dots go
-// ("1.249,90" -> "1249.90"); a value with a point only is kept as typed.
-export function normalizePriceInput(raw: string): string {
-  const text = raw.replace(/[\s₺]/g, '')
-  if (!text.includes(',')) return text
-  return text.replace(/\./g, '').replace(',', '.')
+// A stored price as a field starts it: a decimal comma, no thousands points ("1249,9"), so it reads back unchanged.
+export function priceFieldText(value: number | null | undefined): string {
+  return trNumberInput(value)
 }
 
 // Every query that shows a variant's panel price, channel prices or stock: the products list with its summary, counts
@@ -254,14 +253,38 @@ export function panelPriceTarget(variant: { id: string; version?: number | null 
 }
 
 // The list and sale price typed into the two per-variant fields, checked as the server checks them. An empty list
-// price takes the sale price.
+// price takes the sale price. The fields are read as Turkish ("1.250" is 1250, "1.250,50" is 1250.5); a value that
+// could mean two things is refused, never guessed.
+export const unreadablePriceMessage = 'Fiyat okunamadı; 1.250,50 biçiminde girin.'
 export function inlinePrices(list: string, sale: string): { ok: true; listPrice: number; salePrice: number } | { ok: false; message: string } {
-  const salePrice = Number(sale)
-  if (sale.trim() === '' || !Number.isFinite(salePrice) || salePrice <= 0) return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
-  const listPrice = list.trim() === '' ? salePrice : Number(list)
-  if (!Number.isFinite(listPrice) || listPrice < salePrice) return { ok: false, message: 'Liste fiyatı satış fiyatından küçük olamaz.' }
+  if (sale.trim() === '') return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
+  const salePrice = parseTrNumber(sale)
+  if (salePrice === null) return { ok: false, message: unreadablePriceMessage }
+  if (salePrice <= 0) return { ok: false, message: 'Satış fiyatı sıfırdan büyük olmalıdır.' }
+  const listPrice = list.trim() === '' ? salePrice : parseTrNumber(list)
+  if (listPrice === null) return { ok: false, message: unreadablePriceMessage }
+  if (listPrice < salePrice) return { ok: false, message: 'Liste fiyatı satış fiyatından küçük olamaz.' }
   if (!hasAtMostTwoDecimals(listPrice) || !hasAtMostTwoDecimals(salePrice)) return { ok: false, message: 'Fiyat en fazla iki ondalık basamak içerebilir.' }
   return { ok: true, listPrice, salePrice }
+}
+
+// Toplu Fiyat/Stok: the list price, sale price and stock amount typed, read as Turkish ("1.250" is 1250), each null
+// when left empty. Without a list price field the sale price stands for both. A stock is a whole number of pieces: a
+// fraction is refused with its own message, never rounded.
+export function bulkEditValues(input: { showListPrice: boolean; listPrice: string; salePrice: string; stockAmount: string }): { ok: true; list: number | null; sale: number | null; amount: number | null } | { ok: false; message: string } {
+  const read = (text: string) => text.trim() === '' ? null : parseTrNumber(text)
+  const unreadable = (text: string) => text.trim() !== '' && parseTrNumber(text) === null
+  if ((input.showListPrice && unreadable(input.listPrice)) || unreadable(input.salePrice)) return { ok: false, message: unreadablePriceMessage }
+  const sale = read(input.salePrice)
+  const list = input.showListPrice ? read(input.listPrice) : sale
+  let amount: number | null = null
+  if (input.stockAmount.trim() !== '') {
+    const count = parseTrCount(input.stockAmount)
+    if (!count.ok) return { ok: false, message: count.reason === 'fraction' ? 'Stok miktarı tam sayı olmalıdır; kesirli bir değer (ör. 2,5) girilemez.' : count.reason === 'negative' ? 'Stok miktarı negatif olamaz.' : 'Stok miktarı okunamadı; 1.250 gibi bir tam sayı girin.' }
+    amount = count.value
+  }
+  if ((list != null && (list < 0 || !hasAtMostTwoDecimals(list))) || (sale != null && (sale <= 0 || !hasAtMostTwoDecimals(sale))) || (list != null && sale != null && list < sale)) return { ok: false, message: 'Değerleri kontrol edin; satış fiyatı sıfırdan büyük olmalı, negatif fiyat veya hatalı fiyat sıralaması kullanılamaz, fiyat en fazla iki ondalık basamak içerebilir.' }
+  return { ok: true, list, sale, amount }
 }
 
 export function hasAtMostTwoDecimals(value: number) {
