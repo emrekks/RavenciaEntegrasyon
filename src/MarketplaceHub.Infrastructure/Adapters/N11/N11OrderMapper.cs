@@ -28,7 +28,7 @@ public static class N11OrderMapper
                 issues.Add(new("ORDER_PACKAGE_INVALID", Text(package, "id") ?? "unknown", "N11 sipariş paketi içeri alınmadı: sipariş numarası yok."));
                 continue;
             }
-            try { rows.Add(Package(package, orderNumber, issues)); }
+            try { rows.Add(Package(package, orderNumber)); }
             catch (JsonException exception)
             {
                 issues.Add(new("ORDER_PACKAGE_INVALID", Text(package, "id") ?? orderNumber, $"N11 sipariş paketi {orderNumber} içeri alınmadı: {exception.Message}"));
@@ -42,7 +42,7 @@ public static class N11OrderMapper
         return new(LinkSplitPackages(rows), hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore, total is > int.MaxValue ? int.MaxValue : (int?)total, issues);
     }
 
-    private static RemoteOrder Package(JsonElement package, string orderNumber, List<AdapterPageIssue> issues)
+    private static RemoteOrder Package(JsonElement package, string orderNumber)
     {
         var cargoCode = Text(package, "cargoTrackingNumber");
         // Location-specific deliveries come without a package number; the
@@ -57,11 +57,10 @@ public static class N11OrderMapper
             foreach (var line in lineArray.EnumerateArray())
             {
                 var lineId = Text(line, "orderLineId");
+                // O12: a package with a line that cannot be read is not imported at all (dropping the line would store a lower
+                // total); the page records the issue and a later read takes the package again.
                 if (lineId is null || Decimal(line, "quantity") is not { } quantity || quantity <= 0 || Decimal(line, "price") is not { } price || price < 0)
-                {
-                    issues.Add(new("ORDER_PACKAGE_LINE_INVALID", $"{packageId}:{lineId ?? "?"}", $"N11 sipariş paketi {packageId} alındı ancak bir ürün satırında satır kimliği, adet veya fiyat eksik."));
-                    continue;
-                }
+                    throw new JsonException($"bir ürün satırında (satır {lineId ?? "?"}) satır kimliği, adet veya fiyat okunamadı; paket sonraki okumada yeniden denenecek.");
                 var barcode = Text(line, "barcode");
                 var sku = Text(line, "stockCode") ?? barcode ?? "";
                 var title = Text(line, "productName") ?? sku;
@@ -79,8 +78,10 @@ public static class N11OrderMapper
         // store's and stay out of the seller's invoice).
         if (!hasInvoiceAmounts) net = gross - lines.Sum(line => Decimal(line.SourceSnapshotJson, "totalSellerDiscountPrice") ?? 0);
         net = Math.Clamp(net, 0, gross);
-        var modified = Instant(package, "lastModifiedDate") ?? DateTimeOffset.UnixEpoch;
-        var ordered = CreatedAt(package) ?? modified;
+        // D13: a package without any date is not imported as 1970; the page records it and a later read takes it again.
+        var created = CreatedAt(package);
+        var modified = Instant(package, "lastModifiedDate") ?? created ?? throw new JsonException("paketin tarihi yok (lastModifiedDate ve geçmiş tarihleri okunamadı).");
+        var ordered = created ?? modified;
         var status = Text(package, "shipmentPackageStatus") ?? "";
         var remotePackage = new RemotePackage(packageId, null, status, modified, Text(package, "cargoProviderName") ?? Text(package, "shipmentCompanyId"), cargoCode, allocations, gross, gross - net, net, Invoice(package),
             CancelledAt: CancelledAt(package, status));
@@ -255,8 +256,8 @@ public static class N11OrderMapper
     private static decimal? Decimal(JsonElement element, string property)
     {
         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number;
-        return value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+        // O5: text amounts are dot-decimal; "1234,50" stays unknown instead of being read as 123450.
+        return RemoteJson.Decimal(value);
     }
 
     private static decimal? Decimal(string json, string property)

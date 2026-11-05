@@ -6,12 +6,12 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 
 const reducedMotion = () => typeof window === 'undefined' || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
 
-// True once the element has been at least a third in view; it never turns back.
+// True once the element has been at least a third in view; it never turns back. The ref is a callback kept in state, so
+// an element drawn only later (bars that replace an empty state when the data comes in) is still watched.
 export function useReveal<T extends Element>() {
-  const ref = useRef<T>(null)
+  const [element, ref] = useState<T | null>(null)
   const [shown, setShown] = useState(() => typeof IntersectionObserver === 'undefined' || reducedMotion())
   useEffect(() => {
-    const element = ref.current
     if (shown || !element) return
     const observer = new IntersectionObserver(entries => {
       if (!entries.some(entry => entry.isIntersecting)) return
@@ -20,7 +20,7 @@ export function useReveal<T extends Element>() {
     }, { threshold: 0.3 })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [shown])
+  }, [shown, element])
   return [ref, shown] as const
 }
 

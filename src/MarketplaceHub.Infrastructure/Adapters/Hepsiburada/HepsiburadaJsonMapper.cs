@@ -1759,9 +1759,17 @@ internal static class HepsiburadaJsonMapper
     {
         var value = Find(element, names);
         if (value.ValueKind == JsonValueKind.Object) value = Find(value, "amount", "Amount", "value", "Value");
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number;
-        if (value.ValueKind == JsonValueKind.String && System.Decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out number)) return number;
-        return null;
+        // O5: a JSON number, a dot-decimal text, or Hepsiburada's own Turkish money text ("130,50", "1.234,50"; its catalog
+        // documents prices with a decimal comma). A comma is never read as a thousands separator ("1234,50" is not 123450).
+        if (RemoteJson.Decimal(value) is { } number) return number;
+        return value.ValueKind == JsonValueKind.String ? TurkishMoney(value.GetString()) : null;
+    }
+    // Only the exact Turkish money shape: a decimal comma with one or two digits after it, dots only as thousands groups.
+    internal static decimal? TurkishMoney(string? text)
+    {
+        var trimmed = text?.Trim();
+        if (string.IsNullOrEmpty(trimmed) || !System.Text.RegularExpressions.Regex.IsMatch(trimmed, @"^-?(\d{1,3}(\.\d{3})+|\d+),\d{1,2}$")) return null;
+        return System.Decimal.TryParse(trimmed, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands, CultureInfo.GetCultureInfo("tr-TR"), out var number) ? number : null;
     }
     private static decimal? Money(JsonElement element, params string[] names) => Decimal(element, names);
     private static int? Integer(JsonElement element, params string[] names)

@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { payoutGap, payoutLinesQuery, type PayoutGroup } from './payouts'
+import { parseAmount, payoutGap, payoutLinesQuery, type PayoutGroup } from './payouts'
+
+describe('amount filter', () => {
+  it('reads Turkish thousands and decimals, and a dot followed by two digits as a decimal point', () => {
+    expect(parseAmount('1.250')).toBe(1250)
+    expect(parseAmount('1.250,5')).toBe(1250.5)
+    expect(parseAmount('1250,50')).toBe(1250.5)
+    expect(parseAmount('1500.50')).toBe(1500.5)
+    expect(parseAmount('1.250.000')).toBe(1250000)
+    expect(parseAmount(' ₺ 980 ')).toBe(980)
+    expect(parseAmount('')).toBeNull()
+    expect(parseAmount('abc')).toBeNull()
+  })
+})
 
 const group = (overrides: Partial<PayoutGroup>): PayoutGroup => ({ key: 'due:abc:2026-11-05:TR_GULF', kind: 'DUE_DAY', connectionId: 'abc', platformCode: 'TRENDYOL', storeName: 'Ravencia',
   region: 'TR_GULF', regionName: null, day: '2026-11-05', amount: 100, linesAmount: null, records: 1, status: 'EXPECTED', ...overrides })

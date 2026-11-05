@@ -1231,9 +1231,9 @@ public sealed partial class HepsiburadaHttpClient(
                 // A listing Hepsiburada fulfils (isFulfilledByHB) goes without a stock: its stock is Hepsiburada's.
                 // A stock change alone goes without a price; a line carries at least one of the two.
                 var hasStock = item.TryGetProperty("availableStock", out var stockValue);
-                if (hasStock && (!stockValue.TryGetInt32(out var stock) || stock < 0)) return false;
+                if (hasStock && RemoteJson.Int32(stockValue) is not >= 0) return false;
                 var hasPrice = item.TryGetProperty("price", out var priceValue);
-                if (hasPrice && (!priceValue.TryGetDecimal(out var price) || price <= 0 || decimal.Round(price, 2) != price)) return false;
+                if (hasPrice && (RemoteJson.NumberDecimal(priceValue) is not { } price || price <= 0 || decimal.Round(price, 2) != price)) return false;
                 if (!hasStock && !hasPrice) return false;
             }
             return true;

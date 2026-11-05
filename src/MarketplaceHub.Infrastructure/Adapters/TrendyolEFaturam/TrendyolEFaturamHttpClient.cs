@@ -116,7 +116,7 @@ public sealed class TrendyolEFaturamHttpClient(
             return AdapterResult<InvoiceRemoteStatus>.Failure(new(AdapterErrorClass.NotFound, InvoiceProviderIdentityPolicy.NotFoundAtProviderCode,
                 "E-Faturam bu kimlikle bir fatura bulamadı.", 404, null, notFound.RemoteRequestId), response.RateLimit);
         if (!response.IsSuccess) return AdapterResult<InvoiceRemoteStatus>.Failure(response.Error!, response.RateLimit);
-        try { return AdapterResult<InvoiceRemoteStatus>.Success(TrendyolEFaturamJsonMapper.InvoiceStatus(response.Value!.Body, reference.ExternalReference), response.RateLimit); }
+        try { return AdapterResult<InvoiceRemoteStatus>.Success(TrendyolEFaturamJsonMapper.InvoiceStatus(response.Value!.Body, reference.ExternalReference, uuid), response.RateLimit); }
         catch (JsonException) { return AdapterResult<InvoiceRemoteStatus>.Failure(TrendyolEFaturamErrorMapper.Contract(), response.RateLimit); }
     }
 
@@ -300,7 +300,10 @@ public sealed class TrendyolEFaturamHttpClient(
             {
                 // The cached token was refused; the next operation signs in again.
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) tokens.Forget(context.CredentialId);
-                remoteId ??= await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(response.Content, linked.Token);
+                // Y4: the problem body is read even when the gateway sent an x-request-id. Its type decides the outcome
+                // (tax-payer-not-found → not registered, earchive-not-found → no such invoice, application-mismatch),
+                // so it is the reference kept; the request id stays only when the body names no problem.
+                remoteId = await TrendyolEFaturamProblemDetails.TryReadReferenceAsync(response.Content, linked.Token) ?? remoteId;
                 return AdapterResult<AuthorizedResponse>.Failure(TrendyolEFaturamErrorMapper.FromAuthorizedStatus(response.StatusCode, retryAfter, remoteId), rate);
             }
             // R7: the body is read with ResponseHeadersRead, so the read itself keeps it under the response limit; a larger
