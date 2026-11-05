@@ -140,7 +140,19 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     {
         var existing = await db.ChannelOffers.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.VariantId == command.VariantId, cancellationToken);
         if (existing is not null)
+        {
+            // CAT-02: a POST creates. An offer already on this channel is changed only by PATCH at the version the screen
+            // loaded, so a screen that did not know of it (or holds an older price) never overwrites a newer price. The same
+            // values sent again (a retried create) are no conflict; at most the "Özel Fiyat" choice is stored.
+            var change = ChannelOfferChangePolicy.Classify(existing,
+                decimal.Round(command.ListPrice, 4, MidpointRounding.ToEven), decimal.Round(command.SalePrice, 4, MidpointRounding.ToEven),
+                command.Currency.Trim().ToUpperInvariant(), decimal.Round(command.VatRate, 4, MidpointRounding.ToEven),
+                command.VatInclusion.Trim().ToUpperInvariant(), command.RoundingMode.Trim().ToUpperInvariant(),
+                decimal.Round(command.SafetyStock, 4, MidpointRounding.ToEven), command.Status.Trim());
+            if (change.Any)
+                return ServiceResult<ChannelOfferView>.Fail("CHANNEL_OFFER_EXISTS", $"Bu varyantın bu kanalda fiyatı zaten var (güncel sürüm v{existing.Version}) ve ekrandaki fiyat güncel değil. Sayfayı yenileyip tekrar deneyin.", 409);
             return await UpdateOfferAsync(tenantId, userId, existing.Id, existing.Version, new(command.ListPrice, command.SalePrice, command.Currency, command.VatRate, command.VatInclusion, command.RoundingMode, command.SafetyStock, command.Status, command.Reason, command.FollowsPanelPrice), cancellationToken);
+        }
 
         var connectionExists = await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == command.ConnectionId, cancellationToken);
         var variantExists = await db.ProductVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == command.VariantId, cancellationToken);

@@ -157,10 +157,13 @@ export function panelFollowChoiceVariantIds(variants: ReadonlyArray<QuickPriceVa
 }
 
 // What the product editor writes to one variant's offer on one marketplace when it saves channel prices (a first
-// publish, "Kaydet ve Yayınla", "Pazaryerlerinde Güncelle"). A marketplace that follows the panel takes the panel price.
-// One with its own price takes the price typed in its card only when the person changed that price (or the variant has
-// no offer there yet); otherwise each variant keeps its own offer price, so a card that shows one variant's price never
-// overwrites the others'. A per-variant price typed in the variant price table wins over both.
+// publish, "Kaydet ve Yayınla", "Pazaryerlerinde Güncelle"). A marketplace that follows the panel takes the variant's
+// own panel price (panel: the variant row's Liste/Satış Fiyatı, never the card's, so variants priced apart keep their
+// prices). One with its own price takes the price typed in its card only when the person changed that price (or the
+// variant has no offer there yet); otherwise each variant keeps its own offer price, so a card that shows one variant's
+// price never overwrites the others'. A per-variant price typed in the variant price table wins over both; it is the
+// marketplace's own price (followsPanelPrice false) unless it equals the variant's panel price, as the edit page's
+// variant price table stores it (typedOfferPriceChoice).
 export type EditorChannelOfferInput = {
   custom: boolean
   panel: { listPrice: number; salePrice: number }
@@ -168,10 +171,11 @@ export type EditorChannelOfferInput = {
   cardEdited: boolean
   variantPrice?: { listPrice: number; salePrice: number } | null
   offer?: { listPrice?: number | null; salePrice?: number | null } | null
+  takesListPrice?: boolean
 }
 export function editorChannelOfferPrices(input: EditorChannelOfferInput): { listPrice: number; salePrice: number; followsPanelPrice: boolean } {
   const followsPanelPrice = !input.custom
-  if (input.variantPrice) return { ...input.variantPrice, followsPanelPrice }
+  if (input.variantPrice) return { ...input.variantPrice, followsPanelPrice: followsPanelPrice && typedOfferPriceChoice(input.variantPrice, input.panel, input.takesListPrice ?? true) !== false }
   if (!input.custom) return { ...input.panel, followsPanelPrice }
   const own = input.offer?.salePrice != null && input.offer.salePrice > 0 ? { listPrice: input.offer.listPrice ?? input.offer.salePrice, salePrice: input.offer.salePrice } : null
   return { ...(input.cardEdited || !own ? input.card : own), followsPanelPrice }
@@ -181,6 +185,19 @@ export function editorChannelOfferPrices(input: EditorChannelOfferInput): { list
 // its own (false); one equal to it keeps the stored choice (undefined: not sent).
 export function typedOfferPriceChoice(prices: { listPrice: number; salePrice: number }, panel: { listPrice: number | null; salePrice: number | null }, takesListPrice: boolean): false | undefined {
   return offerMatchesPanel(prices, panel, takesListPrice) ? undefined : false
+}
+
+// True when the editor's write to an offer the variant already has would leave it as it is: the same prices, the same
+// policy fields and the same stored "Özel Fiyat" choice. Such an offer is not written at all; any other existing offer
+// is written by PATCH at the version the editor loaded, so a price set meanwhile elsewhere is refused, never overwritten.
+type EditorOfferState = { listPrice?: number | null; salePrice?: number | null; currency?: string | null; vatRate?: number | null; vatInclusion?: string | null; roundingMode?: string | null; safetyStock?: number | null; offerStatus?: string | null; followsPanelPrice?: boolean | null }
+type EditorOfferCommand = { listPrice: number; salePrice: number; currency: string; vatRate: number; vatInclusion: string; roundingMode: string; safetyStock: number; status: string; followsPanelPrice: boolean }
+export function editorOfferUnchanged(offer: EditorOfferState, command: EditorOfferCommand): boolean {
+  const sameNumber = (stored: number | null | undefined, sent: number) => stored != null && samePrice(stored, sent)
+  const sameText = (stored: string | null | undefined, sent: string) => (stored ?? '').trim().toUpperCase() === sent.trim().toUpperCase()
+  return sameNumber(offer.listPrice, command.listPrice) && sameNumber(offer.salePrice, command.salePrice) && sameNumber(offer.vatRate, command.vatRate) && sameNumber(offer.safetyStock, command.safetyStock)
+    && sameText(offer.currency, command.currency) && sameText(offer.vatInclusion, command.vatInclusion) && sameText(offer.roundingMode, command.roundingMode)
+    && (offer.offerStatus ?? '').trim() === command.status.trim() && offer.followsPanelPrice === command.followsPanelPrice
 }
 
 // The marketplaces that follow the panel price: every marketplace column not ticked "Özel Fiyat".

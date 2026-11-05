@@ -29,7 +29,10 @@ export function editorAwaitingSeed({ seeding, productPending, listsPending }: { 
 
 // A stable text form of what the user can edit; compared with the one taken right after the form was filled.
 // Server-side state shown in the rows (platform prices) is left out: it is saved on its own and does not make the
-// form "unsaved".
+// form "unsaved". What the user types for the marketplaces is in: "Pazaryerlerine Özel Fiyat" (channelPricing), the
+// variant price table of a new product (variantChannelPricing) and the Web Color choice, so a change there alone warns
+// on leaving and is not dropped by a background refresh.
+export type EditorWebColor = { autoEnabled: boolean; manualValueId: string }
 export function editorSnapshot(state: {
   form: Record<string, string>
   variantRows: Array<{ key: string; optionSignature: string; options: Record<string, string>; attributeValueIds: Record<string, string>; sku: string; barcode: string; stock: number; salePrice: number; listPrice: number; costPrice: number | null; mediaRefs: string[] }>
@@ -39,6 +42,9 @@ export function editorSnapshot(state: {
   pendingMediaFileCount: number
   removedVariantIds: string[]
   pendingFamilyMediaRemovalUrls?: string[]
+  channelPricing?: Record<string, { listPrice: string; salePrice: string }>
+  variantChannelPricing?: Record<string, { listPrice: string; salePrice: string }>
+  webColor?: EditorWebColor
 }) {
   return JSON.stringify({
     form: state.form,
@@ -48,8 +54,22 @@ export function editorSnapshot(state: {
     familyMediaOrder: state.familyMediaOrder,
     pendingMediaFileCount: state.pendingMediaFileCount,
     removedVariantIds: state.removedVariantIds,
-    pendingFamilyMediaRemovalUrls: state.pendingFamilyMediaRemovalUrls ?? []
+    pendingFamilyMediaRemovalUrls: state.pendingFamilyMediaRemovalUrls ?? [],
+    channelPricing: sortedPricing(state.channelPricing),
+    variantChannelPricing: sortedPricing(state.variantChannelPricing),
+    webColor: state.webColor ? [state.webColor.autoEnabled, state.webColor.manualValueId] : null
   })
+}
+
+function sortedPricing(pricing: Record<string, { listPrice: string; salePrice: string }> | undefined) {
+  return Object.entries(pricing ?? {}).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0).map(([key, value]) => [key, String(value.listPrice), String(value.salePrice)])
+}
+
+// The Web Color an edit opens with is filled once the category's requirements are in, which can be after the snapshot
+// was taken: the snapshot then takes that Web Color as its own, so the seeded value is not an unsaved change.
+export function editorSnapshotWithWebColor(snapshot: string, webColor: EditorWebColor) {
+  const parsed = JSON.parse(snapshot) as Record<string, unknown>
+  return JSON.stringify({ ...parsed, webColor: [webColor.autoEnabled, webColor.manualValueId] })
 }
 
 // Stock changes the editor sends after the product itself was saved: only rows whose stock the user changed, each as

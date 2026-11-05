@@ -35,6 +35,7 @@ import { attributeIssueTip } from '../publish-issue-chips'
 import { attributeMappingPlatform, mappingFocusItems } from '../../marketplace/mappings/mapping-focus'
 import { LocalImagePreview, MediaAddTile, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { keepPendingCreateMedia, pendingVariantMediaRefs, takePendingCreateMedia, type PendingCreateMedia } from './pending-create-media'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog } from './PlatformUpdateDialog'
@@ -53,8 +54,8 @@ import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductT
 import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemovedMedia, withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
 import { clearAllMediaConfirmationText, clearAllMediaFeedbackText, familyItemsShownInStrip, familyMediaClearPlan, removePendingFamilyMedia, withPendingFamilyMediaRemovals } from '../family-media-clear'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
-import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
-import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, TURKISH_VAT_RATES, variantCodeConflictsFrom, variantCodeKey, type EditorFieldErrors } from '../product-editor-state'
+import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, editorOfferUnchanged, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
+import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorSnapshotWithWebColor, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, TURKISH_VAT_RATES, variantCodeConflictsFrom, variantCodeKey, type EditorFieldErrors, type EditorWebColor } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
@@ -290,8 +291,16 @@ type VariantDraft = {
   // The on-hand stock this row was loaded with (edit page only): stock is saved only when the row differs from it,
   // as an absolute value against it.
   loadedStock?: number
+  // The variant's version this row was loaded with (edit page only). The server refuses a save that would change the
+  // row over a variant changed meanwhile elsewhere (another colour card of the family, a quick price edit, an import).
+  loadedVersion?: number
   persistedAttributes?: ProductAttributeAssignment[]
   platformStatuses?: VariantPlatformStatus[]
+}
+type SavedListingProfile = { version: number; titleOverride?: string | null; descriptionOverride?: string | null; externalCategoryId?: string | null; externalBrandId?: string | null; deliveryTimeDays?: number | null }
+// The listing profile a publish writes: a saved profile as it is (switched on), a new one without overrides.
+function republishListingProfileBody(saved: SavedListingProfile | null | undefined) {
+  return { titleOverride: saved?.titleOverride ?? null, descriptionOverride: saved?.descriptionOverride ?? null, externalCategoryId: saved?.externalCategoryId ?? null, externalBrandId: saved?.externalBrandId ?? null, deliveryTimeDays: saved?.deliveryTimeDays ?? null, enabled: true }
 }
 // A message the server attached to one field of a refused save (422 fieldErrors), shown under that field.
 function EditorFieldError({ message }: { message?: string }) {
@@ -1316,6 +1325,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // the form holds edits a reseed would destroy.
   const [snapshotRequest, setSnapshotRequest] = useState(0)
   const [seedSnapshot, setSeedSnapshot] = useState<string | null>(null)
+  // Web Color: automatic (each row's own Renk) or one manual value; declared here because the snapshot reads it.
+  const [webColorAutoEnabled, setWebColorAutoEnabled] = useState(true)
+  const [manualWebColorValueId, setManualWebColorValueId] = useState('')
+  // The Web Color the open product was filled with, taken into the snapshot once it is set (it waits for requirements).
+  const webColorSeed = useRef<EditorWebColor | null>(null)
+  const [webColorSeedRequest, setWebColorSeedRequest] = useState(0)
   const [staleProductVersion, setStaleProductVersion] = useState<number | null>(null)
   const allowReseedUntil = useRef(0)
   // True while the editor's own save runs: a refetch landing then does not refill the form or flag a newer version.
@@ -1339,10 +1354,20 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const frame = requestAnimationFrame(() => { lastFieldReveal.current = Date.now(); revealFieldError(document.getElementById('product-creation-form')) })
     return () => cancelAnimationFrame(frame)
   }, [fieldErrors])
-  const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds, pendingFamilyMediaRemovalUrls: pendingFamilyMediaRemovals.map(item => item.url) }), [attributeSelections, attributeTextValues, familyMediaOrder, form, mediaFiles.length, pendingFamilyMediaRemovals, removedVariantIds, variantRows])
+  const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds, pendingFamilyMediaRemovalUrls: pendingFamilyMediaRemovals.map(item => item.url), channelPricing, variantChannelPricing, webColor: { autoEnabled: webColorAutoEnabled, manualValueId: manualWebColorValueId } }), [attributeSelections, attributeTextValues, channelPricing, familyMediaOrder, form, manualWebColorValueId, mediaFiles.length, pendingFamilyMediaRemovals, removedVariantIds, variantChannelPricing, variantRows, webColorAutoEnabled])
   // A new product compares with the empty form it opened with; a copy and an edit with the form right after seeding.
   const editorDirty = seedSnapshot !== null && seedSnapshot !== currentEditorSnapshot
-  const captureEditorSnapshot = useEffectEvent(() => setSeedSnapshot(currentEditorSnapshot))
+  // Media a create left behind (pending-create-media.ts): put back right after the snapshot is taken, so they are
+  // unsaved changes of the product's page.
+  const restoreAfterSnapshot = useRef<PendingCreateMedia<PendingProductMediaFile> | null>(null)
+  const captureEditorSnapshot = useEffectEvent(() => {
+    setSeedSnapshot(currentEditorSnapshot)
+    const restore = restoreAfterSnapshot.current
+    if (!restore) return
+    restoreAfterSnapshot.current = null
+    setMediaFiles(current => [...current, ...restore.files.filter(file => !current.some(item => item.id === file.id))])
+    setVariantRows(rows => rows.map(row => restore.variantMediaRefs[row.key] ? { ...row, mediaRefs: restore.variantMediaRefs[row.key] } : row))
+  })
   useEffect(() => { if (snapshotRequest) captureEditorSnapshot() }, [snapshotRequest])
   useEffect(() => { if (!editProductId && !duplicateProductId) setSnapshotRequest(value => value + 1) }, [duplicateProductId, editProductId])
   // One create key for the form's whole life: a resend after a lost answer (network error) is replayed by the server
@@ -1424,8 +1449,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // category mapping marker, but keep the editor usable when a category has
   // Renk configured before its Web Color mapping is saved.
   const webColorValues = webColorRequirement?.attribute.values ?? colorOptionRequirement?.attribute.values ?? []
-  const [webColorAutoEnabled, setWebColorAutoEnabled] = useState(true)
-  const [manualWebColorValueId, setManualWebColorValueId] = useState('')
   const [optionEditRowKey, setOptionEditRowKey] = useState<string | null>(null)
   useEffect(() => {
     const optionIds = optionRequirements.map(item => item.attributeId)
@@ -1480,6 +1503,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setPendingFamilyMediaRemovals([])
     setMediaFiles(mediaFilesKeptOnReseed.current ?? [])
     mediaFilesKeptOnReseed.current = null
+    const leftByCreate = editProductId ? takePendingCreateMedia<PendingProductMediaFile>(product.id) : undefined
+    if (leftByCreate) restoreAfterSnapshot.current = leftByCreate
     const seededMediaRefs = seedVariantMediaRefs(product.variants).map(references => withoutCopyRemovedMediaRefs(references, removedMediaKeys))
     const mediaRefsByVariantId = new Map(product.variants.map((variant, index) => [variant.id, seededMediaRefs[index] ?? []]))
     initialEditVariantMediaRefs.current = Object.fromEntries(mediaRefsByVariantId)
@@ -1487,7 +1512,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const options = Object.fromEntries(variantOptionEntries(variant).map(option => [option.name, option.value]))
       const persistedAttributes = variant.attributes ?? []
       const attributeValueIds = Object.fromEntries(persistedAttributes.flatMap(attribute => attribute.valueId ? [[attribute.attributeId, attribute.valueId] as const] : []))
-      return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: mode === 'copy' ? '' : variant.sku, barcode: mode === 'copy' ? '' : variant.barcode ?? '', stock: variant.onHand, ...(editProductId ? { loadedStock: variant.onHand } : {}), salePrice: panelPrices(variant, product).salePrice ?? 0, listPrice: panelPrices(variant, product).listPrice ?? 0, costPrice: variant.costPrice ?? null, ...(editProductId ? { loadedCostPrice: variant.costPrice ?? null } : {}), mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
+      return { key: variant.id, optionSignature: optionSignatureFromOptions(options) || (variant.optionSignature && variant.optionSignature !== '-' ? variant.optionSignature : 'Tek Ürün'), options, attributeValueIds, persistedAttributes, sku: mode === 'copy' ? '' : variant.sku, barcode: mode === 'copy' ? '' : variant.barcode ?? '', stock: variant.onHand, ...(editProductId ? { loadedStock: variant.onHand, loadedVersion: variant.version } : {}), salePrice: panelPrices(variant, product).salePrice ?? 0, listPrice: panelPrices(variant, product).listPrice ?? 0, costPrice: variant.costPrice ?? null, ...(editProductId ? { loadedCostPrice: variant.costPrice ?? null } : {}), mediaRefs: mediaRefsByVariantId.get(variant.id) ?? [], ...(editProductId ? { platformStatuses: variant.platformStatuses ?? [] } : {}) }
     }))
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
@@ -1517,7 +1542,17 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const savedManualColor = product.trendyolWebColorValueId ?? ''
     setWebColorAutoEnabled(!savedManualColor)
     setManualWebColorValueId(savedManualColor)
+    webColorSeed.current = { autoEnabled: !savedManualColor, manualValueId: savedManualColor }
+    setWebColorSeedRequest(value => value + 1)
   }, [duplicateProductId, editProductId, requirements.isLoading, seedProduct, webColorRequirement])
+  // Runs after the render that holds the seeded Web Color and after any snapshot taken before it: the snapshot takes the
+  // seeded Web Color as its own, so filling it is never an unsaved change while a real change still is.
+  useEffect(() => {
+    const seeded = webColorSeed.current
+    if (!webColorSeedRequest || !seeded) return
+    webColorSeed.current = null
+    setSeedSnapshot(current => current == null ? current : editorSnapshotWithWebColor(current, seeded))
+  }, [webColorSeedRequest])
 
   useLayoutEffect(() => {
     const product = seedProduct
@@ -1648,7 +1683,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         if (current.length === 1 && current[0].optionSignature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' && generated.length === 1) {
           const existing = current[0]
           const [next] = generated
-          return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration && !preserveExistingDetails ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, loadedStock: existing.loadedStock, costPrice: existing.costPrice, loadedCostPrice: existing.loadedCostPrice, mediaRefs: existing.mediaRefs }]
+          return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration && !preserveExistingDetails ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, loadedStock: existing.loadedStock, loadedVersion: existing.loadedVersion, costPrice: existing.costPrice, loadedCostPrice: existing.loadedCostPrice, mediaRefs: existing.mediaRefs }]
         }
         const existingMap = new Map(current.map(row => [variantSignatureKey(row.optionSignature), row]))
         const knownBarcodes = new Set(current.map(row => row.barcode.trim()).filter(Boolean))
@@ -2628,6 +2663,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         : editProductId ? ['Ürün Kaydediliyor', 'Ürün değişiklikleri kaydediliyor…'] : ['Ürün Oluşturuluyor', 'Ürün oluşturuluyor…']
     setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); editorSaveInFlight.current = true; let productCreated: Product | undefined; let familyMediaChanged = false
     const uploadedMediaFileIds = new Set<string>()
+    // What a create that stops after the product exists hands to the product's page (pending-create-media.ts).
+    const storedUrlByFileId = new Map<string, string>()
+    const writtenVariantMediaIds = new Set<string>()
+    let submittedRows: VariantDraft[] = []
     try {
       let submitRequirements = requirements.data ?? []
       if (form.categoryId && !requirements.data) {
@@ -2654,6 +2693,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       } else {
         rows = rowsForSubmit(requireCompleteCatalog); validate(rows, requireCompleteCatalog, !createOnly)
       }
+      submittedRows = rows
       const savedTitle = saveDraft ? draftProductTitle(form.title, form.modelCode, new Date()) : form.title
       const savedStatus = saveDraft ? 'DRAFT' : form.status
       const savedVatRate = saveDraft && vatRateIssue ? null : Number(form.vatRate || 0)
@@ -2715,6 +2755,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             ...editorVariantDesiUpdate(calculateDesi ? desi || 1 : Number(form.desi) || 1, initialEditDesi.current, editProduct.variants.find(variant => variant.id === row.key)?.desi),
             defaultListPrice: row.listPrice,
             defaultSalePrice: row.salePrice,
+            // The version the row was loaded with: a row changed meanwhile elsewhere refuses the save (409) instead of
+            // being overwritten with what this form still shows.
+            loadedVersion: row.loadedVersion ?? null,
             sortOrder: rows.findIndex(candidate => candidate.key === row.key),
             options: row.options,
             attributes: variantAttributesForPayload(row)
@@ -2761,7 +2804,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // server checks. Each new file is uploaded once, here; the variants below reference its stored copy.
       const progressTitle = editProductId ? pendingTitle : 'Ürün Oluşturuldu'
       const showProgress = (message: string) => showFeedback(progressTitle, message, 'info', { persistent: true, key: productSaveToastKey })
-      const storedUrlByFileId = new Map<string, string>()
       for (const [fileIndex, pendingMedia] of mediaFiles.entries()) {
         showProgress(mediaSaveProgressMessage('upload', fileIndex, mediaFiles.length))
         const data = new FormData(); data.set('file', pendingMedia.file); data.set('productId', product.id); data.set('mediaRole', mediaUrls.length + fileIndex === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(mediaUrls.length + fileIndex)); data.set('altText', form.title)
@@ -2795,6 +2837,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           const file = mediaFiles.find(item => item.id === upload.fileId)?.file
           if (file) { const data = new FormData(); data.set('file', file); data.set('productId', variantProductId); data.set('variantId', variant.id); data.set('mediaRole', upload.sortOrder === 0 ? 'PRIMARY' : 'GALLERY'); data.set('sortOrder', String(upload.sortOrder)); data.set('altText', altText); await hubApi('/files/product-media', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: data }) }
         }
+        writtenVariantMediaIds.add(variant.id)
       }
       let removedFamilyMediaCount = 0
       if (editProductId && pendingFamilyMediaRemovals.length) {
@@ -2837,6 +2880,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         }
         initialCustomChannelIds.current = new Set(Object.keys(channelPricing))
       }
+      const connectionPlatformName = (connectionId: string) => publishPlatformName(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? 'Pazaryeri')
       // Every (variant, store) price is its own row, so they are written a few at a time instead of one by one.
       const offerWrites = product.variants.flatMap(variant => {
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
@@ -2847,20 +2891,31 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         const pricing = channelPriceDraft(connectionId)
         const platform = row.platformStatuses?.find(item => item.connectionId === connectionId)
         const variantPricing = variantChannelPricing[`${row.key}:${connectionId}`]
+        // A marketplace that follows the panel takes this variant's own panel price; the card price is only the price
+        // of a marketplace switched to "Özel Fiyat".
         const offerPrices = editorChannelOfferPrices({
           custom: connectionId in channelPricing,
-          panel: platformUpdate ? { listPrice: row.listPrice, salePrice: row.salePrice } : { listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice) },
+          panel: { listPrice: row.listPrice, salePrice: row.salePrice },
           card: { listPrice: Number(pricing.listPrice), salePrice: Number(pricing.salePrice) },
           cardEdited: channelPriceEdited(connectionId),
           variantPrice: !platformUpdate && variantPricing ? { listPrice: Number(variantPricing.listPrice), salePrice: Number(variantPricing.salePrice) } : null,
-          offer: platform
+          offer: platform,
+          takesListPrice: channelTakesListPrice(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? platform?.platformCode)
         })
         const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: Number(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: Number(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: platformUpdate ? 'Ürün platform güncellemesi' : 'İlk ürün fiyatı' }
-        if (platformUpdate && platform?.offerId) {
-          if (platform.offerVersion == null) throw new Error(`${row.sku}: platform fiyat sürümü eksik; fiyat güncellenmedi.`)
-          await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
-        } else {
-          await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(offerCommand) })
+        // An offer the variant already has is written at the version this form loaded (PATCH + If-Match), so a price
+        // changed meanwhile elsewhere is refused instead of overwritten; one the write would leave as it is is skipped.
+        // POST only creates: the server refuses it over an offer this form did not know of.
+        try {
+          if (platform?.offerId) {
+            if (platform.offerVersion == null) throw new Error(`${row.sku}: platform fiyat sürümü eksik; fiyat güncellenmedi.`)
+            if (!editorOfferUnchanged(platform, offerCommand)) await hubApi(`/channel-offers/${platform.offerId}`, { method: 'PATCH', headers: { 'If-Match': `"v${platform.offerVersion}"` }, body: JSON.stringify(offerCommand) })
+          } else {
+            await hubApi('/channel-offers', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify(offerCommand) })
+          }
+        } catch (reason) {
+          if (reason instanceof ApiRequestError && (reason.status === 409 || reason.status === 412)) throw new Error(`${row.sku}: ${connectionPlatformName(connectionId)} fiyatı bu form açıkken başka bir işlemle değişti; fiyat yazılmadı. Sayfayı yenileyip tekrar deneyin.`)
+          throw reason
         }
         offersWritten++
         if (offerWrites.length > channelOfferWriteConcurrency) showProgress(mediaSaveProgressMessage('prices', offersWritten, offerWrites.length))
@@ -2872,7 +2927,6 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // A card already matched there is not sent again: its links are read from the latest product (a status check or a
       // store lookup since the form was filled), then from the saved product when it carries them.
       const linkRowsBySku = new Map(withLatestVariantLinks(withLatestVariantLinks(rows, productToEdit.data?.variants), product.variants).map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
-      const connectionPlatformName = (connectionId: string) => publishPlatformName(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? 'Pazaryeri')
       for (const [connectionIndex, connectionId] of publicationConnectionIds.entries()) {
         const platformName = connectionPlatformName(connectionId)
         const progress = publicationConnectionIds.length > 1 ? ` (${connectionIndex + 1}/${publicationConnectionIds.length})` : ''
@@ -2924,14 +2978,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                 else outcome.skipped.running++
                 continue
               }
-              let listingProfileVersion: number | undefined
+              // A saved profile keeps its overrides (title, description, category, brand, delivery time) on a re-publish;
+              // only a new profile starts without any.
+              let listingProfile: SavedListingProfile | undefined
               try {
-                const listingProfile = await hubApi<{ version: number }>(`/products/${familyProductId}/listing-profiles/${connectionId}`)
-                listingProfileVersion = listingProfile.version
+                listingProfile = await hubApi<SavedListingProfile>(`/products/${familyProductId}/listing-profiles/${connectionId}`)
               } catch (reason) {
                 if (!(reason instanceof ApiRequestError) || reason.status !== 404) throw reason
               }
-              await hubApi(`/products/${familyProductId}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfileVersion == null ? {} : { 'If-Match': `"v${listingProfileVersion}"` }, body: JSON.stringify({ titleOverride: null, descriptionOverride: null, externalCategoryId: null, externalBrandId: null, deliveryTimeDays: null, enabled: true }) })
+              await hubApi(`/products/${familyProductId}/listing-profiles/${connectionId}`, { method: 'PUT', headers: listingProfile == null ? {} : { 'If-Match': `"v${listingProfile.version}"` }, body: JSON.stringify(republishListingProfileBody(listingProfile)) })
               await client.invalidateQueries({ queryKey: ['listing-profile', familyProductId, connectionId] })
               await hubApi<AcceptedJob>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
               await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
@@ -3024,6 +3079,19 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         setReseedRequest(value => value + 1)
       }
       if (productCreated && !editProductId) {
+        // The product's page is a new editor: the files not stored yet and each variant's images not written wait for
+        // it, so it shows them as unsaved changes instead of losing them.
+        const queuedFiles = mediaFilesLeftAfterFailedSave(mediaFiles, uploadedMediaFileIds)
+        const queuedFileIds = new Set(queuedFiles.map(item => item.id))
+        const rowsBySku = new Map(submittedRows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
+        keepPendingCreateMedia(productCreated.id, {
+          files: queuedFiles,
+          variantMediaRefs: Object.fromEntries(productCreated.variants.flatMap(variant => {
+            const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
+            const refs = row && !writtenVariantMediaIds.has(variant.id) ? pendingVariantMediaRefs(row.mediaRefs, storedUrlByFileId, queuedFileIds) : []
+            return refs.length ? [[variant.id, refs]] : []
+          }))
+        })
         leavingAfterSave.current = true
         navigate(`/products/${productCreated.id}`)
       }
