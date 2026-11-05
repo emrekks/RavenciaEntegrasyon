@@ -34,6 +34,8 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
   `pazarama-api-son.md:3666-3716` (Muhasebe ve Finans Servisi). A line without a code, `amount`, `allowanceAmount` or
   `transactionDate` is not stored and opens a FINANCE_RECORD_INCOMPLETE issue; coupon/integration/cargo/stoppage left
   out are 0; a missing commission is stored null and the report keeps the order's commission estimate (5 Nov 2026).
+  An order whose movements all carry it is costed at their net and labelled Gerçek Komisyon, no longer "tahmini"
+  (`ReportMarketplaceCommissions`, 5 Nov 2026).
 
 ## Time
 Turkey time without offset; finance dates sent in Turkey time with milliseconds.

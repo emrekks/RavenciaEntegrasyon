@@ -25,7 +25,8 @@ internal sealed record ReportInput(
     ReportCatalogNames Names,
     bool IncludesTest,
     ReportFinance? Finance = null,
-    // By order: the commission Pazarama's money movements of the order net out to (PazaramaFinanceSyncJobHandler).
+    // By Hepsiburada, n11 or Pazarama order: the real commission its marketplace's own finance records net out to
+    // (ReportMarketplaceCommissions); an order not here keeps its estimate.
     IReadOnlyDictionary<Guid, decimal>? OrderCommissions = null,
     // The parcels' desi for the platforms costed from their cargo tariffs (ReportParcelDesi).
     ReportDesiInput? Desi = null);
@@ -449,11 +450,16 @@ internal static class ReportBuilder
                     : null;
                 lines.Add(new(line, active, lineBack, paidUnit, commission, extra?.CancelReason));
             }
-            // Pazarama sends no commission on the order: its money movements carry it, net of a refund's, as the amount the
-            // payout takes off (live: 625 − 75 commission − 5.68 withholding − 112.33 cargo − 8.28 fee = 423.71, its
-            // allowance). It is shared over the lines by their price.
-            if (isTry && platform == "PAZARAMA" && input.OrderCommissions is { } read && read.TryGetValue(order.Id, out var net))
+            // The real commission of a Hepsiburada, n11 or Pazarama order whose own finance records were read
+            // (ReportMarketplaceCommissions), net of what was given back, replaces the estimate on its lines, shared over
+            // them by their price. Pazarama sends no commission on the order at all (live: 625 − 75 commission − 5.68
+            // withholding − 112.33 cargo − 8.28 fee = 423.71, its allowance). The estimate is kept beside it.
+            decimal? estimate = null;
+            var real = false;
+            if (isTry && platform is "HEPSIBURADA" or "N11" or "PAZARAMA" && input.OrderCommissions is { } read && read.TryGetValue(order.Id, out var net))
             {
+                estimate = lines.Any(fact => fact.Commission is not null) ? lines.Sum(fact => fact.Commission ?? 0m) : null;
+                real = true;
                 var basis = lines.Sum(fact => fact.PaidUnitPrice * fact.Active);
                 lines = lines.Select(fact => fact with
                 {
@@ -466,7 +472,7 @@ internal static class ReportBuilder
             var city = extras is null || !domestic ? null : ReportBuckets.Province(extras.CityName, extras.City, extras.ShippingCity, extras.Province);
             var district = extras is null || city is null ? null : ReportBuckets.District(extras.DistrictName, extras.District, extras.ShippingDistrict, extras.Town, extras.ShippingTown);
             orders.Add(new(order, platform, currency, day, city, district, extras?.CustomerKey, isTry ? order.Amount : 0m, isTry ? back : 0m, isTry ? kept : 0m, lines,
-                claimsByOrder.GetValueOrDefault(order.Id), country, isTry ? backList : 0m));
+                claimsByOrder.GetValueOrDefault(order.Id), country, isTry ? backList : 0m, real, estimate));
         }
         return (orders, cancelled);
     }
@@ -801,7 +807,7 @@ internal static class ReportBuilder
             notes.Add($"{Count(summary.OtherCurrencyOrders)} sipariş TRY dışında bir para biriminde; tutarlara girmez, yalnız adetlerde sayılır.");
         notes.Add(commission.CoveredRevenue <= 0
             ? "Komisyon bilgisi olan satış yok; tahmini komisyon ve hakediş hesaplanamaz."
-            : $"Komisyon ve hakediş tahminidir: siparişte gelen komisyon oranı ya da tutarı üzerinden, iade edilmeyen adetler için hesaplanır; kesinleşmiş hakediş değildir. Komisyon bilgisi net cironun {Percent(commission.Coverage)} kadarında var; Pazarama ve Shopify komisyon göndermez, n11 oranları tutarsız olabilir.");
+            : $"Komisyon, Hepsiburada, n11 ve Pazarama siparişlerinde pazaryerinin finans kaydı varsa oradaki gerçek tutardır (iadeler ve düzeltmeler düşülmüş); diğer siparişlerde siparişte gelen komisyon oranı ya da tutarı üzerinden, iade edilmeyen adetler için tahmin edilir. Hakediş kesinleşmiş değildir. Komisyon bilgisi net cironun {Percent(commission.Coverage)} kadarında var; Shopify komisyon göndermez, Pazarama yalnız finans hareketinde gönderir, n11 oranları tutarsız olabilir.");
         if (cost.KeptQuantity > 0)
             notes.Add(cost.CostedQuantity <= 0
                 ? "Satılan ürünlerin hiçbirinde maliyet girilmemiş; kâr hesaplanamaz."
@@ -826,8 +832,11 @@ internal static class ReportBuilder
     }
 
     // Country: where the order goes (ReportBuckets.Country); City and District are only set for an order to Turkey.
+    // RealCommission: the lines carry the commission the marketplace's own finance records charged (Hepsiburada, n11,
+    // Pazarama; ReportMarketplaceCommissions), and EstimatedCommission is what the estimate said for them (null: none).
     internal sealed record OrderFact(ReportOrderRow Order, string PlatformCode, string Currency, DateOnly Day, string? City, string? District, string? CustomerKey,
-        decimal Amount, decimal Back, decimal Kept, List<LineFact> Lines, int Claims, string Country = ReportBuckets.Turkey, decimal BackList = 0m);
+        decimal Amount, decimal Back, decimal Kept, List<LineFact> Lines, int Claims, string Country = ReportBuckets.Turkey, decimal BackList = 0m,
+        bool RealCommission = false, decimal? EstimatedCommission = null);
 
     internal sealed record CancelledFact(ReportOrderRow Order, string PlatformCode, DateOnly Day, decimal Quantity, string? Reason, decimal Amount = 0m);
 }

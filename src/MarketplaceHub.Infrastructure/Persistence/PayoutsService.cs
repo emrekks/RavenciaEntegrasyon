@@ -99,6 +99,7 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
                 Debt = x.Debt,
                 Credit = x.Credit,
                 CommissionAmount = x.CommissionAmount,
+                CommissionRate = x.CommissionRate,
                 SellerRevenue = x.SellerRevenue,
                 PaymentOrderId = x.PaymentOrderId,
                 PaymentDate = x.PaymentDate,
@@ -152,6 +153,7 @@ internal sealed record PayoutRow
     public decimal Debt { get; init; }
     public decimal Credit { get; init; }
     public decimal? CommissionAmount { get; init; }
+    public decimal? CommissionRate { get; init; }
     public decimal? SellerRevenue { get; init; }
     public string? PaymentOrderId { get; init; }
     public DateTimeOffset? PaymentDate { get; init; }
@@ -269,7 +271,13 @@ internal static class PayoutBuilder
 
     public static PayoutLineView Line(PayoutRow row, DateOnly today) =>
         new(row.ExternalId, row.ConnectionId, row.PlatformCode, row.TransactionType, row.Category, row.TransactionDate, row.PaymentDate is { } due ? Day(due) : null,
-            row.OrderNumber, row.InvoiceNumber, row.Country, Region(row.PlatformCode, row.Country, row.Affiliate), row.Credit - row.Debt, row.CommissionAmount, Net(row), Status(row, today), row.PaymentOrderId, row.Barcode);
+            row.OrderNumber, row.InvoiceNumber, row.Country, Region(row.PlatformCode, row.Country, row.Affiliate), row.Credit - row.Debt, Commission(row), Net(row), Status(row, today), row.PaymentOrderId, row.Barcode);
+
+    // The record's commission in lira. n11 sends a rate, not an amount: its line's commission is worked out from it
+    // (N11SettlementSyncJobHandler.Commission; a row stored before 5 Nov 2026 holds the rate in CommissionAmount).
+    internal static decimal? Commission(PayoutRow row) => row.Source == N11SettlementSyncJobHandler.Source
+        ? N11SettlementSyncJobHandler.Commission(row.CommissionRate, row.CommissionRate is null ? row.CommissionAmount : null, row.Credit, row.Category)
+        : row.CommissionAmount;
 
     // Whether a record still waits for its payout: not paid, whatever its due day (Avrupa is paid about monthly, so a
     // record past its due day may simply wait for the next payout).

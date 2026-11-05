@@ -151,7 +151,7 @@ function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () 
           <li><span><b>Sipariş Tutarı</b><small>Satıcı indirimi ve iadeler düşülmüş</small></span><strong>{money(order.amount)}</strong></li>
           <li><span><b>Ürün Maliyeti</b><small>Ürün ayarlarındaki maliyet</small></span><strong>{order.cost === null ? 'Eksik' : money(-order.cost)}</strong></li>
           {order.costs.map(cost => <li key={cost.key}>
-            <span><b>{cost.label}{cost.estimated && <em>Tahmini</em>}</b>{cost.source && <small>{cost.source}</small>}</span>
+            <span><b>{cost.label}{cost.estimated && !cost.label.startsWith('Tahmini') && <em>Tahmini</em>}</b>{cost.source && <small>{cost.source}</small>}</span>
             <strong>{cost.amount === null ? 'Bilinmiyor' : money(-cost.amount)}</strong>
           </li>)}
         </ul>

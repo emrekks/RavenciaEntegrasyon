@@ -71,11 +71,11 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var finance = await FinanceAsync(tenantId, allowed, orders, current, cancellationToken);
         var learnedDesi = await LearnedDesiAsync(tenantId, cancellationToken);
         var input = new ReportInput(current, granularity, timezone, allowed, orders, orderExtras, lines, lineExtras, claims, packages, names, query.IncludeTest, finance,
-            await PazaramaCommissionsAsync(tenantId, allowed, orders, cancellationToken),
+            await MarketplaceCommissionsAsync(tenantId, allowed, orders, lines, cancellationToken),
             new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
         var previousFinance = await FinanceAsync(tenantId, allowed, previousOrders, previous, cancellationToken);
         var previousInput = new ReportInput(previous, granularity, timezone, allowed, previousOrders, previousOrderExtras, previousLines,
-            previousLineExtras, previousClaims, previousCarriers, names, query.IncludeTest, previousFinance, await PazaramaCommissionsAsync(tenantId, allowed, previousOrders, cancellationToken),
+            previousLineExtras, previousClaims, previousCarriers, names, query.IncludeTest, previousFinance, await MarketplaceCommissionsAsync(tenantId, allowed, previousOrders, previousLines, cancellationToken),
             new ReportDesiInput(learnedDesi, await DeclaredDesiAsync(tenantId, allowed, previousOrders, cancellationToken)));
         var stockVariants = ReportBuilder.StockCandidates(input);
         var stock = stockVariants.Length == 0
@@ -118,7 +118,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
             await LineExtrasAsync(tenantId, orderIds, cancellationToken), await ClaimRowsAsync(tenantId, allowedIds, current, cancellationToken),
             await PackageRowsAsync(tenantId, allowedIds, current, cancellationToken), await CatalogNamesAsync(tenantId, lines, cancellationToken), false,
             await FinanceAsync(tenantId, allowed, orders, current, cancellationToken),
-            await PazaramaCommissionsAsync(tenantId, allowed, orders, cancellationToken),
+            await MarketplaceCommissionsAsync(tenantId, allowed, orders, lines, cancellationToken),
             new ReportDesiInput(await LearnedDesiAsync(tenantId, cancellationToken), await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
         var all = ReportOrderProfit.Build(input, ReportBuilder.Facts(input).Orders);
 
@@ -470,26 +470,39 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
     // period, and those dated in the period that belong to no order the panel knows (fees, withholding tax, a record of
     // an order never imported). A record of an order of another period is left to that period. Cargo invoice lines
     // follow the same rule, by their order or by their invoice's date. Null when the report has no such store.
-    // The commission of the period's Pazarama orders whose money movements were read: the movements' commission netted
-    // (a refund gives it back), as the payout takes it off. An order with no movement read yet is not here.
-    private async Task<Dictionary<Guid, decimal>?> PazaramaCommissionsAsync(Guid tenantId, IReadOnlyDictionary<Guid, ReportChannelView> allowed, IReadOnlyList<ReportOrderRow> orders,
-        CancellationToken cancellationToken)
+    // The real commission of the period's Hepsiburada, n11 and Pazarama orders from their marketplace's own finance records
+    // (ReportMarketplaceCommissions): Hepsiburada's commission records by order number or package number, n11's
+    // settlement lines and Pazarama's money movements by order number. An order without complete records is not here.
+    private async Task<Dictionary<Guid, decimal>?> MarketplaceCommissionsAsync(Guid tenantId, IReadOnlyDictionary<Guid, ReportChannelView> allowed, IReadOnlyList<ReportOrderRow> orders,
+        IReadOnlyList<ReportLineRow> lines, CancellationToken cancellationToken)
     {
-        var stores = allowed.Values.Where(channel => channel.PlatformCode == "PAZARAMA").Select(channel => channel.Id).ToHashSet();
-        var pazarama = orders.Where(order => stores.Contains(order.ConnectionId)).ToList();
-        if (pazarama.Count == 0) return null;
-        var storeIds = stores.ToArray();
-        var numbers = pazarama.Select(order => order.OrderNumber).Distinct(StringComparer.Ordinal).ToArray();
-        var sums = await db.MarketplaceFinanceTransactions.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && storeIds.Contains(x.ConnectionId) && x.Source == Jobs.Handlers.PazaramaFinanceSyncJobHandler.Source
-                && x.OrderNumber != null && numbers.Contains(x.OrderNumber))
-            .GroupBy(x => new { x.ConnectionId, x.OrderNumber })
-            .Select(group => new { group.Key.ConnectionId, group.Key.OrderNumber, Commission = group.Sum(x => x.CommissionAmount ?? 0m), Unknown = group.Count(x => x.CommissionAmount == null) })
+        var platforms = allowed.Values.Where(channel => channel.PlatformCode is "HEPSIBURADA" or "N11" or "PAZARAMA").ToDictionary(channel => channel.Id, channel => channel.PlatformCode);
+        var own = orders.Where(order => platforms.ContainsKey(order.ConnectionId)).ToList();
+        if (own.Count == 0) return null;
+        var storeIds = platforms.Keys.ToArray();
+        var hepsiburada = own.Where(order => platforms[order.ConnectionId] == "HEPSIBURADA").Select(order => order.Id).ToArray();
+        var packages = new List<(Guid OrderId, string Number)>();
+        foreach (var chunk in hepsiburada.Chunk(2_000))
+            packages.AddRange((await MarketplaceSalesService.CurrentShipmentPackages(db)
+                    .Where(package => package.TenantId == tenantId && chunk.Contains(package.OrderId) && package.Status != ShipmentPackageStatus.Cancelled)
+                    .Select(package => new { package.OrderId, package.ExternalPackageId })
+                    .ToListAsync(cancellationToken))
+                .Select(package => (package.OrderId, package.ExternalPackageId)));
+        var packagesByOrder = packages.GroupBy(package => package.OrderId).ToDictionary(group => group.Key, group => group.Select(package => package.Number).Distinct(StringComparer.Ordinal).ToList());
+        var packageNumbers = packages.Select(package => package.Number).Distinct(StringComparer.Ordinal).ToArray();
+        var numbers = own.Select(order => order.OrderNumber).Distinct(StringComparer.Ordinal).ToArray();
+        var sources = new[] { Jobs.Handlers.HepsiburadaFinanceSyncJobHandler.Source, Jobs.Handlers.N11SettlementSyncJobHandler.Source, Jobs.Handlers.PazaramaFinanceSyncJobHandler.Source };
+        var records = await db.MarketplaceFinanceTransactions.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && storeIds.Contains(x.ConnectionId) && sources.Contains(x.Source)
+                && ((x.OrderNumber != null && numbers.Contains(x.OrderNumber)) || (x.OrderNumber == null && x.ShipmentPackageId != null && packageNumbers.Contains(x.ShipmentPackageId))))
+            .Select(x => new ReportMarketplaceCommissions.Record(x.ConnectionId, x.Source, x.ExternalId, x.TransactionType, x.Category, x.OrderNumber, x.ShipmentPackageId,
+                x.Debt, x.Credit, x.CommissionAmount, x.CommissionRate))
             .ToListAsync(cancellationToken);
-        // An order with a movement whose commission Pazarama did not send keeps the estimate: its sum is not the real one.
-        var byOrder = sums.Where(x => x.Unknown == 0).ToDictionary(x => (x.ConnectionId, x.OrderNumber!), x => x.Commission);
-        return pazarama.Where(order => byOrder.ContainsKey((order.ConnectionId, order.OrderNumber)))
-            .ToDictionary(order => order.Id, order => byOrder[(order.ConnectionId, order.OrderNumber)]);
+        var activeLines = lines.Where(line => line.OrderedQuantity - line.CancelledQuantity > 0).GroupBy(line => line.OrderId).ToDictionary(group => group.Key, group => group.Count());
+        return ReportMarketplaceCommissions.ByOrder(
+            own.Select(order => new ReportMarketplaceCommissions.Order(order.Id, order.ConnectionId, platforms[order.ConnectionId], order.OrderNumber,
+                activeLines.GetValueOrDefault(order.Id), packagesByOrder.GetValueOrDefault(order.Id) ?? [])).ToList(),
+            records);
     }
 
     // The unit desi learned from every billed Trendyol shipping parcel of the tenant's last year, whatever stores the

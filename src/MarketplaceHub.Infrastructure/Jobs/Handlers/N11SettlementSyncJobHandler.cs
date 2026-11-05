@@ -98,7 +98,8 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
                     db.MarketplaceFinanceTransactions.Add(row);
                     inserted++;
                 }
-                else if (row.RawJson == line.RawJson && row.TransactionType == Short(status, 200)) continue;
+                // A row stored before its rate had a field of its own (CommissionRate null) is written again.
+                else if (row.RawJson == line.RawJson && row.TransactionType == Short(status, 200) && row.CommissionRate is not null) continue;
                 else updated++;
                 // What the line pays: n11's settlement amount; the debt is what n11 kept back from the line's payment.
                 row.TransactionType = Short(status, 200);
@@ -107,7 +108,8 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
                 row.OrderNumber = Short(line.OrderNumber, 128);
                 row.Credit = line.PaymentAmount;
                 row.Debt = line.DeductionAmount;
-                row.CommissionAmount = line.Commission;
+                row.CommissionRate = line.Commission;
+                row.CommissionAmount = Commission(line.Commission, null, line.PaymentAmount, row.Category);
                 row.SellerRevenue = line.SettlementAmount;
                 row.PaymentDate = PayoutBuilder.DayStart(line.RemittanceDate ?? day);
                 row.RawJson = line.RawJson;
@@ -122,6 +124,18 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
         await ResolveIssueAsync(request.TenantId, FailureKey(request.ConnectionId), now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return new(JobExecutionResult.Success(), telemetry);
+    }
+
+    // n11's settlement "commission" is a rate in per cent, not an amount (live 5 Nov 2026: "20.34" on every line, the
+    // order line's commissionRate too; deductionAmount 185.76 = 799 × 20.34 % (162.52) + ad fee 7.99 + its VAT 1.60 +
+    // the service fee). The line's commission is its paid amount at that rate, as a cost to the seller: charged on a sale
+    // line, given back on a return line. Rows stored before 5 Nov 2026 hold the rate in CommissionAmount and no
+    // CommissionRate; legacyAmount takes that rate. Null when no rate is known.
+    internal static decimal? Commission(decimal? rate, decimal? legacyAmount, decimal paymentAmount, string category)
+    {
+        if ((rate ?? legacyAmount) is not { } percent) return null;
+        var amount = Math.Round(Math.Abs(paymentAmount) * Math.Abs(percent) / 100m, 2, MidpointRounding.AwayFromZero);
+        return category == MarketplaceFinanceCategories.Return ? -amount : amount;
     }
 
     internal static string ExternalId(string orderItemId, DateOnly day) => $"{Short(orderItemId, 100)}:{Key(day)}";
