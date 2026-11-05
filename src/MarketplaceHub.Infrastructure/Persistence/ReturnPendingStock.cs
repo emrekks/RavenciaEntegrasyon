@@ -29,6 +29,46 @@ internal static class ReturnPendingStock
 
     public static string StockKey(string decisionKey, Guid returnLineId) => $"{decisionKey}:stock:{returnLineId:N}";
 
+    // Runs a settlement and the save that commits it in one transaction (or in the caller's), so the line locks the
+    // settlement takes (LockLinesAsync) hold until its restock is committed: a manual disposition of the same line
+    // (MarketplaceSalesService.ApplyDispositionAsync) waits for it and then sees what it put back (YENİ-04).
+    public static async Task SettleAndSaveAsync(AppDbContext db, Func<Task> settle, CancellationToken cancellationToken)
+    {
+        if (db.Database.CurrentTransaction is not null)
+        {
+            await settle();
+            await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await settle();
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    // Locks the return lines (ordered by id, so two settlements never wait on each other crosswise) until the open
+    // transaction ends. Every path that puts a return line's units somewhere takes this lock before it reads what the
+    // line already received. Without an open transaction nothing could hold the lock, so nothing is locked.
+    public static async Task LockLinesAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> lineIds, CancellationToken cancellationToken)
+    {
+        if (lineIds.Count == 0 || db.Database.CurrentTransaction is null) return;
+        var ids = lineIds.Distinct().Order().ToArray();
+        await db.Database.SqlQuery<int>($"""
+                SELECT 1 AS "Value"
+                FROM sales.return_lines
+                WHERE "TenantId" = {tenantId} AND "Id" = ANY({ids})
+                ORDER BY "Id"
+                FOR UPDATE
+                """)
+            .ToListAsync(cancellationToken);
+    }
+
+    // The units of a return line already put somewhere (stock, quarantine, damaged, not received): committed ones and
+    // those added in this unit of work. Read after LockLinesAsync.
+    public static async Task<decimal> DisposedQuantityAsync(AppDbContext db, Guid tenantId, Guid lineId, CancellationToken cancellationToken) =>
+        await db.ReturnStockDispositions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ReturnLineId == lineId).SumAsync(x => x.Quantity, cancellationToken)
+        + db.ChangeTracker.Entries<ReturnStockDisposition>().Where(x => x.State == EntityState.Added && x.Entity.TenantId == tenantId && x.Entity.ReturnLineId == lineId).Sum(x => x.Entity.Quantity);
+
     // Settles every pending choice of the claim against what the claim says now (after a read of it).
     public static async Task SettleClaimAsync(AppDbContext db, Guid tenantId, Guid claimId, string correlationId, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -36,6 +76,8 @@ internal static class ReturnPendingStock
             .Where(x => x.TenantId == tenantId && x.ClaimId == claimId && x.StockStatus == ReturnPendingStockPolicy.Pending)
             .OrderBy(x => x.CreatedAt)
             .ToListAsync(cancellationToken);
+        // Every line any of them may restock is locked at once, in one order.
+        await LockLinesAsync(db, tenantId, decisions.SelectMany(decision => Read(decision.StockLinesJson)).Select(x => x.ReturnLineId).ToList(), cancellationToken);
         foreach (var decision in decisions) await SettleAsync(db, decision, force: false, correlationId, now, cancellationToken);
     }
 
@@ -50,6 +92,7 @@ internal static class ReturnPendingStock
         if (claim is null) return;
         var plan = Read(decision.StockLinesJson);
         var lineIds = plan.Select(x => x.ReturnLineId).ToArray();
+        await LockLinesAsync(db, tenantId, lineIds, cancellationToken);
         // Tracked: a line status set in this unit of work (the instant decision, a claim read) is the one judged.
         var lines = await db.ReturnLines.Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && lineIds.Contains(x.Id)).ToListAsync(cancellationToken);
         var changes = new List<StockProjectionChange>();
@@ -93,9 +136,7 @@ internal static class ReturnPendingStock
         if (added.Any(x => x.IdempotencyKey == stockKey)
             || await db.ReturnStockDispositions.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.IdempotencyKey == stockKey, cancellationToken))
             return (true, null);
-        var alreadyReceived = await db.ReturnStockDispositions.AsNoTracking().Where(x => x.TenantId == tenantId && x.ReturnLineId == line.Id).SumAsync(x => x.Quantity, cancellationToken)
-            + added.Sum(x => x.Quantity);
-        var receivable = line.Quantity - alreadyReceived;
+        var receivable = line.Quantity - await DisposedQuantityAsync(db, tenantId, line.Id, cancellationToken);
         if (plannedUnits is { } units) receivable = Math.Min(receivable, units);
         if (receivable <= 0) return (false, null);
         var variantId = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == line.OrderLineId).Select(x => x.VariantId).SingleOrDefaultAsync(cancellationToken);
