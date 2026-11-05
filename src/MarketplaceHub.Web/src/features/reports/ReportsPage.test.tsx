@@ -436,6 +436,9 @@ describe('ReportsPage', () => {
     expect(shopify.textContent).toContain('Tutar yok')
     expect(shopify.textContent).not.toContain('₺0,00')
     expect(Array.from(panel.querySelectorAll('button')).some(button => button.textContent?.includes('CSV'))).toBe(true)
+    // The platforms add up into a Toplam row under the table.
+    const total = Array.from(panel.querySelectorAll('.reports-table')).find(table => table.querySelector('.reports-total-row'))?.querySelector('.reports-total-row')
+    expect(total?.textContent).toContain('Toplam')
   })
 
   it('opens an older shared link on its tab and keeps the unknown city row last', async () => {
