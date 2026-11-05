@@ -512,7 +512,7 @@
 .app-shell.stitch-shell main .reports-page .reports-kpis.is-3 { --kpi-columns: 3; }
 .app-shell.stitch-shell main .reports-page .reports-kpis.is-4 { --kpi-columns: 4; }
 .app-shell.stitch-shell main .reports-page .reports-kpis.is-5 { --kpi-columns: 5; }
-.app-shell.stitch-shell main .reports-page .reports-kpis > div { position: relative; overflow: hidden; transition: background-color 140ms ease; display: grid; align-content: start; gap: 6px; min-width: 0; padding: 16px 18px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-kpis > div { position: relative; overflow: hidden; transition: translate var(--rv-motion-fast) var(--rv-ease-out), background-color 140ms ease, border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard); display: grid; align-content: start; gap: 6px; min-width: 0; padding: 16px 18px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .app-shell.stitch-shell main .reports-page .reports-kpis .reports-kpi-label { color: var(--rv-color-muted); font-size: 13px; white-space: normal; }
 .app-shell.stitch-shell main .reports-page .reports-kpi-change { display: flex; align-items: center; min-height: 22px; }
 .app-shell.stitch-shell main .reports-page .reports-kpi-note { color: var(--rv-color-subtle); font-size: 12.5px; line-height: 1.4; }
