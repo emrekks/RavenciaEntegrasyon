@@ -1087,6 +1087,24 @@ public sealed class PttAvmAdapterTests
         Assert.Equal("INVOICED", WithLiveLineInvoiceFlag("true").Packages.Single().Invoice?.RawStatus);
     }
 
+    // O12 + O5: a line total written with a decimal comma ("41,25", once read as 4125) cannot be read, so the whole order
+    // stays out with an issue instead of being stored without that line; the other orders of the answer still come in.
+    [Fact]
+    public void AnOrderWithAnUnreadableLineIsNotImportedWithALowerTotal()
+    {
+        var answer = OrderListAnswer.Replace("<a:KdvDahilToplamTutar>41.25</a:KdvDahilToplamTutar>", "<a:KdvDahilToplamTutar>41,25</a:KdvDahilToplamTutar>", StringComparison.Ordinal);
+        Assert.NotEqual(OrderListAnswer, answer);
+        var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, answer, PttAvmHttpClient.Orders);
+
+        var page = PttAvmOrderMapper.Page(result!);
+
+        Assert.DoesNotContain(page.Items, order => order.ExternalOrderId == "PTT-A1712HP2E-071024");
+        Assert.Contains(page.Items, order => order.ExternalOrderId == "PTT-L6LI1VK2D-211024");
+        var issue = Assert.Single(page.Issues!);
+        Assert.Equal(("ORDER_PACKAGE_INVALID", "PTT-A1712HP2E-071024"), (issue.Code, issue.Identity));
+        Assert.Contains("229049601", issue.Message, StringComparison.Ordinal);
+    }
+
     private static RemoteOrder WithLiveLineInvoiceFlag(string flag)
     {
         var answer = OrderListAnswer.Replace("<a:IndirimPttavm>2.71</a:IndirimPttavm>", $"<a:IndirimPttavm>2.71</a:IndirimPttavm><a:IsInvoice>{flag}</a:IsInvoice>", StringComparison.Ordinal);

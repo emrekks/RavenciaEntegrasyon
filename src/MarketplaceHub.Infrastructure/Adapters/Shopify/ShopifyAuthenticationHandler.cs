@@ -101,8 +101,8 @@ public sealed class ShopifyAuthenticationHandler(
                 return null;
             }
             using var json = JsonDocument.Parse(body);
-            var accessToken = json.RootElement.TryGetProperty("access_token", out var tokenElement) ? tokenElement.GetString() : null;
-            var expiresIn = json.RootElement.TryGetProperty("expires_in", out var expiryElement) && expiryElement.TryGetInt32(out var seconds) ? seconds : 86_400;
+            var accessToken = json.RootElement.TryGetProperty("access_token", out var tokenElement) && tokenElement.ValueKind == JsonValueKind.String ? tokenElement.GetString() : null;
+            var expiresIn = RemoteJson.Int32(json.RootElement, "expires_in") ?? 86_400;
             if (string.IsNullOrWhiteSpace(accessToken)) return null;
             cached = new(accessToken, DateTimeOffset.UtcNow.AddSeconds(Math.Max(60, expiresIn)));
             Tokens[key] = cached;

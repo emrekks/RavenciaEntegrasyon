@@ -56,7 +56,8 @@ public static class HepsiburadaFinanceMapper
                     Text(item, "invoiceNumber"), Text(item, "sku"), amount.Value, Money(item, "netAmount").Value, currency, Bool(item, "isIncome"),
                     Time(item, "orderDate"), Time(item, "invoiceDate"), Time(item, "dueDate"), Time(item, "paymentDate"), item.GetRawText()));
             }
-        var count = root.TryGetProperty("count", out var total) && total.TryGetInt32(out var value) ? value : items.Count;
+        // A null count is no count (TryGetInt32 would throw on it): the page's own size stands in, as when it is missing.
+        var count = RemoteJson.Int32(root, "count") ?? items.Count;
         return new(items, count);
     }
 

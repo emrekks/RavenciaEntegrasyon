@@ -86,8 +86,14 @@ public static class N11SettlementMapper
         return int.TryParse(N11HttpClient.Child(metadata, "pageCount"), NumberStyles.None, CultureInfo.InvariantCulture, out var count) ? count : 0;
     }
 
-    private static decimal Number(XElement element, string name) =>
-        decimal.TryParse(N11HttpClient.Child(element, name), NumberStyles.Number, CultureInfo.InvariantCulture, out var value) ? value : 0m;
+    // A field n11 leaves out is 0 (no such fee). A value that is there but cannot be read (O5: "1234,50", which the
+    // invariant culture took as 123450) is a contract error for the page, never a made-up amount.
+    internal static decimal Number(XElement element, string name)
+    {
+        var text = N11HttpClient.Child(element, name);
+        if (string.IsNullOrWhiteSpace(text)) return 0m;
+        return RemoteJson.ParseDecimal(text) ?? throw new JsonException($"N11 settlement field {name} is not a number.");
+    }
 
     // A calendar day as n11 writes it (dd/MM/yyyy, or yyyy-MM-dd); null when there is none or it cannot be read.
     internal static DateOnly? Day(string? value) => N11ReturnMapper.Date(value) is { } instant

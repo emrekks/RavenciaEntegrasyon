@@ -359,7 +359,14 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             var response = await SendAsync(authorized, HttpMethod.Get, TrendyolEndpoints.OrderStream(authorized.Connection.ExternalStoreId) + "?" + string.Join('&', query), null, cancellationToken, storeFrontCode: storeFrontCode);
             if (!response.IsSuccess)
             {
-                if (response.Error?.HttpStatus is 400 or 404) break;
+                // A 400/404 on the first page means the stream does not serve this window. After it, the packages read
+                // so far are only part of the order, so the scan is incomplete and retried, never a success (O6).
+                if (response.Error?.HttpStatus is 400 or 404 && pages == 1) break;
+                if (response.Error?.HttpStatus is 400 or 404)
+                {
+                    logger.LogWarning("Trendyol order {ExternalOrderId} stream lookup was refused on page {Page}; the scan is incomplete.", normalizedOrderNumber, pages);
+                    return (AdapterResult<RemoteOrder>.Failure(OrderScanIncomplete, rateLimit), firstPageIssue);
+                }
                 return (AdapterResult<RemoteOrder>.Failure(response.Error!, response.RateLimit), firstPageIssue);
             }
             rateLimit = response.RateLimit;
@@ -381,6 +388,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 return (AdapterResult<RemoteOrder>.Failure(OrderScanIncomplete, rateLimit), firstPageIssue);
             }
         } while (nextCursor is not null && !cancellationToken.IsCancellationRequested);
+        // A cancelled read leaves pages unread; merging what was read would return part of a split order as the order.
+        cancellationToken.ThrowIfCancellationRequested();
         if (TrendyolJsonMapper.MergeOrderPackages(packages, normalizedOrderNumber) is { } streamed)
             return (AdapterResult<RemoteOrder>.Success(streamed with { StoreFrontCode = storeFrontCode }, rateLimit), firstPageIssue);
         return (null, firstPageIssue);
@@ -863,7 +872,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             var isMicro = payload.RootElement.TryGetProperty("micro", out var micro) && micro.ValueKind == JsonValueKind.True;
             if (isMicro)
             {
-                if (!payload.RootElement.TryGetProperty("invoiceDateTime", out var invoiceDateTime) || !invoiceDateTime.TryGetInt64(out _)
+                if (RemoteJson.Int64(payload.RootElement, "invoiceDateTime") is null
                     || !payload.RootElement.TryGetProperty("invoiceNumber", out var invoiceNumber) || invoiceNumber.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(invoiceNumber.GetString()))
                     return AdapterResult<InvoiceDeliveryResult>.Failure(TrendyolErrorMapper.Unsupported("Mikro ihracat delivery payloadında invoiceDateTime ve invoiceNumber zorunludur."));
             }
@@ -889,7 +898,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
         if (!long.TryParse(packageText, NumberStyles.None, CultureInfo.InvariantCulture, out var shipmentPackageId) || shipmentPackageId <= 0) return null;
         if (!payload.TryGetProperty("invoiceLink", out var link) || link.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(link.GetString())) return null;
         var body = new Dictionary<string, object> { ["shipmentPackageId"] = shipmentPackageId, ["invoiceLink"] = link.GetString()! };
-        if (payload.TryGetProperty("invoiceDateTime", out var issuedAt) && issuedAt.TryGetInt64(out var issuedAtMilliseconds))
+        // O9: a null invoiceDateTime is left out of the body (TryGetInt64 would throw on it).
+        if (RemoteJson.Int64(payload, "invoiceDateTime") is { } issuedAtMilliseconds)
             body["invoiceDateTime"] = issuedAtMilliseconds;
         if (payload.TryGetProperty("invoiceNumber", out var number) && number.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(number.GetString()))
         {
