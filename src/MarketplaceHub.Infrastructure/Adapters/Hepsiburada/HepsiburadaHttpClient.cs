@@ -1089,8 +1089,13 @@ public sealed partial class HepsiburadaHttpClient(
         if (!response.IsSuccess) return AdapterResult<InvoiceDeliveryStatus>.Failure(response.Error!, response.RateLimit);
         try
         {
-            var observation = HepsiburadaJsonMapper.InvoiceObservationForPackage(response.Value!.RootElement, reference.ExternalReference);
-            var rawStatus = observation?.RawStatus ?? HepsiburadaJsonMapper.InvoiceStatus(response.Value.RootElement);
+            var observation = HepsiburadaJsonMapper.InvoiceObservationForPackage(response.Value!.RootElement, reference.ExternalReference, out var infoMissing);
+            var rawStatus = observation?.RawStatus;
+            if (rawStatus is null && !infoMissing) rawStatus = HepsiburadaJsonMapper.InvoiceStatus(response.Value.RootElement, out infoMissing);
+            // Some lines leave the invoice information out: the package's invoice state is unknown, never "not invoiced",
+            // so the delivery (and the fiscal precheck) stops for the owner instead of sending a link.
+            if (infoMissing)
+                return Failure<InvoiceDeliveryStatus>(AdapterErrorClass.ContractViolation, HepsiburadaInvoiceInfoPolicy.LineInvoiceInfoMissingCode, HepsiburadaInvoiceInfoPolicy.Message, HttpStatusCode.BadGateway);
             if (string.IsNullOrWhiteSpace(rawStatus)) throw new JsonException("Hepsiburada yanıtında istenen paket için fatura durumu yok.");
             return AdapterResult<InvoiceDeliveryStatus>.Success(new(
                 reference.ExternalReference,

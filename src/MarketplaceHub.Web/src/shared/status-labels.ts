@@ -59,6 +59,8 @@ const statusLabels: Record<string, string> = {
   'NOT SENT': 'Gönderilmedi',
   OFFLINE: 'Çevrim dışı',
   PARTIALLY_CANCELLED: 'Kısmi iptal',
+  // A return whose lines were decided both ways (one approved, another rejected): ReturnClaimPartialApprovalPolicy.
+  PARTIALLY_APPROVED: 'Kısmen onaylandı',
   PAYMENT_PENDING: 'Ödeme onayı bekliyor',
   ON_HOLD: 'Beklemede',
   PENDING: 'Bekliyor',

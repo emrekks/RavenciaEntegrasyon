@@ -10,14 +10,39 @@ public sealed class InvoiceDeliveryAutoRetryPolicyTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 2, 12, 10, 0, TimeSpan.Zero);
 
+    // T2-Y4 (5 Nov 2026): 15 min, 1 h, 6 h, 24 h between the five attempts, then the owner's "Tekrar Gönder".
     [Fact]
-    public void FiveAttemptsOverAboutADayThenNone()
+    public void FiveAttemptsWithBoundedBackoffThenNone()
     {
         Assert.Equal(5, InvoiceDeliveryAutoRetryPolicy.MaxAttempts);
-        Assert.Equal(new double?[] { 1, 3, 6, 12, null },
-            Enumerable.Range(1, 5).Select(attempt => InvoiceDeliveryAutoRetryPolicy.DelayAfter(attempt)?.TotalHours));
-        // Attempts at 0, 1, 4, 10 and 22 hours.
-        Assert.Equal(22, Enumerable.Range(1, 4).Sum(attempt => InvoiceDeliveryAutoRetryPolicy.DelayAfter(attempt)!.Value.TotalHours));
+        Assert.Equal(new double?[] { 15, 60, 360, 1440, null },
+            Enumerable.Range(1, 5).Select(attempt => InvoiceDeliveryAutoRetryPolicy.DelayAfter(attempt)?.TotalMinutes));
+    }
+
+    // T2-Y4/T2-O5: an issued invoice whose delivery started but sent nothing (MarketplacePending without any delivery
+    // state) is retried once its delivery job ended; while the job runs it is that job's.
+    [Fact]
+    public void APendingInvoiceThatSentNothingIsRetriedAfterItsJobEnded()
+    {
+        Assert.Equal(InvoiceDeliveryRetryNeed.Deliver, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplacePending, true, true, [], true, "MARKETPLACE_INVOICE_PRECHECK_FAILED", latestDeliveryJobDead: false));
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplacePending, true, true, [], false, null));
+        Assert.Equal(InvoiceDeliveryRetryNeed.FetchDocument, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplacePending, true, false, [], true, null));
+        // Something was sent (any state): never from here.
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplacePending, true, true, ["RETRYABLE_FAILURE"], true, null));
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplacePending, true, true, ["SUBMITTED"], true, null, owner: true));
+    }
+
+    // A delivery the marketplace refused (FAILED) is sent again only by the owner; the scheduler leaves it.
+    [Fact]
+    public void ARefusedDeliveryIsSentAgainOnlyByTheOwner()
+    {
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplaceFailed, true, true, ["FAILED"], true, "REMOTE_INVOICE_REJECTED"));
+        Assert.Equal(InvoiceDeliveryRetryNeed.Deliver, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplaceFailed, true, true, ["FAILED"], true, "REMOTE_INVOICE_REJECTED", owner: true));
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.MarketplaceFailed, true, true, ["UNKNOWN"], true, null, owner: true));
+        Assert.Equal(InvoiceDeliveryRetryNeed.None, InvoiceDeliveryAutoRetryPolicy.Need(InvoiceStatus.ManualReview, true, true, [], true, null, owner: true));
+        var manual = InvoiceDeliveryAutoRetryPolicy.Describe(0, null, Now.AddDays(-1), Now, false, InvoiceDeliveryRetryNeed.Deliver, "REMOTE_INVOICE_REJECTED", Now, 1800, automatic: false);
+        Assert.Equal(InvoiceDeliveryAutoRetryPolicy.ManualOnly, manual.State);
+        Assert.Null(manual.NextAttemptAt);
     }
 
     [Fact]
@@ -47,7 +72,6 @@ public sealed class InvoiceDeliveryAutoRetryPolicyTests
 
     [Theory]
     [InlineData(InvoiceStatus.Submitted)]
-    [InlineData(InvoiceStatus.MarketplacePending)]
     [InlineData(InvoiceStatus.Completed)]
     [InlineData(InvoiceStatus.ManualReview)]
     [InlineData(InvoiceStatus.CancellationPending)]
@@ -109,7 +133,7 @@ public sealed class InvoiceDeliveryAutoRetryPolicyTests
 
         InvoiceDeliveryRetryReader.RecordManualAttempt(invoice, Now);
         Assert.Equal(0, invoice.DeliveryRetryAttempts);
-        Assert.Equal(Now.AddHours(1), invoice.DeliveryRetryNextAt);
+        Assert.Equal(Now.AddMinutes(15), invoice.DeliveryRetryNextAt);
     }
 
     [Fact]

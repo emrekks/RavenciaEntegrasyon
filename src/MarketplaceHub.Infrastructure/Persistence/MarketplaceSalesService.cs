@@ -2118,7 +2118,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id)),
                     ReturnAmounts: ReturnMarketplaceAmounts.Line(platformCode, line.SourceSnapshotJson, returnLine.Quantity, claim.ExternalClaimId));
             }).Where(line => line is not null).Select(line => line!).ToList();
-            return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", Wire(claim.Status), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
+            return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", ReturnStatusWire(claim.Status, claimLines.Select(x => x.RawStatus).ToList()), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
                 order is null ? "—" : Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson).Name,
                 order?.OrderedAt, order?.NetAmount ?? 0, order?.Currency ?? "TRY", claim.CargoProviderName, claim.CargoTrackingNumber, image, claimLines.Count, firstLine?.Barcode ?? firstVariant?.Barcode,
                 lineViews, package?.ExternalPackageId, order is null ? "FATURA_BEKLIYOR" : ReturnInvoiceLabel(invoice, package?.MarketplaceInvoiceStatus ?? MarketplaceInvoiceStatus.Unknown, order.CustomerSnapshotJson, package is null ? [] : [package.RawStatus], packageDeliveryConfirmed), order?.GrossAmount ?? 0, order?.DiscountAmount ?? 0,
@@ -2126,10 +2126,16 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 claimConnection?.Id ?? connection?.Id, platformCode, claimConnection?.DisplayName ?? connection?.DisplayName ?? "Trendyol", outboundPackage?.CargoProviderExternalId, outboundPackage?.CargoTrackingNumber, claim.ReasonCode, approvedAt, claim.CargoTrackingLink,
                 claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))),
                 IsEstimatedReturnDueAt(platformCode, claim),
-                ReturnClaimAmounts(claimLines.Count, lineViews));
+                ReturnClaimAmounts(claimLines.Count, lineViews),
+                CustomerRequest: claim.CustomerRequest);
         }).ToList();
         return rows;
     }
+
+    // The status the return screens show: PARTIALLY_APPROVED ("Kısmen Onaylandı") for an approved claim whose lines
+    // were decided both ways (ReturnClaimPartialApprovalPolicy), otherwise the stored status.
+    internal static string ReturnStatusWire(ReturnClaimStatus status, IReadOnlyCollection<string?> lineStatuses) =>
+        ReturnClaimPartialApprovalPolicy.IsPartiallyApproved(status, lineStatuses) ? ReturnClaimPartialApprovalPolicy.PartiallyApproved : Wire(status);
 
     internal static string? ReturnLineModelCode(ProductVariant? variant, string? sourceModelCode) =>
         string.IsNullOrWhiteSpace(variant?.ModelCode) ? sourceModelCode : variant.ModelCode;
@@ -2339,9 +2345,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             : lines.Any(line => line.StockDispositionAvailable);
         var package = await db.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenantId && x.OrderId == order.Id).OrderByDescending(x => x.StatusOccurredAt).FirstOrDefaultAsync(cancellationToken);
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
-        return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, Wire(claim.Status), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
+        return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, ReturnStatusWire(claim.Status, sourceLines.Select(line => line.RawStatus).ToList()), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
             customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, stockDispositionAvailable, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim),
-            ReturnMarketplaceAmounts.Total(lines.Select(line => line.ReturnAmounts).ToList())));
+            ReturnMarketplaceAmounts.Total(lines.Select(line => line.ReturnAmounts).ToList()), claim.CustomerRequest));
     }
 
     // A claim's amounts over all its return lines: a line whose order line is missing counts as one without amounts.
@@ -2579,7 +2585,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         decision.ExternalOperationId = result.Value?.ExternalOperationId;
         decision.ErrorCode = null;
         effect.CompletedAt = timeProvider.GetUtcNow();
-        claim.Status = ReturnClaimDecisionPolicy.StatusAfterLineDecision(claim.Status, action, returnLineIds.Length, actionableLineIds.Count);
+        // The claim's lines decided before this one count: rejecting the last waiting lines of a claim whose other lines
+        // were approved leaves it approved in part ("Kısmen Onaylandı"), so those lines still reach the invoice.
+        claim.Status = ReturnClaimDecisionPolicy.StatusAfterLineDecision(claim.Status, action, returnLineIds.Length, actionableLineIds.Count,
+            claimLines.Where(line => !returnLineIds.Contains(line.Id)).Select(line => line.RawStatus).ToList());
         if (!isHepsiburada && action is "APPROVE" or "REJECT")
         {
             var settledStatus = action == "APPROVE" ? "Accepted" : "Rejected";
@@ -2619,7 +2628,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 db.ChangeTracker.Clear();
                 return ServiceResult<ReturnDetailView>.Fail("RETURN_CLAIM_CANCELLED", "Pazaryerindeki iade talebi iptal edilmiş; iptal kaydı saklanmadı.", 409);
             }
-            if (!partialLineDecision && ReturnClaimStateMachine.CanTransition(claim.Status, remoteStatus)) claim.Status = remoteStatus;
+            // The lines decide a claim decided both ways (approved in part), as on the scheduled read (UpsertReturn).
+            var remoteClaimStatus = ReturnLineStatusPolicy.Resolve(remoteStatus, readback.Value.Lines.Select(remoteLine => remoteLine.RawStatus).ToList());
+            if (!partialLineDecision && ReturnClaimStateMachine.CanTransition(claim.Status, remoteClaimStatus)) claim.Status = remoteClaimStatus;
             claim.RawStatus = partialLineDecision ? "PARTIAL_LINE_DECISION_PENDING" : readback.Value.RawStatus;
             claim.CargoProviderName = readback.Value.CargoProviderName ?? claim.CargoProviderName;
             claim.CargoTrackingNumber = readback.Value.CargoTrackingNumber ?? claim.CargoTrackingNumber;

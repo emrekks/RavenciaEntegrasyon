@@ -65,7 +65,20 @@ public static class InvoiceIssuePolicy
     public static readonly InvoiceIssueRefusal LineVatRateUnknown = LineVatRateUnknownFor(null);
 
     public static InvoiceIssueRefusal LineVatRateUnknownFor(string? platformCode) => new(LineVatRateUnknownCode,
-        $"{PlatformName(platformCode)} siparişin en az bir ürün satırında KDV oranını bildirmedi. KDV oranı bilinmeyen satırla fatura kesilmez; siparişi yeniden eşitleyin ya da faturayı E-Faturam portalında doğru KDV ile düzenleyip siparişe manuel belge olarak ekleyin.");
+        $"{PlatformName(platformCode)} siparişin en az bir ürün satırında KDV oranını bildirmedi ve satırın ürün kartında da KDV oranı yok (KDV Oranı Bilinmiyor). KDV oranı bilinmeyen satırla fatura kesilmez; ürün kartına KDV oranını girip önizlemeyi yeniden açın ya da faturayı E-Faturam portalında doğru KDV ile düzenleyip siparişe manuel belge olarak ekleyin.");
+
+    // The last check right before the provider request (InvoicePreIssueCheck) found the order changed since the owner's
+    // approval: nothing was issued and the invoice waits for a new approval.
+    public const string PreIssueChangedCode = "INVOICE_PRE_ISSUE_ORDER_CHANGED";
+
+    /// <summary>
+    /// The VAT rate an invoice line takes: the marketplace's own rate when it reported one, else the product card's
+    /// (KDV Oranı on the line's product); null when neither is known, and the invoice is then stopped. Never 0 by default.
+    /// </summary>
+    public static decimal? ResolveLineVatRate(string? platformCode, string? lineSourceSnapshotJson, decimal storedLineVatRate, decimal? productCardVatRate) =>
+        !IsLineVatRateUnknown(platformCode, lineSourceSnapshotJson) ? storedLineVatRate
+            : productCardVatRate is >= 0 and <= 100 ? productCardVatRate
+            : null;
 
     private static string PlatformName(string? platformCode) => platformCode switch
     {
@@ -91,22 +104,24 @@ public static class InvoiceIssuePolicy
     /// <summary>
     /// True when the marketplace did not report the line's VAT rate. Order lines keep their raw JSON; a line whose
     /// JSON has no numeric rate was kept with an inferred rate (Trendyol, G30), with 0, or with the rate an earlier
-    /// read reported (T-2), none of which may reach a fiscal invoice. Lines without a raw snapshot, and Shopify lines,
-    /// carry the rate they were stored with (0 included).
+    /// read reported (T-2), none of which may reach a fiscal invoice. A line without a raw snapshot, with an empty one
+    /// or with one that cannot be read says nothing about its rate either: unknown too. Shopify reports no line VAT
+    /// rate at all, so its lines are not judged here.
     /// </summary>
     public static bool IsLineVatRateUnknown(string? platformCode, string? lineSourceSnapshotJson)
     {
-        if (VatRatePaths(platformCode) is not { } paths || string.IsNullOrWhiteSpace(lineSourceSnapshotJson)) return false;
+        if (VatRatePaths(platformCode) is not { } paths) return false;
+        if (string.IsNullOrWhiteSpace(lineSourceSnapshotJson)) return true;
         try
         {
             using var document = JsonDocument.Parse(lineSourceSnapshotJson);
             var root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !root.EnumerateObject().Any()) return false;
+            if (root.ValueKind != JsonValueKind.Object) return true;
             return !paths.Any(path => IsReportedRate(root, path));
         }
         catch (JsonException)
         {
-            return false;
+            return true;
         }
     }
 
@@ -162,6 +177,7 @@ public static class InvoiceIssuePolicy
         ExportFlowRequiredCode => ExportFlowRequired.Message,
         AdjustmentFlowUnavailableCode => AdjustmentFlowUnavailable.Message,
         LineVatRateUnknownCode => LineVatRateUnknown.Message,
+        PreIssueChangedCode => "Fatura kesilmeden hemen önceki son kontrolde sipariş onaydan sonra değişmiş bulundu (iptal, iade, teslim edilemeyen veya ödemesi beklenen paket, ya da tutar). Fatura kesilmedi; güncel önizlemeyi açıp yeniden onaylayın.",
         RecipientTaxIdInvalidCode => "Alıcının vergi numarası veya T.C. kimlik numarası geçersiz (kontrol hanesi tutmuyor). Sipariş bilgisini pazaryerinde düzeltip yeniden eşitleyin.",
         null or "" => "Fatura doğrulanamadı.",
         _ => code

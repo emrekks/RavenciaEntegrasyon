@@ -159,6 +159,10 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ocard > header > div { flex: 1; min-width: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ocard > header small { display: block; color: var(--rr-muted); font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-ocard > section { display: grid; gap: 12px; padding: 14px 16px; }
+/* Hepsiburada's "Para İadesi / Değişim" per claim in the bulk approval, under the claim's header. */
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-ocard > .rr-finalized-row { padding: 12px 16px 0; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-finalized { max-width: 320px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-finalized > select.rr-in[aria-invalid="true"] { border-color: var(--rr-warn, var(--rr-line-strong)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 8px; background: var(--rr-raised); border: 1px solid var(--rr-line-strong); border-radius: 7px; font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-drop { display: grid; justify-items: center; gap: 6px; padding: 20px; text-align: center; border: 1px dashed var(--rr-line-strong); border-radius: 12px; }

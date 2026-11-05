@@ -101,7 +101,7 @@ export function RrRing({ tone, progress, label, detail, detailClass }: { tone: R
 const stateGlyph: Record<string, InvoiceGlyphKind> = {
   'Talep Oluşturuldu': 'placed', 'Kargo Bekliyor': 'packing', 'Kargoya Verildi': 'carrier', 'İade Taşımada': 'carrier',
   'Aksiyon Bekliyor': 'waiting', 'Ön Onay Bekliyor': 'waiting', 'İnceleme Talebi Gönderildi': 'sending', 'İncelemede': 'sending',
-  'Onaylandı': 'done', 'Tamamlandı': 'done', 'Reddedildi': 'failed', 'İhtilaflı': 'failed', 'İptal Edildi': 'cancelled', 'Askıya Alındı': 'cancelled',
+  'Onaylandı': 'done', 'Kısmen Onaylandı': 'done', 'Tamamlandı': 'done', 'Reddedildi': 'failed', 'İhtilaflı': 'failed', 'İptal Edildi': 'cancelled', 'Askıya Alındı': 'cancelled',
   'Fatura Bekliyor': 'waiting', 'Faturası Mevcut': 'done', 'Fatura İletiliyor': 'sending', 'Fatura İletilemedi': 'failed', 'Fatura Oluşturulamadı': 'failed', 'Fatura İptal': 'cancelled',
   'Bekliyor': 'idle', 'Sırada': 'waiting', 'İşlem Tamamlanamadı': 'failed', 'Onay Bekliyor': 'waiting', 'Stok Eşlemesi Gerekli': 'failed',
 }

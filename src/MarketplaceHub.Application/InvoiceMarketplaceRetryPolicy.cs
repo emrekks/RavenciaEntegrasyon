@@ -10,9 +10,12 @@ public static class InvoiceMarketplaceRetryPolicy
     // package): the delivery stopped and the invoice waits in review until the owner sends it again ("Tekrar Dene").
     public const string DeliveryIdentityChanged = "DELIVERY_RETRY_PAYLOAD_CHANGED";
 
+    // Hepsiburada's order read left the invoice information out on some lines (HepsiburadaInvoiceInfoPolicy): the owner
+    // checks the seller panel and sends it again from here.
     public static bool IsDeliveryReview(InvoiceStatus status, string? errorCode) =>
         status == InvoiceStatus.ManualReview
-        && errorCode is RepeatedRemoteFailure or InvoiceDeliveryEnvironmentPolicy.MismatchErrorCode or DeliveryIdentityChanged;
+        && errorCode is RepeatedRemoteFailure or InvoiceDeliveryEnvironmentPolicy.MismatchErrorCode or DeliveryIdentityChanged
+            or HepsiburadaInvoiceInfoPolicy.LineInvoiceInfoMissingCode;
 
     public static bool CanRetryDelivery(InvoiceStatus status, string? errorCode) =>
         status is InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed || IsDeliveryReview(status, errorCode);

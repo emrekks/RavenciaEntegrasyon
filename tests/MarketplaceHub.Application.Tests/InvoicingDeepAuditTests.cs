@@ -59,10 +59,38 @@ public sealed class InvoicingDeepAuditTests
         Assert.Equal(InvoiceStatus.MarketplacePending, InvoiceDeliveryGuardPolicy.OutcomeStatus(InvoiceStatus.Accepted, false, true));
         // A failed delivery that a later read-back confirms goes through MarketplacePending.
         Assert.Equal(InvoiceStatus.Completed, InvoiceDeliveryGuardPolicy.OutcomeStatus(InvoiceStatus.MarketplaceFailed, true, true));
-        // A reviewed delivery of an issued invoice may be confirmed; a review before issuing may not.
-        Assert.Equal(InvoiceStatus.Completed, InvoiceDeliveryGuardPolicy.OutcomeStatus(InvoiceStatus.ManualReview, true, true));
+        // T2-D25 (5 Nov 2026): ManualReview is the owner's; no read-back takes an invoice out of it, issued or not.
+        Assert.Null(InvoiceDeliveryGuardPolicy.OutcomeStatus(InvoiceStatus.ManualReview, true, true));
+        Assert.Null(InvoiceDeliveryGuardPolicy.OutcomeStatus(InvoiceStatus.ManualReview, false, true));
         Assert.Null(InvoiceDeliveryGuardPolicy.OutcomeStatus(InvoiceStatus.ManualReview, true, false));
         Assert.Null(InvoiceDeliveryGuardPolicy.OutcomeStatus(InvoiceStatus.Draft, true, false));
+    }
+
+    [Theory]
+    [InlineData(InvoiceStatus.ManualReview, InvoiceStatus.MarketplacePending, false)]
+    [InlineData(InvoiceStatus.ManualReview, InvoiceStatus.Completed, false)]
+    [InlineData(InvoiceStatus.ManualReview, InvoiceStatus.Accepted, false)]
+    [InlineData(InvoiceStatus.ManualReview, InvoiceStatus.ManualReview, true)]
+    [InlineData(InvoiceStatus.Accepted, InvoiceStatus.MarketplacePending, true)]
+    [InlineData(InvoiceStatus.MarketplaceFailed, InvoiceStatus.MarketplacePending, true)]
+    [InlineData(InvoiceStatus.MarketplaceFailed, InvoiceStatus.Completed, true)]
+    [InlineData(InvoiceStatus.Completed, InvoiceStatus.MarketplacePending, false)]
+    [InlineData(InvoiceStatus.AdjustmentRequired, InvoiceStatus.MarketplacePending, false)]
+    public void A_background_job_follows_the_state_machine_and_never_leaves_manual_review(InvoiceStatus current, InvoiceStatus next, bool allowed) =>
+        Assert.Equal(allowed, InvoiceDeliveryGuardPolicy.BackgroundMayMove(current, next));
+
+    [Fact]
+    public void A_marketplace_read_never_moves_an_invoice_out_of_manual_review()
+    {
+        var invoice = new Invoice { InvoiceType = "EARSIVFATURA", SequencePurpose = "SALE", Currency = "TRY", Note = "", IdempotencyKey = "k", Status = InvoiceStatus.ManualReview, LastErrorCode = InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, Version = 7 };
+        Assert.False(MarketplaceJobProcessor.SetInvoiceDeliveryState(invoice, InvoiceStatus.MarketplaceFailed, InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceNotPresentErrorCode, DateTimeOffset.UnixEpoch));
+        Assert.False(MarketplaceJobProcessor.SetInvoiceDeliveryState(invoice, InvoiceStatus.Completed, null, DateTimeOffset.UnixEpoch));
+        Assert.Equal(InvoiceStatus.ManualReview, invoice.Status);
+        Assert.Equal(InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, invoice.LastErrorCode);
+        Assert.Equal(7, invoice.Version);
+        // The read no longer marks a reviewed invoice "not present" (that queued a redelivery of it).
+        Assert.False(InvoiceDeliveryRecoveryPolicy.ShouldMarkMarketplaceInvoiceNotPresent(InvoiceStatus.ManualReview,
+            InvoiceDeliveryRecoveryPolicy.MarketplaceInvoiceIdentityMismatchErrorCode, MarketplaceInvoiceStatus.NotInvoiced));
     }
 
     // G28: a package whose link or number names another invoice is never cleared.

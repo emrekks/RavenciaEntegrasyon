@@ -40,4 +40,29 @@ describe('ReturnApproveDialog', () => {
     expect(productBox('Gömlek').checked).toBe(true)
     expect(productBox('Pantolon').checked).toBe(true)
   })
+
+  // T2-O1 (5 Nov 2026): a Hepsiburada claim is approved as the customer asked, chosen before anything is sent.
+  const renderHepsiburada = (customerRequest: string | null) => act(() => root.render(<QueryClientProvider client={client}>
+    <ReturnApproveDialog open claimId="hb-1" version={1} marketplaceName="Hepsiburada" order={{ ...order, platformCode: 'HEPSIBURADA', platformName: 'Hepsiburada' }} rows={rows} loading={false} error={null} wholeClaim customerRequest={customerRequest} onClose={() => {}} onDone={() => {}} />
+  </QueryClientProvider>))
+  const choice = () => document.querySelector<HTMLSelectElement>('.rr-finalized select')!
+  const approveButton = () => Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Onayla')!
+
+  it('preselects Para İadesi / Değişim from the customer request of a Hepsiburada claim', () => {
+    renderHepsiburada('REFUND')
+    expect(choice().value).toBe('Refund')
+    expect(document.body.textContent).toContain('Müşteri İsteği: Para İadesi')
+    expect(approveButton().disabled).toBe(false)
+  })
+
+  it('waits for the seller to choose when the claim does not say what the customer asked for', () => {
+    renderHepsiburada(null)
+    expect(choice().value).toBe('')
+    expect(approveButton().disabled).toBe(true)
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(choice(), 'Change')
+      choice().dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(approveButton().disabled).toBe(false)
+  })
 })

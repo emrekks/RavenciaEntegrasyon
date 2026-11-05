@@ -681,6 +681,150 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
             new ConfigurationBuilder().AddInMemoryCollection(configuration).Build(), fixture.TimeProvider, null!, marketplace);
     }
 
+    // T2-D25 (5 Nov 2026): a delivery job never takes an invoice out of ManualReview; only the owner does.
+    [PostgreSqlFact]
+    public async Task T2D25_ADeliveryJobLeavesAnInvoiceInReviewToTheOwner()
+    {
+        var seed = NewSeed("d25-review", InvoiceStatus.ManualReview);
+        seed.Invoice.LastErrorCode = "PLATFORM_INVOICE_ALREADY_PRESENT";
+        var state = NewDeliveryState(seed, "CONFIRMATION_RETRYABLE");
+        await SeedAsync(seed, db => db.MarketplaceDeliveryStates.Add(state));
+        try
+        {
+            var marketplace = new RecordingMarketplace();
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, marketplace).ProcessAsync(seed.Tenant.Id, seed.Marketplace.Id, InvoicingJobTypes.MarketplaceDelivery,
+                    DeliveryPayload(seed), "d25-review", CancellationToken.None);
+                Assert.Equal(JobCompletionKind.Blocked, result.Kind);
+                Assert.Equal(InvoiceDeliveryGuardPolicy.ManualReviewOwnerOnlyCode, result.ErrorCode);
+            }
+
+            Assert.Equal(0, marketplace.Calls);
+            await using var verification = fixture.CreateContext();
+            var invoice = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
+            Assert.Equal(InvoiceStatus.ManualReview, invoice.Status);
+            Assert.Equal("PLATFORM_INVOICE_ALREADY_PRESENT", invoice.LastErrorCode);
+            Assert.Equal(1, invoice.Version);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // T2-D24: a reconcile never sends an invoice already on its way to the marketplace back to Accepted, nor touches review.
+    [PostgreSqlTheory]
+    [InlineData(InvoiceStatus.MarketplacePending)]
+    [InlineData(InvoiceStatus.MarketplaceFailed)]
+    [InlineData(InvoiceStatus.ManualReview)]
+    public async Task T2D24_AReconcileNeverRegressesTheInvoice(InvoiceStatus status)
+    {
+        var seed = NewSeed($"d24-{status}", status);
+        seed.Invoice.LastErrorCode = status == InvoiceStatus.ManualReview ? "PLATFORM_INVOICE_ALREADY_PRESENT" : null;
+        await SeedAsync(seed);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var result = await NewProcessor(db, new RecordingMarketplace(), provider: new ScriptedProvider { RemoteStatus = "ACCEPTED" })
+                    .ProcessAsync(seed.Tenant.Id, seed.Provider.Id, InvoicingJobTypes.InvoiceReconcile, InvoicePayload(seed), $"d24-{status}", CancellationToken.None);
+                Assert.Equal(JobCompletionKind.Succeeded, result.Kind);
+            }
+
+            await using var verification = fixture.CreateContext();
+            var invoice = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
+            Assert.Equal(status, invoice.Status);
+            Assert.Equal(seed.Invoice.LastErrorCode, invoice.LastErrorCode);
+            Assert.False(await verification.IntegrationJobs.AnyAsync(job => job.TenantId == seed.Tenant.Id && job.JobType == InvoicingJobTypes.InvoiceDocumentFetch));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // T2-Y3 (5 Nov 2026): a partial return keeps the invoice delivering and adds "İade Belgesi Gerekli"; a full return
+    // still moves it to AdjustmentRequired.
+    [PostgreSqlTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task T2Y3_APartialReturnAddsANoteAndAFullReturnAdjustsTheInvoice(bool returnEverything)
+    {
+        var seed = NewSeed($"y3-{returnEverything}", InvoiceStatus.MarketplacePending);
+        var lineA = NewOrderLine(seed, "A", 60m);
+        var lineB = NewOrderLine(seed, "B", 60m);
+        var claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Marketplace.Id, OrderId = seed.Order.Id, ExternalClaimId = $"claim-{Guid.NewGuid():N}", Status = ReturnClaimStatus.Approved, RawStatus = "Accepted", LastRemoteModifiedAt = fixture.Now, CreatedAt = fixture.Now, UpdatedAt = fixture.Now };
+        await SeedAsync(seed, db =>
+        {
+            db.OrderLines.AddRange(lineA, lineB);
+            db.InvoiceLines.AddRange(NewInvoiceLine(seed, lineA, 1), NewInvoiceLine(seed, lineB, 2));
+            db.ReturnClaims.Add(claim);
+            db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ClaimId = claim.Id, OrderLineId = lineA.Id, ExternalLineId = "A", Quantity = 1, RawStatus = "Accepted" });
+            db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ClaimId = claim.Id, OrderLineId = lineB.Id, ExternalLineId = "B", Quantity = 1, RawStatus = returnEverything ? "Accepted" : "Rejected" });
+        });
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, seed.Tenant.Id, fixture.Now, CancellationToken.None);
+                await db.SaveChangesAsync();
+            }
+
+            await using var verification = fixture.CreateContext();
+            var invoice = await verification.Invoices.SingleAsync(item => item.Id == seed.Invoice.Id);
+            var notes = await InvoiceAdjustmentTracking.ReturnDocumentNotesAsync(verification, seed.Tenant.Id, [invoice.Id], CancellationToken.None);
+            if (returnEverything)
+            {
+                Assert.Equal(InvoiceStatus.AdjustmentRequired, invoice.Status);
+                Assert.Empty(notes);
+            }
+            else
+            {
+                Assert.Equal(InvoiceStatus.MarketplacePending, invoice.Status);
+                Assert.False(InvoiceDeliveryGuardPolicy.InvoiceBlocksDelivery(invoice.Status));
+                Assert.Contains("iade belgesi", notes[invoice.Id], StringComparison.Ordinal);
+                Assert.Contains("line-A", notes[invoice.Id], StringComparison.Ordinal);
+            }
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    private OrderLine NewOrderLine(Seed seed, string externalLineId, decimal unitPrice) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = seed.Tenant.Id,
+        OrderId = seed.Order.Id,
+        ExternalLineId = externalLineId,
+        Sku = $"SKU-{externalLineId}",
+        TitleSnapshot = $"line-{externalLineId}",
+        SourceSnapshotJson = """{"vatRate":20}""",
+        OrderedQuantity = externalLineId == "B" ? 2 : 1,
+        UnitPrice = unitPrice,
+        VatRate = 20m,
+        RawStatus = "Delivered"
+    };
+
+    private static InvoiceLine NewInvoiceLine(Seed seed, OrderLine line, int sequence) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = seed.Tenant.Id,
+        InvoiceId = seed.Invoice.Id,
+        OrderLineId = line.Id,
+        LineSequence = sequence,
+        DescriptionSnapshot = line.TitleSnapshot,
+        SkuSnapshot = line.Sku,
+        UnitSnapshot = "ADET",
+        Quantity = line.OrderedQuantity,
+        UnitPrice = line.UnitPrice,
+        VatRate = 20m,
+        VatAmount = 10m,
+        LineTotal = line.UnitPrice * line.OrderedQuantity
+    };
+
     private InvoicingJobProcessor NewProcessor(AppDbContext db, IInvoiceMarketplacePort? marketplace, IDictionary<string, string?>? configuration = null, IInvoiceProviderPort? provider = null) =>
         new(db, provider!, marketplace!, null!, fixture.TimeProvider,
             new ConfigurationBuilder().AddInMemoryCollection(configuration ?? new Dictionary<string, string?>()).Build(), new EphemeralDataProtectionProvider());
@@ -857,7 +1001,10 @@ public sealed class PostgreSqlInvoicingDeepAuditTests(PostgreSqlTenantIsolationF
         await db.Invoices.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.InvoicePolicies.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.LegalEntityProfiles.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ReturnLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.ReturnClaims.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.ShipmentPackages.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
+        await db.OrderLines.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Orders.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.PlatformConnections.Where(row => row.TenantId == tenantId).ExecuteDeleteAsync();
         await db.Tenants.Where(row => row.Id == tenantId).ExecuteDeleteAsync();

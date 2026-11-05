@@ -12,7 +12,12 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // invoice detail and the invoice workspace all read it here, so they never disagree.
 internal static class InvoiceDeliveryRetryReader
 {
-    internal sealed record Entry(Guid InvoiceId, InvoiceDeliveryRetryNeed Need, bool HasActiveJob, InvoiceDeliveryRetryView View);
+    // Need: what the scheduler does (None when only the owner may send it again); OwnerNeed: what the owner's "Tekrar
+    // Gönder" does. An entry exists when either is not None.
+    internal sealed record Entry(Guid InvoiceId, InvoiceDeliveryRetryNeed Need, bool HasActiveJob, InvoiceDeliveryRetryView View, InvoiceDeliveryRetryNeed OwnerNeed = InvoiceDeliveryRetryNeed.None)
+    {
+        public InvoiceDeliveryRetryNeed EffectiveOwnerNeed => OwnerNeed != InvoiceDeliveryRetryNeed.None ? OwnerNeed : Need;
+    }
 
     public static async Task<IReadOnlyDictionary<Guid, Entry>> LoadAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> invoiceIds, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -22,7 +27,7 @@ internal static class InvoiceDeliveryRetryReader
             .Where(invoice => invoice.TenantId == tenantId && ids.Contains(invoice.Id)
                 && invoice.SequencePurpose == "SALE" && invoice.OriginalInvoiceId == null
                 && invoice.ExternalReference != null
-                && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplaceFailed))
+                && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplaceFailed || invoice.Status == InvoiceStatus.MarketplacePending))
             .Select(invoice => new { invoice.Id, invoice.Status, invoice.LastErrorCode, invoice.IssuedAt, invoice.CreatedAt, invoice.UpdatedAt, invoice.DeliveryRetryAttempts, invoice.DeliveryRetryNextAt })
             .ToListAsync(cancellationToken);
         if (invoices.Count == 0) return new Dictionary<Guid, Entry>();
@@ -49,18 +54,27 @@ internal static class InvoiceDeliveryRetryReader
                 .Select(job => new { job.JobType, job.Status, job.CreatedAt })
                 .ToListAsync(cancellationToken);
             var hasActiveJob = jobs.Any(job => job.Status is JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled);
-            // Only a delivery that failed retryably is retried: the latest delivery job used up its retries (Dead). One
-            // that was refused (Blocked: a missing package, a refused precondition) or stopped for review stays with the
-            // user, as the never-queued recovery leaves it.
-            var hadEndedDeliveryJob = jobs.Where(job => job.JobType == InvoicingJobTypes.MarketplaceDelivery)
-                .OrderByDescending(job => job.CreatedAt).Select(job => (JobStatus?)job.Status).FirstOrDefault() == JobStatus.Dead;
+            // An Accepted or MarketplaceFailed invoice is retried only after a delivery that failed retryably: the latest
+            // delivery job used up its retries (Dead). One that was refused (Blocked: a missing package, a refused
+            // precondition) or stopped for review stays with the owner, as the never-queued recovery leaves it. A
+            // MarketplacePending one that sent nothing is retried once its latest delivery job ended, however it ended.
+            var latestDeliveryJob = jobs.Where(job => job.JobType == InvoicingJobTypes.MarketplaceDelivery)
+                .OrderByDescending(job => job.CreatedAt).Select(job => (JobStatus?)job.Status).FirstOrDefault();
+            var latestEnded = latestDeliveryJob is { } latest && latest is not (JobStatus.Pending or JobStatus.Leased or JobStatus.RetryScheduled);
+            var deliveryStates = states[invoice.Id].ToArray();
             var need = InvoiceDeliveryAutoRetryPolicy.Need(invoice.Status, true, documented.Contains(invoice.Id),
-                states[invoice.Id].ToArray(), hadEndedDeliveryJob, invoice.LastErrorCode);
-            if (need == InvoiceDeliveryRetryNeed.None) continue;
+                deliveryStates, latestEnded, invoice.LastErrorCode, latestDeliveryJobDead: latestDeliveryJob == JobStatus.Dead);
+            // The owner's "Tekrar Gönder" stands for an issued invoice that did not reach the marketplace: a failed one
+            // (also one the marketplace refused), and a pending one that sent nothing once its delivery job ended. An
+            // Accepted one keeps the scheduler's path (its first delivery may still be on its way).
+            var ownerNeed = invoice.Status == InvoiceStatus.MarketplaceFailed || invoice.Status == InvoiceStatus.MarketplacePending && latestEnded
+                ? InvoiceDeliveryAutoRetryPolicy.Need(invoice.Status, true, documented.Contains(invoice.Id), deliveryStates, latestEnded, invoice.LastErrorCode, owner: true)
+                : InvoiceDeliveryRetryNeed.None;
+            if (need == InvoiceDeliveryRetryNeed.None && ownerNeed == InvoiceDeliveryRetryNeed.None) continue;
             var view = InvoiceDeliveryAutoRetryPolicy.Describe(invoice.DeliveryRetryAttempts, invoice.DeliveryRetryNextAt,
-                invoice.IssuedAt ?? invoice.CreatedAt, invoice.UpdatedAt, hasActiveJob, need, invoice.LastErrorCode, now,
-                ScheduledJobProducer.InvoiceDueScanIntervalSeconds);
-            entries[invoice.Id] = new(invoice.Id, need, hasActiveJob, view);
+                invoice.IssuedAt ?? invoice.CreatedAt, invoice.UpdatedAt, hasActiveJob, need != InvoiceDeliveryRetryNeed.None ? need : ownerNeed,
+                invoice.LastErrorCode, now, ScheduledJobProducer.InvoiceDueScanIntervalSeconds, automatic: need != InvoiceDeliveryRetryNeed.None);
+            entries[invoice.Id] = new(invoice.Id, need, hasActiveJob, view, ownerNeed);
         }
         return entries;
     }

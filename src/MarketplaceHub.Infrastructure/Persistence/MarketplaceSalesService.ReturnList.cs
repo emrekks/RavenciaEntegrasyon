@@ -27,9 +27,10 @@ public sealed partial class MarketplaceSalesService
     private sealed record ReturnCardScan(List<ReturnCard> Cards, IReadOnlyDictionary<Guid, ReturnClaimRow> Claims, IReadOnlyDictionary<Guid, ReturnListView>? Views);
 
     // The page's status groups. AWAITING_SHIPMENT belongs to "Kargoya Verilen", the tab that lists it.
+    // A claim approved in part (PARTIALLY_APPROVED, "Kısmen Onaylandı") is listed with the approved ones.
     internal static string ReturnTabGroup(string status) => status.Trim().ToUpperInvariant() switch
     {
-        "APPROVED" or "COMPLETED" => "APPROVED",
+        "APPROVED" or "COMPLETED" or ReturnClaimPartialApprovalPolicy.PartiallyApproved => "APPROVED",
         "REJECTED" or "CANCELLED" => "REJECTED",
         "REQUESTED" or "CREATED" => "REQUESTED",
         "ACTION_REQUIRED" or "WAITING_FOR_SELLER_ACTION" => "ACTION_REQUIRED",
@@ -126,7 +127,7 @@ public sealed partial class MarketplaceSalesService
             var claimLines = linesByClaim[row.Id].ToList();
             var statuses = claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId)
                 .ToDictionary(group => group.Key, group => Wire(MarketplaceReturnStatus.Canonicalize(group.First().RawStatus)));
-            var status = Wire(row.Status);
+            var status = ReturnStatusWire(row.Status, claimLines.Select(x => x.RawStatus).ToList());
             foreach (var (kind, cardLines) in SplitReturnClaim(claimLines.Where(x => x.HasOrderLine).Select(x => x.OrderLineId).ToList(), statuses))
                 cards.Add(new(row.Id, kind, kind == ApprovedCard ? "APPROVED" : status, platformCode, connection?.DisplayName ?? "Trendyol", row.CargoProviderName, row.ReasonCode, row.ReasonText, cardLines));
         }

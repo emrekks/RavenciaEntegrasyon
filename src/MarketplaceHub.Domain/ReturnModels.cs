@@ -48,14 +48,43 @@ public static class ReturnLineStatusPolicy
     public static bool IsActionable(string? rawStatus) =>
         string.IsNullOrWhiteSpace(rawStatus) || MarketplaceReturnStatus.Canonicalize(rawStatus) == ReturnClaimStatus.ActionRequired;
 
-    // Per-line statuses decide the claim only while some line still waits for the seller; otherwise the
-    // claim-level status the marketplace reported stands.
+    // Per-line statuses decide the claim while some line still waits for the seller; otherwise the claim-level status
+    // the marketplace reported stands, except for a claim whose lines were decided both ways: some approved, some
+    // rejected (Trendyol reports the claim as its first item). It is approved in part, so it stays Approved (Completed
+    // once the marketplace closed it) and its approved lines reach the invoice (InvoiceAdjustmentTracking).
     public static ReturnClaimStatus Resolve(ReturnClaimStatus claimLevel, IReadOnlyCollection<string?> lineStatuses)
     {
         var known = lineStatuses.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
         if (known.Count == 0 || known.Count != lineStatuses.Count) return claimLevel;
-        return known.Any(x => MarketplaceReturnStatus.Canonicalize(x) == ReturnClaimStatus.ActionRequired) ? ReturnClaimStatus.ActionRequired : claimLevel;
+        if (known.Any(x => MarketplaceReturnStatus.Canonicalize(x) == ReturnClaimStatus.ActionRequired)) return ReturnClaimStatus.ActionRequired;
+        return ReturnClaimPartialApprovalPolicy.IsMixed(known)
+            ? claimLevel == ReturnClaimStatus.Completed ? ReturnClaimStatus.Completed : ReturnClaimStatus.Approved
+            : claimLevel;
     }
+}
+
+/// <summary>
+/// A claim whose lines were decided both ways (one approved, another rejected) is "Kısmen Onaylandı": it is stored as
+/// Approved (or Completed) so its approved lines count as returned, and the screens show it as PARTIALLY_APPROVED.
+/// </summary>
+public static class ReturnClaimPartialApprovalPolicy
+{
+    public const string PartiallyApproved = "PARTIALLY_APPROVED";
+
+    private static bool IsApprovedLine(string? rawStatus) =>
+        !string.IsNullOrWhiteSpace(rawStatus) && MarketplaceReturnStatus.Canonicalize(rawStatus) is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed;
+
+    private static bool IsRejectedLine(string? rawStatus) =>
+        !string.IsNullOrWhiteSpace(rawStatus) && MarketplaceReturnStatus.Canonicalize(rawStatus) == ReturnClaimStatus.Rejected;
+
+    // At least one line approved and at least one rejected, by the lines' own statuses.
+    public static bool IsMixed(IReadOnlyCollection<string?> lineStatuses) =>
+        lineStatuses.Any(IsApprovedLine) && lineStatuses.Any(IsRejectedLine);
+
+    // The status the screens show: PARTIALLY_APPROVED for an approved (or completed) claim with lines decided both ways,
+    // otherwise the stored status as it is.
+    public static bool IsPartiallyApproved(ReturnClaimStatus status, IReadOnlyCollection<string?> lineStatuses) =>
+        status is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed && IsMixed(lineStatuses);
 }
 
 // A decision covers the lines the seller chose (Trendyol decides per claim item); the claim's other lines stay
@@ -119,17 +148,52 @@ public static class ReturnClaimStateMachine
 
 public static class ReturnClaimDecisionPolicy
 {
-    public static ReturnClaimStatus StatusAfterLineDecision(ReturnClaimStatus current, string action, int selectedLineCount, int totalLineCount)
+    // settledLineStatuses: the claim's other lines, decided earlier. A rejection of the last waiting lines of a claim
+    // whose other lines were approved leaves it approved in part (Approved, shown as "Kısmen Onaylandı"), never
+    // Rejected: those approved lines are returned and must reach the invoice.
+    public static ReturnClaimStatus StatusAfterLineDecision(ReturnClaimStatus current, string action, int selectedLineCount, int totalLineCount, IReadOnlyCollection<string?>? settledLineStatuses = null)
     {
         if (totalLineCount <= 0 || selectedLineCount < totalLineCount) return current;
+        var otherLinesApproved = settledLineStatuses?.Any(status => !string.IsNullOrWhiteSpace(status)
+            && MarketplaceReturnStatus.Canonicalize(status) is ReturnClaimStatus.Approved or ReturnClaimStatus.Completed) == true;
         return action.Trim().ToUpperInvariant() switch
         {
             "APPROVE" => ReturnClaimStatus.Approved,
-            "REJECT" => ReturnClaimStatus.Rejected,
+            "REJECT" => otherLinesApproved ? ReturnClaimStatus.Approved : ReturnClaimStatus.Rejected,
             "PREAPPROVAL_CONFIRM" => ReturnClaimStatus.AwaitingShipment,
             _ => current
         };
     }
+}
+
+/// <summary>
+/// What the Hepsiburada customer asked for in a claim (Para İadesi or Değişim), read from the claim itself: a
+/// "Return" claim asks for the money back; a "Change" or "RenewProduct" claim, or one naming the product wanted
+/// instead (requestedProduct), asks for an exchange. Anything else is unknown (null) and the seller chooses.
+/// </summary>
+public static class ReturnCustomerRequestPolicy
+{
+    public const string Refund = "REFUND";
+    public const string Change = "CHANGE";
+
+    public static string? FromHepsiburada(string? claimType, bool hasRequestedProduct)
+    {
+        if (hasRequestedProduct) return Change;
+        return claimType?.Trim().ToUpperInvariant() switch
+        {
+            "RETURN" => Refund,
+            "CHANGE" or "RENEWPRODUCT" => Change,
+            _ => null
+        };
+    }
+
+    // The Hepsiburada approval choice (FinalizedWith) for the customer's request; null when it is unknown.
+    public static string? FinalizedWith(string? customerRequest) => customerRequest switch
+    {
+        Refund => "Refund",
+        Change => "Change",
+        _ => null
+    };
 }
 
 public static class ReturnClaimStoragePolicy
@@ -164,6 +228,9 @@ public sealed class ReturnClaim
     // Trendyol claim item audits, Hepsiburada acceptedDate/rejectedDate, n11 approvedDate/deniedDate. Null when the
     // marketplace gave no date; never derived from a change time.
     public DateTimeOffset? DecidedAt { get; set; }
+    // What the customer asked for (ReturnCustomerRequestPolicy: REFUND or CHANGE), read from the claim; only
+    // Hepsiburada reports it. Null when the claim does not say (unknown, never guessed).
+    public string? CustomerRequest { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;

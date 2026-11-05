@@ -12,16 +12,25 @@ describe('invoice delivery retry copy', () => {
 
   it('asks for the manual retry once the attempts are used up', () => {
     expect(invoiceDeliveryRetryText({ state: 'EXHAUSTED', attempts: 5, maxAttempts: 5, nextAttemptAt: null, lastErrorCode: null, need: 'FETCH_DOCUMENT' }))
-      .toBe('Denemeler bitti — Tekrar Dene ile elle deneyin')
+      .toBe('Denemeler bitti — Tekrar Gönder ile elle gönderin')
     expect(invoiceDeliveryRetryText({ state: 'IN_PROGRESS', attempts: 2, maxAttempts: 5, nextAttemptAt: null, lastErrorCode: null, need: 'DELIVER' })).toBe('Yeniden deneniyor…')
     expect(invoiceDeliveryRetryText(null)).toBeNull()
-    expect(invoiceDetailActionLabel('RETRY_DELIVERY')).toBe('Tekrar Dene')
+    expect(invoiceDetailActionLabel('RETRY_DELIVERY')).toBe('Tekrar Gönder')
+  })
+
+  // T2-Y4 (5 Nov 2026): an issued invoice the marketplace refused, or one that sent nothing, is sent again by the owner.
+  it('offers Tekrar Gönder for a delivery only the owner sends again', () => {
+    expect(invoiceDeliveryRetryText({ state: 'MANUAL_ONLY', attempts: 0, maxAttempts: 5, nextAttemptAt: null, lastErrorCode: 'REMOTE_INVOICE_REJECTED', need: 'DELIVER' }))
+      .toBe('Pazaryerine iletilmedi — Tekrar Gönder ile gönderin')
+    expect(invoiceFailureReason('INVOICE_PRE_ISSUE_ORDER_CHANGED')).toContain('yeniden onayınızı bekliyor')
+    expect(invoiceFailureReason('HEPSIBURADA_INVOICE_INFO_MISSING')).toContain('fatura bilgisi')
+    expect(invoiceFailureReason('ORDER_LINE_VAT_RATE_UNKNOWN')).toContain('KDV Oranı Bilinmiyor')
   })
 
   it('no longer promises a retry in the error text itself', () => {
     expect(invoiceFailureReason('DOCUMENT_CONTENT_TYPE_INVALID')).not.toContain('Yeniden denenecek')
     expect(invoiceFailureReason('DOCUMENT_PDF_SIGNATURE_INVALID')).not.toContain('Yeniden denenecek')
-    expect(invoiceFailureGuidance('INVOICE_DOCUMENT_MISSING_NOT_DELIVERED')).toContain('Tekrar Dene')
+    expect(invoiceFailureGuidance('INVOICE_DOCUMENT_MISSING_NOT_DELIVERED')).toContain('Tekrar Gönder')
     expect(invoiceFailureGuidance('INVOICE_DOCUMENT_MISSING_NOT_DELIVERED')).toContain('yeni fatura kesilmez')
   })
 })
