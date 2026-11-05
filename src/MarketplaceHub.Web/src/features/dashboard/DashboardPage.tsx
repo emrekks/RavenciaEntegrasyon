@@ -7,7 +7,6 @@ import { DateRangePicker } from '../../shared/DateRangePicker'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { CardBackgroundIcon, type CardIconName } from '../../shared/components/CardBackgroundIcon'
 import { UiIcon } from '../../shared/components/UiIcon'
-import { CargoProviderIcon, cargoLabel } from '../../shared/components/CargoProviderIcon'
 import { dashboardOperationalLinks, dayCancellationsLink } from '../../shared/dashboard-operational-links'
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
@@ -23,11 +22,11 @@ import { instantNotificationsQueryKey, type InstantNotificationStatus } from '..
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
-type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; pendingUnitsByConnection?: Record<string, number> | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number; pendingByCargo?: Array<{ cargo: string; orders: number; units: number }> | null }
+type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; pendingUnitsByConnection?: Record<string, number> | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
 type DashboardBootstrap = { metrics: DashboardMetrics; channels?: DashboardChannel[] }
 // GET /dashboard/cancellations: one store's cancellations of the day (DashboardCancellationRowView).
 type CancellationRow = { connectionId: string; cancelledOrders: number; partialOrders: number; cancelledUnits: number; unknownTimeOrders: number; unknownTimeUnits: number }
-type BreakdownRow = { key: string; code: string; name: string; value: string; cargo?: string; head?: string }
+type BreakdownRow = { key: string; code: string; name: string; value: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number }
 type MatrixCell = { state: 'ok' | 'warn' | 'bad' | 'off'; lastSuccessAt: string | null; lastProblemAt: string | null }
 type MatrixRow = { connectionId: string; platformCode: string; displayName: string; externalStoreId: string; status: string; cells: Record<string, MatrixCell>; issue: string | null }
@@ -93,7 +92,7 @@ function niceStep(max: number) {
 
 // One breakdown per store, shown when the card is hovered.
 function Breakdown({ rows }: { rows: BreakdownRow[] }) {
-  return rows.length ? <div className="rr-tip rr-bd" role="tooltip">{rows.map(row => <div className={`rr-bd-r${row.head ? " rr-bd-first" : ""}`} key={row.key} data-head={row.head}>{row.cargo !== undefined ? <span className="rr-bd-cargo">{row.cargo ? <CargoProviderIcon value={row.cargo} /> : <UiIcon name="truck" size={14} />}</span> : <RrLogo code={row.code} />}<span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}</div> : null
+  return rows.length ? <div className="rr-tip rr-bd" role="tooltip">{rows.map(row => <div className="rr-bd-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}</div> : null
 }
 
 // Daily revenue: area and line for this period, dashed line for the previous one. The day tooltip follows the
@@ -281,9 +280,6 @@ export function DashboardPage() {
     .filter(item => (item.orders ?? 0) > 0 || (item.units ?? 0) > 0)
     .sort((left, right) => (right.orders ?? 0) - (left.orders ?? 0) || (right.units ?? 0) - (left.units ?? 0))
     .map(item => { const shop = channels.get(item.key); return { key: item.key, code: shop?.platformCode ?? '', name: shop?.displayName ?? 'Kaldırılmış mağaza', value: [item.orders === undefined ? '' : `${count(item.orders)} paket`, item.units === undefined ? '' : `${count(item.units)} adet`].filter(Boolean).join(' · ') } })
-  // Then by cargo company: "Yurtiçi Kargo · 12 paket · 15 adet"; orders whose company is not known yet are named so.
-  const pendingCargoRows: BreakdownRow[] = (metrics?.pendingByCargo ?? []).filter(row => row.orders > 0)
-    .map((row, index) => ({ key: `cargo:${row.cargo}`, code: '', cargo: row.cargo, head: index === 0 ? 'Kargo Firmasına Göre' : undefined, name: row.cargo ? cargoLabel(row.cargo) : 'Kargo Belirlenmedi', value: `${count(row.orders)} paket · ${count(row.units)} adet` }))
   const breakdown = (counts: Record<string, number> | undefined) => Object.entries(counts ?? {}).filter(([, value]) => value > 0).sort((left, right) => right[1] - left[1])
     .map(([connectionId, value]) => { const store = channels.get(connectionId); return { key: connectionId, code: store?.platformCode ?? '', name: store?.displayName ?? 'Kaldırılmış mağaza', value: `${count(value)} adet` } })
   const store = (connectionId: string) => channels.get(connectionId)
@@ -304,7 +300,7 @@ export function DashboardPage() {
   const dueSoon = knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount)
   const ops: Array<[CardIconName, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, ReactNode?]> = [
     // "N Paket | M Adet Ürün": the units are left out while they are not known (an older API), never shown as 0.
-    ['orders', 'Bekleyen Siparişler', knownCount(bootstrap.isLoading, metrics?.pendingOrders), 'warn', dashboardOperationalLinks.pendingOrders, [...pendingRows, ...pendingCargoRows], <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} Adet Ürün</>}</>],
+    ['orders', 'Bekleyen Siparişler', knownCount(bootstrap.isLoading, metrics?.pendingOrders), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} Adet Ürün</>}</>],
     ['clock', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
     ['returns', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
     // "N Bekleyen | M Yaklaşan": M is the former Yaklaşan Faturalar count (delivered 5+ days ago, still awaiting an invoice),

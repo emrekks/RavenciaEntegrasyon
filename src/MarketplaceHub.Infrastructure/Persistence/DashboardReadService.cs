@@ -30,7 +30,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         var pendingUnits = breakdown.PendingUnits ?? await PendingUnitsAsync(tenantId, timeProvider.GetUtcNow(), cancellationToken);
         return new(
             new DashboardMetricsView(snapshot.PendingOrders, snapshot.LateOrders, snapshot.PendingReturns, breakdown.Pending, breakdown.Late, breakdown.Returns,
-                snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount, pendingUnits, await PendingByCargoAsync(tenantId, timeProvider.GetUtcNow(), cancellationToken)),
+                snapshot.DeadJobCount, snapshot.ManualReviewJobCount, snapshot.RecentJobCount, pendingUnits),
             channels,
             snapshot.UpdatedAt,
             snapshot.Version);
@@ -61,29 +61,6 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         select new PendingUnitGroup(grouped.Key, grouped.Sum(line => line.OrderedQuantity > line.CancelledQuantity ? line.OrderedQuantity - line.CancelledQuantity : 0m));
 
     internal sealed record PendingUnitGroup(Guid ConnectionId, decimal Units);
-
-    // The pending orders by the cargo company of their current package, read live (the snapshot does not hold it). An
-    // order with packages at two companies counts under each; one with no company known yet is under an empty name.
-    internal async Task<IReadOnlyList<DashboardPendingCargoView>> PendingByCargoAsync(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
-    {
-        var pending = PendingOrderMetricsQuery(db, tenantId, now);
-        var pairs = await MarketplaceSalesService.CurrentShipmentPackages(db)
-            .Where(package => package.TenantId == tenantId && pending.Any(order => order.Id == package.OrderId))
-            .Select(package => new { package.OrderId, Cargo = package.CargoProviderExternalId ?? "" })
-            .Distinct().ToListAsync(cancellationToken);
-        var units = await (from order in pending
-                           join line in db.OrderLines.AsNoTracking() on new { order.TenantId, OrderId = order.Id } equals new { line.TenantId, line.OrderId }
-                           group line by order.Id into grouped
-                           select new { OrderId = grouped.Key, Units = grouped.Sum(line => line.OrderedQuantity > line.CancelledQuantity ? line.OrderedQuantity - line.CancelledQuantity : 0m) })
-            .ToDictionaryAsync(x => x.OrderId, x => x.Units, cancellationToken);
-        var orderIds = await pending.Select(order => order.Id).ToListAsync(cancellationToken);
-        var known = pairs.Select(x => x.OrderId).ToHashSet();
-        var rows = pairs.Select(x => (x.OrderId, Cargo: x.Cargo.Trim()))
-            .Concat(orderIds.Where(id => !known.Contains(id)).Select(id => (OrderId: id, Cargo: "")));
-        return rows.GroupBy(x => x.Cargo)
-            .Select(group => new DashboardPendingCargoView(group.Key, group.Select(x => x.OrderId).Distinct().Count(), group.Select(x => x.OrderId).Distinct().Sum(id => units.GetValueOrDefault(id))))
-            .OrderByDescending(x => x.Orders).ThenBy(x => x.Cargo, StringComparer.Ordinal).ToList();
-    }
 
     private async Task<IReadOnlyDictionary<string, decimal>> PendingUnitsAsync(Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken) =>
         (await PendingUnitsQuery(db, tenantId, now).ToListAsync(cancellationToken)).ToDictionary(x => x.ConnectionId.ToString("D"), x => x.Units);

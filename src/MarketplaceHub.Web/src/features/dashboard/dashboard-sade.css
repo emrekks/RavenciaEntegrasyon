@@ -445,10 +445,3 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
   :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard { transition: translate var(--rv-motion-fast) var(--rv-ease-out), background-color var(--rv-motion-fast) var(--rv-ease-standard), border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard); }
 }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard:is(:hover, :focus-within, .rr-bd-open) { z-index: 3; }
-
-/* The pending orders' breakdown: the stores, then a titled group by cargo company with the company's mark. */
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r.rr-bd-first { position: relative; margin-top: 26px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-r.rr-bd-first::before { content: attr(data-head); position: absolute; left: 0; right: 0; top: -22px; padding-top: 8px; border-top: 1px solid var(--rr-line); color: var(--rr-muted); font-size: 11px; font-weight: 500; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-cargo { display: grid; place-items: center; width: 22px; height: 22px; color: var(--rr-muted); }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-cargo .cargo-provider-icon { width: 22px; height: 22px; border-radius: 6px; object-fit: contain; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-bd-cargo .cargo-provider-icon-fallback { display: grid; place-items: center; font-size: 9px; font-weight: 700; background: var(--rr-surface-2, var(--rv-color-surface-soft)); }
