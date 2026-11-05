@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Hepsiburada;
 
@@ -521,22 +522,35 @@ internal static class HepsiburadaJsonMapper
         };
     }
 
-    public static string? InvoiceStatus(JsonElement root)
+    public static string? InvoiceStatus(JsonElement root) => InvoiceStatus(root, out _);
+
+    // infoMissing: some lines (or packages) say whether an invoice is attached and others leave it out. The order's
+    // invoice state is then unknown (null), never concluded from the lines that do say it (5 Nov 2026, DO3).
+    public static string? InvoiceStatus(JsonElement root, out bool infoMissing)
     {
+        infoMissing = false;
         var order = Unwrap(root);
         var orderStatus = InvoiceStatusValue(order);
         if (orderStatus is not null) return orderStatus;
 
         var lines = Find(order, "lineItems", "LineItems", "items", "Items", "orderItems", "OrderItems");
         if (lines.ValueKind == JsonValueKind.Object && TryFind(lines, out var nested, "items", "Items", "lineItems", "LineItems")) lines = nested;
-        var lineStatus = UniformInvoiceStatus(lines);
+        var lineStatus = UniformInvoiceStatus(lines, out infoMissing);
+        if (infoMissing) return null;
         if (lineStatus is not null) return lineStatus;
 
-        return UniformInvoiceStatus(Find(order, "packages", "Packages", "shipments", "Shipments"));
+        var packageStatus = UniformInvoiceStatus(Find(order, "packages", "Packages", "shipments", "Shipments"), out infoMissing);
+        return infoMissing ? null : packageStatus;
     }
 
-    public static RemotePackageInvoiceObservation? InvoiceObservationForPackage(JsonElement root, string packageNumber)
+    public static RemotePackageInvoiceObservation? InvoiceObservationForPackage(JsonElement root, string packageNumber) =>
+        InvoiceObservationForPackage(root, packageNumber, out _);
+
+    // infoMissing: the package's own items leave the invoice information out on some of them: unknown, and the
+    // order-level fallback is not consulted for it.
+    public static RemotePackageInvoiceObservation? InvoiceObservationForPackage(JsonElement root, string packageNumber, out bool infoMissing)
     {
+        infoMissing = false;
         var order = Unwrap(root);
         var packages = Find(order, "packages", "Packages", "shipments", "Shipments");
         if (packages.ValueKind != JsonValueKind.Array)
@@ -545,7 +559,13 @@ internal static class HepsiburadaJsonMapper
             // that package has an invoice, so one package is judged by its own items only.
             var groups = ItemPackageGroups(order);
             if (groups.Count == 0) return InvoiceObservation(order);
-            return groups.TryGetValue(packageNumber.Trim(), out var items) && UniformItemInvoiceStatus(items) is { } itemStatus
+            if (!groups.TryGetValue(packageNumber.Trim(), out var items)) return null;
+            if (items.Any(item => InvoiceStatusValue(item) is null))
+            {
+                infoMissing = true;
+                return null;
+            }
+            return UniformItemInvoiceStatus(items) is { } itemStatus
                 ? new RemotePackageInvoiceObservation(itemStatus, null, null, null)
                 : null;
         }
@@ -600,12 +620,21 @@ internal static class HepsiburadaJsonMapper
         return statuses.Length == 1 ? statuses[0] : null;
     }
 
-    private static string? UniformInvoiceStatus(JsonElement elements)
+    // The one invoice status every element reports. An element without one does not drop out: when some elements say it
+    // and others do not, gap is set and the status is unknown (null). Elements that all leave it out say nothing at
+    // this level (null, no gap), and the caller looks elsewhere.
+    private static string? UniformInvoiceStatus(JsonElement elements, out bool gap)
     {
+        gap = false;
         if (elements.ValueKind != JsonValueKind.Array) return null;
-        var statuses = elements.EnumerateArray()
-            .Select(InvoiceStatusValue)
-            .Where(status => status is not null)
+        var raw = elements.EnumerateArray().Select(InvoiceStatusValue).ToArray();
+        if (raw.Length == 0 || raw.All(status => status is null)) return null;
+        if (raw.Any(status => status is null))
+        {
+            gap = true;
+            return null;
+        }
+        var statuses = raw
             .Select(status => NormalizeInvoiceStatus(status) ?? status!.Trim().ToUpperInvariant())
             .Distinct(StringComparer.Ordinal)
             .ToArray();
@@ -886,8 +915,13 @@ internal static class HepsiburadaJsonMapper
             trackingLink,
             Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt"),
             // The decision's own date (acceptedDate/rejectedDate), only for the status it dates.
-            DecidedAt: status.ToUpperInvariant() is "ACCEPTED" or "REJECTED" ? statusDate : null);
+            DecidedAt: status.ToUpperInvariant() is "ACCEPTED" or "REJECTED" ? statusDate : null,
+            CustomerRequest: ReturnCustomerRequestPolicy.FromHepsiburada(claimType, HasRequestedProduct(item)));
     }
+
+    // Hepsiburada names the product a customer wants instead (requestedProduct) on an exchange claim; null otherwise.
+    private static bool HasRequestedProduct(JsonElement item) =>
+        TryFind(item, out var requested, "requestedProduct", "RequestedProduct") && requested.ValueKind == JsonValueKind.Object;
 
     private static JsonElement ReturnDelivery(JsonElement delivery)
     {

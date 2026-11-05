@@ -202,6 +202,7 @@ public static class InvoiceDeliveryRecoveryPolicy
         && string.Equals(packageInvoiceNumber.Trim(), invoiceNumber.Trim(), StringComparison.Ordinal)
         && string.Equals(packageInvoiceUrl.Trim(), invoiceLink.Trim(), StringComparison.Ordinal);
 
+    // An invoice in ManualReview is the owner's: a read never moves it out (InvoiceDeliveryGuardPolicy.BackgroundMayMove).
     public static bool ShouldMarkMarketplaceInvoiceNotPresent(
         InvoiceStatus invoiceStatus,
         string? lastErrorCode,
@@ -209,9 +210,7 @@ public static class InvoiceDeliveryRecoveryPolicy
         marketplaceStatus == MarketplaceInvoiceStatus.NotInvoiced
         && (invoiceStatus == InvoiceStatus.Completed
             || (invoiceStatus is InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed)
-                && string.Equals(lastErrorCode, MarketplaceInvoiceIdentityMismatchErrorCode, StringComparison.Ordinal)
-            || (invoiceStatus == InvoiceStatus.ManualReview
-                && string.Equals(lastErrorCode, MarketplaceInvoiceIdentityMismatchErrorCode, StringComparison.Ordinal)));
+                && string.Equals(lastErrorCode, MarketplaceInvoiceIdentityMismatchErrorCode, StringComparison.Ordinal));
 
     // Only an invoice that was delivered before (or reads Completed) is sent again: an issued invoice nothing was ever
     // sent for waits for its document and the normal delivery, it was not "removed" from the marketplace.
@@ -259,10 +258,28 @@ public static class InvoiceDeliveryGuardPolicy
     public const string InvoiceNotDeliverableCode = "INVOICE_DELIVERY_INVOICE_NOT_DELIVERABLE";
     public const string LinkRevocationOpenCode = "INVOICE_DELIVERY_LINK_REVOCATION_OPEN";
     public const string CancelledJobCode = "INVOICE_DELIVERY_CANCELLED_BY_INVOICE_STATE";
+    // A delivery job found the invoice in ManualReview: only the owner's own action takes it out (5 Nov 2026).
+    public const string ManualReviewOwnerOnlyCode = "INVOICE_MANUAL_REVIEW_OWNER_ONLY";
 
+    // AdjustmentRequired is the invoice of an order cancelled, or returned in full, after issuing. A partial return no
+    // longer moves the invoice there: it is still delivered and the returned lines get their own note
+    // (InvoiceAdjustmentTracking, "İade Belgesi Gerekli").
     public static bool InvoiceBlocksDelivery(InvoiceStatus status) => status is InvoiceStatus.Cancelled
         or InvoiceStatus.CancellationPending or InvoiceStatus.CancellationRejected or InvoiceStatus.AdjustmentRequired
         or InvoiceStatus.CancelledLocal or InvoiceStatus.Rejected;
+
+    /// <summary>
+    /// Whether a background job (a delivery, a reconcile, a marketplace read) may move the invoice from current to next.
+    /// ManualReview belongs to the owner: no job takes an invoice out of it, only the owner's explicit actions do.
+    /// Otherwise the state machine decides, directly or through MarketplacePending (a failed delivery a later read
+    /// confirms).
+    /// </summary>
+    public static bool BackgroundMayMove(InvoiceStatus current, InvoiceStatus next) =>
+        current == next
+        || current != InvoiceStatus.ManualReview
+            && (InvoiceStateMachine.CanTransition(current, next)
+                || InvoiceStateMachine.CanTransition(current, InvoiceStatus.MarketplacePending)
+                    && InvoiceStateMachine.CanTransition(InvoiceStatus.MarketplacePending, next));
 
     public static bool StateBlocksDelivery(string? deliveryStatus) =>
         MarketplaceInvoiceLinkRevocationPolicy.IsOpen(deliveryStatus)
@@ -271,17 +288,14 @@ public static class InvoiceDeliveryGuardPolicy
     /// <summary>
     /// The invoice status a confirmed delivery leads to (Completed once every target package is confirmed, otherwise
     /// MarketplacePending), when the state machine allows it: directly, or through MarketplacePending for a failed
-    /// delivery that a later read-back confirms. A delivery under review of an invoice the provider holds may also be
-    /// confirmed by such a read-back. Null leaves the invoice as it is.
+    /// delivery that a later read-back confirms. An invoice in ManualReview stays there whatever a read shows: only the
+    /// owner takes it out (BackgroundMayMove). Null leaves the invoice as it is.
     /// </summary>
     public static InvoiceStatus? OutcomeStatus(InvoiceStatus current, bool allTargetsConfirmed, bool issuedAtProvider)
     {
         if (InvoiceBlocksDelivery(current)) return null;
         var target = allTargetsConfirmed ? InvoiceStatus.Completed : InvoiceStatus.MarketplacePending;
-        if (InvoiceStateMachine.CanTransition(current, target)) return target;
-        if (InvoiceStateMachine.CanTransition(current, InvoiceStatus.MarketplacePending)
-            && InvoiceStateMachine.CanTransition(InvoiceStatus.MarketplacePending, target)) return target;
-        return current == InvoiceStatus.ManualReview && issuedAtProvider ? target : null;
+        return BackgroundMayMove(current, target) ? target : null;
     }
 }
 
@@ -386,6 +400,17 @@ public static class MarketplaceInvoiceLinkRevocationPolicy
             _ => "Bu pazaryeri için fatura linkini kaldırma servisi yok. Linki pazaryerinin satıcı panelinden kaldırın."
         };
     }
+}
+
+/// <summary>
+/// Hepsiburada's order detail tells per line (or per package) whether an invoice is attached. When some lines say it
+/// and others leave it out, the order's invoice state is unknown, never "not invoiced": no link is sent and the
+/// invoice waits for the owner with this reason (5 Nov 2026, DO3).
+/// </summary>
+public static class HepsiburadaInvoiceInfoPolicy
+{
+    public const string LineInvoiceInfoMissingCode = "HEPSIBURADA_INVOICE_INFO_MISSING";
+    public const string Message = "Hepsiburada siparişinin en az bir kaleminde fatura bilgisi yok; pakette fatura olup olmadığı bilinmediği için fatura linki gönderilmedi. Hepsiburada satıcı panelinde siparişin faturasını kontrol edin; fatura yoksa Tekrar Gönder ile yeniden deneyin.";
 }
 
 public interface IHepsiburadaInvoiceStatusPort
@@ -494,7 +519,10 @@ public sealed record InvoiceWorkspaceItemView(
     string? ExternalOrderId = null,
     string? ExternalPackageNumber = null,
     // The automatic retry of the document fetch and marketplace delivery (InvoiceDeliveryAutoRetryPolicy); null when nothing is retried.
-    InvoiceDeliveryRetryView? DeliveryRetry = null);
+    InvoiceDeliveryRetryView? DeliveryRetry = null,
+    // "İade Belgesi Gerekli": lines of the issued invoice were returned (a partial return); the invoice is still
+    // delivered, the returned lines need a return document. Null when nothing is due (InvoiceAdjustmentTracking).
+    string? ReturnDocumentNote = null);
 
 public sealed record MarketplaceInvoiceReferenceHistoryView(
     string? InvoiceNumber,
@@ -578,7 +606,7 @@ public sealed record InvoiceLineView(Guid Id, int LineSequence, string Descripti
 public sealed record InvoiceDocumentView(Guid Id, string DocumentType, string Sha256, DateTimeOffset CreatedAt);
 public sealed record InvoiceAttemptView(int AttemptNumber, string Outcome, string? ErrorCode, DateTimeOffset StartedAt, DateTimeOffset? CompletedAt);
 public sealed record MarketplaceDeliveryView(Guid Id, string DeliveryType, string Status, string? ExternalReference, string? ErrorCode, DateTimeOffset CreatedAt);
-public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation, IReadOnlyList<MarketplaceLinkRevocationView>? LinkRevocations = null, InvoiceDeliveryRetryView? DeliveryRetry = null);
+public sealed record InvoiceDetailView(Guid Id, Guid OrderId, string OrderNumber, Guid? PackageId, Guid ProviderConnectionId, string InvoiceType, string SequencePurpose, string Status, string Currency, decimal TaxExclusiveTotal, decimal DiscountTotal, decimal TaxTotal, decimal PayableTotal, string Note, string? InvoiceNumber, string? EttnUuid, DateTimeOffset? DueAt, DateTimeOffset? IssuedAt, string? LastErrorCode, IReadOnlyList<InvoiceLineView> Lines, IReadOnlyList<InvoiceDocumentView> Documents, IReadOnlyList<InvoiceAttemptView> Attempts, IReadOnlyList<MarketplaceDeliveryView> Deliveries, IReadOnlyList<string> AllowedActions, long Version, bool RequiresSensitiveConfirmation, IReadOnlyList<MarketplaceLinkRevocationView>? LinkRevocations = null, InvoiceDeliveryRetryView? DeliveryRetry = null, string? ReturnDocumentNote = null);
 // A marketplace link a cancelled invoice left behind. Mode is AUTOMATIC, VERIFY_ONLY or MANUAL
 // (MarketplaceInvoiceLinkRevocationPolicy); Instructions tell the operator what to do on the marketplace.
 public sealed record MarketplaceLinkRevocationView(Guid DeliveryStateId, Guid? PackageId, string PlatformCode, string PlatformName, string? PackageNumber, string Status, string? ErrorCode, string Mode, string Instructions, bool CanAct, string? BlockedReason, DateTimeOffset UpdatedAt);

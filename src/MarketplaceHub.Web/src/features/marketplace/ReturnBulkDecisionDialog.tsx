@@ -10,6 +10,8 @@ import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../
 import type { ReturnReasonSummary } from './return-reference-presentation'
 import { bulkApproveConfirmText, bulkApproveFailureText } from './return-bulk-approve'
 import { isActionableReturnLine } from './return-claim-visibility'
+import { finalizedWithFor, type FinalizedWith } from './return-finalized-with'
+import { ReturnFinalizedWithChoice } from './ReturnFinalizedWithChoice'
 
 export type BulkDecisionLine = {
   id: string
@@ -38,7 +40,11 @@ export type BulkDecisionItem = {
   /** The reason the customer gave for the return; null when the marketplace sent none. */
   reason: ReturnReasonSummary | null
   lines: BulkDecisionLine[]
+  /** What the customer asked for (REFUND or CHANGE); Hepsiburada only, null when the claim does not say. */
+  customerRequest?: string | null
 }
+
+const isHepsiburada = (item: BulkDecisionItem) => item.platformCode.toUpperCase() === 'HEPSIBURADA'
 
 type Outcome = { id: string; ok: boolean; message: string }
 type RejectReason = { id: string; name: string; evidenceRequired: boolean }
@@ -64,6 +70,10 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   const approving = mode === 'APPROVE'
   const [stockKeys, setStockKeys] = useState<string[]>([])
   const [stockUnits, setStockUnits] = useState<Record<string, number>>({})
+  // Hepsiburada approves each claim as a refund or an exchange: preselected from what the customer asked for, and
+  // chosen by hand where the claim does not say (nothing is sent until every Hepsiburada claim has its choice).
+  const [finalized, setFinalized] = useState<Record<string, FinalizedWith | ''>>(() => Object.fromEntries(items.filter(isHepsiburada).map(item => [item.id, finalizedWithFor(item.customerRequest)])))
+  const finalizedMissing = approving && items.some(item => isHepsiburada(item) && !finalized[item.id])
   const [reasonId, setReasonId] = useState('')
   const [explanation, setExplanation] = useState('')
   const [running, setRunning] = useState(false)
@@ -111,7 +121,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
   })
   const usableReasons = (reasons.data ?? []).filter(reason => !reason.evidenceRequired)
   const canReject = singlePlatform && reasonId !== '' && explanation.trim().length > 0 && explanation.trim().length <= 500
-  const canSubmit = items.length > 0 && (approving || canReject)
+  const canSubmit = items.length > 0 && (approving ? !finalizedMissing : canReject)
 
   async function run() {
     setRunning(true)
@@ -122,7 +132,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
       try {
         const stockLines = (allGroups[index] ?? []).filter(group => stockKeys.includes(group.key) && group.mapped).flatMap(group => allocateStock(group.lines, unitsFor(group)))
         const body = JSON.stringify(approving
-          ? { action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], finalizedWith: item.platformCode.toUpperCase() === 'HEPSIBURADA' ? 'Refund' : null, stockLines }
+          ? { action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], finalizedWith: isHepsiburada(item) ? finalized[item.id] || null : null, stockLines }
           : { action: 'REJECT', reasonCode: reasonId, explanation: explanation.trim(), evidenceAssetIds: [], finalizedWith: null })
         const answer = await sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', item.id, item.version, body), key => hubApi<ApprovedReturn>(`/returns/${item.id}/actions`, {
           method: 'POST',
@@ -183,7 +193,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
     onClose={() => { if (!running) onClose() }}
     foot={finished
       ? <><span className="rr-note" /><button type="button" className="rr-btn rr-primary" onClick={onClose}>Kapat</button></>
-      : <><span className="rr-note">{approving && stockTotal > 0 && <>Stoğa Eklenecek: <b>+{stockTotal.toLocaleString('tr-TR')} adet</b></>}</span><button type="button" className="rr-btn" onClick={onClose} disabled={running}>Vazgeç</button><button type="button" className={`rr-btn ${approving ? 'rr-primary' : 'rr-solid'}`} disabled={running || !canSubmit} onClick={() => approving ? setConfirming(true) : void run()}>{running ? `Gönderiliyor… (${outcomes.length}/${items.length})` : approving ? `${items.length} İadeyi Onayla` : `${items.length} İadeyi Reddet`}</button></>}
+      : <><span className="rr-note">{finalizedMissing ? <>Hepsiburada iadeleri için <b>Para İadesi / Değişim</b> seçin.</> : approving && stockTotal > 0 && <>Stoğa Eklenecek: <b>+{stockTotal.toLocaleString('tr-TR')} adet</b></>}</span><button type="button" className="rr-btn" onClick={onClose} disabled={running}>Vazgeç</button><button type="button" className={`rr-btn ${approving ? 'rr-primary' : 'rr-solid'}`} disabled={running || !canSubmit} onClick={() => approving ? setConfirming(true) : void run()}>{running ? `Gönderiliyor… (${outcomes.length}/${items.length})` : approving ? `${items.length} İadeyi Onayla` : `${items.length} İadeyi Reddet`}</button></>}
   >
     {finished && <div className={`rr-callout${failed.length ? ' rr-danger' : ''}`}><RrIcon name={failed.length ? 'alert' : 'info'} /><span><b>{failed.length === 0 ? `${outcomes.length} iade ${approving ? 'onaylandı' : 'reddedildi'}.` : `${outcomes.length - failed.length} iade ${approving ? 'onaylandı' : 'reddedildi'}, ${failed.length} iade ${approving ? 'onaylanamadı' : 'reddedilemedi'}.`}</b> Ayrıntılar bildirimde listelendi.</span></div>}
     {mixedReject && <div className="rr-callout rr-danger"><RrIcon name="alert" /><span>Toplu ret için tek bir pazar yerinin iadelerini seçin. Ret nedenleri pazar yerine göre değişir.</span></div>}
@@ -219,6 +229,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
           {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can read the failure */}
           {state ? <RrBadge label={state} /> : <span className="rr-reason-tip" tabIndex={0}><RrBadge label="İşlem Tamamlanamadı" tone="bad" /><span className="rr-reason-pop" role="tooltip"><b>İşlem Tamamlanamadı</b>{outcome?.message}</span></span>}
         </header>
+        {approving && isHepsiburada(item) && <div className="rr-finalized-row"><ReturnFinalizedWithChoice value={finalized[item.id] ?? ''} customerRequest={item.customerRequest} disabled={running || finished} subject={item.orderNumber} onChange={value => setFinalized(current => ({ ...current, [item.id]: value }))} /></div>}
         <section>
           {products.map(({ group, line }) => {
             const facts = [['Barkod', line.barcode], ['Stok Kodu', line.sku], ['Model Kodu', line.modelCode], ['Renk', line.color], ['Beden', line.size]].filter((fact): fact is [string, string] => Boolean(fact[1]))

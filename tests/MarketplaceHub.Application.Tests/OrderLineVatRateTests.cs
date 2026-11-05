@@ -90,12 +90,32 @@ public sealed class OrderLineVatRateTests
     [InlineData("PTTAVM", """{"LineItemId":"1","KdvOrani":"on"}""", true)]
     // Shopify reports no line VAT rate; its lines are not judged by this gate.
     [InlineData("SHOPIFY", """{"id":"1"}""", false)]
-    // A line without a raw snapshot carries the rate it was stored with.
-    [InlineData("HEPSIBURADA", null, false)]
-    [InlineData("N11", "{}", false)]
-    [InlineData("PAZARAMA", "not json", false)]
+    // O1 (5 Nov 2026): a line without a raw snapshot, with an empty one or one that cannot be read reports no rate:
+    // unknown, never the rate it was stored with (0 included).
+    [InlineData("HEPSIBURADA", null, true)]
+    [InlineData("N11", "{}", true)]
+    [InlineData("PAZARAMA", "not json", true)]
+    [InlineData("TRENDYOL", "[]", true)]
     public void TheInvoiceGateStopsALineWhoseMarketplaceDidNotReportItsVatRate(string platformCode, string? snapshot, bool unknown) =>
         Assert.Equal(unknown, InvoiceIssuePolicy.IsLineVatRateUnknown(platformCode, snapshot));
+
+    // O1: an unreported rate is taken from the product card; with neither, the line has no rate and nothing is issued.
+    [Theory]
+    [InlineData("""{"id":"1","vatRate":10}""", null, 10.0)]
+    [InlineData("""{"id":"1","vatRate":10}""", 20.0, 10.0)]
+    [InlineData("""{"id":"1"}""", 20.0, 20.0)]
+    [InlineData(null, 1.0, 1.0)]
+    [InlineData("""{"id":"1"}""", null, null)]
+    [InlineData(null, null, null)]
+    public void AnUnreportedLineRateComesFromTheProductCardAndIsNeverZeroByDefault(string? snapshot, double? cardRate, double? expected)
+    {
+        var resolved = InvoiceIssuePolicy.ResolveLineVatRate("HEPSIBURADA", snapshot, storedLineVatRate: snapshot is null ? 0m : 10m, productCardVatRate: (decimal?)cardRate);
+        Assert.Equal((decimal?)expected, resolved);
+    }
+
+    [Fact]
+    public void TheRefusalSaysTheRateIsUnknownOnTheCardToo() =>
+        Assert.Contains("KDV Oranı Bilinmiyor", InvoiceIssuePolicy.LineVatRateUnknownFor("TRENDYOL").Message, StringComparison.Ordinal);
 
     [Theory]
     [InlineData("TRENDYOL", "Trendyol")]

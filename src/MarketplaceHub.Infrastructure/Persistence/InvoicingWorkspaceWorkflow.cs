@@ -290,9 +290,13 @@ public sealed partial class InvoicingBillingService
         var packageTotal = orderTotals.PayableAmount;
         var orderGross = orderTotals.GrossAmount;
         var orderDiscount = orderTotals.DiscountAmount;
+        // A line the marketplace reported no VAT rate for takes its product card's rate (InvoiceLineVatRates); with
+        // neither, the preview still shows the line but cannot be confirmed ("KDV Oranı Bilinmiyor").
+        var lineVatRates = await InvoiceLineVatRates.ResolveAsync(db, tenantId, marketplace.PlatformCode, order.ConnectionId, activeLines, cancellationToken);
+        var vatRateKnown = InvoiceLineVatRates.TryApply(activeLines, lineVatRates, out _);
         if (!InvoiceAmounts.TryCalculatePackage(
             activeLines.Select(line => new InvoicePackageLineSource(line.Id, line.TitleSnapshot, line.Sku,
-                remainingByLine[line.Id], line.UnitPrice, line.VatRate)).ToArray(),
+                remainingByLine[line.Id], line.UnitPrice, lineVatRates.GetValueOrDefault(line.Id) ?? line.VatRate)).ToArray(),
             orderGross, orderDiscount, packageTotal, out var calculated, out var calculationError))
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_TOTAL_MISMATCH", calculationError ?? "Sipariş ürün toplamı ile sipariş/paket toplamı eşleşmiyor.", 422);
 
@@ -363,7 +367,7 @@ public sealed partial class InvoicingBillingService
             canCreate = false;
             blockedReason = issueRefusal.Message;
         }
-        else if (existing is null && activeLines.Any(line => InvoiceIssuePolicy.IsLineVatRateUnknown(marketplace.PlatformCode, line.SourceSnapshotJson)))
+        else if ((existing is null || CanRetryPreProviderFailure(existing.Status, existing.LastErrorCode, existing.ExternalReference)) && !vatRateKnown)
         {
             canCreate = false;
             blockedReason = InvoiceIssuePolicy.LineVatRateUnknownFor(marketplace.PlatformCode).Message;
@@ -416,7 +420,7 @@ public sealed partial class InvoicingBillingService
             Marketplace = new { marketplace.PlatformCode, marketplace.Environment, marketplace.SettingsJson },
             Provider = new { provider.PlatformCode, provider.Environment },
             Allocations = allocations.OrderBy(item => item.PackageId).ThenBy(item => item.OrderLineId).ThenBy(item => item.SourceEventId).Select(item => new { item.PackageId, item.OrderLineId, item.AllocatedQuantity, item.SourceEventId }),
-            SourceLines = sourceLines.Select(line => new { line.Id, line.TitleSnapshot, line.Sku, line.OrderedQuantity, line.CancelledQuantity, line.UnitPrice, line.VatRate }),
+            SourceLines = sourceLines.Select(line => new { line.Id, line.TitleSnapshot, line.Sku, line.OrderedQuantity, line.CancelledQuantity, line.UnitPrice, line.VatRate, InvoicedVatRate = lineVatRates.GetValueOrDefault(line.Id) }),
             Existing = orderInvoices.Select(item => new { item.Id, item.PackageId, item.Status, item.Version, item.InvoiceNumber, item.ExternalReference, item.LastErrorCode, item.OrderFiscalGuarded }),
             ManualDocument = manualDocument,
             includeInternetSalesInfo,

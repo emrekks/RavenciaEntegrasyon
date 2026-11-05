@@ -8,17 +8,19 @@ public enum InvoiceDeliveryRetryNeed
     None,
     // The provider holds the invoice but its document was never stored: fetch it from E-Faturam, then deliver.
     FetchDocument,
-    // The document is stored, the latest delivery job used up its retries on retryable errors (Dead), and nothing was
-    // sent that could have reached the marketplace: deliver again. A refused (Blocked) one stays with the user.
+    // The document is stored and nothing that could have reached the marketplace is in flight: deliver again.
     Deliver
 }
 
 /// <summary>
-/// The scheduler's retry of issued (Accepted or MarketplaceFailed) sale invoices that are not on the marketplace yet.
-/// Each attempt is a new job with its own dedupe key; the delivery job keeps its own state machine, so a package whose
-/// delivery STARTED, was SUBMITTED or CONFIRMED is never written twice. Attempts back off (1 h, 3 h, 6 h, 12 h) and
-/// stop after <see cref="MaxAttempts"/>; a manual "Tekrar Dene" runs the same path and starts the count again.
-/// No new invoice is ever issued here: only the stored invoice's document and its delivery are retried.
+/// The retry of issued sale invoices that are not on the marketplace yet: Accepted or MarketplaceFailed, and
+/// MarketplacePending with no delivery state at all (the delivery stopped before anything was sent, e.g. its read of
+/// the marketplace failed). Each attempt is a new job with its own dedupe key; the delivery job keeps its own state
+/// machine, so a package whose delivery STARTED, was SUBMITTED or CONFIRMED is never written twice. The scheduler's
+/// attempts back off (15 min, 1 h, 6 h, 24 h) and stop after <see cref="MaxAttempts"/>; the invoice then stays
+/// retryable by hand ("Tekrar Gönder"), which runs the same path and starts the count again. A delivery the marketplace
+/// refused (a FAILED state) is never retried by the scheduler, only by the owner.
+/// No new invoice is ever issued here: only the stored invoice's document and its link are sent.
 /// </summary>
 public static class InvoiceDeliveryAutoRetryPolicy
 {
@@ -26,8 +28,12 @@ public static class InvoiceDeliveryAutoRetryPolicy
     public const string Scheduled = "SCHEDULED";
     public const string InProgress = "IN_PROGRESS";
     public const string Exhausted = "EXHAUSTED";
+    // Only the owner's "Tekrar Gönder" sends it again (a refused delivery): no automatic attempt is planned.
+    public const string ManualOnly = "MANUAL_ONLY";
     public const string NotApplicableCode = "INVOICE_DELIVERY_RETRY_NOT_APPLICABLE";
     public const string AlreadyRunningCode = "INVOICE_DELIVERY_RETRY_RUNNING";
+    // A delivery state the owner's retry reopened (FAILED → RETRYABLE_FAILURE): the job reads the package first again.
+    public const string OwnerRetryCode = "OWNER_REQUESTED_DELIVERY_RETRY";
 
     // An invoice touched this recently may still have its own chain (reconcile, fetch, delivery) in flight.
     public static readonly TimeSpan SettleDelay = TimeSpan.FromMinutes(5);
@@ -35,7 +41,7 @@ public static class InvoiceDeliveryAutoRetryPolicy
     // The same window as the never-queued delivery recovery: an old invoice is never sent by surprise.
     public static TimeSpan Window => InvoiceMarketplaceAutoDeliveryPolicy.NeverQueuedRecoveryWindow;
 
-    private static readonly TimeSpan[] Delays = [TimeSpan.FromHours(1), TimeSpan.FromHours(3), TimeSpan.FromHours(6), TimeSpan.FromHours(12)];
+    private static readonly TimeSpan[] Delays = [TimeSpan.FromMinutes(15), TimeSpan.FromHours(1), TimeSpan.FromHours(6), TimeSpan.FromHours(24)];
 
     // The wait after the given (1-based) attempt; null after the last one.
     public static TimeSpan? DelayAfter(int attempt) =>
@@ -47,23 +53,40 @@ public static class InvoiceDeliveryAutoRetryPolicy
     public static bool StateAllowsRetry(string? deliveryStateStatus) =>
         deliveryStateStatus is "REVOKED" or "RETRYABLE_FAILURE";
 
+    // The owner may also send again a delivery the marketplace refused (FAILED): the job reads the package first.
+    public static bool StateAllowsOwnerRetry(string? deliveryStateStatus) =>
+        StateAllowsRetry(deliveryStateStatus) || deliveryStateStatus is "FAILED";
+
+    /// <summary>
+    /// What the invoice needs. hadEndedDeliveryJob: the latest delivery job ended (any end) without an active one;
+    /// latestDeliveryJobDead: it used up its retries on retryable errors. owner: the owner's own "Tekrar Gönder", which
+    /// also follows a refused delivery and a delivery that was skipped on purpose (its own gates still apply).
+    /// </summary>
     public static InvoiceDeliveryRetryNeed Need(
         InvoiceStatus status,
         bool hasProviderReference,
         bool hasDocument,
         IReadOnlyCollection<string> deliveryStateStatuses,
         bool hadEndedDeliveryJob,
-        string? lastErrorCode)
+        string? lastErrorCode,
+        bool owner = false,
+        bool latestDeliveryJobDead = true)
     {
-        if (status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed) || !hasProviderReference) return InvoiceDeliveryRetryNeed.None;
-        if (deliveryStateStatuses.Any(state => !StateAllowsRetry(state))) return InvoiceDeliveryRetryNeed.None;
+        if (!hasProviderReference) return InvoiceDeliveryRetryNeed.None;
+        // Issued, delivery started, but nothing at all was sent: no delivery state on any package.
+        var pendingWithoutState = status == InvoiceStatus.MarketplacePending && deliveryStateStatuses.Count == 0;
+        if (status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplaceFailed) && !pendingWithoutState) return InvoiceDeliveryRetryNeed.None;
+        if (deliveryStateStatuses.Any(state => !(owner ? StateAllowsOwnerRetry(state) : StateAllowsRetry(state)))) return InvoiceDeliveryRetryNeed.None;
         if (!hasDocument) return InvoiceDeliveryRetryNeed.FetchDocument;
+        if (owner) return InvoiceDeliveryRetryNeed.Deliver;
         // The delivery was skipped on purpose (switch off, platform without an API, missing package): nothing to retry.
         if (InvoiceMarketplaceAutoDeliveryPolicy.IsSkipCode(lastErrorCode)) return InvoiceDeliveryRetryNeed.None;
+        // Nothing was sent and its delivery job ended (refused before writing, or out of retries): deliver again.
+        if (pendingWithoutState) return hadEndedDeliveryJob ? InvoiceDeliveryRetryNeed.Deliver : InvoiceDeliveryRetryNeed.None;
         // A failed invoice with a REVOKED or retryable state is resent by the five-minute delivery recovery already,
         // and one that never had a delivery job by the never-queued recovery.
         if (status == InvoiceStatus.MarketplaceFailed && deliveryStateStatuses.Count > 0) return InvoiceDeliveryRetryNeed.None;
-        return hadEndedDeliveryJob ? InvoiceDeliveryRetryNeed.Deliver : InvoiceDeliveryRetryNeed.None;
+        return hadEndedDeliveryJob && latestDeliveryJobDead ? InvoiceDeliveryRetryNeed.Deliver : InvoiceDeliveryRetryNeed.None;
     }
 
     // The scheduler runs the invoice scan every half hour (ScheduledJobProducer.InvoiceDueScanIntervalSeconds); an
@@ -78,7 +101,8 @@ public static class InvoiceDeliveryAutoRetryPolicy
     public static bool InWindow(DateTimeOffset issuedAt, DateTimeOffset now) => issuedAt >= now - Window;
 
     // SCHEDULED while automatic attempts remain inside the window, IN_PROGRESS while a fetch or delivery job of the
-    // invoice runs, EXHAUSTED once the attempts are used up or the window has passed.
+    // invoice runs, EXHAUSTED once the attempts are used up or the window has passed, MANUAL_ONLY when only the owner
+    // may send it again (automaticNeed None).
     public static InvoiceDeliveryRetryView Describe(
         int attempts,
         DateTimeOffset? nextAttemptAt,
@@ -88,10 +112,12 @@ public static class InvoiceDeliveryAutoRetryPolicy
         InvoiceDeliveryRetryNeed need,
         string? lastErrorCode,
         DateTimeOffset now,
-        int scanIntervalSeconds)
+        int scanIntervalSeconds,
+        bool automatic = true)
     {
         var needCode = need == InvoiceDeliveryRetryNeed.FetchDocument ? "FETCH_DOCUMENT" : "DELIVER";
         if (hasActiveJob) return new(InProgress, attempts, MaxAttempts, null, lastErrorCode, needCode);
+        if (!automatic) return new(ManualOnly, attempts, MaxAttempts, null, lastErrorCode, needCode);
         if (attempts >= MaxAttempts || !InWindow(issuedAt, now)) return new(Exhausted, attempts, MaxAttempts, null, lastErrorCode, needCode);
         var due = nextAttemptAt ?? now;
         if (due < updatedAt + SettleDelay) due = updatedAt + SettleDelay;

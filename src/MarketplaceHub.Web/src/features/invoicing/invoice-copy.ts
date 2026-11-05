@@ -29,14 +29,16 @@ export function invoiceReopenNote(platformCodes: readonly string[]) {
 }
 
 /** The scheduler's retry of an issued invoice's document fetch and marketplace delivery (InvoiceDeliveryAutoRetryPolicy). */
-export type InvoiceDeliveryRetry = { state: 'SCHEDULED' | 'IN_PROGRESS' | 'EXHAUSTED' | string; attempts: number; maxAttempts: number; nextAttemptAt: string | null; lastErrorCode: string | null; need: string }
+export type InvoiceDeliveryRetry = { state: 'SCHEDULED' | 'IN_PROGRESS' | 'EXHAUSTED' | 'MANUAL_ONLY' | string; attempts: number; maxAttempts: number; nextAttemptAt: string | null; lastErrorCode: string | null; need: string }
 
 /** What the retry does next, in Istanbul time; null when nothing is retried. */
 export function invoiceDeliveryRetryText(retry: InvoiceDeliveryRetry | null | undefined) {
   if (!retry) return null
   if (retry.state === 'IN_PROGRESS') return 'Yeniden deneniyor…'
   if (retry.state === 'SCHEDULED') return retry.nextAttemptAt ? `Yeniden denenecek: ${formatDateTime(retry.nextAttemptAt)}` : 'Yeniden denenecek'
-  return 'Denemeler bitti — Tekrar Dene ile elle deneyin'
+  // A delivery the marketplace refused (or one stopped before sending) is sent again only by the owner.
+  if (retry.state === 'MANUAL_ONLY') return 'Pazaryerine iletilmedi — Tekrar Gönder ile gönderin'
+  return 'Denemeler bitti — Tekrar Gönder ile elle gönderin'
 }
 
 /** "2/5 deneme" with the last error, for the line under the retry state. */
@@ -55,7 +57,7 @@ export function invoiceDetailActionLabel(action: string, status?: string) {
     STAGE_CAPABILITY_PROBE: 'Test Ortamında Mali Deneme Yap',
     RECONCILE: 'Durumu Uzlaştır',
     DELIVER: 'Pazaryerine Fatura Linkini İlet',
-    RETRY_DELIVERY: 'Tekrar Dene',
+    RETRY_DELIVERY: 'Tekrar Gönder',
     CANCEL: 'E-Arşiv İptal İsteği Gönder',
     VALIDATE: 'Yerel Doğrula',
   } as Record<string, string>)[action] ?? readable(action)

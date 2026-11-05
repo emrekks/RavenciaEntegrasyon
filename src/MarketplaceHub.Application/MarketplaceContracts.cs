@@ -769,7 +769,8 @@ public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrde
 // One status change of a return line as the marketplace keeps it (Trendyol getClaimItemAudits).
 public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
 // ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.
-public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null);
+// CustomerRequest: what the customer asked for (ReturnCustomerRequestPolicy: REFUND or CHANGE); only Hepsiburada says it, null = unknown.
+public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null);
 public sealed record ReturnActionResult(string ExternalClaimId, string Status, string? ExternalOperationId);
@@ -1469,7 +1470,9 @@ public sealed record ReturnListView(
     // The return's amounts as the marketplace wrote them for its lines, in Currency; a figure a line lacks stays null.
     ReturnAmountsView? ReturnAmounts = null,
     // Set when a claim is shown as more than one card (its accepted lines apart from the waiting ones).
-    string? RowKey = null);
+    string? RowKey = null,
+    // What the customer asked for (REFUND or CHANGE, ReturnCustomerRequestPolicy); null when unknown. Hepsiburada only.
+    string? CustomerRequest = null);
 public sealed record ReturnListQuery(
     string? Status = null,
     string? Customer = null,
@@ -1540,7 +1543,9 @@ public sealed record ReturnDetailView(
     string? CargoTrackingLink = null,
     bool ActionDueAtEstimated = false,
     // The return's amounts as the marketplace wrote them for its lines, in Currency; a figure a line lacks stays null.
-    ReturnAmountsView? ReturnAmounts = null);
+    ReturnAmountsView? ReturnAmounts = null,
+    // What the customer asked for (REFUND or CHANGE, ReturnCustomerRequestPolicy); null when unknown. Hepsiburada only.
+    string? CustomerRequest = null);
 public sealed record ReturnDecisionCommand(string Action, string? ReasonCode, string? Explanation, IReadOnlyList<Guid>? EvidenceAssetIds, IReadOnlyList<Guid>? ReturnLineIds = null, string? FinalizedWith = null, bool AddToStock = false, IReadOnlyList<Guid>? StockLineIds = null, IReadOnlyList<ReturnStockLineCommand>? StockLines = null);
 public sealed record ReturnStockLineCommand(Guid ReturnLineId, decimal Quantity);
 public sealed record ReturnDispositionCommand(Guid ReturnLineId, string Disposition, decimal Quantity, string Reason);

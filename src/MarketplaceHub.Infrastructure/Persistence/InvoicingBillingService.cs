@@ -739,6 +739,7 @@ public sealed partial class InvoicingBillingService(
                 .ToListAsync(cancellationToken))
                 .ToDictionary(issue => issue.DedupeKey, issue => (issue.Code, issue.Summary), StringComparer.Ordinal);
         var deliveryRetries = await InvoiceDeliveryRetryReader.LoadAsync(db, tenantId, invoiceIds, timeProvider.GetUtcNow(), cancellationToken);
+        var returnDocumentNotes = await InvoiceAdjustmentTracking.ReturnDocumentNotesAsync(db, tenantId, invoiceIds, cancellationToken);
 
         return candidates.Select(candidate =>
         {
@@ -847,7 +848,8 @@ public sealed partial class InvoicingBillingService(
                 orderSnapshotsForItem?.ConnectionId,
                 orderSnapshotsForItem?.ExternalOrderId,
                 packageDetailsForItem?.ExternalPackageId ?? candidate.Package.ExternalPackageId,
-                candidate.Invoice is null ? null : deliveryRetries.GetValueOrDefault(candidate.Invoice.Id)?.View);
+                candidate.Invoice is null ? null : deliveryRetries.GetValueOrDefault(candidate.Invoice.Id)?.View,
+                candidate.Invoice is null ? null : returnDocumentNotes.GetValueOrDefault(candidate.Invoice.Id));
         }).ToList();
     }
 
@@ -1165,7 +1167,9 @@ public sealed partial class InvoicingBillingService(
             if (!TryResolveWholeOrderInvoiceLines(orderLines, allocations, activePackagesForOrder.Select(item => item.Id).ToArray(), out orderLines, out var allocationError))
                 return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_LINE_ALLOCATION_INVALID", allocationError!, 422);
         }
-        if (orderLines.Any(line => InvoiceIssuePolicy.IsLineVatRateUnknown(orderPlatform, line.SourceSnapshotJson)))
+        // A line the marketplace reported no VAT rate for takes its product card's rate; with neither, nothing is issued.
+        var lineVatRates = await InvoiceLineVatRates.ResolveAsync(db, tenantId, orderPlatform, order.ConnectionId, orderLines, cancellationToken);
+        if (!InvoiceLineVatRates.TryApply(orderLines, lineVatRates, out var vatRates))
             return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.LineVatRateUnknownFor(orderPlatform));
         var now = timeProvider.GetUtcNow(); var invoice = new Invoice
         {
@@ -1218,7 +1222,7 @@ public sealed partial class InvoicingBillingService(
             line.Sku,
             packageQuantities?.GetValueOrDefault(line.Id) ?? line.OrderedQuantity - line.CancelledQuantity,
             line.UnitPrice,
-            line.VatRate)).ToArray();
+            vatRates[line.Id])).ToArray();
         if (!InvoiceAmounts.TryCalculatePackage(sourceLines, packageGrossAmount, packageDiscountAmount, remotePayable, out var amounts, out var calculationError))
             return Invalid<InvoiceDetailView>("orderId", calculationError ?? "Fatura kalemleri paket tutarıyla uyuşmuyor.");
         var lines = amounts!.Lines.Select((line, index) => new InvoiceLine
@@ -1291,7 +1295,8 @@ public sealed partial class InvoicingBillingService(
         var attempts = await db.InvoiceSubmissionAttempts.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new InvoiceAttemptView(x.AttemptNumber, x.Outcome, x.ErrorCode, x.StartedAt, x.CompletedAt)).ToListAsync(cancellationToken);
         var deliveries = await db.MarketplaceDeliveries.AsNoTracking().Where(x => x.TenantId == tenantId && x.InvoiceId == id).OrderBy(x => x.AttemptNumber).Select(x => new MarketplaceDeliveryView(x.Id, x.DeliveryType, x.Status, x.ExternalReference, x.ErrorCode, x.CreatedAt)).ToListAsync(cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId, cancellationToken);
-        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, DetailInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection), await LinkRevocationViewsAsync(invoice, cancellationToken), await DeliveryRetryViewAsync(invoice, cancellationToken)));
+        return ServiceResult<InvoiceDetailView>.Ok(new(invoice.Id, invoice.OrderId, orderNumber, invoice.PackageId, invoice.ProviderConnectionId, invoice.InvoiceType, invoice.SequencePurpose, Status(invoice.Status), invoice.Currency, invoice.TaxExclusiveTotal, invoice.DiscountTotal, invoice.TaxTotal, invoice.PayableTotal, invoice.Note, DetailInvoiceNumber(invoice.InvoiceNumber, marketplaceInvoiceNumber), invoice.EttnUuid, invoice.DueAt, invoice.IssuedAt, invoice.LastErrorCode, lines, documents, attempts, deliveries, await AllowedActions(invoice, connection, cancellationToken), invoice.Version, connection is null || IntegrationRuntimePolicy.RequiresSensitiveConfirmation(connection), await LinkRevocationViewsAsync(invoice, cancellationToken), await DeliveryRetryViewAsync(invoice, cancellationToken),
+            (await InvoiceAdjustmentTracking.ReturnDocumentNotesAsync(db, tenantId, [invoice.Id], cancellationToken)).GetValueOrDefault(invoice.Id)));
     }
 
     public async Task<ServiceResult<InvoiceDetailView>> ValidateAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken)
@@ -1320,15 +1325,24 @@ public sealed partial class InvoicingBillingService(
         if (lines.Any(x => x.UnitSnapshot == "UNSPECIFIED" || x.VatRate != 0 && x.VatAmount <= 0)) failures.Add("FISCAL_CALCULATION_AUTHORITY_REQUIRED");
         // D10: a 0% line carries no VAT, not even a rounding kuruş.
         if (lines.Any(x => x.VatRate == 0 && x.VatAmount != 0)) failures.Add("INVOICE_ZERO_RATE_VAT_INVALID");
-        // A line whose VAT rate the marketplace did not report must not be issued at an inferred rate or at 0%.
+        // A line whose VAT rate the marketplace did not report must not be issued at an inferred rate or at 0%: only at
+        // its product card's rate (InvoiceLineVatRates), and only when the draft carries exactly that rate.
         var sourceLineIds = lines.Where(x => x.OrderLineId != null).Select(x => x.OrderLineId!.Value).ToList();
-        var sourcePlatform = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
-            .Join(db.PlatformConnections.AsNoTracking(), x => new { x.TenantId, x.ConnectionId }, x => new { x.TenantId, ConnectionId = x.Id }, (_, connection) => connection.PlatformCode)
+        var source = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
+            .Join(db.PlatformConnections.AsNoTracking(), x => new { x.TenantId, x.ConnectionId }, x => new { x.TenantId, ConnectionId = x.Id }, (order, connection) => new { connection.PlatformCode, order.ConnectionId })
             .SingleOrDefaultAsync(cancellationToken);
-        if (sourceLineIds.Count > 0
-            && (await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && sourceLineIds.Contains(x.Id)).Select(x => x.SourceSnapshotJson).ToListAsync(cancellationToken))
-                .Any(snapshot => InvoiceIssuePolicy.IsLineVatRateUnknown(sourcePlatform, snapshot)))
-            failures.Insert(0, InvoiceIssuePolicy.LineVatRateUnknownCode);
+        if (sourceLineIds.Count > 0 && source is not null)
+        {
+            var sourceLines = await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && sourceLineIds.Contains(x.Id)).ToListAsync(cancellationToken);
+            var unreported = sourceLines.Where(x => InvoiceIssuePolicy.IsLineVatRateUnknown(source.PlatformCode, x.SourceSnapshotJson)).Select(x => x.Id).ToHashSet();
+            if (unreported.Count > 0)
+            {
+                var resolvedRates = await InvoiceLineVatRates.ResolveAsync(db, tenantId, source.PlatformCode, source.ConnectionId, sourceLines, cancellationToken);
+                if (lines.Any(line => line.OrderLineId is { } orderLineId && unreported.Contains(orderLineId)
+                        && resolvedRates.GetValueOrDefault(orderLineId) is var rate && (rate is null || rate != line.VatRate)))
+                    failures.Insert(0, InvoiceIssuePolicy.LineVatRateUnknownCode);
+            }
+        }
         if (invoice.Note != InvoiceAmounts.TurkishInvoiceNote(invoice.PayableTotal)) failures.Add("INVOICE_NOTE_MISMATCH");
         var providerConnection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId, cancellationToken);
         if (providerConnection is null) failures.Add("ACTIVE_CONNECTION_REQUIRED");
@@ -1492,11 +1506,16 @@ public sealed partial class InvoicingBillingService(
     public Task<ServiceResult<Guid>> EnqueueDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, CancellationToken cancellationToken) =>
         EnqueueDeliveryAsync(tenantId, id, idempotencyKey, correlationId, bulk: false, cancellationToken);
 
-    private async Task<ServiceResult<Guid>> EnqueueDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, bool bulk, CancellationToken cancellationToken)
+    // ownerRetry: the owner's "Tekrar Gönder" (RetryDeliveryAsync), checked by InvoiceDeliveryRetryReader. It also sends a
+    // MarketplacePending invoice that sent nothing (no delivery state), and reopens a delivery the marketplace refused
+    // (FAILED) so the job reads the package again before writing.
+    private async Task<ServiceResult<Guid>> EnqueueDeliveryAsync(Guid tenantId, Guid id, string idempotencyKey, string correlationId, bool bulk, CancellationToken cancellationToken, bool ownerRetry = false)
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
-        if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
+        var pendingWithoutState = ownerRetry && invoice.Status == InvoiceStatus.MarketplacePending
+            && !await db.MarketplaceDeliveryStates.AsNoTracking().AnyAsync(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id, cancellationToken);
+        if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode) && !pendingWithoutState) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
         if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken)) return ServiceResult<Guid>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Pazaryerine iletim için kalıcı HTTPS fatura bağlantısı henüz hazır değil.", 409);
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
@@ -1532,6 +1551,11 @@ public sealed partial class InvoicingBillingService(
                 state.Version++;
             }
         }
+        // The owner sends again a delivery the marketplace refused: the state is reopened as retryable (recorded in its
+        // history), and the job reads the package before it writes, so an invoice that is there is not sent twice.
+        if (ownerRetry)
+            foreach (var state in deliveryStates.Where(state => state.Status == "FAILED"))
+                InvoiceAdjustmentTracking.AppendDeliveryHistory(db, state, "RETRYABLE_FAILURE", state.ExternalReference, InvoiceDeliveryAutoRetryPolicy.OwnerRetryCode, timeProvider.GetUtcNow());
         invoice.Status = InvoiceStatus.MarketplacePending; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
         // The reason the automatic delivery was skipped no longer holds once the user sends it.
         if (InvoiceMarketplaceAutoDeliveryPolicy.IsSkipCode(invoice.LastErrorCode)) invoice.LastErrorCode = null;
@@ -1562,9 +1586,10 @@ public sealed partial class InvoicingBillingService(
         var entry = (await InvoiceDeliveryRetryReader.LoadAsync(db, tenantId, [invoice.Id], now, cancellationToken)).GetValueOrDefault(invoice.Id);
         if (entry is null) return ServiceResult<Guid>.Fail(InvoiceDeliveryAutoRetryPolicy.NotApplicableCode, "Bu faturada yeniden denenecek bir belge alma veya pazaryerine iletim yok.", 409);
         if (entry.HasActiveJob) return ServiceResult<Guid>.Fail(InvoiceDeliveryAutoRetryPolicy.AlreadyRunningCode, "Bu faturanın belge alma veya iletim işi zaten sürüyor; bitmesini bekleyin.", 409);
-        if (entry.Need == InvoiceDeliveryRetryNeed.Deliver)
+        if (entry.EffectiveOwnerNeed == InvoiceDeliveryRetryNeed.Deliver)
         {
-            var delivery = await EnqueueDeliveryAsync(tenantId, id, retryKey, correlationId, bulk: false, cancellationToken);
+            // Only the issued invoice's stored link is sent again; no invoice is issued here.
+            var delivery = await EnqueueDeliveryAsync(tenantId, id, retryKey, correlationId, bulk: false, cancellationToken, ownerRetry: true);
             if (!delivery.Succeeded) return delivery;
             InvoiceDeliveryRetryReader.RecordManualAttempt(invoice, now);
             await db.SaveChangesAsync(cancellationToken);
@@ -1644,6 +1669,10 @@ public sealed partial class InvoicingBillingService(
             if (retry is { HasActiveJob: false }) actions.Add(RetryDeliveryAction);
             else if (permanentLinkReady && allConnectionsReady) actions.Add("DELIVER");
         }
+        // Issued, delivery started, nothing sent and its job ended: "Tekrar Gönder" sends the stored link again.
+        else if (invoice.Status == InvoiceStatus.MarketplacePending
+            && (await InvoiceDeliveryRetryReader.LoadAsync(db, invoice.TenantId, [invoice.Id], timeProvider.GetUtcNow(), cancellationToken)).GetValueOrDefault(invoice.Id) is { HasActiveJob: false })
+            actions.Add(RetryDeliveryAction);
         if (invoice.InvoiceType == "EARSIVFATURA" && invoice.Status is (InvoiceStatus.Accepted or InvoiceStatus.Completed or InvoiceStatus.AdjustmentRequired or InvoiceStatus.CancellationRejected or InvoiceStatus.CancellationPending)
             && InvoiceCancellationOutcomePolicy.CanRequest(invoice.Status, invoice.Status == InvoiceStatus.CancellationPending && await HasActiveInvoiceJobAsync(invoice.TenantId, invoice.Id, cancellationToken))
             && await WriteGates(invoice.TenantId, invoice.ProviderConnectionId, InvoicingCapabilities.InvoiceCancel, cancellationToken)) actions.Add("CANCEL");
@@ -1726,6 +1755,9 @@ public sealed partial class InvoicingBillingService(
             || (status == InvoiceStatus.ManualReview && lastErrorCode is "MARKETPLACE_INVOICE_PRECHECK_FAILED" or "PLATFORM_INVOICE_STATUS_NOT_CLEAR" or OperatorConfirmedNoRemoteInvoiceCode
                 // The taxpayer lookup right before the request stopped it: nothing reached the provider.
                 or InvoiceIssuePolicy.EInvoiceRecipientReviewCode or InvoiceIssuePolicy.EInvoiceTaxpayerChangedCode
+                // The last check before issuing found the order changed (or a line's VAT rate unknown): nothing reached
+                // the provider and the invoice waits for the owner's new approval.
+                or InvoiceIssuePolicy.PreIssueChangedCode or InvoiceIssuePolicy.LineVatRateUnknownCode
                 or InvoiceIssuePolicy.EInvoiceTargetAliasUnresolvedCode or InvoiceIssuePolicy.EInvoiceTaxpayerConflictCode));
 
     // Submit leaves an invoice in Submitting with an error code only when the provider definitely did not
@@ -1916,7 +1948,7 @@ public sealed partial class InvoicingBillingService(
         return true;
     }
 
-    private static bool TryResolveWholeOrderInvoiceLines(
+    internal static bool TryResolveWholeOrderInvoiceLines(
         IReadOnlyList<OrderLine> sourceLines,
         IReadOnlyList<PackageLineAllocation> allocationEvents,
         IReadOnlyCollection<Guid> activePackageIds,

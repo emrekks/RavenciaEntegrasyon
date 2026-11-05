@@ -10666,8 +10666,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // A read that finds the invoice as it already is writes nothing: Version and UpdatedAt move only on a real change,
     // so an unchanged invoice is neither "updated" on every scan nor raced by the optimistic lock.
+    // An invoice in ManualReview is the owner's: a marketplace read never moves it out nor rewrites its reason
+    // (InvoiceDeliveryGuardPolicy.BackgroundMayMove).
     internal static bool SetInvoiceDeliveryState(Invoice invoice, InvoiceStatus status, string? lastErrorCode, DateTimeOffset at)
     {
+        if (invoice.Status == InvoiceStatus.ManualReview) return false;
         if (!InvoiceDeliveryRecoveryPolicy.DeliveryStateChanges(invoice.Status, invoice.LastErrorCode, status, lastErrorCode)) return false;
         invoice.Status = status;
         invoice.LastErrorCode = lastErrorCode;
@@ -12431,11 +12434,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var remoteLines = remote.Lines.Count > 0 ? remote.Lines : TrendyolJsonMapper.ReturnLines(remote.RawJson);
         var claimLevelTarget = MarketplaceReturnStatus.Canonicalize(remote.RawStatus, remote.CargoTrackingLink);
         var remoteLineStatuses = remoteLines.Select(x => x.RawStatus).ToList();
-        // A claim that mixes accepted lines with lines still waiting for the seller stays actionable.
+        // A claim that mixes accepted lines with lines still waiting for the seller stays actionable; one whose lines
+        // were decided both ways (accepted and rejected) is approved in part (ReturnClaimPartialApprovalPolicy).
         var target = ReturnLineStatusPolicy.Resolve(claimLevelTarget, remoteLineStatuses);
         var lineStatusOverrides = target != claimLevelTarget;
         var allLinesKnown = remoteLineStatuses.Count > 0 && remoteLineStatuses.All(x => !string.IsNullOrWhiteSpace(x));
-        if (lineStatusOverrides) remote = remote with { RawStatus = "WaitingInAction" };
+        if (lineStatusOverrides && target == ReturnClaimStatus.ActionRequired) remote = remote with { RawStatus = "WaitingInAction" };
         if (!ReturnClaimStoragePolicy.ShouldPersist(target))
         {
             if (!await RemoveCancelledReturnClaim(tenantId, connectionId, remote, cancellationToken)) telemetrySkippedCount++;
@@ -12538,6 +12542,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var (packageState, decidedAt) = NextReturnOutcomeFacts(claim.RejectedPackageState, claim.DecidedAt, previousClaimStatus, claim.Status, remote.RejectedPackageState, remote.DecidedAt);
             if (!string.Equals(claim.RejectedPackageState, packageState, StringComparison.Ordinal)) { claim.RejectedPackageState = packageState; claimChanged = true; }
             if (claim.DecidedAt != decidedAt) { claim.DecidedAt = decidedAt; claimChanged = true; }
+            // What the customer asked for is kept once known; a read that does not say it leaves it as it is.
+            if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
         var lineStatuses = new Dictionary<Guid, string?>();
@@ -12659,6 +12665,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         LastRemoteModifiedAt = remote.LastModifiedAt,
         RejectedPackageState = status == ReturnClaimStatus.Rejected ? remote.RejectedPackageState : null,
         DecidedAt = status is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected ? remote.DecidedAt?.ToUniversalTime() : null,
+        CustomerRequest = remote.CustomerRequest,
         CreatedAt = now,
         UpdatedAt = now,
         Version = 1

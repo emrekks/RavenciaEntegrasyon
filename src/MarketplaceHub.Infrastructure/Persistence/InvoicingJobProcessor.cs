@@ -189,6 +189,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                         Context(tenantId, targetPackage.ConnectionId, correlationId, $"invoice-precheck:{invoice.Id:N}:{targetPackage.Id:N}", IntegrationOperation.Automatic),
                         WithLookup(new(targetPackage.ExternalPackageId, order.OrderNumber, ShopifyOrderGid(order.ExternalOrderId)), order, targetPackage),
                         cancellationToken);
+                    // Before issuing, the same unknown is the precheck's own stop (retryable from the workspace once it reads clearly).
+                    if (!platformRead.IsSuccess && platformRead.Error!.Code == HepsiburadaInvoiceInfoPolicy.LineInvoiceInfoMissingCode)
+                        await BlockFiscalSubmission(invoice, "MARKETPLACE_INVOICE_PRECHECK_FAILED",
+                            "Hepsiburada siparişinin en az bir kaleminde fatura bilgisi yok; siparişte fatura olup olmadığı bilinmediği için mali kesim başlatılmadı.", cancellationToken);
                     if (!platformRead.IsSuccess)
                         await BlockFiscalSubmission(invoice, "MARKETPLACE_INVOICE_PRECHECK_FAILED",
                             $"{orderConnection.PlatformCode} siparişindeki mevcut fatura güvenle okunamadı ({platformRead.Error!.Code}); mali kesim başlatılmadı.", cancellationToken);
@@ -246,6 +250,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 orderConnection.PlatformCode, customerSnapshotJson, invoiceAddressSnapshotJson, fresh: true, cancellationToken);
             if (InvoiceIssuePolicy.Refusal(invoice.InvoiceType, invoice.Currency, customerSnapshotJson, recipient) is { } recipientRefusal)
                 await BlockFiscalSubmission(invoice, recipientRefusal.Code, recipientRefusal.Message, cancellationToken);
+            // The last check before issuing: the draft gates again on the order as it is now. Anything changed since the
+            // owner's approval stops the issue and the invoice waits for a new approval; never a recomputed amount.
+            if (await InvoicePreIssueCheck.CheckAsync(db, invoice, cancellationToken) is { } preIssueRefusal)
+                await BlockFiscalSubmission(invoice, preIssueRefusal.Code, preIssueRefusal.Message, cancellationToken);
             // Stamped after the marketplace reads, right before the request: the provider prints this as the invoice date and time.
             StampIssueTime(invoice, timeProvider.GetUtcNow());
             // The invoice UUID is chosen here, before the request, and kept on the attempt: a lost answer is settled by
@@ -511,7 +519,9 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         {
             // An invoice whose creation answer could not be read keeps saying so (E-Faturam's answer is awaited) until
             // a read settles it; the failed read is on the job.
-            if (!(invoice.Status == InvoiceStatus.UnknownResult && invoice.LastErrorCode == InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode))
+            // An invoice in the owner's review keeps the reason it waits for.
+            if (!(invoice.Status == InvoiceStatus.UnknownResult && invoice.LastErrorCode == InvoiceSubmissionOutcomePolicy.UnreadableAnswerCode)
+                && invoice.Status != InvoiceStatus.ManualReview)
                 invoice.LastErrorCode = result.Error!.Code;
             invoice.UpdatedAt = timeProvider.GetUtcNow();
             invoice.Version++;
@@ -522,6 +532,17 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         var remote = result.Value!;
         invoice.InvoiceNumber ??= remote.InvoiceNumber;
         invoice.EttnUuid ??= remote.EttnUuid;
+        // ManualReview belongs to the owner: a reconcile records what the provider says (number, ETTN) and nothing else.
+        if (invoice.Status == InvoiceStatus.ManualReview)
+        {
+            if (ReferencesFilled(invoice))
+            {
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+            }
+            return true;
+        }
         switch (remote.CanonicalStatus)
         {
             case "ACCEPTED" when cancellationPending:
@@ -530,6 +551,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 invoice.Version++;
                 await db.SaveChangesAsync(cancellationToken);
                 throw new JobProcessingException(JobExecutionResult.Retry("INVOICE_CANCELLATION_REMOTE_PENDING", "E-Arşiv iptal isteği henüz nihai duruma ulaşmadı.", TimeSpan.FromMinutes(2)));
+            case "ACCEPTED" when invoice.Status is not (InvoiceStatus.Submitted or InvoiceStatus.UnknownResult or InvoiceStatus.Accepted):
+                // The provider still says accepted, but the invoice is already past acceptance (on its way to or on the
+                // marketplace, or failed there): a reconcile never sends it back to Accepted. Only the number and ETTN
+                // it may have lacked are kept.
+                if (ReferencesFilled(invoice)) break;
+                return true;
             case "ACCEPTED":
                 invoice.Status = InvoiceStatus.Accepted;
                 invoice.LastErrorCode = null;
@@ -570,6 +597,13 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    // Whether the read just filled the invoice number or ETTN the invoice lacked.
+    private bool ReferencesFilled(Invoice invoice)
+    {
+        var entry = db.Entry(invoice);
+        return entry.Property(x => x.InvoiceNumber).IsModified || entry.Property(x => x.EttnUuid).IsModified;
     }
 
     private async Task<bool> Deliver(Guid tenantId, Guid jobConnectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -877,6 +911,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (InvoiceDeliveryGuardPolicy.InvoiceBlocksDelivery(invoice.Status))
             throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.InvoiceNotDeliverableCode,
                 "Fatura iptal sürecinde, iptal edilmiş, reddedilmiş veya düzeltme bekliyor; pazaryerine fatura linki gönderilmedi."));
+        // ManualReview belongs to the owner: no delivery job (automatic, recovery or retry) takes the invoice out of it.
+        // The owner's own "Tekrar Gönder" moves it to MarketplacePending before its job runs (EnqueueDeliveryAsync); the
+        // one-time delivery the owner authorized for a fixed order keeps its own checks.
+        if (invoice.Status == InvoiceStatus.ManualReview && oneTimeAuthorization is null)
+            throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.ManualReviewOwnerOnlyCode,
+                "Fatura incelemede; pazaryerine iletim yalnız sizin işleminizle (Tekrar Gönder) başlar. Otomatik iş faturanın durumunu değiştirmedi."));
         using var deliveryJobPayload = JsonDocument.Parse(payloadJson);
         var ownerRetry = deliveryJobPayload.RootElement.TryGetProperty("manualDeliveryRetry", out var retryValue)
             && retryValue.ValueKind == JsonValueKind.True;
@@ -963,8 +1003,18 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         }
         if (state?.Status == "CONFIRMATION_RETRYABLE")
         {
-            invoice.Status = InvoiceStatus.MarketplacePending;
-            await db.SaveChangesAsync(cancellationToken);
+            // The confirmation read is repeated under the state machine and the optimistic lock: a status the machine
+            // does not allow to wait for the marketplace (ManualReview never reaches here) stays as it is.
+            if (invoice.Status != InvoiceStatus.MarketplacePending)
+            {
+                if (!InvoiceDeliveryGuardPolicy.BackgroundMayMove(invoice.Status, InvoiceStatus.MarketplacePending))
+                    throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.InvoiceNotDeliverableCode,
+                        $"Fatura {invoice.Status} durumunda; pazaryeri teyidi bu durumdan yeniden başlatılmadı."));
+                invoice.Status = InvoiceStatus.MarketplacePending;
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+            }
             return await ConfirmDelivery(tenantId, invoice, package, state, correlationId, cancellationToken);
         }
         if (state?.Status == "FAILED" && oneTimeAuthorization is null)
@@ -1140,6 +1190,17 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             cancellationToken);
         if (!beforeDelivery.IsSuccess)
         {
+            // Hepsiburada left the invoice information out on some lines of the order: whether the package already holds
+            // an invoice is unknown, so no link is sent and the invoice waits for the owner with the reason.
+            if (beforeDelivery.Error!.Code == HepsiburadaInvoiceInfoPolicy.LineInvoiceInfoMissingCode)
+            {
+                invoice.Status = InvoiceStatus.ManualReview;
+                invoice.LastErrorCode = HepsiburadaInvoiceInfoPolicy.LineInvoiceInfoMissingCode;
+                invoice.UpdatedAt = timeProvider.GetUtcNow();
+                invoice.Version++;
+                await db.SaveChangesAsync(cancellationToken);
+                throw new JobProcessingException(JobExecutionResult.ManualReview(HepsiburadaInvoiceInfoPolicy.LineInvoiceInfoMissingCode, HepsiburadaInvoiceInfoPolicy.Message));
+            }
             invoice.Status = InvoiceStatus.MarketplacePending;
             invoice.LastErrorCode = "MARKETPLACE_INVOICE_PRECHECK_FAILED";
             invoice.UpdatedAt = timeProvider.GetUtcNow();
@@ -1782,19 +1843,22 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         // delivery after the document is keyed by it, so an earlier "after-document" job does not block it.
         var retryKey = InvoiceDeliveryRetryReader.ReadRetryKey(payloadJson);
         var result = await provider.GetDocumentAsync(Context(tenantId, connectionId, correlationId, $"document:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, invoice.InvoiceType), "PDF", cancellationToken);
-        if (!result.IsSuccess) { invoice.LastErrorCode = result.Error!.Code; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
+        // An invoice in the owner's review keeps the reason it waits for; the document is still stored.
+        var inReview = invoice.Status == InvoiceStatus.ManualReview;
+        if (!result.IsSuccess) { if (!inReview) invoice.LastErrorCode = result.Error!.Code; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
         var document = result.Value!; var hash = Convert.ToHexString(SHA256.HashData(document.Content));
         var existing = await db.InvoiceDocuments.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.DocumentType == document.DocumentKind && x.Sha256 == hash, cancellationToken);
         if (existing is not null)
         {
-            existing.PermanentUrl ??= document.PermanentUrl; invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
+            existing.PermanentUrl ??= document.PermanentUrl; if (!inReview) invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
             await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, existing.PermanentUrl, correlationId, cancellationToken, retryKey);
             await db.SaveChangesAsync(cancellationToken); return true;
         }
         await using var content = new MemoryStream(document.Content, writable: false); var assetId = Guid.CreateVersion7(); var stored = await files.SaveAsync(tenantId, $"{assetId:N}-{Path.GetFileName(document.FileName)}", document.MimeType, content, document.Content.LongLength, cancellationToken);
         db.FileAssets.Add(new FileAsset { Id = assetId, TenantId = tenantId, Classification = "INVOICE_DOCUMENT", RelativePath = stored, OriginalNameSafe = Path.GetFileName(document.FileName), MimeType = document.MimeType, SizeBytes = document.Content.LongLength, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() });
         db.InvoiceDocuments.Add(new InvoiceDocument { Id = Guid.CreateVersion7(), TenantId = tenantId, InvoiceId = invoice.Id, DocumentType = document.DocumentKind, FileAssetId = assetId, Sha256 = hash, ExternalDocumentId = document.ExternalDocumentId, PermanentUrl = document.PermanentUrl, CreatedAt = timeProvider.GetUtcNow() });
-        invoice.LastErrorCode = null; invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
+        if (!inReview) invoice.LastErrorCode = null;
+        invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
         await QueueMarketplaceDeliveryAfterDocument(tenantId, invoice, document.PermanentUrl, correlationId, cancellationToken, retryKey);
         await db.SaveChangesAsync(cancellationToken); return true;
     }
@@ -1802,9 +1866,10 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     private async Task QueueMarketplaceDeliveryAfterDocument(Guid tenantId, Invoice invoice, string? permanentUrl, string correlationId, CancellationToken cancellationToken, string retryKey = "")
     {
         // Only an accepted invoice is delivered; any other status (cancelled, in review...) has its own path. A retry
-        // also delivers one whose earlier delivery failed (MarketplaceFailed), never one in review or being cancelled.
+        // also delivers one whose earlier delivery failed (MarketplaceFailed) or sent nothing (MarketplacePending without
+        // a delivery state, InvoiceDeliveryRetryReader), never one in review or being cancelled.
         var retrying = !string.IsNullOrEmpty(retryKey);
-        if (!(invoice.Status == InvoiceStatus.Accepted || retrying && invoice.Status == InvoiceStatus.MarketplaceFailed)) return;
+        if (!(invoice.Status == InvoiceStatus.Accepted || retrying && invoice.Status is InvoiceStatus.MarketplaceFailed or InvoiceStatus.MarketplacePending)) return;
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
                 ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
@@ -2167,7 +2232,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             .Where(invoice => invoice.TenantId == tenantId
                 && invoice.SequencePurpose == "SALE" && invoice.OriginalInvoiceId == null
                 && invoice.ExternalReference != null
-                && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplaceFailed)
+                && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplaceFailed
+                    // A pending invoice only when nothing was sent (no delivery state): one waiting for its confirmation
+                    // is the delivery job's and must not take this batch's places.
+                    || invoice.Status == InvoiceStatus.MarketplacePending
+                        && !db.MarketplaceDeliveryStates.Any(state => state.TenantId == invoice.TenantId && state.InvoiceId == invoice.Id))
                 && (invoice.IssuedAt ?? invoice.CreatedAt) >= issuedSince
                 && invoice.UpdatedAt <= settledBefore
                 && invoice.DeliveryRetryAttempts < InvoiceDeliveryAutoRetryPolicy.MaxAttempts
@@ -2183,7 +2252,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"));
         foreach (var entry in entries.Values)
         {
-            if (entry.HasActiveJob || entry.View.State != InvoiceDeliveryAutoRetryPolicy.Scheduled) continue;
+            if (entry.HasActiveJob || entry.Need == InvoiceDeliveryRetryNeed.None || entry.View.State != InvoiceDeliveryAutoRetryPolicy.Scheduled) continue;
             if (entry.Need == InvoiceDeliveryRetryNeed.Deliver && !deliveryAllowed) continue;
             var invoice = await db.Invoices.SingleAsync(item => item.TenantId == tenantId && item.Id == entry.InvoiceId, cancellationToken);
             InvoiceDeliveryRetryReader.RecordAutomaticAttempt(invoice, now);

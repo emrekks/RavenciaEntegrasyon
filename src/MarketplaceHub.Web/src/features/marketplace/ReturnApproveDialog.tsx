@@ -7,6 +7,8 @@ import { allocateStock, stockedUnits, type ApprovedReturn } from './return-stock
 import { formatIstanbul } from '../../shared/format-date'
 import { formatPackageLabel } from '../../shared/package-label'
 import { sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
+import { finalizedWithFor, finalizedWithLabels, type FinalizedWith } from './return-finalized-with'
+import { ReturnFinalizedWithChoice } from './ReturnFinalizedWithChoice'
 
 export type ReturnApproveRow = {
   id: string
@@ -43,8 +45,10 @@ type Props = {
   rows: ReturnApproveRow[]
   loading: boolean
   error: unknown
-  // Hepsiburada decides the whole claim at once: every product is approved together as a refund.
+  // Hepsiburada decides the whole claim at once: every product is approved together, as a refund or an exchange.
   wholeClaim?: boolean
+  // What the Hepsiburada customer asked for (REFUND or CHANGE); preselects the choice, null when the claim does not say.
+  customerRequest?: string | null
   onClose: () => void
   onDone: (message: string, kind: 'success' | 'info' | 'error', details?: Array<{ label: string; value: string; tone?: 'success' | 'error' }>, target?: NotificationTarget | null) => void
 }
@@ -63,7 +67,7 @@ const unitCount = (rows: ReturnApproveRow[]) => rows.reduce((sum, row) => sum + 
 
 // The approval dialog: order summary on top, then one framed row per product with a unit dropdown
 // and its own "put back in stock" switch, and a single confirmation.
-export function ReturnApproveDialog({ open, claimId, version, marketplaceName, order, rows, loading, error, wholeClaim = false, onClose, onDone }: Props) {
+export function ReturnApproveDialog({ open, claimId, version, marketplaceName, order, rows, loading, error, wholeClaim = false, customerRequest = null, onClose, onDone }: Props) {
   const client = useQueryClient()
   const groups = useMemo(() => groupByProduct(rows), [rows])
   const [selected, setSelected] = useState<string[]>([])
@@ -71,6 +75,8 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
   const [stockKeys, setStockKeys] = useState<string[]>([])
   // How many units of a product go back to stock (defaults to every approved unit).
   const [stockUnits, setStockUnits] = useState<Record<string, number>>({})
+  // Hepsiburada: Para İadesi or Değişim, preselected from the customer's own request; nothing is sent without one.
+  const [finalizedWith, setFinalizedWith] = useState<FinalizedWith | ''>(() => finalizedWithFor(customerRequest))
   const groupSignature = groups.map(group => `${group.key}:${group.rows.length}`).join('|')
 
   // Reset to "everything picked" whenever the dialog opens, its products change, or it shows another claim (two claims
@@ -80,8 +86,9 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     setCounts(Object.fromEntries(groups.map(group => [group.key, group.rows.length])))
     setStockKeys([])
     setStockUnits({})
+    setFinalizedWith(finalizedWithFor(customerRequest))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `groupSignature` stands for `groups`
-  }, [groupSignature, open, claimId])
+  }, [groupSignature, open, claimId, customerRequest])
 
   // The lines that will actually be approved: the first N of each selected product.
   const chosenByGroup = groups
@@ -96,7 +103,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
 
   const approve = useMutation({
     mutationFn: () => {
-      const body = JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: wholeClaim ? 'Refund' : null, stockLines: stockRequests })
+      const body = JSON.stringify({ action: 'APPROVE', reasonCode: null, explanation: null, evidenceAssetIds: [], returnLineIds: chosenRows.map(row => row.id), finalizedWith: wholeClaim ? finalizedWith || null : null, stockLines: stockRequests })
       // A retry after an HTTP answer (a refusal, say external writes off) gets a fresh key instead of the stored answer.
       return sendWithVersionedIdempotencyKey(versionedIdempotencyKey('return-action', claimId, version, body), key => hubApi<ApprovedReturn>(`/returns/${claimId}/actions`, { method: 'POST', headers: { 'Idempotency-Key': key, 'If-Match': `"v${version}"` }, body }))
     },
@@ -128,7 +135,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
     }
   })
 
-  const canSubmit = chosenRows.length > 0
+  const canSubmit = chosenRows.length > 0 && (!wholeClaim || finalizedWith !== '')
   const toggle = (key: string) => setSelected(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])
   const toggleStock = (key: string) => setStockKeys(current => current.includes(key) ? current.filter(value => value !== key) : [...current, key])
   const allSelected = groups.length > 0 && selected.length === groups.length
@@ -156,7 +163,8 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
       <span><RrLogo code={order.platformCode} />{order.orderNumber}</span>
       <dl>{orderFacts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
     </section>
-    {wholeClaim && <div className="rr-callout"><RrIcon name="info" /><span>Hepsiburada kararı bu talepteki tüm ürün satırlarına ücret iadesi olarak uygulanır.</span></div>}
+    {wholeClaim && <div className="rr-callout"><RrIcon name="info" /><span>Hepsiburada kararı bu talepteki tüm ürün satırlarına {finalizedWith ? finalizedWithLabels[finalizedWith].toLocaleLowerCase('tr-TR') : 'seçtiğiniz tür'} olarak uygulanır.</span></div>}
+    {wholeClaim && <ReturnFinalizedWithChoice value={finalizedWith} customerRequest={customerRequest} disabled={approve.isPending} onChange={setFinalizedWith} />}
     {loading ? <RrLoading text="İade ürünleri yükleniyor…" /> : error ? <RrError error={error} /> : groups.length === 0 ? <p className="rr-lead">Bu iadede işlem bekleyen ürün kalmadı.</p> : <div className="rr-apr" role="table">
       <div className="rr-apr-h" role="row">
         <span role="columnheader"><label><input type="checkbox" className="rr-cb" checked={allSelected} disabled={wholeClaim} onChange={() => setSelected(allSelected ? [] : groups.map(group => group.key))} aria-label="Tüm ürünleri seç" />Bilgiler</label></span>

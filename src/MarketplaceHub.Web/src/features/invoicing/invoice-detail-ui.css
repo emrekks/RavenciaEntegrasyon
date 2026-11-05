@@ -23,10 +23,12 @@
 .invoice-detail-cargo { display: flex; align-items: center; min-height: 28px; margin-bottom: 4px; }
 .invoice-detail-cargo .cargo-provider-icon { max-height: 28px; width: auto; max-width: 120px; object-fit: contain; }
 
-/* The delivery retry of an issued invoice (InvoiceDeliveryAutoRetryPolicy): its next attempt or "Tekrar Dene". */
-.invoice-delivery-retry { display: flex; align-items: center; gap: 10px; margin: 12px 0; padding: 10px 12px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; line-height: 1.5; }
-.invoice-delivery-retry > .ui-icon { flex: none; }
-.invoice-delivery-retry > span { flex: 1; min-width: 0; }
-.invoice-delivery-retry strong { color: var(--rv-color-ink); font-weight: 600; }
+/* The delivery retry of an issued invoice (InvoiceDeliveryAutoRetryPolicy): its next attempt or "Tekrar Gönder".
+   "İade Belgesi Gerekli" (lines of the issued invoice were returned; it is still delivered) uses the same callout. */
+.invoice-delivery-retry, .invoice-return-document { display: flex; align-items: center; gap: 10px; margin: 12px 0; padding: 10px 12px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; line-height: 1.5; }
+.invoice-delivery-retry > .ui-icon, .invoice-return-document > .ui-icon { flex: none; }
+.invoice-delivery-retry > span, .invoice-return-document > span { flex: 1; min-width: 0; }
+.invoice-delivery-retry strong, .invoice-return-document strong { color: var(--rv-color-ink); font-weight: 600; }
 .app-shell main .invoice-delivery-retry > button { flex: none; height: 36px; min-height: 0; padding: 0 12px; border-radius: 7px; }
 .invoice-reference-status > .invoice-delivery-retry-note { display: block; color: var(--rv-color-muted); font-size: 12px; line-height: 1.35; }
+.invoice-reference-status > .invoice-return-document-note { display: block; color: var(--rv-color-ink); font-size: 12px; font-weight: 600; line-height: 1.35; }

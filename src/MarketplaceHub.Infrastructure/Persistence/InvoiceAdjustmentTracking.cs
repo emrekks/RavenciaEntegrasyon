@@ -20,8 +20,16 @@ internal static class InvoiceAdjustmentTracking
 
     public static string AdjustmentIssueKey(Guid invoiceId) => $"invoice-adjustment:{invoiceId:N}";
     public static string LinkRevocationIssueKey(Guid invoiceId) => $"invoice-link-revocation:{invoiceId:N}";
+    public static string ReturnDocumentIssueKey(Guid invoiceId) => $"invoice-return-document:{invoiceId:N}";
 
-    /// <summary>Moves issued sale invoices of cancelled orders or accepted returns to AdjustmentRequired.</summary>
+    /// <summary>
+    /// Issued sale invoices whose order changed after issuing (owner's rules of 5 Nov 2026):
+    /// - the order was cancelled, or every invoiced line was returned (approved): AdjustmentRequired as before
+    ///   (e-Arşiv cancellation or a return invoice), which also stops the invoice's delivery;
+    /// - only some lines were returned (an approved claim, or the approved lines of a claim decided in part): the
+    ///   invoice keeps its status and is still delivered; the returned lines get their own note, "İade Belgesi
+    ///   Gerekli", shown on the invoice. Nothing is cancelled and nothing is written to a provider or marketplace.
+    /// </summary>
     public static async Task<int> FlagAdjustmentsAsync(AppDbContext db, Guid tenantId, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var candidates = await (from invoice in db.Invoices
@@ -29,25 +37,102 @@ internal static class InvoiceAdjustmentTracking
                                 where invoice.TenantId == tenantId
                                     && invoice.SequencePurpose == "SALE"
                                     && invoice.OriginalInvoiceId == null
-                                    && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplacePending || invoice.Status == InvoiceStatus.Completed)
+                                    && invoice.ExternalReference != null
+                                    && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplacePending
+                                        || invoice.Status == InvoiceStatus.MarketplaceFailed || invoice.Status == InvoiceStatus.Completed
+                                        || invoice.Status == InvoiceStatus.ManualReview)
                                     && (order.DerivedStatus == "CANCELLED" || order.DerivedStatus == "CANCELED"
-                                        || db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.OrderId == order.Id
-                                            && (claim.Status == ReturnClaimStatus.Approved || claim.Status == ReturnClaimStatus.Completed)))
-                                select new { Invoice = invoice, order.OrderNumber, order.DerivedStatus })
+                                        || db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.OrderId == order.Id && claim.Status != ReturnClaimStatus.Cancelled))
+                                select new { Invoice = invoice, order.Id, order.OrderNumber, order.DerivedStatus })
             .ToListAsync(cancellationToken);
+        var flagged = 0;
         foreach (var candidate in candidates)
         {
             var invoice = candidate.Invoice;
-            if (!InvoiceStateMachine.CanTransition(invoice.Status, InvoiceStatus.AdjustmentRequired)) continue;
-            invoice.Status = InvoiceStatus.AdjustmentRequired;
-            invoice.LastErrorCode = AdjustmentRequiredCode;
-            invoice.UpdatedAt = now;
-            invoice.Version++;
-            var reason = candidate.DerivedStatus is "CANCELLED" or "CANCELED" ? "iptal edildi" : "iadesi kabul edildi";
-            await UpsertIssueAsync(db, tenantId, AdjustmentIssueKey(invoice.Id), AdjustmentRequiredCode,
-                $"{candidate.OrderNumber} siparişi fatura kesildikten sonra {reason}. {invoice.InvoiceNumber ?? "Kesilen"} faturası için e-Arşiv iptali veya iade faturası gerekli.", now, cancellationToken);
+            var cancelled = candidate.DerivedStatus is "CANCELLED" or "CANCELED";
+            var scope = InvoiceReturnScope.None;
+            IReadOnlyList<string> returnedTitles = [];
+            if (!cancelled)
+                (scope, returnedTitles) = await ReturnScopeAsync(db, tenantId, invoice.Id, candidate.Id, cancellationToken);
+            if (cancelled || scope == InvoiceReturnScope.Full)
+            {
+                if (InvoiceStateMachine.CanTransition(invoice.Status, InvoiceStatus.AdjustmentRequired) && invoice.Status != InvoiceStatus.AdjustmentRequired)
+                {
+                    invoice.Status = InvoiceStatus.AdjustmentRequired;
+                    invoice.LastErrorCode = AdjustmentRequiredCode;
+                    invoice.UpdatedAt = now;
+                    invoice.Version++;
+                    var reason = cancelled ? "iptal edildi" : "tüm ürünlerinin iadesi kabul edildi";
+                    await UpsertIssueAsync(db, tenantId, AdjustmentIssueKey(invoice.Id), AdjustmentRequiredCode,
+                        $"{candidate.OrderNumber} siparişi fatura kesildikten sonra {reason}. {invoice.InvoiceNumber ?? "Kesilen"} faturası için e-Arşiv iptali veya iade faturası gerekli.", now, cancellationToken);
+                    await ResolveIssueAsync(db, tenantId, ReturnDocumentIssueKey(invoice.Id), now, cancellationToken);
+                    flagged++;
+                    continue;
+                }
+                // A failed delivery or an invoice in review cannot move to AdjustmentRequired; a full return still
+                // gets its note so the owner sees it.
+                if (cancelled) continue;
+            }
+            if (scope == InvoiceReturnScope.None) continue;
+            var summary = $"{candidate.OrderNumber} siparişinde fatura kesildikten sonra {returnedTitles.Count} ürünün iadesi kabul edildi"
+                + (returnedTitles.Count > 0 ? $" ({string.Join(", ", returnedTitles.Take(5))}{(returnedTitles.Count > 5 ? ", …" : string.Empty)})" : string.Empty)
+                + $". {invoice.InvoiceNumber ?? "Kesilen"} faturası iptal edilmedi ve pazaryerine iletilmeye devam ediyor; iade edilen ürünler için iade belgesi (gider pusulası veya iade faturası) gerekli.";
+            if (await UpsertIssueIfChangedAsync(db, tenantId, ReturnDocumentIssueKey(invoice.Id), InvoiceReturnAdjustmentPolicy.ReturnDocumentRequiredCode, summary, now, cancellationToken))
+                flagged++;
         }
-        return candidates.Count;
+        return flagged;
+    }
+
+    // How much of the invoice the order's approved returns cover, and the returned products' names. A return line counts
+    // once it is approved on its own or its claim is (ReturnDecisionLinePolicy.StockDispositionAllowed): a rejected,
+    // cancelled or still waiting line does not.
+    private static async Task<(InvoiceReturnScope Scope, IReadOnlyList<string> Titles)> ReturnScopeAsync(AppDbContext db, Guid tenantId, Guid invoiceId, Guid orderId, CancellationToken cancellationToken)
+    {
+        var returnLines = await (from line in db.ReturnLines.AsNoTracking()
+                                 join claim in db.ReturnClaims.AsNoTracking() on new { line.TenantId, Id = line.ClaimId } equals new { claim.TenantId, claim.Id }
+                                 where claim.TenantId == tenantId && claim.OrderId == orderId && claim.Status != ReturnClaimStatus.Cancelled
+                                 select new { line.OrderLineId, line.Quantity, line.RawStatus, ClaimStatus = claim.Status })
+            .ToListAsync(cancellationToken);
+        var returned = returnLines
+            .Where(line => ReturnDecisionLinePolicy.StockDispositionAllowed(line.ClaimStatus, line.RawStatus))
+            .GroupBy(line => line.OrderLineId)
+            .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity));
+        if (returned.Count == 0) return (InvoiceReturnScope.None, []);
+        var invoiceLines = await db.InvoiceLines.AsNoTracking()
+            .Where(line => line.TenantId == tenantId && line.InvoiceId == invoiceId)
+            .Select(line => new { line.OrderLineId, line.Quantity, line.DescriptionSnapshot })
+            .ToListAsync(cancellationToken);
+        var invoiced = invoiceLines.Where(line => line.OrderLineId != null)
+            .GroupBy(line => line.OrderLineId!.Value)
+            .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity));
+        var scope = InvoiceReturnAdjustmentPolicy.Classify(invoiced, returned, invoiceLines.Any(line => line.OrderLineId == null));
+        var titles = invoiceLines.Where(line => line.OrderLineId is { } id && returned.GetValueOrDefault(id) > 0)
+            .Select(line => line.DescriptionSnapshot).Distinct(StringComparer.Ordinal).ToList();
+        return (scope, titles);
+    }
+
+    // The note is written once and again only when it says something new (a scan every half hour would otherwise
+    // count it up on every run).
+    private static async Task<bool> UpsertIssueIfChangedAsync(AppDbContext db, Guid tenantId, string key, string code, string summary, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var issue = db.OperationalIssues.Local.FirstOrDefault(item => item.TenantId == tenantId && item.DedupeKey == key)
+            ?? await db.OperationalIssues.SingleOrDefaultAsync(item => item.TenantId == tenantId && item.DedupeKey == key, cancellationToken);
+        if (issue is not null && issue.Status == IssueStatus.Open && issue.Code == code && issue.Summary == summary) return false;
+        await UpsertIssueAsync(db, tenantId, key, code, summary, now, cancellationToken);
+        return true;
+    }
+
+    // The open "İade Belgesi Gerekli" notes of the given invoices, by invoice id (shown on the invoice detail and row).
+    public static async Task<IReadOnlyDictionary<Guid, string>> ReturnDocumentNotesAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> invoiceIds, CancellationToken cancellationToken)
+    {
+        if (invoiceIds.Count == 0) return new Dictionary<Guid, string>();
+        var keys = invoiceIds.Distinct().ToDictionary(ReturnDocumentIssueKey, id => id);
+        var keyList = keys.Keys.ToArray();
+        var issues = await db.OperationalIssues.AsNoTracking()
+            .Where(issue => issue.TenantId == tenantId && keyList.Contains(issue.DedupeKey) && issue.Status != IssueStatus.Resolved)
+            .Select(issue => new { issue.DedupeKey, issue.Summary })
+            .ToListAsync(cancellationToken);
+        return issues.ToDictionary(issue => keys[issue.DedupeKey], issue => issue.Summary);
     }
 
     /// <summary>
