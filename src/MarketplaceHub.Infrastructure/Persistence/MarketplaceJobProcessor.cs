@@ -102,7 +102,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         await using (syncLock)
         {
-            var telemetryResource = TelemetryResource(jobType);
+            var telemetryResource = TelemetryResource(jobType, payloadJson);
             var stopwatch = Stopwatch.StartNew();
             ResetTelemetry();
             if (telemetryResource is not null) await RecordSyncAttempt(tenantId, connectionId.Value, telemetryResource, cancellationToken);
@@ -219,6 +219,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync
         or MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest
         or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.ExternalEffectReconcile;
+
+    // The cursor a job's run telemetry is written to. Two jobs that may run at once (different lock groups) must not
+    // share one: the cursor's Version is a concurrency token, so the second to finish failed its telemetry write and
+    // an ingest that had already saved its data ran again. Webhook deliveries that lock with the return reads
+    // (MarketplaceSyncExecutionLock.WebhookIngestGroup) therefore keep a cursor of their own (audit 2026-10-24 Q3).
+    internal const string WebhookIngestReturnsResource = "WEBHOOK_INGEST_RETURNS";
+
+    internal static string? TelemetryResource(string jobType, string? payloadJson) =>
+        jobType is MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest
+            && MarketplaceSyncExecutionLock.WebhookIngestGroup(MarketplaceSyncExecutionLock.WebhookResourceType(payloadJson)) is not null
+            ? WebhookIngestReturnsResource
+            : TelemetryResource(jobType);
 
     private static string? TelemetryResource(string jobType) => jobType switch
     {
@@ -9461,12 +9473,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             try
             {
                 using var document = JsonDocument.Parse(raw);
+                // Order and claim events end through the same inbox close as every other notice (audit 2026-10-24 Q4:
+                // returning early left their inbox rows unprocessed after a successful run).
                 if (string.Equals(resourceType, "ORDER_EVENT", StringComparison.Ordinal))
-                    return await ReadHepsiburadaOrderEvent(tenantId, connectionId, document.RootElement, externalMessageId, OrderEventPath(externalMessageId), correlationId, cancellationToken);
+                {
+                    if (!await ReadHepsiburadaOrderEvent(tenantId, connectionId, document.RootElement, externalMessageId, OrderEventPath(externalMessageId), correlationId, cancellationToken)) return false;
+                }
                 // A claim notice the mapper cannot read whole: the recent claims are read again.
-                if (string.Equals(resourceType, "CLAIM_EVENT", StringComparison.Ordinal))
-                    return await SyncReturns(tenantId, connectionId, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
-                if (string.Equals(resourceType, "CLAIM_PACKAGE", StringComparison.Ordinal))
+                else if (string.Equals(resourceType, "CLAIM_EVENT", StringComparison.Ordinal))
+                {
+                    if (!await SyncReturns(tenantId, connectionId, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken)) return false;
+                }
+                else if (string.Equals(resourceType, "CLAIM_PACKAGE", StringComparison.Ordinal))
                 {
                     var order = HepsiburadaJsonMapper.ClaimPackageOrder(document.RootElement);
                     TrackReceived();
