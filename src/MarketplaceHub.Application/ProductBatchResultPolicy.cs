@@ -23,6 +23,15 @@ public static class ProductBatchResultPolicy
     public static string MissingReason(string marketplaceName) =>
         $"{marketplaceName} batch sonucunda bu barkod yer almadı; durumu barkodla sorgulanıyor.";
 
+    // Trendyol refuses a create whose barcode the store already holds ("Aynı barkodlu bir ürününüz bulunduğundan yeni ürün
+    // oluşturulamaz. Barkod: …"): the product is there, only the panel does not know it (live 5.11.2026: MZ021Y-CD-34..36,
+    // created at 00:59, refused at 09:30 and 10:19). Such a line is no refusal: like an unlisted one it stays unknown and
+    // the approval check reads it by barcode, so the panel matches the product instead of sending it again.
+    public const string BarcodeExistsMarker = "Aynı barkodlu bir ürününüz bulunduğundan";
+
+    public static bool SaysBarcodeExists(string? reason) =>
+        reason?.Contains(BarcodeExistsMarker, StringComparison.OrdinalIgnoreCase) == true;
+
     public static string IncompleteSummary(string marketplaceName, int missing, int sent) =>
         $"{marketplaceName} batch sonucu {sent} varyantın {missing} tanesini listelemedi; bu varyantların durumu onay kontrolünde barkodla sorgulanıyor.";
 }

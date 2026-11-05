@@ -16,6 +16,9 @@ public static class JobVariantResultPolicy
     // A variant already live from an earlier publication is left out when only its refused siblings are sent again.
     public const string AlreadyLiveReason = "Daha önceki bir yayınla zaten yayında; bu gönderime alınmadı.";
 
+    // A variant the marketplace already holds (matched there, e.g. by an import) is left out the same way.
+    public const string AlreadyOnMarketplaceReason = "Pazaryerinde zaten var (eşleşmiş); bu gönderime alınmadı.";
+
     public static bool AppliesTo(string jobType) => jobType is MarketplaceJobTypes.ProductCreate or MarketplaceJobTypes.ProductUpdate or MarketplaceJobTypes.ProductApprovalReconcile;
 
     // The outcome a listing's status stands for in a job of this type.

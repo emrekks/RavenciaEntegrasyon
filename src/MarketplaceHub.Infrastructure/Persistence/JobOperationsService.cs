@@ -558,14 +558,17 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .ToList();
         var carried = rows.Where(x => x.VariantId is not null).Select(x => x.VariantId!.Value).ToHashSet();
         var carriedBarcodes = rows.Select(x => x.Barcode).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Known: a variant already on the marketplace (live from another publication, or matched there by an import) is left
+        // out when only the card's unsent variants go, by the same test the publication used (PublicationUnsentVariants).
+        var present = await PublicationUnsentVariants.PresentAsync(db, job.TenantId, connectionId,
+            [.. variants.Where(x => !carried.Contains(x.Id)).Select(x => x.Id)], cancellationToken);
         foreach (var variant in variants)
         {
             if (carried.Contains(variant.Id) || (variant.Barcode is { } code && carriedBarcodes.Contains(code))) continue;
-            // Known: a variant another publication already made live is left out when only its siblings are sent again.
             var reason = states.TryGetValue(variant.Id, out var state) && string.Equals(state.ActualStatus, "LIVE", StringComparison.Ordinal)
                 && !string.Equals(state.PayloadHash, publicationHash, StringComparison.Ordinal)
                 ? JobVariantResultPolicy.AlreadyLiveReason
-                : null;
+                : present.Contains(variant.Id) ? JobVariantResultPolicy.AlreadyOnMarketplaceReason : null;
             items.Add(new { Order = sortOrder[variant.Id], View = new JobVariantResultView(variant.Barcode, variant.Sku, optionsByVariant.GetValueOrDefault(variant.Id), JobVariantResultPolicy.NotSent, reason) });
         }
         return new JobVariantResultsView(source, items.OrderBy(x => x.Order).Select(x => x.View).ToList());

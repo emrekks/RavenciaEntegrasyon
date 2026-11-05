@@ -686,13 +686,17 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", ProductBatchResultPolicy.WaitingMessage(marketplaceName, listings.Count - missingKeys.Count, listings.Count), TimeSpan.FromSeconds(15), payload.ExternalOperationId);
         }
 
+        // A Trendyol barcode the store already holds is read by barcode in the approval check, as an unlisted one is.
+        var existingKeys = isTrendyol
+            ? resultByKey.Where(x => !missingKeys.Contains(x.Key) && !x.Value.Succeeded && ProductBatchResultPolicy.SaysBarcodeExists(LineReason(x.Value))).Select(x => x.Key).ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : [];
         var succeeded = 0;
         var unknown = 0;
         var missingReason = ProductBatchResultPolicy.MissingReason(marketplaceName);
         foreach (var listing in listings)
         {
             var key = keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!;
-            if (missingKeys.Contains(key))
+            if (missingKeys.Contains(key) || existingKeys.Contains(key))
             {
                 // Unknown stays unknown: neither created nor refused; the approval check reads it by barcode.
                 listing.ActualStatus = ProductBatchResultPolicy.ResultUnknownStatus;
@@ -744,7 +748,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (refused == 0) return JobExecutionResult.SuccessWithNote(ProductBatchResultPolicy.IncompleteResultCode, incomplete.Trim());
         // The marketplace's own reason per refused SKU (Trendyol failureReasons, n11's task line text), so it shows on the card.
         var reasons = RejectionReasons(listings
-            .Where(listing => !missingKeys.Contains(keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!))
+            .Where(listing => !missingKeys.Contains(keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!) && !existingKeys.Contains(keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!))
             .Select(listing => resultByKey[keyedBySku ? listing.ExternalSku! : listing.ExternalBarcode!]));
         return succeeded + unknown == 0
             ? JobExecutionResult.Blocked("PRODUCT_BATCH_REJECTED", $"{marketplaceName} ürün yayınındaki tüm varyantlar reddedildi.{reasons}", payload.ExternalOperationId)
@@ -1365,15 +1369,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return JobExecutionResult.Success();
     }
 
-    // Whether the marketplace's batch result confirmed any barcode of this payload as created (its create job recorded it
-    // SENT); see ProductApprovalReconciliationPolicy.ShouldResetMissingPublication.
+    // Whether the marketplace's batch result confirmed any barcode of this payload as there (its create job recorded it
+    // SENT, or Trendyol refused it as a barcode the store already holds); see
+    // ProductApprovalReconciliationPolicy.ShouldResetMissingPublication.
     private async Task<bool> CreateConfirmedAsync(Guid tenantId, Guid connectionId, ProductApprovalReconciliationJobPayload payload, CancellationToken cancellationToken)
     {
         var createDedup = $"product-create:{connectionId:N}:{payload.ProductId:N}:{payload.PayloadHash}";
         return await (from job in db.IntegrationJobs.AsNoTracking()
                       join result in db.JobVariantResults.AsNoTracking() on new { job.TenantId, JobId = job.Id } equals new { result.TenantId, result.JobId }
                       where job.TenantId == tenantId && job.ConnectionId == connectionId && job.JobType == MarketplaceJobTypes.ProductCreate
-                          && job.JobDedupKey == createDedup && result.Status == JobVariantResultPolicy.Sent
+                          && job.JobDedupKey == createDedup
+                          && (result.Status == JobVariantResultPolicy.Sent
+                              || (result.Reason != null && result.Reason.Contains(ProductBatchResultPolicy.BarcodeExistsMarker)))
                       select result.Id).AnyAsync(cancellationToken);
     }
 

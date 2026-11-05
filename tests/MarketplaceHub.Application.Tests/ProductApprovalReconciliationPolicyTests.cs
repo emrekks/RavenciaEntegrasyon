@@ -39,6 +39,15 @@ public sealed class ProductApprovalReconciliationPolicyTests
     }
 
     [Fact]
+    public void TrendyolsDuplicateBarcodeRefusalSaysTheProductIsThere()
+    {
+        // Live 5.11.2026, MZ021Y-CD-34 sent again after its first create had gone through.
+        Assert.True(ProductBatchResultPolicy.SaysBarcodeExists("Aynı barkodlu bir ürününüz bulunduğundan yeni ürün oluşturulamaz. Barkod: MZ021Y-CD-34"));
+        Assert.False(ProductBatchResultPolicy.SaysBarcodeExists("Web Color alanı zorunludur."));
+        Assert.False(ProductBatchResultPolicy.SaysBarcodeExists(null));
+    }
+
+    [Fact]
     public void DetectsMultipleApprovedContentIdsAndOnlyBlocksWritesForThatCondition()
     {
         var split = new[]
