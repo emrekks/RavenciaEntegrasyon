@@ -97,7 +97,18 @@ export function payoutState(group: PayoutGroup): Exclude<PayoutState, 'ALL'> {
   return group.amount < 0 ? 'DEDUCTION' : 'EXPECTED'
 }
 
-const amount = (text: string) => { const value = Number(text.replace(/\./g, '').replace(',', '.')); return text.trim() === '' || Number.isNaN(value) ? null : value }
+// An amount typed the Turkish way or with a decimal point: "1.250" = 1250, "1.250,5" = 1250.5, "1250,50" = 1250.5, and
+// "1250.50" = 1250.5 (a single dot with exactly two digits after it and no comma is a decimal point, not thousands).
+export function parseAmount(text: string): number | null {
+  const value = text.trim().replace(/[\s₺]/gu, '')
+  if (value === '') return null
+  const normalized = value.includes(',') ? value.replace(/\./g, '').replace(',', '.')
+    : /^-?\d+\.\d{2}$/u.test(value) ? value
+    : value.replace(/\./g, '')
+  const number = Number(normalized)
+  return Number.isFinite(number) ? number : null
+}
+const amount = parseAmount
 
 // The groups the filters keep, in date order (as given) or by amount, largest first.
 export function filterGroups(groups: PayoutGroup[], filters: PayoutFilters) {

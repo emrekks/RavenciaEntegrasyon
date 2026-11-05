@@ -155,6 +155,12 @@ public sealed class ReportOrderProfitTests
 
         var commission = view.Costs.Single(cost => cost.Key == "commission");
         Assert.Equal((136.27m, false, "Trendyol cari hesabından"), (commission.Amount, commission.Estimated, commission.Source));
+        // Trendyol bills the service fee and the withholding tax on payment-day invoices tied to no order, so a settled
+        // order without such a record of its own still carries their estimate, as the report's costs do (never 0).
+        var fee = view.Costs.Single(cost => cost.Key == "serviceFee");
+        var tax = view.Costs.Single(cost => cost.Key == "stoppage");
+        Assert.Equal((13.19m, true), (fee.Amount, fee.Estimated));
+        Assert.Equal((5.76m, true), (tax.Amount, tax.Estimated));
     }
 
     [Fact]
