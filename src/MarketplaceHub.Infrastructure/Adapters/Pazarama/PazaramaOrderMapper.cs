@@ -162,12 +162,17 @@ public static class PazaramaOrderMapper
     {
         var active = itemStatuses.Where(status => status != "Cancelled").ToList();
         if (active.Count == 0) return "Cancelled";
-        // An item Pazarama is cancelling holds the whole package; otherwise the package is where its least
-        // advanced item is, so an item still to be prepared is not hidden behind one already shipped. Each
-        // line keeps its own status and shipped quantity.
+        // An item whose status the panel does not know is not hidden behind a known one: the package is reviewed
+        // (İnceleme Gerekli), as on every other marketplace. Then an item Pazarama is cancelling holds the whole
+        // package; otherwise the package is where its least advanced known item is, so an item still to be prepared
+        // is not hidden behind one already shipped. Each line keeps its own status and shipped quantity.
+        if (active.FirstOrDefault(IsUnknown) is { } unknown) return unknown;
         if (active.Contains("CancelRequested")) return "CancelRequested";
         return active.OrderBy(status => ShipmentPackageStatusPolicy.Rank(TrendyolShipmentPackageStatusPolicy.FromRemote(status))).First();
     }
+
+    private static bool IsUnknown(string status) =>
+        TrendyolShipmentPackageStatusPolicy.FromRemote(status) == ShipmentPackageStatus.ManualReview;
 
     private static string ItemSnapshot(JsonElement item, JsonElement product)
     {

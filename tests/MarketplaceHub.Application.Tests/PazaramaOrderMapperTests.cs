@@ -108,6 +108,19 @@ public sealed class PazaramaOrderMapperTests
         Assert.Equal("Cancelled", PazaramaOrderMapper.PackageStatus(["Cancelled", "Cancelled"]));
     }
 
+    // Item 6: an item of unknown status is not hidden behind a known, less advanced one; the package is reviewed,
+    // even beside an item being cancelled.
+    [Fact]
+    public void AnItemOfUnknownStatusPutsThePackageUnderReview()
+    {
+        var status = PazaramaOrderMapper.PackageStatus(["Created", PazaramaOrderMapper.ItemStatus(99), "Shipped"]);
+
+        Assert.Equal("Unknown99", status);
+        Assert.Equal(ShipmentPackageStatus.ManualReview, TrendyolShipmentPackageStatusPolicy.FromRemote(status));
+        Assert.Equal("Unknown99", PazaramaOrderMapper.PackageStatus(["CancelRequested", "Unknown99"]));
+        Assert.Equal("Cancelled", PazaramaOrderMapper.PackageStatus(["Cancelled"]));
+    }
+
     [Fact]
     public void AnItemBeingCancelledHoldsThePackageItShares()
     {

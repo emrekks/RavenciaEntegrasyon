@@ -172,6 +172,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
         foreach (var payout in pending.Take(perSlice))
         {
             var records = new List<RemoteStatementRecord>();
+            var skipped = new List<RemoteSkippedFinanceRecord>();
             // Not the service-fee filter: asked by payout id, Trendyol ignores transactionSubType and answers every deduction
             // invoice of the payout (4 Nov 2026: 95 cargo invoices came back marked as platform service fees).
             foreach (var query in Queries(rejected).Where(query => query.SubType is null))
@@ -188,11 +189,13 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                     }
                     var value = result.Value!;
                     records.AddRange(query.Source == MarketplaceFinanceSources.MoneyMovements ? value.Items.Select(x => x with { Source = query.Source }) : value.Items);
-                    telemetry.Received += value.Items.Count;
-                    if (value.Items.Count == 0 || page + 1 >= value.TotalPages) break;
+                    skipped.AddRange(value.Skipped);
+                    telemetry.Received += value.Items.Count + value.Skipped.Count;
+                    if (value.Items.Count + value.Skipped.Count == 0 || page + 1 >= value.TotalPages) break;
                 }
             }
             var collected = TrendyolFinanceSyncPlan.Collect(records);
+            await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "Trendyol", skipped, records.Select(x => x.ExternalId), now, cancellationToken);
             var keys = collected.Keys.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).ToList();
             var rows = new Dictionary<(string Source, string ExternalId), MarketplaceFinanceTransaction>();
             foreach (var chunk in keys.Chunk(1000))
@@ -221,11 +224,16 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
         return new(false, lasting ? null : error);
     }
 
-    private sealed record WindowRead(List<RemoteStatementRecord> Records, Dictionary<string, List<RemoteCargoInvoiceItem>> CargoItems, AdapterError? Error);
+    private sealed record WindowRead(List<RemoteStatementRecord> Records, Dictionary<string, List<RemoteCargoInvoiceItem>> CargoItems, AdapterError? Error)
+    {
+        // The records the pages sent without an id, a main amount or a date: not stored, named in issues.
+        public List<RemoteSkippedFinanceRecord> Skipped { get; init; } = [];
+    }
 
     private async Task<WindowRead> ReadWindowAsync(JobRequest request, AdapterContext context, DateTimeOffset start, DateTimeOffset end, Counter telemetry,
         SortedSet<string> rejected, CancellationToken cancellationToken)
     {
+        var skipped = new List<RemoteSkippedFinanceRecord>();
         var records = new List<RemoteStatementRecord>();
         var cargo = new Dictionary<string, List<RemoteCargoInvoiceItem>>(StringComparer.Ordinal);
         foreach (var query in Queries(null))
@@ -249,8 +257,9 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                 }
                 var value = result.Value!;
                 records.AddRange(query.Source == MarketplaceFinanceSources.MoneyMovements ? value.Items.Select(x => x with { Source = query.Source }) : value.Items);
-                telemetry.Received += value.Items.Count;
-                if (value.Items.Count == 0 || page + 1 >= value.TotalPages) break;
+                skipped.AddRange(value.Skipped);
+                telemetry.Received += value.Items.Count + value.Skipped.Count;
+                if (value.Items.Count + value.Skipped.Count == 0 || page + 1 >= value.TotalPages) break;
             }
         }
 
@@ -282,7 +291,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                 cargo[serial] = items;
             }
         }
-        return new(records, cargo, null);
+        return new(records, cargo, null) { Skipped = skipped };
     }
 
     private async Task WriteWindowAsync(JobRequest request, MarketplaceFinanceSyncState state, (DateTimeOffset Start, DateTimeOffset End) window, WindowRead read,
@@ -298,6 +307,7 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                 stored[(row.Source, row.ExternalId)] = row;
         var (added, updated) = TrendyolFinanceSyncPlan.Merge(stored, collected.Values, request.TenantId, request.ConnectionId, now);
         db.MarketplaceFinanceTransactions.AddRange(added);
+        await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "Trendyol", read.Skipped, read.Records.Select(x => x.ExternalId), now, cancellationToken);
 
         if (read.CargoItems.Count > 0)
         {

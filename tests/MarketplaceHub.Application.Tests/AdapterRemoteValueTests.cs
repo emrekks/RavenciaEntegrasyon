@@ -88,7 +88,7 @@ public sealed class AdapterRemoteValueTests
     [Fact]
     public void AFinancePageWithANullCountCountsItsItems()
     {
-        using var json = JsonDocument.Parse("""{"count":null,"items":[{"id":"1","amount":{"value":10,"currencyCode":"949"}}]}""");
+        using var json = JsonDocument.Parse("""{"count":null,"items":[{"id":"1","amount":{"value":10,"currencyCode":"949"},"dueDate":"2026-11-10T00:00:00"}]}""");
 
         var page = HepsiburadaFinanceMapper.Page(json.RootElement);
 
