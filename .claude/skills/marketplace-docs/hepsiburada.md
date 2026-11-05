@@ -23,7 +23,11 @@ Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs`, `HepsiburadaPackag
 - ticket-api (product update) names Bearer auth; a 401 there is `HEPSIBURADA_PRODUCT_UPDATE_AUTH_REJECTED`.
 
 ## Limits
-- Code buckets per account: oms 600/min, catalog (mpop) 180/min, listing 100/min, asktoseller 60/min (undocumented).
+- Code buckets: catalog (mpop) 180/min is one bucket per egress IP shared by every account (`hepsiburada:egress:catalog`;
+  official docs, Katalog Ürün Giriş Önemli Bilgiler: "180 istek/1 dakika" for each IP); if the shared limiter is down a
+  catalog call waits 1 s per call per process instead of going out unthrottled. Per account: oms 600/min, listing
+  100/min, asktoseller 60/min (undocumented). Money text in the catalog uses a decimal comma ("130,50").
+  (`HepsiburadaRateLimitHandler`, 2026-11-05)
 - Repo docs say orders 1000/s and catalog 180/min per IP; a May 2024 changelog snippet says 10k per 10 s
   (**unverified** directly). Jan 2026 changelog: catalog burst measured in 5 s windows, excess blocks the IP and
   unblocking needs a ticket with a static IP (number **unverified**).

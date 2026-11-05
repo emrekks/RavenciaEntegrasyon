@@ -68,12 +68,15 @@ public static partial class TrendyolEFaturamJsonMapper
     [System.Text.RegularExpressions.GeneratedRegex("\"invoiceUuid\"\\s*:\\s*\"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\"")]
     private static partial System.Text.RegularExpressions.Regex RawInvoiceUuid();
 
-    public static InvoiceRemoteStatus InvoiceStatus(string json, string externalReference)
+    // expectedUuid is the UUID the status was read for. A paged reply ("content") is read at the item that carries it,
+    // never at whatever came first: another invoice's status must not be stored as this one's. A single item that
+    // names no UUID is the one asked for; an answer without the UUID asked for is a contract error (unknown).
+    public static InvoiceRemoteStatus InvoiceStatus(string json, string externalReference, string? expectedUuid = null)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
-        if (root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
-            root = content.EnumerateArray().FirstOrDefault();
+        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
+            root = StatusItem(content, expectedUuid ?? externalReference);
         if (root.ValueKind != JsonValueKind.Object) throw new JsonException("invoice status missing");
         var raw = RequiredText(root, "status");
         if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var status)) throw new JsonException("status invalid");
@@ -85,6 +88,15 @@ public static partial class TrendyolEFaturamJsonMapper
         return new(externalReference, raw, classification.CanonicalStatus, invoiceId, uuid, classification.IsTerminal, gibStatus, gibCode);
     }
 
+    private static JsonElement StatusItem(JsonElement content, string expectedUuid)
+    {
+        var items = content.EnumerateArray().Where(item => item.ValueKind == JsonValueKind.Object).ToList();
+        var match = items.Where(item => string.Equals(Text(item, "invoiceUuid"), expectedUuid.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (match.Count == 1) return match[0];
+        if (match.Count == 0 && items.Count == 1 && Text(items[0], "invoiceUuid") is null) return items[0];
+        throw new JsonException("invoice status for the requested UUID missing or ambiguous");
+    }
+
     public static string PermanentDocumentUrl(string responseText)
     {
         var value = responseText.Trim().Trim('"');
@@ -94,5 +106,11 @@ public static partial class TrendyolEFaturamJsonMapper
 
     private static string RequiredText(JsonElement root, string name) => Text(root, name) is { Length: > 0 } value ? value : throw new JsonException($"{name} missing");
     private static string? Text(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) ? value.ToString().Trim() : null;
-    private static int? NullableInteger(JsonElement root, string name) => root.TryGetProperty(name, out var value) && value.TryGetInt32(out var result) ? result : null;
+    // O8: gibStatusCode may come as null (or as text); TryGetInt32 throws on anything but a number, so read it safely.
+    private static int? NullableInteger(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var value)) return null;
+        if (RemoteJson.Int32(value) is { } number) return number;
+        return value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+    }
 }

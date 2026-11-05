@@ -13,6 +13,10 @@ Code: `Adapters/Shopify/` — `ShopifyHttpClient.cs` (+ `.Webhooks.cs`), `Shopif
 
 ## Limits
 - GraphQL cost: on `THROTTLED` wait (requested − currentlyAvailable) / restoreRate, ≥ 1 s, default 5 s.
+- GraphQL errors come in a 200 body; every entry of `errors` is read. `THROTTLED` anywhere is a rate limit,
+  `INTERNAL_SERVER_ERROR` (Shopify's own 500, "retry the request" per the response-codes guide) is a retryable
+  Remote5xx (`SHOPIFY_INTERNAL_ERROR`, 30 s); then MAX_COST_EXCEEDED, ACCESS_DENIED, the first message.
+  (`ShopifyHttpClient.GraphQlError`, 2026-11-05)
   Repo doc: Standard 100 points/s, Advanced 200, Plus 1000.
 - HTTP 429 → `SHOPIFY_RATE_LIMITED`, Retry-After or 5 s. Single-query cost ceiling 1000; on `MAX_COST_EXCEEDED`
   the page size is quartered down to 1. Timeout 45 s.

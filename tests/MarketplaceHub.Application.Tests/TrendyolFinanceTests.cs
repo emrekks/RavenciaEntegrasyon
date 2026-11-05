@@ -115,18 +115,21 @@ public sealed class TrendyolFinanceTests
             new Dictionary<Guid, MarketplaceFinanceSyncState?> { [store] = new() { TenantId = Guid.NewGuid(), ConnectionId = store, LastSyncedAt = input.Period.End } });
         var costs = ReportBuilder.Build(input with { Finance = finance }, Empty(input), new Dictionary<Guid, decimal>()).Costs;
 
-        var deduction = costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.OtherDeduction);
+        // None of these records is tied to an order of the period: they are listed apart, by their category.
+        var deduction = costs.Unlinked!.Single(line => line.Category == MarketplaceFinanceCategories.OtherDeduction);
         Assert.Equal("Diğer kesinti", deduction.Label);
         Assert.True(deduction.IsCost);
         Assert.Equal(390m, deduction.Amount);
         Assert.Equal(3, deduction.Records);
-        var other = costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.Other);
+        var other = costs.Unlinked!.Single(line => line.Category == MarketplaceFinanceCategories.Other);
         Assert.False(other.IsCost);
         Assert.Equal(4m, other.Amount);
-        // Neither order is settled yet: each adds the estimated platform fee and 1 % withholding tax on its sale.
-        Assert.Equal(9.99m + 390m + 2 * 13.19m + 1.5m, costs.RealCostTotal);
+        Assert.Equal(9.99m + 390m, costs.UnlinkedTotal);
+        // The orders' own costs: each adds the estimated platform fee and 1 % withholding tax on its sale.
+        Assert.Equal(2 * 13.19m + 1.5m, costs.RealCostTotal);
+        Assert.DoesNotContain(costs.Lines, line => line.Category is MarketplaceFinanceCategories.OtherDeduction or MarketplaceFinanceCategories.Other);
         var channel = Assert.Single(costs.Channels);
-        Assert.Equal(390m, channel.Amounts.Single(amount => amount.Category == MarketplaceFinanceCategories.OtherDeduction).Amount);
+        Assert.DoesNotContain(channel.Amounts, amount => amount.Category == MarketplaceFinanceCategories.OtherDeduction);
     }
 
     [Theory]
@@ -361,28 +364,42 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(1, costs.SettledOrders);
         Assert.Equal(0.5m, costs.Coverage);
         Amount(costs, MarketplaceFinanceCategories.Commission, 17m);
-        Amount(costs, MarketplaceFinanceCategories.Cargo, 84.24m);
-        // Order B is not settled yet: its platform fee and withholding tax are estimated on top of the dated records.
-        Amount(costs, MarketplaceFinanceCategories.ServiceFee, 9.99m + 13.19m);
-        Amount(costs, MarketplaceFinanceCategories.Stoppage, 1m + 0.5m);
+        // Only the cargo lines of the period's orders; the invoice read as a whole belongs to no order.
+        Amount(costs, MarketplaceFinanceCategories.Cargo, 44.24m);
+        // Trendyol ties no service fee or withholding tax to an order: both orders, settled or not, are estimated; the
+        // dated invoices stay apart and are never added on top.
+        Amount(costs, MarketplaceFinanceCategories.ServiceFee, 2 * 13.19m);
+        Amount(costs, MarketplaceFinanceCategories.Stoppage, 1.5m);
         Amount(costs, MarketplaceFinanceCategories.Sale, -100m);
         Amount(costs, MarketplaceFinanceCategories.Discount, 5m);
-        Amount(costs, MarketplaceFinanceCategories.Other, -3m);
-        // Commission, cargo, service fee and withholding tax; OTHER is shown but not added.
-        Assert.Equal(17m + 84.24m + 9.99m + 13.19m + 1m + 0.5m, costs.RealCostTotal);
+        Assert.DoesNotContain(costs.Lines, line => line.Category == MarketplaceFinanceCategories.Other);
+        // Commission, cargo, service fee and withholding tax of the period's orders only.
+        Assert.Equal(17m + 44.24m + 26.38m + 1.5m, costs.RealCostTotal);
         var cargo = costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.Cargo);
         Assert.Equal(44.24m, cargo.OrderLinked);
-        Assert.Equal(40m, cargo.Unlinked);
+        Assert.Equal(2, cargo.Records);
+
+        // The records tied to no order of the period, apart: the whole cargo invoice, the service fee, the withholding
+        // tax (deductions, in the total) and the unclassified record (not a deduction).
+        Assert.Equal(
+            [
+                (MarketplaceFinanceCategories.Cargo, true, 40m, 1),
+                (MarketplaceFinanceCategories.ServiceFee, true, 9.99m, 1),
+                (MarketplaceFinanceCategories.Stoppage, true, 1m, 1),
+                (MarketplaceFinanceCategories.Other, false, -3m, 1)
+            ],
+            costs.Unlinked!.Select(line => (line.Category, line.IsCost, line.Amount, line.Records)).ToList());
+        Assert.Equal(40m + 9.99m + 1m, costs.UnlinkedTotal);
 
         // Order A's shipment was billed; order B's not yet: it is estimated at the store's recent cargo per order.
         var cargoCost = Assert.IsType<ReportCargoCostView>(costs.Cargo);
-        Assert.Equal(84.24m, cargoCost.Real);
+        Assert.Equal(44.24m, cargoCost.Real);
         Assert.Equal(1, cargoCost.BilledOrders);
         Assert.Equal(1, cargoCost.UnbilledOrders);
         Assert.Equal(98.34m, cargoCost.AveragePerOrder);
         Assert.Equal(2, cargoCost.SampleOrders);
         Assert.Equal(98.34m, cargoCost.Estimated);
-        Assert.Equal(84.24m + 98.34m, cargoCost.Combined);
+        Assert.Equal(44.24m + 98.34m, cargoCost.Combined);
 
         var commission = Assert.IsType<ReportRealCommissionView>(costs.Commission);
         Assert.Equal(17m, commission.Real);
@@ -398,7 +415,7 @@ public sealed class TrendyolFinanceTests
         Assert.Equal(17m, channel.RealCommission);
         Assert.Equal(10.75m, channel.EstimatedCommission);
         Assert.Equal(98.34m, channel.EstimatedCargo);
-        Assert.Equal(17m + 10.75m + 84.24m + 9.99m + 13.19m + 1m + 0.5m + 98.34m, channel.Total);
+        Assert.Equal(17m + 10.75m + 44.24m + 26.38m + 1.5m + 98.34m, channel.Total);
 
         var product = Assert.Single(costs.Products);
         Assert.Equal("BAR-1", product.Barcode);
@@ -412,6 +429,80 @@ public sealed class TrendyolFinanceTests
         Assert.Contains(report.DataNotes, note => note.Contains("ikinci kez eklenmez", StringComparison.Ordinal));
         Assert.Contains(report.DataNotes, note => note.Contains("faturası henüz gelmeyen 1 siparişin kargosu", StringComparison.Ordinal));
     }
+
+    // Live, 5 Nov 2026 ("Bugün"): the previous payment day's service fee (1,079.54) and withholding tax (448.01) invoices
+    // and a 5,000 TL advertising budget, all dated today and tied to no order, turned the 20 orders' +4,922 TL into a
+    // 633 TL loss. Owner: such deductions are taken out of the profit and shown apart.
+    [Fact]
+    public void Records_tied_to_no_order_of_the_period_stay_out_of_every_profit_figure_and_are_listed_apart()
+    {
+        var (input, _, _, store) = ReportFixture();
+        var sample = new Dictionary<Guid, ReportCargoSample> { [store] = new(196.68m, 2) };
+        var states = new Dictionary<Guid, MarketplaceFinanceSyncState?>
+        {
+            [store] = new() { TenantId = Guid.NewGuid(), ConnectionId = store, CoveredFrom = input.Period.Start.AddDays(-90), CoveredThrough = input.Period.End.AddDays(1), LastSyncedAt = input.Period.End.AddDays(1) }
+        };
+        List<ReportFinanceRow> own = [Row(store, Settlements, "1", "Sale", MarketplaceFinanceCategories.Sale, "A-1", "BAR-1", credit: 100m, commission: 18m)];
+        List<ReportCargoItemRow> ownCargo = [new() { ConnectionId = store, InvoiceSerialNumber = "INV-1", OrderNumber = "A-1", ShipmentPackageType = "Gönderi Kargo Bedeli", Amount = 34.24m }];
+        List<ReportFinanceRow> dated =
+        [
+            Row(store, Others, "AD-1", "PaymentOrder", MarketplaceFinanceCategories.Advertising, null, null, debt: 5_000m),
+            Row(store, Others, "SF-1", TrendyolFinanceCategorizer.DeductionInvoices, MarketplaceFinanceCategories.ServiceFee, null, null, debt: 1_079.54m),
+            Row(store, Others, "ST-1", "Stoppage", MarketplaceFinanceCategories.Stoppage, null, null, debt: 448.01m),
+            // A settlement of an order the panel never imported: its commission is no cost of the period's orders either.
+            Row(store, Settlements, "Z-1", "Sale", MarketplaceFinanceCategories.Sale, "Z-9", "BAR-9", credit: 80m, commission: 12m)
+        ];
+        // A cargo line of an order never imported.
+        ReportCargoItemRow foreignCargo = new() { ConnectionId = store, InvoiceSerialNumber = "INV-1", OrderNumber = "Z-9", ShipmentPackageType = "Gönderi Kargo Bedeli", Amount = 98.34m };
+        ReportBuildResult Build(IReadOnlyList<ReportFinanceRow> rows, IReadOnlyList<ReportCargoItemRow> items)
+        {
+            var withFinance = input with { Finance = new ReportFinance(rows, items, new HashSet<(Guid, string)> { (store, "INV-1") }, states, sample) };
+            var facts = ReportBuilder.Facts(withFinance).Orders;
+            return new(ReportBuilder.Build(withFinance, Empty(input), new Dictionary<Guid, decimal>()).Costs, ReportOrderProfit.Build(withFinance, facts));
+        }
+
+        var alone = Build(own, ownCargo);
+        var both = Build([.. own, .. dated], [.. ownCargo, foreignCargo]);
+
+        // Every figure of the period's orders is what it is without the dated records.
+        Assert.Equal(alone.Costs.Lines, both.Costs.Lines);
+        Assert.Equal(alone.Costs.Commission, both.Costs.Commission);
+        Assert.Equal(alone.Costs.Cargo, both.Costs.Cargo);
+        Assert.Equal(alone.Costs.NetVat, both.Costs.NetVat);
+        Assert.Equal(alone.Costs.RealCostTotal, both.Costs.RealCostTotal);
+        Assert.Equal(alone.Costs.Channels.Select(channel => (channel.RealCommission, channel.EstimatedCommission, channel.EstimatedCargo, channel.Total)),
+            both.Costs.Channels.Select(channel => (channel.RealCommission, channel.EstimatedCommission, channel.EstimatedCargo, channel.Total)));
+        Assert.Equal(alone.Costs.Products, both.Costs.Products);
+        Assert.Equal(alone.Orders.Select(order => order.Profit), both.Orders.Select(order => order.Profit));
+        Assert.DoesNotContain(both.Costs.Lines, line => line.Category == MarketplaceFinanceCategories.Advertising);
+
+        // The service fee and withholding tax of both orders are estimated once each (A is settled, B not), never on top
+        // of the dated invoices: 2 × 13.19 and 1 % of 150.
+        Assert.Equal((26.38m, 26.38m, 0m), Fee(both.Costs, MarketplaceFinanceCategories.ServiceFee));
+        Assert.Equal((1.5m, 1.5m, 0m), Fee(both.Costs, MarketplaceFinanceCategories.Stoppage));
+        // VAT inside 21.50 + 10.75 commission (A's real 18 + B's estimate), 34.24 + 98.34 cargo and 2 × 13.19 fee.
+        Assert.Equal(Math.Round((18m + 10.75m + 34.24m + 98.34m + 26.38m) * 20m / 120m, 2, MidpointRounding.AwayFromZero), both.Costs.NetVat!.ExpenseVat);
+
+        // Apart: every deduction tied to no order, with its total; the foreign sale is listed but is no deduction.
+        Assert.Equal(
+            [
+                (MarketplaceFinanceCategories.Sale, false, -80m, 1),
+                (MarketplaceFinanceCategories.Commission, true, 12m, 1),
+                (MarketplaceFinanceCategories.Cargo, true, 98.34m, 1),
+                (MarketplaceFinanceCategories.ServiceFee, true, 1_079.54m, 1),
+                (MarketplaceFinanceCategories.Stoppage, true, 448.01m, 1),
+                (MarketplaceFinanceCategories.Advertising, true, 5_000m, 1)
+            ],
+            both.Costs.Unlinked!.Select(line => (line.Category, line.IsCost, line.Amount, line.Records)).ToList());
+        Assert.Equal(12m + 98.34m + 1_079.54m + 448.01m + 5_000m, both.Costs.UnlinkedTotal);
+        Assert.Empty(alone.Costs.Unlinked!);
+        Assert.Equal(0m, alone.Costs.UnlinkedTotal);
+    }
+
+    private sealed record ReportBuildResult(ReportCostsView Costs, List<ReportOrderProfitView> Orders);
+
+    private static (decimal Amount, decimal Estimated, int Records) Fee(ReportCostsView costs, string category) =>
+        costs.Lines.Single(line => line.Category == category) is var line ? (line.Amount, line.Estimated, line.Records) : default;
 
     [Fact]
     public void Without_a_recent_cargo_sample_the_unbilled_cargo_is_reported_missing_not_zero()

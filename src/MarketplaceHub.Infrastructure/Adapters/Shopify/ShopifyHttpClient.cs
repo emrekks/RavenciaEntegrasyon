@@ -1238,38 +1238,8 @@ public sealed partial class ShopifyHttpClient(
                     ?? (response.Headers.RetryAfter?.Date is { } resetAt ? resetAt - DateTimeOffset.UtcNow : null);
                 return Failure<JsonDocument>(MapHttpError(response.StatusCode, raw, retryAfter, remoteRequestId), rate);
             }
-            if (document.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Array && errors.GetArrayLength() > 0)
-            {
-                var firstError = errors[0];
-                var message = firstError.TryGetProperty("message", out var errorMessage) ? errorMessage.GetString() : "Shopify GraphQL isteği reddedildi.";
-                var errorCode = firstError.TryGetProperty("extensions", out var extensions)
-                    && extensions.TryGetProperty("code", out var code)
-                    ? code.GetString()
-                    : null;
-                var throttled = string.Equals(errorCode, "THROTTLED", StringComparison.OrdinalIgnoreCase);
-                // A query over Shopify's single-query cost ceiling: the caller may ask again for a smaller page.
-                if (string.Equals(errorCode, "MAX_COST_EXCEEDED", StringComparison.OrdinalIgnoreCase))
-                    return Failure<JsonDocument>(new(AdapterErrorClass.Validation, QueryCostExceededCode, "Shopify sorgusu tek sorgu maliyet sınırını aştı.", (int)response.StatusCode, null, remoteRequestId), rate);
-                var accessDenied = string.Equals(errorCode, "ACCESS_DENIED", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(errorCode, "FORBIDDEN", StringComparison.OrdinalIgnoreCase);
-                var deniedField = firstError.TryGetProperty("path", out var path)
-                    && path.ValueKind == JsonValueKind.Array
-                    ? string.Join(".", path.EnumerateArray()
-                        .Select(value => value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString())
-                        .Where(value => !string.IsNullOrWhiteSpace(value)))
-                    : null;
-                return Failure<JsonDocument>(new(
-                    throttled ? AdapterErrorClass.RateLimit : accessDenied ? AdapterErrorClass.Authentication : AdapterErrorClass.Validation,
-                    throttled ? "SHOPIFY_RATE_LIMITED" : accessDenied ? "SHOPIFY_REQUIRED_READ_SCOPE" : "SHOPIFY_GRAPHQL_ERROR",
-                    throttled
-                        ? "Shopify API sınırına ulaşıldı; bağlantı bazında yeniden denenecek."
-                        : accessDenied
-                            ? $"Shopify API izni eksik{(string.IsNullOrWhiteSpace(deniedField) ? string.Empty : $" ({deniedField})")}. read_products, read_inventory, read_orders, read_customers, read_locations, write_products ve write_inventory izinlerini kontrol edin."
-                            : message ?? "Shopify GraphQL isteği reddedildi.",
-                    (int)response.StatusCode,
-                    throttled ? ThrottleWait(document.RootElement) ?? TimeSpan.FromSeconds(5) : null,
-                    remoteRequestId), rate);
-            }
+            if (GraphQlError(document.RootElement, (int)response.StatusCode, remoteRequestId) is { } graphQlError)
+                return Failure<JsonDocument>(graphQlError, rate);
             if (!document.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object)
             {
                 return Failure<JsonDocument>(new(
@@ -1817,12 +1787,55 @@ public sealed partial class ShopifyHttpClient(
         return result;
     }
 
+    internal const string GraphQlInternalErrorCode = "SHOPIFY_INTERNAL_ERROR";
+
+    // O13: every entry of a GraphQL `errors` array is read, not only the first. Shopify reports rate limiting
+    // (THROTTLED) and its own failures (INTERNAL_SERVER_ERROR) in a 200 body instead of 429/500, and documents
+    // both as "retry the request" (shopify.dev/docs/api/usage/response-codes, GraphQL error handling). One
+    // retryable entry makes the whole answer retryable; then the cost ceiling, a missing scope and the first
+    // message, in that order. Null when the body carries no errors.
+    internal static AdapterError? GraphQlError(JsonElement root, int httpStatus, string? remoteRequestId)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("errors", out var errors) || errors.ValueKind != JsonValueKind.Array || errors.GetArrayLength() == 0)
+            return null;
+        var entries = errors.EnumerateArray().Where(entry => entry.ValueKind == JsonValueKind.Object).ToList();
+        static string? Code(JsonElement entry) =>
+            entry.TryGetProperty("extensions", out var extensions) && extensions.ValueKind == JsonValueKind.Object
+            && extensions.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String ? code.GetString() : null;
+        JsonElement? With(params string[] codes) =>
+            entries.Cast<JsonElement?>().FirstOrDefault(entry => codes.Any(known => string.Equals(Code(entry!.Value), known, StringComparison.OrdinalIgnoreCase)));
+
+        if (With("THROTTLED") is not null)
+            return new(AdapterErrorClass.RateLimit, "SHOPIFY_RATE_LIMITED", "Shopify API sınırına ulaşıldı; bağlantı bazında yeniden denenecek.",
+                httpStatus, ThrottleWait(root) ?? TimeSpan.FromSeconds(5), remoteRequestId);
+        if (With("INTERNAL_SERVER_ERROR") is not null)
+            return new(AdapterErrorClass.Remote5xx, GraphQlInternalErrorCode, "Shopify kendi tarafında bir hata bildirdi; istek yeniden denenecek.",
+                httpStatus, TimeSpan.FromSeconds(30), remoteRequestId);
+        // A query over Shopify's single-query cost ceiling: the caller may ask again for a smaller page.
+        if (With("MAX_COST_EXCEEDED") is not null)
+            return new(AdapterErrorClass.Validation, QueryCostExceededCode, "Shopify sorgusu tek sorgu maliyet sınırını aştı.", httpStatus, null, remoteRequestId);
+        if (With("ACCESS_DENIED", "FORBIDDEN") is { } denied)
+        {
+            var deniedField = denied.TryGetProperty("path", out var path) && path.ValueKind == JsonValueKind.Array
+                ? string.Join(".", path.EnumerateArray()
+                    .Select(value => value.ValueKind == JsonValueKind.String ? value.GetString() : value.ToString())
+                    .Where(value => !string.IsNullOrWhiteSpace(value)))
+                : null;
+            return new(AdapterErrorClass.Authentication, "SHOPIFY_REQUIRED_READ_SCOPE",
+                $"Shopify API izni eksik{(string.IsNullOrWhiteSpace(deniedField) ? string.Empty : $" ({deniedField})")}. read_products, read_inventory, read_orders, read_customers, read_locations, write_products ve write_inventory izinlerini kontrol edin.",
+                httpStatus, null, remoteRequestId);
+        }
+        var message = entries.Select(entry => entry.TryGetProperty("message", out var text) && text.ValueKind == JsonValueKind.String ? text.GetString() : null)
+            .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text));
+        return new(AdapterErrorClass.Validation, "SHOPIFY_GRAPHQL_ERROR", message ?? "Shopify GraphQL isteği reddedildi.", httpStatus, null, remoteRequestId);
+    }
+
     // Queries close to Shopify's 1000-point ceiling are logged with their requested and actual cost, so the
     // nested page sizes can be tuned from real numbers.
     private void LogQueryCost(JsonDocument document, string shop)
     {
         if (!document.RootElement.TryGetProperty("extensions", out var extensions) || !extensions.TryGetProperty("cost", out var cost)
-            || !cost.TryGetProperty("requestedQueryCost", out var requestedElement) || !requestedElement.TryGetInt32(out var requested)) return;
+            || RemoteJson.Int32(cost, "requestedQueryCost") is not { } requested) return;
         if (requested < 500) return;
         int? actual = cost.TryGetProperty("actualQueryCost", out var actualElement) && actualElement.ValueKind == JsonValueKind.Number && actualElement.TryGetInt32(out var actualValue) ? actualValue : null;
         logger.LogInformation("Shopify query for {Shop} requested {RequestedCost} points (actual {ActualCost})", shop, requested, actual);
@@ -1833,10 +1846,10 @@ public sealed partial class ShopifyHttpClient(
     internal static TimeSpan? ThrottleWait(JsonElement root)
     {
         if (!root.TryGetProperty("extensions", out var extensions) || !extensions.TryGetProperty("cost", out var cost)
-            || !cost.TryGetProperty("requestedQueryCost", out var requestedElement) || !requestedElement.TryGetDouble(out var requested)
+            || RemoteJson.Double(cost, "requestedQueryCost") is not { } requested
             || !cost.TryGetProperty("throttleStatus", out var throttle)
-            || !throttle.TryGetProperty("currentlyAvailable", out var availableElement) || !availableElement.TryGetDouble(out var available)
-            || !throttle.TryGetProperty("restoreRate", out var restoreElement) || !restoreElement.TryGetDouble(out var restoreRate) || restoreRate <= 0)
+            || RemoteJson.Double(throttle, "currentlyAvailable") is not { } available
+            || RemoteJson.Double(throttle, "restoreRate") is not { } restoreRate || restoreRate <= 0)
             return null;
         var seconds = Math.Ceiling(Math.Max(0, requested - available) / restoreRate);
         return TimeSpan.FromSeconds(Math.Max(1, seconds));
@@ -1847,10 +1860,9 @@ public sealed partial class ShopifyHttpClient(
         if (!document.RootElement.TryGetProperty("extensions", out var extensions)
             || !extensions.TryGetProperty("cost", out var cost)
             || !cost.TryGetProperty("throttleStatus", out var throttle)
-            || !throttle.TryGetProperty("currentlyAvailable", out var availableElement)
-            || !availableElement.TryGetInt32(out var available)) return null;
-        int? maximum = throttle.TryGetProperty("maximumAvailable", out var maximumElement) && maximumElement.TryGetInt32(out var maximumValue) ? maximumValue : null;
-        double? restoreRate = throttle.TryGetProperty("restoreRate", out var restoreElement) && restoreElement.TryGetDouble(out var restoreValue) ? restoreValue : null;
+            || RemoteJson.Int32(throttle, "currentlyAvailable") is not { } available) return null;
+        var maximum = RemoteJson.Int32(throttle, "maximumAvailable");
+        var restoreRate = RemoteJson.Double(throttle, "restoreRate");
         TimeSpan? retryAfter = maximum is { } limit && restoreRate is > 0 && available < limit
             ? TimeSpan.FromSeconds((limit - available) / restoreRate.Value)
             : null;
