@@ -1328,9 +1328,20 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 foreach (var update in attributeUpdates) db.ProductAttributeAssignments.AddRange((update.Attributes ?? []).Select(attribute => Assignment(tenantId, existingVariants.Single(variant => variant.Id == update.Id).ProductId, update.Id, attribute)));
             }
         }
+        // A new row goes to the family card of its own colour, not to the opened card (ProductFamilyVariantPlacement).
+        var newVariantProductIds = new List<Guid>();
         if (variantsToCreate.Count > 0)
         {
             if (existingVariants.Count + variantsToCreate.Count > 1000) return Invalid<ProductView>("variantsToCreate", "Tek ürün kaydında en fazla 1000 varyant oluşturulabilir.");
+            var placement = ProductFamilyVariantPlacement.Place(id, familyVariantProductIds,
+                existingVariants.Select(variant => new ProductFamilyVariantPlacement.ExistingRow(variant.ProductId, variant.OptionSignature, variantIdsToDelete.Contains(variant.Id))),
+                [.. variantsToCreate.Select(variant => variant.Options)]);
+            if (placement.ColorsWithoutCard.Count > 0)
+            {
+                var missingCardMessage = ProductFamilyVariantPlacement.MissingCardMessage(placement.ColorsWithoutCard);
+                return ServiceResult<ProductView>.Fail("VARIANT_COLOR_CARD_MISSING", missingCardMessage, 422, new Dictionary<string, string[]> { ["variantsToCreate"] = [missingCardMessage] });
+            }
+            newVariantProductIds = [.. placement.ProductIds];
             foreach (var variant in variantsToCreate)
             {
                 var variantAttributeValidation = await ValidateAttributeValuesAsync(tenantId, variant.Attributes ?? [], cancellationToken);
@@ -1366,10 +1377,19 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 "DRAFT" => ProductStatus.Draft,
                 _ => product.Status
             };
-            var newVariants = variantsToCreate.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = id, SortOrder = Math.Max(0, variant.SortOrder), Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = newVariantStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
+            // A row placed on another colour card takes that card's status, or the opened card's new status when the card
+            // moves with it (it was on the same status; see the family status change below).
+            var siblingTargetIds = newVariantProductIds.Where(productId => productId != id).Distinct().ToArray();
+            var siblingStatuses = siblingTargetIds.Length == 0
+                ? []
+                : await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && siblingTargetIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Status, cancellationToken);
+            ProductStatus StatusOnCard(Guid productId) => productId == id || !siblingStatuses.TryGetValue(productId, out var siblingStatus) || siblingStatus == product.Status ? newVariantStatus : siblingStatus;
+            var newVariants = variantsToCreate.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = newVariantProductIds[index], SortOrder = Math.Max(0, variant.SortOrder), Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = StatusOnCard(newVariantProductIds[index]), Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
             db.ProductVariants.AddRange(newVariants);
-            for (var index = 0; index < newVariants.Count; index++) db.ProductAttributeAssignments.AddRange((variantsToCreate[index].Attributes ?? []).Select(x => Assignment(tenantId, id, newVariants[index].Id, x)));
-            await PersistVariantOptionsAsync(tenantId, id, newVariants, variantsToCreate, cancellationToken);
+            for (var index = 0; index < newVariants.Count; index++) db.ProductAttributeAssignments.AddRange((variantsToCreate[index].Attributes ?? []).Select(x => Assignment(tenantId, newVariants[index].ProductId, newVariants[index].Id, x)));
+            // Options are kept per card: each card's new rows go into that card's option values.
+            foreach (var card in newVariants.Select((variant, index) => (variant, command: variantsToCreate[index])).GroupBy(row => row.variant.ProductId))
+                await PersistVariantOptionsAsync(tenantId, card.Key, [.. card.Select(row => row.variant)], [.. card.Select(row => row.command)], cancellationToken);
             await EnsureMainInventoryAsync(tenantId, newVariants, variantsToCreate.Select(x => x.OnHand).ToList(), actorUserId, correlation, now, cancellationToken);
         }
         // O15: the editor always sends the status it shows, which is the edited product's. A status the
@@ -1387,10 +1407,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Where(variant => variant.ProductId != id && (familyStatusProductIds.Contains(variant.ProductId) || variantIdsToDelete.Contains(variant.Id) || changedVariantIds.Contains(variant.Id)))
             .Select(variant => variant.ProductId)
             .ToHashSet();
-        // A sibling whose every row is deleted keeps no empty ACTIVE product card behind: it is archived.
+        // A colour card that gets new rows from this save is a local edit too.
+        familyProductIdsToProtect.UnionWith(newVariantProductIds.Where(productId => productId != id));
+        // A sibling whose every row is deleted keeps no empty ACTIVE product card behind: it is archived (unless this
+        // save gave it new rows of its colour).
         var emptiedFamilyProductIds = existingVariants
             .GroupBy(variant => variant.ProductId)
-            .Where(group => group.Key != id && group.All(variant => variantIdsToDelete.Contains(variant.Id)))
+            .Where(group => group.Key != id && !newVariantProductIds.Contains(group.Key) && group.All(variant => variantIdsToDelete.Contains(variant.Id)))
             .Select(group => group.Key)
             .ToHashSet();
         await using var variantPurgeTransaction = variantIdsToDelete.Count > 0 && db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken) : null;
