@@ -233,16 +233,41 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     internal static readonly string[] OrderSummaryTabs = ["ALL", "NEW", "PROCESSING", "SHIPPED", "DELIVERED", "RESENT", "ON_HOLD", "CANCELLED", "RETURNED", "RETURN_IN_TRANSIT", "PARTIALLY_CANCELLED", "MANUAL_REVIEW", "PENDING", "UNVERIFIED", "PAYMENT_PENDING", "UNDELIVERED", "LATE"];
 
     // The first print is kept; printing again later does not move it. A plain column update: the
-    // order's version and the worker's concurrent writes are not touched.
+    // order's version and the worker's concurrent writes are not touched. The first print is announced
+    // in the same transaction ("orders" outbox event, as a saved order is), so the order lists, the
+    // "Etiket Durumu" filter and the counters open on other computers read it again instead of waiting
+    // for their next poll.
     public async Task<bool> MarkLabelPrintedAsync(Guid tenantId, Guid orderId, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var exists = await db.Orders.AnyAsync(x => x.TenantId == tenantId && x.Id == orderId, cancellationToken);
-        if (!exists) return false;
-        await db.Orders.Where(x => x.TenantId == tenantId && x.Id == orderId && x.LabelPrintedAt == null)
+        var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == orderId)
+            .Select(x => new { x.Version }).SingleOrDefaultAsync(cancellationToken);
+        if (order is null) return false;
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var marked = await db.Orders.Where(x => x.TenantId == tenantId && x.Id == orderId && x.LabelPrintedAt == null)
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LabelPrintedAt, now), cancellationToken);
+        if (marked > 0)
+        {
+            db.IntegrationOutboxEvents.Add(LabelPrintedOutboxEvent(tenantId, orderId, order.Version, now));
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
         return true;
     }
+
+    internal static IntegrationOutboxEvent LabelPrintedOutboxEvent(Guid tenantId, Guid orderId, long version, DateTimeOffset now) => new()
+    {
+        Id = Guid.CreateVersion7(),
+        TenantId = tenantId,
+        ResourceType = "orders",
+        OperationType = "updated",
+        AggregateType = "Order",
+        AggregateId = orderId,
+        AggregateVersion = version,
+        PayloadJson = JsonSerializer.Serialize(new { aggregateType = "Order", aggregateId = orderId, version, labelPrinted = true }),
+        CreatedAt = now,
+        NextAttemptAt = now
+    };
 
     internal void ApplyOrderFilters(ref IQueryable<Order> query, OrderListQuery options, Guid tenantId)
     {

@@ -78,6 +78,8 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     {
         if (command.OnHand < 0) return Invalid<InventoryItemView>("onHand", "Stok negatif olamaz.");
         if (command.OnHand > 1_000_000_000m) return Invalid<InventoryItemView>("onHand", "Stok miktarı çok büyük.");
+        // Stock is a count of pieces: a fraction (a "1.250" read as 1.25, a typo) is refused, never rounded or stored.
+        if (command.OnHand != decimal.Truncate(command.OnHand)) return Invalid<InventoryItemView>("onHand", "Stok tam sayı olmalıdır; kesirli bir stok girilemez.");
         if (string.IsNullOrWhiteSpace(command.Reason) || string.IsNullOrWhiteSpace(command.SourceEventId)) return Invalid<InventoryItemView>("reason", "Reason ve sourceEventId zorunludur.");
         var existing = await db.StockLedgerEntries.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == idempotencyKey, cancellationToken);
         if (existing is not null)

@@ -388,26 +388,43 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     internal static long? ChooseUsableExternalValue(IReadOnlyList<AttributeValueMapping> usable) => ChooseExternalValue(usable);
 
     // A barcode (or stock code) another product's variant already uses on the same connection: the
-    // marketplace keeps one listing per code in a store, so creating a second one would collide.
+    // marketplace keeps one listing per code in a store, so creating a second one would collide. Codes are
+    // compared without regard to case (a marketplace treats "abc-1" and "ABC-1" as one code, as the card's own
+    // check does), and both the panel's own publications and the links an import made (the barcode the
+    // marketplace holds for another variant, MarketplaceVariantLink.ExternalBarcode) count. A link whose
+    // marketplace barcode was never read says nothing and is not counted.
     internal static async Task<string?> ConnectionDuplicateAsync(AppDbContext db, Guid tenantId, Guid connectionId, IReadOnlyCollection<Guid> variantIds, IReadOnlyCollection<string> barcodes, IReadOnlyCollection<string> linkKeys, CancellationToken cancellationToken)
     {
         if (barcodes.Count > 0)
         {
+            var upperBarcodes = UpperCodes(barcodes);
             var listed = await (from listing in db.ChannelListingVariants.AsNoTracking()
                                 join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
                                 where listing.TenantId == tenantId && profile.ConnectionId == connectionId
-                                    && listing.ExternalBarcode != null && barcodes.Contains(listing.ExternalBarcode) && !variantIds.Contains(listing.VariantId)
+                                    && listing.ExternalBarcode != null && upperBarcodes.Contains(listing.ExternalBarcode.ToUpper()) && !variantIds.Contains(listing.VariantId)
                                 orderby listing.ExternalBarcode
                                 select listing.ExternalBarcode).FirstOrDefaultAsync(cancellationToken);
             if (listed is not null) return listed;
+            var imported = await db.MarketplaceVariantLinks.AsNoTracking()
+                .Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId && link.ExternalBarcode != null
+                    && upperBarcodes.Contains(link.ExternalBarcode.ToUpper()) && !variantIds.Contains(link.VariantId))
+                .OrderBy(link => link.ExternalBarcode)
+                .Select(link => link.ExternalBarcode)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (imported is not null) return imported;
         }
         if (linkKeys.Count == 0) return null;
+        var upperKeys = UpperCodes(linkKeys);
         return await db.MarketplaceVariantLinks.AsNoTracking()
-            .Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId && linkKeys.Contains(link.ExternalId) && !variantIds.Contains(link.VariantId))
+            .Where(link => link.TenantId == tenantId && link.ConnectionId == connectionId && upperKeys.Contains(link.ExternalId.ToUpper()) && !variantIds.Contains(link.VariantId))
             .OrderBy(link => link.ExternalId)
             .Select(link => link.ExternalId)
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    // Codes as the duplicate check compares them: trimmed and upper-cased (invariant; barcodes hold no Turkish letters).
+    internal static string[] UpperCodes(IEnumerable<string> codes) =>
+        [.. codes.Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code.Trim().ToUpperInvariant()).Distinct(StringComparer.Ordinal)];
 
     internal static string ConnectionDuplicateMessage(string code) =>
         $"'{code}' kodu bu bağlantıda başka bir ürünün varyantında kullanılıyor; aynı mağazada iki ürün aynı barkodu veya stok kodunu kullanamaz.";

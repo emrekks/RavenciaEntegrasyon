@@ -29,5 +29,6 @@ export function resolveOrderStatusTab(status: string | null | undefined) {
   if (!normalizedStatus) return 'ALL'
   // READY_TO_SHIP orders are listed with the processing ones.
   if (normalizedStatus === 'READY_TO_SHIP') return 'PROCESSING'
-  return knownOrderStatusTabs.has(normalizedStatus) ? normalizedStatus : status || 'ALL'
+  // A status no tab lists (a typo, an old link) opens Tümü instead of going to the API as typed.
+  return knownOrderStatusTabs.has(normalizedStatus) ? normalizedStatus : 'ALL'
 }

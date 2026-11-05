@@ -20,7 +20,7 @@ import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsPa
 import { productImportConnection, singleProductLookupHint, singleProductLookupLabel } from '../product-import-platforms'
 import { productImportOptionVisibility as getProductImportOptionVisibility, productImportOverwriteConfirmation, productImportPriceStockLabel, type ProductImportMethod, type ProductImportMode } from '../product-import-options'
 import { productPlatformFilterGroups } from '../product-platform-filter'
-import { channelOffer, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, normalizePriceInput, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
+import { bulkEditValues, channelOffer, channelTakesListPrice, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, priceFieldText, panelFollowChoiceVariantIds, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceColumns, quickPriceTarget, type QuickPriceColumn } from '../quick-price-edit'
 import { bulkStatusPlan, bulkStatusResultMessage, runInChunks } from '../bulk-status-run'
 import { ViewTabsWithMore, viewTabLabel } from '../../../shared/view-tabs'
 import { formatMoney } from '../../../shared/format-money'
@@ -236,10 +236,12 @@ export function ProductQuickEditModal({ products, connections, mode = 'both', on
     if (!selectionDraft.length) { const message = 'Önce en az bir varyant seçin.'; setNotice(message); onResult?.('Varyant Seçilmedi', message, 'error'); return }
     const targetSelection = selectionDraft
     const targetSelectionSet = new Set(targetSelection)
-    const priceRequested = mode !== 'stock' && ((showListPrice && listPrice !== '') || salePrice !== ''); const stockRequested = stockAmount !== ''
+    const priceRequested = mode !== 'stock' && ((showListPrice && listPrice.trim() !== '') || salePrice.trim() !== ''); const stockRequested = stockAmount.trim() !== ''
     if (!priceRequested && !stockRequested) { const message = 'Uygulanacak fiyat veya stok değerini girin.'; setNotice(message); onResult?.('Değer Girilmedi', message, 'error'); return }
-    const list = !showListPrice ? (salePrice === '' ? null : Number(salePrice)) : listPrice === '' ? null : Number(listPrice); const sale = salePrice === '' ? null : Number(salePrice); const amount = stockAmount === '' ? null : Number(stockAmount)
-    if ((list != null && (!Number.isFinite(list) || list < 0 || !hasAtMostTwoDecimals(list))) || (sale != null && (!Number.isFinite(sale) || sale <= 0 || !hasAtMostTwoDecimals(sale))) || (list != null && sale != null && list < sale) || (amount != null && (!Number.isFinite(amount) || amount < 0))) { const message = 'Değerleri kontrol edin; satış fiyatı sıfırdan büyük olmalı, negatif fiyat/stok veya hatalı fiyat sıralaması kullanılamaz.'; setNotice(message); onResult?.('Geçersiz Değer', message, 'error'); return }
+    // Read as Turkish ("1.250" is 1250); a stock fraction is refused, not rounded.
+    const values = bulkEditValues({ showListPrice, listPrice: mode === 'stock' ? '' : listPrice, salePrice: mode === 'stock' ? '' : salePrice, stockAmount })
+    if (!values.ok) { setNotice(values.message); onResult?.('Geçersiz Değer', values.message, 'error'); return }
+    const { list, sale, amount } = values
     setSaving(true); setNotice('')
     // Every selected variant is attempted; a failure is recorded and the rest still go out. Stock is sent as an
     // absolute value against the stock this dialog opened with, so a change made meanwhile is refused, not undone.
@@ -365,7 +367,7 @@ export function ProductQuickEditModal({ products, connections, mode = 'both', on
       <section className="rr-step"><header><span className="rr-stepn">2</span><div className="rr-h3">{stepTwoTitle}<TitleHint label={stepTwoTitle}>Değeri şimdi girebilirsiniz; uygulamak için en az bir varyantı işaretleyin.</TitleHint></div><small className="rr-lead">{activeSelection.length ? `${activeSelection.length} seçili varyanta uygulanacak` : 'Varyant seçimi bekleniyor'}</small></header>
         {activeSelection.length ? <div className="rr-chips">{selectionChips(variants.filter(item => activeSelectedSet.has(item.variant.id)).map(item => item.variant)).map(chip => <span key={chip} className="rr-chip">{chip}</span>)}</div> : null}
         {needsPriceConnection && <label className="rr-fld"><small>Fiyat Kanalı</small><select className="rr-in" aria-label="Fiyat kanalı" aria-describedby="quick-price-choice-help" value={priceConnectionId} onChange={event => setPriceConnectionId(event.target.value)}><option value={PANEL_PRICE_CHOICE}>Panel Ana Fiyatı</option>{connections.length > 0 && <optgroup label="Pazaryeri Kanalı">{connections.map(connection => <option key={connection.id} value={connection.id}>{connection.displayName}</option>)}</optgroup>}</select><small className="rr-lead" id="quick-price-choice-help" aria-live="polite">{quickPriceChoiceHelp(priceConnectionId, priceChannelName, followerColumns.map(column => column.label))}</small></label>}
-        <div className="rr-dgrid">{mode !== 'stock' && <>{showListPrice && <label className="rr-fld"><small>Liste Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label>}<label className="rr-fld"><small>Satış Fiyatı</small><input className="rr-in rr-num" type="number" min="0" step="0.01" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></>}{mode !== 'price' && <><label className="rr-fld"><small>Stok İşlemi</small><select className="rr-in" value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu Sayıya Eşitle</option><option value="ADD">Bu Kadar Ekle (+)</option><option value="SUBTRACT">Bu Kadar Çıkar (−)</option></select></label><label className="rr-fld"><small>Miktar</small><input className="rr-in rr-num" type="number" min="0" step="1" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></>}</div>
+        <div className="rr-dgrid">{mode !== 'stock' && <>{showListPrice && <label className="rr-fld"><small>Liste Fiyatı</small><input className="rr-in rr-num" type="text" inputMode="decimal" autoComplete="off" value={listPrice} onChange={event => setListPrice(event.target.value)} placeholder="Değiştirme" /></label>}<label className="rr-fld"><small>Satış Fiyatı</small><input className="rr-in rr-num" type="text" inputMode="decimal" autoComplete="off" value={salePrice} onChange={event => setSalePrice(event.target.value)} placeholder="Değiştirme" /></label></>}{mode !== 'price' && <><label className="rr-fld"><small>Stok İşlemi</small><select className="rr-in" value={stockAction} onChange={event => setStockAction(event.target.value as typeof stockAction)}><option value="SET">Bu Sayıya Eşitle</option><option value="ADD">Bu Kadar Ekle (+)</option><option value="SUBTRACT">Bu Kadar Çıkar (−)</option></select></label><label className="rr-fld"><small>Miktar</small><input className="rr-in rr-num" type="text" inputMode="numeric" autoComplete="off" value={stockAmount} onChange={event => setStockAmount(event.target.value)} placeholder="Miktar" /></label></>}</div>
       </section>
       {notice && <div className={`rr-callout${notice.startsWith('Başarısız:') ? ' rr-danger' : ''}`} role={notice.startsWith('Başarısız:') ? 'alert' : 'status'}><RrIcon name={notice.startsWith('Başarısız:') ? 'alert' : 'info'} /><span>{notice}</span></div>}
     </form>
@@ -420,7 +422,7 @@ function QuickEditCustomToggle({ column, custom, onChange, compact = false }: { 
 // A price field: the number as typed while focused, Turkish money digits ("1.249,90") otherwise.
 function QuickPriceInput({ value, onValue, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & { value: string; onValue: (value: string) => void }) {
   const [focused, setFocused] = useState(false)
-  return <input {...props} type="text" inputMode="decimal" autoComplete="off" value={focused ? value : formatPriceField(value)} onFocus={event => { setFocused(true); props.onFocus?.(event) }} onBlur={event => { setFocused(false); props.onBlur?.(event) }} onChange={event => onValue(normalizePriceInput(event.target.value))} />
+  return <input {...props} type="text" inputMode="decimal" autoComplete="off" value={focused ? value : formatPriceField(value)} onFocus={event => { setFocused(true); props.onFocus?.(event) }} onBlur={event => { setFocused(false); props.onBlur?.(event) }} onChange={event => onValue(event.target.value)} />
 }
 // The panel price written to the marketplaces that follow it (no "Özel Fiyat"): each existing offer of the variant
 // there, at the version loaded, through the same channel offer update as a marketplace's own cell. Returns what failed.
@@ -442,7 +444,7 @@ async function writePanelFollowers(variant: Variant, followers: ReadonlyArray<Qu
 function QuickEditFollowCell({ column, variant, product }: { column: QuickPriceColumn; variant: Variant; product: Product }) {
   const listed = channelOffer(variant, column.id) != null
   const panel = panelPrices(variant, product)
-  const text = (value: number | null) => listed && value != null ? formatPriceField(String(value)) : '—'
+  const text = (value: number | null) => listed && value != null ? formatPriceField(value) : '—'
   const title = listed ? `${column.label} ana fiyatla satılır: panel fiyatı kaydedilince bu fiyat da güncellenir. Kendi fiyatını girmek için başlıktaki Özel Fiyat anahtarını açın.` : `${column.label}: bu varyantın bu pazaryerinde fiyatı yok; panel fiyatı kaydedilince burada bir şey değişmez.`
   return <td className="rr-qt-follow rr-qt-gs rr-qt-num" colSpan={column.takesListPrice ? 2 : 1} data-l={`${column.label} · Ana Fiyat`} title={title}><div className={`rr-qpair${column.takesListPrice ? '' : ' rr-qsale'}`}>{column.takesListPrice && <span>{text(panel.listPrice)}</span>}<span>{text(panel.salePrice)}</span></div></td>
 }
@@ -455,8 +457,8 @@ function QuickEditPriceCell({ column, followers, variant, product, connectionCou
   const isPanel = column.id === PANEL_PRICE_CHOICE
   const showListPrice = column.takesListPrice
   const shown = quickInlinePrices(column.id, variant, product)
-  const shownList = shown.listPrice == null ? '' : String(shown.listPrice)
-  const shownSale = shown.salePrice == null ? '' : String(shown.salePrice)
+  const shownList = priceFieldText(shown.listPrice)
+  const shownSale = priceFieldText(shown.salePrice)
   const [listPrice, setListPrice] = useState(shownList)
   const [salePrice, setSalePrice] = useState(shownSale)
   useEffect(() => { setListPrice(shownList); setSalePrice(shownSale) }, [shownList, shownSale])

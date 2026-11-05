@@ -17,18 +17,22 @@ import { CardBackgroundIcon, CountUp, type CardIconName, type CardTone } from '.
 import { RrLogo } from '../returns-ui'
 import { countryName, Flag } from './order-row-marks'
 import type { DayCard } from './daily-cards'
+import { orderCountText } from './order-summary'
 import './order-metrics.css'
 
-type Metric = { value: number | undefined; loading: boolean }
+// error: the count could not be read; shown as "—", never as 0 or an endless "…".
+type Metric = { value: number | undefined; loading: boolean; error?: boolean }
 type Store = { key: string; code: string; name: string }
 type UnitRow = Store & { units: number }
 type PackageRow = Store & { packages: number }
 type CancelRow = Store & { packages: number; units?: number; partial: number; partialUnits?: number }
 type TipRow = Store & { value: ReactNode }
 
-function metricText({ value, loading }: Metric) {
-  return loading ? '…' : (value ?? 0).toLocaleString('tr-TR')
+function metricText({ value, loading, error }: Metric) {
+  return orderCountText(value, { loading, error: Boolean(error) })
 }
+// A count that is known: neither loading, nor failed, nor missing (those read "…" or "—" with no "Paket" after them).
+const known = (metric: Metric) => !metric.loading && !metric.error && metric.value !== undefined
 
 const count = (value: number) => value.toLocaleString('tr-TR')
 
@@ -48,10 +52,10 @@ export function cancelRowText(row: Omit<CancelRow, keyof Store>) {
 // "N Paket | M Adet Ürün": the package count big, the rest smaller on the same line. The units are left out while they
 // are not known (an older API), never shown as 0.
 function Packages({ packages, units }: { packages: Metric; units: number | undefined }) {
-  return <strong className="rr-metric-pk">
+  return <strong className="rr-metric-pk" title={packages.error ? 'Sayı okunamadı; sayfayı yenileyip tekrar deneyin.' : undefined}>
     <CountUp value={metricText(packages)} />
-    {!packages.loading && ' '}
-    {!packages.loading && <span className="rr-metric-sub">Paket{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} <span className="rr-metric-adet">Adet </span>Ürün</>}</span>}
+    {known(packages) && ' '}
+    {known(packages) && <span className="rr-metric-sub">Paket{units !== undefined && <>{' '}<span className="rr-metric-sep" aria-hidden="true">|</span>{' '}{count(units)} <span className="rr-metric-adet">Adet </span>Ürün</>}</span>}
   </strong>
 }
 
@@ -66,7 +70,7 @@ const tipped = (...names: Array<string | false | undefined>) => names.filter(Boo
 
 // A card that reads "N Paket | M Adet Ürün" and lists the products per store on hover or focus (no panel without them).
 function UnitsCard({ title, icon, tone, packages, units, rows }: { title: string; icon: CardIconName; tone?: CardTone; packages: Metric; units: number | undefined; rows: UnitRow[] | undefined }) {
-  const stores = packages.loading ? [] : rows ?? []
+  const stores = known(packages) ? rows ?? [] : []
   return <article className={tipped(tone && `rr-${tone}`, stores.length > 0 && 'rr-metric-tipped')} tabIndex={stores.length > 0 ? 0 : undefined}>
     <CardBackgroundIcon name={icon} tone={tone} />
     <small>{title}</small><Packages packages={packages} units={units} />

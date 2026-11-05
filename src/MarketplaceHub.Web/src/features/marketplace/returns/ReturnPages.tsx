@@ -415,7 +415,8 @@ export function ReturnsPage() {
   function selectStatus(value: string) { const next = { ...appliedFilters, status: value }; setStatus(value); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); if (value === 'ALL') params.delete('status'); else params.set('status', value); return params }, { replace: true }); setPageNumber(1) }
   function selectInvoiceStatus(value: string) { setInvoiceStatusFilter(value); setPageNumber(1) }
   function clearFilters() { const next: ReturnFilters = { status: 'ALL', search: '', from: '', to: '' }; setStatus(next.status); setSearch(next.search); setFrom(next.from); setTo(next.to); setSelectedPlatforms([]); setCargoFilter('ALL'); setReasonFilter('ALL'); setInvoiceStatusFilter('ALL'); setAppliedFilters(next); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('status'); return params }, { replace: true }); setPageNumber(1) }
-  const tabCount = (value: string) => summary.isLoading ? '…' : summary.isError || !summary.data ? '—' : summary.data.tabCounts[value] ?? 0
+  // A tab the summary gives no counter for reads "—", never 0.
+  const tabCount = (value: string) => summary.isLoading ? '…' : summary.isError || !summary.data ? '—' : summary.data.tabCounts[value] ?? '—'
   const metric = (value: string) => { const count = tabCount(value); return typeof count === 'number' ? count.toLocaleString('tr-TR') : count }
   // The Reddedilen and Bugün cards read the summary's metrics; a summary without them shows a dash, never a zero.
   const metrics = summary.data?.metrics

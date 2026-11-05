@@ -22,4 +22,11 @@ describe('order status tabs', () => {
     expect(resolveOrderStatusTab(null)).toBe('ALL')
     expect(resolveOrderStatusTab('CANCELLED')).toBe('CANCELLED')
   })
+
+  it('opens Tümü for a status no tab lists instead of sending it to the API as typed', () => {
+    expect(resolveOrderStatusTab('BOGUS')).toBe('ALL')
+    expect(resolveOrderStatusTab('RETURNED')).toBe('ALL')
+    expect(resolveOrderStatusTab('<script>')).toBe('ALL')
+    expect(resolveOrderStatusTab('  ')).toBe('ALL')
+  })
 })

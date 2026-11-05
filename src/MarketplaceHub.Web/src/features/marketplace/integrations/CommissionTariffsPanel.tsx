@@ -6,6 +6,7 @@ import { Busy, ErrorBox, StickyActionBar, TitleHint, UiIcon, useConfirmDialog } 
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { compareOptionValues, ImageLightboxModal } from '../../catalog/shared'
 import { formatIstanbul } from '../../../shared/format-date'
+import { parseTrNumber } from '../../../shared/tr-number'
 import { thumbnailUrl } from '../../../shared/product-thumbnail'
 import { kurus, onCost, ProfitBadge, unitProfit, type UnitProfitCosts } from './unit-profit'
 import { useDismissable } from '../../../shared/hooks/useDismissable'
@@ -459,16 +460,16 @@ export function filterQuery(filter: TariffFilter): Record<string, string> {
   const query: Record<string, string> = {}
   for (const key of ['tier', 'cost', 'name', 'barcode', 'model', 'category', 'brand'] as const) if (filter[key].trim()) query[key] = filter[key].trim()
   for (const key of ['minStock', 'maxStock'] as const) {
-    const value = Number(filter[key].trim().replace(',', '.'))
-    if (filter[key].trim() && Number.isFinite(value) && value >= 0) query[key] = String(value)
+    // Read as Turkish: "1.250" is 1250, never 1.25.
+    const value = parseTrNumber(filter[key])
+    if (value !== null && value >= 0) query[key] = String(value)
   }
   // A profit range counts only with a band picked; a loss is typed with a minus sign.
   if (filter.profitTier) {
     let ranged = false
     for (const key of ['minProfit', 'maxProfit', 'minShare', 'maxShare'] as const) {
-      const text = (filter[key] ?? '').trim().replace(',', '.').replace('−', '-')
-      const value = Number(text)
-      if (text && Number.isFinite(value)) { query[key] = String(value); ranged = true }
+      const value = parseTrNumber(filter[key] ?? '')
+      if (value !== null) { query[key] = String(value); ranged = true }
     }
     if (ranged) query.profitTier = filter.profitTier
   }
@@ -597,8 +598,8 @@ function BulkPicker({ bulk, onApply, onClearColumn, onClearAll }: { bulk: Tariff
   const [value, setValue] = useState(String(bulk.minRate ?? bulk.minAmount ?? bulk.maxRate ?? bulk.maxAmount ?? ''))
   const ref = useRef<HTMLDivElement>(null)
   useDismissable(open, [ref], () => setOpen(false))
-  const limit = Number(value.replace(',', '.'))
-  const valid = column !== '' && value.trim() !== '' && Number.isFinite(limit)
+  const limit = parseTrNumber(value)
+  const valid = column !== '' && limit !== null
   const apply = () => {
     const tierColumn = /^[1-4]$/.test(column)
     const at = valid ? limit : null
@@ -1111,12 +1112,19 @@ function TariffPlanBody({ connectionId, tariff, partner, periods, rows, loading,
   </div>
 }
 
+// A price of the seller's own as typed in Turkish ("1.250" is 1250, "1.250,50" is 1250.5), or null when it is not a
+// price above zero.
+export function ownPriceValue(text: string): number | null {
+  const number = parseTrNumber(text)
+  return number !== null && number > 0 ? number : null
+}
+
 // A price of the seller's own for all of a model's sizes at once: each size takes it as its own pick (and its own field
 // shows it when opened); what it leaves is the range over the sizes, and the sizes it puts in no band are counted.
 function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; picks: Map<string, TariffPick>; onPick: (price: number | null) => void }) {
   const shared = rows.map(row => picks.get(row.id)?.price ?? null)
   const [text, setText] = useState(() => shared[0] !== null && shared.every(price => price === shared[0]) ? String(shared[0]).replace('.', ',') : '')
-  const parse = (value: string) => { const number = Number(value.trim().replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return value.trim() && Number.isFinite(number) && number > 0 ? number : null }
+  const parse = ownPriceValue
   const price = parse(text)
   const choices = price === null ? [] : rows.map(row => ownChoice(row, price))
   const banded = choices.filter((choice): choice is CommissionChoice => choice !== null)
@@ -1133,7 +1141,7 @@ function ModelOwnPrice({ rows, picks, onPick }: { rows: CommissionTariffRow[]; p
 // it leaves, and becomes the row's pick.
 function OwnPrice({ row, pick, picked, onPick }: { row: CommissionTariffRow; pick: TariffPick | undefined; picked: boolean; onPick: (price: number | null) => void }) {
   const [text, setText] = useState(() => pick?.price ? String(pick.price).replace('.', ',') : '')
-  const parse = (value: string) => { const number = Number(value.trim().replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')); return value.trim() && Number.isFinite(number) && number > 0 ? number : null }
+  const parse = ownPriceValue
   const price = parse(text)
   const choice = price === null ? null : ownChoice(row, price)
   return <div className={`commission-own${picked ? ' is-picked' : ''}`}>

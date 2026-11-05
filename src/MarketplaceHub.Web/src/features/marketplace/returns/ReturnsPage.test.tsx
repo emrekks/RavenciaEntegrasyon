@@ -77,6 +77,19 @@ describe('returns page', () => {
     expect(host.textContent).not.toContain('Faturalanacak Tutar')
   })
 
+  it('shows a dash, never 0, for a tab the summary gives no counter for', async () => {
+    const saved = summary.tabCounts
+    const { ACTION_REQUIRED: _omitted, ...rest } = saved
+    ;(summary as { tabCounts: Record<string, number> }).tabCounts = rest
+    try {
+      const { host } = renderPage()
+      await waitFor(() => host.querySelector('.rr-metrics')?.textContent?.includes('Red3'))
+      expect(host.querySelectorAll<HTMLElement>('.rr-metrics article')[0].querySelector('strong')!.textContent).toBe('—')
+    } finally {
+      summary.tabCounts = saved
+    }
+  })
+
   it('shows the amounts the marketplace wrote for the return and a dash where it wrote none', async () => {
     const { host } = renderPage()
     await waitFor(() => host.textContent?.includes('#2'))

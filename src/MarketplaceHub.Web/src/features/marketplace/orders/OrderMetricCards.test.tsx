@@ -29,11 +29,11 @@ describe('order summary cards', () => {
     expect(card(host, 'Kargolanacak Ürün Adedi')).toBeUndefined()
   })
 
-  it('waits for the summary, reads a missing count as zero and never shows unknown units as 0', () => {
+  it('waits for the summary, shows a missing count as a dash (never 0) and never shows unknown units as 0', () => {
     const { host } = render(<OrderMetricCards {...props({ newOrders: metric(undefined, true), newUnits: undefined, newRows: undefined, processing: metric(undefined, true), late: metric(undefined), microExport: metric(undefined, true), microCountries: undefined, cancelled: metric(undefined, true), cancelledUnits: undefined, partiallyCancelled: metric(undefined, true), resent: metric(undefined, true) })} />)
 
     const values = Array.from(host.querySelectorAll('article strong')).map(value => value.textContent)
-    expect(values).toEqual(['…', '…', '0 Paket', '…', '…', '…'])
+    expect(values).toEqual(['…', '…', '—', '…', '…', '…'])
     // While the data loads, the chip is not drawn and no hover panel opens (an empty card has none).
     expect(host.querySelector('.rr-metric-chip')).toBeNull()
     expect(host.querySelectorAll('.rr-metric-tip-r:not(.is-empty)')).toHaveLength(0)
@@ -121,6 +121,17 @@ describe('order summary cards', () => {
 
   // Geciken warns only above 0: a red number and a softly pulsing red box (rr-alert); at 0 it is as plain as the other
   // cards. İptal keeps just its red number above 0 and is plain at 0. Yeni Sipariş keeps its amber tone either way.
+  it('shows a dash with a reason, not a number or an endless "…", when the summary could not be read', () => {
+    const failed = { value: undefined, loading: false, error: true }
+    const { host } = render(<OrderMetricCards {...props({ newOrders: failed, newUnits: undefined, newRows: undefined, processing: failed, processingUnits: undefined, processingRows: undefined, late: failed })} />)
+    for (const title of ['Yeni Sipariş', 'İşleme Alınan', 'Geciken']) {
+      const strong = card(host, title).querySelector('strong')!
+      expect(strong.textContent).toBe('—')
+      expect(strong.getAttribute('title')).toBe('Sayı okunamadı; sayfayı yenileyip tekrar deneyin.')
+    }
+    expect(card(host, 'Geciken').classList.contains('rr-bad')).toBe(false)
+  })
+
   it('warns with Geciken and İptal only above zero', () => {
     const classes = (host: HTMLElement) => Object.fromEntries(Array.from(host.querySelectorAll('article')).map(item => [item.querySelector('small')?.textContent, item.className]))
     const warning = render(<OrderMetricCards {...props({ late: metric(3), cancelled: metric(68), partiallyCancelled: metric(0) })} />).host

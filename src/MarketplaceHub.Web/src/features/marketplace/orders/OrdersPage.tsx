@@ -34,7 +34,8 @@ import { labelPersonalData, loadOrderLabelDetails, type OrderLabelDetail } from 
 import { OrderMetricCards } from './OrderMetricCards'
 import { orderDetailQueryKey } from './order-query-keys'
 import { deliveryDueLine, deliveryText, orderRingDetail } from './order-delivery'
-import { orderTabCount, type OrderFacets, type OrderSummary } from './order-summary'
+import { orderCountText, orderTabCount, summaryMetric, type OrderFacets, type OrderSummary } from './order-summary'
+import { orderExportNotice, ordersToExport, readAllOrderPages } from './order-export'
 import { recordShippingLabelsPrinted } from './label-printed'
 import { applyFilterPatch } from './order-filter-apply'
 import { OrderRowMarkIcons } from './order-row-marks'
@@ -129,19 +130,9 @@ function orderFilterParams(filters: OrderFilters, serverLabelFilter: boolean) {
   if (filters.kind === 'RESENT_UNSHIPPED') params.set('resentNotShipped', 'true')
   return params
 }
-async function loadAllOrderPages(filters: OrderFilters): Promise<Page<Order>> {
-  const limit = 200
-  const items: Order[] = []
-  let page = 1
-  let totalCount = 0
-  while (page <= 100) {
-    const result = await loadOrderPage(filters, limit, null, page)
-    items.push(...result.items)
-    totalCount = result.totalCount ?? items.length
-    if (!result.hasMore || !result.items.length || items.length >= totalCount) break
-    page++
-  }
-  return { items, nextCursor: null, hasMore: false, totalCount: items.length }
+async function loadAllOrderPages(filters: OrderFilters): Promise<Page<Order> & { truncated: boolean; serverTotal: number }> {
+  const read = await readAllOrderPages((limit, page) => loadOrderPage(filters, limit, null, page))
+  return { items: read.items, nextCursor: null, hasMore: false, totalCount: read.items.length, truncated: read.truncated, serverTotal: read.totalCount }
 }
 const invoiceCreationStatuses = new Set(['FATURA_BEKLIYOR', 'FATURA_INCELENECEK', 'FATURA_REDDEDILDI', 'FATURA_ISLENIYOR'])
 function isInvoicePending(item: Pick<Order, 'invoiceStatus'>) { return invoiceCreationStatuses.has(item.invoiceStatus) }
@@ -862,8 +853,7 @@ export function OrdersPage() {
   const cancellationsToday = useQuery({ queryKey: ['dashboard', 'cancellations', day], queryFn: () => hubPoll<{ stores: DailyCancellationRow[] }>(`/dashboard/cancellations?day=${day}`), staleTime: 30_000, refetchInterval: 60_000 })
   const todayCancellations = dailyCancellationCounts(cancellationsToday.data?.stores)
   const summary = useQuery({ queryKey: ['orders', 'summary', 'filtered', summaryParams], queryFn: () => hubApi<OrderSummary>(summaryParams ? `/orders/summary?${summaryParams}` : '/orders/summary'), placeholderData: keepPreviousData })
-  // Metric cards: invoices waiting to be cut come from the invoice workspace; the dashboard summary stands in for the
-  // late count only while the order summary has no `late` counter.
+  // The bootstrap names the stores of the cards' hover lists; its unfiltered late total is never shown for the list.
   const lateOrdersQuery = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap'), staleTime: 30_000 })
   // The Yeni Sipariş and İşleme Alınan cards' products per store: the filtered summary's units, named by the bootstrap's stores.
   const newUnits = storeUnits(summary.data?.newUnitsByConnection, lateOrdersQuery.data?.channels)
@@ -893,19 +883,28 @@ export function OrdersPage() {
   const resetFilters = () => { const next = { ...initialOrderFilters }; setFilterForm(next); setFilters(next); setSelectedPlatforms([]); setPage(1); setColumnFilterOpen(null); setSearchParams(current => { const params = new URLSearchParams(current); params.delete('search'); params.delete('status'); return params }, { replace: true }) }
   const clearInvoiceFilters = () => { const next = applyFilterPatch(filters, filterForm, { invoice: 'ALL', invoiceType: 'ALL', invoiceRegion: 'ALL' }); setFilterForm(next.form); setFilters(next.applied); setPage(1) }
   const selectStatus = (requestedStatus: string) => { const status = resolveOrderStatusTab(requestedStatus); const next = { ...filterForm, ...tabDateFilters(status, filterForm), kind: tabKind(status, filterForm.kind), status, sort: keepSort(status, filterForm.sort) }; setFilterForm(next); setFilters(current => ({ ...current, ...tabDateFilters(status, current), kind: tabKind(status, current.kind), status, sort: keepSort(status, current.sort) })); setSearchParams(current => { const params = new URLSearchParams(current); if (status === 'ALL') params.delete('status'); else params.set('status', status); return params }, { replace: true }); setPage(1) }
-  const tabCount = (tab: string) => orderTabCount(tab, summary.data, lateOrdersQuery.data?.metrics.lateOrders)
+  // A tab's counter under the list's filters; a failed summary or a counter it does not give reads "—" (never 0, never
+  // the dashboard's unfiltered total).
+  const tabCount = (tab: string) => orderTabCount(tab, summary.data)
+  const tabCountText = (tab: string) => orderCountText(tabCount(tab), { loading: summary.isLoading, error: summary.isError })
+  const todayCancellationMetric = (pick: (counts: NonNullable<typeof todayCancellations>) => number | undefined) => cancellationsToday.isError ? { value: undefined, loading: false, error: true } : { value: todayCancellations ? pick(todayCancellations) : undefined, loading: !todayCancellations, error: false }
   // Status, search, platform, cargo, listing, date range, sort and pagination
   // are applied by the API. Only local presentation filters remain here.
   const items = all.filter(item => !hasLocalFilters || (filters.label === 'PRINTED' ? isLabelPrinted(item) : !isLabelPrinted(item)))
   async function exportOrders() {
     setExporting(true)
     try {
-    const exportItems = hasLocalFilters ? items : (await loadAllOrderPages(orderQueryFilters)).items
+    // The orders the list shows: filtered by the server's labelPrintedAt (the list's own filter), or, while an older
+    // server cannot filter the label, the same locally filtered set the list shows; never re-filtered here with this
+    // browser's print marks, so the file and the list always agree.
+    const read = hasLocalFilters ? undefined : await loadAllOrderPages(orderQueryFilters)
+    const exportItems = ordersToExport(items, read)
+    const cut = read ?? (ordersQuery.data as Partial<Awaited<ReturnType<typeof loadAllOrderPages>>> | undefined)
     // A text cell that a spreadsheet would read as a formula starts with an apostrophe (audit 2026-10-20 S19).
     const escapeCsv = (value: unknown) => `"${csvSafeText(String(value ?? '')).replaceAll('"', '""')}"`
     const rows = [
       ['Sipariş No', 'Platform', 'Müşteri', 'Sipariş Tarihi', 'Durum', 'Fatura Durumu', 'Kargo', 'Ürünler', 'Toplam Tutar', 'Para Birimi'],
-      ...exportItems.filter(item => filters.label === 'ALL' || (filters.label === 'PRINTED' ? isLabelPrinted(item) : !isLabelPrinted(item))).map(item => [
+      ...exportItems.map(item => [
         item.orderNumber,
         item.platformDisplayName || item.platformCode,
         item.customerName,
@@ -927,7 +926,9 @@ export function OrdersPage() {
     anchor.click()
     anchor.remove()
     URL.revokeObjectURL(url)
-    showBulkNotice(`${(rows.length - 1).toLocaleString('tr-TR')} sipariş dışa aktarıldı.`)
+    // Stopped at the cap: said plainly, never a silent partial file.
+    const notice = orderExportNotice(rows.length - 1, { truncated: cut?.truncated ?? false, totalCount: cut?.serverTotal ?? rows.length - 1 })
+    showBulkNotice(notice.message, notice.kind)
     } catch (reason) {
       showBulkNotice(reason instanceof Error ? reason.message : 'Sipariş dışa aktarımı tamamlanamadı.', 'error')
     } finally {
@@ -1025,10 +1026,10 @@ export function OrdersPage() {
   const statusSlide = useTabSlide(filters.status, orderStatusTabOrder)
   return <section className="content f3 rr rr-orders">
     <div className="rr-ph"><div><div className="rr-crumb">Pazaryeri Operasyonu</div><h1>Siparişler</h1></div><div className="rr-acts"><button type="button" className="rr-btn" disabled={!items.length || exporting} aria-busy={exporting} title={exporting ? 'Dışa Aktarılıyor…' : undefined} onClick={() => void exportOrders()}><RrIcon name="export" />Dışa Aktar</button><button type="button" className="rr-btn" onClick={() => setShopifyCsvImportOpen(true)}><RrIcon name="import" />İçe Aktar</button><button type="button" className="rr-btn rr-primary" onClick={() => setSingleSyncOpen(true)}><RrIcon name="refresh" /><span className="rr-long">Sipariş Senkronizasyonu</span><span className="rr-short">Senkronize Et</span></button></div></div>
-    <OrderMetricCards newOrders={{ value: summary.data?.new, loading: !summary.data }} newUnits={newUnits?.units} newRows={newUnits?.rows} processing={{ value: summary.data?.processing, loading: !summary.data }} processingUnits={processingUnits?.units} processingRows={processingUnits?.rows} late={{ value: tabCount('LATE'), loading: !summary.data && lateOrdersQuery.isLoading }} microExport={{ value: microPending.data?.microExport, loading: !microPending.data }} microCountries={microPending.data?.microExportCountries ?? undefined} resent={{ value: resentNotShipped.data?.resent, loading: !resentNotShipped.data }} resentRows={resentStores} lateRows={lateStores} cancelledRows={cancelStores} onOpenDay={openDayCard} activeCard={openCard} cancelled={{ value: todayCancellations?.whole, loading: !todayCancellations }} cancelledUnits={todayCancellations?.wholeUnits} partiallyCancelled={{ value: todayCancellations?.partial, loading: !todayCancellations }} partialUnits={todayCancellations?.partialUnits} />
+    <OrderMetricCards newOrders={summaryMetric(summary, value => value.new)} newUnits={newUnits?.units} newRows={newUnits?.rows} processing={summaryMetric(summary, value => value.processing)} processingUnits={processingUnits?.units} processingRows={processingUnits?.rows} late={summaryMetric(summary, value => value.late)} microExport={summaryMetric(microPending, value => value.microExport)} microCountries={microPending.isError ? undefined : microPending.data?.microExportCountries ?? undefined} resent={summaryMetric(resentNotShipped, value => value.resent)} resentRows={resentStores} lateRows={lateStores} cancelledRows={cancelStores} onOpenDay={openDayCard} activeCard={openCard} cancelled={todayCancellationMetric(counts => counts.whole)} cancelledUnits={todayCancellations?.wholeUnits} partiallyCancelled={todayCancellationMetric(counts => counts.partial)} partialUnits={todayCancellations?.partialUnits} />
     {bulkNotice && <NoticeToast key={bulkNoticeVersion} kind={bulkNoticeKind} message={bulkNotice} onClose={() => setBulkNotice('')} durationMs={bulkNoticeKind === 'pending' ? undefined : 5000} />}
     <div className="rr-fshell">
-      <ViewTabsWithMore className="order-tabs" more={orderStatusMoreTabs} ariaLabel="Sipariş durumları" value={filters.status} onChange={selectStatus} items={orderStatusTabs.filter(([value]) => !orderLinkOnlyTabs.includes(value) || value === filters.status).map(([value, label]) => { const count = summary.isLoading ? '…' : summary.isError ? '—' : tabCount(value); return { value, label: viewTabLabel(({ ALL: 'all', NEW: 'new', PROCESSING: 'processing', SHIPPED: 'shipping', DELIVERED: 'delivered', CANCELLED: 'cancelled', RESENT: 'resend', ON_HOLD: 'paused', PARTIALLY_CANCELLED: 'partial', UNDELIVERED: 'attention', RETURN_IN_TRANSIT: 'return', RETURNED: 'return', MANUAL_REVIEW: 'review', PAYMENT_PENDING: 'waiting', UNVERIFIED: 'attention', PENDING: 'due', LATE: 'attention' } as const)[value], label), count: typeof count === 'number' ? count.toLocaleString('tr-TR') : count, countTone: value === 'NEW' && typeof count === 'number' && count > 0 ? 'warn' as const : undefined } })} />
+      <ViewTabsWithMore className="order-tabs" more={orderStatusMoreTabs} ariaLabel="Sipariş durumları" value={filters.status} onChange={selectStatus} items={orderStatusTabs.filter(([value]) => !orderLinkOnlyTabs.includes(value) || value === filters.status).map(([value, label]) => { const counted = summary.isError ? undefined : tabCount(value); return { value, label: viewTabLabel(({ ALL: 'all', NEW: 'new', PROCESSING: 'processing', SHIPPED: 'shipping', DELIVERED: 'delivered', CANCELLED: 'cancelled', RESENT: 'resend', ON_HOLD: 'paused', PARTIALLY_CANCELLED: 'partial', UNDELIVERED: 'attention', RETURN_IN_TRANSIT: 'return', RETURNED: 'return', MANUAL_REVIEW: 'review', PAYMENT_PENDING: 'waiting', UNVERIFIED: 'attention', PENDING: 'due', LATE: 'attention' } as const)[value], label), count: tabCountText(value), countTone: value === 'NEW' && !summary.isLoading && (counted ?? 0) > 0 ? 'warn' as const : undefined } })} />
       <RrFilterCard active={[(selectedPlatforms ?? []).length > 0, Boolean(filters.dateFrom), Boolean(filters.cancelFrom), filters.cancelPart !== 'ALL', filters.kind !== 'ALL', filters.cargo !== 'ALL', filters.invoice !== 'ALL', filters.invoiceType !== 'ALL', filters.invoiceRegion !== 'ALL', filters.label !== 'ALL', filters.sort !== 'DATE_DESC'].filter(Boolean).length}><div className="rr-filters rr-has-sort">
         <label className="rr-fld rr-search"><small>Sipariş Ara</small><span style={{ position: 'relative' }}><RrIcon name="search" style={{ position: 'absolute', left: 11, top: 10, color: 'var(--rr-subtle)' }} /><input className="rr-in" style={{ paddingLeft: 34 }} aria-label="Sipariş ara" value={filterForm.search} onChange={event => setFilterForm(current => ({ ...current, search: event.target.value }))} onKeyDown={event => { if (event.key === 'Enter') { setFilters(filterForm); setPage(1) } }} placeholder="Sipariş no, müşteri veya barkod ara" /></span></label>
         <div className="rr-fld"><small>Platform</small><RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} onClick={toggle} disabled={!platformOptions.length}><span>{platformTriggerLabel}</span><RrIcon name="chev" /></button>}>{() => <ReturnPlatformPop title="Platform" options={platformOptions} counts={facetCounts('platforms')} selected={selectedPlatforms} onChange={setSelectedPlatforms} />}</RrAnchor></div>
