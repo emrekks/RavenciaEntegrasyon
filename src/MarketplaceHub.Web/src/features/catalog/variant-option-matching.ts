@@ -95,3 +95,21 @@ export function mergeVariantOptionValues(existing: VariantOptionValue[], incomin
   }
   return [...values.values()]
 }
+
+function optionKeyName(name: string) {
+  if (isRealColorOptionName(name)) return 'RENK'
+  if (isSizeOptionName(name)) return 'BEDEN'
+  return normalizeOptionName(name).toLocaleUpperCase('tr-TR')
+}
+
+// The options of a variant row as one key, order aside, with the same value spelling rules the option chips are matched
+// by (normalizeVariantOptionValue), so a generated combination and a saved row of the same colour and size are one.
+export function variantOptionSetKey(signature: string) {
+  const entries = parseVariantOptionSignature(signature)
+  const hasRealColor = entries.some(option => isRealColorOptionName(option.name))
+  return entries
+    .filter(option => !hasRealColor || !['WEBCOLOR', 'WEBCOLOUR', 'WEBRENK'].includes(normalizeOptionName(option.name)))
+    .map(option => `${optionKeyName(option.name)}:${normalizeVariantOptionValue(option.value)}`)
+    .sort()
+    .join('|')
+}
