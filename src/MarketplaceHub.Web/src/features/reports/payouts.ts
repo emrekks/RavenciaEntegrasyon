@@ -3,9 +3,11 @@
 // Region NONE: a marketplace that pays without Trendyol's regions.
 export type PayoutRegion = 'TR_GULF' | 'EUROPE' | 'AZ' | 'UNKNOWN' | 'NONE'
 export type PayoutStatus = 'PAID' | 'EXPECTED' | 'UNKNOWN'
-// PAYOUT_DAY: an estimated payout day; DUE_DAY: a due day; OVERDUE: past its due day, no payout day known; PAID_DAY: a
-// paid day of a marketplace without payout ids; PAYOUT: a payout.
-export type PayoutKind = 'PAYOUT_DAY' | 'DUE_DAY' | 'OVERDUE' | 'PAID_DAY' | 'PAYOUT'
+// PAYOUT_DAY: an estimated payout day; DUE_DAY: a due day; OVERDUE: past its due day, no payout day known; UNDATED: unpaid
+// with no due day read; PAID_DAY: a paid day of a marketplace without payout ids; PAYOUT: a payout.
+export type PayoutKind = 'PAYOUT_DAY' | 'DUE_DAY' | 'OVERDUE' | 'UNDATED' | 'PAID_DAY' | 'PAYOUT'
+// The open groups that wait apart, in no payout day's estimate.
+export const isWaitingPayout = (group: Pick<PayoutGroup, 'kind'>) => group.kind === 'OVERDUE' || group.kind === 'UNDATED'
 export type PayoutGroup = { key: string; kind: PayoutKind; connectionId: string; platformCode: string; storeName: string; region: PayoutRegion; regionName: string | null
   day: string; amount: number; linesAmount: number | null; records: number; status: PayoutStatus }
 // pendingDelivery: the orders accepted or shipped but not delivered yet (not in the balance; they join a later payout).
