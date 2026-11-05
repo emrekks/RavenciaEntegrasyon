@@ -1278,6 +1278,54 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         Assert.Equal(2, Assert.Single(PttAvmPriceInventoryRules.Items(single.Value!.PayloadJson)!).Variants!.Count);
     }
 
+    // Y5: a Trendyol listing found only by its model code binds to the panel variant of its own colour and size; a model
+    // kept as one card per colour never gives the listing an arbitrary card, and a colour the panel lacks stays unbound.
+    [PostgreSqlFact]
+    public async Task TrendyolModelCodeMapping_TakesOnlyTheVariantOfTheListingsColourAndSize()
+    {
+        var tenant = NewTenant("ty-model-colour");
+        var trendyol = NewConnection(tenant, "TRENDYOL");
+        var (navy, navyS) = NewVariant(tenant, "MZ100-LAC-S", "8690000000401");
+        var (black, blackS) = NewVariant(tenant, "MZ100-SYH-S", "8690000000402");
+        navyS.ModelCode = blackS.ModelCode = "MZ100";
+        navyS.OptionSignature = "Renk: Lacivert | Beden: S";
+        blackS.OptionSignature = "Renk: Siyah | Beden: S";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(trendyol);
+            seed.Products.AddRange(navy, black);
+            seed.ProductVariants.AddRange(navyS, blackS);
+            await seed.SaveChangesAsync();
+        }
+        RemoteCatalogVariant Remote(string id, string color) => new(id, $"TY-{id}", $"TY{id}", "MZ100", new Dictionary<string, string> { ["Renk"] = color, ["Beden"] = "S" }, false, 100m, null, 20m, 1m, "TRY", "{}");
+        async Task<bool> Map(RemoteCatalogProduct snapshot)
+        {
+            await using var db = fixture.CreateContext();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var map = typeof(MarketplaceJobProcessor).GetMethod("MapExistingCatalogProduct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            var mapped = await (Task<bool>)map.Invoke(processor, [tenant.Id, trendyol.Id, snapshot, false, CancellationToken.None, false, false, false, null, "N11", false])!;
+            await db.SaveChangesAsync();
+            return mapped;
+        }
+
+        // One listing whose colours are two panel cards: no card is picked and nothing is linked.
+        Assert.False(await Map(new RemoteCatalogProduct("TY-MIXED", "MZ100", "Tunik", "", null, null, null, null, [], [Remote("701", "Lacivert"), Remote("702", "Siyah")], "{}")));
+        // The navy listing: the navy variant and card.
+        Assert.True(await Map(new RemoteCatalogProduct("TY-NAVY", "MZ100", "Lacivert Tunik", "", null, null, null, null, [], [Remote("703", "Lacivert")], "{}")));
+        // A colour the panel does not hold: the model's only cards are other colours, nothing is bound.
+        Assert.False(await Map(new RemoteCatalogProduct("TY-BORDO", "MZ100", "Bordo Tunik", "", null, null, null, null, [], [Remote("704", "Bordo")], "{}")));
+
+        await using var check = fixture.CreateContext();
+        var variantLink = Assert.Single(await check.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.ConnectionId == trendyol.Id).ToListAsync());
+        Assert.Equal((navyS.Id, "703"), (variantLink.VariantId, variantLink.ExternalId));
+        var productLink = await check.MarketplaceProductLinks.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.ConnectionId == trendyol.Id);
+        Assert.Equal((navy.Id, "TY-NAVY"), (productLink.ProductId, productLink.ExternalId));
+        var issues = await check.OperationalIssues.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.Code == "PRODUCT_MAPPING_UNMATCHED").Select(x => x.DedupeKey).ToListAsync();
+        Assert.Contains($"product-mapping-unmatched:{trendyol.Id}:TY-MIXED", issues);
+        Assert.Contains($"product-mapping-unmatched:{trendyol.Id}:704", issues);
+    }
+
     // A PTT AVM product without variants is kept by the product's own code, which may differ from its panel model code.
     [PostgreSqlFact]
     public async Task PttAvmMapping_LinksAProductWithoutVariantsByItsOwnCode()

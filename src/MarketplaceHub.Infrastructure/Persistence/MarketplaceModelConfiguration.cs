@@ -106,7 +106,8 @@ internal static class MarketplaceModelConfiguration
         {
             entity.ToTable("package_line_allocations", "sales", table => table.HasCheckConstraint("ck_package_allocation_quantities", "\"AllocatedQuantity\" >= 0 AND \"CancelledQuantity\" >= 0 AND \"ShippedQuantity\" >= 0 AND \"DeliveredQuantity\" >= 0 AND \"ReturnedQuantity\" >= 0")); entity.HasKey(x => x.Id);
             entity.Property(x => x.AllocatedQuantity).HasPrecision(19, 4); entity.Property(x => x.CancelledQuantity).HasPrecision(19, 4); entity.Property(x => x.ShippedQuantity).HasPrecision(19, 4); entity.Property(x => x.DeliveredQuantity).HasPrecision(19, 4); entity.Property(x => x.ReturnedQuantity).HasPrecision(19, 4); entity.Property(x => x.SourceEventId).HasMaxLength(256);
-            entity.HasIndex(x => new { x.TenantId, x.PackageId, x.OrderLineId, x.SourceEventId }).IsUnique();
+            // One allocation per package line (T2-DO1); SourceEventId names the event it was last written by.
+            entity.HasIndex(x => new { x.TenantId, x.PackageId, x.OrderLineId }).IsUnique();
             entity.HasOne<ShipmentPackage>().WithMany().HasForeignKey(x => new { x.TenantId, x.PackageId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<OrderLine>().WithMany().HasForeignKey(x => new { x.TenantId, x.OrderLineId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });

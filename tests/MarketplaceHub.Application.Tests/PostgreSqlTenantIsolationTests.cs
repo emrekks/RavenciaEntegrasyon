@@ -3052,7 +3052,9 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 Assert.Equal(seenAt, package.StatusOccurredAt);
                 Assert.Equal(version, package.Version);
                 Assert.Equal(2, await check.OrderStatusHistory.CountAsync(x => x.PackageId == packageId));
-                Assert.Equal(2, await check.PackageLineAllocations.CountAsync(x => x.PackageId == packageId));
+                // T2-DO1: the package line keeps one allocation, rewritten by the delivered event.
+                var allocation = await check.PackageLineAllocations.AsNoTracking().SingleAsync(x => x.PackageId == packageId);
+                Assert.Equal(PackageIngestionSafety.EventId(packageNumber, deliveredEventAt), allocation.SourceEventId);
                 var line = await check.OrderLines.AsNoTracking().SingleAsync(x => x.Id == lineId);
                 Assert.Equal(1m, line.DeliveredQuantity);
             }
@@ -3369,6 +3371,43 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         {
             await DeleteInvoiceTestTenantAsync(tenant.Id);
         }
+    }
+
+    // T2-DO1: the collapse keeps the row of the package's current event (not merely the latest one), writes every other
+    // row to the audit log, deletes them, does nothing on a second run, and leaves the table fit for the unique
+    // (tenant, package, line) index. It runs inside a transaction that drops the index first and is rolled back.
+    [PostgreSqlFact]
+    public async Task CollapsePackageLineAllocationsMigration_KeepsTheCurrentEventRowOnce()
+    {
+        var tenant = NewTenant("collapse-allocations");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var lineId = Guid.CreateVersion7();
+        var packageId = Guid.CreateVersion7();
+        const string packageNumber = "4302382330";
+        var current = DateTimeOffset.FromUnixTimeMilliseconds(fixture.Now.AddHours(-2).ToUnixTimeMilliseconds());
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        await db.Database.ExecuteSqlRawAsync("DROP INDEX sales.\"IX_package_line_allocations_TenantId_PackageId_OrderLineId\"");
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.Orders.Add(NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, "11781312790", isReturnClaim: false, fixture.Now));
+        db.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Shipped", Version = 1 });
+        db.ShipmentPackages.Add(new ShipmentPackage { Id = packageId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = packageNumber, GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.Shipped, RawStatus = "Shipped", StatusOccurredAt = current, CreatedAt = current, UpdatedAt = current, Version = 1 });
+        PackageLineAllocation Row(string eventId, decimal shipped) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = packageId, OrderLineId = lineId, AllocatedQuantity = 1m, ShippedQuantity = shipped, SourceEventId = eventId };
+        var kept = Row(PackageIngestionSafety.EventId(packageNumber, current), 1m);
+        db.PackageLineAllocations.AddRange(Row(PackageIngestionSafety.EventId(packageNumber, current.AddHours(-1)), 0m), kept, Row(PackageIngestionSafety.EventId(packageNumber, current.AddMinutes(30)), 0m), Row("seed", 0m));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        for (var run = 0; run < 2; run++)
+            await db.Database.ExecuteSqlRawAsync(MarketplaceHub.Infrastructure.Persistence.Migrations.CollapsePackageLineAllocations.Collapse);
+
+        var left = await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync();
+        Assert.Equal(kept.Id, Assert.Single(left).Id);
+        Assert.Equal(3, await db.AuditLogs.CountAsync(x => x.TenantId == tenant.Id && x.CorrelationId == "migration:20261105140159_CollapsePackageLineAllocations"));
+        await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX \"IX_package_line_allocations_TenantId_PackageId_OrderLineId\" ON sales.package_line_allocations (\"TenantId\", \"PackageId\", \"OrderLineId\")");
+        await transaction.RollbackAsync();
     }
 
     // The repair of the lines the recorded event left without an allocation: only a line of a completed Trendyol order
@@ -5777,6 +5816,62 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             var persistedOrder = await verifyDb.Orders.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id && x.Id == orderId);
             Assert.Equal("DELIVERED", persistedOrder.DerivedStatus);
             Assert.Equal(1m, (await verifyDb.OrderLines.AsNoTracking().SingleAsync(x => x.Id == line.Id)).DeliveredQuantity);
+        }
+        finally
+        {
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // O8: a split parent Trendyol lists again under another status than UnPacked (live: 4084999185, 4110933059,
+    // 4144008059, 4148938175, refused on every run) is known by the stored child that names it as its origin: the read is
+    // skipped without a refusal, the parent is not opened and the order keeps its quantities.
+    [PostgreSqlFact]
+    public async Task TrendyolOrderSync_SkipsAKnownSplitParentQuietly()
+    {
+        var tenant = NewTenant("ty-known-parent");
+        var connection = NewQuestionConnection(tenant);
+        var orderId = Guid.CreateVersion7();
+        var lineId = Guid.CreateVersion7();
+        var childId = Guid.CreateVersion7();
+        const string externalOrderId = "11547099440";
+        var occurredAt = fixture.Now.AddMinutes(-10);
+        var order = NewInvoiceTestOrder(tenant.Id, connection.Id, orderId, externalOrderId, isReturnClaim: false, fixture.Now);
+        order.LastRemoteModifiedAt = occurredAt.AddMinutes(-5);
+        var parent = new RemotePackage("4110933059", null, "Cancelled", occurredAt, null, null, [new RemotePackageAllocation("line-1", 2m, 0m, 0m, 0m, 0m)], GrossAmount: 200m, NetAmount: 200m);
+        var remoteOrder = new RemoteOrder(externalOrderId, externalOrderId, occurredAt.AddDays(-1), occurredAt, "TRY", 200m, 0m, 200m, "{}", "{}", "{}",
+            [new RemoteOrderLine("line-1", "SKU-1", null, "Test ürün", 2m, 100m, 10m, "Cancelled")], [parent], "{}");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.Orders.Add(order);
+            seedDb.OrderLines.Add(new OrderLine { Id = lineId, TenantId = tenant.Id, OrderId = orderId, ExternalLineId = "line-1", Sku = "SKU-1", TitleSnapshot = "Test ürün", OrderedQuantity = 1m, UnitPrice = 100m, VatRate = 10m, RawStatus = "Delivered", Version = 1 });
+            seedDb.ShipmentPackages.Add(new ShipmentPackage { Id = childId, TenantId = tenant.Id, ConnectionId = connection.Id, OrderId = orderId, ExternalPackageId = "4111016887", OriginExternalPackageId = "4110933059", GrossAmount = 100m, NetAmount = 100m, Status = ShipmentPackageStatus.Delivered, RawStatus = "Delivered", StatusOccurredAt = occurredAt.AddMinutes(-5), CreatedAt = occurredAt.AddMinutes(-5), UpdatedAt = occurredAt.AddMinutes(-5), Version = 1 });
+            seedDb.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PackageId = childId, OrderLineId = lineId, AllocatedQuantity = 1m, ShippedQuantity = 1m, DeliveredQuantity = 1m, SourceEventId = PackageIngestionSafety.EventId("4111016887", occurredAt.AddMinutes(-5)) });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            await using (var processorDb = fixture.CreateContext())
+            {
+                var processor = new MarketplaceJobProcessor(
+                    processorDb,
+                    null!, null!, null!, null!, new ReadOnlyOrderTestPort(parent, externalOrderId: externalOrderId, directOrderResult: remoteOrder), null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.OrderSync,
+                    $$"""{"externalOrderId":"{{externalOrderId}}","full":false}""", "trendyol-known-parent", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verifyDb = fixture.CreateContext();
+            Assert.False(await verifyDb.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.Code == OperationalIssueRetentionService.PackageQuantityRejectedCode));
+            Assert.Equal(["4111016887"], await verifyDb.ShipmentPackages.AsNoTracking().Where(x => x.TenantId == tenant.Id && x.OrderId == orderId).Select(x => x.ExternalPackageId).ToListAsync());
+            var line = await verifyDb.OrderLines.AsNoTracking().SingleAsync(x => x.Id == lineId);
+            Assert.Equal((1m, 1m), (line.OrderedQuantity, line.DeliveredQuantity));
+            Assert.Equal(1, await verifyDb.PackageLineAllocations.CountAsync(x => x.TenantId == tenant.Id));
         }
         finally
         {

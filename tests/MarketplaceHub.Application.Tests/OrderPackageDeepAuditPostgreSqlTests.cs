@@ -21,8 +21,8 @@ public sealed class OrderPackageDeepAuditPostgreSqlTests(PostgreSqlTenantIsolati
         {
             await using (var db = fixture.CreateContext())
             {
-                // Two reads of the same package: 2 units, then 1 unit; and a cancelled package that held 2.
-                db.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, PackageId = seed.PackageId, OrderLineId = seed.LineId, AllocatedQuantity = 2, SourceEventId = "HB1:1760000000000" });
+                // The package's one allocation (its later read: 1 unit; T2-DO1 keeps one row per package line) and a
+                // cancelled package that held 2.
                 db.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, PackageId = seed.PackageId, OrderLineId = seed.LineId, AllocatedQuantity = 1, SourceEventId = "HB1:1760000600000" });
                 var cancelled = Package(seed, "HB-CANCELLED", ShipmentPackageStatus.Cancelled, "Cancelled");
                 db.ShipmentPackages.Add(cancelled);
@@ -86,7 +86,6 @@ public sealed class OrderPackageDeepAuditPostgreSqlTests(PostgreSqlTenantIsolati
         {
             await using (var db = fixture.CreateContext())
             {
-                db.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, PackageId = seed.PackageId, OrderLineId = seed.LineId, AllocatedQuantity = 2, SourceEventId = "TY1:1760000000000" });
                 db.PackageLineAllocations.Add(new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = seed.TenantId, PackageId = seed.PackageId, OrderLineId = seed.LineId, AllocatedQuantity = 1, SourceEventId = "TY1:1760000600000" });
                 await db.SaveChangesAsync();
             }
