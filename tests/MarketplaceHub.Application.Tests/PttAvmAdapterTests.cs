@@ -664,7 +664,8 @@ public sealed class PttAvmAdapterTests
     [InlineData("onay_surecinde", "Awaiting", ShipmentPackageStatus.PaymentPending)]
     [InlineData("gonderilmiş", "Shipped", ShipmentPackageStatus.Shipped)]
     [InlineData("Gönderilmiş", "Shipped", ShipmentPackageStatus.Shipped)]
-    [InlineData("gondericisine_teslim_edildi", "Undelivered", ShipmentPackageStatus.Undelivered)]
+    // Back with the seller, as Trendyol's UnDeliveredAndReturned: the same panel state (Returned).
+    [InlineData("gondericisine_teslim_edildi", "UndeliveredAndReturned", ShipmentPackageStatus.Returned)]
     [InlineData("tamamlandi", "Delivered", ShipmentPackageStatus.Delivered)]
     [InlineData("iptal", "Cancelled", ShipmentPackageStatus.Cancelled)]
     [InlineData("odeme_gecersiz", "Cancelled", ShipmentPackageStatus.Cancelled)]
@@ -678,6 +679,30 @@ public sealed class PttAvmAdapterTests
     [Fact]
     public void AnUnknownLineStatusIsKeptForReview() =>
         Assert.Equal("Unknown:yeni_durum", PttAvmOrderMapper.LineStatus("yeni_durum"));
+
+    // Item 6: a line of unknown status is not hidden behind a known, less advanced one; the package is reviewed.
+    [Fact]
+    public void AnUnknownLineStatusPutsThePackageUnderReview()
+    {
+        var status = PttAvmOrderMapper.PackageStatus(["Created", "Unknown:yeni_durum", "Shipped"]);
+
+        Assert.Equal("Unknown:yeni_durum", status);
+        Assert.Equal(ShipmentPackageStatus.ManualReview, TrendyolShipmentPackageStatusPolicy.FromRemote(status));
+        Assert.Equal("Created", PttAvmOrderMapper.PackageStatus(["Shipped", "Created", "Cancelled"]));
+        Assert.Equal("Cancelled", PttAvmOrderMapper.PackageStatus(["Cancelled"]));
+    }
+
+    [Fact]
+    public void AParcelBackWithTheSenderIsReturnedLikeTrendyols()
+    {
+        var ptt = TrendyolShipmentPackageStatusPolicy.FromRemote(PttAvmOrderMapper.PackageStatus([PttAvmOrderMapper.LineStatus("gondericisine_teslim_edildi")]));
+
+        Assert.Equal(TrendyolShipmentPackageStatusPolicy.FromRemote("UnDeliveredAndReturned"), ptt);
+        Assert.Equal(ShipmentPackageStatus.Returned, ptt);
+        Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(ptt));
+        var ordered = new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero);
+        Assert.True(PttAvmOrderMapper.StatusObservedAt(ordered, "UndeliveredAndReturned") > PttAvmOrderMapper.StatusObservedAt(ordered, "Undelivered"));
+    }
 
     [Fact]
     public void EachPackageStatusIsItsOwnLaterEvent()

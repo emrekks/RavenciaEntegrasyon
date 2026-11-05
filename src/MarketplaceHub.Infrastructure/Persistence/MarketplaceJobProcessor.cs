@@ -4277,6 +4277,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var includeUnpackagedNewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "NEW");
             var includeUnpackagedOnHoldOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "ON_HOLD");
+            // An order reviewed because its lifecycle status was unknown is read again until Hepsiburada names one.
+            var includeUnpackagedReviewOrders = OpenOrderLifecyclePolicy.ShouldPollWithoutPackage(platformCode, "MANUAL_REVIEW");
             var unpackagedCutoff = OpenOrderLifecyclePolicy.HepsiburadaUnpackagedOrderVerificationCutoff(timeProvider.GetUtcNow());
             // Unpackaged as the order list counts it (O14): a package the panel unpacked (UNPACKED_BY_PANEL,
             // cancelled) leaves the order to be read again.
@@ -4290,7 +4292,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         && package.Status != ShipmentPackageStatus.Returned)
                     || (order.OrderedAt >= unpackagedCutoff
                         && (includeUnpackagedNewOrders && order.DerivedStatus == "NEW"
-                            || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD")
+                            || includeUnpackagedOnHoldOrders && order.DerivedStatus == "ON_HOLD"
+                            || includeUnpackagedReviewOrders && order.DerivedStatus == "MANUAL_REVIEW")
                         && !db.ShipmentPackages.Any(package => package.TenantId == tenantId
                             && package.ConnectionId == connectionId
                             && package.OrderId == order.Id
@@ -10231,14 +10234,22 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var derivedStatus = isHepsiburada
                 ? HepsiburadaOrderLifecycleStatusPolicy.AggregatePackages(acceptedStatuses)
                 : ShipmentPackageStatusPolicy.Aggregate(acceptedStatuses);
-            var lifecycleBaseline = acceptedStatuses.Count == 0 ? order.DerivedStatus : Wire(derivedStatus);
+            var lifecycleBaseline = acceptedStatuses.Count == 0
+                ? HepsiburadaOrderLifecycleStatusPolicy.UnpackagedBaseline(order.DerivedStatus)
+                : Wire(derivedStatus);
+            // An undelivered package decides the order (Teslim Edilemedi); the order's own lifecycle status does not
+            // move it on.
             var hasUndeliveredHepsiburadaPackage = isHepsiburada && acceptedStatuses.Contains(ShipmentPackageStatus.Undelivered);
             if (isHepsiburada && !hasUndeliveredHepsiburadaPackage && HepsiburadaOrderLifecycleStatusPolicy.Reconcile(
                     lifecycleBaseline,
                     remote.LifecycleStatus,
                     lines.Values.Select(line => line.RawStatus)) is { } hepsiburadaStatus)
                 derivedStatus = hepsiburadaStatus;
-            order.DerivedStatus = Wire(derivedStatus);
+            // Without a package an unknown lifecycle status is reviewed, never left as a new order.
+            order.DerivedStatus = isHepsiburada && acceptedStatuses.Count == 0
+                && HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus(order.DerivedStatus, isNewOrder, orderIsFresh, remote.LifecycleStatus) is { } unknownStatus
+                ? unknownStatus
+                : Wire(derivedStatus);
             if (orderIsFresh
                 && order.DerivedStatus.Trim().ToUpperInvariant() is not ("DELIVERED" or "CANCELLED" or "RETURNED")
                 && OpenOrderLifecyclePolicy.IsHepsiburadaClaimOnlyWithoutPackage(

@@ -46,22 +46,28 @@ public sealed class PazaramaFinanceSyncJobHandler(AppDbContext db, IOrderFinance
 
         var context = new AdapterContext(request.TenantId, request.ConnectionId, request.CorrelationId, $"pazarama-finance:{request.ConnectionId:N}", now.AddMinutes(10), Operation: IntegrationOperation.Automatic);
         int requests = 0, received = 0, inserted = 0, updated = 0;
+        var skipped = new List<RemoteSkippedFinanceRecord>();
+        var storedCodes = new List<string>();
         foreach (var order in due)
         {
             requests++;
             var result = await finance.GetOrderFinanceAsync(context, order.OrderNumber, order.OrderedAt.AddDays(-1), now.AddDays(1), cancellationToken);
             if (!result.IsSuccess)
             {
+                await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "Pazarama", skipped, storedCodes, now, cancellationToken);
                 // What was read so far is kept; the rest waits for the next run.
                 await UpsertIssueAsync(request.TenantId, FailureKey(request.ConnectionId),
                     $"Pazarama finans hareketleri {order.OrderNumber} numaralı siparişte okunamadı ({result.Error!.Code}: {result.Error.SafeMessage}); sonraki çalışmada yeniden denenecek.", now, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
                 return new(JobExecutionResult.FromAdapterError(result.Error), new(requests, received, inserted, updated, inserted + updated, 1));
             }
-            foreach (var movement in result.Value!.Transactions)
+            // Movements without a code, an amount, an allowance or a date are not stored; they are named in issues.
+            skipped.AddRange(result.Value!.Skipped);
+            received += result.Value.Skipped.Count;
+            foreach (var movement in result.Value.Transactions)
             {
                 received++;
-                if (string.IsNullOrWhiteSpace(movement.TransactionCode)) continue;
+                storedCodes.Add(movement.TransactionCode);
                 var row = stored.FirstOrDefault(x => x.ExternalId == movement.TransactionCode);
                 if (row is null)
                 {
@@ -86,18 +92,20 @@ public sealed class PazaramaFinanceSyncJobHandler(AppDbContext db, IOrderFinance
                 Fill(row, movement, order.OrderNumber, now);
             }
         }
+        await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "Pazarama", skipped, storedCodes, now, cancellationToken);
         await ResolveIssueAsync(request.TenantId, FailureKey(request.ConnectionId), now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return new(JobExecutionResult.Success(), new(requests, received, inserted, updated, inserted + updated, 0));
     }
 
     // A sale credits the seller and a refund debits it; the commission is kept as the cost to the seller (Pazarama
-    // sends it negative on a sale, positive when a refund gives it back), as the payout takes it off.
+    // sends it negative on a sale, positive when a refund gives it back), as the payout takes it off; null when the
+    // movement did not send it (the reports then estimate the order's commission).
     internal static void Fill(MarketplaceFinanceTransaction row, RemoteFinanceTransaction movement, string orderNumber, DateTimeOffset now)
     {
         row.TransactionType = Short(movement.Status, 200);
         row.Category = movement.Amount < 0 ? MarketplaceFinanceCategories.Return : MarketplaceFinanceCategories.Sale;
-        row.TransactionDate = (movement.TransactionDate ?? now).ToUniversalTime();
+        row.TransactionDate = movement.TransactionDate.ToUniversalTime();
         row.OrderNumber = orderNumber;
         row.Credit = Math.Max(0m, movement.Amount);
         row.Debt = Math.Max(0m, -movement.Amount);

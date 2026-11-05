@@ -235,7 +235,7 @@ public sealed class TrendyolFinanceTests
     }
 
     [Fact]
-    public void A_statement_page_is_read_with_string_or_number_ids_and_a_record_without_an_id_is_a_contract_error()
+    public void A_statement_page_is_read_with_string_or_number_ids_and_a_record_without_an_id_is_skipped()
     {
         const string json = """
             {"page":0,"size":500,"totalPages":2,"totalElements":501,"content":[
@@ -259,8 +259,9 @@ public sealed class TrendyolFinanceTests
         Assert.Null(page.Items[1].OrderNumber);
         Assert.Contains("\"barcode\"", sale.RawJson);
 
-        Assert.ThrowsAny<JsonException>(() => TrendyolFinanceMapper.Page("""{"content":[{"transactionDate":1613397671561}]}""", Settlements, "Sale", null));
-        Assert.ThrowsAny<JsonException>(() => TrendyolFinanceMapper.Page("""{"content":[{"id":"1"}]}""", Settlements, "Sale", null));
+        // A record without an id or a date is not stored but named; the page is read on (FinanceRecordSkipTests).
+        Assert.Single(TrendyolFinanceMapper.Page("""{"content":[{"transactionDate":1613397671561,"credit":1}]}""", Settlements, "Sale", null).Skipped);
+        Assert.Single(TrendyolFinanceMapper.Page("""{"content":[{"id":"1","credit":1}]}""", Settlements, "Sale", null).Skipped);
         Assert.Empty(TrendyolFinanceMapper.Page("""{"page":0,"totalPages":0,"content":[]}""", Settlements, "Sale", null).Items);
     }
 
