@@ -1335,7 +1335,12 @@ public sealed record OrderSummaryView(
     // The Geciken tab's orders per store id (null when that tab was not counted), and the Yeniden Gönderim tab's under
     // resentNotShipped=true (null otherwise).
     IReadOnlyDictionary<string, int>? LateByConnection = null,
-    IReadOnlyDictionary<string, int>? ResentByConnection = null);
+    IReadOnlyDictionary<string, int>? ResentByConnection = null,
+    // The New and İşleme Alınanlar tabs' orders by the cargo company of their current package (empty: none known yet),
+    // with their products; null when that tab was not counted. An order at two companies counts under each.
+    IReadOnlyList<OrderCargoCountView>? NewByCargo = null,
+    IReadOnlyList<OrderCargoCountView>? ProcessingByCargo = null);
+public sealed record OrderCargoCountView(string Cargo, int Orders, decimal Units);
 public sealed record OrderLineView(
     Guid Id,
     string Sku,

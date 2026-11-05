@@ -46,6 +46,10 @@
    it would stay under the next card the pointer moves onto. */
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tipped:is(:hover, :focus-visible, :has(:focus-visible)) .rr-metric-tip { display: grid; gap: 2px; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 28px; font-size: 13px; color: var(--rr-ink); }
+/* The cargo companies under the stores, in words, after a thin line (owner, 5 Nov 2026). */
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-sep { height: 1px; margin: 4px 0; background: var(--rr-line); }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r.rr-metric-tip-cargo { grid-template-columns: minmax(0, 1fr) auto; min-height: 24px; }
+:is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-cargo > span { color: var(--rr-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-r b { font-weight: 600; white-space: nowrap; }
 :is(main .rr.rr-orders, .rr-layer.rr-layer) .rr-metrics .rr-metric-tip-none { width: 16px; height: 11px; border: 1px dashed var(--rr-line-strong); border-radius: 0; }
 @media (max-width: 760px) {

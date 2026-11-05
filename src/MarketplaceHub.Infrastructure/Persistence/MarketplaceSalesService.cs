@@ -749,9 +749,32 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var resentStores = !includeMicro && options.ResentNotShipped == true && requested.Contains("RESENT") ? await TabOrdersByConnectionAsync(tenantId, options, "RESENT", cancellationToken) : null;
         return new OrderSummaryView(Count("ALL"), Count("NEW"), Count("PROCESSING"), Count("SHIPPED"), Count("DELIVERED"), Count("RESENT"), Count("ON_HOLD"),
             Count("CANCELLED"), Count("RETURNED"), Count("RETURN_IN_TRANSIT"), Count("PARTIALLY_CANCELLED"), Count("MANUAL_REVIEW"), Count("PENDING"), Count("UNVERIFIED"), Count("PAYMENT_PENDING"), Count("UNDELIVERED"), Count("LATE"), micro, microCountries, newUnits, processingUnits,
-            lateStores ?? (requested.Contains("LATE") && !includeMicro ? new Dictionary<string, int>() : null), resentStores);
+            lateStores ?? (requested.Contains("LATE") && !includeMicro ? new Dictionary<string, int>() : null), resentStores,
+            !includeMicro && requested.Contains("NEW") ? await TabByCargoAsync(tenantId, options, "NEW", cancellationToken) : null,
+            !includeMicro && requested.Contains("PROCESSING") ? await TabByCargoAsync(tenantId, options, "PROCESSING", cancellationToken) : null);
     }
 
+
+    // The orders a tab lists under the same filters by the cargo company of their current package, with their products.
+    private async Task<IReadOnlyList<OrderCargoCountView>> TabByCargoAsync(Guid tenantId, OrderListQuery options, string tab, CancellationToken cancellationToken)
+    {
+        var orders = FilteredOrders(tenantId, options with { Status = tab, Sort = null });
+        var pairs = await CurrentShipmentPackages()
+            .Where(package => package.TenantId == tenantId && orders.Any(order => order.Id == package.OrderId))
+            .Select(package => new { package.OrderId, Cargo = package.CargoProviderExternalId ?? "" })
+            .Distinct().ToListAsync(cancellationToken);
+        var units = await (from order in orders
+                           join line in db.OrderLines.AsNoTracking() on new { order.TenantId, OrderId = order.Id } equals new { line.TenantId, line.OrderId }
+                           group line by order.Id into grouped
+                           select new { OrderId = grouped.Key, Units = grouped.Sum(line => line.OrderedQuantity > line.CancelledQuantity ? line.OrderedQuantity - line.CancelledQuantity : 0m) })
+            .ToDictionaryAsync(x => x.OrderId, x => x.Units, cancellationToken);
+        var known = pairs.Select(x => x.OrderId).ToHashSet();
+        var rows = pairs.Select(x => (x.OrderId, Cargo: x.Cargo.Trim()))
+            .Concat(units.Keys.Where(id => !known.Contains(id)).Select(id => (OrderId: id, Cargo: "")));
+        return rows.GroupBy(x => x.Cargo)
+            .Select(group => { var ids = group.Select(x => x.OrderId).Distinct().ToList(); return new OrderCargoCountView(group.Key, ids.Count, ids.Sum(id => units.GetValueOrDefault(id))); })
+            .OrderByDescending(x => x.Orders).ThenBy(x => x.Cargo, StringComparer.Ordinal).ToList();
+    }
     // The orders a tab lists under the same filters, per store.
     private async Task<IReadOnlyDictionary<string, int>> TabOrdersByConnectionAsync(Guid tenantId, OrderListQuery options, string tab, CancellationToken cancellationToken) =>
         await FilteredOrders(tenantId, options with { Status = tab, Sort = null })

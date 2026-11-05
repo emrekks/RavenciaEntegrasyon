@@ -17,7 +17,8 @@ import { CardBackgroundIcon, CountUp, type CardIconName, type CardTone } from '.
 import { RrLogo } from '../returns-ui'
 import { countryName, Flag } from './order-row-marks'
 import type { DayCard } from './daily-cards'
-import { orderCountText } from './order-summary'
+import { orderCountText, type OrderCargoCount } from './order-summary'
+import { cargoLabel } from '../../../shared/components/CargoProviderIcon'
 import './order-metrics.css'
 
 // error: the count could not be read; shown as "—", never as 0 or an endless "…".
@@ -60,21 +61,24 @@ function Packages({ packages, units }: { packages: Metric; units: number | undef
 }
 
 // The panel a card opens on hover or focus: one row per store, its logo, name and figure.
-function StoreTip({ rows }: { rows: TipRow[] }) {
+function StoreTip({ rows, cargo = [] }: { rows: TipRow[]; cargo?: OrderCargoCount[] }) {
   // An empty card opens no list (owner, 5 Nov 2026: "boşsa popup çıkmasın").
   if (rows.length === 0) return null
-  return <div className="rr-metric-tip" role="tooltip">{rows.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}</div>
+  // Below the stores, after a line, the cargo companies in words (owner, 5 Nov 2026: "logo olarak değil yazıyla").
+  return <div className="rr-metric-tip" role="tooltip">{rows.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}
+    {cargo.length > 0 && <div className="rr-metric-tip-sep" aria-hidden="true" />}
+    {cargo.map(row => <div className="rr-metric-tip-r rr-metric-tip-cargo" key={`cargo:${row.cargo}`}><span>{row.cargo ? cargoLabel(row.cargo) : "Kargo Belirlenmedi"}</span><b className="rr-num">{count(row.orders)} paket · {count(row.units)} adet</b></div>)}</div>
 }
 
 const tipped = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ') || undefined
 
 // A card that reads "N Paket | M Adet Ürün" and lists the products per store on hover or focus (no panel without them).
-function UnitsCard({ title, icon, tone, packages, units, rows }: { title: string; icon: CardIconName; tone?: CardTone; packages: Metric; units: number | undefined; rows: UnitRow[] | undefined }) {
+function UnitsCard({ title, icon, tone, packages, units, rows, cargo }: { title: string; icon: CardIconName; tone?: CardTone; packages: Metric; units: number | undefined; rows: UnitRow[] | undefined; cargo?: OrderCargoCount[] | null }) {
   const stores = known(packages) ? rows ?? [] : []
   return <article className={tipped(tone && `rr-${tone}`, stores.length > 0 && 'rr-metric-tipped')} tabIndex={stores.length > 0 ? 0 : undefined}>
     <CardBackgroundIcon name={icon} tone={tone} />
     <small>{title}</small><Packages packages={packages} units={units} />
-    {stores.length > 0 && <StoreTip rows={stores.map(row => ({ ...row, value: `${count(row.units)} adet` }))} />}
+    {stores.length > 0 && <StoreTip rows={stores.map(row => ({ ...row, value: `${count(row.units)} adet` }))} cargo={(cargo ?? []).filter(row => row.orders > 0)} />}
   </article>
 }
 
@@ -83,7 +87,7 @@ const packageTip = (rows: PackageRow[]) => rows.map(row => ({ ...row, value: `${
 // Touch screens: a tap on a card shows its stores (the shared tap handler opens the breakdown) and never switches the
 // list's tab; a computer opens the card's list as before.
 
-export function OrderMetricCards({ newOrders, newUnits, newRows, processing, processingUnits, processingRows, late, lateRows, microExport, microCountries, cancelled, cancelledRows, partiallyCancelled, partialUnits, resent, resentRows, onOpenDay, activeCard }: { newOrders: Metric; newUnits?: number; newRows?: UnitRow[]; processing: Metric; processingUnits?: number; processingRows?: UnitRow[]; late: Metric; lateRows?: PackageRow[]; microExport: Metric; microCountries?: Record<string, number>; cancelled: Metric; cancelledUnits?: number; cancelledRows?: CancelRow[]; partiallyCancelled: Metric; partialUnits?: number; resent: Metric; resentRows?: PackageRow[]; onOpenDay: (card: DayCard) => void; activeCard?: DayCard }) {
+export function OrderMetricCards({ newOrders, newUnits, newRows, newCargo, processing, processingUnits, processingRows, processingCargo, late, lateRows, microExport, microCountries, cancelled, cancelledRows, partiallyCancelled, partialUnits, resent, resentRows, onOpenDay, activeCard }: { newOrders: Metric; newUnits?: number; newRows?: UnitRow[]; newCargo?: OrderCargoCount[] | null; processing: Metric; processingUnits?: number; processingRows?: UnitRow[]; processingCargo?: OrderCargoCount[] | null; late: Metric; lateRows?: PackageRow[]; microExport: Metric; microCountries?: Record<string, number>; cancelled: Metric; cancelledUnits?: number; cancelledRows?: CancelRow[]; partiallyCancelled: Metric; partialUnits?: number; resent: Metric; resentRows?: PackageRow[]; onOpenDay: (card: DayCard) => void; activeCard?: DayCard }) {
   // The cards no longer switch the list to their orders (owner, 5 Nov 2026): a click shows the stores, as Yeni Sipariş does.
   const openOnPointer = (_card: DayCard) => { void _card; void onOpenDay }
   // The partly cancelled orders are a chip beside the cancelled count only while there are any.
@@ -97,8 +101,8 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
   const cancelStores = stores(cancelled, cancelledRows, partial > 0)
   const resentStores = stores(resent, resentRows)
   return <div className="rr-metrics rr-metrics-6">
-    <UnitsCard title="Yeni Sipariş" icon="orders" tone="warn" packages={newOrders} units={newUnits} rows={newRows} />
-    <UnitsCard title="İşleme Alınan" icon="packagePen" tone="warn" packages={processing} units={processingUnits} rows={processingRows} />
+    <UnitsCard title="Yeni Sipariş" icon="orders" tone="warn" packages={newOrders} units={newUnits} rows={newRows} cargo={newCargo} />
+    <UnitsCard title="İşleme Alınan" icon="packagePen" tone="warn" packages={processing} units={processingUnits} rows={processingRows} cargo={processingCargo} />
     {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- focusable so a keyboard opens its store list */}
     <article className={tipped(positive(late) && 'rr-bad rr-alert', 'rr-metric-tipped')} tabIndex={0}>
       <CardBackgroundIcon name="clock" tone={positive(late) ? 'bad' : undefined} />

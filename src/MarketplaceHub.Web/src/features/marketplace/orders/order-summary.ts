@@ -2,7 +2,8 @@
 // products of the Yeni tab's orders per store, processingUnitsByConnection those of İşleme Alınanlar (null when that tab
 // was not counted); lateByConnection and resentByConnection the Geciken and (under resentNotShipped) Yeniden Gönderim
 // orders per store.
-export type OrderSummary = { all: number; new: number; processing: number; shipped: number; delivered: number; resent: number; onHold: number; cancelled: number; returned: number; returnInTransit: number; partiallyCancelled: number; manualReview: number; pending: number; unverified: number; paymentPending: number; undelivered?: number; late?: number; microExport?: number; microExportCountries?: Record<string, number> | null; newUnitsByConnection?: Record<string, number> | null; processingUnitsByConnection?: Record<string, number> | null; lateByConnection?: Record<string, number> | null; resentByConnection?: Record<string, number> | null }
+export type OrderSummary = { all: number; new: number; processing: number; shipped: number; delivered: number; resent: number; onHold: number; cancelled: number; returned: number; returnInTransit: number; partiallyCancelled: number; manualReview: number; pending: number; unverified: number; paymentPending: number; undelivered?: number; late?: number; microExport?: number; microExportCountries?: Record<string, number> | null; newUnitsByConnection?: Record<string, number> | null; processingUnitsByConnection?: Record<string, number> | null; lateByConnection?: Record<string, number> | null; resentByConnection?: Record<string, number> | null; newByCargo?: OrderCargoCount[] | null; processingByCargo?: OrderCargoCount[] | null }
+export type OrderCargoCount = { cargo: string; orders: number; units: number }
 // /orders/facets: orders per platform code and per cargo provider under the other filters and the status tab.
 export type OrderFacets = { platforms: Record<string, number>; cargos: Record<string, number> }
 
