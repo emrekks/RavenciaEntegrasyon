@@ -112,12 +112,14 @@
 .publish-step.is-next .publish-clock-hour { animation: rv-publish-clock-hour 144s linear infinite; }
 /* The step the card is at moves whether it waits (is-next) or runs (is-now): the page and the store hop, the plane glides,
    the clock turns its hands. */
-/* The step the card is at (waiting, running or refused) breathes: a soft ring in its colour grows out from behind the
-   icon and fades, on a smooth curve (owner, 5 Nov 2026: "akıcı değil, profesyonel yap"). The icon itself stays still
-   and sharp; only the ring, a pseudo element, scales, so nothing is redrawn in 2px steps. The clock turns its hands. */
-.publish-step:is(.is-next, .is-now, .is-fail)::after { position: absolute; inset: 0; z-index: 0; content: ""; background: currentColor; border-radius: 50%; opacity: 0; pointer-events: none; animation: rv-publish-step-halo 2.4s cubic-bezier(.22, .61, .36, 1) infinite; }
-.publish-step.is-now::after { animation-duration: 1.8s; }
-.publish-step > svg { z-index: 1; }
+/* The step the card is at moves (owner, 5 Nov 2026): the plane glides forward and back, the page and the store hop,
+   a refused step shakes, the clock turns its hands. The drawing inside the SVG moves, not the SVG box: an SVG child is
+   redrawn as a vector at every sub-pixel position, so the motion is smooth and the icon stays sharp (moving the box
+   by top/left jumped in whole pixels, moving it by transform blurred it). */
+.publish-step > svg > * { transform-box: view-box; }
+.publish-steps-item:nth-child(2) .publish-step:is(.is-next, .is-now) > svg > * { animation: rv-publish-step-glide 1.8s cubic-bezier(.45, 0, .55, 1) infinite; }
+.publish-steps-item:is(:nth-child(1), :nth-child(4)) .publish-step:is(.is-next, .is-now) > svg > * { animation: rv-publish-step-hop 1.8s cubic-bezier(.45, 0, .55, 1) infinite; }
+.publish-step.is-fail > svg > :not(.publish-clock-hand) { animation: rv-publish-step-shake 1.8s ease-in-out infinite; }
 .publish-step.is-now .publish-clock-minute { animation: rv-publish-clock-minute 6s linear infinite; }
 .publish-step.is-now .publish-clock-hour { animation: rv-publish-clock-hour 72s linear infinite; }
 /* Partly live: the green store with a thin ring filled to the live share. */
@@ -149,8 +151,10 @@
 /* The step icons move by top/left, not transform: a transform animation puts the small icon on its own layer, drawn
    once as a bitmap and then slid and resampled each frame, which blurred and shimmered it; top/left redraws the vector
    at each position, so it stays sharp. */
-@keyframes rv-publish-step-halo { 0% { opacity: .32; transform: scale(.7); } 70%, 100% { opacity: 0; transform: scale(1.65); } }
-@media (prefers-reduced-motion: reduce) { .publish-step > svg, .publish-step::after, .publish-step .publish-clock-hand, .publish-issue-action.is-busy > svg { animation: none !important; } }
+@keyframes rv-publish-step-glide { 0%, 100% { transform: translate(-1.5px, 1.5px); } 50% { transform: translate(2.5px, -2.5px); } }
+@keyframes rv-publish-step-hop { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-3px); } }
+@keyframes rv-publish-step-shake { 0%, 60%, 100% { transform: translateX(0); } 10%, 30%, 50% { transform: translateX(-2px); } 20%, 40% { transform: translateX(2px); } }
+@media (prefers-reduced-motion: reduce) { .publish-step > svg, .publish-step > svg > *, .publish-step .publish-clock-hand, .publish-issue-action.is-busy > svg { animation: none !important; } }
 /* A narrower cell: smaller steps and links; the state label gives way below the width its pill needs (data-fit,
    publishStepsFit); the steps and their badges always stay. */
 @container (max-width: 235px) {

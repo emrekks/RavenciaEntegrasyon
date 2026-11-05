@@ -70,6 +70,9 @@
   transform-origin: top left;
 }
 :where([data-motion="menu-right"], .rr-pop.rr-right, .rr-actcell .rr-menu, .rr-vt-wrap > .rr-menu, .row-menu > div, .order-column-filter-popover, .rr-psize-pop, .mam-more, .appearance-theme-menu, .product-platform-filter-menu, .variant-header-action-menu, .integration-filter-menu, .qi-status-menu, .searchable-select-menu, .category-attribute-dropdown-menu, .variant-filter-dropdown-menu, .jobs-reference-filter-panel, .invoice-reference-actions-popover, .platform-multi-select-menu:not(.is-start)) { transform-origin: top right; }
+/* Popovers that open under the pointer (hover) only fade in: growing from .92 moved their edge away from the pointer,
+   the hover ended, the popover closed and opened again, and it stuttered (owner, 5 Nov 2026: "kasarak açılıyor"). */
+:where(.publish-issue-tooltip, .reports-hover-tip, .rr-metric-tip, .rr-bd, .title-hint-tip) { animation: rv-motion-fade var(--rv-motion-menu) ease-out backwards; }
 :where([data-motion="menu-up"], .rr-bulk-menu > .rr-menu, .reference-menu-popover:not(.opens-down)) { transform-origin: bottom right; }
 :where(.title-hint-tip.is-above) { transform-origin: bottom left; }
 /* Sheets that slide up from the bottom edge (a phone's bottom sheets): they start heavy and stop softly. */
