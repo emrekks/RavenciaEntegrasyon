@@ -4519,7 +4519,7 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "OrderLineId");
 
-                    b.HasIndex("TenantId", "PackageId", "OrderLineId", "SourceEventId")
+                    b.HasIndex("TenantId", "PackageId", "OrderLineId")
                         .IsUnique();
 
                     b.ToTable("package_line_allocations", "sales", t =>

@@ -31,6 +31,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private readonly IReadOnlyList<IJobHandler> jobHandlers = handlers?.ToArray() ?? [new MarketplaceHub.Infrastructure.Jobs.Handlers.QuestionSyncJobHandler(questions)];
     // When the marketplace stock of the model group being finalized was read (K-2); null outside a catalog import.
     private DateTimeOffset? catalogStockReadAt;
+    // Trendyol orders an integrity check refused during this job (T2-O8); the order read hands them to its re-read list.
+    private readonly HashSet<string> rejectedTrendyolOrderIds = new(StringComparer.Ordinal);
     private int telemetryRequestCount;
     private int telemetryReceivedCount;
     private int telemetryChangedCount;
@@ -3836,6 +3838,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (cancellationToken.IsCancellationRequested || !await ReadStorefrontSinceLastRead(storefront)) break;
             }
         }
+        if (completed && !cancellationToken.IsCancellationRequested)
+            await RereadRejectedTrendyolOrders(tenantId, connectionId, correlationId, cancellationToken);
         return true;
 
         // False when the read failed for another reason than a rejected storefront: it is retried on the next run
@@ -3881,6 +3885,43 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Where(order => order.TenantId == tenantId && order.ConnectionId == connectionId && order.ExternalOrderId == externalOrderId)
             .Select(order => (OrderLookupHint?)new OrderLookupHint(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode))
             .FirstOrDefaultAsync(cancellationToken);
+
+    // T2-O8: a Trendyol order an integrity check refused stays behind the stream watermark once the window moves past
+    // it. At the end of an order read it is read again by its number, a few times and far apart
+    // (RejectedOrderRereadPolicy): an order Trendyol has completed since then lands, one still refused after the last
+    // try is left to its open issue. A read that fails for another reason waits for the next run and counts no try.
+    private async Task RereadRejectedTrendyolOrders(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var saved = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == RejectedOrderRereadPolicy.CursorResource, cancellationToken);
+        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(saved?.OpaqueCursor), rejectedTrendyolOrderIds, now);
+        rejectedTrendyolOrderIds.Clear();
+        if (saved is null && entries.Count == 0) return;
+        var cursor = saved ?? await Cursor(tenantId, connectionId, RejectedOrderRereadPolicy.CursorResource, cancellationToken);
+        foreach (var entry in RejectedOrderRereadPolicy.Due(entries, now))
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+            TrackRequest();
+            var read = await orders.GetAsync(Context(tenantId, connectionId, correlationId, $"order-reread:{entry.OrderId}"), entry.OrderId, await OrderHint(tenantId, connectionId, entry.OrderId, cancellationToken), cancellationToken);
+            bool stillRefused;
+            if (read.IsSuccess)
+            {
+                TrackReceived();
+                await UpsertOrder(tenantId, connectionId, read.Value!, cancellationToken);
+                stillRefused = rejectedTrendyolOrderIds.Remove(entry.OrderId);
+            }
+            else if (read.Error?.Class == AdapterErrorClass.NotFound || read.Error?.HttpStatus == 404) stillRefused = true;
+            else break;
+            entries = RejectedOrderRereadPolicy.AfterRead(entries, entry, stillRefused, now);
+        }
+        rejectedTrendyolOrderIds.Clear();
+        var serialized = RejectedOrderRereadPolicy.Serialize(entries);
+        if (serialized == cursor.OpaqueCursor && db.Entry(cursor).State != EntityState.Added) return;
+        cursor.OpaqueCursor = serialized;
+        cursor.LastSuccessAt = now;
+        cursor.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+    }
 
     private async Task NoteWebhookGapAsync(Guid tenantId, Guid connectionId, DateTimeOffset now, CancellationToken cancellationToken)
     {
@@ -7189,8 +7230,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     // crossMatchCodes (n11): the seller stock code may be the panel barcode
-    // and the n11 barcode the panel SKU, and model-code candidates are
-    // narrowed by colour and size. reportUnmatched records every remote
+    // and the n11 barcode the panel SKU. Model-code candidates are narrowed
+    // by colour and size on every marketplace (Y5). reportUnmatched records every remote
     // variant that found no local variant so it can be fixed by hand. seedOffers (n11)
     // opens the channel offer of a linked variant from the remote price when
     // the variant has none yet; existing offers are never changed.
@@ -7237,38 +7278,6 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             return false;
         }
 
-        // A marketplace product may group colours that the panel keeps as
-        // separate products, and two marketplace products may land on the same
-        // panel product. For n11 the variant links carry the stock code, so the
-        // variants are still linked when the product-level link cannot be made.
-        var linkProduct = true;
-        var candidateProductIds = localVariants.Select(variant => variant.ProductId).Distinct().ToArray();
-        Guid? productId = link?.ProductId;
-        if (productId is null)
-        {
-            var conflictingProductIds = candidateProductIds.Length == 0
-                ? []
-                : await db.MarketplaceProductLinks.AsNoTracking()
-                    .Where(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && candidateProductIds.Contains(existing.ProductId) && existing.ExternalId != externalProductId)
-                    .Select(existing => existing.ProductId)
-                    .Distinct()
-                    .ToListAsync(cancellationToken);
-            productId = candidateProductIds.FirstOrDefault(candidate => !conflictingProductIds.Contains(candidate));
-            if (productId == Guid.Empty)
-            {
-                if (!crossMatchCodes) return false;
-                linkProduct = false;
-                productId = candidateProductIds[0];
-            }
-        }
-
-        if (!await db.Products.AsNoTracking().AnyAsync(product => product.TenantId == tenantId && product.Id == productId.Value, cancellationToken)) return false;
-        if (linkProduct && link is null && await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == productId.Value && existing.ExternalId != externalProductId, cancellationToken))
-        {
-            if (!crossMatchCodes) return false;
-            linkProduct = false;
-        }
-
         var localVariantIds = localVariants.Select(variant => variant.Id).ToArray();
         var externalVariantIds = remoteVariants.Select(variant => Short(variant.ExternalVariantId, 256)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var existingVariantLinks = await db.MarketplaceVariantLinks
@@ -7279,11 +7288,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .Select(existing => existing.VariantId)
             .ToHashSet();
         var matchedVariantCount = 0;
-        var matchedProductIds = new HashSet<Guid>();
 
-        foreach (var remote in remoteVariants)
+        // Each remote variant is resolved before anything is linked: a barcode or stock code names one panel variant,
+        // a model code names every colour and size of the model, so a model-code candidate must also carry the remote
+        // variant's colour and size (Y5, on every marketplace; Trendyol and Hepsiburada bound by the model code alone).
+        var resolved = remoteVariants.Select(remote =>
         {
-            var externalVariantId = Short(remote.ExternalVariantId, 256);
             var remoteBarcode = NormalizeCatalogKey(remote.Barcode, 160);
             var remoteSku = NormalizeCatalogKey(remote.Sku, 160);
             var remoteModelCode = NormalizeCatalogKey(remote.ModelCode, 160);
@@ -7296,31 +7306,67 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : localVariants.Where(variant => CatalogKeyNormalizer.SameKey(variant.SkuNormalized, remoteSku)
                     || crossMatchCodes && CatalogKeyNormalizer.SameKey(variant.BarcodeNormalized, remoteSku)
                     || preferBarcode && string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteSku, StringComparison.Ordinal)).ToList();
-            var modelMatches = !preferBarcode && string.IsNullOrWhiteSpace(remoteModelCode)
+            var modelCandidates = preferBarcode || string.IsNullOrWhiteSpace(remoteModelCode)
                 ? []
-                : !preferBarcode
-                    ? localVariants.Where(variant => string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteModelCode, StringComparison.Ordinal)).ToList()
-                    : [];
-            if (crossMatchCodes && modelMatches.Count > 1)
+                : localVariants.Where(variant => string.Equals(NormalizeCatalogKey(variant.ModelCode, 160), remoteModelCode, StringComparison.Ordinal)).ToList();
+            var modelMatches = NarrowModelCodeCandidates(modelCandidates, variant => variant.OptionSignature, remote.Options, snapshot.Title);
+            var byModelCode = barcodeMatches.Count == 0 && skuMatches.Count == 0;
+            var matches = !byModelCode ? barcodeMatches.Count > 0 ? barcodeMatches : skuMatches : modelMatches;
+            return new
             {
-                var narrowed = modelMatches.Where(variant => SameColorAndSize(variant.OptionSignature, remote.Options)).ToList();
-                // Options without a colour or size name (PTT AVM's variant name "S") are matched by their values, and a
-                // colour the product title names ("Bordo Kaşe Mini Etek") picks among the colours of the model.
-                if (narrowed.Count != 1)
-                {
-                    var byValues = modelMatches.Where(variant => HasOptionValues(variant.OptionSignature, remote.Options)).ToList();
-                    if (byValues.Count > 1) byValues = byValues.Where(variant => TitleNamesColor(snapshot.Title, variant.OptionSignature)).ToList();
-                    if (byValues.Count == 1) narrowed = byValues;
-                }
-                modelMatches = narrowed;
+                Remote = remote,
+                ExternalVariantId = Short(remote.ExternalVariantId, 256),
+                Matches = matches,
+                Candidate = matches.Count == 1 ? matches[0] : null,
+                // Model-code candidates whose colour and size could not single one out: never picked, left for review.
+                ModelCodeUndecided = byModelCode && modelCandidates.Count > 0 && matches.Count != 1,
+                ModelCandidateCount = modelCandidates.Count
+            };
+        }).ToList();
+
+        // The panel product follows the variants the remote ones resolved to, never the first candidate a query
+        // returned. Variants that land on several panel products (a model kept as one card per colour) decide none:
+        // the product link is not made and the product is put up for review.
+        var linkProduct = true;
+        Guid? productId = link?.ProductId;
+        if (productId is null)
+        {
+            var resolvedProductIds = resolved
+                .Where(item => item.Candidate is not null && !claimedVariantIds.Contains(item.Candidate.Id))
+                .Select(item => item.Candidate!.ProductId)
+                .Distinct()
+                .ToList();
+            if (resolvedProductIds.Count > 1)
+            {
+                await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalProductId}", "PRODUCT_MAPPING_UNMATCHED",
+                    Short($"Pazar yeri ürününün varyantları panelde {resolvedProductIds.Count} ayrı ürüne (renk kartlarına) düştü; ürün bağlantısı seçilmedi, eşleşmeyi kontrol edin · {snapshot.Title}.", 1000), cancellationToken);
+                if (!crossMatchCodes) return false;
+                linkProduct = false;
             }
-            var matches = barcodeMatches.Count > 0 ? barcodeMatches : skuMatches.Count > 0 ? skuMatches : modelMatches;
-            var candidate = matches.Count == 1 ? matches[0] : null;
+            else if (resolvedProductIds.Count == 1)
+            {
+                productId = resolvedProductIds[0];
+                if (await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == productId.Value && existing.ExternalId != externalProductId, cancellationToken))
+                {
+                    if (!crossMatchCodes) return false;
+                    linkProduct = false;
+                }
+            }
+            else linkProduct = false;
+        }
+        if (productId is { } chosenProductId && !await db.Products.AsNoTracking().AnyAsync(product => product.TenantId == tenantId && product.Id == chosenProductId, cancellationToken)) return false;
+
+        foreach (var item in resolved)
+        {
+            var remote = item.Remote;
+            var externalVariantId = item.ExternalVariantId;
+            var matches = item.Matches;
+            var candidate = item.Candidate;
             if (candidate is null || claimedVariantIds.Contains(candidate.Id))
             {
-                if (reportUnmatched)
+                if (reportUnmatched || item.ModelCodeUndecided)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
-                        Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, barkod {remote.Barcode ?? "yok"}, model kodu {remote.ModelCode ?? "yok"}, {string.Join(", ", remote.Options.Where(option => IsRealColorOptionKey(option.Key) || IsSizeOptionKey(option.Key)).Select(option => $"{option.Key}: {option.Value}"))} · {snapshot.Title}. {(candidate is null ? matches.Count > 1 ? $"{matches.Count} panel varyantı aday çıktı." : "Panelde aynı stok kodu, barkod veya model kodu yok." : "Aday panel varyantı başka bir pazar yeri varyantına bağlı.")}", 1000),
+                        Short($"Pazar yeri varyantı eşleşmedi: stok kodu {remote.Sku}, barkod {remote.Barcode ?? "yok"}, model kodu {remote.ModelCode ?? "yok"}, {string.Join(", ", remote.Options.Where(option => IsRealColorOptionKey(option.Key) || IsSizeOptionKey(option.Key)).Select(option => $"{option.Key}: {option.Value}"))} · {snapshot.Title}. {(candidate is not null ? "Aday panel varyantı başka bir pazar yeri varyantına bağlı." : matches.Count > 1 ? $"{matches.Count} panel varyantı aday çıktı." : item.ModelCodeUndecided ? $"Model kodu {item.ModelCandidateCount} panel varyantında var ama hiçbirinin rengi ve bedeni bu varyantınki değil." : "Panelde aynı stok kodu, barkod veya model kodu yok.")}", 1000),
                         cancellationToken);
                 continue;
             }
@@ -7328,7 +7374,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             var externalLink = existingVariantLinks.FirstOrDefault(existing => string.Equals(existing.ExternalId, externalVariantId, StringComparison.OrdinalIgnoreCase));
             if (externalLink is not null)
             {
-                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; matchedProductIds.Add(candidate.ProductId); if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource); }
+                if (externalLink.VariantId == candidate.Id) { matchedVariantCount++; if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource); }
                 else if (reportUnmatched)
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{externalVariantId}", "PRODUCT_MAPPING_UNMATCHED",
                         Short($"Pazar yeri varyantı {remote.Sku} daha önce başka bir panel varyantına bağlanmış; şimdiki eşleşme {candidate.Sku}. Bağlantı değiştirilmedi · {snapshot.Title}.", 1000), cancellationToken);
@@ -7348,20 +7394,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             existingVariantLinks.Add(new MarketplaceVariantLink { TenantId = tenantId, ConnectionId = connectionId, VariantId = candidate.Id, ExternalId = externalVariantId, Version = 1 });
             claimedVariantIds.Add(candidate.Id);
             matchedVariantCount++;
-            matchedProductIds.Add(candidate.ProductId);
             telemetryInsertedCount++;
             if (seedOffers) await SeedChannelOfferAsync(tenantId, connectionId, candidate.Id, remote, inventoryPolicy, now, cancellationToken, seedSource);
         }
 
         if (matchedVariantCount == 0) return false;
-        // A model shared by several panel products (one per colour) links to the product its variants matched,
-        // not to the first candidate.
-        if (link is null && matchedProductIds.Count == 1 && matchedProductIds.Single() is var matchedProductId && matchedProductId != productId.Value)
-        {
-            productId = matchedProductId;
-            linkProduct = !await db.MarketplaceProductLinks.AsNoTracking().AnyAsync(existing => existing.TenantId == tenantId && existing.ConnectionId == connectionId && existing.ProductId == matchedProductId && existing.ExternalId != externalProductId, cancellationToken);
-        }
-        if (!linkProduct) return true;
+        if (!linkProduct || productId is null) return true;
         if (link is null)
         {
             link = new MarketplaceProductLink
@@ -7803,9 +7841,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 var modelCodes = snapshot.Variants.Select(variant => variant.ModelCode?.Trim()).Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!).Distinct(StringComparer.Ordinal).ToArray();
                 var matchedProductIds = stockCodes.Count == 0 ? [] : await db.ProductVariants.AsNoTracking()
                     .Where(x => x.TenantId == tenantId && stockCodes.Contains(x.SkuNormalized)).Select(x => x.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+                // A model code names every colour and size of the model: the product is the one whose variants carry the
+                // listing's colours and sizes, never the only card that happens to hold the model code (Y5).
+                var modelCodeUndecided = false;
                 if (matchedProductIds.Count == 0 && modelCodes.Length > 0)
-                    matchedProductIds = await db.ProductVariants.AsNoTracking()
-                        .Where(x => x.TenantId == tenantId && x.ModelCode != null && modelCodes.Contains(x.ModelCode)).Select(x => x.ProductId).Distinct().Take(2).ToListAsync(cancellationToken);
+                {
+                    var modelVariants = await db.ProductVariants.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && x.ModelCode != null && modelCodes.Contains(x.ModelCode))
+                        .Select(x => new ModelCodeVariant(x.ProductId, x.ModelCode!, x.OptionSignature))
+                        .ToListAsync(cancellationToken);
+                    matchedProductIds = ModelCodeProducts(modelVariants, snapshot.Variants, snapshot.Title);
+                    modelCodeUndecided = modelVariants.Count > 0 && matchedProductIds.Count == 0;
+                }
                 if (matchedProductIds.Count == 1
                     && !await db.MarketplaceProductLinks.AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == matchedProductIds[0] && x.ExternalId != externalProductId, cancellationToken))
                     product = await db.Products.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == matchedProductIds[0], cancellationToken);
@@ -7813,7 +7860,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     var remote = snapshot.Variants.FirstOrDefault();
                     await RecordIssue(tenantId, $"product-mapping-unmatched:{connectionId}:{Short(externalProductId, 256)}", "PRODUCT_MAPPING_UNMATCHED",
-                        Short($"Hepsiburada ürünü panelde eşleşmedi: barkod {remote?.Barcode ?? "yok"}, stok kodu {remote?.Sku ?? "yok"}, model kodu {remote?.ModelCode ?? "yok"} · {snapshot.Title}. {(matchedProductIds.Count > 1 ? "Birden fazla panel ürünü aday çıktı." : "Panelde aynı barkod, stok kodu veya model kodu yok; Hepsiburada ürünü panelde yeni ürün olarak açılmaz.")}", 1000), cancellationToken);
+                        Short($"Hepsiburada ürünü panelde eşleşmedi: barkod {remote?.Barcode ?? "yok"}, stok kodu {remote?.Sku ?? "yok"}, model kodu {remote?.ModelCode ?? "yok"} · {snapshot.Title}. {(matchedProductIds.Count > 1 ? "Birden fazla panel ürünü aday çıktı." : modelCodeUndecided ? "Model kodu panelde var ama hiçbir panel varyantının rengi ve bedeni bu ürününkiyle aynı değil; ürün seçilmedi." : "Panelde aynı barkod, stok kodu veya model kodu yok; Hepsiburada ürünü panelde yeni ürün olarak açılmaz.")}", 1000), cancellationToken);
                     return false;
                 }
             }
@@ -8985,6 +9032,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return !string.IsNullOrEmpty(color) && titleKey.Length > 0 && $"-{titleKey}-".Contains($"-{color}-", StringComparison.Ordinal);
     }
 
+    // The panel option of the same name, else the one on the same axis ("Color" on the marketplace, "Renk" in the
+    // panel); values compare by the shared catalog key, so case and Turkish letters do not matter.
     internal static bool SameColorAndSize(string? localSignature, IReadOnlyDictionary<string, string> remoteOptions)
     {
         var axes = remoteOptions
@@ -8992,8 +9041,59 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .ToList();
         if (axes.Count == 0 || string.IsNullOrWhiteSpace(localSignature)) return false;
         var local = VariantOptionSignature.ParseKeyed(localSignature);
-        return axes.All(option => local.TryGetValue(NormalizeCatalogKey(option.Key, 80), out var value)
-            && string.Equals(value, NormalizeCatalogKey(CleanCatalogOptionValue(option.Value), 120), StringComparison.Ordinal));
+        return axes.All(option =>
+        {
+            var expected = NormalizeCatalogKey(CleanCatalogOptionValue(option.Value), 120);
+            if (local.TryGetValue(NormalizeCatalogKey(option.Key, 80), out var value)) return string.Equals(value, expected, StringComparison.Ordinal);
+            var isColor = IsRealColorOptionKey(option.Key);
+            var sameAxis = local.Where(pair => isColor ? IsRealColorOptionKey(pair.Key) : IsSizeOptionKey(pair.Key)).Select(pair => pair.Value).ToList();
+            return sameAxis.Count == 1 && string.Equals(sameAxis[0], expected, StringComparison.Ordinal);
+        });
+    }
+
+    // The model-code candidates a remote variant may be bound to (Y5). A model code names every colour and size of a
+    // model, so a candidate is kept only when its colour and size are the remote variant's; options without a colour or
+    // size name (PTT AVM's "S", "Lacivert / L") are matched by their values, and a colour the title names ("Bordo Kaşe
+    // Mini Etek") picks among the colours of the model. A remote variant that names no colour or size keeps the model's
+    // one panel variant only when nothing can contradict it: the remote names no option at all, or the panel variant has
+    // no colour or size either. Anything else returns the undecided candidates (or none): the caller never picks one.
+    internal static List<T> NarrowModelCodeCandidates<T>(IReadOnlyList<T> candidates, Func<T, string?> signature, IReadOnlyDictionary<string, string> remoteOptions, string? title)
+    {
+        if (candidates.Count == 0) return [];
+        var narrowed = candidates.Where(candidate => SameColorAndSize(signature(candidate), remoteOptions)).ToList();
+        if (narrowed.Count == 1) return narrowed;
+        var byValues = candidates.Where(candidate => HasOptionValues(signature(candidate), remoteOptions)).ToList();
+        if (byValues.Count > 1) byValues = byValues.Where(candidate => TitleNamesColor(title, signature(candidate))).ToList();
+        if (byValues.Count == 1) return byValues;
+        var remoteNamesAxis = remoteOptions.Any(option => (IsRealColorOptionKey(option.Key) || IsSizeOptionKey(option.Key)) && !string.IsNullOrWhiteSpace(CleanCatalogOptionValue(option.Value)));
+        if (!remoteNamesAxis && candidates.Count == 1)
+        {
+            var namesNoOption = remoteOptions.All(option => string.IsNullOrWhiteSpace(CleanCatalogOptionValue(option.Value)));
+            var localNamesAxis = VariantOptionSignature.ParseKeyed(signature(candidates[0])).Keys.Any(key => IsRealColorOptionKey(key) || IsSizeOptionKey(key));
+            if (namesNoOption || !localNamesAxis) return [candidates[0]];
+        }
+        return narrowed.Count > 1 ? narrowed : byValues.Count > 1 ? byValues : !remoteNamesAxis && candidates.Count > 1 ? [.. candidates] : [];
+    }
+
+    internal sealed record ModelCodeVariant(Guid ProductId, string ModelCode, string? OptionSignature);
+
+    // The panel products a listing's variants land on by model code (Hepsiburada import, Y5). Each remote variant is
+    // narrowed among its model's panel variants by colour and size (NarrowModelCodeCandidates); it counts for a product
+    // when the variants left all belong to that one product (a listing of one colour without sizes, say). Several
+    // products returned are several candidates: the caller links none of them.
+    internal static List<Guid> ModelCodeProducts(IReadOnlyList<ModelCodeVariant> modelVariants, IEnumerable<RemoteCatalogVariant> remoteVariants, string? title)
+    {
+        var products = new List<Guid>();
+        foreach (var remote in remoteVariants)
+        {
+            var code = remote.ModelCode?.Trim();
+            if (string.IsNullOrWhiteSpace(code)) continue;
+            var candidates = modelVariants.Where(variant => string.Equals(variant.ModelCode, code, StringComparison.Ordinal)).ToList();
+            var narrowed = NarrowModelCodeCandidates(candidates, variant => variant.OptionSignature, remote.Options, title);
+            var narrowedProducts = narrowed.Select(variant => variant.ProductId).Distinct().ToList();
+            if (narrowedProducts.Count == 1 && !products.Contains(narrowedProducts[0])) products.Add(narrowedProducts[0]);
+        }
+        return products;
     }
 
     private static bool IsVariantOptionName(string value) => VariantOptionAxis(value) is not null;
@@ -9484,7 +9584,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (packageIds.Length > 0)
             {
                 var allocations = await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId)).ToListAsync(cancellationToken);
-                foreach (var allocation in allocations) batch.AllocationsByKey[AllocationKey(allocation.PackageId, allocation.OrderLineId, allocation.SourceEventId)] = allocation;
+                foreach (var (key, allocation) in AllocationsByLine(allocations)) batch.AllocationsByKey[key] = allocation;
             }
 
             var history = await db.OrderStatusHistory.AsNoTracking().Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId)).Select(x => new { x.OrderId, x.SourceEventId }).ToListAsync(cancellationToken);
@@ -9569,6 +9669,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         IReadOnlyDictionary<string, decimal> remoteLineQuantities;
         if ((!isTrendyol && remote.Lines.Count == 0) || remote.Packages.Count == 0 && !isHepsiburada)
         {
+            if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
             await RecordIssue(tenantId, $"order-contract:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_CONTRACT_INVALID", "Pazar yeri siparişinde satır veya paket verisi eksikti; eksik sipariş projeksiyonu uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
@@ -9578,15 +9679,30 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             remoteLineQuantities = new Dictionary<string, decimal>(StringComparer.Ordinal);
             if (remote.Lines.Count > 0 && !PackageIngestionSafety.TryGetOrderedQuantities(remote.Lines, out remoteLineQuantities))
             {
+                if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
                 await RecordIssue(tenantId, $"order-lines:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_QUANTITY_INVARIANT_REJECTED", "Sipariş satır kimliği veya miktarı geçersizdi; olayın hiçbir parçası uygulanmadı.", cancellationToken);
                 if (saveChanges) await db.SaveChangesAsync(cancellationToken);
                 return false;
             }
         }
+        // O8: a split parent is known by its children naming it as their origin, in this read or among the order's stored
+        // packages, whatever status Trendyol lists it under (live: 4084999185 and three more, read as their own packages
+        // after the split and refused as PACKAGE_QUANTITY_INVARIANT_REJECTED on every run). Its lines live on in the
+        // children; a read that brings nothing but known parents of a stored order changes nothing and is skipped quietly.
+        var splitParentIds = usesTrendyolPackageStatuses
+            ? await KnownSplitParentIdsAsync(tenantId, connectionId, order, remote.Packages, batch, cancellationToken)
+            : new HashSet<string>(StringComparer.Ordinal);
+        if (order is not null && remote.Packages.Count > 0 && remote.Packages.All(package => splitParentIds.Contains(package.ExternalPackageId)))
+        {
+            foreach (var parent in remote.Packages) await ResolvePackageQuantityIssues(tenantId, connectionId, parent.ExternalPackageId, cancellationToken);
+            if (saveChanges) await db.SaveChangesAsync(cancellationToken);
+            return true;
+        }
         var detailedPackages = remote.Packages.Where(package => !package.IsStatusObservation).ToArray();
         var allocatedLineIds = detailedPackages.SelectMany(x => x.Allocations).Select(x => x.ExternalLineId).ToHashSet(StringComparer.Ordinal);
         if (remoteLineQuantities.Count > 0 && detailedPackages.Length > 0 && remoteLineQuantities.Keys.Any(lineId => !allocatedLineIds.Contains(lineId)))
         {
+            if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
             await RecordIssue(tenantId, $"order-coverage:{connectionId}:{remote.ExternalOrderId}:{remote.LastModifiedAt.ToUnixTimeMilliseconds()}", "ORDER_LINE_COVERAGE_INVALID", "Pazar yeri cevabındaki sipariş satırlarının tamamı paket tahsisinde yer almıyordu; eksik veri uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
@@ -9598,13 +9714,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // incomplete order.
         // Split parents (UnPacked) carry no quantities of their own and are left out of the check, as below.
         var quantityPackages = usesTrendyolPackageStatuses
-            ? detailedPackages.Where(package => !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus)).ToArray()
+            ? detailedPackages.Where(package => !ShipmentPackageSupersession.IsSplitParentRawStatus(package.RawStatus) && !splitParentIds.Contains(package.ExternalPackageId)).ToArray()
             : detailedPackages;
         if (order is null && remoteLineQuantities.Count > 0 && quantityPackages.Length > 0 && !PackageIngestionSafety.TryNormalizeOrder(remoteLineQuantities, quantityPackages, out _))
         {
             var rejectedEventId = remote.Packages.Count > 0
                 ? PackageIngestionSafety.EventId(remote.Packages[0].ExternalPackageId, remote.Packages[0].OccurredAt)
                 : remote.ExternalOrderId;
+            if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
             await RecordIssue(tenantId, $"package-quantity:{connectionId}:{rejectedEventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Paket miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
             if (saveChanges) await db.SaveChangesAsync(cancellationToken);
             return false;
@@ -9679,7 +9796,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var packageIds = packagesByExternalId.Values.Select(x => x.Id).ToArray();
         var allocationsByKey = batch is not null
             ? batch.AllocationsByKey.Where(x => packageIds.Contains(x.Value.PackageId)).ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal)
-            : (await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId)).ToListAsync(cancellationToken)).ToDictionary(x => AllocationKey(x.PackageId, x.OrderLineId, x.SourceEventId), StringComparer.Ordinal);
+            : AllocationsByLine(await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId)).ToListAsync(cancellationToken));
         var variantCandidates = batch?.VariantCandidates ?? await LoadOrderLineVariantCandidates(tenantId, connectionId, OrderLineCodesOf(platformCode, remote.Lines), cancellationToken);
         var lateMatchedLines = batch?.LateMatchedLines ?? [];
         if (batch is not null)
@@ -9758,8 +9875,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             // A Trendyol split parent (UnPacked) carries no quantities of its own: its lines live on in the child
             // packages, and its listed lines can exceed what the order still holds. Its lines are not checked or
             // allocated (the line projection skips split parents too), and a refusal it caused before is resolved.
-            var isSplitParent = usesTrendyolPackageStatuses && ShipmentPackageSupersession.IsSplitParentRawStatus(remotePackage.RawStatus);
+            var isUnpackedParent = usesTrendyolPackageStatuses && ShipmentPackageSupersession.IsSplitParentRawStatus(remotePackage.RawStatus);
+            var isSplitParent = isUnpackedParent || splitParentIds.Contains(remotePackage.ExternalPackageId);
             if (isSplitParent) await ResolvePackageQuantityIssues(tenantId, connectionId, remotePackage.ExternalPackageId, cancellationToken);
+            // A parent known only by its children (O8), not stored: nothing of it is the order's any more; it is not opened.
+            if (isSplitParent && !isUnpackedParent && package is null) continue;
             var packageAllocations = isSplitParent ? [] : remotePackage.Allocations;
             if (!isSplitParent && remotePackage.IsStatusObservation && packageAllocations.Count == 0 && package is not null)
             {
@@ -9783,6 +9903,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (!PackageIngestionSafety.TryNormalizeAll(orderedQuantities, packageAllocations, target, out safeAllocations))
                 {
+                    if (isTrendyol) rejectedTrendyolOrderIds.Add(remote.ExternalOrderId);
                     await RecordIssue(tenantId, $"package-quantity:{connectionId}:{eventId}", "PACKAGE_QUANTITY_INVARIANT_REJECTED", "Package miktarları sipariş satırı bütünlüğünü sağlamadı; olayın hiçbir parçası uygulanmadı.", cancellationToken);
                     continue;
                 }
@@ -9833,19 +9954,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                     {
                         if (!lines.TryGetValue(remoteAllocation.ExternalLineId, out var line)
                             || !safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) continue;
-                        var allocationKey = AllocationKey(package.Id, line.Id, eventId);
-                        var allocation = allocationsByKey.GetValueOrDefault(allocationKey);
-                        if (allocation is null)
-                        {
-                            allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId };
-                            db.PackageLineAllocations.Add(allocation);
-                            allocationsByKey[allocationKey] = allocation;
-                        }
-                        allocation.AllocatedQuantity = safe.ActiveAllocatedQuantity;
-                        allocation.CancelledQuantity = safe.CancelledQuantity;
-                        allocation.ShippedQuantity = safe.ShippedQuantity;
-                        allocation.DeliveredQuantity = safe.DeliveredQuantity;
-                        allocation.ReturnedQuantity = safe.ReturnedQuantity;
+                        UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey);
                     }
                 }
                 if (package is not null && (statusChanged || packageMetadataChanged))
@@ -9960,7 +10069,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (accept && package is not null)
             {
                 package.OriginExternalPackageId = string.IsNullOrWhiteSpace(remotePackage.OriginExternalPackageId) ? package.OriginExternalPackageId : remotePackage.OriginExternalPackageId; package.CargoProviderExternalId = string.IsNullOrWhiteSpace(remotePackage.CargoProviderExternalId) ? package.CargoProviderExternalId : remotePackage.CargoProviderExternalId; package.CargoTrackingNumber = string.IsNullOrWhiteSpace(remotePackage.CargoTrackingNumber) ? package.CargoTrackingNumber : remotePackage.CargoTrackingNumber; PackageAmountPolicy.Apply(package, remotePackage); package.UpdatedAt = now; if (!statusUnchanged) db.OrderStatusHistory.Add(new OrderStatusHistory { Id = Guid.CreateVersion7(), TenantId = tenantId, OrderId = order.Id, PackageId = package.Id, CanonicalStatus = Wire(target), RawStatus = remotePackage.RawStatus, SourceEventId = eventId, OccurredAt = statusAt, RecordedAt = now }); knownEventIds.Add(eventId);
-                foreach (var remoteAllocation in packageObservation.Allocations) if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) { var allocationKey = AllocationKey(package.Id, line.Id, eventId); var allocation = allocationsByKey.GetValueOrDefault(allocationKey); if (allocation is null) { allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = safe.ShippedQuantity, DeliveredQuantity = safe.DeliveredQuantity, ReturnedQuantity = safe.ReturnedQuantity }; db.PackageLineAllocations.Add(allocation); allocationsByKey[allocationKey] = allocation; telemetryInsertedCount++; } }
+                foreach (var remoteAllocation in packageObservation.Allocations)
+                    if (lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) && safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)
+                        && UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, safe.ShippedQuantity, safe.DeliveredQuantity, safe.ReturnedQuantity, allocationsByKey))
+                        telemetryInsertedCount++;
             }
             // A Hepsiburada package first seen through a status observation (a webhook, a shipping list) was stored
             // without lines; a detailed read of it brings them even when its status time is older than that observation.
@@ -9971,14 +10083,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 foreach (var remoteAllocation in packageObservation.Allocations)
                 {
                     if (!lines.TryGetValue(remoteAllocation.ExternalLineId, out var line) || !safeAllocations.TryGetValue(remoteAllocation.ExternalLineId, out var safe)) continue;
-                    var allocationKey = AllocationKey(package.Id, line.Id, eventId);
                     // The quantities follow the package's current (newer) status, as a status observation's do.
                     var shipped = package.Status is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Undelivered ? safe.ActiveAllocatedQuantity : safe.ShippedQuantity;
                     var delivered = package.Status == ShipmentPackageStatus.Delivered ? safe.ActiveAllocatedQuantity : safe.DeliveredQuantity;
-                    var allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = shipped, DeliveredQuantity = delivered, ReturnedQuantity = safe.ReturnedQuantity };
-                    db.PackageLineAllocations.Add(allocation);
-                    allocationsByKey[allocationKey] = allocation;
-                    telemetryInsertedCount++;
+                    if (UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, shipped, delivered, safe.ReturnedQuantity, allocationsByKey))
+                        telemetryInsertedCount++;
                 }
             }
         }
@@ -10805,7 +10914,55 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         else if (now - issue.LastSeenAt >= TimeSpan.FromHours(1)) issue.LastSeenAt = now;
     }
 
-    private static string AllocationKey(Guid packageId, Guid orderLineId, string sourceEventId) => $"{packageId:D}:{orderLineId:D}:{sourceEventId}";
+    // A package line has one allocation (T2-DO1): every later event of the package updates it in place. Before, each event
+    // added a row of its own (live 5 Nov 2026: 874 extra rows on 371 package lines, up to 7 for a one-unit line), so a sum
+    // over the rows counted a line several times.
+    private static string AllocationKey(Guid packageId, Guid orderLineId) => $"{packageId:D}:{orderLineId:D}";
+
+    // The allocation of each package line, the latest event's where rows from before the one-row rule remain.
+    internal static Dictionary<string, PackageLineAllocation> AllocationsByLine(IEnumerable<PackageLineAllocation> allocations) => allocations
+        .GroupBy(allocation => AllocationKey(allocation.PackageId, allocation.OrderLineId), StringComparer.Ordinal)
+        .ToDictionary(group => group.Key, group => group
+            .OrderByDescending(allocation => PackageEventInstant(allocation.SourceEventId))
+            .ThenByDescending(allocation => allocation.SourceEventId, StringComparer.Ordinal)
+            .ThenByDescending(allocation => allocation.Id)
+            .First(), StringComparer.Ordinal);
+
+    // Package events are "{externalPackageId}:{unix ms}" (PackageIngestionSafety.EventId); anything else sorts first.
+    internal static long PackageEventInstant(string? sourceEventId)
+    {
+        if (string.IsNullOrEmpty(sourceEventId)) return long.MinValue;
+        var separator = sourceEventId.LastIndexOf(':');
+        return separator >= 0 && long.TryParse(sourceEventId.AsSpan(separator + 1), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var milliseconds) ? milliseconds : long.MinValue;
+    }
+
+    // Writes an event's quantities to the package line's one allocation, adding it when the line has none. Callers
+    // write the event the package's status was just set to (or one the line has no allocation for yet), so the row
+    // always names the package's current event, the one the line projection reads (PackageLineProjectionPolicy).
+    // Returns true when a row was added.
+    private bool UpsertLineAllocation(Guid tenantId, Guid packageId, Guid orderLineId, string eventId, decimal allocated, decimal cancelled, decimal shipped, decimal delivered, decimal returned, Dictionary<string, PackageLineAllocation> allocationsByKey)
+    {
+        var key = AllocationKey(packageId, orderLineId);
+        if (allocationsByKey.GetValueOrDefault(key) is not { } held)
+        {
+            var added = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = packageId, OrderLineId = orderLineId, SourceEventId = eventId, AllocatedQuantity = allocated, CancelledQuantity = cancelled, ShippedQuantity = shipped, DeliveredQuantity = delivered, ReturnedQuantity = returned };
+            db.PackageLineAllocations.Add(added);
+            allocationsByKey[key] = added;
+            return true;
+        }
+        // Rows are read without tracking; the one written is attached (or its tracked twin taken) so the update is saved.
+        var allocation = db.PackageLineAllocations.Local.FirstOrDefault(x => x.Id == held.Id) ?? db.PackageLineAllocations.Attach(held).Entity;
+        allocationsByKey[key] = allocation;
+        if (allocation.SourceEventId == eventId && allocation.AllocatedQuantity == allocated && allocation.CancelledQuantity == cancelled
+            && allocation.ShippedQuantity == shipped && allocation.DeliveredQuantity == delivered && allocation.ReturnedQuantity == returned) return false;
+        allocation.SourceEventId = eventId;
+        allocation.AllocatedQuantity = allocated;
+        allocation.CancelledQuantity = cancelled;
+        allocation.ShippedQuantity = shipped;
+        allocation.DeliveredQuantity = delivered;
+        allocation.ReturnedQuantity = returned;
+        return false;
+    }
 
     // Adds the allocation of each line the read places in the package that has no allocation in any package of the
     // order; a line already allocated somewhere is never allocated again, and an existing allocation is not changed.
@@ -10831,10 +10988,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 || !allocatedLineIds.Add(line.Id)) continue;
             var shipped = package.Status is ShipmentPackageStatus.Shipped or ShipmentPackageStatus.Delivered or ShipmentPackageStatus.Undelivered ? safe.ActiveAllocatedQuantity : safe.ShippedQuantity;
             var delivered = package.Status == ShipmentPackageStatus.Delivered ? safe.ActiveAllocatedQuantity : safe.DeliveredQuantity;
-            var allocation = new PackageLineAllocation { Id = Guid.CreateVersion7(), TenantId = tenantId, PackageId = package.Id, OrderLineId = line.Id, SourceEventId = eventId, AllocatedQuantity = safe.ActiveAllocatedQuantity, CancelledQuantity = safe.CancelledQuantity, ShippedQuantity = shipped, DeliveredQuantity = delivered, ReturnedQuantity = safe.ReturnedQuantity };
-            db.PackageLineAllocations.Add(allocation);
-            allocationsByKey[AllocationKey(package.Id, line.Id, eventId)] = allocation;
-            added++;
+            if (UpsertLineAllocation(tenantId, package.Id, line.Id, eventId, safe.ActiveAllocatedQuantity, safe.CancelledQuantity, shipped, delivered, safe.ReturnedQuantity, allocationsByKey)) added++;
         }
         return added;
     }
@@ -12745,6 +12899,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         issue.LastSeenAt = now;
         issue.OccurrenceCount++;
     }
+    // The split parents of an order (O8): the packages that a package of this read, or one the order already stores,
+    // names as its origin.
+    private async Task<HashSet<string>> KnownSplitParentIdsAsync(Guid tenantId, Guid connectionId, Order? order, IReadOnlyList<RemotePackage> remotePackages, OrderIngestionBatch? batch, CancellationToken cancellationToken)
+    {
+        IEnumerable<(string ExternalPackageId, string? OriginExternalPackageId)> stored = [];
+        if (order is not null)
+            stored = batch?.PackagesByOrder.GetValueOrDefault(order.Id) is { } batchPackages
+                ? batchPackages.Values.Select(package => (package.ExternalPackageId, package.OriginExternalPackageId)).ToList()
+                : (await db.ShipmentPackages.AsNoTracking()
+                    .Where(package => package.TenantId == tenantId && package.ConnectionId == connectionId && package.OrderId == order.Id && package.OriginExternalPackageId != null)
+                    .Select(package => new { package.ExternalPackageId, package.OriginExternalPackageId })
+                    .ToListAsync(cancellationToken))
+                    .Select(package => (package.ExternalPackageId, package.OriginExternalPackageId));
+        return SplitParentIds(remotePackages.Select(package => (package.ExternalPackageId, package.OriginExternalPackageId)).Concat(stored));
+    }
+
+    internal static HashSet<string> SplitParentIds(IEnumerable<(string ExternalPackageId, string? OriginExternalPackageId)> packages) => packages
+        .Where(package => !string.IsNullOrWhiteSpace(package.OriginExternalPackageId) && !string.Equals(package.OriginExternalPackageId, package.ExternalPackageId, StringComparison.Ordinal))
+        .Select(package => package.OriginExternalPackageId!)
+        .ToHashSet(StringComparer.Ordinal);
+
     // Every open quantity refusal of the package, whatever event it was raised for.
     private async Task ResolvePackageQuantityIssues(Guid tenantId, Guid connectionId, string externalPackageId, CancellationToken cancellationToken)
     {
