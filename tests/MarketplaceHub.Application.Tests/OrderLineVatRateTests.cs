@@ -50,7 +50,7 @@ public sealed class OrderLineVatRateTests
             {"page":0,"totalPages":1,"content":[{
               "orderNumber":"203872347999","id":"112999455244999",
               "lines":[{"orderLineId":"L1","quantity":1,"productName":"Bluz","stockCode":"BLZ-1","price":100,"sellerInvoiceAmount":100,"totalSellerDiscountPrice":0}],
-              "lastModifiedDate":1724323386203,"shipmentPackageStatus":"Created"}]}
+              "packageHistories":[{"createdDate":1724274054460,"status":"Created"}],"lastModifiedDate":1724323386203,"shipmentPackageStatus":"Created"}]}
             """;
 
         Assert.Null(Assert.Single(Assert.Single(N11OrderMapper.Packages(page).Items).Lines).VatRate);

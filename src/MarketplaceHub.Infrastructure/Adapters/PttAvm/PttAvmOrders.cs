@@ -40,6 +40,9 @@ public sealed partial class PttAvmHttpClient : IOrderPort
         var page = await ReadOrdersAsync(load.Account, day.Value.AddDays(-1), day.Value.AddDays(1), cancellationToken);
         if (!page.IsSuccess) return AdapterResult<RemoteOrder>.Failure(page.Error!, page.RateLimit);
         var order = page.Value!.Items.FirstOrDefault(item => string.Equals(item.ExternalOrderId, orderNumber, StringComparison.OrdinalIgnoreCase));
+        // An order PTT AVM sent but the mapper refused is not "not found": its refusal answers (RefusedOrders).
+        if (order is null && RefusedOrders.ReadError(page.Value.Issues, orderNumber) is { } refused)
+            return AdapterResult<RemoteOrder>.Failure(refused, page.RateLimit);
         return order is null
             ? Failure<RemoteOrder>(AdapterErrorClass.NotFound, "PTTAVM_ORDER_NOT_FOUND", $"PTT AVM'de {orderNumber} numaralı sipariş {day.Value:dd.MM.yyyy} günü çevresinde bulunamadı.", HttpStatusCode.NotFound)
             : AdapterResult<RemoteOrder>.Success(order, page.RateLimit);

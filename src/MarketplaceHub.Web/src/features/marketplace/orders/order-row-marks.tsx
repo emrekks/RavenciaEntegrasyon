@@ -65,15 +65,16 @@ function Mark({ tip, kind, children }: { tip: string; kind: string; children: Re
 
 // Product lines the marketplace listed but the panel could not read (every marketplace): the order is kept for
 // shipping without them, no invoice is issued, and the order is read again until the lines come.
-export function unreadableLinesLabel(count: number) {
-  return `Okunamayan Ürün Satırı (${count}) · Sipariş yeniden okunuyor; satır gelene kadar fatura kesilmez`
+// amountMayBeIncomplete: the marketplace sends no order total (PTT AVM), so the amount is the read lines' sum and may be short.
+export function unreadableLinesLabel(count: number, amountMayBeIncomplete = false) {
+  return `Okunamayan Ürün Satırı (${count}) · Sipariş yeniden okunuyor; satır gelene kadar fatura kesilmez${amountMayBeIncomplete ? ' · Tutar eksik olabilir' : ''}`
 }
 
-export function OrderRowMarkIcons({ marks, unreadableLines = 0 }: { marks: OrderRowMarks | null | undefined; unreadableLines?: number }) {
+export function OrderRowMarkIcons({ marks, unreadableLines = 0, amountMayBeIncomplete = false }: { marks: OrderRowMarks | null | undefined; unreadableLines?: number; amountMayBeIncomplete?: boolean }) {
   const fastLabel = fastDeliveryLabel(marks?.fastDeliveryType)
   if (!marks?.microExport && !marks?.deliveryPoint && !fastLabel && unreadableLines <= 0) return null
   return <span className="rr-omarks">
-    {unreadableLines > 0 && <Mark kind="unreadable" tip={unreadableLinesLabel(unreadableLines)}><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 1.8 14.6 13.6H1.4z" /><path d="M8 6.2v3.4M8 11.6v.1" /></svg></Mark>}
+    {unreadableLines > 0 && <Mark kind="unreadable" tip={unreadableLinesLabel(unreadableLines, amountMayBeIncomplete)}><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 1.8 14.6 13.6H1.4z" /><path d="M8 6.2v3.4M8 11.6v.1" /></svg></Mark>}
     {marks?.microExport && <Mark kind="micro" tip={microExportLabel(marks.microExportCountryCode)}><Flag code={marks.microExportCountryCode ?? ''} /></Mark>}
     {marks?.deliveryPoint && <Mark kind="point" tip="Teslimat Noktası Siparişi"><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 14.2s4.6-4.3 4.6-7.8a4.6 4.6 0 0 0-9.2 0c0 3.5 4.6 7.8 4.6 7.8z" /><circle cx="8" cy="6.4" r="1.7" /></svg></Mark>}
     {fastLabel && <Mark kind="fast" tip={fastLabel}><svg className="rr-omark-ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M1.8 4h7.7v7H1.8zM9.5 6.5h2.8l2 2.3V11H9.5" /><circle cx="4.5" cy="11.8" r="1.2" /><circle cx="11.8" cy="11.8" r="1.2" /></svg></Mark>}

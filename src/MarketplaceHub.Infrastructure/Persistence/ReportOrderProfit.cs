@@ -77,9 +77,11 @@ internal static class ReportOrderProfit
             var keptVatFree = domestic ? order.Lines.Sum(ReportCosts.VatFree) : 0m;
             var costs = new List<ReportOrderProfitCostView>();
 
-            // The product cost of the kept units; unknown when a kept line has none.
+            // The product cost of the kept units; unknown when a kept line has none, or when the order holds a line the
+            // panel could not read (UnreadableOrderLines): that line's cost is unknown, so the order's profit is too.
             var keptLines = order.Lines.Where(line => line.KeptUnits > 0).ToList();
-            decimal? productCost = keptLines.All(line => line.Row.CostPrice is > 0) ? Round(keptLines.Sum(line => line.Row.CostPrice!.Value * line.KeptUnits)) : null;
+            var unreadableLines = order.Order.UnreadableLines;
+            decimal? productCost = unreadableLines == 0 && keptLines.All(line => line.Row.CostPrice is > 0) ? Round(keptLines.Sum(line => line.Row.CostPrice!.Value * line.KeptUnits)) : null;
 
             var lineCommission = order.Lines.Sum(line => line.Commission ?? (storeRates.TryGetValue(store, out var rate) ? line.KeptAmount * rate : 0m));
             var realCommission = settled.Contains(id) && commission.ContainsKey(id);
@@ -161,7 +163,7 @@ internal static class ReportOrderProfit
                 costs,
                 order.Lines.Select(line => new ReportOrderProfitLineView(line.Row.VariantId, line.Row.ProductId, line.Row.Title, line.Row.Barcode, line.Row.Sku, line.KeptUnits, line.Back,
                     Round(line.KeptAmount), line.Commission is { } lc && line.KeptAmount > 0 ? Math.Round(lc / line.KeptAmount * 100m, 2) : null, line.Commission is { } c ? Round(c) : null,
-                    line.Row.CostPrice, line.Row.VatRate)).ToList()));
+                    line.Row.CostPrice, line.Row.VatRate)).ToList(), unreadableLines));
         }
         return views;
     }

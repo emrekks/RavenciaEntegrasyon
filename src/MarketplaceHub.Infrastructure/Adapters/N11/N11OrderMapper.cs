@@ -32,7 +32,8 @@ public static class N11OrderMapper
             try { rows.Add(Package(package, orderNumber, lineIssues)); issues.AddRange(lineIssues); }
             catch (JsonException exception)
             {
-                issues.Add(new("ORDER_PACKAGE_INVALID", Text(package, "id") ?? orderNumber, $"N11 sipariş paketi {orderNumber} içeri alınmadı: {exception.Message}"));
+                // The issue's identity is the package; the order number rides along so the order is read again (RefusedOrders).
+                issues.Add(RefusedOrders.Issue(Text(package, "id") ?? orderNumber, $"N11 sipariş paketi {orderNumber} içeri alınmadı: {exception.Message}", orderNumber));
             }
         }
 
@@ -84,10 +85,22 @@ public static class N11OrderMapper
         // store's and stay out of the seller's invoice).
         if (!hasInvoiceAmounts) net = gross - lines.Sum(line => Decimal(line.SourceSnapshotJson, "totalSellerDiscountPrice") ?? 0);
         net = Math.Clamp(net, 0, gross);
-        // D13: a package without any date is not imported as 1970; the page records it and a later read takes it again.
-        var created = CreatedAt(package);
-        var modified = Instant(package, "lastModifiedDate") ?? created ?? throw new JsonException("paketin tarihi yok (lastModifiedDate ve geçmiş tarihleri okunamadı).");
-        var ordered = created ?? modified;
+        // A package with a line the panel could not read takes its amounts from n11's own package totals (totalAmount
+        // "Toplam tutar", totalDiscountAmount "Toplam indirim tutarı"; developer.n11.com sipariş listeleme servisi): its
+        // read lines are not all of it. Without them the line sum stays, and the order is said to be possibly incomplete.
+        if (unreadable > 0)
+        {
+            if (Decimal(package, "totalAmount") is { } totalAmount and >= 0)
+            {
+                var totalDiscount = Math.Clamp(Decimal(package, "totalDiscountAmount") ?? 0m, 0m, totalAmount);
+                (gross, net) = (totalAmount, totalAmount - totalDiscount);
+            }
+            else issues.Add(new(UnreadableOrderLines.AmountIssueCode, packageId, $"N11 sipariş paketi {orderNumber}: okunamayan ürün satırı var ve n11 paket toplamı (totalAmount) gelmedi; sipariş tutarı yalnız okunan satırların toplamı, eksik olabilir."));
+        }
+        // No silent fallbacks (5 Nov 2026): the order date is the package's creation in its history; a package without
+        // one is not dated by its last change, the page records it and the order is read again (RefusedOrders).
+        var ordered = CreatedAt(package) ?? throw new JsonException("siparişin tarihi yok (paket geçmişinde oluşturulma tarihi okunamadı); değişiklik tarihi sipariş tarihi sayılmaz, sipariş yeniden okunacak.");
+        var modified = Instant(package, "lastModifiedDate") ?? ordered;
         var status = Text(package, "shipmentPackageStatus") ?? "";
         var remotePackage = new RemotePackage(packageId, null, status, modified, Text(package, "cargoProviderName") ?? Text(package, "shipmentCompanyId"), cargoCode, allocations, gross, gross - net, net, Invoice(package),
             CancelledAt: CancelledAt(package, status), UnreadableLineCount: unreadable);

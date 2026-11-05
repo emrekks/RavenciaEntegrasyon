@@ -301,7 +301,9 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           OrderedAt = order.OrderedAt,
                           ShipmentDueAt = order.ShipmentDueAt,
                           StoreFrontCode = order.StoreFrontCode,
-                          ReturnBooked = returnBooked
+                          ReturnBooked = returnBooked,
+                          UnreadableLines = currentPackages.Where(package => package.OrderId == order.Id && package.Status != ShipmentPackageStatus.Cancelled)
+                              .Sum(package => package.UnreadableLineCount)
                       }).ToListAsync(cancellationToken);
     }
 

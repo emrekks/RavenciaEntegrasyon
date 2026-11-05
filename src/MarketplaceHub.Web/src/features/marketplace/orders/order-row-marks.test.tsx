@@ -65,6 +65,11 @@ describe('order row marks', () => {
     expect(tips(alone)).toEqual([[unreadableLinesLabel(2), unreadableLinesLabel(2)]])
     expect(unreadableLinesLabel(2)).toContain('Okunamayan Ürün Satırı (2)')
     expect(unreadableLinesLabel(2)).toContain('fatura kesilmez')
+    // PTT AVM sends no order total: the amount is the read lines' sum and the tip says it may be short.
+    expect(unreadableLinesLabel(2)).not.toContain('Tutar eksik olabilir')
+    expect(unreadableLinesLabel(2, true)).toContain('Tutar eksik olabilir')
+    const ptt = render(<OrderRowMarkIcons marks={null} unreadableLines={1} amountMayBeIncomplete />).host
+    expect(tips(ptt)[0][0]).toBe(unreadableLinesLabel(1, true))
     cleanup()
     const withOthers = render(<OrderRowMarkIcons marks={{ ...none, deliveryPoint: true }} unreadableLines={1} />).host
     expect(tips(withOthers).map(([tip]) => tip)).toEqual([unreadableLinesLabel(1), 'Teslimat Noktası Siparişi'])

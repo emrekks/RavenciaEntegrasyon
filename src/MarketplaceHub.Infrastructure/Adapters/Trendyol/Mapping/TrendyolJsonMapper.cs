@@ -20,11 +20,17 @@ public static class TrendyolJsonMapper
             if (string.IsNullOrWhiteSpace(externalPackageId) || string.IsNullOrWhiteSpace(orderNumber))
             {
                 var identity = string.IsNullOrWhiteSpace(externalPackageId) ? orderNumber : externalPackageId;
-                issues.Add(new("ORDER_PACKAGE_INVALID", identity ?? "unknown", "Sipariş paketi içeri alınmadı: paket kimliği ve sipariş numarası zorunludur."));
+                issues.Add(RefusedOrders.Issue(identity ?? "unknown", "Sipariş paketi içeri alınmadı: paket kimliği ve sipariş numarası zorunludur.", orderNumber));
                 continue;
             }
             try
             {
+                // No silent fallbacks (5 Nov 2026): a package without its own order date is not dated by its last change
+                // or 1970, and one without a currency is not stored with an empty one (Order.Currency is char(3), the
+                // whole sync used to fail on it). Either skips this package with an issue; the order is read again.
+                var ordered = OrderDate(package) ?? throw new JsonException("siparişin kendi tarihi (orderDate) yok; değişiklik tarihi sipariş tarihi sayılmaz, sipariş yeniden okunacak.");
+                var currency = RefusedOrders.Currency(NullText(package, "currencyCode"))
+                    ?? throw new JsonException($"para birimi (currencyCode) okunamadı ({NullText(package, "currencyCode") ?? "yok"}); sipariş yeniden okunacak.");
                 var lines = new List<RemoteOrderLine>(); var allocations = new List<RemotePackageAllocation>(); var linesWithoutVat = new List<int>();
                 var unreadableLines = 0;
                 if (package.TryGetProperty("lines", out var lineArray) && lineArray.ValueKind == JsonValueKind.Array)
@@ -85,7 +91,7 @@ public static class TrendyolJsonMapper
                 // For newly created packages shipmentPackageStatus may already be
                 // ReadyToShip while status is still Created; the latter is the
                 // authoritative workflow state for the order projection.
-                var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? OrderDate(package) ?? DateTimeOffset.UnixEpoch; var ordered = OrderDate(package) ?? modified;
+                var rawStatusPackage = Text(package, "status", "shipmentPackageStatus"); var modified = Instant(package, "lastModifiedDate") ?? ordered;
                 var invoice = new RemotePackageInvoiceObservation(
                     NullText(package, "invoiceStatus"),
                     NullText(package, "invoiceNumber", "invoiceNo", "invoiceSerialNumber"),
@@ -97,7 +103,7 @@ public static class TrendyolJsonMapper
                 // The shipping deadline is the agreed hand-over date (extended when the seller extended it).
                 // The estimated delivery dates are the customer's delivery window, not a deadline for the seller.
                 var dueAt = FlexibleInstant(package, "extendedAgreedDeliveryDate", "agreedDeliveryDate");
-                rows.Add(new(orderNumber, orderNumber, ordered, modified, Text(package, "currencyCode"), gross, discount, net,
+                rows.Add(new(orderNumber, orderNumber, ordered, modified, currency, gross, discount, net,
                     CustomerSnapshot(package),
                     ObjectSnapshot(package, "shipmentAddress"), ObjectSnapshot(package, "invoiceAddress"), lines, [remotePackage], package.GetRawText(), dueAt));
             }
@@ -106,7 +112,7 @@ public static class TrendyolJsonMapper
                 // A malformed package must not block every other package in
                 // the page. It is not projected; the issue is carried with
                 // the successful page for the worker to record.
-                issues.Add(new("ORDER_PACKAGE_INVALID", externalPackageId, $"Sipariş paketi {externalPackageId} içeri alınmadı: {exception.Message}"));
+                issues.Add(RefusedOrders.Issue(externalPackageId, $"Sipariş paketi {externalPackageId} (sipariş {orderNumber}) içeri alınmadı: {exception.Message}", orderNumber));
             }
         }
         var next = NullText(root, "nextCursor");

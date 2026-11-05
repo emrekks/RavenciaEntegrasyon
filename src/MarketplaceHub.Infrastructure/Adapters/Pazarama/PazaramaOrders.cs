@@ -39,6 +39,9 @@ public sealed partial class PazaramaHttpClient : IOrderPort
         var page = MapPage(await SendAsync(account, HttpMethod.Post, Orders, cancellationToken, Json(body)), 100, 1);
         if (!page.IsSuccess) return AdapterResult<RemoteOrder>.Failure(page.Error!, page.RateLimit);
         var order = page.Value!.Items.FirstOrDefault(item => item.ExternalOrderId == orderNumber);
+        // An order Pazarama sent but the mapper refused is not "not found": its refusal answers (RefusedOrders).
+        if (order is null && RefusedOrders.ReadError(page.Value.Issues, orderNumber) is { } refused)
+            return AdapterResult<RemoteOrder>.Failure(refused, page.RateLimit);
         return order is null
             ? Failure<RemoteOrder>(AdapterErrorClass.NotFound, "PAZARAMA_ORDER_NOT_FOUND", $"Pazarama'da {externalOrderId} numaralı sipariş bulunamadı (sipariş numarasıyla en çok 6 ay geriye bakılır).", HttpStatusCode.NotFound)
             : AdapterResult<RemoteOrder>.Success(order, page.RateLimit);

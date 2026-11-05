@@ -1131,8 +1131,27 @@ public sealed class PttAvmAdapterTests
         Assert.DoesNotContain(package.Allocations, allocation => allocation.ExternalLineId == "229049601");
         Assert.Null(package.Invoice);
         Assert.Contains(page.Items, order => order.ExternalOrderId == "PTT-L6LI1VK2D-211024");
-        var issue = Assert.Single(page.Issues!);
-        Assert.Equal(("ORDER_PACKAGE_LINE_INVALID", "order:PTT-A1712HP2E-071024:229049601"), (issue.Code, issue.Identity));
+        Assert.Equal(
+            new[] { ("ORDER_PACKAGE_LINE_INVALID", "order:PTT-A1712HP2E-071024:229049601"), ("ORDER_AMOUNT_MAY_BE_INCOMPLETE", "order:PTT-A1712HP2E-071024") },
+            page.Issues!.Select(issue => (issue.Code, issue.Identity)).ToArray());
+    }
+
+    [Fact]
+    public void ALineWithoutABarcodeTakesTheDocumentedStockCodeNeverTheProductOrLineId()
+    {
+        // UrunKodu "Ürün stok kod bilgisi" (pttavm-api-son.md:1619); UrunId and LineItemId are no stock code.
+        var withCode = OrderListAnswer.Replace("<a:UrunBarkod>", "<a:UrunKodu>STK-9</a:UrunKodu><a:UrunBarkodX>", StringComparison.Ordinal)
+            .Replace("</a:UrunBarkod>", "</a:UrunBarkodX>", StringComparison.Ordinal)
+            .Replace("<a:VariantBarkod>", "<a:VariantBarkodX>", StringComparison.Ordinal)
+            .Replace("</a:VariantBarkod>", "</a:VariantBarkodX>", StringComparison.Ordinal);
+        Assert.NotEqual(OrderListAnswer, withCode);
+        var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, withCode, PttAvmHttpClient.Orders);
+
+        var lines = PttAvmOrderMapper.Page(result!).Items.SelectMany(order => order.Lines).ToList();
+
+        Assert.NotEmpty(lines);
+        Assert.All(lines, line => Assert.Equal("STK-9", line.Sku));
+        Assert.All(lines, line => Assert.Null(line.Barcode));
     }
 
     private static RemoteOrder WithLiveLineInvoiceFlag(string flag)

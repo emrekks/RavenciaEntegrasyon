@@ -185,7 +185,7 @@ public sealed class TrendyolWriteContractTests
     public void ALineWithoutAVatRateTakesThePackagesRateAndIsKept()
     {
         const string json = """
-        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"lines":[
           {"lineId":"line-1","stockCode":"SKU-1","productName":"Ürün","quantity":1,"lineItemPrice":120,"vatBaseAmount":100},
           {"lineId":"line-2","stockCode":"SKU-2","productName":"Ürün 2","quantity":1,"lineItemPrice":120,"vatRate":20,"vatBaseAmount":100}
         ]}]}
@@ -206,7 +206,7 @@ public sealed class TrendyolWriteContractTests
     public void ALineWithoutAVatRateAndNoAgreeingRateIsKeptAndReported()
     {
         const string json = """
-        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"lines":[
           {"lineId":"line-1","stockCode":"SKU-1","productName":"Ürün","quantity":1,"lineItemPrice":120},
           {"lineId":"line-2","stockCode":"SKU-2","productName":"Ürün 2","quantity":1,"lineItemPrice":120,"vatRate":20},
           {"lineId":"line-3","stockCode":"SKU-3","productName":"Ürün 3","quantity":1,"lineItemPrice":110,"vatRate":10}

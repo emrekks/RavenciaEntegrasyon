@@ -100,6 +100,10 @@ purpose (`TurkeyTime.cs`).
 - Unsupplied or partial cancel changes the package id and cargo barcode; cargo company change max once per package
   per 5 min. A split package replaces its origin (origin kept, excluded from totals).
 - A line without `vatRate` gets the rate of its siblings; no invoice until the rate is known.
+- Every shipment package carries `orderDate` (Turkey wall-clock epoch ms) and `currencyCode`; live never had a 1970
+  order. Since 5 Nov 2026 a package without `orderDate` is refused (no `lastModifiedDate`/1970 fallback) and one
+  without a three-letter `currencyCode` is skipped with an issue instead of failing the whole save (Order.Currency is
+  char(3)); both join the re-read list (`TrendyolJsonMapper.Orders`, `RefusedOrders`).
 - Price-inventory batches report only per-item SUCCESS/FAILED.
 - Webhooks: max 15 per seller; URL may not contain "Trendyol", "Dolap", "Localhost"; retried every 5 min then set
   PASSIVE; payload has `orderCountryCode`, no storefront. The stream stays the source of truth.

@@ -52,6 +52,9 @@ internal sealed class ReportOrderRow
     public string? StoreFrontCode { get; init; }
     // False for a Trendyol micro-export order whose return Trendyol's statement has not recorded: nothing of it counts back.
     public bool ReturnBooked { get; init; } = true;
+    // Product lines the marketplace listed in the order's current packages that the panel could not read
+    // (ShipmentPackage.UnreadableLineCount): the order's units and costs are short, so it is marked in the report.
+    public int UnreadableLines { get; init; }
 }
 
 internal sealed class ReportOrderExtra
@@ -790,6 +793,10 @@ internal static class ReportBuilder
             notes.Add($"{Count(orders.Count(x => ReportBuckets.Abroad(x.Country)))} sipariş yurt dışına gitti ({string.Join(", ", abroad)}); Trendyol yurt dışı vitrin siparişlerinin adresi İstanbul'daki ihracat deposu olduğundan il dağılımına girmez, Dünya haritasında ülkesinde gösterilir.");
         if (orders.Count(x => x.Country == ReportBuckets.UnknownCountry) is var unknownCountry and > 0)
             notes.Add($"{Count(unknownCountry)} Trendyol siparişi iade kaydından kuruldu ve vitrini henüz okunamadı; ülkesi bilinmediği için il dağılımına ve yurt dışı siparişlere girmez, ülke tablosunda \"Bilinmiyor\" altında.");
+        if (orders.Where(x => x.Order.UnreadableLines > 0).GroupBy(x => x.PlatformCode).OrderByDescending(x => x.Count())
+                .Select(x => $"{x.Key} {Count(x.Count())}").ToList() is { Count: > 0 } unreadable)
+            notes.Add($"{Count(orders.Count(x => x.Order.UnreadableLines > 0))} siparişte okunamayan ürün satırı var ({string.Join(", ", unreadable)}); "
+                + "bu siparişlerin ürün adetleri ve kârı eksik (kârı hesaplanmaz), tutarı pazaryerinin sipariş toplamından gelir; PTT AVM toplam göndermediği için orada tutar da eksik olabilir. Siparişler yeniden okunuyor.");
         if (summary.OtherCurrencyOrders > 0)
             notes.Add($"{Count(summary.OtherCurrencyOrders)} sipariş TRY dışında bir para biriminde; tutarlara girmez, yalnız adetlerde sayılır.");
         notes.Add(commission.CoveredRevenue <= 0

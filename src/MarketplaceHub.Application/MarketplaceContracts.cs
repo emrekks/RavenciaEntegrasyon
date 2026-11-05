@@ -449,7 +449,10 @@ public sealed record AdapterResult<T>(bool IsSuccess, T? Value, AdapterError? Er
 }
 
 public sealed record AdapterPageRequest(string? Cursor, int Limit);
-public sealed record AdapterPageIssue(string Code, string Identity, string Message);
+// RereadOrderId: the order number of a record the mapper refused while its number was still readable (no order date, an
+// unknown currency, a malformed package…). The order joins the re-read list (RejectedOrderRereadPolicy) on every
+// marketplace, and a read by that number answers with the same refusal as a contract error, not "not found".
+public sealed record AdapterPageIssue(string Code, string Identity, string Message, string? RereadOrderId = null);
 public sealed record AdapterPageResult<T>(IReadOnlyList<T> Items, string? NextCursor, bool HasMore, int? TotalCount = null, IReadOnlyList<AdapterPageIssue>? Issues = null);
 public sealed record ConnectionIdentity(string PlatformCode, string Environment, string ExternalStoreId, string ApiVersion, string ScopeFingerprint);
 public sealed record CapabilityEvidence(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string SourceUrl, string SourceVersion, string? RequiredScope, string? ConstraintsJson, string EvidenceNote, string? FixtureChecksum, DateTimeOffset VerifiedAt);
@@ -1260,7 +1263,10 @@ public sealed record OrderListView(
     OrderRowMarks? Marks = null,
     // Product lines the marketplace listed in the order's live packages that the panel could not read (every
     // marketplace; the packages are kept for shipping without them and no invoice is issued). 0 when all were read.
-    int UnreadableLineCount = 0);
+    int UnreadableLineCount = 0,
+    // True when such an order's amount is only the read lines' sum: the marketplace sends no order total (PTT AVM), so
+    // the amount may be short until a read fills the line in (UnreadableOrderLines.AmountIssueCode).
+    bool AmountMayBeIncomplete = false);
 // Facts the marketplace states about an order, shown as icons in the order row. Each is set only from a field the
 // marketplace sent: a missing field leaves the mark out (unknown), it never means "no".
 // MicroExport: Trendyol micro=true; MicroExportCountryCode: the buyer's country (ISO alpha-2) when known.
@@ -1412,7 +1418,9 @@ public sealed record OrderDetailView(
     // The delivery address in the list's shape, for the shipping label printed from the detail.
     OrderAddressView? ShipmentAddress = null,
     // As on OrderListView: product lines of the live packages the panel could not read.
-    int UnreadableLineCount = 0);
+    int UnreadableLineCount = 0,
+    // As on OrderListView: the amount may be short (no marketplace order total with a line unread).
+    bool AmountMayBeIncomplete = false);
 public sealed record ShipmentDetailView(ShipmentView Package, IReadOnlyList<string> AllowedActions, IReadOnlyList<string> SupportedLabelFormats, bool IsStageConnection, IReadOnlyList<ShipmentDocumentView> Documents, string PlatformCode = "TRENDYOL");
 public sealed record ShipmentDocumentView(Guid Id, string DocumentKind, string Format, string Source, int DocumentVersion, DateTimeOffset CreatedAt, DateTimeOffset? ExpiresAt);
 public sealed record ShipmentActionCommand(string Action, string PayloadJson);

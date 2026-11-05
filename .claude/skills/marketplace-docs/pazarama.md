@@ -75,6 +75,12 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 - A discount of 70% or more goes to approval. Price/stock results can take up to 4 h; product batch results are
   queryable for 4 h.
 - Orders without a package get a virtual package `order:{orderNumber}`.
+- Order level: `orderDate` ("2026-02-17 17:23"), `orderAmount` (a number: "Siparişin tutarı"; the field table calls it
+  datetime, the sample sends 7), `discountAmount`, `shipmentAmount`, `currency: "TL"`; item money objects carry
+  `currency: "TL"` too (`pazarama-api-son.md:2310-2420`). The panel reads "TL" as TRY; another value refuses the order
+  with an issue and a re-read; a read without the field is lira. An order with an unreadable item takes `orderAmount`
+  as its amount; an order without `orderDate` is refused and read again, never dated by an item's history (5 Nov 2026,
+  `PazaramaOrderMapper.cs`).
 
 ## Job types
 PAZARAMA_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min), _ORDER_STATUS_SYNC,

@@ -55,7 +55,10 @@ public sealed record DashboardPerformanceView(
     IReadOnlyList<DashboardPerformanceRowView> Previous,
     // A one-day period also comes hour by hour (the previous day up to the same time), so the panel can draw the day.
     IReadOnlyList<DashboardPerformanceHourView>? CurrentHours = null,
-    IReadOnlyList<DashboardPerformanceHourView>? PreviousHours = null);
+    IReadOnlyList<DashboardPerformanceHourView>? PreviousHours = null,
+    // The period's orders holding a product line the panel could not read (ShipmentPackage.UnreadableLineCount): their
+    // units are short and, where the marketplace sends no order total (PTT AVM), their amount may be too. Shown apart.
+    int UnreadableLineOrders = 0);
 
 // One hour (tenant's local time, "yyyy-MM-ddTHH:00") of one connection in one currency; same rules as the day rows.
 public sealed record DashboardPerformanceHourView(

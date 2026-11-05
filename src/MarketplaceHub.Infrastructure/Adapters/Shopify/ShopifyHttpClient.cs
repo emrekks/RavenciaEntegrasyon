@@ -746,10 +746,26 @@ public sealed partial class ShopifyHttpClient(
         try
         {
             var orders = result.Value!.RootElement.GetProperty("orders");
-            var items = orders.GetProperty("edges").EnumerateArray().Select(edge => MapOrder(edge.GetProperty("node"))).ToList();
+            // One order the mapper cannot take does not stop the page (5 Nov 2026): it is skipped with an issue and, when
+            // its id is readable, read again by number (RefusedOrders). An unreadable line alone never refuses an order:
+            // the line is counted on its package (UnreadableOrderLines).
+            var items = new List<RemoteOrder>();
+            var issues = new List<AdapterPageIssue>();
+            foreach (var edge in orders.GetProperty("edges").EnumerateArray())
+            {
+                var node = edge.TryGetProperty("node", out var value) && value.ValueKind == JsonValueKind.Object ? value : default;
+                try { items.Add(MapOrder(node)); }
+                catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException or FormatException)
+                {
+                    var orderId = node.ValueKind == JsonValueKind.Object ? TextValue(node, "id") : null;
+                    var name = node.ValueKind == JsonValueKind.Object ? TextValue(node, "name") : null;
+                    issues.Add(RefusedOrders.Issue(orderId is null ? "unknown" : ShortId(orderId),
+                        $"Shopify siparişi {name ?? orderId ?? "(kimliksiz)"} içeri alınmadı: yanıtta beklenen bir alan eksik veya okunamadı.", orderId is null ? null : ShortId(orderId)));
+                }
+            }
             var info = orders.GetProperty("pageInfo");
             var hasMore = info.GetProperty("hasNextPage").GetBoolean();
-            return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(new(items, hasMore ? info.GetProperty("endCursor").GetString() : null, hasMore, items.Count), result.RateLimit);
+            return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(new(items, hasMore ? info.GetProperty("endCursor").GetString() : null, hasMore, items.Count, issues), result.RateLimit);
         }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
         {
@@ -766,7 +782,13 @@ public sealed partial class ShopifyHttpClient(
         if (!result.IsSuccess) return AdapterResult<RemoteOrder>.Failure(result.Error!, result.RateLimit);
         var order = result.Value!.RootElement.GetProperty("order");
         if (order.ValueKind == JsonValueKind.Null) return Fail<RemoteOrder>(AdapterErrorClass.NotFound, "SHOPIFY_ORDER_NOT_FOUND", "Shopify siparişi bulunamadı.", HttpStatusCode.NotFound);
-        var mapped = MapOrder(order);
+        RemoteOrder mapped;
+        // Found but not readable: a contract error, not "not found" (RefusedOrders).
+        try { mapped = MapOrder(order); }
+        catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException or FormatException)
+        {
+            return Fail<RemoteOrder>(AdapterErrorClass.ContractViolation, "SHOPIFY_ORDER_CONTRACT_INVALID", "Shopify siparişi bulundu ancak yanıtta beklenen bir alan eksik veya okunamadı.", HttpStatusCode.BadGateway);
+        }
         var invoiceRead = await ReadInvoiceMetafieldsAsync(shop, id, cancellationToken);
         if (!invoiceRead.IsSuccess) return AdapterResult<RemoteOrder>.Failure(invoiceRead.Error!, invoiceRead.RateLimit ?? result.RateLimit);
         mapped = AttachInvoiceMetafields(mapped, invoiceRead.Value!.PdfUrl?.Value, timeProvider.GetUtcNow());
@@ -1385,14 +1407,14 @@ public sealed partial class ShopifyHttpClient(
             var tracking = fulfillment.GetProperty("trackingInfo").EnumerateArray().FirstOrDefault();
             var fulfillmentItems = fulfillment.GetProperty("fulfillmentLineItems").GetProperty("nodes").EnumerateArray().ToList();
             var fulfilledUnreadable = fulfillmentItems
-                .Select(item => ShortId(item.GetProperty("lineItem").GetProperty("id").GetString()))
+                .Select(item => ShortId(NestedText(item, "lineItem", "id")))
                 .Where(lineId => !readableLineIds.Contains(lineId) && unreadableLineIds.Contains(lineId))
                 .Distinct(StringComparer.Ordinal)
                 .Count();
             unreadableLeft = Math.Max(0, unreadableLeft - fulfilledUnreadable);
-            var allocations = fulfillmentItems.Where(item => readableLineIds.Contains(ShortId(item.GetProperty("lineItem").GetProperty("id").GetString()))).Select(item =>
+            var allocations = fulfillmentItems.Where(item => readableLineIds.Contains(ShortId(NestedText(item, "lineItem", "id")))).Select(item =>
             {
-                var lineId = ShortId(item.GetProperty("lineItem").GetProperty("id").GetString());
+                var lineId = ShortId(NestedText(item, "lineItem", "id"));
                 var quantity = DecimalOrNull(item, "quantity") ?? 0m;
                 var cancelled = rawStatus == "CANCELLED" ? quantity : 0m;
                 var active = rawStatus == "CANCELLED" ? 0m : quantity;
@@ -1567,7 +1589,8 @@ public sealed partial class ShopifyHttpClient(
             {
                 var quantity = DecimalOrNull(item, "quantity") ?? 0m;
                 if (quantity <= 0) continue;
-                var lineId = ShortId(item.GetProperty("lineItem").GetProperty("id").GetString());
+                var lineId = ShortId(NestedText(item, "lineItem", "id"));
+                if (lineId.Length == 0) continue;
                 fulfilled[lineId] = fulfilled.GetValueOrDefault(lineId) + quantity;
             }
         }
@@ -1676,7 +1699,9 @@ public sealed partial class ShopifyHttpClient(
         // raw snapshot keeps Shopify's price before tax). A line without a reported rate was charged no tax: its price
         // is already what was paid.
         if (!taxesIncluded && vatRate is > 0) unitPrice = Math.Round(unitPrice * (1m + vatRate.Value / 100m), 4, MidpointRounding.AwayFromZero);
-        return new(lineId, string.IsNullOrWhiteSpace(sku) ? "SHOPIFY-LINE" : sku!, barcode, line.GetProperty("name").GetString() ?? "Shopify ürünü", orderedQuantity, unitPrice, vatRate, financialStatus, line.GetRawText(), cancelledQuantity);
+        // A line without a SKU keeps none: no made-up code ("SHOPIFY-LINE" before 5 Nov 2026), so it stays unmatched
+        // until the owner links it, as on every other marketplace.
+        return new(lineId, string.IsNullOrWhiteSpace(sku) ? "" : sku!, barcode, TextValue(line, "name") ?? "Shopify ürünü", orderedQuantity, unitPrice, vatRate, financialStatus, line.GetRawText(), cancelledQuantity);
     }
 
     internal static string FulfillmentStatus(JsonElement fulfillment)

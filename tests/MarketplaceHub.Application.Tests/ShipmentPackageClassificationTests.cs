@@ -36,7 +36,7 @@ public sealed class ShipmentPackageClassificationTests
     public void TrendyolMapper_PreservesCreatedByForPackageClassification()
     {
         const string json = """
-            {"content":[{"id":"pkg-1","orderNumber":"11587375142","status":"Delivered","lastModifiedDate":1760000000000,"originPackageIds":["parent-1"],"createdBy":"split","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":10,"vatRate":20}]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"11587375142","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,"originPackageIds":["parent-1"],"createdBy":"split","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":10,"vatRate":20}]}]}
             """;
 
         var package = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(json).Items).Packages);

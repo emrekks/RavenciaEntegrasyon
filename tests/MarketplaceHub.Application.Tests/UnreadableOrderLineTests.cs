@@ -17,10 +17,10 @@ public sealed class UnreadableOrderLineTests
     [Fact]
     public void TrendyolPackageWithoutItsLinesIsCountedUnlessItIsASplitParent()
     {
-        var missing = TrendyolJsonMapper.Orders("""{"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000}]}""");
+        var missing = TrendyolJsonMapper.Orders("""{"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000}]}""");
         Assert.Equal(1, Assert.Single(Assert.Single(missing.Items).Packages).UnreadableLineCount);
 
-        var parent = TrendyolJsonMapper.Orders("""{"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"UnPacked","lastModifiedDate":1760000000000}]}""");
+        var parent = TrendyolJsonMapper.Orders("""{"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"UnPacked","lastModifiedDate":1760000000000}]}""");
         Assert.Equal(0, Assert.Single(Assert.Single(parent.Items).Packages).UnreadableLineCount);
     }
 
@@ -58,6 +58,7 @@ public sealed class UnreadableOrderLineTests
           "orderNumber": "HB-UNREAD-2",
           "status": "Packaged",
           "lastStatusUpdateDate": "2026-09-28T12:15:00Z",
+          "orderDate": "2026-09-28T12:00:00Z",
           "items": [
             { "id": "line-1", "lineItemId": "line-1", "merchantSku": "SKU-1", "quantity": 1, "price": 10.0 },
             { "id": "line-2", "lineItemId": "line-2", "merchantSku": "SKU-2", "price": 10.0 }

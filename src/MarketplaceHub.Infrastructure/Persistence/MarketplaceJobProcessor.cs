@@ -3398,6 +3398,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 cancellationToken);
             if (!page.IsSuccess) { TrackResultFailure(page.Error); throw JobProcessingException.FromAdapter(page.Error!); }
             foreach (var _ in page.Value!.Items) TrackReceived();
+            // A paid-order line the list could not map stops neither the page nor the job: its order was read by number
+            // instead, or is named here and read again later (HepsiburadaHttpClient.PollAsync).
+            foreach (var issue in page.Value.Issues ?? [])
+                await RecordIssue(tenantId, $"order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+            NoteRefusedOrders(page.Value.Issues);
             var importableOrders = page.Value.Items
                 .Where(order => HepsiburadaOrderHistoryPolicy.ShouldImportPaidOrder(order, state.AnchorEnd))
                 .ToArray();
@@ -3816,6 +3821,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var _ in result.Value!.Items) TrackReceived();
             foreach (var issue in result.Value.Issues ?? [])
                 await RecordIssue(tenantId, $"order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+            NoteRefusedOrders(result.Value.Issues);
             await UpsertOrders(tenantId, connectionId, result.Value!.Items, cancellationToken);
             NoteStorefront(storefront, TrendyolStorefrontPolicy.Read(storefrontActivity.GetValueOrDefault(storefront), now, result.Value.Items.Count > 0));
             if (result.Value.HasMore)
@@ -3910,6 +3916,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 foreach (var _ in page.Value!.Items) TrackReceived();
                 foreach (var issue in page.Value.Issues ?? [])
                     await RecordIssue(tenantId, $"order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+                NoteRefusedOrders(page.Value.Issues);
                 await UpsertOrders(tenantId, connectionId, page.Value.Items, cancellationToken);
                 received |= page.Value.Items.Count > 0;
                 nextCursor = page.Value.HasMore && !string.IsNullOrWhiteSpace(page.Value.NextCursor) ? page.Value.NextCursor : null;
@@ -3939,9 +3946,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         orderRereadRan = true;
         var now = timeProvider.GetUtcNow();
         var saved = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == RejectedOrderRereadPolicy.CursorResource, cancellationToken);
-        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(saved?.OpaqueCursor), rereadOrderIds, now);
+        var entries = RejectedOrderRereadPolicy.Note(RejectedOrderRereadPolicy.Parse(saved?.OpaqueCursor), rereadOrderIds, now, out var dropped);
         rereadOrderIds.Clear();
-        if (saved is null && entries.Count == 0) return;
+        if (dropped.Count > 0)
+            await RecordIssue(tenantId, $"order-reread-full:{connectionId}", RejectedOrderRereadPolicy.OverflowIssueCode, RejectedOrderRereadPolicy.OverflowSummary(dropped), cancellationToken);
+        if (saved is null && entries.Count == 0)
+        {
+            if (dropped.Count > 0) await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
         var cursor = saved ?? await Cursor(tenantId, connectionId, RejectedOrderRereadPolicy.CursorResource, cancellationToken);
         foreach (var entry in RejectedOrderRereadPolicy.Due(entries, now))
         {
@@ -3955,13 +3968,19 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await UpsertOrder(tenantId, connectionId, read.Value!, cancellationToken);
                 stillRefused = rereadOrderIds.Remove(entry.OrderId);
             }
-            else if (read.Error?.Class == AdapterErrorClass.NotFound || read.Error?.HttpStatus == 404) stillRefused = true;
+            // Not found, or found but refused again by the mapper (a contract error naming the refusal, e.g. still no
+            // order date): a try is spent, so a record that stays broken leaves the list after its last try.
+            else if (read.Error?.Class is AdapterErrorClass.NotFound or AdapterErrorClass.ContractViolation || read.Error?.HttpStatus == 404) stillRefused = true;
             else break;
             entries = RejectedOrderRereadPolicy.AfterRead(entries, entry, stillRefused, now);
         }
         rereadOrderIds.Clear();
         var serialized = RejectedOrderRereadPolicy.Serialize(entries);
-        if (serialized == cursor.OpaqueCursor && db.Entry(cursor).State != EntityState.Added) return;
+        if (serialized == cursor.OpaqueCursor && db.Entry(cursor).State != EntityState.Added)
+        {
+            if (dropped.Count > 0) await db.SaveChangesAsync(cancellationToken);
+            return;
+        }
         cursor.OpaqueCursor = serialized;
         cursor.LastSuccessAt = now;
         cursor.Version++;
@@ -4082,6 +4101,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             foreach (var _ in result.Value!.Items) TrackReceived();
             foreach (var issue in result.Value.Issues ?? [])
                 await RecordIssue(tenantId, $"shopify-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+            NoteRefusedOrders(result.Value.Issues);
             await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
             foreach (var item in result.Value.Items)
                 if (latestSeen is null || item.LastModifiedAt > latestSeen) latestSeen = item.LastModifiedAt;
@@ -4167,6 +4187,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 foreach (var _ in result.Value!.Items) TrackReceived();
                 foreach (var issue in result.Value.Issues ?? [])
                     await RecordIssue(tenantId, $"n11-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+                NoteRefusedOrders(result.Value.Issues);
                 await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
                 if (page is null) firstTotal = result.Value.TotalCount;
                 lastTotal = result.Value.TotalCount;
@@ -4236,6 +4257,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 foreach (var _ in result.Value!.Items) TrackReceived();
                 foreach (var issue in result.Value.Issues ?? [])
                     await RecordIssue(tenantId, $"pazarama-order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+                NoteRefusedOrders(result.Value.Issues);
                 await UpsertOrders(tenantId, connectionId, result.Value.Items, cancellationToken);
                 page = result.Value.HasMore ? result.Value.NextCursor : null;
             } while (page is not null && !cancellationToken.IsCancellationRequested);
@@ -4920,6 +4942,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 foreach (var _ in page.Value!.Items) TrackReceived();
                 foreach (var issue in page.Value.Issues ?? [])
                     await RecordIssue(tenantId, $"order-contract:{connectionId}:{issue.Identity}:{issue.Code}", issue.Code, issue.Message, cancellationToken);
+                NoteRefusedOrders(page.Value.Issues);
                 await UpsertOrders(tenantId, connectionId, page.Value.Items, cancellationToken);
                 state = page.Value.HasMore && !string.IsNullOrWhiteSpace(page.Value.NextCursor)
                     ? state with { NextCursor = page.Value.NextCursor }
@@ -10201,7 +10224,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
         foreach (var line in lines.Values.Distinct())
             OrderLineCancelTime.Apply(line, cancelledBefore.GetValueOrDefault(line.Id), OrderLineCancelTime.Reported(line.ExternalLineId, remote), now);
-        if (isHepsiburada)
+        // A Hepsiburada order with a product line the panel could not read keeps the amount Hepsiburada stated: its known
+        // lines are not all of it, so summing them would understate the order (UnreadableOrderLines).
+        var hasUnreadableLines = isHepsiburada && (remote.Packages.Any(package => package.UnreadableLineCount > 0)
+            || packagesByExternalId.Values.Concat(db.ShipmentPackages.Local.Where(x => x.TenantId == tenantId && x.OrderId == order.Id))
+                .Any(package => package.Status != ShipmentPackageStatus.Cancelled && package.UnreadableLineCount > 0));
+        if (isHepsiburada && !hasUnreadableLines)
         {
             // Cancelled quantities are not part of the order value.
             var knownLineGross = lines.Values.Sum(line => line.UnitPrice * OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity));
@@ -12959,6 +12987,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     private async Task<SyncCursor> Cursor(Guid tenantId, Guid connectionId, string resource, CancellationToken cancellationToken) { var cursor = await db.SyncCursors.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resource, cancellationToken); if (cursor is not null) return cursor; cursor = new SyncCursor { Id = Guid.CreateVersion7(), TenantId = tenantId, ConnectionId = connectionId, ResourceType = resource, Version = 1 }; db.SyncCursors.Add(cursor); return cursor; }
+    // Every marketplace: a record the mapper refused while its order number was readable (AdapterPageIssue.RereadOrderId)
+    // joins the re-read list (RejectedOrderRereadPolicy), so it is read again by number instead of being passed over.
+    private void NoteRefusedOrders(IReadOnlyList<AdapterPageIssue>? issues)
+    {
+        foreach (var issue in issues ?? [])
+            if (!string.IsNullOrWhiteSpace(issue.RereadOrderId)) rereadOrderIds.Add(issue.RereadOrderId.Trim());
+    }
+
     private async Task RecordIssue(Guid tenantId, string key, string code, string summary, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -13016,7 +13052,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var packageKey = $":{connectionId}:{package.ExternalPackageId}:";
         var now = timeProvider.GetUtcNow();
         foreach (var issue in await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved
-                && (x.DedupeKey == issueKey || (x.Code == UnreadableOrderLines.IssueCode || x.Code == MissingLinesIssueCode) && x.DedupeKey.Contains(packageKey))).ToListAsync(cancellationToken))
+                && (x.DedupeKey == issueKey || (x.Code == UnreadableOrderLines.IssueCode || x.Code == UnreadableOrderLines.AmountIssueCode || x.Code == MissingLinesIssueCode) && x.DedupeKey.Contains(packageKey))).ToListAsync(cancellationToken))
         {
             issue.Status = IssueStatus.Resolved;
             issue.ResolvedAt = now;

@@ -328,7 +328,9 @@ public sealed record ReportOrderProfitLineView(Guid? VariantId, Guid? ProductId,
 // PARTLY_RETURNED or RETURNED. MicroExport: an order of a storefront abroad.
 public sealed record ReportOrderProfitView(Guid OrderId, string OrderNumber, string PlatformCode, string StoreName, string? StoreFront, bool MicroExport,
     DateTimeOffset OrderedAt, string State, decimal Amount, decimal? Cost, decimal? Profit, decimal? ProfitOnCost, decimal? Margin,
-    IReadOnlyList<ReportOrderProfitCostView> Costs, IReadOnlyList<ReportOrderProfitLineView> Lines);
+    IReadOnlyList<ReportOrderProfitCostView> Costs, IReadOnlyList<ReportOrderProfitLineView> Lines,
+    // Product lines the panel could not read (UnreadableOrderLines): the order is marked, its Cost and Profit are unknown.
+    int UnreadableLines = 0);
 
 // A page of orders and the totals of every order the filter keeps. Amount: all of them. Profit, ProfitAmount (their
 // amount) and Margin = Profit / ProfitAmount: only the ProfitOrders whose profit is known (Profit null when none is).

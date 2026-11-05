@@ -96,6 +96,12 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   `HepsiburadaFinance.cs` and the guide's Kayıt Bazlı Muhasebe Servisi. A record without `id`, a readable
   `amount.value` or any of invoice/order/due day is not stored and opens a FINANCE_RECORD_INCOMPLETE issue; the rest
   of the 60-day read goes on (before 5 Nov 2026 one such record failed the whole job).
+- Money objects carry `"currency": "TRY"` (e.g. `hepsiburada-api-son.md:8371`, `:12479`). Since 5 Nov 2026 an order
+  with another, unknown currency value is refused with an issue and read again; a read without any currency is lira.
+  The paid-order list (one item per line) no longer fails the page on one unreadable line: that order is read by
+  number instead (its detail's packages count the line), and an order without its own `orderDate` is refused, never
+  dated by a package event. With an unreadable line the order keeps Hepsiburada's stated amount instead of the lines'
+  sum (`HepsiburadaHttpClient.PollAsync`, `HepsiburadaJsonMapper.PaidOrderLine`, `MarketplaceJobProcessor`).
 - Webhooks: Basic auth only; answer within 5 s — more than 20 slow answers in an hour blacklists the feed. Changes
   made through the API are not echoed back as webhooks.
 

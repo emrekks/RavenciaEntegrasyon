@@ -37,7 +37,7 @@ public static class PttAvmOrderMapper
         var ordered = TurkeyTime.Parse(Value(order, "IslemTarihi"));
         if (ordered is null)
         {
-            issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: işlem tarihi okunamadı."));
+            issues.Add(RefusedOrders.Issue(orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: işlem tarihi okunamadı; sipariş yeniden okunacak.", orderNumber));
             return null;
         }
         var lines = new List<RemoteOrderLine>();
@@ -76,7 +76,10 @@ public static class PttAvmOrderMapper
             var barcode = Value(line, "VariantBarkod") is { } variantBarcode && !variantBarcode.Contains(',', StringComparison.Ordinal) ? variantBarcode : Value(line, "UrunBarkod");
             var title = Value(line, "Urun") ?? barcode ?? lineId;
             var cancelled = raw == "Cancelled" ? quantity.Value : 0;
-            lines.Add(new(lineId, barcode ?? Value(line, "UrunId") ?? lineId, barcode, title, quantity.Value, decimal.Round(lineGross / quantity.Value, 4), Number(line, "KdvOrani"), raw, LineSnapshot(line), cancelled));
+            // The line's code: its barcode, else the documented stock code UrunKodu ("Ürün stok kod bilgisi",
+            // pttavm-api-son.md:1619). PTT AVM's product id or the line id is no stock code: a line with neither stays
+            // without one and unmatched, never matched by a made-up code.
+            lines.Add(new(lineId, barcode ?? Value(line, "UrunKodu") ?? "", barcode, title, quantity.Value, decimal.Round(lineGross / quantity.Value, 4), Number(line, "KdvOrani"), raw, LineSnapshot(line), cancelled));
             // The allocation counts only what is still active: a cancelled line's units are cancelled, not allocated, so the
             // package check (active + cancelled <= ordered) holds when other lines go on. A returned line was delivered first.
             allocations.Add(new(lineId, quantity.Value - cancelled, cancelled, Shipped(raw) ? quantity.Value : 0, raw is "Delivered" or "Returned" ? quantity.Value : 0, raw is "Returned" ? quantity.Value : 0));
@@ -91,10 +94,14 @@ public static class PttAvmOrderMapper
         }
         if (lines.Count == 0 && unreadable == 0)
         {
-            issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: kullanılabilir ürün satırı yok."));
+            issues.Add(RefusedOrders.Issue(orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: kullanılabilir ürün satırı yok; sipariş yeniden okunacak.", orderNumber));
             return null;
         }
         issues.AddRange(lineIssues);
+        // PTT AVM sends no order total, only line amounts (pttavm-api-son.md:1597-1632): with a line unread the order's
+        // amount is the read lines' sum and may be short. The order shows it (MarketplaceSalesService.AmountMayBeIncomplete).
+        if (unreadable > 0)
+            issues.Add(new(UnreadableOrderLines.AmountIssueCode, $"order:{orderNumber}", $"PTT AVM siparişi {orderNumber}: {unreadable} ürün satırı okunamadı ve PTT AVM sipariş toplamı göndermiyor; sipariş tutarı yalnız okunan satırların toplamı, eksik olabilir."));
 
         if (hasLiveLine) (gross, discount) = (liveGross, liveDiscount);
         discount = Math.Clamp(discount, 0, gross);

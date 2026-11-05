@@ -205,7 +205,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 shippedAtByOrder.TryGetValue(order.Id, out var shippedAt) ? shippedAt : null,
                 order.LabelPrintedAt,
                 RowMarks(connection?.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson),
-                UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? []));
+                UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? []),
+                AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? [])));
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -970,8 +971,14 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
             order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), PackageInvoiceLabel(displayPackage, invoice, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
             customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl, ListAddress(order.ShipmentAddressSnapshotJson),
-            UnreadableLineCount(packages)));
+            UnreadableLineCount(packages), AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packages))));
     }
+
+    // An order with an unread product line whose amount is the read lines' sum: PTT AVM sends no order total
+    // (pttavm-api-son.md:1597-1632). Elsewhere the amount is the marketplace's own total (UnreadableOrderLines.AmountIssueCode
+    // names an n11 or Pazarama read that came without it).
+    internal static bool AmountMayBeIncomplete(string? platformCode, int unreadableLines) =>
+        unreadableLines > 0 && string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase);
 
     // Product lines of the order's live packages the panel could not read (UnreadableOrderLines); a cancelled package's
     // lines no longer matter. Shopify's hidden remainder package counts too: it holds the unfulfilled lines.

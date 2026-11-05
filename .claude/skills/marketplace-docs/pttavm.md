@@ -59,6 +59,11 @@ least advanced known line decides. Code: `PttAvmOrderMapper.PackageStatus`.
 - An upsert without the variant list deletes all variants.
 - Manual external writes are gated by `PttAvmManualWritePolicy`.
 - `PTTAVM-ENTEGRASYON-PLANI.md` gives PTTAVM_ORDER_SYNC as 60 s in §4 and 2 min in §6.1; check the code.
+- Order lines (SiparisKontrolListesiV2): `UrunKodu` is the stock code ("Ürün stok kod bilgisi"), `UrunId` the product
+  id, `UrunBarkod` the barcode (a model's code for a variant product; `VariantBarkod` the variant's). There is no order
+  total, only line amounts (`KdvDahilToplamTutar`) (`pttavm-api-son.md:1597-1632`). Since 5 Nov 2026 a line's code is
+  the barcode, else `UrunKodu`, never `UrunId` or the line id; an order with an unread line says its amount may be
+  short (ORDER_AMOUNT_MAY_BE_INCOMPLETE, order list mark) (`PttAvmOrderMapper.cs`).
 
 ## Job types
 PTTAVM_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORDER_STATUS_SYNC.
