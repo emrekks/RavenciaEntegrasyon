@@ -88,8 +88,13 @@ public sealed class OrderLineVatRateTests
     [InlineData("PTTAVM", """{"LineItemId":"1"}""", true)]
     [InlineData("PTTAVM", """{"LineItemId":"1","KdvOrani":"10"}""", false)]
     [InlineData("PTTAVM", """{"LineItemId":"1","KdvOrani":"on"}""", true)]
-    // Shopify reports no line VAT rate; its lines are not judged by this gate.
-    [InlineData("SHOPIFY", """{"id":"1"}""", false)]
+    // Shopify: the line's taxLines list, every tax line with a numeric rate.
+    [InlineData("SHOPIFY", """{"id":"1"}""", true)]
+    [InlineData("SHOPIFY", """{"id":"1","taxLines":[]}""", true)]
+    [InlineData("SHOPIFY", """{"id":"1","taxLines":[{"rate":0.2},{"title":"x"}]}""", true)]
+    [InlineData("SHOPIFY", """{"id":"1","taxLines":{"rate":0.2}}""", false)]
+    [InlineData("SHOPIFY", """{"id":"1","taxLines":[{"rate":0.18},{"rate":0.02}]}""", false)]
+    [InlineData("SHOPIFY", """{"id":"1","taxLines":[{"rate":0}]}""", false)]
     // O1 (5 Nov 2026): a line without a raw snapshot, with an empty one or one that cannot be read reports no rate:
     // unknown, never the rate it was stored with (0 included).
     [InlineData("HEPSIBURADA", null, true)]
@@ -123,6 +128,7 @@ public sealed class OrderLineVatRateTests
     [InlineData("N11", "N11")]
     [InlineData("PAZARAMA", "Pazarama")]
     [InlineData("PTTAVM", "PTT AVM")]
+    [InlineData("SHOPIFY", "Shopify")]
     public void TheRefusalNamesTheMarketplaceThatLeftTheRateOut(string platformCode, string name)
     {
         var refusal = InvoiceIssuePolicy.LineVatRateUnknownFor(platformCode);

@@ -53,6 +53,14 @@ UTC, ISO with Z.
 - Webhooks: stale `X-Shopify-Triggered-At` deliveries are dropped; 8 consecutive failures delete the subscription.
 - Invoice data lives in order metafields `ravencia.invoice_number` and `ravencia.invoice_pdf_url`.
 - No label API.
+- Line VAT: `LineItem.taxLines { rate }` is a list; each `rate` is a fraction (0.2 = 20%). The panel sums the rates
+  into the line's VAT % (offline docs `shopify-admin-graphql-referans-son.md:32611-32712`, sample `"rate": 0.06`). A
+  line with an empty list (`taxable: true, taxLines: []` happens in the docs' sample) or a tax line without a rate is
+  "KDV unknown": product card VAT, else the invoice stops (`InvoiceIssuePolicy`, SHOPIFY path `taxLines.rate`).
+- `Order.taxesIncluded`: true when line prices and subtotal include tax (`shopify-admin-graphql-referans-son.md:6665`);
+  `currentTotalPriceSet` holds the tax either way. When false, the adapter adds each line's tax to its unit price and
+  grosses the reported discounts up by the lines' tax share, so the stored line price is what the customer paid
+  (raw line snapshot keeps Shopify's pre-tax price) (`ShopifyHttpClient.MapOrder`).
 
 ## Job types
 SHOPIFY_CONNECTION_TEST, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORDER_STATUS_SYNC, _ORDER_RECONCILIATION,

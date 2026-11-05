@@ -58,6 +58,7 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
         foreach (var day in due.Take(perRun))
         {
             var lines = new List<RemoteSettlementItem>();
+            var skipped = new List<RemoteSkippedFinanceRecord>();
             string? status = days.FirstOrDefault(x => x.SettlementDate == day)?.Status;
             for (var page = 0; page < MaximumPages; page++)
             {
@@ -65,11 +66,14 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
                 var detail = await settlements.GetSettlementItemsAsync(context, day, page, cancellationToken);
                 if (!detail.IsSuccess) return await FailAsync(request, detail.Error!, now, new(requests, received, inserted, updated, inserted + updated, 1), cancellationToken);
                 lines.AddRange(detail.Value!.Items);
+                // A line is stored by its id and day; a skipped one is named the same way.
+                skipped.AddRange(detail.Value.Skipped.Select(x => x.Key.StartsWith('#') ? x : x with { Key = ExternalId(x.Key, day) }));
                 status = detail.Value.Status ?? status;
-                if (detail.Value.Items.Count == 0 || page + 1 >= detail.Value.PageCount) break;
+                if (detail.Value.Items.Count + detail.Value.Skipped.Count == 0 || page + 1 >= detail.Value.PageCount) break;
             }
-            received += lines.Count;
+            received += lines.Count + skipped.Count;
             var ids = lines.Select(x => ExternalId(x.OrderItemId, day)).ToList();
+            await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "n11", skipped, ids, now, cancellationToken);
             var stored = await db.MarketplaceFinanceTransactions
                 .Where(x => x.TenantId == request.TenantId && x.ConnectionId == request.ConnectionId && x.Source == Source && ids.Contains(x.ExternalId))
                 .ToDictionaryAsync(x => x.ExternalId, StringComparer.Ordinal, cancellationToken);

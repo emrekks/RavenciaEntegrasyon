@@ -26,7 +26,15 @@ public sealed record RemoteStatementRecord(
     string? Currency = null,
     string? InvoiceNumber = null);
 
-public sealed record RemoteStatementPage(IReadOnlyList<RemoteStatementRecord> Items, int Page, int TotalPages, long TotalElements);
+public sealed record RemoteStatementPage(IReadOnlyList<RemoteStatementRecord> Items, int Page, int TotalPages, long TotalElements, IReadOnlyList<RemoteSkippedFinanceRecord>? Skipped = null)
+{
+    public IReadOnlyList<RemoteSkippedFinanceRecord> Skipped { get; init; } = Skipped ?? [];
+}
+
+// A finance record a page sent without an id, a readable main amount or a date. It is not stored (nothing is made up
+// for it) and is reported by name; the page's other records are kept. Key: the record's id, or a hash of the record
+// when it has none. Description: Turkish, names the record and what it lacks.
+public sealed record RemoteSkippedFinanceRecord(string Key, string Description);
 
 public sealed record RemoteCargoInvoiceItem(string? ShipmentPackageType, string? ParcelUniqueId, string? OrderNumber, decimal Amount, int? Desi, string RawJson);
 
@@ -60,7 +68,10 @@ public sealed record RemoteSettlementDayPage(IReadOnlyList<RemoteSettlementDay> 
 public sealed record RemoteSettlementItem(string OrderItemId, string? OrderNumber, decimal Commission, decimal ServiceFee, decimal AdFee, decimal CargoPrice, decimal Discount,
     decimal DeductionAmount, decimal PaymentAmount, decimal SettlementAmount, DateTimeOffset? CompletedAt, DateOnly? SettlementDate, DateOnly? RemittanceDate, DateOnly? PaymentDate, string RawJson);
 
-public sealed record RemoteSettlementItemPage(IReadOnlyList<RemoteSettlementItem> Items, int Page, int PageCount, string? Status);
+public sealed record RemoteSettlementItemPage(IReadOnlyList<RemoteSettlementItem> Items, int Page, int PageCount, string? Status, IReadOnlyList<RemoteSkippedFinanceRecord>? Skipped = null)
+{
+    public IReadOnlyList<RemoteSkippedFinanceRecord> Skipped { get; init; } = Skipped ?? [];
+}
 
 // n11's SOAP SettlementService, read only.
 public interface IN11SettlementPort
@@ -75,7 +86,10 @@ public sealed record RemoteFinanceRecord(string Id, string? TransactionType, str
     string? Sku, decimal? Amount, decimal? NetAmount, string? Currency, bool? IsIncome, DateTimeOffset? OrderDate, DateTimeOffset? InvoiceDate, DateTimeOffset? DueDate,
     DateTimeOffset? PaymentDate, string RawJson);
 
-public sealed record RemoteFinanceRecordPage(IReadOnlyList<RemoteFinanceRecord> Items, int Count);
+public sealed record RemoteFinanceRecordPage(IReadOnlyList<RemoteFinanceRecord> Items, int Count, IReadOnlyList<RemoteSkippedFinanceRecord>? Skipped = null)
+{
+    public IReadOnlyList<RemoteSkippedFinanceRecord> Skipped { get; init; } = Skipped ?? [];
+}
 
 // Hepsiburada's accounting service, read only: the records of a status by their due day or their payment day.
 public interface IHepsiburadaFinancePort

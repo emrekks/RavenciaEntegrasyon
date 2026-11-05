@@ -482,9 +482,10 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
             .Where(x => x.TenantId == tenantId && storeIds.Contains(x.ConnectionId) && x.Source == Jobs.Handlers.PazaramaFinanceSyncJobHandler.Source
                 && x.OrderNumber != null && numbers.Contains(x.OrderNumber))
             .GroupBy(x => new { x.ConnectionId, x.OrderNumber })
-            .Select(group => new { group.Key.ConnectionId, group.Key.OrderNumber, Commission = group.Sum(x => x.CommissionAmount ?? 0m) })
+            .Select(group => new { group.Key.ConnectionId, group.Key.OrderNumber, Commission = group.Sum(x => x.CommissionAmount ?? 0m), Unknown = group.Count(x => x.CommissionAmount == null) })
             .ToListAsync(cancellationToken);
-        var byOrder = sums.ToDictionary(x => (x.ConnectionId, x.OrderNumber!), x => x.Commission);
+        // An order with a movement whose commission Pazarama did not send keeps the estimate: its sum is not the real one.
+        var byOrder = sums.Where(x => x.Unknown == 0).ToDictionary(x => (x.ConnectionId, x.OrderNumber!), x => x.Commission);
         return pazarama.Where(order => byOrder.ContainsKey((order.ConnectionId, order.OrderNumber)))
             .ToDictionary(order => order.Id, order => byOrder[(order.ConnectionId, order.OrderNumber)]);
     }
