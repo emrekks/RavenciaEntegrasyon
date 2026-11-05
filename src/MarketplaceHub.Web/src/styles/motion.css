@@ -30,14 +30,14 @@
 /* Cards under the pointer: a summary card lifts a little; an integration card only takes a shadow, because it holds
    its detail window and menus (fixed to the screen), and a moved card would hold them inside itself instead. */
 @media (hover: hover) {
-  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-kgrid > .rr-kc, .reports-kpis > div, .integration-grid > *) {
+  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-opgrid > .rr-opcard, .reports-kpis > div, .integration-grid > *) {
     transition: translate var(--rv-motion-fast) var(--rv-ease-out), border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard);
   }
   /* The summary cards stay on their own layer, so their text is drawn once and moves with the card; redrawn at each
      sub-pixel step of the lift, it shimmered. */
-  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-kgrid > .rr-kc, .reports-kpis > div) { will-change: translate; }
-  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-kgrid > .rr-kc, .reports-kpis > div):hover { translate: 0 var(--rv-motion-lift); }
-  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-kgrid > .rr-kc, .reports-kpis > div, .integration-grid > *):hover { box-shadow: 0 10px 24px -14px rgb(0 0 0 / 55%); }
+  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-opgrid > .rr-opcard, .reports-kpis > div) { will-change: translate; }
+  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-opgrid > .rr-opcard, .reports-kpis > div):hover { translate: 0 var(--rv-motion-lift); }
+  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-opgrid > .rr-opcard, .reports-kpis > div, .integration-grid > *):hover { box-shadow: 0 10px 24px -14px rgb(0 0 0 / 55%); }
 }
 
 /* Windows (kit "A · iOS Yay"): the window grows from .9 on an overshooting spring and settles while it fades in; its
