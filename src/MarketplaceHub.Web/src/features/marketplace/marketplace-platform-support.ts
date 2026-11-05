@@ -18,6 +18,9 @@ const hepsiburadaReadSyncPolicies = new Set([
   'ORDER_LIFECYCLE',
   'ORDER_INVOICE_RECONCILIATION',
   'RETURNS',
+  'RETURN_LIFECYCLE',
+  'QUESTIONS',
+  'FINANCE',
   'REFERENCE_DATA',
   'PRICE_WRITE',
   'STOCK_WRITE',
@@ -30,10 +33,10 @@ const hepsiburadaReadSyncPolicies = new Set([
 ])
 
 // n11 flows join phase by phase.
-const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_RECONCILE_SHORT', 'ORDER_RECONCILE_MEDIUM', 'ORDER_RECONCILE_DAILY', 'RETURNS', 'QUESTIONS', 'REFERENCE_DATA', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY'])
+const n11ReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_RECONCILE_SHORT', 'ORDER_RECONCILE_MEDIUM', 'ORDER_RECONCILE_DAILY', 'RETURNS', 'QUESTIONS', 'FINANCE', 'REFERENCE_DATA', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY', 'PRICE_WRITE', 'STOCK_WRITE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY'])
 
 // Pazarama: the order reads (new orders, history, open-order status scan); its write flows join with their phases.
-const pazaramaReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'PRICE_WRITE', 'STOCK_WRITE', 'RETURNS', 'QUESTIONS', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY'])
+const pazaramaReadSyncPolicies = new Set(['ORDERS', 'ORDER_RECOVERY', 'ORDER_LIFECYCLE', 'REFERENCE_DATA', 'PRICE_WRITE', 'STOCK_WRITE', 'RETURNS', 'QUESTIONS', 'FINANCE', 'SHIPMENT_WRITE', 'RETURN_WRITE', 'LISTING_VERIFY', 'STOCK_RECONCILE_SHORT', 'STOCK_RECONCILE_MEDIUM', 'STOCK_RECONCILE_DAILY'])
 
 // PTT AVM: the order reads (new orders, history, open-order status scan), the category tree and the returned lines; its write flows join with their phases.
 // MANUAL_WRITE is PTT AVM's own "Manuel Dış Yazmalar" switch (panel-started price-stock and product sends).

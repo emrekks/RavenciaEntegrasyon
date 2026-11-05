@@ -5,7 +5,19 @@ import type { WebhookSetup } from './webhook-setup'
 export type InstantNotificationState = 'UNSUPPORTED' | 'OFF' | 'ACTIVE' | 'PASSIVE' | 'MISSING' | 'UNKNOWN' | 'WAITING' | 'QUIET' | 'CONNECTION_INACTIVE'
 export type InstantNotificationStatus = { state: InstantNotificationState; endpoint: string | null; registeredAt: string | null; lastReceivedAt: string | null; receivedLast24Hours: number; message: string | null; setup?: WebhookSetup | null; lastRejectedAt?: string | null; lastRejectedReason?: string | null; previousPreparedAt?: string | null; adoptableFrom?: { connectionName: string; environment: string; preparedAt: string } | null }
 
-export const instantNotificationStateLabels: Record<InstantNotificationState, string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Trendyol durdurdu', MISSING: 'Trendyol’da kayıt yok', UNKNOWN: 'Durum okunamadı', WAITING: 'İlk bildirim bekleniyor', QUIET: 'Son saatlerde bildirim yok', CONNECTION_INACTIVE: 'Bağlantı pasif' }
+// ACTIVE comes only once notifications have arrived and keep arriving: before the first one the server says WAITING,
+// and QUIET when an order came without its notification. The marketplace is named by instantNotificationStateLabel.
+export const instantNotificationStateLabels: Record<InstantNotificationState, string> = { UNSUPPORTED: 'Desteklenmiyor', OFF: 'Kapalı', ACTIVE: 'Açık', PASSIVE: 'Pazaryeri durdurdu', MISSING: 'Pazaryerinde kayıt yok', UNKNOWN: 'Durum okunamadı', WAITING: 'İlk bildirim bekleniyor', QUIET: 'Son siparişin bildirimi gelmedi', CONNECTION_INACTIVE: 'Bağlantı pasif' }
+
+const marketplaceNames: Record<string, string> = { TRENDYOL: 'Trendyol', SHOPIFY: 'Shopify', HEPSIBURADA: 'Hepsiburada' }
+
+/** The state's label naming the webhook's own marketplace: a Shopify webhook is not "stopped by Trendyol". */
+export function instantNotificationStateLabel(state: InstantNotificationState, platformCode?: string | null) {
+  const name = platformCode ? marketplaceNames[platformCode.trim().toUpperCase()] : undefined
+  if (name && state === 'PASSIVE') return `${name} durdurdu`
+  if (name && state === 'MISSING') return `${name}’da kayıt yok`
+  return instantNotificationStateLabels[state]
+}
 
 export const instantNotificationsQueryKey = (connectionId: string) => ['instant-notifications', connectionId] as const
 
@@ -22,6 +34,8 @@ export function webhookTone(status: InstantNotificationStatus): 'ok' | 'warn' | 
     case 'PASSIVE':
     case 'QUIET': return 'warn'
     case 'ACTIVE': return status.lastRejectedAt ? 'warn' : 'ok'
+    // Waiting for the first notification is neutral, unless deliveries came and were turned away.
+    case 'WAITING': return status.lastRejectedAt ? 'warn' : 'off'
     default: return 'off'
   }
 }

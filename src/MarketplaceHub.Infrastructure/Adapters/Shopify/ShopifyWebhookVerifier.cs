@@ -23,6 +23,11 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
     private static readonly string[] KnownTopics = ["orders/create", "orders/updated", "orders/cancelled", "orders/fulfilled", "orders/partially_fulfilled", "refunds/create", "products/delete"];
     // A product deleted in Shopify (ShopifyHttpClient.ProductDeleteTopic): MarketplaceWebhookService starts the link check.
     internal const string ProductDeleteResourceType = "PRODUCTS_DELETE";
+    // Shopify signs a delivery with the client secret of the app whose token registered the subscription (a custom
+    // app's "API secret key", shpss_…). A delivery that does not verify was signed with another key than the one typed
+    // when the webhook was turned on: the panel shows what to do, as the reason of the refusal.
+    internal const string SignatureInvalidCode = "SHOPIFY_WEBHOOK_SIGNATURE_INVALID";
+    internal const string SignatureInvalidMessage = "Shopify webhook imzası doğrulanamadı: webhook açılırken girilen Uygulama Gizli Anahtarı, Shopify'ın bildirimleri imzaladığı anahtar değil. Webhook'u kapatıp bağlantının kullandığı uygulamanın API secret key'i (shpss_…) ile ya da anahtar alanını boş bırakarak yeniden açın.";
     private readonly IDataProtector protector = dataProtection.CreateProtector("MarketplaceHub.WebhookVerifier.v1");
     private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
 
@@ -46,7 +51,7 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         var signature = Header(headers, "X-Shopify-Hmac-Sha256");
         var routeOnly = subscription.AuthenticationType == "ROUTE_TOKEN" && string.IsNullOrWhiteSpace(secret);
         if (!routeOnly && (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(signature) || !VerifySignature(rawBody.Span, signature, secret)))
-            return AdapterResult<VerifiedWebhookEnvelope>.Failure(new(AdapterErrorClass.Authentication, "SHOPIFY_WEBHOOK_SIGNATURE_INVALID", "Shopify webhook imzası doğrulanamadı.", 401, null, null));
+            return AdapterResult<VerifiedWebhookEnvelope>.Failure(new(AdapterErrorClass.Authentication, SignatureInvalidCode, SignatureInvalidMessage, 401, null, null));
 
         // Only the body is signed (and on a ROUTE_TOKEN subscription nothing is): X-Shopify-Webhook-Id and the other
         // headers can be changed freely, so a captured delivery sent again under a new id would pass a header-based

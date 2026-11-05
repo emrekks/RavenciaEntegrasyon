@@ -4710,24 +4710,37 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             {
                 var enabled = await Service(db).EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None);
                 Assert.Null(enabled.Error);
-                Assert.Equal("ACTIVE", enabled.Value!.State);
+                // Registered, but nothing has come yet: never "Bildirimler düzenli geliyor" before the first notification.
+                Assert.Equal("WAITING", enabled.Value!.State);
                 Assert.DoesNotContain(port.CreatedUrl!.Split('/').Last(), enabled.Value.Endpoint);
+                var waiting = (await Service(db).StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!;
+                Assert.Equal("WAITING", waiting.State);
+                Assert.StartsWith("Henüz bildirim gelmedi", waiting.Message);
             }
             Assert.StartsWith($"https://panel.ravencia.com/api/v1/hooks/{connection.PublicId:D}/", port.CreatedUrl);
             Assert.StartsWith(InstantNotificationService.ManagedUserPrefix, port.CreatedUsername);
 
-            // The address Trendyol was given is accepted by the receiver with the same Basic Auth.
+            // A delivery with the wrong password is refused and noted; the address Trendyol was given is accepted with the
+            // same Basic Auth, and that accepted delivery closes the refusal.
             await using (var db = fixture.CreateContext())
             {
                 var receiver = new MarketplaceWebhookService(db, hasher, new TrendyolWebhookVerifier(db, dataProtection), fixture.TimeProvider);
                 var routeToken = port.CreatedUrl!.Split('/').Last();
+                var wrong = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{port.CreatedUsername}:wrong-password"));
+                var refused = await receiver.ReceiveAsync(connection.PublicId, routeToken, Encoding.UTF8.GetBytes("""{"content":[{"orderNumber":"1","shipmentPackageId":1}]}"""), new Dictionary<string, string> { ["Authorization"] = wrong }, "webhook-test", CancellationToken.None);
+                Assert.NotNull(refused.Error);
+                Assert.True(await db.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.DedupeKey.StartsWith(MarketplaceWebhookService.RejectedPrefix(connection.Id)) && x.Status == IssueStatus.Open));
                 var basic = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{port.CreatedUsername}:{port.CreatedPassword}"));
                 var received = await receiver.ReceiveAsync(connection.PublicId, routeToken, Encoding.UTF8.GetBytes("""{"content":[{"orderNumber":"1","shipmentPackageId":1}]}"""), new Dictionary<string, string> { ["Authorization"] = basic }, "webhook-test", CancellationToken.None);
                 Assert.Null(received.Error);
+                Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.DedupeKey.StartsWith(MarketplaceWebhookService.RejectedPrefix(connection.Id)) && x.Status != IssueStatus.Resolved));
             }
 
             await using (var db = fixture.CreateContext())
             {
+                var active = (await Service(db).StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!;
+                Assert.Equal("ACTIVE", active.State);
+                Assert.Null(active.LastRejectedAt);
                 var disabled = await Service(db).DisableAsync(tenant.Id, connection.Id, "disable", CancellationToken.None);
                 Assert.Equal("OFF", disabled.Value!.State);
             }
@@ -4736,6 +4749,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         finally
         {
             await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.OperationalIssues.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.InboxMessages.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
@@ -4925,9 +4939,26 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
 
             await using (var db = fixture.CreateContext())
             {
+                // An access token typed in place of the app's secret is refused: every delivery would fail its signature.
+                var token = await Service(db).EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None, "shpat_not_the_secret");
+                Assert.Equal("SHOPIFY_CLIENT_SECRET_INVALID", token.Error?.Code);
                 var enabled = await Service(db).EnableAsync(tenant.Id, connection.Id, "enable", CancellationToken.None, "shpss_test_secret");
                 Assert.Null(enabled.Error);
-                Assert.Equal("ACTIVE", enabled.Value!.State);
+                Assert.Equal("WAITING", enabled.Value!.State);
+                Assert.Contains("Shopify", enabled.Value.Message);
+                Assert.DoesNotContain("Trendyol", enabled.Value.Message);
+            }
+
+            // A delivery signed with another key is refused with what to do about it.
+            await using (var db = fixture.CreateContext())
+            {
+                var receiver = new MarketplaceWebhookService(db, hasher, new MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+                var body = Encoding.UTF8.GetBytes("""{"id":986,"order_id":123}""");
+                var signature = Convert.ToBase64String(System.Security.Cryptography.HMACSHA256.HashData(Encoding.UTF8.GetBytes("another_app_secret"), body));
+                var headers = new Dictionary<string, string> { ["X-Shopify-Hmac-Sha256"] = signature, ["X-Shopify-Topic"] = "refunds/create" };
+                var refused = await receiver.ReceiveAsync(connection.PublicId, port.CreatedUrl!.Split('/').Last(), body, headers, "webhook-test", CancellationToken.None);
+                Assert.Equal("SHOPIFY_WEBHOOK_SIGNATURE_INVALID", refused.Error?.Code);
+                Assert.Contains("API secret key", refused.Error!.Message);
             }
 
             // A refund delivery signed with the client secret is accepted and names its order by order_id.
@@ -4940,11 +4971,14 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 var received = await receiver.ReceiveAsync(connection.PublicId, port.CreatedUrl!.Split('/').Last(), body, headers, "webhook-test", CancellationToken.None);
                 Assert.Null(received.Error);
                 Assert.True(await db.IntegrationJobs.AnyAsync(job => job.TenantId == tenant.Id && job.PayloadJson.Contains("REFUNDS")));
+                // The accepted delivery closes the earlier refusal.
+                Assert.False(await db.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.Status != IssueStatus.Resolved));
             }
         }
         finally
         {
             await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.OperationalIssues.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.InboxMessages.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();

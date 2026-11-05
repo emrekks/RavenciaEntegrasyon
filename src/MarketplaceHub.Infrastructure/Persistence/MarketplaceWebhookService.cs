@@ -60,7 +60,23 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         // Either answer is 200: a repeated delivery (Trendyol sends the same package twice, milliseconds apart) is already queued.
         await WebhookInboxWriter.InsertAsync(db, inbox, job, cancellationToken);
         await db.WebhookSubscriptions.Where(x => x.TenantId == connection.TenantId && x.Id == subscription.Id && x.Status == "ACTIVE").ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastReceivedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+        await ResolveRejectedAsync(connection, now, cancellationToken);
         return ServiceResult<bool>.Ok(true);
+    }
+
+    // A delivery that got through shows the earlier refusals are over (a corrected secret or address): the
+    // connection's open refusal records close, so the webhook panel no longer shows the old reason. A refusal that
+    // comes again reopens its record (NoteRejectedAsync). Another merchant's feed is not about this connection's
+    // own deliveries and stays open.
+    internal static string RejectedPrefix(Guid connectionId) => $"webhook-rejected:{connectionId:N}:";
+
+    private Task<int> ResolveRejectedAsync(PlatformConnection connection, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var prefix = RejectedPrefix(connection.Id);
+        var merchantMismatch = prefix + "WEBHOOK_MERCHANT_MISMATCH";
+        return db.OperationalIssues
+            .Where(x => x.TenantId == connection.TenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix) && x.DedupeKey != merchantMismatch)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, IssueStatus.Resolved).SetProperty(x => x.ResolvedAt, now), cancellationToken);
     }
     private async Task<ServiceResult<bool>> QueueListingVerifyAsync(PlatformConnection connection, Guid subscriptionId, string correlationId, CancellationToken cancellationToken)
     {
@@ -74,6 +90,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             catch (DbUpdateException exception) when (IsDuplicateCandidate(exception)) { db.ChangeTracker.Clear(); }
         }
         await db.WebhookSubscriptions.Where(x => x.TenantId == connection.TenantId && x.Id == subscriptionId && x.Status == "ACTIVE").ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastReceivedAt, now).SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
+        await ResolveRejectedAsync(connection, now, cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }
 
@@ -103,7 +120,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
     private async Task NoteRejectedAsync(PlatformConnection connection, string code, string reason, CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
-        var key = $"webhook-rejected:{connection.Id:N}:{code}";
+        var key = RejectedPrefix(connection.Id) + code;
         var summary = $"{connection.DisplayName} bildirimi reddedildi ({code}): {reason}";
         if (summary.Length > 1000) summary = summary[..1000];
         try

@@ -257,7 +257,7 @@ export function DashboardPage() {
   const health = rows.map((row, index) => {
     const connection = connections.data?.items.find(item => item.id === row.connectionId)
     const auth = connection ? connectionAuthSummary(connection) : null
-    const webhook = webhookCell(webhooks[index]?.data, Boolean(webhooks[index]?.isError), age)
+    const webhook = webhookCell(webhooks[index]?.data, Boolean(webhooks[index]?.isError), age, row.platformCode)
     const attention = Boolean(row.issue || auth || webhook.tone === 'bad' || webhook.tone === 'warn' || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn'))
     return { row, auth, webhook, attention }
   })

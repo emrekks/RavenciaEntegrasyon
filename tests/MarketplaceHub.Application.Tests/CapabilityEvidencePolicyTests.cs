@@ -17,6 +17,24 @@ public sealed class CapabilityEvidencePolicyTests
         Assert.Equal(expected, CapabilityEvidencePolicy.ParseSupportLevel(value));
     }
 
+    // T2-O18: an N11 order-list probe that timed out (UNKNOWN) does not undo a recent SUPPORTED; a definite answer does,
+    // and a probe that keeps failing past the grace shows the capability as unknown again.
+    [Theory]
+    [InlineData(CapabilitySupportLevel.Supported, "UNKNOWN", 1, true)]
+    [InlineData(CapabilitySupportLevel.Supported, "TEMPORARILY_UNAVAILABLE", 1, true)]
+    [InlineData(CapabilitySupportLevel.Supported, "NOT_SUPPORTED", 1, false)]
+    [InlineData(CapabilitySupportLevel.Supported, "SUPPORTED", 1, false)]
+    [InlineData(CapabilitySupportLevel.Supported, "UNKNOWN", 8, false)]
+    [InlineData(CapabilitySupportLevel.Unknown, "UNKNOWN", 1, false)]
+    public void AnInconclusiveProbeKeepsARecentSupportedCapability(CapabilitySupportLevel stored, string probe, int verifiedDaysAgo, bool kept)
+    {
+        var now = DateTimeOffset.Parse("2026-11-05T12:00:00Z");
+        var capability = new PlatformCapability { Id = Guid.NewGuid(), Code = MarketplaceCapabilities.OrderRead, SupportLevel = stored, ApiVersion = "v1", Environment = "PRODUCTION", StoreScope = "store", VerifiedAt = now.AddDays(-verifiedDaysAgo) };
+        var evidence = new CapabilityEvidence(MarketplaceCapabilities.OrderRead, probe, "v1", "PRODUCTION", "store", "https://api.n11.com", "rest", null, null, "Sipariş paketi listeleme denemesi tamamlanamadı (N11_TIMEOUT).", null, now);
+
+        Assert.Equal(kept, CapabilityEvidencePolicy.KeepsEarlierSupport(capability, evidence, now));
+    }
+
     [Fact]
     public void ApplyingFreshEvidenceReplacesStaleCapabilityScopeAndPreservesExplicitMissingPermissions()
     {

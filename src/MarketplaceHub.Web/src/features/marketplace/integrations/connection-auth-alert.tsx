@@ -3,6 +3,9 @@ import { formatDateTime } from '../../../shared/format-date'
 import './connection-auth-alert.css'
 
 export type ConnectionAuthProblem = 'credentials' | 'access' | 'gateway'
+// Any code the connection's last test left: the refused credentials and access above, the read capabilities the test
+// could not confirm, a marketplace that did not answer in time or limited the requests, and anything else.
+export type ConnectionProblem = ConnectionAuthProblem | 'capability' | 'transient' | 'other'
 type AuthAlertConnection = { status: string; lastErrorCode: string | null; lastErrorAt?: string | null; lastTestedAt: string | null; lastSuccessAt: string | null; disabledAt?: string | null }
 
 // The codes a refused test or sync read leaves on the connection (adapter errors of the authentication class, plus the
@@ -19,11 +22,30 @@ export function connectionAuthProblem(code: string | null | undefined): Connecti
   return null
 }
 
-const presentations: Record<ConnectionAuthProblem, { title: string; action: string; tone: 'danger' | 'warning' }> = {
+const transientCodes = /(TIMEOUT|TIMED_OUT|RATE_LIMIT|TOO_MANY_REQUESTS|QUOTA|UNAVAILABLE|SERVER_ERROR|TRANSIENT|NETWORK)/
+
+/** Every code a connection's last test can leave, sorted; null when there is none (webhook codes are not the connection's). */
+export function connectionProblem(code: string | null | undefined): ConnectionProblem | null {
+  const value = code?.trim().toUpperCase() ?? ''
+  if (!value || value.startsWith('WEBHOOK_') || value.includes('_WEBHOOK_')) return null
+  const auth = connectionAuthProblem(value)
+  if (auth) return auth
+  if (value.endsWith('_REQUIRED_READ_CAPABILITY')) return 'capability'
+  if (transientCodes.test(value)) return 'transient'
+  return 'other'
+}
+
+const presentations: Record<ConnectionProblem, { title: string; action: string; tone: 'danger' | 'warning' }> = {
   credentials: { title: 'Kimlik bilgileri reddedildi', action: 'Bilgileri kontrol edip kaydedin, ardından Test Et’e basın. Test başarılı olana kadar bu bağlantının okumaları bekler.', tone: 'danger' },
   access: { title: 'Pazaryeri erişim izni vermiyor', action: 'Kimlik bilgileri kabul edildi ama bu hesabın gerekli izni yok. İzin açıldıktan sonra Test Et’e basın.', tone: 'danger' },
-  gateway: { title: 'Pazaryeri istekleri geçici olarak engelliyor', action: 'Kimlik bilgileri geçerli. Okumalar kendiliğinden yeniden denenir; sürerse pazaryeri desteğine başvurun.', tone: 'warning' }
+  gateway: { title: 'Pazaryeri istekleri geçici olarak engelliyor', action: 'Kimlik bilgileri geçerli. Okumalar kendiliğinden yeniden denenir; sürerse pazaryeri desteğine başvurun.', tone: 'warning' },
+  capability: { title: 'Ürün ve sipariş okuması doğrulanamadı', action: 'Kimlik bilgileri kabul edildi ama son test ürün ve sipariş okumalarının ikisini birden doğrulayamadı. Test Et’e basın; sürerse pazaryerinde API yetkilerini kontrol edin.', tone: 'danger' },
+  transient: { title: 'Pazaryeri son testte yanıt vermedi', action: 'Son test zaman aşımı, istek sınırı ya da pazaryeri kesintisi yüzünden tamamlanamadı. Biraz sonra Test Et’e basın.', tone: 'warning' },
+  other: { title: 'Son bağlantı testi hatayla bitti', action: 'Test Et’e basarak yeniden deneyin; sürerse ayrıntı için Yönet’e bakın.', tone: 'warning' }
 }
+
+/** The card's flow warning: enabled flows late past their window after a success, or partly failing. */
+export type ConnectionFlowAttention = { count: number }
 
 // A disabled connection is turned on again only after a successful test that is newer than the moment it was disabled.
 export function reactivationNeedsTest(item: AuthAlertConnection) {
@@ -40,11 +62,16 @@ export function activationErrorMessage(reason: unknown) {
   return reason instanceof Error ? reason.message : 'Bağlantı etkinleştirilemedi.'
 }
 
-/** What a card says about a refused connection, or null when there is nothing to report. */
-export function connectionAuthSummary(item: AuthAlertConnection) {
-  const problem = connectionAuthProblem(item.lastErrorCode)
+/**
+ * What a card says about a connection whose last test left a code (or that needs a new test to be turned on again),
+ * else about flows that need attention; null when there is nothing to report.
+ */
+export function connectionAuthSummary(item: AuthAlertConnection, flows?: ConnectionFlowAttention | null) {
+  const problem = connectionProblem(item.lastErrorCode)
   const needsTest = reactivationNeedsTest(item)
-  if (!problem && !needsTest) return null
+  if (!problem && !needsTest) return flows && flows.count > 0
+    ? { title: 'Akışlar dikkat istiyor', action: `${flows.count} akış beklenen sürede güncellenmedi ya da kısmen hata veriyor. Ayrıntı için Yönet → Akış Sağlığı’na bakın.`, tone: 'warning' as const, meta: null }
+    : null
   const seenAt = item.lastErrorAt ?? item.lastTestedAt
   if (!problem) return { title: 'Yeniden açmak için yeni test gerekli', action: 'Bağlantı devre dışı bırakıldıktan sonra test edilmedi. Test Et’e basın; test başarılı olunca bağlantıyı etkinleştirebilirsiniz.', tone: 'info' as const, meta: null }
   const presentation = presentations[problem]
@@ -52,12 +79,12 @@ export function connectionAuthSummary(item: AuthAlertConnection) {
 }
 
 /**
- * The card's state badge for a refused connection: "Hata" (or "Uyarı"), with the reason on hover or focus, so the
- * card keeps the same height as its neighbours instead of growing a warning box.
+ * The card's state badge for a connection with a problem: "Hata" (or "Uyarı"), with the reason on hover or focus, so
+ * the card keeps the same height as its neighbours instead of growing a warning box.
  */
-export function ConnectionAuthBadge({ item }: { item: AuthAlertConnection }) {
+export function ConnectionAuthBadge({ item, flows }: { item: AuthAlertConnection; flows?: ConnectionFlowAttention | null }) {
   const tipId = `connection-auth-tip${useId()}`
-  const summary = connectionAuthSummary(item)
+  const summary = connectionAuthSummary(item, flows)
   if (!summary) return null
   const label = summary.tone === 'danger' ? 'Hata' : summary.tone === 'warning' ? 'Uyarı' : 'Test Gerekli'
   // The same chip as "Pasif" / "Bağlı ve aktif"; focusable so a keyboard can read the reason too.
@@ -79,9 +106,9 @@ function AuthStateGlyph({ tone }: { tone: string }) {
   return <svg className="cm-glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="M8 4.6v4.1" stroke="var(--rv-color-surface)" strokeWidth="1.7" strokeLinecap="round" /><circle cx="8" cy="11.3" r="1" fill="var(--rv-color-surface)" /></svg>
 }
 
-/** The settings warning for refused credentials or access, with when it was last seen. */
+/** The settings warning for the code the last test left (refused credentials or access, and any other), with when it was last seen. */
 export function ConnectionAuthAlert({ item, detail, onTest, testing = false, compact = false }: { item: AuthAlertConnection; detail?: string | null; onTest?: () => void; testing?: boolean; compact?: boolean }) {
-  const problem = connectionAuthProblem(item.lastErrorCode)
+  const problem = connectionProblem(item.lastErrorCode)
   const needsTest = reactivationNeedsTest(item)
   if (!problem && !needsTest) return null
   const seenAt = item.lastErrorAt ?? item.lastTestedAt

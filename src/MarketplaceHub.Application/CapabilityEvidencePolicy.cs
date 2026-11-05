@@ -13,6 +13,21 @@ public static class CapabilityEvidencePolicy
             _ => CapabilitySupportLevel.Unknown
         };
 
+    // How long a capability verified as supported survives probes that could not tell (UNKNOWN, a rate limit, a timeout,
+    // a marketplace outage): within it such a probe leaves the earlier evidence; a probe that keeps failing past it shows
+    // the capability as unknown again.
+    public static readonly TimeSpan InconclusiveProbeGrace = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// True when a probe that could not tell (UNKNOWN or TEMPORARILY_UNAVAILABLE) meets a capability verified as SUPPORTED
+    /// within <see cref="InconclusiveProbeGrace"/>: one transient failure does not undo the evidence. A definite answer
+    /// (SUPPORTED, NOT_SUPPORTED) is always written.
+    /// </summary>
+    public static bool KeepsEarlierSupport(PlatformCapability capability, CapabilityEvidence evidence, DateTimeOffset now) =>
+        capability.SupportLevel == CapabilitySupportLevel.Supported
+        && ParseSupportLevel(evidence.SupportLevel) is CapabilitySupportLevel.Unknown or CapabilitySupportLevel.TemporarilyUnavailable
+        && capability.VerifiedAt is { } verified && now - verified < InconclusiveProbeGrace;
+
     public static void ApplyEvidence(PlatformCapability capability, CapabilityEvidence evidence)
     {
         capability.SupportLevel = ParseSupportLevel(evidence.SupportLevel);

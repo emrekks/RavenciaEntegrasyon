@@ -3193,6 +3193,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // PTT AVM: the store the API user belongs to (a store name typed as the Mağaza ID gives way to it).
         if (connection.PlatformCode == "PTTAVM") connection.ExternalStoreId = result.Value!.ExternalStoreId;
         foreach (var _ in discovery.Value!) TrackReceived();
+        // The support each capability holds after this test: a probe that could not tell leaves a recent SUPPORTED in place
+        // (CapabilityEvidencePolicy.KeepsEarlierSupport), so a transient failure neither downgrades it nor fails the test.
+        var supportedAfter = new HashSet<string>(StringComparer.Ordinal);
         foreach (var evidence in discovery.Value!)
         {
             var capability = await db.PlatformCapabilities.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.Code == evidence.Code, cancellationToken);
@@ -3211,10 +3214,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 };
                 db.PlatformCapabilities.Add(capability);
             }
-            CapabilityEvidencePolicy.ApplyEvidence(capability, evidence);
+            if (!CapabilityEvidencePolicy.KeepsEarlierSupport(capability, evidence, now)) CapabilityEvidencePolicy.ApplyEvidence(capability, evidence);
+            if (capability.SupportLevel == CapabilitySupportLevel.Supported) supportedAfter.Add(evidence.Code);
         }
         if (connection.PlatformCode is "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM" && discovery.Value is not null
-            && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))
+            && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(supportedAfter.Contains))
         {
             connection.LastErrorCode = $"{connection.PlatformCode}_REQUIRED_READ_CAPABILITY";
             connection.Version++;

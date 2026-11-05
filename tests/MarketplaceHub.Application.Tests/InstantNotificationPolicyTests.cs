@@ -44,6 +44,48 @@ public sealed class InstantNotificationPolicyTests
         Assert.Equal("ACTIVE", InstantNotificationService.RemoteState("remote-webhook-1", [Listed("remote-webhook-1")]));
     }
 
+    [Theory]
+    [InlineData("ACTIVE", false, true, "WAITING")]
+    [InlineData("ACTIVE", false, false, "WAITING")]
+    [InlineData("ACTIVE", true, true, "ACTIVE")]
+    [InlineData("ACTIVE", true, false, "QUIET")]
+    [InlineData("PASSIVE", true, true, "PASSIVE")]
+    [InlineData("MISSING", false, true, "MISSING")]
+    public void RegisteredWebhookIsOpenOnlyOnceNotificationsCome(string remote, bool received, bool healthy, string expected)
+    {
+        DateTimeOffset? lastReceivedAt = received ? DateTimeOffset.Parse("2026-11-05T10:00:00Z") : null;
+        Assert.Equal(expected, InstantNotificationService.RegisteredState(remote, lastReceivedAt, healthy));
+    }
+
+    [Fact]
+    public void RegisteredWebhookMessagesNameTheirOwnMarketplace()
+    {
+        foreach (var state in new[] { "MISSING", "PASSIVE", "WAITING", "QUIET", "ACTIVE" })
+            Assert.DoesNotContain("Trendyol", InstantNotificationService.RegisteredMessage("SHOPIFY", state, healthy: state != "QUIET", 8));
+        Assert.StartsWith("Henüz bildirim gelmedi", InstantNotificationService.RegisteredMessage("SHOPIFY", "WAITING", healthy: true, 8));
+        Assert.Contains("Shopify'dan bildirim gelmedi", InstantNotificationService.RegisteredMessage("SHOPIFY", "WAITING", healthy: false, 3));
+        Assert.Contains("3 dakikada", InstantNotificationService.RegisteredMessage("TRENDYOL", "QUIET", healthy: false, 3));
+        Assert.DoesNotContain("düzenli geliyor", InstantNotificationService.RegisteredMessage("TRENDYOL", "WAITING", healthy: true, 8));
+        Assert.Contains("düzenli geliyor", InstantNotificationService.RegisteredMessage("TRENDYOL", "ACTIVE", healthy: true, 8));
+    }
+
+    [Theory]
+    [InlineData("shpat_0123456789abcdef", true)]
+    [InlineData(" shpca_x", true)]
+    [InlineData("shppa_x", true)]
+    [InlineData("shpss_0123456789abcdef", false)]
+    [InlineData("0123456789abcdef0123456789abcdef", false)]
+    public void AShopifyAccessTokenIsNotTakenForTheAppSecret(string value, bool expected) =>
+        Assert.Equal(expected, InstantNotificationService.IsShopifyAccessToken(value));
+
+    [Fact]
+    public void ShopifyRefusalSaysWhichKeySignsTheDeliveries()
+    {
+        Assert.Equal("SHOPIFY_WEBHOOK_SIGNATURE_INVALID", MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.SignatureInvalidCode);
+        Assert.Contains("API secret key", MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.SignatureInvalidMessage);
+        Assert.True(MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.SignatureInvalidMessage.Length < 900);
+    }
+
     [Fact]
     public void ShopifySubscriptionIdsAreKeptAsTheirNumber()
     {

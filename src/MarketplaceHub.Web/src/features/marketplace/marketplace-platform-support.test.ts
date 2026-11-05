@@ -53,6 +53,12 @@ describe('Hepsiburada marketplace workspace support', () => {
     expect(supportsSyncPolicy('HEPSIBURADA', 'PRODUCTS')).toBe(false)
   })
 
+  it('lists the scheduled reads the server runs, so a late one reaches the attention list', () => {
+    for (const resource of ['QUESTIONS', 'FINANCE', 'RETURN_LIFECYCLE']) expect(supportsSyncPolicy('HEPSIBURADA', resource)).toBe(true)
+    expect(supportsSyncPolicy('N11', 'FINANCE')).toBe(true)
+    expect(supportsSyncPolicy('PAZARAMA', 'FINANCE')).toBe(true)
+  })
+
   it('shows the MANUAL_WRITE switch for PTT AVM only', () => {
     expect(supportsSyncPolicy('PTTAVM', 'MANUAL_WRITE')).toBe(true)
     for (const platformCode of ['TRENDYOL', 'SHOPIFY', 'HEPSIBURADA', 'N11', 'PAZARAMA'])
