@@ -12,6 +12,12 @@ internal static class UnreadableOrderLines
 {
     public const string IssueCode = "ORDER_PACKAGE_LINE_INVALID";
 
+    // The order amount comes from the marketplace's own total where it sends one (Trendyol package total, n11 package
+    // totalAmount, Pazarama orderAmount, Hepsiburada's order total, Shopify's order total). Where it sends none (PTT AVM
+    // always; n11 or Pazarama when the field is missing) the amount of an order with an unread line is the read lines'
+    // sum and may be short: this issue says so, keyed by the package like the line issues, and is resolved with them.
+    public const string AmountIssueCode = "ORDER_AMOUNT_MAY_BE_INCOMPLETE";
+
     // The issue of one unreadable line; its identity starts with the package id, so the read that clears the package
     // finds it again (MarketplaceJobProcessor.ApplyUnreadableLines).
     public static AdapterPageIssue Issue(string marketplace, string externalPackageId, string? externalLineId, string reason) => new(

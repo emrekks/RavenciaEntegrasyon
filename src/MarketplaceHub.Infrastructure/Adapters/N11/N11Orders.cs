@@ -40,6 +40,9 @@ public sealed partial class N11HttpClient
         var page = MapOrders(await SendAsync(account, HttpMethod.Get, OrderNumberPackages(externalOrderId.Trim()), cancellationToken));
         if (!page.IsSuccess) return AdapterResult<RemoteOrder>.Failure(page.Error!, page.RateLimit);
         var order = TrendyolJsonMapper.MergeOrderPackages(page.Value!.Items, externalOrderId.Trim());
+        // A package n11 sent but the mapper refused is not "not found": its refusal answers (RefusedOrders).
+        if (order is null && RefusedOrders.ReadError(page.Value.Issues, externalOrderId) is { } refused)
+            return AdapterResult<RemoteOrder>.Failure(refused, page.RateLimit);
         return order is null
             ? Failure<RemoteOrder>(AdapterErrorClass.NotFound, "N11_ORDER_NOT_FOUND", $"N11'de {externalOrderId} numaralı sipariş bulunamadı. N11 Kasım 2024 öncesi siparişleri bu servisten vermiyor.", HttpStatusCode.NotFound)
             : AdapterResult<RemoteOrder>.Success(order, page.RateLimit);

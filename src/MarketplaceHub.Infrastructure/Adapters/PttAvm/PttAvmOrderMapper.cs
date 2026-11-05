@@ -37,7 +37,7 @@ public static class PttAvmOrderMapper
         var ordered = TurkeyTime.Parse(Value(order, "IslemTarihi"));
         if (ordered is null)
         {
-            issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: işlem tarihi okunamadı."));
+            issues.Add(RefusedOrders.Issue(orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: işlem tarihi okunamadı; sipariş yeniden okunacak.", orderNumber));
             return null;
         }
         var lines = new List<RemoteOrderLine>();
@@ -76,7 +76,10 @@ public static class PttAvmOrderMapper
             var barcode = Value(line, "VariantBarkod") is { } variantBarcode && !variantBarcode.Contains(',', StringComparison.Ordinal) ? variantBarcode : Value(line, "UrunBarkod");
             var title = Value(line, "Urun") ?? barcode ?? lineId;
             var cancelled = raw == "Cancelled" ? quantity.Value : 0;
-            lines.Add(new(lineId, barcode ?? Value(line, "UrunId") ?? lineId, barcode, title, quantity.Value, decimal.Round(lineGross / quantity.Value, 4), Number(line, "KdvOrani"), raw, LineSnapshot(line), cancelled));
+            // The line's code: its barcode, else the documented stock code UrunKodu ("Ürün stok kod bilgisi",
+            // pttavm-api-son.md:1619). PTT AVM's product id or the line id is no stock code: a line with neither stays
+            // without one and unmatched, never matched by a made-up code.
+            lines.Add(new(lineId, barcode ?? Value(line, "UrunKodu") ?? "", barcode, title, quantity.Value, decimal.Round(lineGross / quantity.Value, 4), Number(line, "KdvOrani"), raw, LineSnapshot(line), cancelled));
             // The allocation counts only what is still active: a cancelled line's units are cancelled, not allocated, so the
             // package check (active + cancelled <= ordered) holds when other lines go on. A returned line was delivered first.
             allocations.Add(new(lineId, quantity.Value - cancelled, cancelled, Shipped(raw) ? quantity.Value : 0, raw is "Delivered" or "Returned" ? quantity.Value : 0, raw is "Returned" ? quantity.Value : 0));
@@ -91,10 +94,14 @@ public static class PttAvmOrderMapper
         }
         if (lines.Count == 0 && unreadable == 0)
         {
-            issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: kullanılabilir ürün satırı yok."));
+            issues.Add(RefusedOrders.Issue(orderNumber, $"PTT AVM siparişi {orderNumber} içeri alınmadı: kullanılabilir ürün satırı yok; sipariş yeniden okunacak.", orderNumber));
             return null;
         }
         issues.AddRange(lineIssues);
+        // PTT AVM sends no order total, only line amounts (pttavm-api-son.md:1597-1632): with a line unread the order's
+        // amount is the read lines' sum and may be short. The order shows it (MarketplaceSalesService.AmountMayBeIncomplete).
+        if (unreadable > 0)
+            issues.Add(new(UnreadableOrderLines.AmountIssueCode, $"order:{orderNumber}", $"PTT AVM siparişi {orderNumber}: {unreadable} ürün satırı okunamadı ve PTT AVM sipariş toplamı göndermiyor; sipariş tutarı yalnız okunan satırların toplamı, eksik olabilir."));
 
         if (hasLiveLine) (gross, discount) = (liveGross, liveDiscount);
         discount = Math.Clamp(discount, 0, gross);
@@ -123,23 +130,29 @@ public static class PttAvmOrderMapper
         // Payment not yet confirmed (bank transfer, approval): not to be prepared yet.
         "havale_onayi_bekleniyor" or "onay_surecinde" => "Awaiting",
         "gonderilmis" or "gonderildi" => "Shipped",
-        // The parcel came back to the store without being delivered.
-        "gondericisine_teslim_edildi" => "Undelivered",
+        // "Delivered to its sender": the parcel came back to the store without being delivered. The same panel state as
+        // Trendyol's UnDeliveredAndReturned (Returned: the goods are back with the seller, no sale invoice), not
+        // Undelivered, which is a parcel still with the carrier. The line keeps the distinct name, so PTT AVM's return
+        // read (iade lines only) does not take it for a customer return.
+        "gondericisine_teslim_edildi" => "UndeliveredAndReturned",
         "tamamlandi" => "Delivered",
         "iptal" or "odeme_gecersiz" => "Cancelled",
         "iade" => "Returned",
         _ => $"Unknown:{value?.Trim() ?? "null"}"
     };
 
-    private static bool Shipped(string raw) => raw is "Shipped" or "Delivered" or "Undelivered" or "Returned";
+    private static bool Shipped(string raw) => raw is "Shipped" or "Delivered" or "Undelivered" or "UndeliveredAndReturned" or "Returned";
 
-    // The package status from the statuses of the lines still in the order; all cancelled is cancelled. Otherwise
-    // the package is where its least advanced line is, so a line still to be shipped is not hidden behind one
-    // already shipped. Each line keeps its own status and shipped quantity.
+    // The package status from the statuses of the lines still in the order; all cancelled is cancelled. A line whose
+    // status the panel does not know is not hidden behind a known one: the package is reviewed (İnceleme Gerekli), as
+    // on every other marketplace. Otherwise the package is where its least advanced line is, so a line still to be
+    // shipped is not hidden behind one already shipped. Each line keeps its own status and shipped quantity.
     internal static string PackageStatus(IReadOnlyCollection<string> lineStatuses)
     {
         var active = lineStatuses.Where(status => status != "Cancelled").ToList();
         if (active.Count == 0) return "Cancelled";
+        if (active.FirstOrDefault(status => TrendyolShipmentPackageStatusPolicy.FromRemote(status) == ShipmentPackageStatus.ManualReview) is { } unknown)
+            return unknown;
         return active.OrderBy(status => ShipmentPackageStatusPolicy.Rank(TrendyolShipmentPackageStatusPolicy.FromRemote(status))).First();
     }
 
@@ -157,6 +170,7 @@ public static class PttAvmOrderMapper
         "Delivered" => 5,
         "Cancelled" => 6,
         "Returned" => 7,
+        "UndeliveredAndReturned" => 8,
         _ => 0
     });
 

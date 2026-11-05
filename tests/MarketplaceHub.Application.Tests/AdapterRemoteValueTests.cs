@@ -88,7 +88,7 @@ public sealed class AdapterRemoteValueTests
     [Fact]
     public void AFinancePageWithANullCountCountsItsItems()
     {
-        using var json = JsonDocument.Parse("""{"count":null,"items":[{"id":"1","amount":{"value":10,"currencyCode":"949"}}]}""");
+        using var json = JsonDocument.Parse("""{"count":null,"items":[{"id":"1","amount":{"value":10,"currencyCode":"949"},"dueDate":"2026-11-10T00:00:00"}]}""");
 
         var page = HepsiburadaFinanceMapper.Page(json.RootElement);
 
@@ -133,7 +133,7 @@ public sealed class AdapterRemoteValueTests
     public void AnN11PackageWithOneUnreadableLineIsKeptWithTheLineCounted()
     {
         const string page = """
-            {"page":0,"totalPages":1,"content":[{"orderNumber":"203872347999","id":"112999455244999","lastModifiedDate":1724323386203,
+            {"page":0,"totalPages":1,"content":[{"orderNumber":"203872347999","id":"112999455244999","packageHistories":[{"createdDate":1724274054460,"status":"Created"}],"lastModifiedDate":1724323386203,
               "lines":[{"orderLineId":"L1","quantity":1,"productName":"Bluz","stockCode":"BLZ-1","price":100,"sellerInvoiceAmount":100},
                        {"orderLineId":"L2","quantity":1,"productName":"Etek","stockCode":"ETK-1","price":null}],
               "shipmentPackageStatus":"Created"}]}
@@ -146,8 +146,18 @@ public sealed class AdapterRemoteValueTests
         var package = Assert.Single(order.Packages);
         Assert.Equal(1, package.UnreadableLineCount);
         Assert.Equal("L1", Assert.Single(package.Allocations).ExternalLineId);
-        var issue = Assert.Single(result.Issues!);
-        Assert.Equal(("ORDER_PACKAGE_LINE_INVALID", "112999455244999:L2"), (issue.Code, issue.Identity));
+        // No n11 total in this read: the amount is the read line only and is said to be possibly incomplete.
+        Assert.Equal(100m, package.GrossAmount);
+        Assert.Equal(
+            new[] { ("ORDER_PACKAGE_LINE_INVALID", "112999455244999:L2"), ("ORDER_AMOUNT_MAY_BE_INCOMPLETE", "112999455244999") },
+            result.Issues!.Select(issue => (issue.Code, issue.Identity)).ToArray());
+
+        // With n11's own package totals the order takes them (totalAmount, totalDiscountAmount), not the read lines' sum.
+        var withTotals = N11OrderMapper.Packages(page.Replace("\"lastModifiedDate\":1724323386203,", "\"lastModifiedDate\":1724323386203,\"totalAmount\":250,\"totalDiscountAmount\":20,", StringComparison.Ordinal));
+        var totalled = Assert.Single(Assert.Single(withTotals.Items).Packages);
+        Assert.Equal((250m, 20m, 230m), (totalled.GrossAmount, totalled.DiscountAmount, totalled.NetAmount));
+        Assert.Equal((250m, 230m), (withTotals.Items[0].GrossAmount, withTotals.Items[0].NetAmount));
+        Assert.Equal("ORDER_PACKAGE_LINE_INVALID", Assert.Single(withTotals.Issues!).Code);
     }
 
     // O5: an n11 settlement amount that is there but unreadable is a page error, not 0 or a hundred times itself.

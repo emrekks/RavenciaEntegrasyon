@@ -76,7 +76,13 @@ Turkey time (`HepsiburadaJsonMapper.QueryTime`). Migration `20261019140000_Corre
 
 ## Statuses (own mapping in `OrderModels.cs`)
 OPEN/UNPACKED → New; PROCESSING → Processing; PACKAGED/INVOICED/READY_TO_SHIP → ReadyToShip; SHIPPED/INTRANSIT →
-Shipped; DELIVERED; UNDELIVERED → **OnHold**; CANCELLED* (BYMERCHANT/BYCUSTOMER/BYSAP) → Cancelled; RETURNED.
+Shipped; DELIVERED; UNDELIVERED → Undelivered (Teslim Edilemedi, as elsewhere; it was OnHold/Askıda before 5 Nov 2026,
+so a sale invoice was not stopped); CANCELLED* (BYMERCHANT/BYCUSTOMER/BYSAP) → Cancelled; RETURNED.
+An order without packages whose lifecycle status is unknown (or a new order read without one) is MANUAL_REVIEW, never
+NEW; a read of a known order carrying no status keeps its status; the lifecycle sweep re-reads unpackaged
+MANUAL_REVIEW orders. Code: `HepsiburadaOrderLifecycleStatusPolicy.UnknownUnpackagedStatus`.
+Defaults kept on purpose: a package of the open-packages list without a status is "Open" (the list returns only open
+packages), and a paid-list order without paymentStatus is "Received" (only Shopify uses the payment status).
 A line in `ClaimCreated` must not put the order on hold.
 Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Cancelled, AwaitingPreApproval.
 
@@ -85,6 +91,17 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
 - The live-proven invoice PUT body sends a MIME `contentType` and no serialNumber/rowNumber; the schema copy differs
   and was never confirmed.
 - No single-claim GET; action results are confirmed by the periodic status scan.
+- Accounting record (`transactions/merchantid`): `id`, `amount {value, currencyCode}` (949 = TRY), `isIncome`, and
+  the days `invoiceDate` / `orderDate` / `dueDate` / `paymentDate` (Istanbul time). Source:
+  `HepsiburadaFinance.cs` and the guide's Kayıt Bazlı Muhasebe Servisi. A record without `id`, a readable
+  `amount.value` or any of invoice/order/due day is not stored and opens a FINANCE_RECORD_INCOMPLETE issue; the rest
+  of the 60-day read goes on (before 5 Nov 2026 one such record failed the whole job).
+- Money objects carry `"currency": "TRY"` (e.g. `hepsiburada-api-son.md:8371`, `:12479`). Since 5 Nov 2026 an order
+  with another, unknown currency value is refused with an issue and read again; a read without any currency is lira.
+  The paid-order list (one item per line) no longer fails the page on one unreadable line: that order is read by
+  number instead (its detail's packages count the line), and an order without its own `orderDate` is refused, never
+  dated by a package event. With an unreadable line the order keeps Hepsiburada's stated amount instead of the lines'
+  sum (`HepsiburadaHttpClient.PollAsync`, `HepsiburadaJsonMapper.PaidOrderLine`, `MarketplaceJobProcessor`).
 - Webhooks: Basic auth only; answer within 5 s — more than 20 slow answers in an hour blacklists the feed. Changes
   made through the API are not echoed back as webhooks.
 

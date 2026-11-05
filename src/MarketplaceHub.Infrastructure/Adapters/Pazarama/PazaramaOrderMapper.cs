@@ -31,7 +31,7 @@ public static class PazaramaOrderMapper
             try { rows.Add(Order(order, orderNumber, lineIssues)); issues.AddRange(lineIssues); }
             catch (JsonException exception)
             {
-                issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"Pazarama siparişi {orderNumber} içeri alınmadı: {exception.Message}"));
+                issues.Add(RefusedOrders.Issue(orderNumber, $"Pazarama siparişi {orderNumber} içeri alınmadı: {exception.Message}", orderNumber));
             }
         }
         // The list names no page count: a page shorter than the requested size is the last one.
@@ -127,15 +127,34 @@ public static class PazaramaOrderMapper
         if (hasLiveItem) (gross, discount, net, dueAt) = (liveGross, liveDiscount, liveNet, liveDueAt);
         if (!hasItemTotals) net = gross - discount;
         net = Math.Clamp(net, 0, gross);
-        // D13: an order without any date is not imported as 1970; the page records it and a later read takes it again.
-        var ordered = OrderDate(order) ?? lastItemChange ?? throw new JsonException("siparişin tarihi yok (orderDate ve kalem geçmişi okunamadı).");
+        // An order with an item the panel could not read takes its amount from Pazarama's own order total (orderAmount,
+        // "Siparişin tutarı", with the order's discountAmount; pazarama-api-son.md:2316,2401-2403): its read items are not
+        // all of it. Without the total the item sum stays, and the order is said to be possibly incomplete.
+        if (unreadable > 0)
+        {
+            if (Money(order, "orderAmount") is { } orderAmount and >= 0)
+            {
+                var orderDiscount = Math.Max(Money(order, "discountAmount") ?? 0m, 0m);
+                (gross, net) = (orderAmount + orderDiscount, orderAmount);
+            }
+            else issues.Add(new(UnreadableOrderLines.AmountIssueCode, $"order:{orderNumber}", $"Pazarama siparişi {orderNumber}: okunamayan kalem var ve Pazarama sipariş toplamı (orderAmount) gelmedi; sipariş tutarı yalnız okunan kalemlerin toplamı, eksik olabilir."));
+        }
+        // No silent fallbacks (5 Nov 2026): an order without its own orderDate is not dated by an item's last change; the
+        // page records it and the order is read again (RefusedOrders).
+        var ordered = OrderDate(order) ?? throw new JsonException("siparişin kendi tarihi (orderDate) yok; kalem değişiklik tarihi sipariş tarihi sayılmaz, sipariş yeniden okunacak.");
         var modified = lastItemChange ?? ordered;
+        // Pazarama writes its money in "TL" (pazarama-api-son.md:2405): read as TRY. A currency the panel does not know
+        // skips the order with an issue instead of being stored as lira; a Pazarama order without the field is lira, the
+        // only currency Pazarama sells in.
+        var rawCurrency = Text(order, "currency");
+        var currency = rawCurrency is null ? "TRY" : RefusedOrders.Currency(rawCurrency)
+            ?? throw new JsonException($"para birimi tanınmadı ({rawCurrency}); sipariş yeniden okunacak.");
         var packageStatus = PackageStatus(itemStatuses);
         // Contracted cargo: the shipment code (PZ...) is what the label and the cargo process use.
         var package = new RemotePackage($"order:{orderNumber}", null, packageStatus, modified, carrierName, shipmentCode ?? trackingNumber, allocations, gross, gross - net, net, UnreadableLineCount: unreadable);
         var shipmentAddress = AddressSnapshot(order, "shipmentAddress");
         var billingAddress = AddressSnapshot(order, "billingAddress");
-        return new(orderNumber, orderNumber, ordered, modified, "TRY", gross, gross - net, net,
+        return new(orderNumber, orderNumber, ordered, modified, currency, gross, gross - net, net,
             CustomerSnapshot(order, billingAddress), shipmentAddress, billingAddress,
             lines, [package], order.GetRawText(), dueAt);
     }
@@ -162,12 +181,17 @@ public static class PazaramaOrderMapper
     {
         var active = itemStatuses.Where(status => status != "Cancelled").ToList();
         if (active.Count == 0) return "Cancelled";
-        // An item Pazarama is cancelling holds the whole package; otherwise the package is where its least
-        // advanced item is, so an item still to be prepared is not hidden behind one already shipped. Each
-        // line keeps its own status and shipped quantity.
+        // An item whose status the panel does not know is not hidden behind a known one: the package is reviewed
+        // (İnceleme Gerekli), as on every other marketplace. Then an item Pazarama is cancelling holds the whole
+        // package; otherwise the package is where its least advanced known item is, so an item still to be prepared
+        // is not hidden behind one already shipped. Each line keeps its own status and shipped quantity.
+        if (active.FirstOrDefault(IsUnknown) is { } unknown) return unknown;
         if (active.Contains("CancelRequested")) return "CancelRequested";
         return active.OrderBy(status => ShipmentPackageStatusPolicy.Rank(TrendyolShipmentPackageStatusPolicy.FromRemote(status))).First();
     }
+
+    private static bool IsUnknown(string status) =>
+        TrendyolShipmentPackageStatusPolicy.FromRemote(status) == ShipmentPackageStatus.ManualReview;
 
     private static string ItemSnapshot(JsonElement item, JsonElement product)
     {

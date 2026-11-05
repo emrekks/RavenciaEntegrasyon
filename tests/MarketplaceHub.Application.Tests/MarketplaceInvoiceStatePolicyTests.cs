@@ -185,7 +185,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperCarriesPackageInvoiceFieldsAlongsideShipmentState()
     {
         const string json = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"Invoiced","invoiceNumber":"INV-1","invoiceLink":"https://example.test/invoice.pdf","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"Invoiced","invoiceNumber":"INV-1","invoiceLink":"https://example.test/invoice.pdf","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
             """;
 
         var result = TrendyolJsonMapper.Orders(json);
@@ -203,7 +203,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperTreatsExplicitEmptyInvoiceFieldsAsAuthoritativeRemoval()
     {
         const string json = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"Invoiced","invoiceNumber":null,"invoiceLink":null,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"Invoiced","invoiceNumber":null,"invoiceLink":null,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
             """;
 
         var result = TrendyolJsonMapper.Orders(json);
@@ -222,7 +222,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperCapturesTrendyolInvoiceRemovalWithoutAStaleDocumentLink()
     {
         const string json = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceStatus":"NotInvoiced","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000100000,"invoiceStatus":"NotInvoiced","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
             """;
 
         var invoice = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(json).Items).Packages).Invoice;
@@ -237,7 +237,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperAcceptsDocumentedV2ShipmentPackageAndLinePriceFields()
     {
         const string json = """
-            {"content":[{"shipmentPackageId":3330111111,"orderNumber":"10654411111","status":"Delivered","lastModifiedDate":1760000000000,"packageGrossAmount":498.90,"packageTotalDiscount":0,"packageTotalPrice":498.90,"lines":[{"lineId":4765111111,"stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":498.90,"vatRate":20,"barcode":"8683772071724"}]}]}
+            {"content":[{"shipmentPackageId":3330111111,"orderNumber":"10654411111","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,"packageGrossAmount":498.90,"packageTotalDiscount":0,"packageTotalPrice":498.90,"lines":[{"lineId":4765111111,"stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":498.90,"vatRate":20,"barcode":"8683772071724"}]}]}
             """;
 
         var page = TrendyolJsonMapper.Orders(json);
@@ -255,7 +255,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperReadsNestedCarrierAndNumericTrackingFieldsForShipmentPackages()
     {
         const string json = """
-            {"content":[{"shipmentPackageId":3330111111,"orderNumber":"10654411111","status":"Delivered","lastModifiedDate":1760000000000,"cargoProvider":{"name":"HepsiJet","shortName":"HEPSIJET"},"cargoTrackingNumber":62755229958101,"lines":[{"lineId":4765111111,"stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":498.90,"vatRate":20,"barcode":"8683772071724"}]}]}
+            {"content":[{"shipmentPackageId":3330111111,"orderNumber":"10654411111","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,"cargoProvider":{"name":"HepsiJet","shortName":"HEPSIJET"},"cargoTrackingNumber":62755229958101,"lines":[{"lineId":4765111111,"stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":498.90,"vatRate":20,"barcode":"8683772071724"}]}]}
             """;
 
         var package = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(json).Items).Packages);
@@ -275,7 +275,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperKeepsPackageWhenProductLineIsInvalid()
     {
         const string json = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1}]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1}]}]}
             """;
 
         var result = TrendyolJsonMapper.Orders(json);
@@ -297,8 +297,8 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     {
         const string json = """
             {"content":[
-              {"id":"bad-pkg","orderNumber":"ord-1","status":"Created","lines":[{"lineId":"bad-line","stockCode":"SKU-BAD","productName":"Bad","quantity":1}]},
-              {"id":"good-pkg","orderNumber":"ord-2","status":"Created","lines":[{"lineId":"good-line","stockCode":"SKU-GOOD","productName":"Good","quantity":1,"lineItemPrice":10,"vatRate":20}]}
+              {"id":"bad-pkg","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lines":[{"lineId":"bad-line","stockCode":"SKU-BAD","productName":"Bad","quantity":1}]},
+              {"id":"good-pkg","orderNumber":"ord-2","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lines":[{"lineId":"good-line","stockCode":"SKU-GOOD","productName":"Good","quantity":1,"lineItemPrice":10,"vatRate":20}]}
             ]}
             """;
 
@@ -315,7 +315,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperKeepsValidLinesAndPackageWhenAnotherLineIsInvalid()
     {
         const string json = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Shipped","packageTotalPrice":20,"lines":[
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Shipped","packageTotalPrice":20,"lines":[
               {"lineId":"bad-line","stockCode":"SKU-BAD","productName":"Bad","quantity":1},
               {"lineId":"good-line","stockCode":"SKU-GOOD","productName":"Good","quantity":1,"lineItemPrice":20,"vatRate":20}
             ]}]}
@@ -335,7 +335,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void MapperReportsPackageWithMissingIdentityInsteadOfDroppingSilently()
     {
         const string json = """
-            {"content":[{"orderNumber":"ord-1","status":"Created"}]}
+            {"content":[{"orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created"}]}
             """;
 
         var result = TrendyolJsonMapper.Orders(json);
@@ -351,8 +351,8 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     {
         const string json = """
             {"content":[
-              {"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"NotInvoiced","packageTotalPrice":10,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"First","quantity":1,"lineItemPrice":10,"vatRate":20}]},
-              {"id":"pkg-2","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceStatus":"Invoiced","invoiceNumber":"INV-2","invoiceLink":"https://example.test/invoice-2.pdf","packageTotalPrice":20,"lines":[{"lineId":"line-2","stockCode":"SKU-2","productName":"Second","quantity":1,"lineItemPrice":20,"vatRate":20}]}
+              {"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,"invoiceStatus":"NotInvoiced","packageTotalPrice":10,"lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"First","quantity":1,"lineItemPrice":10,"vatRate":20}]},
+              {"id":"pkg-2","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000100000,"invoiceStatus":"Invoiced","invoiceNumber":"INV-2","invoiceLink":"https://example.test/invoice-2.pdf","packageTotalPrice":20,"lines":[{"lineId":"line-2","stockCode":"SKU-2","productName":"Second","quantity":1,"lineItemPrice":20,"vatRate":20}]}
             ]}
             """;
 
@@ -370,7 +370,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void PackageRead_ProvidesAllOrderLinesForHistoricalOrderFallback()
     {
         const string json = """
-            {"content":[{"id":"3968176322","orderNumber":"11376153333","status":"Delivered","lastModifiedDate":1783441320000,"packageTotalPrice":1355.20,"packageTotalDiscount":83.70,"lines":[
+            {"content":[{"id":"3968176322","orderNumber":"11376153333","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1783441320000,"packageTotalPrice":1355.20,"packageTotalDiscount":83.70,"lines":[
               {"lineId":"line-1","stockCode":"RYP00204","productName":"First item","quantity":1,"lineItemPrice":539.90,"vatRate":10},
               {"lineId":"line-2","stockCode":"MZ043DDC05","productName":"Second item","quantity":1,"lineItemPrice":899.00,"vatRate":10}
             ]}]}
@@ -389,7 +389,7 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void TrendyolNumbersSentAsTextDoNotDropThePage()
     {
         const string json = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":"1760000000000","invoiceDateTime":"x","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":"2","lineItemPrice":"10.5","vatRate":"20"}]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":"1760000000000","invoiceDateTime":"x","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":"2","lineItemPrice":"10.5","vatRate":"20"}]}]}
             """;
 
         var page = TrendyolJsonMapper.Orders(json);
@@ -402,10 +402,10 @@ public sealed class MarketplaceInvoiceStatePolicyTests
     public void InvoiceIssueDate_DoesNotBlockLaterMarketplaceStatusTransition()
     {
         const string receivedJson = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000000000,"invoiceDateTime":1759000000000,"invoiceStatus":"Received","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,"invoiceDateTime":1759000000000,"invoiceStatus":"Received","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
             """;
         const string invoicedJson = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Delivered","lastModifiedDate":1760000100000,"invoiceDateTime":1759000000000,"invoiceStatus":"Invoiced","invoiceLink":"https://example.test/invoice.pdf","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000100000,"invoiceDateTime":1759000000000,"invoiceStatus":"Invoiced","invoiceLink":"https://example.test/invoice.pdf","lines":[{"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineItemPrice":10,"vatRate":20}]}]}
             """;
 
         var received = Assert.Single(Assert.Single(TrendyolJsonMapper.Orders(receivedJson).Items).Packages).Invoice!;

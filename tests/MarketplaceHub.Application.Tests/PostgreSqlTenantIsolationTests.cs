@@ -8411,10 +8411,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         {
             var content = request.RequestUri!.AbsolutePath.EndsWith("/v2/orders", StringComparison.Ordinal)
                 ? """
-                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"lines":[]}],"page":0,"totalPages":1}
+                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","lines":[]}],"page":0,"totalPages":1}
                   """
                 : """
-                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"cargoTrackingNumber":62755229958101,"cargoProviderName":"hepsiJET","invoiceStatus":"Invoiced","invoiceNumber":"INV-42","invoiceUrl":"https://example.invalid/invoice/42","lines":[]}],"nextCursor":null,"hasMore":false}
+                  {"content":[{"shipmentPackageId":4052072376,"orderNumber":"11476852228","status":"Delivered","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","cargoTrackingNumber":62755229958101,"cargoProviderName":"hepsiJET","invoiceStatus":"Invoiced","invoiceNumber":"INV-42","invoiceUrl":"https://example.invalid/invoice/42","lines":[]}],"nextCursor":null,"hasMore":false}
                   """;
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -8508,7 +8508,7 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             storeFrontCodes.Add(storeFrontCode);
             var content = storeFrontCode == "AE"
                 ? """
-                  {"content":[{"shipmentPackageId":419428742,"orderNumber":"116483573775","status":"Shipped","lastModifiedDate":1790899200000,"lines":[]}],"page":0,"totalPages":1}
+                  {"content":[{"shipmentPackageId":419428742,"orderNumber":"116483573775","status":"Shipped","lastModifiedDate":1790899200000,"orderDate":1790899200000,"currencyCode":"TRY","lines":[]}],"page":0,"totalPages":1}
                   """
                 : """
                   {"content":[],"page":0,"totalPages":0}
@@ -8777,6 +8777,91 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 await cleanupDb.StockLedgerEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
                 await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
                 await cleanupDb.ReferenceSnapshots.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteCatalogOptionRepairTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // Report item 19: the Trendyol import neither looks a panel brand up by name nor opens or maps one. The brand comes
+    // from the user's own mapping read in reverse; a listing brand nobody mapped leaves the product without a brand and
+    // is listed for the user. The panel product's and variant's own status (archived here by the user) stays.
+    [PostgreSqlFact]
+    public async Task TrendyolImport_TakesTheBrandFromTheUsersMappingOnly_AndKeepsThePanelStatus()
+    {
+        var tenant = NewTenant("trendyol-import-brand");
+        var connection = NewQuestionConnection(tenant);
+        var productId = Guid.CreateVersion7();
+        var variantId = Guid.CreateVersion7();
+        var mappedBrandId = Guid.CreateVersion7();
+        var sameNameBrandId = Guid.CreateVersion7();
+        var brandSnapshotId = Guid.CreateVersion7();
+        RemoteCatalogProduct Listing(string id, string brandId, string brandName, string sku) => new(
+            id, $"{sku}-M", $"Liste {sku}", "", brandId, brandName, null, null, [],
+            [new RemoteCatalogVariant($"ty-{sku}", sku, sku, $"{sku}-M", new Dictionary<string, string>(), Archived: false, SalePrice: 100m, ListPrice: 120m, VatRate: 10m, StockQuantity: 2m, Currency: "TRY", RawJson: "{}")],
+            "{}");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.ReferenceSnapshots.AddRange(
+                new ReferenceSnapshot { Id = brandSnapshotId, TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "BRANDS", SourceVersion = "test", ContentHash = "test", FetchedAt = fixture.Now, IsCurrent = true },
+                new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "CATEGORIES", SourceVersion = "test", ContentHash = "test", FetchedAt = fixture.Now, IsCurrent = true });
+            seedDb.Brands.AddRange(
+                new Brand { Id = mappedBrandId, TenantId = tenant.Id, Name = "Panel Markası", NormalizedName = "PANEL MARKASI", IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 },
+                // A panel brand spelled like the unmapped listing brand: the import must not pick it by name.
+                new Brand { Id = sameNameBrandId, TenantId = tenant.Id, Name = "Eşlenmemiş Marka", NormalizedName = "EŞLENMEMIŞ MARKA", IsActive = true, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 });
+            seedDb.BrandMappings.Add(new BrandMapping { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, SnapshotId = brandSnapshotId, LocalId = mappedBrandId, ScopeExternalId = "", ExternalId = "100", Status = "VERIFIED", VerifiedAt = fixture.Now, Version = 1 });
+            seedDb.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Panel ürünü", Description = "", Status = ProductStatus.Archived, ArchivedAt = fixture.Now.AddDays(-1), CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 4 });
+            seedDb.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenant.Id, ProductId = productId, SortOrder = 0, Sku = "BRD-1", SkuNormalized = "BRD-1", Barcode = "BRD-1", BarcodeNormalized = "BRD-1", ModelCode = "BRD-1-M", OptionSignature = "-", Status = ProductStatus.Archived, CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-1), Version = 2 });
+            seedDb.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = productId, ExternalId = "listing-mapped", LastImportedProductVersion = 4, SyncStatus = "SYNCED", Version = 1 });
+            seedDb.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variantId, ExternalId = "ty-BRD-1", Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        try
+        {
+            foreach (var listing in new[] { Listing("listing-mapped", "100", "Uzak Ad", "BRD-1"), Listing("listing-unmapped", "200", "Eşlenmemiş Marka", "BRD-2") })
+            {
+                await using var processorDb = fixture.CreateContext();
+                var processor = new MarketplaceJobProcessor(
+                    processorDb, null!, null!, new ReadOnlyCatalogProductTestPort(listing), null!, null!, null!, null!, null!, null!, null!,
+                    new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, "{\"full\":true,\"includeArchived\":true,\"updateExistingProducts\":true}", "trendyol-import-brand", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+
+            await using var verificationDb = fixture.CreateContext();
+            var existing = await verificationDb.Products.AsNoTracking().SingleAsync(row => row.Id == productId);
+            Assert.Equal(mappedBrandId, existing.BrandId);
+            Assert.Equal(ProductStatus.Archived, existing.Status);
+            Assert.NotNull(existing.ArchivedAt);
+            Assert.Equal(ProductStatus.Archived, (await verificationDb.ProductVariants.AsNoTracking().SingleAsync(row => row.Id == variantId)).Status);
+
+            var opened = await verificationDb.Products.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id && row.Id != productId);
+            Assert.Null(opened.BrandId);
+            // No brand opened, no mapping written or changed.
+            Assert.Equal(2, await verificationDb.Brands.CountAsync(row => row.TenantId == tenant.Id));
+            var mapping = await verificationDb.BrandMappings.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+            Assert.Equal(("100", mappedBrandId, 1L), (mapping.ExternalId, mapping.LocalId, mapping.Version));
+
+            var unmapped = await new ReferenceDataService(verificationDb, fixture.TimeProvider).UnmappedBrandsAsync(tenant.Id, connection.Id, CancellationToken.None);
+            Assert.True(unmapped.Succeeded);
+            var listed = Assert.Single(unmapped.Value!);
+            Assert.Equal(("200", "Eşlenmemiş Marka"), (listed.ExternalId, listed.Name));
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.ChannelPriceHistory.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.StockLedgerEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ProductChangeEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.BrandMappings.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ReferenceSnapshots.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.Products.Where(row => row.TenantId == tenant.Id).ExecuteUpdateAsync(set => set.SetProperty(row => row.BrandId, (Guid?)null));
+                await cleanupDb.Brands.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             }
             await DeleteCatalogOptionRepairTestTenantAsync(tenant.Id);
         }

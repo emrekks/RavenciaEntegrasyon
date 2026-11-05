@@ -28,6 +28,13 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
 - Status changes of older orders: open orders re-read by number every 3 min until closed or 45 days old.
 - Page sizes: refunds 100, approved products 100 (cursor), brands 500, price/stock batch result 1000.
 
+- Finance `order/paymentAgreement` line: `trxCode`, `trxId`, `orderId`, `amount`, `commissionAmount` (negative on a
+  sale), `allowanceAmount` (hakediş: what the payout pays), `couponDiscount`, `integrationAmount`, `merchantCargoDebt`,
+  `stoppageAmount`, `status`, `transactionDate`, `transferredDate` (null until paid). Source: official docs
+  `pazarama-api-son.md:3666-3716` (Muhasebe ve Finans Servisi). A line without a code, `amount`, `allowanceAmount` or
+  `transactionDate` is not stored and opens a FINANCE_RECORD_INCOMPLETE issue; coupon/integration/cargo/stoppage left
+  out are 0; a missing commission is stored null and the report keeps the order's commission estimate (5 Nov 2026).
+
 ## Time
 Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 
@@ -58,6 +65,8 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 ## Statuses
 - Item codes: 3 Created; 12 Picking; 18 CancelRequested (OnHold); 6/13 Cancelled; 5/16/19 Shipped; 11/7/9 Delivered;
   14 Undelivered; 8/10 Returned.
+- Package status: an active item of unknown code makes the package ManualReview (İnceleme Gerekli), before an item
+  being cancelled (18) holds it; otherwise the least advanced known item decides. Code: `PazaramaOrderMapper.PackageStatus`.
 - Refund codes: 1 WaitingInAction; 2/4/6/8 Accepted; 3/5 Rejected; 7 Cancelled.
 
 ## Quirks
@@ -66,6 +75,12 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 - A discount of 70% or more goes to approval. Price/stock results can take up to 4 h; product batch results are
   queryable for 4 h.
 - Orders without a package get a virtual package `order:{orderNumber}`.
+- Order level: `orderDate` ("2026-02-17 17:23"), `orderAmount` (a number: "Siparişin tutarı"; the field table calls it
+  datetime, the sample sends 7), `discountAmount`, `shipmentAmount`, `currency: "TL"`; item money objects carry
+  `currency: "TL"` too (`pazarama-api-son.md:2310-2420`). The panel reads "TL" as TRY; another value refuses the order
+  with an issue and a re-read; a read without the field is lira. An order with an unreadable item takes `orderAmount`
+  as its amount; an order without `orderDate` is refused and read again, never dated by an item's history (5 Nov 2026,
+  `PazaramaOrderMapper.cs`).
 
 ## Job types
 PAZARAMA_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min), _ORDER_STATUS_SYNC,

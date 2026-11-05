@@ -44,23 +44,38 @@ public static class PazaramaFinanceMapper
 
     private static string Iso(DateTimeOffset value) => value.ToOffset(PazaramaHttpClient.TurkeyOffset).ToString("yyyy-MM-ddTHH:mm:ss.fff", CultureInfo.InvariantCulture);
 
-    // Only the lines of the asked order are kept: the service answers by date range.
+    // Only the lines of the asked order are kept: the service answers by date range. A line without a code (trxCode,
+    // else trxId), its amount, its allowance (hakediş, what the payout pays) or its transaction date is not stored: it
+    // is listed in Skipped. The other amounts (coupon, integration, cargo debt, withholding) are 0 when left out: they
+    // were not applied. The commission is null when left out (unknown, never a made-up 0).
     public static RemoteOrderFinance Finance(JsonElement root, long orderNumber)
     {
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("data", out var data) || data.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null))
             throw new JsonException("Pazarama finance response has no data object.");
         var transactions = new List<RemoteFinanceTransaction>();
         var invoices = new List<RemoteCommissionInvoice>();
+        var skipped = new List<RemoteSkippedFinanceRecord>();
         if (data.ValueKind == JsonValueKind.Object)
         {
             if (data.TryGetProperty("transactionList", out var list))
             {
                 if (list.ValueKind != JsonValueKind.Array) throw new JsonException("Pazarama transactionList is not a list.");
                 foreach (var row in list.EnumerateArray())
-                    if (row.ValueKind == JsonValueKind.Object && Number(row, "orderId") is { } id && (long)id == orderNumber)
-                        transactions.Add(new(Text(row, "trxCode") ?? Text(row, "trxId") ?? "", Text(row, "status") ?? "", Number(row, "amount") ?? 0, Number(row, "commissionAmount") ?? 0,
-                            Number(row, "allowanceAmount") ?? 0, Number(row, "couponDiscount") ?? 0, Number(row, "integrationAmount") ?? 0, Number(row, "merchantCargoDebt") ?? 0,
-                            Number(row, "stoppageAmount") ?? 0, (int)(Number(row, "installmentNumber") ?? 0), Instant(Text(row, "transactionDate")), Instant(Text(row, "transferredDate"))));
+                {
+                    if (row.ValueKind != JsonValueKind.Object || Number(row, "orderId") is not { } id || (long)id != orderNumber) continue;
+                    var code = Text(row, "trxCode") ?? Text(row, "trxId");
+                    var amount = Number(row, "amount");
+                    var allowance = Number(row, "allowanceAmount");
+                    var date = Instant(Text(row, "transactionDate"));
+                    if (code is null || amount is null || allowance is null || date is null)
+                    {
+                        skipped.Add(SkippedFinanceRecords.Skip(code, row.GetRawText(), orderNumber.ToString(CultureInfo.InvariantCulture), Text(row, "status"), code is null, amount is null || allowance is null, date is null));
+                        continue;
+                    }
+                    transactions.Add(new(code, Text(row, "status") ?? "", amount.Value, Number(row, "commissionAmount"),
+                        allowance.Value, Number(row, "couponDiscount") ?? 0, Number(row, "integrationAmount") ?? 0, Number(row, "merchantCargoDebt") ?? 0,
+                        Number(row, "stoppageAmount") ?? 0, (int)(Number(row, "installmentNumber") ?? 0), date.Value, Instant(Text(row, "transferredDate"))));
+                }
             }
             if (data.TryGetProperty("commissionInvoiceDetails", out var details))
             {
@@ -70,7 +85,7 @@ public static class PazaramaFinanceMapper
                         invoices.Add(new(orderNumber.ToString(CultureInfo.InvariantCulture), Text(row, "commissionInvoiceNumber"), Instant(Text(row, "commissionInvoiceDate")), Number(row, "totalAmountKDV") ?? 0, Text(row, "operationStatus")));
             }
         }
-        return new(transactions.OrderBy(x => x.TransactionDate).ToList(), invoices);
+        return new(transactions.OrderBy(x => x.TransactionDate).ToList(), invoices, skipped);
     }
 
     // "2026-04-05T00:00:00": Turkey time without an offset, stored as UTC.

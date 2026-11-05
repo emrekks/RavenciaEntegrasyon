@@ -205,7 +205,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 shippedAtByOrder.TryGetValue(order.Id, out var shippedAt) ? shippedAt : null,
                 order.LabelPrintedAt,
                 RowMarks(connection?.PlatformCode, order.StoreFrontCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson),
-                UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? []));
+                UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? []),
+                AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packagesByOrder.GetValueOrDefault(order.Id) ?? [])));
         }).ToList();
         var hasMore = orders.Count > limit;
         var pageRows = rows.Take(limit).ToList();
@@ -448,25 +449,25 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
                         || unpackagedNew.Any(newOrder => newOrder.Id == order.Id),
+                    // A Hepsiburada undelivered package is Teslim Edilemedi like every other marketplace's (it was
+                    // listed under Askıda instead of Kargoda before 5 Nov 2026).
                     "ON_HOLD" => order => currentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
-                            && (packageStatuses.Contains(package.Status)
-                                || package.Status == ShipmentPackageStatus.Undelivered
-                                    && db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
-                                        && connection.Id == package.ConnectionId
-                                        && connection.PlatformCode == "HEPSIBURADA")))
+                            && packageStatuses.Contains(package.Status))
                         || unpackagedOnHold.Any(holdOrder => holdOrder.Id == order.Id),
                     "DELIVERED" => order => currentPackages.Any(package => package.TenantId == order.TenantId
                             && package.OrderId == order.Id
                             && packageStatuses.Contains(package.Status))
                         || unpackagedDelivered.Any(deliveredOrder => deliveredOrder.Id == order.Id),
-                    "SHIPPED" => order => currentPackages.Any(package => package.TenantId == order.TenantId
-                        && package.OrderId == order.Id
-                        && packageStatuses.Contains(package.Status)
-                        && (package.Status != ShipmentPackageStatus.Undelivered
-                            || !db.PlatformConnections.Any(connection => connection.TenantId == package.TenantId
-                                && connection.Id == package.ConnectionId
-                                && connection.PlatformCode == "HEPSIBURADA"))),
+                    // An order without a live package that is reviewed because its marketplace status is unknown
+                    // (a Hepsiburada lifecycle status the panel cannot read) is listed here too.
+                    "MANUAL_REVIEW" => order => currentPackages.Any(package => package.TenantId == order.TenantId
+                            && package.OrderId == order.Id
+                            && packageStatuses.Contains(package.Status))
+                        || order.DerivedStatus == "MANUAL_REVIEW"
+                            && !currentPackages.Any(package => package.TenantId == order.TenantId
+                                && package.OrderId == order.Id
+                                && package.Status != ShipmentPackageStatus.Cancelled),
                     _ => order => currentPackages.Any(package => package.TenantId == order.TenantId
                         && package.OrderId == order.Id
                         && packageStatuses.Contains(package.Status))
@@ -972,8 +973,14 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             customer.Name, customer.Email, customer.TaxOrIdentityNumber, customer.OrderType, customer.IsMicroExport,
             order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentDueAt ?? OperationalDueAt(order.CustomerSnapshotJson), PackageInvoiceLabel(displayPackage, invoice, order.CustomerSnapshotJson, packages.Select(x => x.RawStatus), connection?.PlatformCode, deliveryConfirmed),
             customer.Phone, customer.IsEInvoiceAvailable, invoiceDocumentUrl, ListAddress(order.ShipmentAddressSnapshotJson),
-            UnreadableLineCount(packages)));
+            UnreadableLineCount(packages), AmountMayBeIncomplete(connection?.PlatformCode, UnreadableLineCount(packages))));
     }
+
+    // An order with an unread product line whose amount is the read lines' sum: PTT AVM sends no order total
+    // (pttavm-api-son.md:1597-1632). Elsewhere the amount is the marketplace's own total (UnreadableOrderLines.AmountIssueCode
+    // names an n11 or Pazarama read that came without it).
+    internal static bool AmountMayBeIncomplete(string? platformCode, int unreadableLines) =>
+        unreadableLines > 0 && string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase);
 
     // Product lines of the order's live packages the panel could not read (UnreadableOrderLines); a cancelled package's
     // lines no longer matter. Shopify's hidden remainder package counts too: it holds the unfulfilled lines.
@@ -2145,6 +2152,24 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 .Where(delivery => delivery.TenantId == tenantId && invoiceIds.Contains(delivery.InvoiceId))
                 .Select(delivery => new { delivery.InvoiceId, delivery.PackageId, delivery.Status })
                 .ToListAsync(cancellationToken);
+        // "Kısmen Onaylandı" at order level: every claim of the listed orders (also those outside this page), with
+        // their lines' own statuses (OrderReturnPartialApprovalPolicy).
+        var siblingClaims = orderIds.Length == 0 ? [] : await db.ReturnClaims.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && orderIds.Contains(x.OrderId))
+            .Select(x => new { x.Id, x.OrderId, x.Status })
+            .ToListAsync(cancellationToken);
+        var siblingClaimIds = siblingClaims.Select(x => x.Id).ToArray();
+        var siblingLineStatuses = siblingClaimIds.Length == 0 ? [] : (await db.ReturnLines.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && siblingClaimIds.Contains(x.ClaimId))
+                .Select(x => new { x.ClaimId, x.RawStatus })
+                .ToListAsync(cancellationToken))
+            .GroupBy(x => x.ClaimId)
+            .ToDictionary(x => x.Key, x => (IReadOnlyCollection<string?>)x.Select(line => line.RawStatus).ToList());
+        var partiallyApprovedOrders = siblingClaims
+            .GroupBy(x => x.OrderId)
+            .Where(group => OrderReturnPartialApprovalPolicy.IsPartiallyApproved(group.Select(x => (x.Status, siblingLineStatuses.GetValueOrDefault(x.Id) ?? []))))
+            .Select(group => group.Key)
+            .ToHashSet();
         var rows = claims.Select(claim =>
         {
             var order = orders.GetValueOrDefault(claim.OrderId);
@@ -2184,7 +2209,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 claimLines.Where(x => !string.IsNullOrWhiteSpace(x.RawStatus)).GroupBy(x => x.OrderLineId).ToDictionary(x => x.Key, x => Wire(MarketplaceReturnStatus.Canonicalize(x.First().RawStatus))),
                 IsEstimatedReturnDueAt(platformCode, claim),
                 ReturnClaimAmounts(claimLines.Count, lineViews),
-                CustomerRequest: claim.CustomerRequest);
+                CustomerRequest: claim.CustomerRequest,
+                OrderReturnStatus: partiallyApprovedOrders.Contains(claim.OrderId) ? ReturnClaimPartialApprovalPolicy.PartiallyApproved : null);
         }).ToList();
         return rows;
     }
@@ -2315,8 +2341,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             ReturnClaimStatus.Requested or ReturnClaimStatus.InTransit => ["RECEIVE"],
             ReturnClaimStatus.AwaitingShipment when isHepsiburada => Array.Empty<string>(),
             ReturnClaimStatus.ActionRequired when isHepsiburada => HepsiburadaReturnActionPolicy.AllowedActions(claim.RawStatus, decisionPending),
-            // n11 approvals go through the API; denials need n11's own panel.
-            ReturnClaimStatus.ActionRequired when !decisionPending && string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase) => ["APPROVE"],
+            // n11 approvals and denials both go through the API (ClaimReturnApprove / ClaimReturnDeny); a denial always
+            // carries the shipment back to the buyer or reason 41 (N11ReturnDenyRule) and is never sent on its own.
             ReturnClaimStatus.ActionRequired when !decisionPending => ReturnActions,
             ReturnClaimStatus.ActionRequired => Array.Empty<string>(),
             _ => await CapabilityValues(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, "allowedActions", cancellationToken)
@@ -2404,7 +2430,23 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var customer = Customer(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
         return ServiceResult<ReturnDetailView>.Ok(new(claim.Id, claim.ExternalClaimId, order.OrderNumber, ReturnStatusWire(claim.Status, sourceLines.Select(line => line.RawStatus).ToList()), claim.RawStatus, claim.ReasonCode, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), actions, claim.Version,
             customer.Name, order.OrderedAt, order.NetAmount, order.Currency, claim.CargoProviderName, claim.CargoTrackingNumber, lines, stockDispositionAvailable, approvedAt, externalWritesEnabled, decisionPending, platformCode, claim.CargoTrackingLink, IsEstimatedReturnDueAt(platformCode, claim),
-            ReturnMarketplaceAmounts.Total(lines.Select(line => line.ReturnAmounts).ToList()), claim.CustomerRequest));
+            ReturnMarketplaceAmounts.Total(lines.Select(line => line.ReturnAmounts).ToList()), claim.CustomerRequest,
+            ReturnDecisionScope.IsWholeClaim(platformCode), IsN11(platformCode)));
+    }
+
+    private static bool IsN11(string? platformCode) => string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase);
+
+    // The carriers an n11 denial can name for the shipment back to the buyer; other marketplaces list none.
+    public async Task<ServiceResult<IReadOnlyList<ReturnShipmentCompany>>> ReturnShipmentCompaniesAsync(Guid tenantId, Guid id, string correlationId, CancellationToken cancellationToken)
+    {
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id
+            && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == x.ConnectionId && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED")), cancellationToken);
+        if (claim is null) return NotFound<IReadOnlyList<ReturnShipmentCompany>>();
+        var context = new AdapterContext(tenantId, claim.ConnectionId, correlationId, $"return-shipment-companies:{claim.ConnectionId:N}", timeProvider.GetUtcNow().AddSeconds(30));
+        var result = await returns.ReturnShipmentCompaniesAsync(context, cancellationToken);
+        return result.IsSuccess
+            ? ServiceResult<IReadOnlyList<ReturnShipmentCompany>>.Ok(result.Value!)
+            : ServiceResult<IReadOnlyList<ReturnShipmentCompany>>.Fail(result.Error!.Code, result.Error.SafeMessage, result.Error.HttpStatus ?? 502);
     }
 
     // A claim's amounts over all its return lines: a line whose order line is missing counts as one without amounts.
@@ -2503,7 +2545,12 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var preApprovalConfirm = action == "PREAPPROVAL_CONFIRM";
         var awaitingPreApproval = isHepsiburada && HepsiburadaReturnActionPolicy.IsAwaitingPreApproval(claim.RawStatus);
         if (action is not ("APPROVE" or "REJECT") && !preApprovalConfirm) return Invalid<ReturnDetailView>("action", "İade aksiyonu APPROVE, PREAPPROVAL_CONFIRM veya REJECT olmalıdır.");
-        if (action == "REJECT" && string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase)) return ServiceResult<ReturnDetailView>.Fail("N11_RETURN_REJECT_MANUAL", "N11 iadeleri panelden yalnız onaylanabilir; reddetmek için N11 satıcı panelini kullanın.", 422);
+        var isN11 = IsN11(platformCode);
+        var wholeClaim = ReturnDecisionScope.IsWholeClaim(platformCode);
+        if (action == "REJECT" && isN11 && N11ReturnDenyRule.Problem(command.ReasonCode, command.Explanation, command.ReturnShipment?.ShipmentCompanyId, command.ReturnShipment?.TrackingNumber) is { } denyProblem)
+            return Invalid<ReturnDetailView>("returnShipment", denyProblem);
+        if (action == "REJECT" && isN11 && command.EvidenceAssetIds is { Count: > 0 }) return Invalid<ReturnDetailView>("evidenceAssetIds", "n11 reddi kanıt dosyası almaz.");
+        if (command.ReturnShipment is not null && !(action == "REJECT" && isN11)) return Invalid<ReturnDetailView>("returnShipment", "Geri gönderim bilgisi yalnız n11 iadesi reddedilirken gönderilir.");
         if (preApprovalConfirm && !awaitingPreApproval) return ServiceResult<ReturnDetailView>.Fail("HEPSIBURADA_PREAPPROVAL_ACTION_NOT_ALLOWED", "İnceleme için geri gönderim yalnız Hepsiburada AwaitingPreApproval durumunda kullanılabilir.", 409);
         if (claim.Status != ReturnClaimStatus.ActionRequired && !(awaitingPreApproval && claim.Status == ReturnClaimStatus.Requested)) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "İade aksiyonu yalnız sağlayıcının aksiyon beklediği durumda kullanılabilir.", 409);
 
@@ -2521,7 +2568,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (returnLineIds.Length == 0 || returnLineIds.Except(claimLineIds).Any()) return Invalid<ReturnDetailView>("returnLineIds", "İşlem yapılacak ürün satırları bu iadeye ait olmalıdır.");
         returnLineIds = returnLineIds.Intersect(actionableLineIds).ToArray();
         if (returnLineIds.Length == 0) return ServiceResult<ReturnDetailView>.Fail("RETURN_ACTION_NOT_ALLOWED", "Seçilen ürün satırları pazaryerinde zaten sonuçlanmış.", 409);
-        if (isHepsiburada && returnLineIds.Length != claimLineIds.Count) return Invalid<ReturnDetailView>("returnLineIds", "Hepsiburada talep kabul/red işlemi talebin tüm ürün satırlarına uygulanır; kısmi satır seçimi desteklenmez.");
+        // Hepsiburada and Shopify decide the whole claim (ReturnDecisionScope): a choice of some lines would be sent as
+        // the whole claim's decision, so it is refused instead of being recorded as a partial one.
+        if (wholeClaim && returnLineIds.Length != actionableLineIds.Count) return Invalid<ReturnDetailView>("returnLineIds", $"{(isHepsiburada ? "Hepsiburada" : "Shopify")} talep kabul/red işlemi talebin tüm ürün satırlarına uygulanır; kısmi satır seçimi desteklenmez.");
         var partialLineDecision = returnLineIds.Length < actionableLineIds.Count;
         var finalizedWith = command.FinalizedWith?.Trim();
         if (isHepsiburada && action == "APPROVE" && finalizedWith is not ("Refund" or "Change")) return Invalid<ReturnDetailView>("finalizedWith", "Hepsiburada talep kabulünde iade veya ürün değişimi seçilmelidir.");
@@ -2529,7 +2578,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (isHepsiburada && action == "APPROVE" && string.Equals(claim.ReasonCode, "MissingInvoice", StringComparison.OrdinalIgnoreCase)) return ServiceResult<ReturnDetailView>.Fail("HEPSIBURADA_MISSING_INVOICE_MANUAL", "Eksik fatura taleplerinin kabul işlemi Hepsiburada panelinden yapılmalıdır.", 409);
         if (openDecisionLines.Any(lineIds => ReturnDecisionLinePolicy.Overlaps(lineIds, returnLineIds))) return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararı pazaryerine gönderildi; sonuç kesinleşene kadar yeni bir karar gönderilemez.", 409);
         if (action == "REJECT" && (string.IsNullOrWhiteSpace(command.ReasonCode) || string.IsNullOrWhiteSpace(command.Explanation) || command.Explanation.Trim().Length > 500)) return Invalid<ReturnDetailView>("explanation", "REJECT için reasonCode ve en fazla 500 karakter açıklama gerekir.");
-        if (action == "REJECT" && !isHepsiburada && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)
+        if (action == "REJECT" && !isHepsiburada && !isN11 && (command.EvidenceAssetIds is null || command.EvidenceAssetIds.Count == 0)
             && RejectEvidenceRequired(command.ReasonCode, await CachedIssueReasonsAsync(tenantId, claim.ConnectionId, correlationId, cancellationToken), platformCode))
             return Invalid<ReturnDetailView>("evidenceAssetIds", "Seçilen ret nedeni için en az bir kanıt dosyası gerekir.");
         if (preApprovalConfirm && (!string.IsNullOrWhiteSpace(command.FinalizedWith) || !string.IsNullOrWhiteSpace(command.ReasonCode) || !string.IsNullOrWhiteSpace(command.Explanation) || command.EvidenceAssetIds is { Count: > 0 })) return Invalid<ReturnDetailView>("action", "Hepsiburada ön onay incelemesi ek kabul, ret veya kanıt alanı almaz.");
@@ -2615,7 +2664,8 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
 
         var lineIds = await db.ReturnLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.ClaimId == claimId && returnLineIds.Contains(x.Id)).OrderBy(x => x.Id).Select(x => x.ExternalLineId).ToListAsync(cancellationToken);
         var context = new AdapterContext(tenantId, claim.ConnectionId, correlationId, normalizedKey, now.AddSeconds(30));
-        var result = await returns.ExecuteAsync(context, new(claim.ExternalClaimId, lineIds, action, action == "APPROVE" && isHepsiburada ? null : decision.ReasonCode, decision.Explanation, evidenceFiles, isHepsiburada ? finalizedWith : null), cancellationToken);
+        var result = await returns.ExecuteAsync(context, new(claim.ExternalClaimId, lineIds, action, action == "APPROVE" && isHepsiburada ? null : decision.ReasonCode, decision.Explanation, evidenceFiles, isHepsiburada ? finalizedWith : null,
+            action == "REJECT" && isN11 ? command.ReturnShipment : null), cancellationToken);
         if (!result.IsSuccess)
         {
             var error = result.Error;

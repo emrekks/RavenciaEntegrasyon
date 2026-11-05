@@ -541,10 +541,25 @@ public sealed partial class HepsiburadaHttpClient(
             // The paid-order list contains the line, customer, address, price,
             // and due-date fields needed by the panel. Use it directly; the
             // detail endpoint is reserved for lifecycle checks on existing orders.
-            var mapped = pageResult.Items.Select(HepsiburadaJsonMapper.PaidOrderLine).ToArray();
+            // One item the mapper cannot take does not stop the page (5 Nov 2026): its order is set aside with every other
+            // item of it (an order is never imported short of a line) and read by number below.
+            var items = pageResult.Items.Select(item => (Order: HepsiburadaJsonMapper.PaidOrderLine(item, out var refusal), Refusal: refusal)).ToList();
+            var refusedOrders = items.Where(item => item.Refusal?.RereadOrderId is not null).Select(item => item.Refusal!.RereadOrderId!).ToHashSet(StringComparer.Ordinal);
+            var mapped = items.Where(item => item.Order is not null && !refusedOrders.Contains(item.Order.ExternalOrderId)).Select(item => item.Order!).ToList();
+            var issues = items.Where(item => item.Refusal is { RereadOrderId: null }).Select(item => item.Refusal!).ToList();
+            foreach (var orderNumber in refusedOrders.Order(StringComparer.Ordinal))
+            {
+                // The detail read applies the common rule (UnreadableOrderLines): its packages count a line it cannot read.
+                var detail = await GetAsync(context, orderNumber, cancellationToken);
+                if (detail.IsSuccess) { mapped.Add(detail.Value!); continue; }
+                if (detail.Error!.Class is not (AdapterErrorClass.ContractViolation or AdapterErrorClass.NotFound))
+                    return AdapterResult<AdapterPageResult<RemoteOrder>>.Failure(detail.Error, detail.RateLimit);
+                // Not readable by number either: the list's refusal is recorded and the order joins the re-read list.
+                issues.Add(items.First(item => item.Refusal?.RereadOrderId == orderNumber).Refusal!);
+            }
             var nextOffset = offset + pageResult.Items.Count;
             var hasMore = pageResult.TotalCount is { } total ? nextOffset < total : pageResult.Items.Count == limit;
-            return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(new(mapped, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, pageResult.TotalCount), response.RateLimit);
+            return AdapterResult<AdapterPageResult<RemoteOrder>>.Success(new(mapped, hasMore ? nextOffset.ToString(CultureInfo.InvariantCulture) : null, hasMore, pageResult.TotalCount, issues), response.RateLimit);
         }
         catch (JsonException)
         {
@@ -576,7 +591,9 @@ public sealed partial class HepsiburadaHttpClient(
             }
             return AdapterResult<RemoteOrder>.Success(order with { Packages = packages }, result.RateLimit);
         }
-        catch (JsonException) { return Failure<RemoteOrder>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_ORDER_CONTRACT_INVALID", "Hepsiburada sipariş detay yanıtı beklenen sözleşmeyle eşleşmiyor.", HttpStatusCode.BadGateway); }
+        // The order was found but cannot be taken (no order date, an unknown currency…): a contract error naming why, never
+        // "not found", so the re-read list spends a try on it (RefusedOrders).
+        catch (JsonException exception) { return Failure<RemoteOrder>(AdapterErrorClass.ContractViolation, "HEPSIBURADA_ORDER_CONTRACT_INVALID", $"Hepsiburada sipariş detay yanıtı beklenen sözleşmeyle eşleşmiyor: {exception.Message}", HttpStatusCode.BadGateway); }
     }
 
     public async Task<AdapterResult<AdapterPageResult<RemoteOrderPackage>>> PollPackagesAsync(AdapterContext context, PackagePollWindow window, AdapterPageRequest page, CancellationToken cancellationToken)

@@ -13,6 +13,8 @@ export type Performance = {
   partialDay: boolean; channels: DashboardChannel[]; current: PerformanceRow[]; previous: PerformanceRow[]
   // A one-day period also comes hour by hour ("yyyy-MM-ddTHH:00", Istanbul); the previous day stops at the same time.
   currentHours?: HourRow[] | null; previousHours?: HourRow[] | null
+  // The period's orders (every store) with a product line the panel could not read; shown apart in a note.
+  unreadableLineOrders?: number
 }
 export type HourRow = Omit<PerformanceRow, 'day'> & { hour: string }
 // day is the calendar day, or the hour key ("yyyy-MM-ddTHH:00") of an hourly series; label is the axis text then.

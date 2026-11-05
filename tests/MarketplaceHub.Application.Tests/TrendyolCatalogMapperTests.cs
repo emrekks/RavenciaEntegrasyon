@@ -15,7 +15,7 @@ public sealed class TrendyolCatalogMapperTests
           "content": [
             {
               "shipmentPackageId": 4052072376,
-              "orderNumber": "11476852228",
+              "orderNumber": "11476852228", "orderDate": 1782998302000, "currencyCode": "TRY",
               "customerFirstName": "Leyla",
               "status": "Delivered",
               "lastModifiedDate": 1786454029672,
@@ -26,7 +26,7 @@ public sealed class TrendyolCatalogMapperTests
             },
             {
               "shipmentPackageId": 4052072377,
-              "orderNumber": "11476852229",
+              "orderNumber": "11476852229", "orderDate": 1782998302000, "currencyCode": "TRY",
               "status": "Delivered",
               "lastModifiedDate": 1786454029672,
               "cargoTrackingNumber": 7340037147068871,
@@ -91,7 +91,7 @@ public sealed class TrendyolCatalogMapperTests
     {
         const string payload = """
         {
-          "orderNumber": "11376153333",
+          "orderNumber": "11376153333", "currencyCode": "TRY",
           "claimId": "claim-1",
           "orderDate": 1782998302000,
           "claimDate": 1783069920000,
@@ -122,7 +122,7 @@ public sealed class TrendyolCatalogMapperTests
         var payload = $$"""
         {
           {{field}}
-          "orderNumber": "11376153333",
+          "orderNumber": "11376153333", "currencyCode": "TRY",
           "claimId": "claim-1",
           "orderDate": 1782998302000,
           "claimDate": 1783069920000,
@@ -153,7 +153,7 @@ public sealed class TrendyolCatalogMapperTests
     {
         var payload = $$"""
         {
-          "orderNumber": "11608377830",
+          "orderNumber": "11608377830", "currencyCode": "TRY",
           "claimId": "claim-1",
           "orderDate": 1782998302000,
           "claimDate": 1783069920000,
@@ -231,7 +231,7 @@ public sealed class TrendyolCatalogMapperTests
           "content": [
             {
               "claimId": "claim-ptt-1",
-              "orderNumber": "11587375142",
+              "orderNumber": "11587375142", "orderDate": 1782998302000, "currencyCode": "TRY",
               "claimItemStatus": { "name": "WaitingInAction" },
               "cargoProvider": "PTT",
               "cargoSenderNumber": "PTT-123456789",
@@ -257,7 +257,7 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [{
             "claimId": "claim-waiting-action-1",
-            "orderNumber": "11587375142",
+            "orderNumber": "11587375142", "orderDate": 1782998302000, "currencyCode": "TRY",
             "claimItemStatus": { "name": "WaitingInAction" },
             "lastModifiedDate": 1789890000000,
             "items": []
@@ -280,7 +280,7 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [{
             "claimId": "claim-waiting-action-due-1",
-            "orderNumber": "11587375142",
+            "orderNumber": "11587375142", "orderDate": 1782998302000, "currencyCode": "TRY",
             "claimItemStatus": { "name": "WaitingInAction" },
             "lastModifiedDate": 1789890000000,
             "autoApproveDate": 1789980000000,
@@ -304,7 +304,7 @@ public sealed class TrendyolCatalogMapperTests
         {
           "content": [{
             "claimId": "claim-rejected-with-deadline-1",
-            "orderNumber": "11587375142",
+            "orderNumber": "11587375142", "orderDate": 1782998302000, "currencyCode": "TRY",
             "claimItemStatus": { "name": "Rejected" },
             "claimDate": 1789980000000,
             "lastModifiedDate": 1790152800000,
@@ -329,7 +329,7 @@ public sealed class TrendyolCatalogMapperTests
           "content": [
             {
               "claimId": "claim-rejected-package-1",
-              "orderNumber": "11593067976",
+              "orderNumber": "11593067976", "orderDate": 1782998302000, "currencyCode": "TRY",
               "claimItemStatus": { "name": "Accepted" },
               "rejectedPackageInfo": {
                 "cargoProviderName": "PTT Kargo Marketplace",
@@ -360,7 +360,7 @@ public sealed class TrendyolCatalogMapperTests
           "content": [
             {
               "claimId": "claim-rejected-reship-1",
-              "orderNumber": "11633780933",
+              "orderNumber": "11633780933", "orderDate": 1782998302000, "currencyCode": "TRY",
               "claimItemStatus": { "name": "Rejected" },
               "cargoProviderName": "PTT Kargo",
               "cargoTrackingNumber": "7340037640876324",
@@ -397,7 +397,7 @@ public sealed class TrendyolCatalogMapperTests
           "content": [
             {
               "claimId": "claim-return-package-1",
-              "orderNumber": "11593067976",
+              "orderNumber": "11593067976", "orderDate": 1782998302000, "currencyCode": "TRY",
               "claimItemStatus": { "name": "Accepted" },
               "returnPackageInfo": {
                 "cargoProvider": { "name": "PTT Kargo" },

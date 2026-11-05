@@ -109,8 +109,23 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
             currentHours = hours.Where(x => x.Hour.StartsWith(currentDay, StringComparison.Ordinal)).ToList();
             previousHours = hours.Where(x => !x.Hour.StartsWith(currentDay, StringComparison.Ordinal)).ToList();
         }
+        // Orders of the period with a product line the panel could not read (UnreadableOrderLines), counted apart.
+        // Same orders as the revenue (PerformanceOrders): production stores, not cancelled, by their order time.
+        var currentStart = period.CurrentStart;
+        var currentEnd = period.CurrentEnd;
+        var cancelledStatuses = DashboardRevenuePolicy.CancelledStatuses;
+        var currentPackages = MarketplaceSalesService.CurrentShipmentPackages(db).Where(package => package.TenantId == tenantId);
+        var unreadableLineOrders = await db.Orders.AsNoTracking()
+            .Where(order => order.TenantId == tenantId && order.OrderedAt >= currentStart && order.OrderedAt < currentEnd
+                && !cancelledStatuses.Contains(order.DerivedStatus)
+                && db.PlatformConnections.Any(connection => connection.TenantId == tenantId && connection.Id == order.ConnectionId
+                    && !excluded.Contains(connection.Status) && connection.Environment.ToUpper() == "PRODUCTION")
+                && currentPackages.Any(package => package.OrderId == order.Id
+                    && package.Status != ShipmentPackageStatus.Cancelled && package.UnreadableLineCount > 0))
+            .CountAsync(cancellationToken);
         return ServiceResult<DashboardPerformanceView>.Ok(new(period.From, period.To, period.PreviousFrom, period.PreviousTo,
-            period.CurrentStart, period.CurrentEnd, period.PreviousStart, period.PreviousEnd, period.PartialDay, channels, current, previous, currentHours, previousHours));
+            period.CurrentStart, period.CurrentEnd, period.PreviousStart, period.PreviousEnd, period.PartialDay, channels, current, previous, currentHours, previousHours,
+            unreadableLineOrders));
     }
 
     // The day's cancellations (DashboardCancellationRowView) over the stores the revenue report counts.

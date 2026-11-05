@@ -42,8 +42,13 @@ may not repeat within 5 min (`PTTAVM_REPEAT_REQUEST_WAIT`). Price/stock ≤ 1000
 
 ## Statuses (SiparisDurumu, Turkish letters folded)
 kargo_yapilmasi_bekleniyor → Created; havale_onayi_bekleniyor / onay_surecinde → Awaiting (OnHold); gonderilmis /
-gonderildi → Shipped; gondericisine_teslim_edildi → Undelivered; tamamlandi → Delivered; iptal / odeme_gecersiz →
-Cancelled; iade → Returned.
+gonderildi → Shipped; gondericisine_teslim_edildi → UndeliveredAndReturned (package Returned, the same panel state as
+Trendyol's UnDeliveredAndReturned: the parcel is back with the seller, no sale invoice; the line keeps its own name so
+the return read, which takes `iade` lines only, does not see a customer return); tamamlandi → Delivered; iptal /
+odeme_gecersiz → Cancelled; iade → Returned. The offline doc lists the value without explaining it
+(`pttavm-api-son.md:1622,1699,1838`); "delivered to its sender" is read literally.
+Package status: an active line of unknown status makes the package ManualReview (İnceleme Gerekli); otherwise the
+least advanced known line decides. Code: `PttAvmOrderMapper.PackageStatus`.
 
 ## Quirks
 - No return service: returns come from "iade" lines, already completed; return actions are refused. RETURN_SYNC reads
@@ -54,6 +59,11 @@ Cancelled; iade → Returned.
 - An upsert without the variant list deletes all variants.
 - Manual external writes are gated by `PttAvmManualWritePolicy`.
 - `PTTAVM-ENTEGRASYON-PLANI.md` gives PTTAVM_ORDER_SYNC as 60 s in §4 and 2 min in §6.1; check the code.
+- Order lines (SiparisKontrolListesiV2): `UrunKodu` is the stock code ("Ürün stok kod bilgisi"), `UrunId` the product
+  id, `UrunBarkod` the barcode (a model's code for a variant product; `VariantBarkod` the variant's). There is no order
+  total, only line amounts (`KdvDahilToplamTutar`) (`pttavm-api-son.md:1597-1632`). Since 5 Nov 2026 a line's code is
+  the barcode, else `UrunKodu`, never `UrunId` or the line id; an order with an unread line says its amount may be
+  short (ORDER_AMOUNT_MAY_BE_INCOMPLETE, order list mark) (`PttAvmOrderMapper.cs`).
 
 ## Job types
 PTTAVM_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORDER_STATUS_SYNC.

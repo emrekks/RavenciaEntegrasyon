@@ -194,7 +194,7 @@ public sealed class TrendyolInvoiceLinkRevocationTests
     private static HttpResponseMessage Package(string invoiceFields, long? customerId = 888888888) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(
-            "{\"content\":[{\"shipmentPackageId\":" + PackageId + ",\"orderNumber\":\"11476852228\","
+            "{\"content\":[{\"shipmentPackageId\":" + PackageId + ",\"orderNumber\":\"11476852228\",\"currencyCode\":\"TRY\","
             + (customerId is { } id ? $"\"customerId\":{id}," : string.Empty)
             + "\"status\":\"Delivered\",\"orderDate\":1760700000000,\"lastModifiedDate\":1760900000000,"
             + invoiceFields + ",\"lines\":[]}],\"page\":0,\"totalPages\":1}",

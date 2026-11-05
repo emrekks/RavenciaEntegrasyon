@@ -40,6 +40,9 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
 - Claims `GET order/sellers/{id}/claims`: dates filter the claim's lastModifiedDate; one cursor bucket per
   `claimItemStatus`; page 200 and 3-month depth **unverified**; no storeFrontCode sent (TR only).
 - Finance `finance/che`: max 15-day window, page 500 or 1000, `supplierId` required.
+- A statement record carries both `debt` and `credit` (one of them 0.0), `id` and `transactionDate` (epoch ms).
+  Source: official docs `trendyol-api-son.md:12410-12437`. A record without `id`, `transactionDate` or any readable
+  debt/credit is not stored (the page's other records are) and opens a FINANCE_RECORD_INCOMPLETE issue (5 Nov 2026).
 - Platform service fee ("Platform Hizmet Bedeli", DeductionInvoices/PlatformServiceFee), international service fee
   ("Uluslararası Hizmet Bedeli") and e-commerce withholding tax (Stoppage, "E-ticaret Stopajı") come as invoices of a
   payment day: `orderNumber`, `shipmentPackageId`, `orderLineItemId` and `orderDate` are null; only `paymentOrderId`
@@ -97,6 +100,10 @@ purpose (`TurkeyTime.cs`).
 - Unsupplied or partial cancel changes the package id and cargo barcode; cargo company change max once per package
   per 5 min. A split package replaces its origin (origin kept, excluded from totals).
 - A line without `vatRate` gets the rate of its siblings; no invoice until the rate is known.
+- Every shipment package carries `orderDate` (Turkey wall-clock epoch ms) and `currencyCode`; live never had a 1970
+  order. Since 5 Nov 2026 a package without `orderDate` is refused (no `lastModifiedDate`/1970 fallback) and one
+  without a three-letter `currencyCode` is skipped with an issue instead of failing the whole save (Order.Currency is
+  char(3)); both join the re-read list (`TrendyolJsonMapper.Orders`, `RefusedOrders`).
 - Price-inventory batches report only per-item SUCCESS/FAILED.
 - Webhooks: max 15 per seller; URL may not contain "Trendyol", "Dolap", "Localhost"; retried every 5 min then set
   PASSIVE; payload has `orderCountryCode`, no storefront. The stream stays the source of truth.
@@ -110,6 +117,13 @@ purpose (`TurkeyTime.cs`).
   `Tarife Seçimi` ("3 Günlük Fiyat", "4 Günlük Fiyat", "7 Günlük Fiyat", "Trendyol Satış Fiyatı"): one price per row,
   so a product priced alike in both periods is "7 Günlük Fiyat" (`TrendyolTariffWorkbook`). A file uploaded before
   31 Oct 2026 03:02 kept only its first period and not the file itself; uploading the same file again adds the second.
+- Catalog import and brands (owner decision 28 Oct 2026; report item 19, 5 Nov 2026): a listing carries `brandId` and
+  `brand`; the import never looks a panel brand up by name, never opens one and never writes a brand mapping. The
+  product takes the panel brand whose VERIFIED mapping on the connection points at that `brandId` (exactly one active
+  brand); otherwise a new product has no brand, an existing one keeps its own, and the brand is listed as unmapped
+  (BRAND_MAPPING_MISSING issue, `GET /reference-data/brands/unmapped`, Marka Eşleme card 2). The import no longer
+  syncs the brand list itself. It does not change the panel product's or variant's status either; the listing's sale
+  state stays on its link (`SaleState`) and offer. Source: `MarketplaceJobProcessor.MappedImportBrandId`.
 
 ## Job types
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),

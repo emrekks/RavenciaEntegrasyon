@@ -91,6 +91,37 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         return ServiceResult<ReferenceSliceView>.Ok(snapshot.Slice(rows.OrderBy(x => x.NormalizedName, StringComparer.Ordinal).Select(x => x.View).ToList()));
     }
 
+    internal const int MaximumUnmappedBrands = 200;
+
+    public async Task<ServiceResult<IReadOnlyList<UnmappedMarketplaceBrandView>>> UnmappedBrandsAsync(Guid tenantId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<IReadOnlyList<UnmappedMarketplaceBrandView>>();
+        var prefix = ImportedBrandRule.IssueKeyPrefix(connectionId);
+        var issues = await db.OperationalIssues.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Code == ImportedBrandRule.IssueCode && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix))
+            .OrderByDescending(x => x.LastSeenAt)
+            .Take(MaximumUnmappedBrands * 2)
+            .Select(x => new { x.DedupeKey, x.Summary, x.OccurrenceCount, x.LastSeenAt })
+            .ToListAsync(cancellationToken);
+        var rows = issues.Select(x => (ExternalId: x.DedupeKey[prefix.Length..], x.Summary, x.OccurrenceCount, x.LastSeenAt)).Where(x => x.ExternalId.Length > 0).ToList();
+        if (rows.Count == 0) return ServiceResult<IReadOnlyList<UnmappedMarketplaceBrandView>>.Ok([]);
+        var ids = rows.Select(x => x.ExternalId).Distinct(StringComparer.Ordinal).ToArray();
+        // A brand the user has mapped since the import met it is no longer listed.
+        var mapped = await db.BrandMappings.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ScopeExternalId == "" && x.Status == "VERIFIED" && ids.Contains(x.ExternalId))
+            .Select(x => x.ExternalId).Distinct().ToListAsync(cancellationToken);
+        var snapshot = await CurrentBrandSnapshotAsync(tenantId, connectionId, cancellationToken);
+        var names = snapshot.Succeeded
+            ? await BrandItems(tenantId, snapshot.Value!.Id).Where(x => ids.Contains(x.ExternalId)).Select(x => new { x.ExternalId, x.Name }).ToDictionaryAsync(x => x.ExternalId, x => x.Name, StringComparer.Ordinal, cancellationToken)
+            : new Dictionary<string, string>(StringComparer.Ordinal);
+        IReadOnlyList<UnmappedMarketplaceBrandView> result = rows
+            .Where(x => !mapped.Contains(x.ExternalId, StringComparer.Ordinal))
+            .Select(x => new UnmappedMarketplaceBrandView(x.ExternalId, names.GetValueOrDefault(x.ExternalId) ?? ImportedBrandRule.NameFromSummary(x.Summary), x.OccurrenceCount, x.LastSeenAt))
+            .Take(MaximumUnmappedBrands)
+            .ToList();
+        return ServiceResult<IReadOnlyList<UnmappedMarketplaceBrandView>>.Ok(result);
+    }
+
     // The spellings a typed brand can be stored under. Names are stored as Name.Trim().ToUpperInvariant(), which keeps
     // "ı" and "İ" as they are: an "i" may be stored as "I" (written on a Latin layout) or "İ", an "ı" as "ı" or "I".
     internal static IReadOnlyList<string> BrandSearchKeys(string query)
@@ -305,6 +336,16 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
                     requirement.DisplayOrder = external.SortOrder ?? requirement.DisplayOrder;
                     requirement.Version++;
                 }
+            }
+        }
+        // A marketplace brand the import listed as unmapped is settled by the user's mapping.
+        if (mappingType == "brands" && scope.Length == 0)
+        {
+            var issueKey = ImportedBrandRule.IssueKey(command.ConnectionId, externalId);
+            foreach (var issue in await db.OperationalIssues.Where(x => x.TenantId == tenantId && x.DedupeKey == issueKey && x.Status != IssueStatus.Resolved).ToListAsync(cancellationToken))
+            {
+                issue.Status = IssueStatus.Resolved;
+                issue.ResolvedAt = timeProvider.GetUtcNow();
             }
         }
         await db.SaveChangesAsync(cancellationToken);

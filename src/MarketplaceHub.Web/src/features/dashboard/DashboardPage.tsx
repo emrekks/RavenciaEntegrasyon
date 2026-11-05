@@ -359,6 +359,9 @@ export function DashboardPage() {
       {!loading && foreign.length > 0 && <p className="rr-pf-note">
         {foreign.length > 0 && <span>Diğer para birimleri: {foreign.map(item => <b key={item.currency} className="rr-num">{money(item.amount, item.currency)} ({count(item.orders)} sipariş) </b>)}</span>}
       </p>}
+      {!loading && (data?.unreadableLineOrders ?? 0) > 0 && <p className="rr-pf-note" role="status">
+        <span>Tüm mağazalarda <b className="rr-num">{count(data!.unreadableLineOrders!)}</b> siparişte okunamayan ürün satırı var; bu siparişlerin adetleri eksik, PTT AVM&apos;de tutarı da eksik olabilir. Siparişler yeniden okunuyor.</span>
+      </p>}
       <div className="rr-pf-body">
         <div className="rr-pf-chart"><b className="rr-pf-label">{chartValues[metric][2]}{channel === 'ALL' ? '' : ` · ${selectedName}`}</b>
           {loading ? <div className="rr-chart rr-chart-wait" aria-hidden="true" style={{ aspectRatio: '760 / 260' }} /> : series.some(point => chartValues[metric][0](point) > 0) ? <RevenueChart key={metric} hourly={hourly} points={series} previous={previousSeries} currency={currency} value={chartValues[metric][0]} axis={chartValues[metric][1]} /> : <div className="rr-empty"><span className="rr-ei"><RrIcon name="box" /></span><b>Gelir Verisi Yok</b><span className="rr-lead">Bu dönem için gelir verisi bulunmuyor.</span></div>}

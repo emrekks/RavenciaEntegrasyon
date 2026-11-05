@@ -8,12 +8,12 @@ namespace MarketplaceHub.Application.Tests;
 // Sipariş Kârlılık Analizi: an order's profit item by item, as Melontik's analysis of the same order shows it.
 public sealed class ReportOrderProfitTests
 {
-    private static ReportInput Input(Guid store, Guid order, Guid line, decimal? cost, ReportFinance? finance, string storeFront = "TR") =>
+    private static ReportInput Input(Guid store, Guid order, Guid line, decimal? cost, ReportFinance? finance, string storeFront = "TR", int unreadableLines = 0) =>
         new(new ReportPeriod(new DateOnly(2026, 10, 25), new DateOnly(2026, 10, 25), new DateTimeOffset(2026, 10, 24, 21, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, 25, 21, 0, 0, TimeSpan.Zero)),
             ReportBuckets.Day, TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul"),
             new Dictionary<Guid, ReportChannelView> { [store] = new(store, "TRENDYOL", "Trendyol", false) },
             [new() { Id = order, ConnectionId = store, OrderNumber = "11750129638", DerivedStatus = "DELIVERED", Amount = 465.92m, ListAmount = 470.63m, LineValue = 465.92m,
-                RealAt = new DateTimeOffset(2026, 10, 25, 17, 46, 0, TimeSpan.Zero), OrderedAt = new DateTimeOffset(2026, 10, 25, 20, 46, 0, TimeSpan.Zero), StoreFrontCode = storeFront }],
+                RealAt = new DateTimeOffset(2026, 10, 25, 17, 46, 0, TimeSpan.Zero), OrderedAt = new DateTimeOffset(2026, 10, 25, 20, 46, 0, TimeSpan.Zero), StoreFrontCode = storeFront, UnreadableLines = unreadableLines }],
             new Dictionary<Guid, ReportOrderExtra>(),
             [new() { Id = line, OrderId = order, Title = "Anne Penye Bluz", Sku = "RYP00101", Barcode = "RYP00101", UnitPrice = 465.92m, OrderedQuantity = 1m, VatRate = 10m, CostPrice = cost }],
             new Dictionary<Guid, ReportLineExtra> { [line] = new() { Id = line, Commission = "20.6" } }, [], [],
@@ -39,6 +39,28 @@ public sealed class ReportOrderProfitTests
         Assert.Equal((63.09m, 21.67m), (view.ProfitOnCost!.Value, view.Margin!.Value));
         Assert.False(view.MicroExport);
         Assert.Equal("SOLD", view.State);
+    }
+
+    [Fact]
+    public void An_order_with_an_unreadable_line_is_marked_its_profit_is_unknown_and_the_report_names_it()
+    {
+        // 5 Nov 2026: the unread line's cost is unknown, so is the order's profit; the report counts such orders apart.
+        var (store, order, line) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var input = Input(store, order, line, 160m, Unsettled(store), unreadableLines: 1);
+
+        var view = Assert.Single(ReportOrderProfit.Build(input, ReportBuilder.Facts(input).Orders));
+
+        Assert.Equal(1, view.UnreadableLines);
+        Assert.Null(view.Cost);
+        Assert.Null(view.Profit);
+        Assert.Equal(465.92m, view.Amount);
+        var previous = input with { Period = new ReportPeriod(input.Period.From.AddDays(-1), input.Period.To.AddDays(-1), input.Period.Start.AddDays(-1), input.Period.Start), Orders = [], Lines = [], LineExtras = new Dictionary<Guid, ReportLineExtra>(), Finance = null };
+        var notes = ReportBuilder.Build(input, previous, new Dictionary<Guid, decimal>()).DataNotes;
+        Assert.Contains(notes, note => note.StartsWith("1 siparişte okunamayan ürün satırı var (TRENDYOL 1)", StringComparison.Ordinal));
+
+        var read = Input(store, order, line, 160m, Unsettled(store));
+        Assert.DoesNotContain(ReportBuilder.Build(read, previous, new Dictionary<Guid, decimal>()).DataNotes, note => note.Contains("okunamayan", StringComparison.Ordinal));
+        Assert.Equal(0, Assert.Single(ReportOrderProfit.Build(read, ReportBuilder.Facts(read).Orders)).UnreadableLines);
     }
 
     [Fact]

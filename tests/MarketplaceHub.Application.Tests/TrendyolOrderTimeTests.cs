@@ -16,7 +16,7 @@ public sealed class TrendyolOrderTimeTests
     public void OrderDateIsReadAsTurkeyWallClockAndTheOtherDatesAsUtc()
     {
         var json = $$"""
-        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","orderDate":{{OrderDate}},"lastModifiedDate":{{LastModifiedDate}},
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","currencyCode":"TRY","status":"Created","orderDate":{{OrderDate}},"lastModifiedDate":{{LastModifiedDate}},
           "agreedDeliveryDate":{{AgreedDeliveryDate}},"lines":[
           {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":100.00,"discount":0,"price":100.00,"vatRate":10}
         ]}]}
@@ -35,7 +35,7 @@ public sealed class TrendyolOrderTimeTests
     public void WithoutALastChangeThePackageTimeFallsBackToTheRealOrderTime()
     {
         var json = $$"""
-        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","orderDate":{{OrderDate}},"lines":[
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","currencyCode":"TRY","status":"Created","orderDate":{{OrderDate}},"lines":[
           {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":100.00,"discount":0,"price":100.00,"vatRate":10}
         ]}]}
         """;

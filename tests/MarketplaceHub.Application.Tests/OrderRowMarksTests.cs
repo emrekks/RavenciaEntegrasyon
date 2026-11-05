@@ -13,7 +13,7 @@ public sealed class OrderRowMarksTests
     public void Trendyol_order_snapshot_keeps_the_fields_the_row_marks_read()
     {
         const string json = """
-        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,
           "micro":true,"deliveryAddressType":"CollectionPoint","fastDelivery":true,"fastDeliveryType":"SameDayShipping",
           "invoiceAddress":{"countryCode":"RO"},"shipmentAddress":{"countryCode":"TR"},"lines":[
           {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":100.00,"discount":0,"price":100.00,"vatRate":10}
