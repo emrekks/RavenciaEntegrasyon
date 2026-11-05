@@ -5002,6 +5002,22 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 Assert.Contains("API secret key", refused.Error!.Message);
             }
 
+            // The refusal shows on the subscription it happened to, and not on one opened after it.
+            await using (var db = fixture.CreateContext())
+            {
+                var shown = await Service(db).StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None);
+                Assert.Contains("SHOPIFY_WEBHOOK_SIGNATURE_INVALID", shown.Value!.LastRejectedReason);
+                var subscription = await db.WebhookSubscriptions.SingleAsync(x => x.ConnectionId == connection.Id && x.Status == "ACTIVE");
+                var verifiedAt = subscription.VerifiedAt;
+                subscription.VerifiedAt = DateTimeOffset.UtcNow.AddMinutes(1);
+                await db.SaveChangesAsync();
+                var reopened = await Service(db).StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None);
+                Assert.Null(reopened.Value!.LastRejectedReason);
+                Assert.Null(reopened.Value.LastRejectedAt);
+                subscription.VerifiedAt = verifiedAt;
+                await db.SaveChangesAsync();
+            }
+
             // A refund delivery signed with the client secret is accepted and names its order by order_id.
             await using (var db = fixture.CreateContext())
             {

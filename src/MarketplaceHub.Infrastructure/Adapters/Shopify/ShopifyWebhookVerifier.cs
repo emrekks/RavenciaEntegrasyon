@@ -24,10 +24,10 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
     // A product deleted in Shopify (ShopifyHttpClient.ProductDeleteTopic): MarketplaceWebhookService starts the link check.
     internal const string ProductDeleteResourceType = "PRODUCTS_DELETE";
     // Shopify signs a delivery with the client secret of the app whose token registered the subscription (a custom
-    // app's "API secret key", shpss_…). A delivery that does not verify was signed with another key than the one typed
+    // app's "API secret key": a hex string, shpss_… on some newer apps). A delivery that does not verify was signed with another key than the one typed
     // when the webhook was turned on: the panel shows what to do, as the reason of the refusal.
     internal const string SignatureInvalidCode = "SHOPIFY_WEBHOOK_SIGNATURE_INVALID";
-    internal const string SignatureInvalidMessage = "Shopify webhook imzası doğrulanamadı: webhook açılırken girilen Uygulama Gizli Anahtarı, Shopify'ın bildirimleri imzaladığı anahtar değil. Webhook'u kapatıp bağlantının kullandığı uygulamanın API secret key'i (shpss_…) ile ya da anahtar alanını boş bırakarak yeniden açın.";
+    internal const string SignatureInvalidMessage = "Shopify webhook imzası doğrulanamadı: webhook açılırken girilen Uygulama Gizli Anahtarı, Shopify'ın bildirimleri imzaladığı anahtar değil. Webhook'u kapatıp bağlantının kullandığı uygulamanın API secret key'i ile ya da anahtar alanını boş bırakarak yeniden açın.";
     private readonly IDataProtector protector = dataProtection.CreateProtector("MarketplaceHub.WebhookVerifier.v1");
     private readonly TimeProvider time = timeProvider ?? TimeProvider.System;
 

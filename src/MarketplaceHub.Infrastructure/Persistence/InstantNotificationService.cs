@@ -143,7 +143,7 @@ public sealed class InstantNotificationService(
             return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_INVALID", "Shopify gizli anahtarı geçersiz.", 422);
         // An access token typed in place of the secret would make every delivery fail its signature.
         if (connection.PlatformCode == "SHOPIFY" && clientSecret is not null && IsShopifyAccessToken(clientSecret))
-            return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_INVALID", "Girilen değer bir erişim anahtarı (access token); Shopify bildirimleri uygulamanın API secret key'i (shpss_…) ile imzalar. O anahtarı girin ya da alanı boş bırakın.", 422);
+            return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_INVALID", "Girilen değer bir erişim anahtarı (access token); Shopify bildirimleri uygulamanın API secret key'i ile imzalar. O anahtarı girin ya da alanı boş bırakın.", 422);
         if (connection.Status is not ("ACTIVE" or "VERIFIED"))
             return ServiceResult<InstantNotificationView>.Fail("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için anlık bildirim açılamaz.", 422);
         if (PublicBaseUrl() is not { } baseUrl)
@@ -294,15 +294,18 @@ public sealed class InstantNotificationService(
         var endpoint = PublicBaseUrl() is { } baseUrl ? $"{baseUrl}/api/v1/hooks/{subscription?.RoutePublicId ?? connection.PublicId:D}/…" : null;
         // The last delivery the receiver turned away (MarketplaceWebhookService): it tells a marketplace that calls
         // and is refused from one that never calls.
-        var rejectedPrefix = MarketplaceWebhookService.RejectedPrefix(connection.Id);
-        var rejected = await db.OperationalIssues.AsNoTracking()
-            .Where(x => x.TenantId == connection.TenantId && x.DedupeKey.StartsWith(rejectedPrefix) && x.Status == IssueStatus.Open)
-            .OrderByDescending(x => x.LastSeenAt)
-            .Select(x => new { x.LastSeenAt, x.Summary })
-            .FirstOrDefaultAsync(cancellationToken);
         // A Hepsiburada definition is never verified by a call; it was opened when it was prepared.
         var manual = subscription?.ExternalSubscriptionId == ManualRegistration;
         var registeredAt = subscription?.VerifiedAt ?? (manual ? PreparedAt(subscription!.Id) : null);
+        // A refusal from before the current subscription was opened belongs to the one it replaced (for example a
+        // Shopify webhook reopened with another key): it is not shown against the new one.
+        var rejectedPrefix = MarketplaceWebhookService.RejectedPrefix(connection.Id);
+        var rejected = await db.OperationalIssues.AsNoTracking()
+            .Where(x => x.TenantId == connection.TenantId && x.DedupeKey.StartsWith(rejectedPrefix) && x.Status == IssueStatus.Open
+                && (registeredAt == null || x.LastSeenAt >= registeredAt))
+            .OrderByDescending(x => x.LastSeenAt)
+            .Select(x => new { x.LastSeenAt, x.Summary })
+            .FirstOrDefaultAsync(cancellationToken);
         var previous = connection.PlatformCode == "HEPSIBURADA" && subscription?.LastReceivedAt is null
             ? await PreviousDefinitionAsync(connection.TenantId, connection.Id, subscription, tracked: false, cancellationToken)
             : null;
