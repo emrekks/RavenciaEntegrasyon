@@ -623,7 +623,8 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         {
             ("HEPSIBURADA", """{"lineItemId":"1","merchantSku":"AUDIT-SKU","quantity":1}"""),
             ("N11", """{"orderLineId":"1","stockCode":"AUDIT-SKU","quantity":1,"price":120}"""),
-            ("PAZARAMA", """{"orderItemId":"1","quantity":1,"product":{"stockCode":"AUDIT-SKU"}}""")
+            ("PAZARAMA", """{"orderItemId":"1","quantity":1,"product":{"stockCode":"AUDIT-SKU"}}"""),
+            ("SHOPIFY", """{"id":"gid://shopify/LineItem/1","sku":"AUDIT-SKU","quantity":1,"taxLines":[]}""")
         })
         {
             var seed = NewSeed($"audit-vat-unknown-{platformCode.ToLowerInvariant()}");
