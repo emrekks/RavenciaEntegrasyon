@@ -86,7 +86,7 @@ public sealed class PublicationUnsentVariantsPostgreSqlTests(PostgreSqlTenantIso
         var items = JsonNode.Parse(publish.Value!.PayloadJson)!["items"]!.AsArray();
         Assert.Equal(["MZ021Y-CD-25", "MZ021Y-CD14"], items.Select(item => item!["barcode"]!.GetValue<string>()).Order(StringComparer.Ordinal));
         Assert.All(items, item => Assert.Equal("MZ021Y-CD", item!["productMainId"]!.GetValue<string>()));
-        Assert.Equal([added.Id, lost.Id], publish.Value.Variants.Select(variant => variant.VariantId).Order());
+        Assert.Equal(new[] { added.Id, lost.Id }.Order(), publish.Value.Variants.Select(variant => variant.VariantId).Order());
 
         // The update composers build from the whole card.
         var whole = await composer.BuildAsync(tenant.Id, product.Id, connection.Id, CancellationToken.None);
