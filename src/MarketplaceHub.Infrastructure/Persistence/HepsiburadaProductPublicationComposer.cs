@@ -17,7 +17,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         "GarantiSuresi", "kg", "tax_vat_rate", "price", "stock", "Video1", "Image1", "Image2", "Image3", "Image4", "Image5"
     };
 
-    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false)
     {
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound();
@@ -78,8 +78,18 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         // attributes travel. Required marketplace fields are still checked above and per variant.
         var assignments = (await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken))
             .Where(x => mappingsByLocalId.ContainsKey(x.AttributeId)).ToList();
-        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
-        if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
+        var cardVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        if (cardVariants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
+        // VaryantGroupID is the whole card's model code, so the variants a matched card adds join its Hepsiburada group.
+        var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0])) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak VaryantGroupID kullanmalıdır.");
+        var variants = cardVariants;
+        if (onlyUnsentVariants)
+        {
+            var present = await PublicationUnsentVariants.PresentAsync(db, tenantId, connectionId, [.. cardVariants.Select(x => x.Id)], cancellationToken);
+            if (PublicationUnsentVariants.Unsent(cardVariants, x => x.Id, present) is not { } unsent) return Fail("PRODUCT_ALREADY_LIVE", PublicationUnsentVariants.AllPresentMessage("Hepsiburada"), status: 409);
+            variants = [.. unsent];
+        }
         if (variants.Count > 1000) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", "Tek Hepsiburada yayın isteğinde en fazla 1000 varyant gönderilebilir.");
         // Hepsiburada keeps the seller's own barcode ("RYP004-01") as well as an EAN-13.
         if (variants.Any(x => !IsValidBarcode(x.Barcode))) return Fail("BARCODE_INVALID", "Hepsiburada ürün aktarımında tüm varyantların barkodu olmalı: en fazla 40 karakter; yalnız harf, rakam, nokta, tire, alt çizgi.");
@@ -89,8 +99,6 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         var sellerSkus = variants.Select(x => NormalizeMerchantSku(x.Sku)).ToArray();
         if (sellerSkus.Any(x => x is null)) return Fail("MERCHANT_SKU_INVALID", "Hepsiburada merchantSku boş olmamalı ve boşluk yerine noktalama kullanılmalıdır.");
         if (sellerSkus.Distinct(StringComparer.Ordinal).Count() != sellerSkus.Length) return Fail("MERCHANT_SKU_DUPLICATE", "Büyük harf/boşluksuz dönüşüm sonrası merchantSku değerleri benzersiz olmalıdır.");
-        var modelCodes = variants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
-        if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0])) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak VaryantGroupID kullanmalıdır.");
 
         var variantIds = variants.Select(x => x.Id).ToArray();
         var optionRows = await (from option in db.ProductOptions.AsNoTracking()

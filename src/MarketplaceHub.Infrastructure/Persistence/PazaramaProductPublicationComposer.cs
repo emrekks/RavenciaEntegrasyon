@@ -25,7 +25,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
     internal const int MaxGroupCodeLength = 10;
     private static readonly IReadOnlySet<int> VatRates = new HashSet<int> { 0, 1, 10, 20 };
 
-    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false)
     {
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound();
@@ -88,8 +88,24 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         // attributes travel. Required marketplace fields are still checked above and per variant.
         var assignments = (await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).ToListAsync(cancellationToken))
             .Where(x => mappingsByLocalId.ContainsKey(x.AttributeId)).ToList();
-        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
-        if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
+        var cardVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        if (cardVariants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
+        // groupCode comes from the whole card, so the variants a matched card adds join its Pazarama group: the group the
+        // card's product link records ("group:<code>", read from Pazarama), else the one the panel derives from the model code.
+        var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0])) return Fail("MODEL_CODE_REQUIRED", "Pazarama varyant grubu tek bir ortak model kodu kullanmalıdır.");
+        var groupCode = GroupCode(modelCodes[0]!);
+        var variants = cardVariants;
+        if (onlyUnsentVariants)
+        {
+            var present = await PublicationUnsentVariants.PresentAsync(db, tenantId, connectionId, [.. cardVariants.Select(x => x.Id)], cancellationToken);
+            if (PublicationUnsentVariants.Unsent(cardVariants, x => x.Id, present) is not { } unsent) return Fail("PRODUCT_ALREADY_LIVE", PublicationUnsentVariants.AllPresentMessage("Pazarama"), status: 409);
+            variants = [.. unsent];
+            if (present.Count > 0 && ExistingGroupCode(await db.MarketplaceProductLinks.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId)
+                    .Select(x => x.ExternalId).ToListAsync(cancellationToken)) is { } existingGroup)
+                groupCode = existingGroup;
+        }
         if (variants.Count > PazaramaProductPayloadRules.MaxProductsPerRequest) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", $"Tek Pazarama ürün açma isteğinde en fazla {PazaramaProductPayloadRules.MaxProductsPerRequest} varyant gönderilebilir.");
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Barcode) || x.Barcode.Trim().Length > 500)) return Fail("BARCODE_REQUIRED", "Pazarama ürün açma için her varyantın barkodu (en fazla 500 karakter) olmalıdır.");
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Sku) || x.Sku.Trim().Length > 100)) return Fail("STOCK_CODE_INVALID", "Pazarama stok kodu olarak kullanılan SKU boş olmamalı ve en fazla 100 karakter olmalıdır.");
@@ -98,9 +114,6 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         var publishedBarcodes = variants.Select(x => x.Barcode!.Trim()).ToArray();
         if (await ProductPublicationComposer.ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), publishedBarcodes, publishedBarcodes, cancellationToken) is { } takenBarcode)
             return Fail("BARCODE_DUPLICATE", ProductPublicationComposer.ConnectionDuplicateMessage(takenBarcode), status: 409);
-        var modelCodes = variants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
-        if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0])) return Fail("MODEL_CODE_REQUIRED", "Pazarama varyant grubu tek bir ortak model kodu kullanmalıdır.");
-        var groupCode = GroupCode(modelCodes[0]!);
 
         var variantIds = variants.Select(x => x.Id).ToArray();
         var optionRows = await (from option in db.ProductOptions.AsNoTracking()
@@ -236,6 +249,19 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
 
     // groupCode is documented as at most 10 characters: a short model code is used as it is, a longer
     // one becomes a stable 10-character code of the model code.
+    // The groupCode of the Pazarama product the card is linked to: its one "group:<code>" product link (PazaramaProducts
+    // keys a grouped listing so); null when there is none or more than one.
+    internal static string? ExistingGroupCode(IEnumerable<string?> productLinkExternalIds)
+    {
+        var groups = productLinkExternalIds
+            .Where(id => id is not null && id.StartsWith("group:", StringComparison.Ordinal))
+            .Select(id => id![6..].Trim())
+            .Where(code => code.Length is > 0 and <= MaxGroupCodeLength)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return groups.Count == 1 ? groups[0] : null;
+    }
+
     internal static string GroupCode(string modelCode)
     {
         var code = modelCode.Trim();

@@ -45,6 +45,14 @@ describe('marketplace publish lines', () => {
       .toEqual(['Trendyol: 6 renk kartı (18 varyant) gönderim kuyruğuna alındı; 2 renk kartı zaten yayında, atlandı.'])
   })
 
+  it('says a card already on the marketplace sent only its missing variants', () => {
+    // MZ021Y-CD on Trendyol: before, the card was skipped whole ("7 renk kartı ... zaten eşleşmiş, atlandı").
+    expect(marketplacePublishLines(publish({ familyCards: 7, enqueuedCards: 1, enqueuedVariants: 3, addedToListingCards: 1, skipped: { live: 0, running: 0, matched: 6 } })))
+      .toEqual(['Trendyol: 1 renk kartı için eksik 3 varyant gönderim kuyruğuna alındı; 6 renk kartı pazaryerinde zaten eşleşmiş, atlandı.'])
+    expect(marketplacePublishLines(publish({ enqueuedCards: 1, enqueuedVariants: 2, addedToListingCards: 1 })))
+      .toEqual(['Trendyol: eksik 2 varyant gönderim kuyruğuna alındı.'])
+  })
+
   it('names a single product and its variants', () => {
     expect(marketplacePublishLines(publish({ platformName: 'n11', platformCode: 'N11', enqueuedCards: 1, enqueuedVariants: 3 })))
       .toEqual(['n11: ürün (3 varyant) gönderim kuyruğuna alındı.'])

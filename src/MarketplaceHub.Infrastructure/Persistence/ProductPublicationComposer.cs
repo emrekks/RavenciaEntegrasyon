@@ -24,7 +24,9 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
 
-    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    // onlyUnsentVariants: Yayınla's send, which leaves out the card's variants already on the marketplace
+    // (PublicationUnsentVariants); the update composers build from the whole card.
+    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false)
     {
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound<ProductPublicationDraft>();
@@ -36,11 +38,11 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (platformCode == "HEPSIBURADA")
-            return await new HepsiburadaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+            return await new HepsiburadaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, onlyUnsentVariants);
         if (platformCode == "N11")
             return await new N11ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (platformCode == "PAZARAMA")
-            return await new PazaramaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+            return await new PazaramaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, onlyUnsentVariants);
         if (platformCode == "PTTAVM")
             return await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
@@ -116,16 +118,24 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             if (valueMappings.Usable.Count == 0) return Fail("ATTRIBUTE_VALUE_MAPPING_REQUIRED", $"'{remote.Name}' değer eşlemesi snapshot içinde bulunamadı.");
         }
 
-        var variants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
-        if (variants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
+        var cardVariants = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.Status != ProductStatus.Archived).OrderBy(x => x.Id).ToListAsync(cancellationToken);
+        if (cardVariants.Count == 0) return Fail("PRODUCT_VARIANT_REQUIRED", "Yayın için en az bir etkin varyant gerekir.");
+        // productMainId is the whole card's model code, so the variants a matched card adds join its Trendyol product.
+        var modelCodes = cardVariants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
+        if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0]) || modelCodes[0]!.Length > 40) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak ve en fazla 40 karakterlik model kodu kullanmalıdır.");
+        var variants = cardVariants;
+        if (onlyUnsentVariants)
+        {
+            var present = await PublicationUnsentVariants.PresentAsync(db, tenantId, connectionId, [.. cardVariants.Select(x => x.Id)], cancellationToken);
+            if (PublicationUnsentVariants.Unsent(cardVariants, x => x.Id, present) is not { } unsent) return Fail("PRODUCT_ALREADY_LIVE", PublicationUnsentVariants.AllPresentMessage("Trendyol"), status: 409);
+            variants = [.. unsent];
+        }
         if (variants.Count > 1000) return Fail("PRODUCT_BATCH_LIMIT_EXCEEDED", "Tek yayın isteğinde en fazla 1000 varyant gönderilebilir.");
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Barcode) || x.Barcode.Trim().Length > 40 || !IsValidBarcode(x.Barcode.Trim()))) return Fail("BARCODE_INVALID", "Tüm varyantlarda en fazla 40 karakterlik; yalnız Türkçe karakter içermeyen harf, rakam, nokta, tire veya alt çizgiden oluşan barkod bulunmalıdır.");
         if (variants.Select(x => x.Barcode!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() != variants.Count) return Fail("BARCODE_DUPLICATE", "Yayınlanan varyant barkodları benzersiz olmalıdır.");
         if (await ConnectionDuplicateAsync(db, tenantId, connectionId, variants.Select(x => x.Id).ToArray(), variants.Select(x => x.Barcode!.Trim()).ToArray(), [], cancellationToken) is { } takenBarcode)
             return Fail("BARCODE_DUPLICATE", ConnectionDuplicateMessage(takenBarcode), status: 409);
         if (variants.Any(x => string.IsNullOrWhiteSpace(x.Sku) || x.Sku.Trim().Length > 100)) return Fail("SKU_INVALID", "Tüm varyantlarda en fazla 100 karakterlik SKU bulunmalıdır.");
-        var modelCodes = variants.Select(x => x.ModelCode?.Trim()).Distinct(StringComparer.Ordinal).ToList();
-        if (modelCodes.Count != 1 || string.IsNullOrWhiteSpace(modelCodes[0]) || modelCodes[0]!.Length > 40) return Fail("MODEL_CODE_REQUIRED", "Varyant grubu tek bir ortak ve en fazla 40 karakterlik model kodu kullanmalıdır.");
 
         var variantIds = variants.Select(x => x.Id).ToArray();
         var optionRows = await (from option in db.ProductOptions.AsNoTracking()

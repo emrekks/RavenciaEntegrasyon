@@ -40,7 +40,7 @@ import { PublicationJobDialog } from './PublicationJobDialog'
 import { PlatformUpdateDialog } from './PlatformUpdateDialog'
 import { isProductDeliveryDays, productDeliveryDays } from './product-delivery-days'
 import { platformUpdatePlan, priceStockPlatformUpdateFields, readPlatformUpdatePreferences, readPlatformUpdateStores, writePlatformUpdatePreferences, writePlatformUpdateStores, type PlatformUpdateField, type PlatformUpdatePreferences } from './platform-update-fields'
-import { publishCardVariantLinks, publishCardVariantPresence, withLatestVariantLinks } from './publish-card-variants'
+import { publishCardPlan, publishCardVariantLinks, publishCardVariantPresence, withLatestVariantLinks } from './publish-card-variants'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { PriceSuggestionLink } from './PriceSuggestionDialog'
@@ -67,7 +67,7 @@ import { useOperationFeedbackToasts, type OperationFeedback } from '../operation
 import { ModelCodeHolderNotice, useModelCodeHolder } from '../model-code-holder'
 import { focusOnMount } from '../../../shared/focus'
 import { channelOfferPostKey, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, rowsWithSavedOffer, type ChannelPricingDraft, type SavedChannelOffer } from './marketplace-channel-pricing'
-import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
+import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
 // The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
@@ -2895,19 +2895,19 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           publications.push(outcome)
           for (const [familyIndex, familyProductId] of familyIds.entries()) {
             try {
-              // n11 sends only a card's variants not yet live there, so a partly refused n11 card goes again; elsewhere a
-              // card with a matched variant is left as it is (its publication would send the whole card).
+              // Every marketplace: a card whose variants are all there is left as it is; a card partly there sends only the
+              // variants not there yet (new ones, or ones the marketplace lost), which the server adds to its listing.
               const cardVariants = product.variants.filter(variant => (variant.productId ?? product.id) === familyProductId)
-              // A card with a variant the marketplace no longer knows (Bulunamadı, Kısmen yayında) goes again.
-              const cardLinks = publishCardVariantLinks(cardVariants.map(variant => ({ platformStatuses: linkRowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses })), connectionId)
-              const matchedCount = cardLinks.linked
-              const hasMissingVariant = cardLinks.missing > 0
-              const resendsRefused = platformCode === 'N11'
-              if (!hasMissingVariant && matchedCount > 0 && (!resendsRefused || matchedCount === cardVariants.length)) { outcome.skipped.matched++; continue }
+              const plan = publishCardPlan(cardVariants.map(variant => ({
+                platformStatuses: linkRowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses,
+                color: preferredColorOption(variantOptionEntries(variant))?.value
+              })), connectionId)
+              if (!plan.send && plan.reason === 'matched') { outcome.skipped.matched++; continue }
+              if (!plan.send) { familyFailures.set(plan.message, [...(familyFailures.get(plan.message) ?? []), familyIndex]); continue }
               const status = await hubApi<PublicationStatus>(`/products/${familyProductId}/publication-status/${connectionId}`).catch(() => null)
               // A PTT AVM family card shown as "Tekrar Deneyin" goes again; the API closes its waiting approval checks.
               const pttAvmFamily = familyIds.length > 1 || cardVariants.length > 1
-              if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily, hasMissingVariant)) {
+              if (status && isSkippedByPublish(platformCode, status.actualStatus, status.lastJobStatus, pttAvmFamily, plan.hasMissingVariant || plan.addsToListing)) {
                 if (isPublicationLive(status.actualStatus)) outcome.skipped.live++
                 else outcome.skipped.running++
                 continue
@@ -2924,7 +2924,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               await hubApi<AcceptedJob>(`/products/${familyProductId}/publication-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId }) })
               await client.invalidateQueries({ queryKey: ['publication-status', familyProductId, connectionId] })
               outcome.enqueuedCards++
-              outcome.enqueuedVariants += resendsRefused ? cardVariants.length - matchedCount : cardVariants.length
+              outcome.enqueuedVariants += plan.variants
+              if (plan.addsToListing) outcome.addedToListingCards = (outcome.addedToListingCards ?? 0) + 1
             } catch (reason) {
               const failure = reason instanceof Error ? reason.message : 'Yayın işi oluşturulamadı.'
               familyFailures.set(failure, [...(familyFailures.get(failure) ?? []), familyIndex])

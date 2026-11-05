@@ -19,8 +19,10 @@ export type MarketplacePublishOutcome = {
   /** Colour cards of the family Yayınla looked at (1 for a product without a family). */
   familyCards: number
   enqueuedCards: number
-  /** Variants the queued jobs carry (n11 sends only a card's variants not yet live there). */
+  /** Variants the queued jobs carry (a card already on the marketplace sends only its variants not there yet). */
   enqueuedVariants: number
+  /** Queued cards that were already on the marketplace and sent only their missing variants. */
+  addedToListingCards?: number
   skipped: { live: number; running: number; matched: number }
   /** Where the opened card stands among the family's cards (0 when left out). */
   openedCard?: number
@@ -86,6 +88,12 @@ function skippedPhrase(outcome: MarketplacePublishOutcome) {
 
 function enqueuedPhrase(outcome: MarketplacePublishOutcome, platformHoldsFamily: boolean) {
   const variants = `${outcome.enqueuedVariants} varyant`
+  // Cards already there sent only what they lacked: said so, so the count is not read as the whole card.
+  if (outcome.enqueuedCards > 0 && outcome.addedToListingCards === outcome.enqueuedCards) {
+    return outcome.familyCards <= 1
+      ? `eksik ${variants} gönderim kuyruğuna alındı`
+      : `${cardCount(outcome.enqueuedCards)} için eksik ${variants} gönderim kuyruğuna alındı`
+  }
   if (outcome.familyCards <= 1) return `ürün (${variants}) gönderim kuyruğuna alındı`
   if (platformHoldsFamily && outcome.enqueuedCards === outcome.familyCards) {
     return `model ailesi (${outcome.enqueuedCards} renk, ${variants}) tek ürün olarak gönderim kuyruğuna alındı`
