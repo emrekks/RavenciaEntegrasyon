@@ -300,11 +300,18 @@ internal static class ReportCosts
             financeStores.Add(store.Key);
         }
 
+        // The commission is real where the marketplace's own record charged it: Trendyol's settled orders (above) and the
+        // Hepsiburada, n11 and Pazarama orders whose finance records were read (their lines carry it, ReportBuilder.Facts);
+        // the rest is estimated.
+        bool Real(ReportBuilder.OrderFact order) => settled.Contains(order.Order.Id) || order.RealCommission;
+        decimal RealAmount(ReportBuilder.OrderFact order) => settled.Contains(order.Order.Id) ? realCommission.GetValueOrDefault(order.Order.Id) : Estimated(order);
         var settledFacts = orders.Where(order => settled.Contains(order.Order.Id)).ToList();
-        var real = Round(settledFacts.Sum(order => realCommission.GetValueOrDefault(order.Order.Id)));
-        var estimatedSettled = Round(settledFacts.Sum(Estimated));
-        var estimatedOther = Round(orders.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
-        var commissionView = new ReportRealCommissionView(real, settledFacts.Count, estimatedSettled, estimatedOther, real + estimatedOther);
+        var realFacts = orders.Where(Real).ToList();
+        var trendyolReal = Round(settledFacts.Sum(order => realCommission.GetValueOrDefault(order.Order.Id)));
+        var real = Round(realFacts.Sum(RealAmount));
+        var estimatedSettled = Round(realFacts.Sum(order => settled.Contains(order.Order.Id) ? Estimated(order) : order.EstimatedCommission ?? 0m));
+        var estimatedOther = Round(orders.Where(order => !Real(order)).Sum(Estimated));
+        var commissionView = new ReportRealCommissionView(real, realFacts.Count, estimatedSettled, estimatedOther, real + estimatedOther);
         var settledFinanceOrders = financeOrders.Count(order => settled.Contains(order.Order.Id));
 
         var lineViews = MarketplaceFinanceCategories.All.Where(lines.ContainsKey)
@@ -320,8 +327,8 @@ internal static class ReportCosts
             .Select(channel =>
             {
                 var own = orders.Where(order => order.Order.ConnectionId == channel.Id).ToList();
-                var channelReal = Round(own.Where(order => settled.Contains(order.Order.Id)).Sum(order => realCommission.GetValueOrDefault(order.Order.Id)));
-                var channelEstimate = Round(own.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
+                var channelReal = Round(own.Where(Real).Sum(RealAmount));
+                var channelEstimate = Round(own.Where(order => !Real(order)).Sum(Estimated));
                 var amounts = MarketplaceFinanceCategories.Costs.Where(category => category != MarketplaceFinanceCategories.Commission && channelCosts.ContainsKey((channel.Id, category)))
                     .Select(category => new ReportCostAmountView(category, Round(channelCosts[(channel.Id, category)])))
                     .ToList();
@@ -342,7 +349,7 @@ internal static class ReportCosts
         // The net VAT of the Trendyol orders: the VAT in the domestic sales, less the VAT in their product cost and in
         // Trendyol's VAT-inclusive charges (the international service fee and the withholding tax carry none) on the
         // period's orders; a record tied to no order of the period (Unlinked) carries no VAT of theirs.
-        var trendyolCommission = real + Round(financeOrders.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
+        var trendyolCommission = trendyolReal + Round(financeOrders.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
         var trendyolFees = linkedDomesticFees + financeOrders.Count(order => !linkedFees.Contains((order.Order.Id, MarketplaceFinanceCategories.ServiceFee))) * PlatformServiceFeePerOrder;
         var advertising = lines.TryGetValue(MarketplaceFinanceCategories.Advertising, out var adLine) ? adLine.Amount : 0m;
         var vatOrders = financeOrders.Concat(platformOrders).ToList();
@@ -372,11 +379,12 @@ internal static class ReportCosts
         if (costs.Source != FinanceSource)
         {
             yield return stores == 0
-                ? "Gerçek masraf verisi yok: seçili mağazalarda canlı Trendyol mağazası yok; komisyon ve masraflar tahminidir."
+                ? "Gerçek masraf verisi yok: seçili mağazalarda canlı Trendyol mağazası yok; masraflar ve pazaryeri kaydı olmayan siparişlerin komisyonu tahminidir."
                 : input.Finance!.States.Values.All(state => state?.CoveredThrough is null)
-                    ? "Gerçek masraf verisi yok: Trendyol finans kayıtları henüz okunmadı; komisyon ve masraflar tahminidir."
-                    : "Trendyol finans kayıtlarında bu döneme ait kayıt yok; komisyon ve masraflar tahminidir.";
+                    ? "Gerçek masraf verisi yok: Trendyol finans kayıtları henüz okunmadı; masraflar ve pazaryeri kaydı olmayan siparişlerin komisyonu tahminidir."
+                    : "Trendyol finans kayıtlarında bu döneme ait kayıt yok; masraflar ve pazaryeri kaydı olmayan siparişlerin komisyonu tahminidir.";
             if (PlatformNote(costs, tr) is { } unread) yield return unread;
+            if (RealCommissionNote(costs, tr) is { } read) yield return read;
             yield break;
         }
         if (PlatformNote(costs, tr) is { } platforms) yield return platforms;
@@ -392,8 +400,7 @@ internal static class ReportCosts
             yield return $"{Money(unreferenced)} hizmet bedeli ve stopaj faturasında Trendyol ne sipariş ne ödeme bilgisi veriyor; hangi siparişe ait olduğu bilinmediği için siparişe bağlı olmayan kesintilerde kalır.";
         if (costs.Coverage is { } coverage)
             yield return $"Trendyol siparişlerinin {costs.SettledOrders.ToString("N0", tr)} / {costs.FinanceOrders.ToString("N0", tr)} kadarında (%{coverage * 100:N1}) hesap kesimi var; Trendyol kaydı teslimattan sonra yazar, kalan siparişlerin komisyonu tahminidir.";
-        if (costs.Commission is { RealOrders: > 0 } commission)
-            yield return $"Komisyon, hesap kesimi olan {commission.RealOrders.ToString("N0", tr)} siparişte tahmin yerine gerçek tutarla alındı: gerçek {Money(commission.Real)}, aynı siparişlerin tahmini {Money(commission.EstimatedForSettled)}. Komisyon tahmini alanları tahmin olarak kalır.";
+        if (RealCommissionNote(costs, tr) is { } real) yield return real;
         if (costs.CoveredFrom is { } from && costs.CoveredThrough is { } through
             && (input.Period.Start < from || input.Period.End > through))
             yield return $"Trendyol finans kayıtları {Date(from)} – {Date(through)} aralığında okundu; dönemin bu aralık dışındaki kısmının masrafları eksik olabilir.";
@@ -421,6 +428,13 @@ internal static class ReportCosts
     private static string? PlatformNote(ReportCostsView costs, CultureInfo tr) =>
         costs.Cargo is { PlatformOrders: > 0 } cargo
             ? $"Hepsiburada, n11, Pazarama, PTT AVM ve Shopify'ın {cargo.PlatformOrders.ToString("N0", tr)} siparişinin kargosu ({cargo.PlatformEstimated.ToString("N2", tr)} ₺), hizmet bedelleri ve stopajı pazaryerlerinin 2026 tarifelerinden tahmin edildi: kargo, paketin kargo firması ve ürünlerin desisiyle (desi girilmemiş ürün 1 desi sayılır, barem sınırları uygulanır); tamamen iade edilen siparişte dönüş kargosu da satıcıya yazılır. Shopify'da sipariş başına 120 ₺ kargo ve kartlı ödeme (iyzico %4,29 + 0,25 ₺, Shopify %2) varsayıldı."
+            : null;
+
+    // The orders whose commission the marketplace's own record gave (Trendyol's settlement, Hepsiburada's commission
+    // records, n11's settlement lines, Pazarama's money movements), beside what the estimate said for them.
+    private static string? RealCommissionNote(ReportCostsView costs, CultureInfo tr) =>
+        costs.Commission is { RealOrders: > 0 } commission
+            ? $"Gerçek Komisyon: pazaryerinin kendi kaydı olan {commission.RealOrders.ToString("N0", tr)} siparişte (Trendyol hesap kesimi, Hepsiburada muhasebe kayıtları, n11 hakediş kayıtları, Pazarama finans hareketleri) komisyon tahmin yerine gerçek tutarla (iadeler ve düzeltmeler düşülmüş) alındı: {commission.Real.ToString("N2", tr)} ₺, aynı siparişlerin tahmini {commission.EstimatedForSettled.ToString("N2", tr)} ₺. Kaydı olmayan siparişlerin komisyonu Tahmini Komisyon'dur: {commission.EstimatedForUnsettled.ToString("N2", tr)} ₺."
             : null;
 
     private static bool IsFinanceStore(ReportInput input, Guid connectionId) =>

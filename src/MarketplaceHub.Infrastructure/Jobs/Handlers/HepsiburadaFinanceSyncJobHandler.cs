@@ -37,6 +37,7 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
         var context = new AdapterContext(request.TenantId, request.ConnectionId, request.CorrelationId, $"hepsiburada-finance:{request.ConnectionId:N}", now.AddMinutes(10), Operation: IntegrationOperation.Automatic);
         var requests = 0;
         var records = new Dictionary<string, RemoteFinanceRecord>(StringComparer.Ordinal);
+        var skipped = new List<RemoteSkippedFinanceRecord>();
         foreach (var (status, byDueDate, start, end) in new[] { ("WillBePaid", true, back, now.AddDays(Setting("AheadDays", 90, 1, 365))), ("Paid", false, back, now.AddDays(1)) })
         {
             // A month at most per query, as the guide's example asks: consecutive windows of WindowDays calendar days.
@@ -49,7 +50,9 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
                     var result = await finance.GetFinanceRecordsAsync(context, status, byDueDate, from, to, page * PageSize, cancellationToken);
                     if (!result.IsSuccess) return await FailAsync(request, result.Error!, now, new(requests, records.Count, 0, 0, 0, 1), cancellationToken);
                     foreach (var item in result.Value!.Items) records[item.Id] = item;
-                    if (result.Value.Items.Count < PageSize || (page + 1) * PageSize >= result.Value.Count) break;
+                    skipped.AddRange(result.Value.Skipped);
+                    // A skipped record still fills its place on the page.
+                    if (result.Value.Items.Count + result.Value.Skipped.Count < PageSize || (page + 1) * PageSize >= result.Value.Count) break;
                 }
             }
         }
@@ -86,22 +89,27 @@ public sealed class HepsiburadaFinanceSyncJobHandler(AppDbContext db, IHepsibura
             else updated++;
             Apply(row, record, now);
         }
+        // A record skipped in one window and stored in another (read again complete) is not reported.
+        var incomplete = skipped.Where(x => !records.ContainsKey(x.Key)).ToList();
+        await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "Hepsiburada", incomplete, records.Keys, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         await ResolveIssueAsync(request.TenantId, FailureKey(request.ConnectionId), now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
-        return new(JobExecutionResult.Success(), new(requests, records.Count, inserted, updated, inserted + updated, 0));
+        return new(JobExecutionResult.Success(), new(requests, records.Count + incomplete.Count, inserted, updated, inserted + updated, 0));
     }
 
-    // Income pays the seller (credit), an expense charges them (debt); a record that does not say keeps its sign.
+    // Income pays the seller (credit), an expense charges them (debt); a record that does not say keeps its sign. The
+    // mapper keeps only records with an amount and a day (HepsiburadaFinanceMapper.Page); one without is never stored.
     internal static void Apply(MarketplaceFinanceTransaction row, RemoteFinanceRecord record, DateTimeOffset now)
     {
-        var amount = record.Amount ?? 0m;
+        var amount = record.Amount ?? throw new InvalidOperationException("A Hepsiburada finance record without an amount is not stored.");
+        var transactionDate = record.InvoiceDate ?? record.OrderDate ?? record.DueDate ?? throw new InvalidOperationException("A Hepsiburada finance record without a day is not stored.");
         var credit = record.IsIncome switch { true => Math.Abs(amount), false => 0m, null => Math.Max(amount, 0m) };
         var debt = record.IsIncome switch { true => 0m, false => Math.Abs(amount), null => Math.Max(-amount, 0m) };
         row.TransactionType = Short(record.TransactionType, 200);
         row.TransactionSubType = Short(record.Status, 64);
         row.Category = Category(record.TransactionType);
-        row.TransactionDate = (record.InvoiceDate ?? record.OrderDate ?? record.DueDate ?? now).ToUniversalTime();
+        row.TransactionDate = transactionDate.ToUniversalTime();
         row.OrderNumber = Short(record.OrderNumber, 128);
         row.ShipmentPackageId = Short(record.PackageNumber, 128);
         row.Barcode = Short(record.Sku, 160);

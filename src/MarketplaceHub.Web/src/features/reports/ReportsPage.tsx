@@ -1145,8 +1145,8 @@ function commissionNote(costs: ReportCosts) {
   const commission = costs.commission
   if (!commission) return ''
   return commission.realOrders > 0
-    ? `${formatCount(commission.realOrders)} siparişin komisyonu Trendyol hesap kesiminden kesin: ${formatTl(commission.real)}. Henüz hesap kesimi olmayanlarınki tahmini: ${formatTl(commission.estimatedForUnsettled)}.`
-    : 'Hesap kesimi henüz yok; tümü siparişteki komisyon oranından tahmin edildi.'
+    ? `Gerçek Komisyon: ${formatCount(commission.realOrders)} siparişte pazaryerinin kendi kaydından (Trendyol hesap kesimi; Hepsiburada, n11, Pazarama finans kayıtları), iadeler düşülmüş: ${formatTl(commission.real)}. Tahmini Komisyon: kaydı olmayan siparişlerde siparişteki komisyon oranından, ${formatTl(commission.estimatedForUnsettled)}.`
+    : 'Pazaryerlerinin komisyon kaydı henüz yok; tümü Tahmini Komisyon, siparişteki komisyon oranından.'
 }
 
 function cargoNote(cargo: NonNullable<ReportCosts['cargo']>) {
@@ -1629,7 +1629,7 @@ function CostAndProfit({ data }: { data: ReportSales }) {
       {money ? <><ProfitLedger money={money} notes={ledgerNotes(data)} /><EstimateGaps money={money} shown /></> : <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}
     </Panel>
     <div className="reports-stack">
-      <Ledger title="Trendyol Komisyon ve Kargo" description="Trendyol cari hesabından: kesinleşen komisyon ve kargo faturası, kalanı tahmini." rows={trendyolLedger(data)}
+      <Ledger title="Komisyon ve Trendyol Kargo" description="Komisyon tüm pazaryerlerinde: pazaryerinin kendi kaydı olan siparişte gerçek, kalanı tahmini. Kargo Trendyol cari hesabından." rows={trendyolLedger(data)}
         empty="Trendyol cari hesabı bu seçimde okunmadı." />
       <Panel title="Platformlara Göre Net Ciro" description="Her platformun satıştan iadeler düştükten sonra kalan cirosu.">
         {/* A platform without amounts is listed in words, not drawn as a ₺0 bar. */}
@@ -1673,8 +1673,9 @@ function trendyolLedger(data: ReportSales): LedgerRow[] {
   const { commission, cargo } = finance
   return [
     // One short line under each; the full account of each is on the overview's rows under the pointer.
-    { label: 'Trendyol Komisyonu', value: formatTl(commission.combined), hint: commission.realOrders > 0 ? `${formatTl(commission.real)} kesin, ${formatTl(commission.estimatedForUnsettled)} tahmini` : 'Tümü tahmini' },
-    { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: `Bu siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` },
+    { label: 'Gerçek Komisyon', value: formatTl(commission.real), hint: commission.realOrders > 0 ? `${formatCount(commission.realOrders)} siparişte pazaryerinin kendi kaydından; aynı siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` : 'Pazaryeri kaydı olan sipariş yok' },
+    { label: 'Tahmini Komisyon', value: formatTl(commission.estimatedForUnsettled), hint: 'Pazaryeri kaydı olmayan siparişlerde siparişteki komisyon oranından' },
+    { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: 'Trendyol siparişlerinden hesap kesimi gelenler' },
     { label: 'Trendyol Kargo', value: formatTl(cargo.combined - (cargo.platformEstimated ?? 0)), hint: cargo.unbilledOrders === 0 ? `${formatCount(cargo.billedOrders)} sipariş faturalı` : `${formatCount(cargo.billedOrders)} sipariş faturalı, ${formatCount(cargo.unbilledOrders)} sipariş tahmini` },
     { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: 'Son 30 günde en sık kesilen tutar' }
   ]

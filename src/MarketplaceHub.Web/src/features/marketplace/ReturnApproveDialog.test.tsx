@@ -43,7 +43,7 @@ describe('ReturnApproveDialog', () => {
 
   // T2-O1 (5 Nov 2026): a Hepsiburada claim is approved as the customer asked, chosen before anything is sent.
   const renderHepsiburada = (customerRequest: string | null) => act(() => root.render(<QueryClientProvider client={client}>
-    <ReturnApproveDialog open claimId="hb-1" version={1} marketplaceName="Hepsiburada" order={{ ...order, platformCode: 'HEPSIBURADA', platformName: 'Hepsiburada' }} rows={rows} loading={false} error={null} wholeClaim customerRequest={customerRequest} onClose={() => {}} onDone={() => {}} />
+    <ReturnApproveDialog open claimId="hb-1" version={1} marketplaceName="Hepsiburada" order={{ ...order, platformCode: 'HEPSIBURADA', platformName: 'Hepsiburada' }} rows={rows} loading={false} error={null} wholeClaim finalizedWithChoice customerRequest={customerRequest} onClose={() => {}} onDone={() => {}} />
   </QueryClientProvider>))
   const choice = () => document.querySelector<HTMLSelectElement>('.rr-finalized select')!
   const approveButton = () => Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Onayla')!
@@ -63,6 +63,18 @@ describe('ReturnApproveDialog', () => {
       Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(choice(), 'Change')
       choice().dispatchEvent(new Event('change', { bubbles: true }))
     })
+    expect(approveButton().disabled).toBe(false)
+  })
+
+  // Report item 8: Shopify approves a whole return; the product choice is locked and no refund/exchange choice is asked.
+  it('locks the product choice of a Shopify return without asking for refund or exchange', () => {
+    act(() => root.render(<QueryClientProvider client={client}>
+      <ReturnApproveDialog open claimId="shp-1" version={1} marketplaceName="Shopify" order={{ ...order, platformCode: 'SHOPIFY', platformName: 'Shopify' }} rows={rows} loading={false} error={null} wholeClaim onClose={() => {}} onDone={() => {}} />
+    </QueryClientProvider>))
+    expect(productBox('Gömlek').disabled).toBe(true)
+    expect(productBox('Pantolon').checked).toBe(true)
+    expect(document.querySelector('.rr-finalized select')).toBeNull()
+    expect(document.body.textContent).toContain('Shopify kararı bu talepteki tüm ürün satırlarına uygulanır.')
     expect(approveButton().disabled).toBe(false)
   })
 })

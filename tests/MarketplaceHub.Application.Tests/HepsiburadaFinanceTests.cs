@@ -35,7 +35,8 @@ public sealed class HepsiburadaFinanceTests
         // Istanbul midnight of 10 Nov is 21:00 UTC the day before.
         Assert.Equal(new DateTimeOffset(2026, 11, 9, 21, 0, 0, TimeSpan.Zero), sale.DueDate);
         Assert.Null(sale.PaymentDate);
-        Assert.Throws<JsonException>(() => HepsiburadaFinanceMapper.Page(JsonDocument.Parse("""{"items":[{"transactionType":"Payment"}]}""").RootElement));
+        // A record without an id is not stored but named; the page is read on.
+        Assert.Single(HepsiburadaFinanceMapper.Page(JsonDocument.Parse("""{"items":[{"transactionType":"Payment"}]}""").RootElement).Skipped);
     }
 
     [Fact]

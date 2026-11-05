@@ -29,7 +29,7 @@ public sealed class TrendyolAdapterAuditTests
     public void PackageAmountsAreThePackagesOwnTotals()
     {
         const string json = """
-        {"content":[{"id":"4268578123","orderNumber":"11738971444","status":"Delivered","lastModifiedDate":1760000000000,
+        {"content":[{"id":"4268578123","orderNumber":"11738971444","orderDate":1760000000000,"currencyCode":"TRY","status":"Delivered","lastModifiedDate":1760000000000,
           "grossAmount":1598.00,"totalDiscount":80.98,"totalTyDiscount":0.00,"totalPrice":1517.02,"lines":[
           {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10},
           {"lineId":"2","stockCode":"SKU-2","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10}
@@ -49,7 +49,7 @@ public sealed class TrendyolAdapterAuditTests
     public void PackageAmountsTheReadLeavesOutAreTheSumOfTheLines()
     {
         const string json = """
-        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"lines":[
           {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":2,"amount":775.00,"discount":20.00,"price":755.00,"vatRate":10},
           {"lineId":"2","stockCode":"SKU-2","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10}
         ]}]}
@@ -65,7 +65,7 @@ public sealed class TrendyolAdapterAuditTests
     public void PackageDiscountIsNotSummedWhenALineDoesNotStateIt()
     {
         const string json = """
-        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"grossAmount":1598.00,"lines":[
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"grossAmount":1598.00,"lines":[
           {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":799.00,"discount":40.49,"price":758.51,"vatRate":10},
           {"lineId":"2","stockCode":"SKU-2","productName":"Bluz","quantity":1,"amount":799.00,"price":758.51,"vatRate":10}
         ]}]}
@@ -80,7 +80,7 @@ public sealed class TrendyolAdapterAuditTests
     public void ALineWithoutAVatRateNeverTakesTheVatBaseAmountAsTheRate()
     {
         const string json = """
-        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"lines":[
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"lines":[
           {"lineId":"line-1","stockCode":"SKU-1","productName":"Ürün","quantity":1,"lineItemPrice":120,"vatBaseAmount":100},
           {"lineId":"line-2","stockCode":"SKU-2","productName":"Ürün 2","quantity":1,"lineItemPrice":120,"vatRate":20,"vatBaseAmount":100}
         ]}]}
@@ -133,7 +133,7 @@ public sealed class TrendyolAdapterAuditTests
     {
         // T-3: a cancelled package carries no cargo provider, tracking number or invoice fields. Its match ends the
         // scan; the empty fields stay unknown instead of turning the package into "not found" after more pages.
-        var handler = new PagedStream(_ => """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","status":"Cancelled","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}""");
+        var handler = new PagedStream(_ => """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Cancelled","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}""");
         var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
 
         var scan = await Client(handler).ScanPackageStreamAsync(Account(), "pkg-1", null, null, end.AddDays(-12), end, "TR", CancellationToken.None);
@@ -180,8 +180,8 @@ public sealed class TrendyolAdapterAuditTests
     public async Task TheOrderStreamLookupKeepsReadingForTheOrdersOtherPackages()
     {
         var handler = new PagedStream(page => page == 1
-            ? """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","status":"Created","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}"""
-            : """{"content":[{"id":"pkg-2","orderNumber":"ORD-1","status":"Created","lastModifiedDate":1760000001000,"lines":[]}],"hasMore":false}""");
+            ? """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}"""
+            : """{"content":[{"id":"pkg-2","orderNumber":"ORD-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000001000,"lines":[]}],"hasMore":false}""");
         var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
 
         var scan = await Client(handler).ScanOrderStreamAsync(Account(), "ORD-1", end.AddDays(-12), end, "TR", null, CancellationToken.None);
@@ -196,7 +196,7 @@ public sealed class TrendyolAdapterAuditTests
     public async Task TheOrderStreamLookupRefusedAfterTheFirstPageIsAnIncompleteScanNotASuccess()
     {
         var handler = new StatusStream(page => page == 1
-            ? (HttpStatusCode.OK, """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","status":"Created","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}""")
+            ? (HttpStatusCode.OK, """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}""")
             : (HttpStatusCode.BadRequest, """{"errors":[{"message":"cursor expired"}]}"""));
         var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
 
@@ -229,7 +229,7 @@ public sealed class TrendyolAdapterAuditTests
         var handler = new StatusStream(_ =>
         {
             cancellation.Cancel();
-            return (HttpStatusCode.OK, """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","status":"Created","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}""");
+            return (HttpStatusCode.OK, """{"content":[{"id":"pkg-1","orderNumber":"ORD-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"lines":[]}],"hasMore":true,"nextCursor":"cursor-2"}""");
         });
         var end = new DateTimeOffset(2026, 10, 20, 12, 0, 0, TimeSpan.Zero);
 
@@ -268,7 +268,7 @@ public sealed class TrendyolAdapterAuditTests
     public void ACommaTextAmountIsNotReadAsAHundredTimesItself()
     {
         const string json = """
-        {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"grossAmount":"1234,50","totalPrice":"1234.50","lines":[
+        {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"grossAmount":"1234,50","totalPrice":"1234.50","lines":[
           {"lineId":"1","stockCode":"SKU-1","productName":"Bluz","quantity":1,"amount":"1234.50","price":"1234.50","vatRate":10}
         ]}]}
         """;
@@ -284,7 +284,7 @@ public sealed class TrendyolAdapterAuditTests
     public void ATextClaimDateWithAnOffsetIsReadAsUtc()
     {
         const string json = """
-        {"page":0,"totalPages":1,"content":[{"id":"c1","claimId":"c1","orderNumber":"o1","lastModifiedDate":1760000000000,"autoApproveDate":"2026-11-01T10:00:00+03:00","items":[]}]}
+        {"page":0,"totalPages":1,"content":[{"id":"c1","claimId":"c1","orderNumber":"o1","orderDate":1760000000000,"currencyCode":"TRY","lastModifiedDate":1760000000000,"autoApproveDate":"2026-11-01T10:00:00+03:00","items":[]}]}
         """;
 
         var claim = Assert.Single(TrendyolJsonMapper.Returns(json).Items);

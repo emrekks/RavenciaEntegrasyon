@@ -77,15 +77,22 @@ internal static class ReportOrderProfit
             var keptVatFree = domestic ? order.Lines.Sum(ReportCosts.VatFree) : 0m;
             var costs = new List<ReportOrderProfitCostView>();
 
-            // The product cost of the kept units; unknown when a kept line has none.
+            // The product cost of the kept units; unknown when a kept line has none, or when the order holds a line the
+            // panel could not read (UnreadableOrderLines): that line's cost is unknown, so the order's profit is too.
             var keptLines = order.Lines.Where(line => line.KeptUnits > 0).ToList();
-            decimal? productCost = keptLines.All(line => line.Row.CostPrice is > 0) ? Round(keptLines.Sum(line => line.Row.CostPrice!.Value * line.KeptUnits)) : null;
+            var unreadableLines = order.Order.UnreadableLines;
+            decimal? productCost = unreadableLines == 0 && keptLines.All(line => line.Row.CostPrice is > 0) ? Round(keptLines.Sum(line => line.Row.CostPrice!.Value * line.KeptUnits)) : null;
 
             var lineCommission = order.Lines.Sum(line => line.Commission ?? (storeRates.TryGetValue(store, out var rate) ? line.KeptAmount * rate : 0m));
-            var realCommission = settled.Contains(id) && commission.ContainsKey(id);
-            var orderCommission = Round(realCommission ? commission[id] : lineCommission);
-            // Trendyol's statement wins once it settles the order; until then the rate on the order.
-            costs.Add(new("commission", "Komisyon", orderCommission, !realCommission, realCommission ? "Trendyol cari hesabından"
+            // The marketplace's own record of the commission wins on every marketplace: Trendyol's statement once it settles
+            // the order, Hepsiburada's, n11's and Pazarama's finance records once they charge it (their lines then carry it,
+            // ReportBuilder.Facts); until then the estimate from the rate on the order.
+            var settledCommission = settled.Contains(id) && commission.ContainsKey(id);
+            var realCommission = settledCommission || order.RealCommission;
+            var orderCommission = Round(settledCommission ? commission[id] : lineCommission);
+            costs.Add(new("commission", realCommission ? "Gerçek Komisyon" : "Tahmini Komisyon", orderCommission, !realCommission,
+                settledCommission ? "Trendyol cari hesabından"
+                : realCommission ? ReportMarketplaceCommissions.SourceLabel(order.PlatformCode)
                 // The line's rate is read again on every order sync, so Trendyol's discounted rate, sent once the order is
                 // being processed, replaces the first one.
                 : trendyol ? "Siparişten gelen oran; Trendyol indirimli komisyonu sipariş işleme alınınca bildirir, oran o zaman güncellenir"
@@ -161,7 +168,7 @@ internal static class ReportOrderProfit
                 costs,
                 order.Lines.Select(line => new ReportOrderProfitLineView(line.Row.VariantId, line.Row.ProductId, line.Row.Title, line.Row.Barcode, line.Row.Sku, line.KeptUnits, line.Back,
                     Round(line.KeptAmount), line.Commission is { } lc && line.KeptAmount > 0 ? Math.Round(lc / line.KeptAmount * 100m, 2) : null, line.Commission is { } c ? Round(c) : null,
-                    line.Row.CostPrice, line.Row.VatRate)).ToList()));
+                    line.Row.CostPrice, line.Row.VatRate)).ToList(), unreadableLines));
         }
         return views;
     }

@@ -40,7 +40,7 @@ public sealed class ReportDiscountTests
     public void The_trendyol_mapper_reads_trendyols_own_discount_per_unit_and_leaves_a_missing_one_unknown()
     {
         const string json = """
-            {"content":[{"id":"pkg-1","orderNumber":"ord-1","status":"Created","lastModifiedDate":1760000000000,"packageGrossAmount":1127.17,"packageSellerDiscount":76.28,"packageTyDiscount":150,"packageTotalDiscount":226.28,"packageTotalPrice":900.89,"lines":[
+            {"content":[{"id":"pkg-1","orderNumber":"ord-1","orderDate":1760000000000,"currencyCode":"TRY","status":"Created","lastModifiedDate":1760000000000,"packageGrossAmount":1127.17,"packageSellerDiscount":76.28,"packageTyDiscount":150,"packageTotalDiscount":226.28,"packageTotalPrice":900.89,"lines":[
               {"lineId":"line-1","stockCode":"SKU-1","productName":"Test","quantity":1,"lineUnitPrice":450.44,"lineGrossAmount":563.58,"lineSellerDiscount":38.14,"lineTyDiscount":75.00,"vatRate":10},
               {"lineId":"line-2","stockCode":"SKU-2","productName":"Test","quantity":1,"lineUnitPrice":450.45,"vatRate":10}]}]}
             """;

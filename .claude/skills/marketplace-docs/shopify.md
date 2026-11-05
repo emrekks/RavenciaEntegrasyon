@@ -49,10 +49,24 @@ UTC, ISO with Z.
 
 ## Quirks
 - Since 2026-07 `Order.fulfillments` is a plain list.
+- A line item without `id`, quantity or `originalUnitPriceSet` is counted on its package (unreadable line), never
+  stops the page; an order that still cannot be mapped is skipped with an issue and read again by id; a line without
+  a SKU keeps none (no "SHOPIFY-LINE" code since 5 Nov 2026) (`ShopifyHttpClient.PollAsync`, `MapOrder`).
 - `returnDeclineRequest` notifies the customer only with `notifyCustomer: true`.
+- A return is approved or declined as a whole (`shopify-rehberler-son.md:18614`): the panel locks the line choice
+  (`ReturnDecisionScope`, as Hepsiburada). A claim left at PARTIAL_LINE_DECISION_PENDING by the older line choice
+  follows Shopify's status on the next read (5 Nov 2026).
 - Webhooks: stale `X-Shopify-Triggered-At` deliveries are dropped; 8 consecutive failures delete the subscription.
 - Invoice data lives in order metafields `ravencia.invoice_number` and `ravencia.invoice_pdf_url`.
 - No label API.
+- Line VAT: `LineItem.taxLines { rate }` is a list; each `rate` is a fraction (0.2 = 20%). The panel sums the rates
+  into the line's VAT % (offline docs `shopify-admin-graphql-referans-son.md:32611-32712`, sample `"rate": 0.06`). A
+  line with an empty list (`taxable: true, taxLines: []` happens in the docs' sample) or a tax line without a rate is
+  "KDV unknown": product card VAT, else the invoice stops (`InvoiceIssuePolicy`, SHOPIFY path `taxLines.rate`).
+- `Order.taxesIncluded`: true when line prices and subtotal include tax (`shopify-admin-graphql-referans-son.md:6665`);
+  `currentTotalPriceSet` holds the tax either way. When false, the adapter adds each line's tax to its unit price and
+  grosses the reported discounts up by the lines' tax share, so the stored line price is what the customer paid
+  (raw line snapshot keeps Shopify's pre-tax price) (`ShopifyHttpClient.MapOrder`).
 
 ## Job types
 SHOPIFY_CONNECTION_TEST, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORDER_STATUS_SYNC, _ORDER_RECONCILIATION,

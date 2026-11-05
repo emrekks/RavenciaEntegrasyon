@@ -16,7 +16,8 @@ export type OrderProfitLine = { variantId: string | null; title: string; barcode
   commissionRate: number | null; commission: number | null; costPrice: number | null; vatRate: number; imageUrl: string | null; options: string | null }
 export type OrderProfit = { orderId: string; orderNumber: string; platformCode: string; storeName: string; storeFront: string | null; microExport: boolean; orderedAt: string
   state: 'SOLD' | 'PARTLY_RETURNED' | 'RETURNED'; amount: number; cost: number | null; profit: number | null; profitOnCost: number | null; margin: number | null
-  costs: OrderProfitCost[]; lines: OrderProfitLine[] }
+  // Product lines the panel could not read: the order is marked and its cost and profit are unknown.
+  costs: OrderProfitCost[]; lines: OrderProfitLine[]; unreadableLines?: number }
 // The totals of every order the filter keeps: amount over all of them; profit, profitAmount (their amount) and margin
 // only over the profitOrders whose profit is known (profit null when none is).
 export type OrderProfitPage = { items: OrderProfit[]; totalCount: number; page: number; pageSize: number; amount: number; profit: number | null; missingCost: number
@@ -29,8 +30,9 @@ const tone = (value: number | null) => value === null ? 'is-unknown' : value < 0
 const count = (value: number) => value.toLocaleString('tr-TR')
 export const stateText: Record<OrderProfit['state'], string | null> = { SOLD: null, PARTLY_RETURNED: 'Kısmi İade', RETURNED: 'İade' }
 
-// Why an order's profit is unknown: a line without a product cost, or a cargo that could not be estimated.
-export const unknownProfit = (order: OrderProfit) => order.cost === null ? 'Maliyet eksik' : 'Kargo bilinmiyor'
+// Why an order's profit is unknown: a line the panel could not read, a line without a product cost, or a cargo that
+// could not be estimated.
+export const unknownProfit = (order: OrderProfit) => (order.unreadableLines ?? 0) > 0 ? 'Satır okunamadı' : order.cost === null ? 'Maliyet eksik' : 'Kargo bilinmiyor'
 
 
 // The query of a page: the period and platforms of the report, the search, the order and the page.
@@ -95,7 +97,8 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
       <tbody>{data.items.map(item => <tr key={item.orderId}>
         <th scope="row"><span className="reports-order-number"><PlatformSquareMark code={item.platformCode} name={platformName(item.platformCode)} />{item.orderNumber}<CopyNumber value={item.orderNumber} />
           {item.microExport && <em className="reports-order-badge is-micro" title={item.storeFront ?? undefined}>Mikro</em>}
-          {stateText[item.state] && <em className="reports-order-badge is-return">{stateText[item.state]}</em>}</span></th>
+          {stateText[item.state] && <em className="reports-order-badge is-return">{stateText[item.state]}</em>}
+          {(item.unreadableLines ?? 0) > 0 && <em className="reports-order-badge is-return" title={`${item.unreadableLines} ürün satırı okunamadı; sipariş yeniden okunuyor, kârı hesaplanmaz`}>Okunamayan Satır</em>}</span></th>
         <td>{formatIstanbul(item.orderedAt, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
         <td className="is-num">{money(item.amount)}</td>
         <td className={`is-num ${tone(item.profit)}`}>{item.profit === null ? unknownProfit(item) : money(item.profit)}</td>
@@ -148,7 +151,7 @@ function OrderProfitModal({ order, onClose }: { order: OrderProfit; onClose: () 
           <li><span><b>Sipariş Tutarı</b><small>Satıcı indirimi ve iadeler düşülmüş</small></span><strong>{money(order.amount)}</strong></li>
           <li><span><b>Ürün Maliyeti</b><small>Ürün ayarlarındaki maliyet</small></span><strong>{order.cost === null ? 'Eksik' : money(-order.cost)}</strong></li>
           {order.costs.map(cost => <li key={cost.key}>
-            <span><b>{cost.label}{cost.estimated && <em>Tahmini</em>}</b>{cost.source && <small>{cost.source}</small>}</span>
+            <span><b>{cost.label}{cost.estimated && !cost.label.startsWith('Tahmini') && <em>Tahmini</em>}</b>{cost.source && <small>{cost.source}</small>}</span>
             <strong>{cost.amount === null ? 'Bilinmiyor' : money(-cost.amount)}</strong>
           </li>)}
         </ul>

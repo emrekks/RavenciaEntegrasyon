@@ -36,7 +36,7 @@ public sealed class N11OrderMapperTests
               "billingAddress":{"address":"Çiçek Sok. 5","city":"İstanbul","district":"Kadıköy","fullName":"Ayşe Yılmaz","gsm":"5551112233"},
               "shippingAddress":{"address":"Easypoint Kadıköy Şubesi, Bağdat Cad. 1","city":"İstanbul","district":"Kadıköy","fullName":"Easypoint Kadıköy","gsm":"2161112233"},
               "lines":[{"orderLineId":"L1","quantity":1,"productName":"Bluz","stockCode":"BLZ-1","price":100,"sellerInvoiceAmount":100,"totalSellerDiscountPrice":0}],
-              "lastModifiedDate":1724323386203,"shipmentPackageStatus":"Created"}]}
+              "packageHistories":[{"createdDate":1724274054460,"status":"Created"}],"lastModifiedDate":1724323386203,"shipmentPackageStatus":"Created"}]}
             """;
 
         var order = Assert.Single(N11OrderMapper.Packages(page).Items);
@@ -110,9 +110,9 @@ public sealed class N11OrderMapperTests
     {
         const string page = """
             {"totalPages":1,"page":0,"content":[
-              {"orderNumber":"500","id":"P0","shipmentPackageStatus":"UnPacked","lastModifiedDate":1000,"lines":[{"orderLineId":1,"quantity":3,"price":10,"stockCode":"A"}]},
-              {"orderNumber":"500","id":"P1","shipmentPackageStatus":"Picking","lastModifiedDate":1000,"lines":[{"orderLineId":1,"quantity":2,"price":10,"stockCode":"A"}]},
-              {"orderNumber":"500","id":"P2","shipmentPackageStatus":"Picking","lastModifiedDate":1000,"lines":[{"orderLineId":2,"quantity":1,"price":10,"stockCode":"A"}]}
+              {"orderNumber":"500","id":"P0","shipmentPackageStatus":"UnPacked","packageHistories":[{"createdDate":900,"status":"Created"}],"lastModifiedDate":1000,"lines":[{"orderLineId":1,"quantity":3,"price":10,"stockCode":"A"}]},
+              {"orderNumber":"500","id":"P1","shipmentPackageStatus":"Picking","packageHistories":[{"createdDate":900,"status":"Created"}],"lastModifiedDate":1000,"lines":[{"orderLineId":1,"quantity":2,"price":10,"stockCode":"A"}]},
+              {"orderNumber":"500","id":"P2","shipmentPackageStatus":"Picking","packageHistories":[{"createdDate":900,"status":"Created"}],"lastModifiedDate":1000,"lines":[{"orderLineId":2,"quantity":1,"price":10,"stockCode":"A"}]}
             ]}
             """;
 
@@ -147,7 +147,7 @@ public sealed class N11OrderMapperTests
     public void LocationDeliveryWithoutPackageNumberUsesTheCampaignCode()
     {
         const string page = """
-            {"totalPages":1,"page":0,"content":[{"orderNumber":"700","id":null,"cargoTrackingNumber":"KMP-1","shipmentPackageStatus":"Created","lastModifiedDate":1000,"lines":[{"orderLineId":5,"quantity":1,"price":20,"stockCode":"B"}]}]}
+            {"totalPages":1,"page":0,"content":[{"orderNumber":"700","id":null,"cargoTrackingNumber":"KMP-1","shipmentPackageStatus":"Created","packageHistories":[{"createdDate":900,"status":"Created"}],"lastModifiedDate":1000,"lines":[{"orderLineId":5,"quantity":1,"price":20,"stockCode":"B"}]}]}
             """;
 
         Assert.Equal("cargo:KMP-1", N11OrderMapper.Packages(page).Items.Single().Packages[0].ExternalPackageId);
@@ -241,8 +241,27 @@ public sealed class N11OrderMapperTests
     {
         // lastModifiedDate is close to but not the cancellation time; it is never used for it.
         Assert.Null(SinglePackage("Cancelled", """[{"createdDate":1724274054460,"status":"Created"},{"createdDate":1724274255751,"status":"Picking"}]""").CancelledAt);
-        Assert.Null(SinglePackage("Cancelled", "[]").CancelledAt);
-        Assert.Null(SinglePackage("Cancelled", "null").CancelledAt);
+    }
+
+    [Theory]
+    [InlineData("[]")]
+    [InlineData("null")]
+    public void APackageWithoutAnOrderDateIsRefusedAndItsOrderReadAgainInsteadOfTakingItsLastChange(string histories)
+    {
+        // 5 Nov 2026: n11's order date is the package's creation in its history; lastModifiedDate is not an order date.
+        var page = $$"""
+            {"page":0,"totalPages":1,"content":[{
+              "orderNumber":"203872347800","id":"112999455244800",
+              "lines":[{"orderLineId":"L1","quantity":1,"productName":"Bluz","stockCode":"BLZ-1","price":100,"sellerInvoiceAmount":100}],
+              "lastModifiedDate":1724500000000,"packageHistories":{{histories}},"shipmentPackageStatus":"Created"}]}
+            """;
+
+        var result = N11OrderMapper.Packages(page);
+
+        Assert.Empty(result.Items);
+        var issue = Assert.Single(result.Issues!);
+        Assert.Equal("ORDER_PACKAGE_INVALID", issue.Code);
+        Assert.Equal("203872347800", issue.RereadOrderId);
     }
 
     [Fact]

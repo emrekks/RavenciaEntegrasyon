@@ -373,7 +373,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             try
             {
                 var page = TrendyolJsonMapper.Orders(response.Value!);
-                firstPageIssue ??= page.Issues?.FirstOrDefault();
+                // The stream page holds other orders too: only a refusal of this order answers for it.
+                firstPageIssue ??= page.Issues?.FirstOrDefault(issue => string.Equals(issue.RereadOrderId, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase));
                 packages.AddRange(page.Items.Where(item => string.Equals(item.ExternalOrderId, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase) || string.Equals(item.OrderNumber, normalizedOrderNumber, StringComparison.OrdinalIgnoreCase)));
                 nextCursor = page.HasMore && !string.IsNullOrWhiteSpace(page.NextCursor) ? page.NextCursor : null;
             }

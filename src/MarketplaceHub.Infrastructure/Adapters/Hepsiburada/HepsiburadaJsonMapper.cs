@@ -1218,17 +1218,52 @@ internal static class HepsiburadaJsonMapper
 
     public static string? OrderNumber(JsonElement item) => Text(item, "orderNumber", "OrderNumber", "orderNo", "OrderNo");
 
-    public static RemoteOrder PaidOrderLine(JsonElement item)
+    public static RemoteOrder PaidOrderLine(JsonElement item) =>
+        PaidOrderLine(item, out var refusal) ?? throw new JsonException(refusal!.Message);
+
+    // One item of the paid-order list, or why it cannot be taken; never a throw for one bad item, so one item does not
+    // stop the page (5 Nov 2026). A line the panel cannot read (TryMapLine) is the common rule's unreadable line
+    // (UnreadableOrderLines): the flat list has no package to count it on, so the item is refused naming its order and
+    // the caller reads that order by number, whose packages count the line. An item without its own order date or with
+    // a currency the panel does not know is refused the same way (RefusedOrders); nothing is guessed.
+    public static RemoteOrder? PaidOrderLine(JsonElement item, out AdapterPageIssue? refusal)
     {
+        refusal = null;
         var orderNumber = OrderNumber(item);
-        if (string.IsNullOrWhiteSpace(orderNumber)) throw new JsonException("Hepsiburada ödemesi tamamlanmış sipariş satırında orderNumber yok.");
+        if (string.IsNullOrWhiteSpace(orderNumber))
+        {
+            refusal = RefusedOrders.Issue(Text(item, "id", "Id", "lineItemId", "LineItemId") ?? "unknown", "Hepsiburada ödemesi tamamlanmış sipariş satırı içeri alınmadı: sipariş numarası (orderNumber) yok.", null);
+            return null;
+        }
         var nestedLines = Find(item, "lineItems", "LineItems", "orderItems", "OrderItems");
         if (nestedLines.ValueKind == JsonValueKind.Array || Find(item, "items", "Items").ValueKind == JsonValueKind.Array)
-            return Order(item, orderNumber);
+        {
+            try { return Order(item, orderNumber); }
+            catch (JsonException exception)
+            {
+                refusal = RefusedOrders.Issue(orderNumber, $"Hepsiburada siparişi {orderNumber} içeri alınmadı: {exception.Message}", orderNumber);
+                return null;
+            }
+        }
 
-        var line = MapLine(item);
+        if (!TryMapLine(item, out var mapped, out var reason))
+        {
+            refusal = UnreadableOrderLines.Issue("Hepsiburada", orderNumber, Text(item, "id", "Id", "lineItemId", "LineItemId", "orderLineId", "OrderLineId"), reason) with { RereadOrderId = orderNumber };
+            return null;
+        }
+        var line = mapped!;
         var orderedAt = Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt", "createdAt", "CreatedAt");
-        if (orderedAt is null) throw new JsonException("Hepsiburada ödemesi tamamlanmış sipariş satırında orderDate yok.");
+        if (orderedAt is null)
+        {
+            refusal = RefusedOrders.Issue(orderNumber, $"Hepsiburada siparişi {orderNumber} içeri alınmadı: sipariş tarihi (orderDate) yok; sipariş yeniden okunacak.", orderNumber);
+            return null;
+        }
+        var rawCurrency = Currency(item, "unitPrice", "UnitPrice", "totalPrice", "TotalPrice");
+        if (OrderCurrency(rawCurrency) is not { } currency)
+        {
+            refusal = RefusedOrders.Issue(orderNumber, $"Hepsiburada siparişi {orderNumber} içeri alınmadı: para birimi tanınmadı ({rawCurrency}); sipariş yeniden okunacak.", orderNumber);
+            return null;
+        }
         var gross = Money(item, "totalPrice", "TotalPrice", "lineTotal", "LineTotal") ?? line.UnitPrice * line.Quantity;
         var discount = Money(item, "totalMerchantDiscount", "TotalMerchantDiscount", "merchantDiscount", "MerchantDiscount", "discountAmount", "DiscountAmount") ?? 0m;
         var invoice = Find(item, "invoice", "Invoice");
@@ -1247,13 +1282,12 @@ internal static class HepsiburadaJsonMapper
             : Snapshot(customer);
         customerSnapshot = EnrichOrderSnapshot(item, customerSnapshot);
         var status = Text(item, "status", "Status", "orderStatus", "OrderStatus") ?? "Open";
-        var currency = Currency(item, "unitPrice", "UnitPrice", "totalPrice", "TotalPrice") ?? "TRY";
         return new(
             orderNumber,
             orderNumber,
             orderedAt.Value,
             Date(item, "lastStatusUpdateDate", "LastStatusUpdateDate", "lastModifiedAt", "LastModifiedAt") ?? orderedAt.Value,
-            currency.Length == 3 ? currency.ToUpperInvariant() : "TRY",
+            currency,
             Math.Max(gross, gross - discount),
             discount,
             Math.Max(0m, gross - discount),
@@ -1271,7 +1305,10 @@ internal static class HepsiburadaJsonMapper
 
     private static RemoteOrder PackageOrderSnapshot(JsonElement item, string orderNumber, RemotePackage package)
     {
-        var orderedAt = Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt", "createdAt", "CreatedAt") ?? package.OccurredAt;
+        // No silent fallbacks (5 Nov 2026): a package row without the order's own date is not dated by the package's event
+        // time. The row is refused (OrderPackage's caller then reads the order by its number, whose detail has the date).
+        var orderedAt = Date(item, "orderDate", "OrderDate", "orderedAt", "OrderedAt", "createdAt", "CreatedAt")
+            ?? throw new JsonException($"Hepsiburada paket satırında sipariş {orderNumber} için sipariş tarihi yok; paketin olay zamanı sipariş tarihi sayılmaz.");
         var itemArray = Find(item, "lineItems", "LineItems", "items", "Items", "orderItems", "OrderItems");
         IReadOnlyList<RemoteOrderLine> lines = itemArray.ValueKind == JsonValueKind.Array
             ? ReadableLines(itemArray.EnumerateArray(), "Open").Lines.GroupBy(line => line.ExternalLineId, StringComparer.Ordinal).Select(group => group.First()).ToArray()
@@ -1292,16 +1329,16 @@ internal static class HepsiburadaJsonMapper
             invoice = AddressSnapshot(item, "billingAddress", "companyName", "taxOffice", "taxNumber", "identityNo", "billingDistrict", "billingTown", "billingCity", "billingPostalCode");
         var customerSnapshot = OrderCustomerSnapshot(item, Find(item, "customer", "Customer"));
         var status = Text(item, "status", "Status", "packageStatus", "PackageStatus") ?? package.RawStatus;
-        var currency = Currency(item, "totalPrice", "TotalPrice")
-            ?? (itemArray.ValueKind == JsonValueKind.Array ? itemArray.EnumerateArray().Select(line => Currency(line, "price", "Price", "totalPrice", "TotalPrice")).FirstOrDefault(value => value is not null) : null)
-            ?? "TRY";
+        var rawCurrency = Currency(item, "totalPrice", "TotalPrice")
+            ?? (itemArray.ValueKind == JsonValueKind.Array ? itemArray.EnumerateArray().Select(line => Currency(line, "price", "Price", "totalPrice", "TotalPrice")).FirstOrDefault(value => value is not null) : null);
+        var currency = OrderCurrency(rawCurrency) ?? throw new JsonException($"Hepsiburada paket satırında sipariş {orderNumber} için para birimi tanınmadı ({rawCurrency}).");
         var gross = package.GrossAmount > 0 ? package.GrossAmount : lines.Sum(line => line.UnitPrice * line.Quantity);
         return new(
             orderNumber,
             orderNumber,
             orderedAt,
             package.OccurredAt,
-            currency.Length == 3 ? currency.ToUpperInvariant() : "TRY",
+            currency,
             gross,
             package.DiscountAmount,
             package.NetAmount > 0 ? package.NetAmount : Math.Max(0m, gross - package.DiscountAmount),
@@ -1360,6 +1397,11 @@ internal static class HepsiburadaJsonMapper
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(properties));
         return document.RootElement.Clone();
     }
+
+    // The order's currency (5 Nov 2026): a value the panel does not know is not stored as lira; the caller refuses the
+    // order instead (RefusedOrders). A read without any currency field is lira: Hepsiburada sells in TRY only and its money
+    // objects say "TRY" (hepsiburada-api-son.md, e.g. :8371, :12479).
+    private static string? OrderCurrency(string? raw) => string.IsNullOrWhiteSpace(raw) ? "TRY" : RefusedOrders.Currency(raw);
 
     private static string? Currency(JsonElement source, params string[] moneyFields)
     {
@@ -1495,9 +1537,9 @@ internal static class HepsiburadaJsonMapper
             ?? lines.Sum(line => line.UnitPrice * line.Quantity);
         var discount = Money(order, "discountAmount", "DiscountAmount", "totalDiscount", "TotalDiscount") ?? 0m;
         var net = Money(order, "netAmount", "NetAmount", "payableAmount", "PayableAmount") ?? Math.Max(0m, gross - discount);
-        var currency = Text(order, "currency", "Currency", "currencyCode", "CurrencyCode")
-            ?? Text(Find(order, "totalPrice", "TotalPrice"), "currency", "Currency")
-            ?? "TRY";
+        var rawCurrency = Text(order, "currency", "Currency", "currencyCode", "CurrencyCode")
+            ?? Text(Find(order, "totalPrice", "TotalPrice"), "currency", "Currency");
+        var currency = OrderCurrency(rawCurrency) ?? throw new JsonException($"Hepsiburada sipariş {orderNumber} para birimi tanınmadı ({rawCurrency}).");
         var orderStatus = Text(order, "status", "Status", "orderStatus", "OrderStatus");
         var status = string.Equals(orderStatus?.Trim(), "ClaimCreated", StringComparison.OrdinalIgnoreCase)
             ? ConsistentLineItemStatus(lines)
@@ -1530,7 +1572,7 @@ internal static class HepsiburadaJsonMapper
             orderNumber,
             orderedAt.Value,
             modified,
-            currency.Length == 3 ? currency.ToUpperInvariant() : "TRY",
+            currency,
             Math.Max(gross, net + discount),
             discount,
             net,

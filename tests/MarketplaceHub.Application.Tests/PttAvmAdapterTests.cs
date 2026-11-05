@@ -664,7 +664,8 @@ public sealed class PttAvmAdapterTests
     [InlineData("onay_surecinde", "Awaiting", ShipmentPackageStatus.PaymentPending)]
     [InlineData("gonderilmiş", "Shipped", ShipmentPackageStatus.Shipped)]
     [InlineData("Gönderilmiş", "Shipped", ShipmentPackageStatus.Shipped)]
-    [InlineData("gondericisine_teslim_edildi", "Undelivered", ShipmentPackageStatus.Undelivered)]
+    // Back with the seller, as Trendyol's UnDeliveredAndReturned: the same panel state (Returned).
+    [InlineData("gondericisine_teslim_edildi", "UndeliveredAndReturned", ShipmentPackageStatus.Returned)]
     [InlineData("tamamlandi", "Delivered", ShipmentPackageStatus.Delivered)]
     [InlineData("iptal", "Cancelled", ShipmentPackageStatus.Cancelled)]
     [InlineData("odeme_gecersiz", "Cancelled", ShipmentPackageStatus.Cancelled)]
@@ -678,6 +679,30 @@ public sealed class PttAvmAdapterTests
     [Fact]
     public void AnUnknownLineStatusIsKeptForReview() =>
         Assert.Equal("Unknown:yeni_durum", PttAvmOrderMapper.LineStatus("yeni_durum"));
+
+    // Item 6: a line of unknown status is not hidden behind a known, less advanced one; the package is reviewed.
+    [Fact]
+    public void AnUnknownLineStatusPutsThePackageUnderReview()
+    {
+        var status = PttAvmOrderMapper.PackageStatus(["Created", "Unknown:yeni_durum", "Shipped"]);
+
+        Assert.Equal("Unknown:yeni_durum", status);
+        Assert.Equal(ShipmentPackageStatus.ManualReview, TrendyolShipmentPackageStatusPolicy.FromRemote(status));
+        Assert.Equal("Created", PttAvmOrderMapper.PackageStatus(["Shipped", "Created", "Cancelled"]));
+        Assert.Equal("Cancelled", PttAvmOrderMapper.PackageStatus(["Cancelled"]));
+    }
+
+    [Fact]
+    public void AParcelBackWithTheSenderIsReturnedLikeTrendyols()
+    {
+        var ptt = TrendyolShipmentPackageStatusPolicy.FromRemote(PttAvmOrderMapper.PackageStatus([PttAvmOrderMapper.LineStatus("gondericisine_teslim_edildi")]));
+
+        Assert.Equal(TrendyolShipmentPackageStatusPolicy.FromRemote("UnDeliveredAndReturned"), ptt);
+        Assert.Equal(ShipmentPackageStatus.Returned, ptt);
+        Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(ptt));
+        var ordered = new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero);
+        Assert.True(PttAvmOrderMapper.StatusObservedAt(ordered, "UndeliveredAndReturned") > PttAvmOrderMapper.StatusObservedAt(ordered, "Undelivered"));
+    }
 
     [Fact]
     public void EachPackageStatusIsItsOwnLaterEvent()
@@ -1106,8 +1131,27 @@ public sealed class PttAvmAdapterTests
         Assert.DoesNotContain(package.Allocations, allocation => allocation.ExternalLineId == "229049601");
         Assert.Null(package.Invoice);
         Assert.Contains(page.Items, order => order.ExternalOrderId == "PTT-L6LI1VK2D-211024");
-        var issue = Assert.Single(page.Issues!);
-        Assert.Equal(("ORDER_PACKAGE_LINE_INVALID", "order:PTT-A1712HP2E-071024:229049601"), (issue.Code, issue.Identity));
+        Assert.Equal(
+            new[] { ("ORDER_PACKAGE_LINE_INVALID", "order:PTT-A1712HP2E-071024:229049601"), ("ORDER_AMOUNT_MAY_BE_INCOMPLETE", "order:PTT-A1712HP2E-071024") },
+            page.Issues!.Select(issue => (issue.Code, issue.Identity)).ToArray());
+    }
+
+    [Fact]
+    public void ALineWithoutABarcodeTakesTheDocumentedStockCodeNeverTheProductOrLineId()
+    {
+        // UrunKodu "Ürün stok kod bilgisi" (pttavm-api-son.md:1619); UrunId and LineItemId are no stock code.
+        var withCode = OrderListAnswer.Replace("<a:UrunBarkod>", "<a:UrunKodu>STK-9</a:UrunKodu><a:UrunBarkodX>", StringComparison.Ordinal)
+            .Replace("</a:UrunBarkod>", "</a:UrunBarkodX>", StringComparison.Ordinal)
+            .Replace("<a:VariantBarkod>", "<a:VariantBarkodX>", StringComparison.Ordinal)
+            .Replace("</a:VariantBarkod>", "</a:VariantBarkodX>", StringComparison.Ordinal);
+        Assert.NotEqual(OrderListAnswer, withCode);
+        var (result, _) = PttAvmHttpClient.SoapResponse(HttpStatusCode.OK, withCode, PttAvmHttpClient.Orders);
+
+        var lines = PttAvmOrderMapper.Page(result!).Items.SelectMany(order => order.Lines).ToList();
+
+        Assert.NotEmpty(lines);
+        Assert.All(lines, line => Assert.Equal("STK-9", line.Sku));
+        Assert.All(lines, line => Assert.Null(line.Barcode));
     }
 
     private static RemoteOrder WithLiveLineInvoiceFlag(string flag)

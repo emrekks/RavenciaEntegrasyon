@@ -56,23 +56,48 @@ public static class N11SettlementMapper
         return new(items, page, PageCount(response.Descendants().FirstOrDefault(x => x.Name.LocalName == "settlementListData")));
     }
 
-    // A line without an order item id cannot be stored once and only once: the page is then a contract error.
+    // A line without an order item id or a settlement amount (what n11 pays for it, the payout's figure), or with a
+    // money field that is there but cannot be read, is not stored: it is listed in Skipped and the day's other lines
+    // are kept. The fees and discounts n11 leaves out are 0 (no such fee). The line's day is the settlement day asked
+    // for, so it always has one.
     public static RemoteSettlementItemPage Items(XElement response, int page)
     {
         var detail = response.Descendants().FirstOrDefault(x => x.Name.LocalName == "settlementDetail");
         var summary = detail?.Descendants().FirstOrDefault(x => x.Name.LocalName == "settlement");
         var list = detail?.Descendants().FirstOrDefault(x => x.Name.LocalName == "orderItemSettlementDataList");
         var items = new List<RemoteSettlementItem>();
+        var skipped = new List<RemoteSkippedFinanceRecord>();
         foreach (var element in list?.Descendants().Where(x => x.Name.LocalName == "orderItemSettlement") ?? [])
         {
-            var id = N11HttpClient.Child(element, "orderItemId") ?? throw new JsonException("N11 settlement line has no order item id.");
-            items.Add(new(id, N11HttpClient.Child(element, "orderNumber"), Number(element, "commission"), Number(element, "serviceFee") + Number(element, "serviceFeeVat"),
-                Number(element, "adFee") + Number(element, "adFeeVat"), Number(element, "cargoPrice"), Number(element, "sellerDiscount") + Number(element, "sellerCouponDiscount"),
-                Number(element, "deductionAmount"), Number(element, "paymentAmount"), Number(element, "settlementAmount"),
+            var id = N11HttpClient.Child(element, "orderItemId");
+            var unreadable = false;
+            decimal Read(string name)
+            {
+                var text = N11HttpClient.Child(element, name);
+                if (string.IsNullOrWhiteSpace(text)) return 0m;
+                if (RemoteJson.ParseDecimal(text) is { } value) return value;
+                unreadable = true;
+                return 0m;
+            }
+            var commission = Read("commission");
+            var serviceFee = Read("serviceFee") + Read("serviceFeeVat");
+            var adFee = Read("adFee") + Read("adFeeVat");
+            var cargo = Read("cargoPrice");
+            var discount = Read("sellerDiscount") + Read("sellerCouponDiscount");
+            var deduction = Read("deductionAmount");
+            var payment = Read("paymentAmount");
+            var settlement = Read("settlementAmount");
+            var noAmount = unreadable || string.IsNullOrWhiteSpace(N11HttpClient.Child(element, "settlementAmount"));
+            if (id is null || noAmount)
+            {
+                skipped.Add(SkippedFinanceRecords.Skip(id, RawJson(element), N11HttpClient.Child(element, "orderNumber"), null, id is null, noAmount, false));
+                continue;
+            }
+            items.Add(new(id, N11HttpClient.Child(element, "orderNumber"), commission, serviceFee, adFee, cargo, discount, deduction, payment, settlement,
                 Date(N11HttpClient.Child(element, "completedDate")), Day(N11HttpClient.Child(element, "settlementDate")), Day(N11HttpClient.Child(element, "remittanceDate")),
                 Day(N11HttpClient.Child(element, "paymentDate")), RawJson(element)));
         }
-        return new(items, page, PageCount(list), N11HttpClient.Child(summary, "status"));
+        return new(items, page, PageCount(list), N11HttpClient.Child(summary, "status"), skipped);
     }
 
     // The line's own fields as JSON, without the buyer's.
@@ -86,8 +111,8 @@ public static class N11SettlementMapper
         return int.TryParse(N11HttpClient.Child(metadata, "pageCount"), NumberStyles.None, CultureInfo.InvariantCulture, out var count) ? count : 0;
     }
 
-    // A field n11 leaves out is 0 (no such fee). A value that is there but cannot be read (O5: "1234,50", which the
-    // invariant culture took as 123450) is a contract error for the page, never a made-up amount.
+    // A day total n11 leaves out is 0. A value that is there but cannot be read (O5: "1234,50", which the invariant
+    // culture took as 123450) is a contract error for the list, never a made-up amount.
     internal static decimal Number(XElement element, string name)
     {
         var text = N11HttpClient.Child(element, name);
