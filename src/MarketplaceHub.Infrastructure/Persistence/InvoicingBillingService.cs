@@ -160,7 +160,7 @@ public sealed partial class InvoicingBillingService(
                 || !DashboardMetricPolicy.IsInvoiceEligibleOrder(order.DerivedStatus)) return null;
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueAt = deliveredAt?.AddDays(7);
-            var dueSoon = MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus) && deliveredAt is not null && now >= deliveredAt.Value.AddDays(5);
+            var dueSoon = MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus) && deliveredAt is not null && now >= deliveredAt.Value.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays);
             var image = orderLines.Select(line => WorkspaceLineImage(catalog, line)).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
             var customerName = InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson);
             var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(line.Sku, line.Barcode, line.TitleSnapshot, OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity), line.UnitPrice, line.VatRate, WorkspaceLineImage(catalog, line))).ToList();

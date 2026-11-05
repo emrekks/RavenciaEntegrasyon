@@ -34,10 +34,10 @@ describe('order summary cards', () => {
 
     const values = Array.from(host.querySelectorAll('article strong')).map(value => value.textContent)
     expect(values).toEqual(['…', '…', '0 Paket', '…', '…', '…'])
-    // While the data loads, the chip is not drawn and the hover panels list no store (only their empty row).
+    // While the data loads, the chip is not drawn and no hover panel opens (an empty card has none).
     expect(host.querySelector('.rr-metric-chip')).toBeNull()
     expect(host.querySelectorAll('.rr-metric-tip-r:not(.is-empty)')).toHaveLength(0)
-    expect(host.querySelectorAll('.rr-metric-tip-r.is-empty')).toHaveLength(4)
+    expect(host.querySelectorAll('.rr-metric-tip')).toHaveLength(0)
     cleanup()
     // An older API: the packages without their products.
     const older = render(<OrderMetricCards {...props({ newUnits: undefined, newRows: undefined, processingUnits: undefined, processingRows: undefined, cancelledUnits: undefined, partialUnits: undefined })} />).host
@@ -64,7 +64,7 @@ describe('order summary cards', () => {
     const cancelled = card(host, 'İptal')
     expect(cancelled.classList.contains('rr-metric-chipped')).toBe(true)
     // The decorative background icon comes first, then the open button, the chip and the hover panel.
-    expect(Array.from(cancelled.children).map(child => child.className)).toEqual(['rv-card-bg', 'rr-metric-open', 'rr-metric-chip rr-metric-chip-alert', 'rr-metric-tip'])
+    expect(Array.from(cancelled.children).map(child => child.className)).toEqual(['rv-card-bg', 'rr-metric-open', 'rr-metric-chip rr-metric-chip-alert'])
     cleanup()
 
     const plain = render(<OrderMetricCards {...props({ partiallyCancelled: metric(0) })} />).host
@@ -144,7 +144,7 @@ describe('order summary cards', () => {
     expect(microCountryRows(undefined)).toEqual([])
     const { host } = render(<OrderMetricCards {...props({ microExport: metric(0), microCountries: {} })} />)
     const micro = card(host, 'Mikro İhracat Sipariş')
-    expect(Array.from(micro.querySelectorAll('.rr-metric-tip-r')).map(row => [row.className, row.textContent])).toEqual([['rr-metric-tip-r is-empty', 'Bugün mikro ihracat paketi yok']])
+    expect(micro.querySelector('.rr-metric-tip')).toBeNull()
     expect(micro.classList.contains('rr-metric-tipped')).toBe(true)
     // Without countries a native title says what it counts.
     expect(card(host, 'Mikro İhracat Sipariş').querySelector('.rr-metric-open')!.getAttribute('title')).toBe('Bugün gelen, kargoya verilmemiş mikro ihracat siparişleri')
@@ -167,8 +167,7 @@ describe('order summary cards', () => {
     // At 0 a card lists no store: the panel is still there with its one empty row.
     const quiet = render(<OrderMetricCards {...props({ late: metric(0), resent: metric(0), cancelled: metric(0), partiallyCancelled: metric(0), lateRows, resentRows, cancelledRows })} />).host
     for (const title of ['Geciken', 'İptal', 'Yeniden Gönderim']) {
-      expect(card(quiet, title).querySelector('.rr-metric-tip')).not.toBeNull()
-      expect(Array.from(card(quiet, title).querySelectorAll('.rr-metric-tip-r')).map(row => [row.className, row.textContent])).toEqual([['rr-metric-tip-r is-empty', 'Bugün bu kartta paket yok']])
+      expect(card(quiet, title).querySelector('.rr-metric-tip')).toBeNull()
     }
     expect(card(quiet, 'Geciken').getAttribute('tabindex')).toBe('0')
   })

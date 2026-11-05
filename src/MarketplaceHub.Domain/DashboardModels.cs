@@ -2,7 +2,7 @@ namespace MarketplaceHub.Domain;
 
 public static class DashboardMetricPolicy
 {
-    public const int InvoiceReminderStartDays = 5;
+    public const int InvoiceReminderStartDays = 4;
     public const int InvoiceDueDays = 7;
     public const int OperationalRateLimitWindowHours = 24;
 

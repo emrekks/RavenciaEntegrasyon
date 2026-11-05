@@ -579,7 +579,7 @@ export function InvoicesPage() {
     {message && <NoticeToast key={`${messageKind}:${message}`} kind={messageKind} message={message} onClose={() => setMessageState('')} durationMs={messageKind === 'pending' ? undefined : messageKind === 'info' ? 7000 : 5500} />}
     <div className="invoice-reference-metrics">
       <article className="invoice-metric-pending"><CardBackgroundIcon name="fileClock" tone="warn" /><small>Fatura Bekleyen</small><strong><CountUp value={pageData ? counts.unInvoiced.toLocaleString('tr-TR') : '—'} /></strong><span>paket bazlı işlem</span></article>
-      <article className="invoice-metric-due"><CardBackgroundIcon name="calendarClock" tone="bad" /><small>Süresi Yaklaşan</small><strong><CountUp value={pageData ? counts.dueSoon.toLocaleString('tr-TR') : '—'} /></strong><span>teslimden 5 gün geçen</span></article>
+      <article className="invoice-metric-due"><CardBackgroundIcon name="calendarClock" tone="bad" /><small>Süresi Yaklaşan</small><strong><CountUp value={pageData ? counts.dueSoon.toLocaleString('tr-TR') : '—'} /></strong><span>teslimden 4 gün geçen</span></article>
       <article className="invoice-metric-complete"><CardBackgroundIcon name="fileCheck" tone="ok" /><small>Faturalandırılan</small><strong><CountUp value={pageData ? counts.invoiced.toLocaleString('tr-TR') : '—'} /></strong><span>ikinci fatura kapalı</span></article>
       <article className="invoice-metric-total"><CardBackgroundIcon name="orders" /><small>Toplam Paket</small><strong><CountUp value={pageData ? pageData.totalPackageCount.toLocaleString('tr-TR') : '—'} /></strong><span>fatura çalışma alanı</span></article>
     </div>

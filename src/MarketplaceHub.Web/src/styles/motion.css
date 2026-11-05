@@ -30,14 +30,14 @@
 /* Cards under the pointer: a summary card lifts a little; an integration card only takes a shadow, because it holds
    its detail window and menus (fixed to the screen), and a moved card would hold them inside itself instead. */
 @media (hover: hover) {
-  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .integration-grid > *) {
+  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-kgrid > .rr-kc, .reports-kpis > div, .integration-grid > *) {
     transition: translate var(--rv-motion-fast) var(--rv-ease-out), border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard);
   }
   /* The summary cards stay on their own layer, so their text is drawn once and moves with the card; redrawn at each
      sub-pixel step of the lift, it shimmered. */
-  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article) { will-change: translate; }
-  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article):hover { translate: 0 var(--rv-motion-lift); }
-  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .integration-grid > *):hover { box-shadow: 0 10px 24px -14px rgb(0 0 0 / 55%); }
+  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-kgrid > .rr-kc, .reports-kpis > div) { will-change: translate; }
+  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-kgrid > .rr-kc, .reports-kpis > div):hover { translate: 0 var(--rv-motion-lift); }
+  :where(.rr-metrics > :is(article, .rr-metric-btn), .invoice-reference-metrics > article, .rr-kgrid > .rr-kc, .reports-kpis > div, .integration-grid > *):hover { box-shadow: 0 10px 24px -14px rgb(0 0 0 / 55%); }
 }
 
 /* Windows (kit "A · iOS Yay"): the window grows from .9 on an overshooting spring and settles while it fades in; its
@@ -72,7 +72,7 @@
 :where([data-motion="menu-right"], .rr-pop.rr-right, .rr-actcell .rr-menu, .rr-vt-wrap > .rr-menu, .row-menu > div, .order-column-filter-popover, .rr-psize-pop, .mam-more, .appearance-theme-menu, .product-platform-filter-menu, .variant-header-action-menu, .integration-filter-menu, .qi-status-menu, .searchable-select-menu, .category-attribute-dropdown-menu, .variant-filter-dropdown-menu, .jobs-reference-filter-panel, .invoice-reference-actions-popover, .platform-multi-select-menu:not(.is-start)) { transform-origin: top right; }
 /* Popovers that open under the pointer (hover) only fade in: growing from .92 moved their edge away from the pointer,
    the hover ended, the popover closed and opened again, and it stuttered (owner, 5 Nov 2026: "kasarak açılıyor"). */
-:where(.publish-issue-tooltip, .reports-hover-tip, .rr-metric-tip, .rr-bd, .title-hint-tip) { animation: rv-motion-fade var(--rv-motion-menu) ease-out backwards; }
+:where(.publish-issue-tooltip, .reports-hover-tip, .rr-metric-tip, .rr-bd, .title-hint-tip, .rr-vtip) { animation: rv-motion-fade var(--rv-motion-menu) ease-out backwards; }
 :where([data-motion="menu-up"], .rr-bulk-menu > .rr-menu, .reference-menu-popover:not(.opens-down)) { transform-origin: bottom right; }
 :where(.title-hint-tip.is-above) { transform-origin: bottom left; }
 /* Sheets that slide up from the bottom edge (a phone's bottom sheets): they start heavy and stop softly. */

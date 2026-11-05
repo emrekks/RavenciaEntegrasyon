@@ -188,10 +188,6 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-step-tools { margin-left: 0; width: 100%; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metric-btn strong { font-size: 22px; }
 }
-@media (min-width: 1025px) and (max-width: 1280px) {
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
-}
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl th .rr-hf { gap: 6px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl th .rr-hf > .rr-sortbtn { width: 24px; height: 24px; flex: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl th:has(.rr-sortbtn):has(.rr-anchor) { padding-right: 40px; }
@@ -517,4 +513,10 @@ main .rr.rr-products .rr-ptbl small { overflow: visible; text-overflow: clip; wh
 /* Düşük Stoklu lifts under the pointer like the other summary cards; the button's own transition would drop the lift. */
 @media (hover: hover) {
   :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-metrics > .rr-metric-btn { transition: translate var(--rv-motion-fast) var(--rv-ease-out), background-color var(--rv-motion-fast) var(--rv-ease-standard), border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard); }
+}
+/* Platform Durumu left the filter row (owner, 5 Nov 2026; the table's Platform Durumu column still filters): search,
+   Stok Durumu and Sıralama with Temizle / Filtrele beside them on one row. */
+@media (min-width: 1025px) {
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-filters.rr-has-sort .rr-fbtns { grid-column: auto; align-self: end; justify-content: flex-end; }
 }

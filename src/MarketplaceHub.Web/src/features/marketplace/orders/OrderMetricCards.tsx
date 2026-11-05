@@ -57,7 +57,9 @@ function Packages({ packages, units }: { packages: Metric; units: number | undef
 
 // The panel a card opens on hover or focus: one row per store, its logo, name and figure.
 function StoreTip({ rows }: { rows: TipRow[] }) {
-  return <div className="rr-metric-tip" role="tooltip">{rows.length === 0 && <div className="rr-metric-tip-r is-empty"><span>Bugün bu kartta paket yok</span></div>}{rows.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}</div>
+  // An empty card opens no list (owner, 5 Nov 2026: "boşsa popup çıkmasın").
+  if (rows.length === 0) return null
+  return <div className="rr-metric-tip" role="tooltip">{rows.map(row => <div className="rr-metric-tip-r" key={row.key}><RrLogo code={row.code} /><span>{row.name}</span><b className="rr-num">{row.value}</b></div>)}</div>
 }
 
 const tipped = (...names: Array<string | false | undefined>) => names.filter(Boolean).join(' ') || undefined
@@ -102,7 +104,7 @@ export function OrderMetricCards({ newOrders, newUnits, newRows, processing, pro
     <article className={tipped('rr-metric-link rr-metric-tipped', activeCard === 'micro' && 'rr-metric-on')}>
       <CardBackgroundIcon name="globe" />
       <button type="button" className="rr-metric-open" title={countries.length > 0 ? undefined : 'Bugün gelen, kargoya verilmemiş mikro ihracat siparişleri'} aria-pressed={activeCard === 'micro'} onClick={() => openOnPointer('micro')}><small>Mikro İhracat Sipariş</small><Packages packages={microExport} units={undefined} /></button>
-      {<div className="rr-metric-tip" role="tooltip">{countries.length === 0 && <div className="rr-metric-tip-r is-empty"><span>Bugün mikro ihracat paketi yok</span></div>}{countries.map(([code, value]) => <div className="rr-metric-tip-r" key={code || 'unknown'}>{code ? <Flag code={code} /> : <span className="rr-metric-tip-none" aria-hidden="true" />}<span>{code ? countryName(code) : 'Ülke Bilinmiyor'}</span><b className="rr-num">{count(value)}</b></div>)}</div>}
+      {countries.length > 0 && <div className="rr-metric-tip" role="tooltip">{countries.map(([code, value]) => <div className="rr-metric-tip-r" key={code || 'unknown'}>{code ? <Flag code={code} /> : <span className="rr-metric-tip-none" aria-hidden="true" />}<span>{code ? countryName(code) : 'Ülke Bilinmiyor'}</span><b className="rr-num">{count(value)}</b></div>)}</div>}
     </article>
     <article className={tipped(positive(cancelled) && 'rr-bad', 'rr-metric-link', partial > 0 && 'rr-metric-chipped', 'rr-metric-tipped', (activeCard === 'cancelled' || activeCard === 'partial') && 'rr-metric-on')}>
       <CardBackgroundIcon name="packageX" tone={positive(cancelled) ? 'bad' : undefined} />
