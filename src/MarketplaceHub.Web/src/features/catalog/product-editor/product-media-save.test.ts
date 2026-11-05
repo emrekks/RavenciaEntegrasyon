@@ -1,5 +1,39 @@
 import { describe, expect, it } from 'vitest'
-import { mapWithConcurrency, mediaSaveProgressMessage, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { mediaImageKey, mediaStripOwnPosition, mediaStripRefs, reorderItems } from '../product-media-editor'
+import { mapWithConcurrency, mediaSaveProgressMessage, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+
+describe('one picture strip', () => {
+  const front = 'https://cdn.example.com/front.jpg'
+  const side = 'https://cdn.example.com/side.jpg'
+  const newFileUrl = storedProductMediaUrl('33333333-3333-4333-8333-333333333333')
+
+  it('saves a new file moved before the saved pictures in that place, and it is the main picture', () => {
+    const strip = mediaStripRefs([front, side], ['new'], [])
+    expect(strip).toEqual([`url|${front}`, `url|${side}`, 'file|new'])
+    // The new file is moved in front of the saved pictures (drag, touch or the arrows: one reorder of the strip).
+    const shown = mediaStripRefs([front, side], ['new'], reorderItems(strip, 2, 0))
+    expect(shown).toEqual(['file|new', `url|${front}`, `url|${side}`])
+    const ownKeys = new Set([front, side].map(mediaImageKey))
+    expect(mediaStripOwnPosition(shown, 0, ownKeys)).toBe(0)
+    expect(mediaStripOwnPosition(shown, 1, ownKeys)).toBe(1)
+    // The save writes the order shown, the new file by the stored copy its upload made.
+    expect(savedMediaOrder(shown, new Map([['new', newFileUrl]]))).toEqual([newFileUrl, front, side])
+  })
+
+  it('keeps a new file between saved pictures when the pictures change around it', () => {
+    const order = [`url|${front}`, 'file|new', `url|${side}`]
+    expect(mediaStripRefs([side, front], ['new'], order)).toEqual([`url|${side}`, 'file|new', `url|${front}`])
+    expect(mediaStripRefs([front], ['new', 'later'], order)).toEqual([`url|${front}`, 'file|new', 'file|later'])
+    expect(mediaStripRefs([front, side, 'https://cdn.example.com/back.jpg'], [], order)).toEqual([`url|${front}`, `url|${side}`, 'url|https://cdn.example.com/back.jpg'])
+  })
+
+  it('does not count the other colours’ pictures for the main picture', () => {
+    const grey = 'https://cdn.example.com/grey.jpg'
+    const strip = [`url|${grey}`, 'file|new', `url|${front}`]
+    expect(mediaStripOwnPosition(strip, 1, new Set([mediaImageKey(front)]))).toBe(0)
+    expect(savedMediaOrder(strip, new Map())).toEqual([grey, front])
+  })
+})
 
 describe('variantMediaReconcilePlan', () => {
   const stored = new Map([['a', storedProductMediaUrl('11111111-1111-1111-1111-111111111111')], ['b', storedProductMediaUrl('22222222-2222-2222-2222-222222222222')]])

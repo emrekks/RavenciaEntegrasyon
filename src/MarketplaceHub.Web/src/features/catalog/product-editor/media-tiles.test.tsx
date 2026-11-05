@@ -100,6 +100,13 @@ describe('product picture tile', () => {
     expect(onFiles).toHaveBeenCalledWith([picture])
   })
 
+  it('labels a new file the main picture when it is the first tile', async () => {
+    const { host } = render(<LocalImagePreview file={picture} alt="Ürün 1" caption="Ana görsel" draggable mediaIndex={0} mediaCount={3} onMove={vi.fn()} />)
+    await flush()
+    expect(host.querySelector('figcaption')?.textContent).toBe('Ana görsel')
+    expect(host.querySelector('figure')?.dataset.mediaIndex).toBe('0')
+  })
+
   it('has no zoom button when the tile cannot zoom', async () => {
     const { host } = render(<LocalImagePreview file={picture} alt="Ürün 1" caption="urun.jpg" />)
     await flush()

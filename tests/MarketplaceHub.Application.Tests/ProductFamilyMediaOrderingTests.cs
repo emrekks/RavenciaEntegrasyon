@@ -53,4 +53,31 @@ public sealed class ProductFamilyMediaOrderingTests
 
         Assert.Equal(new[] { "Navy", "Gray", "Green" }, ordered.Select(image => image.Key));
     }
+
+    [Fact]
+    public void A_new_upload_never_takes_the_place_of_another_live_picture()
+    {
+        // After a family reorder the card's gallery sits at sparse ranks (rank × stride): the editor asks for position 2
+        // (it knows two own pictures), which here holds a grey picture put on this card. Brown must not replace it, and
+        // grey added back later must not replace brown.
+        var brown = Guid.NewGuid(); var grey = Guid.NewGuid(); var front = Guid.NewGuid(); var back = Guid.NewGuid();
+        var rows = new List<(int SortOrder, bool Active, Guid AssetId)> { (0, true, front), (2, true, grey), (4, true, back) };
+
+        var brownSlot = ProductFamilyMediaOrdering.UploadSortOrder(2, rows, brown);
+        Assert.Equal(5, brownSlot);
+        rows.Add((brownSlot, true, brown));
+        Assert.Equal(6, ProductFamilyMediaOrdering.UploadSortOrder(2, rows, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public void A_new_upload_takes_a_free_archived_or_its_own_position()
+    {
+        var picture = Guid.NewGuid();
+        var rows = new List<(int SortOrder, bool Active, Guid AssetId)> { (0, true, Guid.NewGuid()), (1, false, Guid.NewGuid()), (2, true, picture) };
+
+        Assert.Equal(1, ProductFamilyMediaOrdering.UploadSortOrder(1, rows, picture));
+        Assert.Equal(2, ProductFamilyMediaOrdering.UploadSortOrder(2, rows, picture));
+        Assert.Equal(7, ProductFamilyMediaOrdering.UploadSortOrder(7, rows, Guid.NewGuid()));
+        Assert.Equal(0, ProductFamilyMediaOrdering.UploadSortOrder(0, [], picture));
+    }
 }
