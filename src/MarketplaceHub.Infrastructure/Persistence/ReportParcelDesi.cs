@@ -83,7 +83,8 @@ internal static class ReportParcelDesi
     public static (decimal? Desi, string Source) ForOrder(decimal? declared, IEnumerable<(decimal? EnteredDesi, Guid? ProductId, Guid? CategoryId, decimal Units)> lines, Learned learned)
     {
         if (declared is > 0m) return (declared, Marketplace);
-        var picked = lines.Select(Pick).ToList();
+        // A line with no unit left (cancelled in full) is not in the parcel.
+        var picked = lines.Where(line => line.Units > 0m).Select(Pick).ToList();
         if (picked.Count == 0 || picked.All(line => line.Desi is null)) return (null, Default);
         var desi = picked.Sum(line => (line.Desi ?? ReportPlatformCosts.DefaultDesi) * line.Units);
         var source = picked.Any(line => line.Source == Default) ? Default : picked.Any(line => line.Source == Measured) ? Measured : Manual;

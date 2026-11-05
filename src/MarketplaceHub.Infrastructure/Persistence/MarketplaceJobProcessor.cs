@@ -9536,6 +9536,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         public List<(OrderLine Line, DateTimeOffset ModifiedAt)> ReservationSources { get; } = [];
         // Lines read before that found their variant only now (OrderLineLateMatchStockPolicy).
         public List<OrderLine> LateMatchedLines { get; } = [];
+        // Lines tied to their variant in this read, which take its cost and desi (OrderLineCostSnapshot).
+        public List<OrderLine> CostSnapshotLines { get; } = [];
     }
 
     private async Task UpsertOrders(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteOrder> remotes, CancellationToken cancellationToken)
@@ -9639,6 +9641,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         batch.VariantCandidates = await LoadOrderLineVariantCandidates(tenantId, connectionId, OrderLineCodesOf(platformCode, remotes.SelectMany(x => x.Lines)), cancellationToken);
         foreach (var remote in mergedRemotes) await UpsertOrder(tenantId, connectionId, remote, cancellationToken, batch, saveChanges: false, persistFinancialObservations: isShopify);
         await AdoptLateMatchedLineStock(tenantId, connectionId, batch.LateMatchedLines, cancellationToken);
+        await OrderLineCostSnapshot.TakeAsync(db, tenantId, batch.CostSnapshotLines, cancellationToken);
         await ProjectOrderReservations(tenantId, connectionId, batch.ReservationSources, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.State == EntityState.Unchanged && !trackedBefore.Contains(entry.Entity)).ToList())
@@ -9850,6 +9853,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             : AllocationsByLine(await db.PackageLineAllocations.AsNoTracking().Where(x => x.TenantId == tenantId && packageIds.Contains(x.PackageId)).ToListAsync(cancellationToken));
         var variantCandidates = batch?.VariantCandidates ?? await LoadOrderLineVariantCandidates(tenantId, connectionId, OrderLineCodesOf(platformCode, remote.Lines), cancellationToken);
         var lateMatchedLines = batch?.LateMatchedLines ?? [];
+        var costSnapshotLines = batch?.CostSnapshotLines ?? [];
         if (batch is not null)
         {
             batch.LinesByOrder[order.Id] = existingLines;
@@ -9871,6 +9875,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 && variantCandidates.Match(OrderLineVariantMatcher.Codes(platformCode, remoteLine.Sku, remoteLine.Barcode, remoteLine.SourceSnapshotJson)).VariantId is { } matchedVariantId)
             {
                 line.VariantId = matchedVariantId;
+                costSnapshotLines.Add(line);
                 // A line stored by an earlier read takes its stock as a late match (OrderLineLateMatchStockPolicy).
                 if (db.Entry(line).State != EntityState.Added) lateMatchedLines.Add(line);
             }
@@ -10291,6 +10296,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (batch is null)
         {
             await AdoptLateMatchedLineStock(tenantId, connectionId, lateMatchedLines, cancellationToken);
+            await OrderLineCostSnapshot.TakeAsync(db, tenantId, costSnapshotLines, cancellationToken);
             await ProjectOrderReservations(tenantId, connectionId, lines.Values.Select(line => (line, remote.LastModifiedAt)).ToList(), cancellationToken);
         }
         else
@@ -10910,6 +10916,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (matched.Count > 0)
         {
             await AdoptLateMatchedLineStock(tenantId, connectionId, matched.Select(x => x.Line).ToList(), cancellationToken);
+            await OrderLineCostSnapshot.TakeAsync(db, tenantId, matched.Select(x => x.Line), cancellationToken);
             await ProjectOrderReservations(tenantId, connectionId, matched, cancellationToken);
         }
 

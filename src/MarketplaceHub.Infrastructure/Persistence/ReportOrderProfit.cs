@@ -56,10 +56,9 @@ internal static class ReportOrderProfit
             }
         }
 
-        // A line without a commission is estimated at its store's rate over the period's lines that have one.
-        var storeRates = orders.SelectMany(order => order.Lines.Where(line => line.Commission is not null && line.KeptAmount > 0).Select(line => (order.Order.ConnectionId, line)))
-            .GroupBy(item => item.ConnectionId)
-            .ToDictionary(group => group.Key, group => group.Sum(item => item.line.Commission!.Value) / group.Sum(item => item.line.KeptAmount));
+        // A line without a commission is estimated at its store's rate over the period's lines that have one; with no
+        // rate its commission is unknown, and so the order's profit (ReportCosts.LineCommission).
+        var storeRates = ReportCosts.StoreCommissionRates(orders);
         var carriers = input.Packages.Where(package => !string.IsNullOrWhiteSpace(package.CargoProvider))
             .GroupBy(package => package.OrderId).ToDictionary(group => group.Key, group => group.First().CargoProvider);
         var desiInput = input.Desi ?? ReportDesiInput.None;
@@ -83,15 +82,18 @@ internal static class ReportOrderProfit
             var unreadableLines = order.Order.UnreadableLines;
             decimal? productCost = unreadableLines == 0 && keptLines.All(line => line.Row.CostPrice is > 0) ? Round(keptLines.Sum(line => line.Row.CostPrice!.Value * line.KeptUnits)) : null;
 
-            var lineCommission = order.Lines.Sum(line => line.Commission ?? (storeRates.TryGetValue(store, out var rate) ? line.KeptAmount * rate : 0m));
+            var lineCommissions = order.Lines.Select(line => ReportCosts.LineCommission(line, order.PlatformCode, storeRates.GetValueOrDefault(store))).ToList();
+            decimal? lineCommission = lineCommissions.Any(value => value is null) ? null : lineCommissions.Sum(value => value!.Value);
             // The marketplace's own record of the commission wins on every marketplace: Trendyol's statement once it settles
             // the order, Hepsiburada's, n11's and Pazarama's finance records once they charge it (their lines then carry it,
-            // ReportBuilder.Facts); until then the estimate from the rate on the order.
+            // ReportBuilder.Facts); until then the estimate from the rate on the order. Without either it is unknown
+            // (Komisyon Eksik), never 0.
             var settledCommission = settled.Contains(id) && commission.ContainsKey(id);
             var realCommission = settledCommission || order.RealCommission;
-            var orderCommission = Round(settledCommission ? commission[id] : lineCommission);
-            costs.Add(new("commission", realCommission ? "Gerçek Komisyon" : "Tahmini Komisyon", orderCommission, !realCommission,
-                settledCommission ? "Trendyol cari hesabından"
+            decimal? orderCommission = settledCommission ? Round(commission[id]) : lineCommission is { } estimatedCommission ? Round(estimatedCommission) : null;
+            costs.Add(new("commission", orderCommission is null ? "Komisyon Eksik" : realCommission ? "Gerçek Komisyon" : "Tahmini Komisyon", orderCommission, !realCommission,
+                orderCommission is null ? "Siparişte komisyon oranı yok ve mağazanın bu dönemde oranı bilinen satışı yok; komisyon ve kâr hesaplanamadı"
+                : settledCommission ? "Trendyol cari hesabından"
                 : realCommission ? ReportMarketplaceCommissions.SourceLabel(order.PlatformCode)
                 // The line's rate is read again on every order sync, so Trendyol's discounted rate, sent once the order is
                 // being processed, replaces the first one.
@@ -150,16 +152,17 @@ internal static class ReportOrderProfit
             var salesVat = domestic ? order.Lines.Sum(line => ReportCosts.Vat(line.KeptAmount, line.Row.VatRate)) : 0m;
             var costVat = keptLines.Where(line => line.Row.CostPrice is > 0).Sum(line => ReportCosts.Vat(line.Row.CostPrice!.Value * line.KeptUnits, line.Row.VatRate));
             // Each VAT rounded to kuruş on its own, as the invoices carry it (25 Oct 2026: 42.36 − 14.55 − 16.00 − 16.39 − 2.20).
-            // An unknown cargo leaves its VAT, and so the net VAT, unknown.
-            decimal? netVat = orderCargo is { } knownCargo
-                ? Round(salesVat) - Round(costVat) - Round(ReportCosts.Vat(orderCommission, ReportCosts.ExpenseVatRate))
+            // An unknown cargo or commission leaves its VAT, and so the net VAT, unknown.
+            decimal? netVat = orderCargo is { } knownCargo && orderCommission is { } knownCommission
+                ? Round(salesVat) - Round(costVat) - Round(ReportCosts.Vat(knownCommission, ReportCosts.ExpenseVatRate))
                     - Round(ReportCosts.Vat(knownCargo, ReportCosts.ExpenseVatRate)) - Round(ReportCosts.Vat(vatFees, ReportCosts.ExpenseVatRate))
                 : null;
-            costs.Add(new("netVat", "Net KDV", netVat, false, netVat is null ? "Kargo bilinmediği için hesaplanamadı" : "Satış KDV'si − maliyet, komisyon, kargo ve hizmet bedeli KDV'si"));
+            costs.Add(new("netVat", "Net KDV", netVat, false, netVat is not null ? "Satış KDV'si − maliyet, komisyon, kargo ve hizmet bedeli KDV'si"
+                : orderCargo is null ? "Kargo bilinmediği için hesaplanamadı" : "Komisyon bilinmediği için hesaplanamadı"));
 
             var amount = Round(order.Kept);
-            decimal? profit = productCost is { } knownCost && orderCargo is { } cargoCost && netVat is { } vat
-                ? Round(amount - knownCost - orderCommission - cargoCost - serviceFee - stoppage - paymentFee - other - vat) : null;
+            decimal? profit = productCost is { } knownCost && orderCargo is { } cargoCost && orderCommission is { } commissionCost && netVat is { } vat
+                ? Round(amount - knownCost - commissionCost - cargoCost - serviceFee - stoppage - paymentFee - other - vat) : null;
             var state = order.Back > 0 && order.Kept == 0m ? "RETURNED" : order.Back > 0 ? "PARTLY_RETURNED" : "SOLD";
             views.Add(new ReportOrderProfitView(id, order.Order.OrderNumber, order.PlatformCode, input.Channels.TryGetValue(store, out var channel) ? channel.DisplayName : "",
                 order.Order.StoreFrontCode, abroad, order.Order.RealAt, state, amount, productCost, profit,
@@ -183,10 +186,11 @@ internal static class ReportOrderProfit
         return new(orders.Sum(order => order.Amount), profit, profitAmount, known.Count,
             profit is { } p && profitAmount > 0 ? Math.Round(p / profitAmount * 100m, 2) : null,
             orders.Count(order => order.Cost is null),
-            orders.Count(order => order.Costs.Any(cost => cost.Key == "cargo" && cost.Amount is null)));
+            orders.Count(order => order.Costs.Any(cost => cost.Key == "cargo" && cost.Amount is null)),
+            orders.Count(order => order.Costs.Any(cost => cost.Key == "commission" && cost.Amount is null)));
     }
 
-    internal sealed record OrderTotals(decimal Amount, decimal? Profit, decimal ProfitAmount, int ProfitOrders, decimal? Margin, int MissingCost, int MissingCargo);
+    internal sealed record OrderTotals(decimal Amount, decimal? Profit, decimal ProfitAmount, int ProfitOrders, decimal? Margin, int MissingCost, int MissingCargo, int MissingCommission);
 
     private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 }

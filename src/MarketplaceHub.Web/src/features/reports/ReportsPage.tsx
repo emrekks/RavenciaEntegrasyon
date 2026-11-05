@@ -1144,19 +1144,30 @@ function feeNote(line: ReportCosts['lines'][number]) {
 function commissionNote(costs: ReportCosts) {
   const commission = costs.commission
   if (!commission) return ''
-  return commission.realOrders > 0
+  const missing = (commission.missingOrders ?? 0) > 0 ? ` ${formatCount(commission.missingOrders ?? 0)} siparişin komisyonu bilinmiyor (siparişte ve mağazanın bu dönemdeki satışlarında oran yok); komisyon eksik.` : ''
+  return (commission.realOrders > 0
     ? `Gerçek Komisyon: ${formatCount(commission.realOrders)} siparişte pazaryerinin kendi kaydından (Trendyol hesap kesimi; Hepsiburada, n11, Pazarama finans kayıtları), iadeler düşülmüş: ${formatTl(commission.real)}. Tahmini Komisyon: kaydı olmayan siparişlerde siparişteki komisyon oranından, ${formatTl(commission.estimatedForUnsettled)}.`
-    : 'Pazaryerlerinin komisyon kaydı henüz yok; tümü Tahmini Komisyon, siparişteki komisyon oranından.'
+    : 'Pazaryerlerinin komisyon kaydı henüz yok; tümü Tahmini Komisyon, siparişteki komisyon oranından.') + missing
 }
 
 function cargoNote(cargo: NonNullable<ReportCosts['cargo']>) {
   const platforms = cargo.platformOrders ? ` Diğer platformların ${formatCount(cargo.platformOrders)} siparişi kargo firması ve desiye göre 2026 tarifelerinden: ${formatTl(cargo.platformEstimated ?? 0)}.${desiSourcesNote(cargo.desiSources)}` : ''
-  if (cargo.billedOrders === 0 && cargo.unbilledOrders === 0) return platforms.trim()
+  const returns = cargo.unbilledReturns ?? 0
+  const unestimated = cargo.unestimatedOrders ?? 0
+  if (cargo.billedOrders === 0 && cargo.unbilledOrders === 0 && returns === 0) return platforms.trim()
   const billed = `Trendyol'da ${formatCount(cargo.billedOrders)} siparişin kargo faturası geldi: ${formatTl(cargo.real)}.`
-  if (cargo.unbilledOrders === 0) return billed + platforms
-  return cargo.estimated === null
-    ? `${billed} Faturası henüz gelmeyen ${formatCount(cargo.unbilledOrders)} siparişin kargosu tahmin edilemedi.${platforms}`
-    : `${billed} Faturası henüz gelmeyen ${formatCount(cargo.unbilledOrders)} sipariş, mağazanın kargo tarifesiyle tahmin edildi: ${formatTl(cargo.estimated - (cargo.platformEstimated ?? 0))}.${platforms}`
+  if (cargo.unbilledOrders === 0 && returns === 0) return billed + platforms
+  const unbilled = [cargo.unbilledOrders > 0 ? `${formatCount(cargo.unbilledOrders)} sipariş` : '', returns > 0 ? `${formatCount(returns)} iadenin dönüş kargosu` : ''].filter(Boolean).join(' ve ')
+  const trendyolEstimated = (cargo.estimated ?? 0) - (cargo.platformEstimated ?? 0)
+  const missing = unestimated > 0 ? ` ${formatCount(unestimated)} siparişin kargosu tahmin edilemedi (mağazada son 60 günde faturalı kargo yok); kargo eksik.` : ''
+  return cargo.estimated === null || (unestimated > 0 && trendyolEstimated <= 0)
+    ? `${billed} Faturası henüz gelmeyen ${unbilled} tahmin edilemedi.${platforms}`
+    : `${billed} Faturası henüz gelmeyen ${unbilled}, mağazanın kargo tarifesiyle tahmin edildi: ${formatTl(trendyolEstimated)}.${missing}${platforms}`
+}
+
+// The cargo or commission the period's figures are short of, said where the figures are.
+function cargoPartial(cargo: NonNullable<ReportCosts['cargo']>) {
+  return (cargo.estimated === null && (cargo.unbilledOrders > 0 || (cargo.unbilledReturns ?? 0) > 0)) || (cargo.unestimatedOrders ?? 0) > 0
 }
 
 // Platforms with orders in the period whose cargo and fees are not counted: Trendyol when its statement was not read
@@ -1200,7 +1211,8 @@ function profitSteps(data: ReportSales): ProfitSteps {
       { key: 'fees', label: 'Kesintiler', value: feeTotal, kind: 'minus',
         note: fees.length ? `${fees.map(fee => fee.label).join(', ')} · dönemin siparişlerinin, Trendyol cari hesabından ya da tahmini` : 'Bu dönemde kesinti yok' },
       { key: 'payout', label: 'Masraflar Düşülmüş', value: now.netRevenue - charged, kind: 'total',
-        note: finance.cargo.estimated === null && finance.cargo.unbilledOrders > 0 ? 'Faturası gelmeyen kargo eksik; ürün maliyeti hariç' : 'Gerçek ve tahmini kalemlerle; ürün maliyeti hariç' }
+        note: cargoPartial(finance.cargo) ? 'Tahmin edilemeyen kargo eksik; ürün maliyeti hariç'
+          : (finance.commission.missingOrders ?? 0) > 0 ? 'Bilinmeyen komisyon eksik; ürün maliyeti hariç' : 'Gerçek ve tahmini kalemlerle; ürün maliyeti hariç' }
     )
   } else steps.push(
     { key: 'commission', label: 'Tahmini Komisyon', value: hasCommission ? commission.estimatedCommission : null, kind: 'minus', missing: 'Komisyon bilinmiyor',
@@ -1676,7 +1688,9 @@ function trendyolLedger(data: ReportSales): LedgerRow[] {
     { label: 'Gerçek Komisyon', value: formatTl(commission.real), hint: commission.realOrders > 0 ? `${formatCount(commission.realOrders)} siparişte pazaryerinin kendi kaydından; aynı siparişlerin tahmini ${formatTl(commission.estimatedForSettled)}` : 'Pazaryeri kaydı olan sipariş yok' },
     { label: 'Tahmini Komisyon', value: formatTl(commission.estimatedForUnsettled), hint: 'Pazaryeri kaydı olmayan siparişlerde siparişteki komisyon oranından' },
     { label: 'Hesap Kesimi Olan Sipariş', value: `${formatCount(finance.settledOrders)} / ${formatCount(finance.financeOrders)}`, hint: 'Trendyol siparişlerinden hesap kesimi gelenler' },
-    { label: 'Trendyol Kargo', value: formatTl(cargo.combined - (cargo.platformEstimated ?? 0)), hint: cargo.unbilledOrders === 0 ? `${formatCount(cargo.billedOrders)} sipariş faturalı` : `${formatCount(cargo.billedOrders)} sipariş faturalı, ${formatCount(cargo.unbilledOrders)} sipariş tahmini` },
+    { label: 'Trendyol Kargo', value: formatTl(cargo.combined - (cargo.platformEstimated ?? 0)), hint: [`${formatCount(cargo.billedOrders)} sipariş faturalı`, cargo.unbilledOrders > 0 ? `${formatCount(cargo.unbilledOrders)} sipariş tahmini` : '',
+      (cargo.unbilledReturns ?? 0) > 0 ? `${formatCount(cargo.unbilledReturns ?? 0)} iade dönüşü tahmini` : '',
+      (cargo.unestimatedOrders ?? 0) > 0 ? `${formatCount(cargo.unestimatedOrders ?? 0)} sipariş tahmin edilemedi` : ''].filter(Boolean).join(', ') },
     { label: 'Sipariş Başına Kargo', value: cargo.averagePerOrder === null ? '—' : formatTl(cargo.averagePerOrder), hint: 'Son 30 günde en sık kesilen tutar' }
   ]
 }

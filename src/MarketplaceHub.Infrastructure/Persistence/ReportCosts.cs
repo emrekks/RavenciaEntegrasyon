@@ -153,15 +153,18 @@ internal static class ReportCosts
         var financeStores = new HashSet<Guid>();
         var products = new Dictionary<string, ProductTotal>(StringComparer.Ordinal);
         var linesByOrder = orders.ToDictionary(order => order.Order.Id, order => order.Lines);
-        // A Trendyol line without a commission (none on the line) is estimated at its store's rate over the
-        // period's lines that have one, so the commission is not left short.
-        var commissionRates = orders.Where(order => IsFinanceStore(input, order.Order.ConnectionId))
-            .SelectMany(order => order.Lines.Where(line => line.Commission is not null && line.KeptAmount > 0).Select(line => (order.Order.ConnectionId, line)))
-            .GroupBy(item => item.ConnectionId)
-            .ToDictionary(group => group.Key, group => group.Sum(item => item.line.Commission!.Value) / group.Sum(item => item.line.KeptAmount));
-        decimal Estimated(ReportBuilder.OrderFact order) => order.Lines.Sum(line => line.Commission
-            ?? (commissionRates.TryGetValue(order.Order.ConnectionId, out var rate) ? line.KeptAmount * rate : 0m));
+        // A line without a commission (none on the line) is estimated at its store's rate over the period's lines that
+        // have one, as the order profit is (ReportOrderProfit), so the commission is not left short. With no rate at all
+        // its commission is unknown: it adds nothing to the estimate and its order is counted (MissingOrders), never
+        // taken as a commission of 0.
+        var commissionRates = StoreCommissionRates(orders);
+        decimal Estimated(ReportBuilder.OrderFact order) => order.Lines.Sum(line => LineCommission(line, order.PlatformCode, commissionRates.GetValueOrDefault(order.Order.ConnectionId)) ?? 0m);
+        bool CommissionUnknown(ReportBuilder.OrderFact order) => order.Lines.Any(line => LineCommission(line, order.PlatformCode, commissionRates.GetValueOrDefault(order.Order.ConnectionId)) is null);
 
+        // The period's orders whose shipping cargo, and whose return cargo, has been billed (each way apart, as the order
+        // profit has it, ReportOrderProfit).
+        var billed = new HashSet<Guid>();
+        var returnBilled = new HashSet<Guid>();
         foreach (var row in finance.Rows)
         {
             // A cargo invoice whose lines were read counts through its lines (below), not as a whole.
@@ -200,6 +203,8 @@ internal static class ReportCosts
                 var key = (row.ConnectionId, category);
                 channelCosts[key] = channelCosts.GetValueOrDefault(key) + amount;
                 if (category is MarketplaceFinanceCategories.ServiceFee or MarketplaceFinanceCategories.Stoppage) linkedFees.Add((order, category));
+                // A cargo invoice read as a whole that names the order bills its shipment.
+                if (category == MarketplaceFinanceCategories.Cargo) billed.Add(order);
             }
             if (row.Category == MarketplaceFinanceCategories.ServiceFee && !IsInternationalFee(row)) linkedDomesticFees += amount;
 
@@ -215,7 +220,6 @@ internal static class ReportCosts
                 if (category == MarketplaceFinanceCategories.Coupon) product.Coupon += amount;
             }
         }
-        var billed = new HashSet<Guid>();
         foreach (var item in finance.CargoItems)
         {
             financeStores.Add(item.ConnectionId);
@@ -225,18 +229,26 @@ internal static class ReportCosts
                 Unlinked(MarketplaceFinanceCategories.Cargo).Add(item.Amount);
                 continue;
             }
-            if (!item.IsReturn) billed.Add(cargoOrder);
+            if (item.IsReturn) returnBilled.Add(cargoOrder); else billed.Add(cargoOrder);
             Line(MarketplaceFinanceCategories.Cargo).Add(item.Amount);
             var key = (item.ConnectionId, MarketplaceFinanceCategories.Cargo);
             channelCosts[key] = channelCosts.GetValueOrDefault(key) + item.Amount;
         }
 
-        // The period's Trendyol orders without a shipping cargo line yet, at their store's recent cargo per order.
-        var unbilledByStore = financeOrders.Where(order => !billed.Contains(order.Order.Id)).GroupBy(order => order.Order.ConnectionId).ToDictionary(group => group.Key, group => group.Count());
+        // The period's Trendyol cargo not billed yet, at the store's cargo tariff, each way as the order profit costs it
+        // (ReportOrderProfit): the shipment of an order without a shipping cargo line, and the return of an order that
+        // went back without a return cargo line. A store without a tariff (no cargo billed in the 60 days before the
+        // period's end) leaves its orders' cargo unknown: they are counted (UnestimatedOrders) and the estimate is short
+        // of them, never costed at 0 as if complete.
+        var unbilledShipments = financeOrders.Where(order => !billed.Contains(order.Order.Id)).ToList();
+        var unbilledReturns = financeOrders.Where(order => order.Back > 0 && !returnBilled.Contains(order.Order.Id)).ToList();
+        var unbilledByStore = unbilledShipments.Concat(unbilledReturns).GroupBy(order => order.Order.ConnectionId).ToDictionary(group => group.Key, group => group.Count());
         var estimatedCargo = new Dictionary<Guid, decimal>();
         foreach (var (storeId, count) in unbilledByStore)
             if (finance.CargoSamples.GetValueOrDefault(storeId)?.PerOrder is { } perOrder)
                 estimatedCargo[storeId] = Round(count * perOrder);
+        var unestimatedOrders = unbilledShipments.Concat(unbilledReturns).Where(order => !estimatedCargo.ContainsKey(order.Order.ConnectionId))
+            .Select(order => order.Order.Id).Distinct().Count();
         var samples = finance.CargoSamples.Where(sample => financeOrders.Any(order => order.Order.ConnectionId == sample.Key) && sample.Value.Orders > 0).Select(sample => sample.Value).ToList();
         var sampleOrders = samples.Sum(sample => sample.Orders);
         var realCargo = Round(lines.TryGetValue(MarketplaceFinanceCategories.Cargo, out var cargoLine) ? cargoLine.Amount : 0m);
@@ -276,12 +288,13 @@ internal static class ReportCosts
         platformCargo = Round(platformCargo);
         foreach (var store in estimatedCargo.Keys.ToList()) estimatedCargo[store] = Round(estimatedCargo[store]);
         var allEstimated = (cargoEstimate ?? 0m) + platformCargo;
-        var cargoView = new ReportCargoCostView(realCargo, financeOrders.Count(order => billed.Contains(order.Order.Id)), unbilledCount,
+        var cargoView = new ReportCargoCostView(realCargo, financeOrders.Count(order => billed.Contains(order.Order.Id)), unbilledShipments.Count,
             sampleOrders > 0 ? Round(samples.Sum(sample => sample.Amount) / sampleOrders) : null, sampleOrders,
             cargoEstimate is null && platformOrders.Count == 0 ? null : allEstimated, realCargo + allEstimated, platformOrders.Count, platformCargo,
             platformOrders.Count == 0 ? null : new ReportDesiSourcesView(
                 desiSources.GetValueOrDefault(ReportParcelDesi.Marketplace), desiSources.GetValueOrDefault(ReportParcelDesi.Manual),
-                desiSources.GetValueOrDefault(ReportParcelDesi.Measured), desiSources.GetValueOrDefault(ReportParcelDesi.Default), desiInput.Learned.Parcels));
+                desiSources.GetValueOrDefault(ReportParcelDesi.Measured), desiSources.GetValueOrDefault(ReportParcelDesi.Default), desiInput.Learned.Parcels),
+            unbilledReturns.Count, unestimatedOrders);
 
         // The service fees and the withholding tax of the period's Trendyol orders. Trendyol bills them on invoices of a
         // payment day tied to no order (those are in Unlinked, by their date), so every order without a record of its own
@@ -311,7 +324,8 @@ internal static class ReportCosts
         var real = Round(realFacts.Sum(RealAmount));
         var estimatedSettled = Round(realFacts.Sum(order => settled.Contains(order.Order.Id) ? Estimated(order) : order.EstimatedCommission ?? 0m));
         var estimatedOther = Round(orders.Where(order => !Real(order)).Sum(Estimated));
-        var commissionView = new ReportRealCommissionView(real, realFacts.Count, estimatedSettled, estimatedOther, real + estimatedOther);
+        var commissionView = new ReportRealCommissionView(real, realFacts.Count, estimatedSettled, estimatedOther, real + estimatedOther,
+            orders.Count(order => !Real(order) && CommissionUnknown(order)));
         var settledFinanceOrders = financeOrders.Count(order => settled.Contains(order.Order.Id));
 
         var lineViews = MarketplaceFinanceCategories.All.Where(lines.ContainsKey)
@@ -385,6 +399,7 @@ internal static class ReportCosts
                     : "Trendyol finans kayıtlarında bu döneme ait kayıt yok; masraflar ve pazaryeri kaydı olmayan siparişlerin komisyonu tahminidir.";
             if (PlatformNote(costs, tr) is { } unread) yield return unread;
             if (RealCommissionNote(costs, tr) is { } read) yield return read;
+            if (CommissionGapNote(costs, tr) is { } unknownCommission) yield return unknownCommission;
             yield break;
         }
         if (PlatformNote(costs, tr) is { } platforms) yield return platforms;
@@ -412,15 +427,23 @@ internal static class ReportCosts
         if (rejected.Count > 0)
             yield return $"Trendyol şu kayıt türlerini vermedi, bu türler masraflarda yok: {string.Join(", ", rejected)}.";
         yield return "Trendyol'un komisyon faturaları, hesap kesimindeki komisyonun faturasıdır; komisyona ikinci kez eklenmez.";
-        if (costs.Cargo is { } cargo && (cargo.BilledOrders > 0 || cargo.UnbilledOrders > 0))
+        if (costs.Cargo is { } cargo && (cargo.BilledOrders > 0 || cargo.UnbilledOrders > 0 || cargo.UnbilledReturns > 0))
         {
             var billed = $"Kargo, Trendyol kargo faturalarının paket satırlarından okunur: {cargo.BilledOrders.ToString("N0", tr)} siparişin kargo faturası geldi ({Money(cargo.Real)}).";
-            yield return cargo.UnbilledOrders == 0
+            var unbilled = (cargo.UnbilledOrders > 0 ? $"{cargo.UnbilledOrders.ToString("N0", tr)} siparişin kargosu" : "")
+                + (cargo.UnbilledOrders > 0 && cargo.UnbilledReturns > 0 ? " ve " : "")
+                + (cargo.UnbilledReturns > 0 ? $"{cargo.UnbilledReturns.ToString("N0", tr)} iadenin dönüş kargosu" : "");
+            var estimated = (cargo.Estimated ?? 0m) - cargo.PlatformEstimated;
+            var missing = cargo.UnestimatedOrders > 0
+                ? $" {cargo.UnestimatedOrders.ToString("N0", tr)} siparişin mağazasında son 60 günde faturalanmış kargo olmadığı için kargosu tahmin edilemedi; kargo toplamı bu siparişler olmadan, eksiktir."
+                : "";
+            yield return cargo.UnbilledOrders == 0 && cargo.UnbilledReturns == 0
                 ? billed
-                : cargo.Estimated is { } estimated && cargo.AveragePerOrder is { } average
-                    ? $"{billed} Trendyol kargoyu gönderiden haftalar sonra faturalar; faturası henüz gelmeyen {cargo.UnbilledOrders.ToString("N0", tr)} siparişin kargosu mağazanın güncel kargo tarifesiyle ({Money(average)}: son 30 günün {cargo.SampleOrders.ToString("N0", tr)} faturalı siparişinde en sık kesilen tutar) tahmin edildi: {Money(estimated - cargo.PlatformEstimated)}."
-                    : $"{billed} Faturası henüz gelmeyen {cargo.UnbilledOrders.ToString("N0", tr)} siparişin kargosu tahmin edilemedi (son 60 günde faturalanmış kargo yok); kargo eksiktir.";
+                : cargo.Estimated is not null && cargo.AveragePerOrder is { } average && (cargo.UnestimatedOrders == 0 || estimated > 0m)
+                    ? $"{billed} Trendyol kargoyu gönderiden haftalar sonra faturalar; faturası henüz gelmeyen {unbilled} mağazanın güncel kargo tarifesiyle ({Money(average)}: son 30 günün {cargo.SampleOrders.ToString("N0", tr)} faturalı siparişinde en sık kesilen tutar) tahmin edildi: {Money(estimated)}.{missing}"
+                    : $"{billed} Faturası henüz gelmeyen {unbilled} tahmin edilemedi (son 60 günde faturalanmış kargo yok); kargo eksiktir.";
         }
+        if (CommissionGapNote(costs, tr) is { } gap) yield return gap;
         yield return "Kargo ve hizmet bedelleri ürünlere paylaştırılmaz.";
     }
 
@@ -435,6 +458,31 @@ internal static class ReportCosts
     private static string? RealCommissionNote(ReportCostsView costs, CultureInfo tr) =>
         costs.Commission is { RealOrders: > 0 } commission
             ? $"Gerçek Komisyon: pazaryerinin kendi kaydı olan {commission.RealOrders.ToString("N0", tr)} siparişte (Trendyol hesap kesimi, Hepsiburada muhasebe kayıtları, n11 hakediş kayıtları, Pazarama finans hareketleri) komisyon tahmin yerine gerçek tutarla (iadeler ve düzeltmeler düşülmüş) alındı: {commission.Real.ToString("N2", tr)} ₺, aynı siparişlerin tahmini {commission.EstimatedForSettled.ToString("N2", tr)} ₺. Kaydı olmayan siparişlerin komisyonu Tahmini Komisyon'dur: {commission.EstimatedForUnsettled.ToString("N2", tr)} ₺."
+            : null;
+
+    // Each store's commission rate over the period's lines that carry a commission (none: the store is not here).
+    internal static Dictionary<Guid, decimal?> StoreCommissionRates(IEnumerable<ReportBuilder.OrderFact> orders) =>
+        orders.SelectMany(order => order.Lines.Where(line => line.Commission is not null && line.KeptAmount > 0).Select(line => (order.Order.ConnectionId, line)))
+            .GroupBy(item => item.ConnectionId)
+            .ToDictionary(group => group.Key, group => (decimal?)(group.Sum(item => item.line.Commission!.Value) / group.Sum(item => item.line.KeptAmount)));
+
+    // The own Shopify store pays no marketplace commission (its card fees are the payment fee, ReportPlatformCosts): a
+    // known 0, not a missing one.
+    internal static bool TakesNoCommission(string platformCode) => platformCode == "SHOPIFY";
+
+    // A line's commission: the one the marketplace sent (or charged), else its kept sale at its store's rate; a line
+    // with nothing kept, or on a platform without a commission, owes none. Null: unknown (no commission on the line and
+    // no rate to estimate it at), never 0.
+    internal static decimal? LineCommission(ReportBuilder.LineFact line, string platformCode, decimal? storeRate) =>
+        line.Commission
+        ?? (storeRate is { } rate ? line.KeptAmount * rate
+            : line.KeptAmount <= 0m || TakesNoCommission(platformCode) ? 0m
+            : null);
+
+    // The orders whose commission is unknown (ReportRealCommissionView.MissingOrders).
+    private static string? CommissionGapNote(ReportCostsView costs, CultureInfo tr) =>
+        costs.Commission is { MissingOrders: > 0 } commission
+            ? $"{commission.MissingOrders.ToString("N0", tr)} siparişin komisyonu bilinmiyor: siparişte komisyon oranı yok ve mağazanın bu dönemde oranı bilinen satışı yok. Tahmini komisyon bu siparişler olmadan, eksiktir."
             : null;
 
     private static bool IsFinanceStore(ReportInput input, Guid connectionId) =>
