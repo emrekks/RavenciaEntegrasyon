@@ -11731,6 +11731,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 TrackRequest();
                 var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"pazarama-return-sync:{windowStart:yyyyMMdd}:{page}"), window, new(page.ToString(CultureInfo.InvariantCulture), 100), cancellationToken);
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+                await RecordReturnPageIssuesAsync(tenantId, connectionId, "pazarama-return", result.Value!.Issues, cancellationToken);
                 foreach (var claim in result.Value!.Items)
                 {
                     TrackReceived();
@@ -11757,14 +11758,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         wideCursor.Version++;
     }
 
+    // A page's rows the adapter could not read (no claim or order number) are recorded, as on Hepsiburada.
+    private async Task RecordReturnPageIssuesAsync(Guid tenantId, Guid connectionId, string keyPrefix, IReadOnlyList<AdapterPageIssue>? issues, CancellationToken cancellationToken)
+    {
+        foreach (var issue in issues ?? [])
+        {
+            TrackSkipped();
+            await RecordIssue(tenantId, $"{keyPrefix}:{connectionId:N}:{issue.Identity}", issue.Code, issue.Message, cancellationToken);
+        }
+    }
+
     private async Task<RemoteReturnClaim> ResolvePazaramaReturnOrderLinesAsync(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim claim, CancellationToken cancellationToken)
     {
-        string? barcode = null, stockCode = null;
+        var barcode = claim.Lines.Select(line => line.ProductCode?.Trim()).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        var stockCode = claim.Lines.Select(line => line.StockCode?.Trim()).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        decimal? refundAmount = null;
         try
         {
             using var raw = JsonDocument.Parse(claim.RawJson);
-            barcode = raw.RootElement.TryGetProperty("productCode", out var code) && code.ValueKind == JsonValueKind.String ? code.GetString()?.Trim() : null;
-            stockCode = raw.RootElement.TryGetProperty("productStockCode", out var stock) && stock.ValueKind == JsonValueKind.String ? stock.GetString()?.Trim() : null;
+            barcode ??= raw.RootElement.TryGetProperty("productCode", out var code) && code.ValueKind == JsonValueKind.String ? code.GetString()?.Trim() : null;
+            stockCode ??= raw.RootElement.TryGetProperty("productStockCode", out var stock) && stock.ValueKind == JsonValueKind.String ? stock.GetString()?.Trim() : null;
+            refundAmount = PazaramaReturnMapper.RefundAmount(raw.RootElement);
         }
         catch (JsonException) { }
         var issueKey = $"pazarama-return-line:{connectionId:N}:{claim.ExternalClaimId}";
@@ -11794,20 +11808,29 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         var lines = await db.OrderLines.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OrderId == orderId.Value)
-            .Select(x => new { x.ExternalLineId, x.Barcode, x.Sku })
+            .Select(x => new { x.ExternalLineId, x.Barcode, x.Sku, Quantity = x.OrderedQuantity, x.UnitPrice })
             .ToListAsync(cancellationToken);
-        var matches = lines.Where(line => !string.IsNullOrWhiteSpace(barcode) && string.Equals(line.Barcode?.Trim(), barcode.Trim(), StringComparison.OrdinalIgnoreCase)).Select(line => line.ExternalLineId).ToList();
-        if (matches.Count == 0 && !string.IsNullOrWhiteSpace(stockCode))
-            matches = lines.Where(line => string.Equals(line.Sku?.Trim(), stockCode.Trim(), StringComparison.OrdinalIgnoreCase)).Select(line => line.ExternalLineId).ToList();
+        var matched = lines.Where(line => !string.IsNullOrWhiteSpace(barcode) && string.Equals(line.Barcode?.Trim(), barcode.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (matched.Count == 0 && !string.IsNullOrWhiteSpace(stockCode))
+            matched = lines.Where(line => string.Equals(line.Sku?.Trim(), stockCode.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        var matches = matched.Select(line => line.ExternalLineId).ToList();
         if (matches.Count == 0)
         {
             await RecordIssue(tenantId, issueKey, "PAZARAMA_RETURN_LINE_UNMATCHED", $"Pazarama iade talebi {claim.ExternalClaimId} (barkod {barcode ?? stockCode}) siparişteki hiçbir satırla eşleşmedi; iade satırı bağlanamadı.", cancellationToken);
             return claim;
         }
         await ResolveIssue(tenantId, issueKey, cancellationToken);
+        // The quantity Pazarama did not send is worked out from the order line only when every matching line agrees on
+        // its quantity and unit price; otherwise it stays unknown (0) and UpsertReturn records "adet bilinmiyor".
+        var sameShape = matched.Select(line => (line.Quantity, line.UnitPrice)).Distinct().Count() == 1;
         return claim with
         {
-            Lines = claim.Lines.Select(line => line with { ExternalOrderLineId = matches[0], AlternateExternalOrderLineIds = matches.Skip(1).ToList() }).ToList()
+            Lines = claim.Lines.Select(line => line with
+            {
+                ExternalOrderLineId = matches[0],
+                AlternateExternalOrderLineIds = matches.Skip(1).ToList(),
+                Quantity = sameShape ? PazaramaReturnMapper.ResolveQuantity(line.Quantity, refundAmount, matched[0].UnitPrice, matched[0].Quantity) ?? 0m : line.Quantity
+            }).ToList()
         };
     }
 
@@ -11828,6 +11851,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             TrackRequest();
             var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"n11-return-sync:{page}"), window, new(page.ToString(CultureInfo.InvariantCulture), 100), cancellationToken);
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
+            await RecordReturnPageIssuesAsync(tenantId, connectionId, "n11-return", result.Value!.Issues, cancellationToken);
             foreach (var claim in result.Value!.Items)
             {
                 TrackReceived();
@@ -11850,13 +11874,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // stored, then point the claim at the order lines whose n11 snapshot carries that product.
     private async Task<RemoteReturnClaim> ResolveN11ReturnOrderLinesAsync(Guid tenantId, Guid connectionId, string correlationId, RemoteReturnClaim claim, CancellationToken cancellationToken)
     {
-        string? productId = null;
-        try
-        {
-            using var raw = JsonDocument.Parse(claim.RawJson);
-            if (raw.RootElement.TryGetProperty("productId", out var value) && value.ValueKind == JsonValueKind.String) productId = value.GetString()?.Trim();
-        }
-        catch (JsonException) { }
+        var productId = claim.Lines.Select(line => line.ProductCode?.Trim()).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        if (productId is null)
+            try
+            {
+                using var raw = JsonDocument.Parse(claim.RawJson);
+                if (raw.RootElement.TryGetProperty("productId", out var value) && value.ValueKind == JsonValueKind.String) productId = value.GetString()?.Trim();
+            }
+            catch (JsonException) { }
         if (string.IsNullOrWhiteSpace(productId))
         {
             await RecordIssue(tenantId, $"n11-return-line:{connectionId:N}:{claim.ExternalClaimId}", "N11_RETURN_LINE_UNMATCHED", $"N11 iade talebi {claim.ExternalClaimId} için ürün numarası gelmedi; sipariş satırı eşlenemedi.", cancellationToken);
@@ -11883,19 +11908,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         var lines = await db.OrderLines.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OrderId == orderId.Value)
-            .Select(x => new { x.ExternalLineId, x.SourceSnapshotJson })
+            .Select(x => new { x.ExternalLineId, x.SourceSnapshotJson, Quantity = x.OrderedQuantity })
             .ToListAsync(cancellationToken);
-        var matches = lines.Where(line => string.Equals(N11LineProductId(line.SourceSnapshotJson), productId, StringComparison.Ordinal))
-            .Select(line => line.ExternalLineId)
-            .ToList();
+        var matched = lines.Where(line => string.Equals(N11LineProductId(line.SourceSnapshotJson), productId, StringComparison.Ordinal)).ToList();
+        var matches = matched.Select(line => line.ExternalLineId).ToList();
         if (matches.Count == 0)
         {
             await RecordIssue(tenantId, $"n11-return-line:{connectionId:N}:{claim.ExternalClaimId}", "N11_RETURN_LINE_UNMATCHED", $"N11 iade talebi {claim.ExternalClaimId} (ürün {productId}) siparişteki hiçbir satırla eşleşmedi; iade satırı bağlanmadı.", cancellationToken);
             return claim;
         }
+        // n11 sent no quantity: only an order line of one unit tells it (nothing else can come back); otherwise it stays
+        // unknown (0) and UpsertReturn records "adet bilinmiyor" instead of writing 1.
+        var singleUnit = matched.All(line => line.Quantity == 1);
         return claim with
         {
-            Lines = claim.Lines.Select(line => line with { ExternalOrderLineId = matches[0], AlternateExternalOrderLineIds = matches.Skip(1).ToList() }).ToList()
+            Lines = claim.Lines.Select(line => line with { ExternalOrderLineId = matches[0], AlternateExternalOrderLineIds = matches.Skip(1).ToList(), Quantity = line.Quantity > 0 ? line.Quantity : singleUnit ? 1 : 0 }).ToList()
         };
     }
 
@@ -12513,6 +12540,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // diagnostic. Resolve that stale diagnostic on the next successful read.
         await ResolveIssue(tenantId, $"return-order:{connectionId}:{remote.ExternalOrderId}", cancellationToken);
         var now = timeProvider.GetUtcNow(); var claim = await db.ReturnClaims.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ExternalClaimId == remote.ExternalClaimId, cancellationToken);
+        var storedStatusUnknown = claim is not null && (claim.Status == ReturnClaimStatus.Unknown || MarketplaceReturnStatus.Canonicalize(claim.RawStatus) == ReturnClaimStatus.Unknown);
         var remoteCargoProvider = string.IsNullOrWhiteSpace(remote.CargoProviderName) ? null : remote.CargoProviderName.Trim();
         var remoteCargoTracking = string.IsNullOrWhiteSpace(remote.CargoTrackingNumber) ? null : remote.CargoTrackingNumber.Trim();
         if (claim is null) { claim = NewReturnClaim(tenantId, connectionId, order.Id, remote, target, now); db.ReturnClaims.Add(claim); telemetryInsertedCount++; }
@@ -12579,6 +12607,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
+        // A status word the panel does not know leaves the claim Unknown, without Onayla/Reddet (report item 9); the
+        // issue tells the owner which word came, and the next read with a known word closes it.
+        var unknownStatusIssueKey = $"return-status-unknown:{connectionId:N}:{remote.ExternalClaimId}";
+        if (target == ReturnClaimStatus.Unknown)
+            await RecordIssue(tenantId, unknownStatusIssueKey, "RETURN_STATUS_UNKNOWN",
+                $"{remote.ExternalClaimId} numaralı iade için pazaryeri tanınmayan bir durum bildirdi ({(string.IsNullOrWhiteSpace(remote.RawStatus) ? "boş" : remote.RawStatus)}); iade \"Bilinmiyor\" olarak bırakıldı ve panelden işlem açılmadı. Kararı pazaryeri panelinden kontrol edin.", cancellationToken);
+        else if (storedStatusUnknown)
+            await ResolveIssue(tenantId, unknownStatusIssueKey, cancellationToken);
         var lineStatuses = new Dictionary<Guid, string?>();
         foreach (var remoteLine in remoteLines)
         {
@@ -12597,10 +12633,25 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (orderLine is null)
             {
                 await RecordIssue(tenantId, $"return-line-unlinked:{connectionId}:{claim.ExternalClaimId}:{remoteLine.ExternalLineId}", "RETURN_LINE_ORDER_LINE_NOT_FOUND",
-                    $"{claim.ExternalClaimId} numaralı iadenin bir kalemi siparişteki kalemlerle eşleşmedi; iade bu kalem olmadan kaydedildi.", cancellationToken);
+                    candidateIds.Length == 0
+                        ? $"{claim.ExternalClaimId} numaralı iadenin bir kaleminin siparişteki hangi kaleme ait olduğu bildirilmedi (doğrulanmamış iade kalemi); iade bu kalem olmadan kaydedildi."
+                        : $"{claim.ExternalClaimId} numaralı iadenin bir kalemi siparişteki kalemlerle eşleşmedi; iade bu kalem olmadan kaydedildi.", cancellationToken);
                 continue;
             }
             var line = await db.ReturnLines.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.ExternalLineId == remoteLine.ExternalLineId, cancellationToken);
+            // A line whose returned quantity the marketplace did not say is not stored with a guessed quantity: an issue
+            // is recorded, and a quantity read earlier is kept (report item 10).
+            var quantityIssueKey = $"return-line-quantity:{connectionId:N}:{claim.ExternalClaimId}:{remoteLine.ExternalLineId}";
+            if (remoteLine.Quantity <= 0)
+            {
+                await RecordIssue(tenantId, quantityIssueKey, "RETURN_LINE_QUANTITY_UNKNOWN",
+                    $"{claim.ExternalClaimId} numaralı iadenin bir kaleminde adet bilinmiyor; pazaryeri iade adedini göndermedi. Kalem adetsiz kaydedilmedi, iade kararını pazaryeri panelinden kontrol edin.", cancellationToken);
+                if (line is not null) lineStatuses[line.Id] = line.RawStatus;
+                continue;
+            }
+            // The issue only stands for a line that was never stored; resolving it on the line's first store keeps the
+            // lookup off every later read.
+            if (line is null) await ResolveIssue(tenantId, quantityIssueKey, cancellationToken);
             if (line is null) db.ReturnLines.Add(line = new ReturnLine { Id = Guid.CreateVersion7(), TenantId = tenantId, ClaimId = claim.Id, OrderLineId = orderLine.Id, ExternalLineId = remoteLine.ExternalLineId, Quantity = remoteLine.Quantity, RawStatus = remoteLine.RawStatus, AcceptDetail = remoteLine.AcceptDetail, MarketplaceNote = remoteLine.Note, Resolved = remoteLine.Resolved, AcceptedBySeller = remoteLine.AcceptedBySeller }); else { line.Quantity = remoteLine.Quantity; if (!string.IsNullOrWhiteSpace(remoteLine.RawStatus)) line.RawStatus = remoteLine.RawStatus; line.AcceptDetail = remoteLine.AcceptDetail ?? line.AcceptDetail; line.MarketplaceNote = remoteLine.Note ?? line.MarketplaceNote; line.Resolved = remoteLine.Resolved ?? line.Resolved; line.AcceptedBySeller = remoteLine.AcceptedBySeller ?? line.AcceptedBySeller; }
             lineStatuses[line.Id] = line.RawStatus;
         }

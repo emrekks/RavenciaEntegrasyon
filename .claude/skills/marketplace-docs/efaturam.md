@@ -33,3 +33,8 @@ Every documented credit endpoint is on the "Partner Gateway", for a marketplace 
 The direct API documentation has no endpoint for an account's own credit, and our token has no partner id to call the
 partner ones with. Checked 1 Nov 2026; ask entegrasyon@trendyolefaturam.com before building a credit display. An
 insufficient balance surfaces only as 409 `…/gateway/insufficient-credit` on invoice creation.
+
+## E-Arşiv internet sale info (stage 5, 5 Nov 2026)
+- `paymentInfo`: purchaseUrl (required, 2-255), paymentMeans (required: CREDIT_CARD, EFT, ON_DELIVERY, MEDIATOR,
+  OTHER); paymentAgentName, paymentType, paymentDate optional (`efaturam-api-son.md:505-522`). The option is off by
+  default (UI and CreateInvoiceCommand); the preview turns it off with the reason when it cannot be filled.

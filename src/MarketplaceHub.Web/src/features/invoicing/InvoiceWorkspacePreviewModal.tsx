@@ -17,6 +17,8 @@ type PreviewItem = {
   taxExclusiveTotal: number; discountTotal: number; taxTotal: number; payableTotal: number; lines: PreviewLine[]; canConfirm: boolean; blockedReason: string | null
   previewDigest: string; existingInvoiceId: string | null; existingInvoiceStatus: string | null; nextAction: string | null; includeInternetSalesInfo: boolean
   targetPackageNumbers?: string[] | null
+  // Why the E-Arşiv internet sale info cannot be added yet (the carrier or the Shopify payment is not known); null when it can.
+  internetSalesInfoBlockedReason?: string | null
   deliveryCarrierName?: string | null; deliverySentAt?: string | null; deliveryPackageNumber?: string | null
   taxpayerStatus?: string | null; taxpayerTitle?: string | null; targetAlias?: string | null
 }
@@ -123,6 +125,8 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
 
   const eligibleCount = previews.filter(item => item.canConfirm).length
   const internetSalesInfoLocked = previews.length > 0 && previews.every(item => item.existingInvoiceId !== null && item.nextAction !== 'SUBMIT_RETRY')
+  // Every selected order lacks what the internet sale info needs: the option stays off, with the reason.
+  const internetSalesInfoBlockedReason = previews.length > 0 && previews.every(item => item.internetSalesInfoBlockedReason) ? previews[0].internetSalesInfoBlockedReason ?? null : null
   return <div className="invoice-detail-backdrop invoice-workspace-preview-backdrop" role="presentation" onMouseDown={onClose}>
     <DialogSurface as="section" onClose={onClose} className="workspace-modal invoice-detail-modal invoice-workspace-preview-modal" aria-labelledby="invoice-workspace-preview-title" onMouseDown={event => event.stopPropagation()}>
       <header className="invoice-detail-header"><div><p className="eyebrow">Salt Okunur Fatura Kontrolü</p><h2 id="invoice-workspace-preview-title">Fatura Oluşturma Önizlemesi</h2><p>Bilgileri kontrol edin; onayladığınızda fatura hemen kesilir ve sonuç bildirim olarak gelir.</p></div><button type="button" className="modal-close" onClick={onClose} aria-label="Önizlemeyi kapat"><UiIcon name="close" /></button></header>
@@ -142,7 +146,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
           })}
         </>}
       </div>
-      <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.'}><input type="checkbox" checked={includeInternetSalesInfo} disabled={loading || internetSalesInfoLocked} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled={loading || eligibleCount === 0} onClick={confirm}>{eligibleCount > 1 ? `Onayla ve Faturayı Kes (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma İletimi Başlat' : 'Onayla ve Faturayı Kes'}</button></footer>
+      <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoBlockedReason ?? (internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.')}><input type="checkbox" checked={includeInternetSalesInfo && !internetSalesInfoBlockedReason} disabled={loading || internetSalesInfoLocked || Boolean(internetSalesInfoBlockedReason)} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled={loading || eligibleCount === 0} onClick={confirm}>{eligibleCount > 1 ? `Onayla ve Faturayı Kes (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma İletimi Başlat' : 'Onayla ve Faturayı Kes'}</button></footer>
     </DialogSurface>
   </div>
 }

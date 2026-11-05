@@ -28,8 +28,10 @@ public sealed partial class PttAvmHttpClient : IInvoiceMarketplacePort
         return PttAvmInvoiceMapper.Outcome(saved.Value!) switch
         {
             PttAvmInvoiceMapper.SaveOutcome.Saved => AdapterResult<InvoiceDeliveryResult>.Success(new(request.OrderNumber!, "INVOICED", true, request.InvoiceNumber, request.StoredLink), saved.RateLimit),
-            // The documented sample answers Success=false with "işlem gerçekleştirilmiştir": the outcome is read back instead of guessed.
-            PttAvmInvoiceMapper.SaveOutcome.Unclear => Failure<InvoiceDeliveryResult>(AdapterErrorClass.ContractViolation, "PTTAVM_INVOICE_RESULT_UNCLEAR", $"PTT AVM fatura kaydı için çelişkili cevap verdi ({PttAvmInvoiceMapper.Message(saved.Value!)}); sonuç sipariş okunarak doğrulanacak.", HttpStatusCode.BadGateway),
+            // The documented sample answers Success=false with "işlem gerçekleştirilmiştir": the outcome is read back instead of
+            // guessed. A conflict is an uncertain delivery (InvoiceDeliveryFailurePolicy), settled by reading the order's
+            // IsInvoice (InvoicingJobProcessor.SettleUncertainDeliveryAsync), not a permanent refusal (report item 11).
+            PttAvmInvoiceMapper.SaveOutcome.Unclear => Failure<InvoiceDeliveryResult>(AdapterErrorClass.BusinessConflict, "PTTAVM_INVOICE_RESULT_UNCLEAR", $"PTT AVM fatura kaydı için çelişkili cevap verdi ({PttAvmInvoiceMapper.Message(saved.Value!)}); sonuç sipariş okunarak doğrulanacak.", HttpStatusCode.BadGateway),
             _ => Failure<InvoiceDeliveryResult>(AdapterErrorClass.Validation, "PTTAVM_INVOICE_REJECTED", $"PTT AVM faturayı kabul etmedi: {PttAvmInvoiceMapper.Message(saved.Value!) ?? "gerekçe verilmedi"}.", HttpStatusCode.UnprocessableEntity)
         };
     }

@@ -24,6 +24,7 @@ public sealed class TrendyolCarrierCatalogTests
         {
           "Id":"invoice-1",
           "InvoiceType":"EARSIVFATURA",
+          "IncludeInternetSalesInfo":true,
           "Currency":"TRY",
           "Note":"Satış faturası",
           "IssuedAt":"2026-10-05T12:00:00+03:00",
@@ -57,6 +58,7 @@ public sealed class TrendyolCarrierCatalogTests
         {
           "Id":"invoice-hepsiburada",
           "InvoiceType":"EARSIVFATURA",
+          "IncludeInternetSalesInfo":true,
           "Currency":"TRY",
           "Note":"Satış faturası",
           "IssuedAt":"2026-10-05T12:00:00+03:00",

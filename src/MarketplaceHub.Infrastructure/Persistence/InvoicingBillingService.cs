@@ -1516,9 +1516,19 @@ public sealed partial class InvoicingBillingService(
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
-        var pendingWithoutState = ownerRetry && invoice.Status == InvoiceStatus.MarketplacePending
-            && !await db.MarketplaceDeliveryStates.AsNoTracking().AnyAsync(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id, cancellationToken);
-        if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode) && !pendingWithoutState) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
+        var ownStates = ownerRetry && invoice.Status == InvoiceStatus.MarketplacePending
+            ? await db.MarketplaceDeliveryStates.AsNoTracking().Where(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id)
+                .Select(state => new { state.Status, state.ConnectionId }).ToListAsync(cancellationToken)
+            : [];
+        var pendingWithoutState = ownerRetry && invoice.Status == InvoiceStatus.MarketplacePending && ownStates.Count == 0;
+        // n11, Pazarama, PTT AVM: the owner sends again a delivery whose answer was lost (report item 11). Its state is
+        // reopened below; the job reads the package (PTT AVM) or sends a link that replaces the earlier one (n11, Pazarama).
+        var uncertainConnectionIds = ownStates.Select(state => state.ConnectionId).Distinct().ToArray();
+        var pendingUncertain = ownStates.Any(state => state.Status == "UNKNOWN")
+            && ownStates.All(state => InvoiceDeliveryAutoRetryPolicy.StateAllowsOwnerRetry(state.Status, uncertainRetried: true))
+            && (await db.PlatformConnections.AsNoTracking().Where(connection => connection.TenantId == tenantId && uncertainConnectionIds.Contains(connection.Id))
+                .Select(connection => connection.PlatformCode).ToListAsync(cancellationToken)).All(InvoiceDeliveryAutoRetryPolicy.RetriesUncertainDelivery);
+        if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode) && !pendingWithoutState && !pendingUncertain) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
         if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken)) return ServiceResult<Guid>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Pazaryerine iletim için kalıcı HTTPS fatura bağlantısı henüz hazır değil.", 409);
         var packages = await db.ShipmentPackages.AsNoTracking()
             .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
@@ -1556,6 +1566,12 @@ public sealed partial class InvoicingBillingService(
         }
         // The owner sends again a delivery the marketplace refused: the state is reopened as retryable (recorded in its
         // history), and the job reads the package before it writes, so an invoice that is there is not sent twice.
+        // An uncertain one (n11, Pazarama, PTT AVM) stays UNKNOWN with the owner's code, so its job settles it at once
+        // instead of waiting for the automatic schedule: PTT AVM by reading the order first, n11 and Pazarama by sending
+        // the link again, which replaces the earlier one.
+        if (ownerRetry && pendingUncertain)
+            foreach (var state in deliveryStates.Where(state => state.Status == "UNKNOWN"))
+                InvoiceAdjustmentTracking.AppendDeliveryHistory(db, state, "UNKNOWN", state.ExternalReference, InvoiceDeliveryAutoRetryPolicy.OwnerRetryCode, timeProvider.GetUtcNow());
         if (ownerRetry)
             foreach (var state in deliveryStates.Where(state => state.Status == "FAILED"))
                 InvoiceAdjustmentTracking.AppendDeliveryHistory(db, state, "RETRYABLE_FAILURE", state.ExternalReference, InvoiceDeliveryAutoRetryPolicy.OwnerRetryCode, timeProvider.GetUtcNow());

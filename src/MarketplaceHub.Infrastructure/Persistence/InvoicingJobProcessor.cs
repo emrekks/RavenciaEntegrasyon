@@ -685,12 +685,16 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             .Where(connection => connection.TenantId == tenantId && connection.Id == package.ConnectionId)
             .Select(connection => connection.PlatformCode)
             .SingleOrDefaultAsync(cancellationToken);
-        if (platformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY")
-            || platformCode == "SHOPIFY" && string.IsNullOrWhiteSpace(document.InvoiceNumber))
+        if (!ManualInvoiceDeliveryPolicy.SupportsManualDocument(platformCode)
+            || platformCode is "SHOPIFY" or "N11" && string.IsNullOrWhiteSpace(document.InvoiceNumber))
         {
             return await StopManualOrderInvoiceDelivery(state, "FAILED", "MANUAL_INVOICE_PLATFORM_FIELDS_REQUIRED", null,
                 "Pazaryeri bu belgeyi gerekli alanlar (fatura numarası) olmadan almıyor; belge gönderilmedi.", cancellationToken);
         }
+        // n11, Pazarama and PTT AVM cannot read an invoice back before the write (report item 11): their read answers
+        // UNVERIFIED (PTT AVM: true once its lines hold an API invoice), and the owner's local state decides.
+        var readsUnverified = ManualInvoiceDeliveryPolicy.ReadsUnverified(platformCode);
+        var resendReplacesLink = InvoiceDeliveryAutoRetryPolicy.ResendReplacesLink(platformCode);
 
         var deliveryContext = Context(tenantId, package.ConnectionId, correlationId,
             state?.IdempotencyKey ?? $"manual-invoice-delivery:{document.Id:N}:{package.Id:N}");
@@ -698,8 +702,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             package.ExternalPackageId,
             order.OrderNumber,
             platformCode == "SHOPIFY" ? ShopifyOrderGid(order.ExternalOrderId) : null,
-            document.InvoiceNumber,
-            document.DocumentUrl,
+            readsUnverified ? null : document.InvoiceNumber,
+            readsUnverified ? null : document.DocumentUrl,
             LookupFor(order.OrderedAt, order.LastRemoteModifiedAt, order.StoreFrontCode, package));
         var before = await marketplace.QueryDeliveryAsync(deliveryContext, reference, cancellationToken);
         if (!before.IsSuccess)
@@ -710,6 +714,24 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
         var beforeStatus = MarketplaceInvoiceStatePolicy.FromRemote(before.Value!.RawStatus,
             invoiceNumber: before.Value.VerifiedInvoiceNumber, invoiceUrl: before.Value.VerifiedInvoiceLink);
+        if (readsUnverified && MarketplaceInvoiceStatePolicy.IsUnverified(before.Value.RawStatus))
+        {
+            // Nothing local may say the order already holds an invoice (an observed one, a hand-set "uploaded").
+            if (MarketplaceInvoiceStatePolicy.UnverifiedReadShowsInvoice(package.MarketplaceInvoiceStatus, package.ManualInvoiceStatus))
+                return await StopManualOrderInvoiceDelivery(state, "MANUAL_REVIEW", "PLATFORM_INVOICE_ALREADY_PRESENT", before.Value.ExternalReference,
+                    "Siparişte pazaryeri faturası var veya fatura yüklendi olarak işaretlenmiş; belge gönderilmedi.", cancellationToken);
+            // No invoice is visible: on n11 and Pazarama a new link replaces any earlier one, and PTT AVM's lines say no
+            // API invoice is there (an earlier uncertain send did not land), so the document is sent.
+            beforeStatus = MarketplaceInvoiceStatus.NotInvoiced;
+            if (resendReplacesLink || platformCode == "PTTAVM") inspectionOnly = false;
+        }
+        // PTT AVM: an earlier uncertain send of this document that its lines now show (IsInvoice=true; the package was
+        // read without an invoice right before it) is this delivery.
+        if (platformCode == "PTTAVM" && beforeStatus == MarketplaceInvoiceStatus.Invoiced && state?.Status is "UNKNOWN" or "STARTED")
+        {
+            await ConfirmManualOrderInvoiceDelivery(tenantId, package, state, before.Value.ExternalReference, document.InvoiceNumber, document.DocumentUrl, cancellationToken);
+            return true;
+        }
         if (beforeStatus == MarketplaceInvoiceStatus.Invoiced)
         {
             if (!ManualInvoiceIdentityMatches(document, before.Value.VerifiedInvoiceNumber, before.Value.VerifiedInvoiceLink))
@@ -723,7 +745,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             return await StopManualOrderInvoiceDelivery(state, "MANUAL_REVIEW", "MARKETPLACE_INVOICE_PRECHECK_NOT_CLEAR", before.Value.ExternalReference,
                 "Pazaryeri açık bir 'fatura yok' cevabı vermedi; belge gönderilmedi.", cancellationToken);
         }
-        if (inspectionOnly || !ManualInvoiceDeliveryPolicy.CanSubmitAfterPrecheck(state?.Status, beforeStatus))
+        var resendSettlesUncertainty = readsUnverified && !inspectionOnly && beforeStatus == MarketplaceInvoiceStatus.NotInvoiced;
+        if (inspectionOnly || !resendSettlesUncertainty && !ManualInvoiceDeliveryPolicy.CanSubmitAfterPrecheck(state?.Status, beforeStatus))
         {
             return await StopManualOrderInvoiceDelivery(state, "MANUAL_REVIEW", "MANUAL_INVOICE_DELIVERY_ABSENCE_REQUIRES_REVIEW", before.Value.ExternalReference,
                 "Önceki iletimin sonucu belirsizdi ve pazaryerinde fatura görünmüyor; yeni gönderim yapılmadı, inceleme gerekiyor.", cancellationToken);
@@ -744,6 +767,16 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             deliveryPayload["orderNumber"] = order.OrderNumber;
         }
         if (platformCode == "SHOPIFY") deliveryPayload["shopifyOrderId"] = ShopifyOrderGid(order.ExternalOrderId);
+        // The same fields the automatic delivery sends to n11, Pazarama and PTT AVM; their adapters apply each
+        // marketplace's rules (n11: https link to a pdf/png/jpeg, 16-character number; the .pdf form of an uploaded PDF).
+        if (platformCode is "N11" or "PAZARAMA" or "PTTAVM") deliveryPayload["orderNumber"] = order.OrderNumber;
+        if (platformCode == "PAZARAMA") deliveryPayload["pazaramaOrderId"] = PazaramaOrderId(order.CustomerSnapshotJson);
+        if (platformCode == "PTTAVM")
+            deliveryPayload["lineItemIds"] = await db.OrderLines.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.OrderId == package.OrderId && x.OrderedQuantity > x.CancelledQuantity)
+                .OrderBy(x => x.ExternalLineId)
+                .Select(x => x.ExternalLineId)
+                .ToListAsync(cancellationToken);
         var payloadJsonValue = JsonSerializer.Serialize(deliveryPayload);
         var deliveryRequestHash = Hash(payloadJsonValue);
         if (state is null)
@@ -943,6 +976,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         if (oneTimeAuthorization is not null
             && !await IsValidOneTimeInvoiceDeliveryAsync(tenantId, jobConnectionId, invoice, package, order?.OrderNumber, oneTimeAuthorization, state, cancellationToken))
             return false;
+        // Report item 11: an uncertain delivery on n11, Pazarama or PTT AVM goes to the automatic retry schedule. It is
+        // settled here, before the document-bound link is chosen below, so a resend carries the same link.
+        if (oneTimeAuthorization is null && state?.Status is "UNKNOWN" or "STARTED" && InvoiceDeliveryAutoRetryPolicy.RetriesUncertainDelivery(platformCode)
+            && await SettleUncertainDeliveryAsync(tenantId, invoice, package, state, platformCode!, order?.OrderNumber, order?.OrderedAt, order?.LastRemoteModifiedAt, order?.StoreFrontCode, correlationId, cancellationToken))
+            return true;
         // n11, Pazarama and PTT AVM take only links that end in a document extension, so their deliveries always use the
         // document-bound link, which the API also serves as .../invoice.pdf.
         if ((oneTimeAuthorization is not null && OneTimeInvoiceDeliveryPolicy.IsAuthorizedStageDocument(order?.OrderNumber, invoice.Id)
@@ -1472,6 +1510,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 await db.SaveChangesAsync(CancellationToken.None);
                 if (oneTimeAuthorization is not null)
                     throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RESULT_UNKNOWN", "Tek seferlik fatura gönderiminin sonucu kesinleşmedi; aynı dış işlem körlemesine tekrarlanmadı.", result.Error.RemoteRequestId ?? state.ExternalIdempotencyKey));
+                // n11, Pazarama, PTT AVM: the uncertain delivery goes to the automatic retry schedule (report item 11);
+                // the five-minute recovery brings it back to SettleUncertainDeliveryAsync when it is due.
+                if (InvoiceDeliveryAutoRetryPolicy.RetriesUncertainDelivery(platformCode))
+                    throw new JobProcessingException(JobExecutionResult.SuccessWithNote(InvoiceDeliveryAutoRetryPolicy.UncertainResendScheduledCode,
+                        "Fatura linkinin pazaryerine ulaşıp ulaşmadığı belirsiz; otomatik tekrar deneme takvimine alındı."));
                 throw new JobProcessingException(JobExecutionResult.Retry("DELIVERY_RESULT_UNKNOWN", "Pazaryerindeki fatura durumu okunana kadar yeniden denenecek; her denemeden önce sipariş durumu doğrulanır.", TimeSpan.FromMinutes(2), result.Error.RemoteRequestId ?? state.ExternalIdempotencyKey));
             }
 
@@ -1659,6 +1702,55 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     private async Task<string?> LoadPermanentInvoiceUrlAsync(Guid tenantId, Guid invoiceId, CancellationToken cancellationToken) =>
         (await LoadPermanentInvoiceDocumentAsync(tenantId, invoiceId, cancellationToken))?.PermanentUrl;
+
+    // Report item 11. An uncertain delivery (UNKNOWN, or STARTED after a crash) on n11, Pazarama or PTT AVM. When it is
+    // due (InvoiceDeliveryAutoRetryPolicy.UncertainResendDue; at once after the owner's "Tekrar Gönder"): PTT AVM reads
+    // the order first and confirms the delivery when its lines say IsInvoice=true (the package was read without an
+    // invoice right before the uncertain write); otherwise, and always on n11 and Pazarama, whose new link replaces the
+    // earlier one, the state is reopened (RETRYABLE_FAILURE) and the job sends the stored link again under its usual
+    // gates. Returns true when the read confirmed it; false when the job goes on to send. Before it is due, or once the
+    // resends are used up, the job ends without writing (the five-minute recovery looks again; Tekrar Gönder stays).
+    // Only the issued invoice's stored link is ever sent; no invoice is issued here.
+    private async Task<bool> SettleUncertainDeliveryAsync(Guid tenantId, Invoice invoice, ShipmentPackage package, MarketplaceDeliveryState state, string platformCode,
+        string? orderNumber, DateTimeOffset? orderedAt, DateTimeOffset? lastRemoteModifiedAt, string? storeFrontCode, string correlationId, CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var ownerAsked = string.Equals(state.ErrorCode, InvoiceDeliveryAutoRetryPolicy.OwnerRetryCode, StringComparison.Ordinal);
+        if (!ownerAsked)
+        {
+            switch (InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(invoice.DeliveryRetryAttempts, state.UpdatedAt, invoice.IssuedAt ?? invoice.CreatedAt, now))
+            {
+                case InvoiceDeliveryAutoRetryPolicy.UncertainResend.Wait:
+                    throw new JobProcessingException(JobExecutionResult.SuccessWithNote(InvoiceDeliveryAutoRetryPolicy.UncertainResendScheduledCode,
+                        "Fatura linkinin pazaryerine ulaşıp ulaşmadığı belirsiz; otomatik tekrar deneme takvimine alındı, zamanı gelince yeniden gönderilecek."));
+                case InvoiceDeliveryAutoRetryPolicy.UncertainResend.Exhausted:
+                    throw new JobProcessingException(JobExecutionResult.SuccessWithNote(InvoiceDeliveryAutoRetryPolicy.UncertainResendExhaustedCode,
+                        "Belirsiz fatura iletimi için otomatik denemeler bitti; pazaryeri panelini kontrol edip faturadan Tekrar Gönder ile gönderebilirsiniz."));
+            }
+        }
+        if (string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase))
+        {
+            var read = await marketplace.QueryDeliveryAsync(
+                Context(tenantId, package.ConnectionId, correlationId, $"delivery-recovery-read:{invoice.Id:N}"),
+                new(package.ExternalPackageId, orderNumber, Lookup: LookupFor(orderedAt, lastRemoteModifiedAt, storeFrontCode, package)),
+                cancellationToken);
+            if (!read.IsSuccess) throw JobProcessingException.FromAdapter(read.Error!);
+            if (MarketplaceInvoiceStatePolicy.FromRemote(read.Value!.RawStatus) == MarketplaceInvoiceStatus.Invoiced)
+            {
+                AppendDeliveryHistory(state, "CONFIRMED", read.Value.ExternalReference ?? state.ExternalReference ?? package.ExternalPackageId, null, now);
+                await SetInvoiceDeliveryOutcome(tenantId, invoice, cancellationToken, now);
+                await db.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+        }
+        if (!ownerAsked) InvoiceDeliveryRetryReader.RecordAutomaticAttempt(invoice, now);
+        AppendDeliveryHistory(state, "RETRYABLE_FAILURE", state.ExternalReference, InvoiceDeliveryAutoRetryPolicy.UncertainResendCode, now);
+        invoice.Status = InvoiceStatus.MarketplacePending;
+        invoice.UpdatedAt = now;
+        invoice.Version++;
+        await db.SaveChangesAsync(cancellationToken);
+        return false;
+    }
 
     // The order's date, last change and storefront and the package's last status time, for the marketplace read.
     private static PackageLookup? LookupFor(DateTimeOffset? orderedAt, DateTimeOffset? lastModifiedAt, string? storeFrontCode, ShipmentPackage? package) =>
@@ -2115,7 +2207,25 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                                     && connection.Environment == "PRODUCTION"
                                     && deliveryPlatforms.Contains(connection.PlatformCode)
                                     && db.InvoiceDocuments.Any(document => document.TenantId == invoice.TenantId && document.InvoiceId == invoice.Id && document.PermanentUrl != null)
-                                select new { invoice.Id, PackageId = package.Id, ConnectionId = package.ConnectionId, StateVersion = state.Version }).ToListAsync(cancellationToken);
+                                select new
+                                {
+                                    invoice.Id,
+                                    PackageId = package.Id,
+                                    ConnectionId = package.ConnectionId,
+                                    StateVersion = state.Version,
+                                    StateStatus = state.Status,
+                                    StateErrorCode = state.ErrorCode,
+                                    StateUpdatedAt = state.UpdatedAt,
+                                    connection.PlatformCode,
+                                    invoice.DeliveryRetryAttempts,
+                                    IssuedAt = invoice.IssuedAt ?? invoice.CreatedAt
+                                }).ToListAsync(cancellationToken);
+        // An uncertain delivery on n11, Pazarama or PTT AVM is queued only when its resend is due (report item 11), so the
+        // recovery does not add a job every five minutes that would only wait, nor any once the resends are used up.
+        candidates = candidates.Where(candidate => candidate.StateStatus != "UNKNOWN"
+            || !InvoiceDeliveryAutoRetryPolicy.RetriesUncertainDelivery(candidate.PlatformCode)
+            || candidate.StateErrorCode == InvoiceDeliveryAutoRetryPolicy.OwnerRetryCode
+            || InvoiceDeliveryAutoRetryPolicy.UncertainResendDue(candidate.DeliveryRetryAttempts, candidate.StateUpdatedAt, candidate.IssuedAt, now) == InvoiceDeliveryAutoRetryPolicy.UncertainResend.Now).ToList();
 
         var bucket = now.ToUnixTimeSeconds() / 300;
         // Sale invoices are order level (PackageId null): their targets are the order's non-cancelled packages,

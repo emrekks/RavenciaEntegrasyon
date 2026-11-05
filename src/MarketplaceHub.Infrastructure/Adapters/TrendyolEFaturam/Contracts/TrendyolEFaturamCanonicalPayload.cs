@@ -138,7 +138,7 @@ public static class TrendyolEFaturamCanonicalPayload
             }).ToArray();
 
             var orderedAt = DateTimeOffset.Parse(RequiredText(order, "OrderedAt"), CultureInfo.InvariantCulture);
-            var includeInternetSalesInfo = OptionalBoolean(root, "IncludeInternetSalesInfo", true);
+            var includeInternetSalesInfo = OptionalBoolean(root, "IncludeInternetSalesInfo", false);
             EfaturamPayment? payment = null;
             EfaturamDelivery? delivery = null;
             if (invoiceType == "EARSIVFATURA")
@@ -149,7 +149,7 @@ public static class TrendyolEFaturamCanonicalPayload
                     throw new JsonException("EFATURAM_CARRIER_CATALOG_MISS");
                 var sentAt = DateTimeOffset.Parse(RequiredText(package, "StatusOccurredAt"), CultureInfo.InvariantCulture);
                 if (includeInternetSalesInfo)
-                    payment = MarketplacePayment(root, orderedAt);
+                    payment = MarketplacePayment(root, orderedAt, customer.RootElement);
                 // Stored instants are UTC; 01:30 in Istanbul is still the previous UTC day.
                 delivery = new(carrier.TaxId, carrier.Name, null, EfaturamTurkeyTime.Day(sentAt));
             }
@@ -175,15 +175,84 @@ public static class TrendyolEFaturamCanonicalPayload
     }
 
     private static JsonDocument ParseSnapshot(JsonElement parent, string name) => JsonDocument.Parse(RequiredText(parent, name));
-    private static EfaturamPayment MarketplacePayment(JsonElement root, DateTimeOffset orderedAt)
+    private static EfaturamPayment MarketplacePayment(JsonElement root, DateTimeOffset orderedAt, JsonElement customer) =>
+        InternetSalePayment(Text(root, "MarketplacePlatformCode"), customer, orderedAt, out var problem)
+            ?? throw new JsonException(problem ?? "EFATURAM_MARKETPLACE_PAYMENT_INFO_UNSUPPORTED");
+
+    /// <summary>
+    /// The E-Arşiv internet sale's payment information (report item 18), the same structure for every marketplace:
+    /// E-Faturam needs the site the sale was made on (purchaseUrl) and the payment means; the payment agent is optional
+    /// (efaturam-api-son.md, EArchivePaymentInfo). A marketplace sale is paid through the marketplace (MEDIATOR). A Shopify
+    /// sale is made on the shop's primary domain and paid by the means its payment gateways name. Null, with the reason,
+    /// when it cannot be filled: the preview then turns the option off instead of failing the invoice.
+    /// </summary>
+    public static EfaturamPayment? InternetSalePayment(string? platformCode, string customerSnapshotJson, DateTimeOffset orderedAt, out string? problem)
     {
-        var platformCode = Text(root, "MarketplacePlatformCode")?.Trim().ToUpperInvariant();
-        return platformCode switch
+        try
         {
-            null or "" or "TRENDYOL" => new("https://www.trendyol.com", "Trendyol", "PAZARYERI", orderedAt, "MEDIATOR"),
-            "HEPSIBURADA" => new("https://www.hepsiburada.com", "Hepsiburada", "PAZARYERI", orderedAt, "MEDIATOR"),
-            "SHOPIFY" => throw new JsonException("EFATURAM_SHOPIFY_PAYMENT_INFO_UNVERIFIED"),
-            _ => throw new JsonException("EFATURAM_MARKETPLACE_PAYMENT_INFO_UNSUPPORTED")
+            using var customer = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerSnapshotJson) ? "{}" : customerSnapshotJson);
+            return InternetSalePayment(platformCode, customer.RootElement, orderedAt, out problem);
+        }
+        catch (JsonException)
+        {
+            problem = ShopifyPaymentInfoMissing;
+            return null;
+        }
+    }
+
+    public const string ShopifyPaymentInfoMissing = "EFATURAM_SHOPIFY_PAYMENT_INFO_UNVERIFIED";
+
+    private static EfaturamPayment? InternetSalePayment(string? platformCode, JsonElement customer, DateTimeOffset orderedAt, out string? problem)
+    {
+        problem = null;
+        switch (platformCode?.Trim().ToUpperInvariant())
+        {
+            case null or "" or "TRENDYOL": return new("https://www.trendyol.com", "Trendyol", "PAZARYERI", orderedAt, "MEDIATOR");
+            case "HEPSIBURADA": return new("https://www.hepsiburada.com", "Hepsiburada", "PAZARYERI", orderedAt, "MEDIATOR");
+            case "N11": return new("https://www.n11.com", "n11", "PAZARYERI", orderedAt, "MEDIATOR");
+            case "PAZARAMA": return new("https://www.pazarama.com", "Pazarama", "PAZARYERI", orderedAt, "MEDIATOR");
+            case "PTTAVM": return new("https://www.pttavm.com", "PTT AVM", "PAZARYERI", orderedAt, "MEDIATOR");
+            case "SHOPIFY":
+                var site = NullText(customer, "shopPrimaryDomainUrl");
+                var means = ShopifyPaymentMeans(customer.ValueKind == JsonValueKind.Object && customer.TryGetProperty("paymentGatewayNames", out var names) && names.ValueKind == JsonValueKind.Array
+                    ? names.EnumerateArray().Where(name => name.ValueKind == JsonValueKind.String).Select(name => name.GetString() ?? "").ToArray()
+                    : []);
+                if (site is null || !Uri.TryCreate(site, UriKind.Absolute, out var siteUri) || siteUri.Scheme != Uri.UriSchemeHttps || means is null)
+                {
+                    problem = ShopifyPaymentInfoMissing;
+                    return null;
+                }
+                return new(siteUri.GetLeftPart(UriPartial.Authority), null, null, orderedAt, means);
+            default:
+                problem = "EFATURAM_MARKETPLACE_PAYMENT_INFO_UNSUPPORTED";
+                return null;
+        }
+    }
+
+    /// <summary>
+    /// The E-Faturam payment means of a Shopify order from its payment gateway names: cash on delivery ON_DELIVERY, a bank
+    /// transfer EFT, a card gateway (Shopify Payments, iyzico, PayTR, Stripe, a "card" gateway) CREDIT_CARD, anything else
+    /// (a manual payment, gateways that disagree) OTHER. Null when the order names no gateway.
+    /// </summary>
+    public static string? ShopifyPaymentMeans(IReadOnlyCollection<string> gatewayNames)
+    {
+        var means = gatewayNames.Where(name => !string.IsNullOrWhiteSpace(name)).Select(name =>
+        {
+            var value = name.Trim().ToLowerInvariant().Replace('_', ' ');
+            if (value.Contains("cash on delivery", StringComparison.Ordinal) || value is "cod" || value.Contains("(cod)", StringComparison.Ordinal)
+                || value.Contains("kapıda", StringComparison.Ordinal) || value.Contains("kapida", StringComparison.Ordinal)) return "ON_DELIVERY";
+            if (value.Contains("bank deposit", StringComparison.Ordinal) || value.Contains("bank transfer", StringComparison.Ordinal)
+                || value.Contains("havale", StringComparison.Ordinal) || value.Contains("eft", StringComparison.Ordinal)) return "EFT";
+            if (value.Contains("shopify payments", StringComparison.Ordinal) || value.Contains("iyzico", StringComparison.Ordinal) || value.Contains("paytr", StringComparison.Ordinal)
+                || value.Contains("stripe", StringComparison.Ordinal) || value.Contains("credit", StringComparison.Ordinal) || value.Contains("card", StringComparison.Ordinal)
+                || value.Contains("kredi", StringComparison.Ordinal) || value.Contains("kart", StringComparison.Ordinal)) return "CREDIT_CARD";
+            return "OTHER";
+        }).Distinct(StringComparer.Ordinal).ToList();
+        return means.Count switch
+        {
+            0 => null,
+            1 => means[0],
+            _ => "OTHER"
         };
     }
 
@@ -221,14 +290,83 @@ public static class TrendyolEFaturamCanonicalPayload
     // A null or text amount is a missing amount (a validation error), not an InvalidOperationException from TryGetDecimal.
     private static decimal Decimal(JsonElement parent, string name) => parent.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number) ? number : throw new JsonException($"{name} missing");
     private static bool ValidTaxId(string value) => value.Length is 10 or 11 && value.All(char.IsAsciiDigit);
+    // Report item 12, one rule for every marketplace: the buyer kind the marketplace states decides (Trendyol commercial,
+    // n11 and Pazarama invoiceType, PTT AVM FaturaTip, Hepsiburada's 11111111111 identity for an individual buyer). Without
+    // such a flag the tax identity decides: a 10-digit VKN is a company, an 11-digit TCKN a person. Without either, a
+    // company name (Shopify sends one with no tax number) makes the buyer corporate, and the invoice then stops for the
+    // owner because a corporate invoice needs the tax number; with no company name the buyer is a person.
     private static bool IsCorporateRecipient(JsonElement customer, JsonElement address, string taxId)
     {
-        if (HasCompanyDetails(customer) || HasCompanyDetails(address)) return true;
+        if ((ExplicitBuyerKind(customer) ?? ExplicitBuyerKind(address)) is { } stated) return stated;
         if (HasCorporateMarker(customer) || HasCorporateMarker(address)) return true;
         if (HasIndividualMarker(customer) || HasIndividualMarker(address)) return false;
-        // Ten-digit Turkish VKN values identify companies. Eleven-digit values
-        // are treated as personal IDs unless source fields say otherwise.
-        return taxId.Length == 10 && taxId.All(char.IsAsciiDigit);
+        if (ValidTaxId(taxId)) return taxId.Length == 10;
+        return HasCompanyDetails(customer) || HasCompanyDetails(address);
+    }
+
+    /// <summary>
+    /// The buyer kind the marketplace states on the order: true corporate, false individual, null when it says nothing
+    /// (report item 12).
+    /// </summary>
+    public static bool? ExplicitBuyerKind(string customerSnapshotJson, string invoiceAddressSnapshotJson)
+    {
+        try
+        {
+            using var customer = JsonDocument.Parse(string.IsNullOrWhiteSpace(customerSnapshotJson) ? "{}" : customerSnapshotJson);
+            using var address = JsonDocument.Parse(string.IsNullOrWhiteSpace(invoiceAddressSnapshotJson) ? "{}" : invoiceAddressSnapshotJson);
+            return ExplicitBuyerKind(customer.RootElement) ?? ExplicitBuyerKind(address.RootElement);
+        }
+        catch (JsonException) { return null; }
+    }
+
+    // Trendyol commercial (true/false); n11 and Pazarama invoiceType (1 individual, 2 corporate); PTT AVM FaturaTip, kept
+    // as invoiceType ("Bireysel", "Kurumsal"); Hepsiburada's identityNo 11111111111, which it sends only for an individual
+    // buyer (hepsiburada-api-son.md:13394). Searched a few levels deep: n11 keeps the billing address inside the order.
+    private static bool? ExplicitBuyerKind(JsonElement source)
+    {
+        bool? commercial = null, invoiceType = null, placeholderIdentity = null;
+        Visit(source, 0);
+        return commercial ?? invoiceType ?? placeholderIdentity;
+
+        void Visit(JsonElement node, int depth)
+        {
+            if (depth > 3) return;
+            if (node.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in node.EnumerateArray()) Visit(item, depth + 1);
+                return;
+            }
+            if (node.ValueKind != JsonValueKind.Object) return;
+            foreach (var property in node.EnumerateObject())
+            {
+                var name = property.Name;
+                if (name.Equals("commercial", StringComparison.OrdinalIgnoreCase))
+                    commercial ??= BooleanValue(property.Value);
+                else if (name.Equals("invoiceType", StringComparison.OrdinalIgnoreCase) || name.Equals("faturaTip", StringComparison.OrdinalIgnoreCase) || name.Equals("faturaType", StringComparison.OrdinalIgnoreCase))
+                    invoiceType ??= BuyerKindWord(property.Value);
+                else if ((name.Equals("identityNo", StringComparison.OrdinalIgnoreCase) || name.Equals("turkishIdentityNumber", StringComparison.OrdinalIgnoreCase))
+                    && property.Value.ValueKind == JsonValueKind.String && property.Value.GetString()?.Trim() == "11111111111")
+                    placeholderIdentity ??= false;
+                else if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.Array)
+                    Visit(property.Value, depth + 1);
+            }
+        }
+    }
+
+    private static bool? BuyerKindWord(JsonElement value)
+    {
+        var text = value.ValueKind switch
+        {
+            JsonValueKind.Number => value.GetRawText(),
+            JsonValueKind.String => value.GetString(),
+            _ => null
+        };
+        return text?.Trim().ToLowerInvariant() switch
+        {
+            "1" or "bireysel" or "individual" or "gerçek kişi" or "gercek kisi" => false,
+            "2" or "kurumsal" or "corporate" or "tüzel kişi" or "tuzel kisi" => true,
+            _ => null
+        };
     }
 
     private static bool HasCorporateMarker(JsonElement source, int depth = 0)

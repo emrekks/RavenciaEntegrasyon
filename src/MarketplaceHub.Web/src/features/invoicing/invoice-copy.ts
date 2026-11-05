@@ -18,6 +18,18 @@ export function invoiceAwaitsProviderAnswer(status: string | null | undefined, e
 // "Fatura Durumu Güncelle" sets the status by hand, and "Fatura Bekliyor" reopens a package whose invoice was cancelled.
 export const handSetInvoiceStatusPlatforms: ReadonlySet<string> = new Set(['N11', 'PAZARAMA', 'PTTAVM'])
 
+// "Platformdan Bilgileri Güncelle" reads the order's invoice from the marketplace. Pazarama has no service that reads an
+// invoice link back, so the button stays visible but disabled there, with the reason.
+export function platformInvoiceCheckUnavailableReason(platformCode: string | null | undefined) {
+  return platformCode?.trim().toUpperCase() === 'PAZARAMA'
+    ? 'Pazarama gönderilen fatura linkini geri okuma servisi sunmuyor; fatura kontrolü yapılamaz. Durumu “Fatura Durumu Güncelle” ile elle değiştirebilirsiniz.'
+    : null
+}
+
+export function platformInvoiceCheckAvailable(platformCode: string | null | undefined) {
+  return platformInvoiceCheckUnavailableReason(platformCode) === null
+}
+
 /** What "Fatura Bekliyor" does to an order whose invoice was cancelled, per marketplace; null when none of them is selected. */
 export function invoiceReopenNote(platformCodes: readonly string[]) {
   const platforms = new Set(platformCodes.map(code => code.trim().toUpperCase()).filter(code => handSetInvoiceStatusPlatforms.has(code)))

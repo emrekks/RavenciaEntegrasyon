@@ -53,7 +53,7 @@ public sealed class ReturnLifecyclePolicyTests
     [InlineData("Cancelled", ReturnClaimStatus.Cancelled)]
     [InlineData("Waiting_For_Shipment", ReturnClaimStatus.AwaitingShipment)]
     [InlineData("Waiting-In-Cargo", ReturnClaimStatus.InTransit)]
-    [InlineData("unknown-provider-status", ReturnClaimStatus.ActionRequired)]
+    [InlineData("unknown-provider-status", ReturnClaimStatus.Unknown)]
     public void MarketplaceReturnStatus_MapsProviderStatusesConsistently(string rawStatus, ReturnClaimStatus expected)
     {
         Assert.Equal(expected, MarketplaceReturnStatus.Canonicalize(rawStatus));

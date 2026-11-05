@@ -85,3 +85,15 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 ## Job types
 PAZARAMA_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min), _ORDER_STATUS_SYNC,
 _FINANCE_SYNC (issue code PAZARAMA_FINANCE_SYNC_FAILED).
+
+## Returns, invoices, buyer (stage 5, 5 Nov 2026)
+- `order/getRefund` rows name the product as `productCode` (barcode) and `productStockCode` (the field table spells it
+  `ProductStockCode`); `refundAmount` is an object `{value, valueInt, valueString, currency}`
+  (`pazarama-api-son.md:3195-3226`, sample `:3240-3290`). Quantity: the field table has none, the SplitItems note says a
+  `quantity` exists (`:2846-2850`); the panel reads `quantity` when present, else 1 for a one-unit order line, else
+  refundAmount / order-line unit price when whole, else records "adet bilinmiyor" (`PazaramaReturnMapper.ResolveQuantity`).
+- Refund states 1-8 are mapped explicitly; any other code is Unknown (no Onayla/Reddet, issue RETURN_STATUS_UNKNOWN).
+- Invoice link: "Fatura Linki Güncelleme" (`:3540-3556`) — a new link replaces the earlier one and there is no
+  read-back, so an uncertain delivery goes to the automatic retry schedule (`InvoiceDeliveryAutoRetryPolicy`).
+- Buyer kind: billingAddress `invoiceType` 1 Bireysel, 2 Kurumsal (`:2305`, `:2333`).
+- E-Arşiv internet sale: purchaseUrl `https://www.pazarama.com`, paymentMeans MEDIATOR.

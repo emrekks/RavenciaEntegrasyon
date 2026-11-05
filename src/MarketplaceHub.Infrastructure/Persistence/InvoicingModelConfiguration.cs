@@ -52,7 +52,10 @@ internal static class InvoicingModelConfiguration
             entity.Property(x => x.TaxTotal).HasPrecision(19, 4);
             entity.Property(x => x.PayableTotal).HasPrecision(19, 4);
             entity.Property(x => x.Note).HasMaxLength(512);
-            entity.Property(x => x.IncludeInternetSalesInfo).HasDefaultValue(true);
+            // The column keeps its database default (true) for rows written outside EF. The sentinel is true so an
+            // explicit false (the owner left the E-Arşiv internet sale info off, the usual choice) is written as false:
+            // with the CLR default as sentinel, EF left a false out of the INSERT and the database default made it true.
+            entity.Property(x => x.IncludeInternetSalesInfo).HasDefaultValue(true).HasSentinel(true);
             entity.Property(x => x.OrderFiscalGuarded).HasDefaultValue(false);
             entity.Property(x => x.IdempotencyKey).HasMaxLength(256);
             entity.Property(x => x.ExternalReference).HasMaxLength(256);

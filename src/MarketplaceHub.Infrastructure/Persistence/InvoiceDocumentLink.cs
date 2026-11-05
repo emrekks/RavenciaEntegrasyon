@@ -9,14 +9,16 @@ public static class InvoiceDocumentLink
 {
     private const string Purpose = "MarketplaceHub.InvoiceDocumentDelivery.v1";
     private const string PathPrefix = "/api/v1/public/invoice-documents/";
+    private const string ManualPathPrefix = "/api/v1/public/manual-invoice-documents/";
     public const string PdfFileName = "invoice.pdf";
 
     // The stored link ends in /content; the API serves the same document under /invoice.pdf for
     // marketplaces that require a document extension. Other links are returned unchanged.
     public static string PdfAlias(string link)
     {
+        // The owner's uploaded manual document is served under .../invoice.pdf the same way (report item 11).
         if (!Uri.TryCreate(link, UriKind.Absolute, out var uri)
-            || !uri.AbsolutePath.StartsWith(PathPrefix, StringComparison.Ordinal)
+            || !(uri.AbsolutePath.StartsWith(PathPrefix, StringComparison.Ordinal) || uri.AbsolutePath.StartsWith(ManualPathPrefix, StringComparison.Ordinal))
             || !uri.AbsolutePath.EndsWith("/content", StringComparison.Ordinal)) return link;
         var builder = new UriBuilder(uri) { Path = uri.AbsolutePath[..^"content".Length] + PdfFileName };
         return builder.Uri.AbsoluteUri;

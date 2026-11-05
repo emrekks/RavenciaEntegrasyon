@@ -68,6 +68,44 @@ public sealed class ReturnDecisionScopePostgreSqlTests(PostgreSqlTenantIsolation
         }
     }
 
+    // Report items 9 and 10: an unknown status word leaves the claim Unknown (no Onayla/Reddet) with an issue, and a line
+    // whose quantity the marketplace did not send is not stored with a guess but reported.
+    [PostgreSqlFact]
+    public async Task UnknownStatus_AndUnknownQuantity_AreReportedNotGuessed()
+    {
+        var seed = await SeedAsync("unk-status", "SHOPIFY", [1]);
+        try
+        {
+            await using (var db = fixture.CreateContext())
+            {
+                var port = new RecordingReturnPort
+                {
+                    Listed = new("unk-status-claim-0", "unk-status-order", "SOMETHING_NEW", null, null, null, DateTimeOffset.UtcNow,
+                        [new RemoteReturnLine("CI-0-0", "OL-0-0", 1m), new RemoteReturnLine("CI-NEW", "OL-0-0", 0m)], "{}")
+                };
+                var processor = new MarketplaceJobProcessor(db, null!, null!, null!, null!, null!, null!, null!, port, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+                var result = await processor.ProcessAsync(seed.TenantId, seed.ConnectionId, MarketplaceJobTypes.ReturnSync, "{\"forceFull\":true}", "unk-status", CancellationToken.None);
+                Assert.True(result.Succeeded, result.ErrorSummary);
+            }
+            await using var verify = fixture.CreateContext();
+            var claim = await verify.ReturnClaims.AsNoTracking().SingleAsync(x => x.Id == seed.ClaimIds[0]);
+            Assert.Equal(ReturnClaimStatus.Unknown, claim.Status);
+            Assert.Equal("SOMETHING_NEW", claim.RawStatus);
+            Assert.False(await verify.ReturnLines.AnyAsync(x => x.ClaimId == claim.Id && x.ExternalLineId == "CI-NEW"));
+            var codes = await verify.OperationalIssues.AsNoTracking().Where(x => x.TenantId == seed.TenantId).Select(x => x.Code).ToListAsync();
+            Assert.Contains("RETURN_STATUS_UNKNOWN", codes);
+            Assert.Contains("RETURN_LINE_QUANTITY_UNKNOWN", codes);
+
+            var detail = (await Service(verify, new RecordingReturnPort()).ReturnAsync(seed.TenantId, claim.Id, CancellationToken.None)).Value!;
+            Assert.DoesNotContain("APPROVE", detail.AllowedActions);
+            Assert.DoesNotContain("REJECT", detail.AllowedActions);
+        }
+        finally
+        {
+            await CleanupAsync(seed.TenantId);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task N11_Deny_IsSentWithTheReturnShipment_OnlyWhenComplete()
     {

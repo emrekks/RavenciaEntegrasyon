@@ -38,6 +38,9 @@ public static class InvoicingEndpoints
             catch (FileNotFoundException) { return Results.NotFound(); }
         }
         api.MapGet("/public/manual-invoice-documents/{token}/content", OpenPublicManualOrderInvoiceDocumentAsync);
+        // The same manual document under a .pdf file name, for n11, Pazarama and PTT AVM, which take only links that end
+        // in a document extension (ManualOrderInvoiceDocumentLink.PdfAlias). The stored link stays the /content form.
+        api.MapGet("/public/manual-invoice-documents/{token}/" + InvoiceDocumentLink.PdfFileName, OpenPublicManualOrderInvoiceDocumentAsync);
 
 
         api.MapGet("/invoices", async (HttpContext http, IInvoicingBillingService service, int? limit, string? after, string? status) => Tenant(http) is { } tenant ? Results.Ok(await service.ListAsync(tenant.TenantId, PageSize(limit), after, status, http.RequestAborted)) : Unauthorized(http));
@@ -154,8 +157,8 @@ public static class InvoicingEndpoints
         var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == orderId, http.RequestAborted);
         if (order is null) return Problem(http, new("RESOURCE_NOT_FOUND", "Sipariş bulunamadı.", 404));
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenant.TenantId && x.Id == order.ConnectionId, http.RequestAborted);
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY"))
-            return Problem(http, new("INVOICE_MARKETPLACE_UNSUPPORTED", "Manuel fatura belgesi yalnız desteklenen Trendyol, Hepsiburada veya Shopify siparişlerine eklenebilir.", 422));
+        if (connection is null || !ManualInvoiceDeliveryPolicy.SupportsManualDocument(connection.PlatformCode))
+            return Problem(http, new("INVOICE_MARKETPLACE_UNSUPPORTED", "Manuel fatura belgesi yalnız Trendyol, Hepsiburada, Shopify, n11, Pazarama veya PTT AVM siparişlerine eklenebilir.", 422));
         if (!await db.ShipmentPackages.AsNoTracking().AnyAsync(x => x.TenantId == tenant.TenantId && x.OrderId == orderId && x.Status != ShipmentPackageStatus.Cancelled, http.RequestAborted))
             return Problem(http, new("INVOICE_PACKAGE_REQUIRED", "Siparişte etkin bir paket bulunamadı.", 422));
 
@@ -173,6 +176,14 @@ public static class InvoicingEndpoints
         if (connection.PlatformCode == "TRENDYOL" && InvoiceIssuePolicy.IsMicroExport(order.CustomerSnapshotJson)
             && !InvoiceIssuePolicy.IsGibInvoiceNumber(invoiceNumber))
             return Problem(http, new("INVOICE_NUMBER_INVALID", "Mikro ihracat faturası için GİB biçiminde fatura numarası gerekli: 3 harf/rakam ve 13 rakam (örnek: ABC2026000000045).", 422));
+        // n11 takes an invoice link only with its 16-character number (3 letters or digits and 13 digits).
+        if (connection.PlatformCode == "N11" && !string.IsNullOrWhiteSpace(invoiceNumber) && !InvoiceIssuePolicy.IsGibInvoiceNumber(invoiceNumber))
+            return Problem(http, new("INVOICE_NUMBER_INVALID", "n11 fatura numarasını GİB biçiminde bekler: 3 harf/rakam ve 13 rakam (örnek: ABC2026000000045).", 422));
+        // n11, Pazarama and PTT AVM take only links that end in a document extension (pdf, png, jpeg); an uploaded PDF
+        // is sent under its .pdf link.
+        if (!string.IsNullOrWhiteSpace(externalUrl) && ManualInvoiceDeliveryPolicy.RequiresDocumentExtension(connection.PlatformCode)
+            && !ManualInvoiceDeliveryPolicy.HasDocumentExtension(externalUrl))
+            return Problem(http, new("INVOICE_DOCUMENT_URL_INVALID", "Bu pazaryeri fatura bağlantısının pdf, png veya jpeg dosyasına işaret etmesini ister.", 422));
         DateTimeOffset? issuedAt = null;
         if (!string.IsNullOrWhiteSpace(form["issuedAt"]))
         {
@@ -294,8 +305,8 @@ public static class InvoicingEndpoints
         if (packages.Count == 0) return Problem(http, new("INVOICE_PACKAGE_REQUIRED", "Siparişte etkin bir paket bulunamadı.", 422));
         if (document.IssuedAt is null) return Problem(http, new("INVOICE_DATE_REQUIRED", "Platforma iletim için faturanın tarihi gereklidir.", 422));
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenant.TenantId && x.Id == document.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(http.RequestAborted);
-        if (platformCode == "SHOPIFY" && string.IsNullOrWhiteSpace(document.InvoiceNumber))
-            return Problem(http, new("INVOICE_NUMBER_REQUIRED", "Shopify siparişine iletim için fatura numarası gereklidir.", 422));
+        if (platformCode is "SHOPIFY" or "N11" && string.IsNullOrWhiteSpace(document.InvoiceNumber))
+            return Problem(http, new("INVOICE_NUMBER_REQUIRED", $"{(platformCode == "N11" ? "n11" : "Shopify")} siparişine iletim için fatura numarası gereklidir.", 422));
         if (packages.Any(package => package.ConnectionId != document.ConnectionId))
             return Problem(http, new("INVOICE_PACKAGE_CONNECTION_MISMATCH", "Sipariş paketleri farklı pazaryeri bağlantılarına bağlı. Belgenin hangi hedeflere gönderileceği güvenle belirlenemedi.", 409));
         var jobs = new List<Guid>();

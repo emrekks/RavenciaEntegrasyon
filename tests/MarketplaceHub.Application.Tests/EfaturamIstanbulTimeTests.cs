@@ -18,6 +18,7 @@ public sealed class EfaturamIstanbulTimeTests
         {
           "Id":"invoice-istanbul-day",
           "InvoiceType":"EARSIVFATURA",
+          "IncludeInternetSalesInfo":true,
           "Currency":"TRY",
           "Note":"Satış faturası",
           "IssuedAt":"2026-10-19T22:45:10.123+00:00",
