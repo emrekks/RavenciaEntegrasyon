@@ -105,14 +105,17 @@ internal static class ReportOrderProfit
                 costs.Add(new("cargo", order.Back > 0 ? "Kargo (Gönderi ve İade)" : "Kargo", orderCargo, estimated > 0,
                     orderCargo is null ? "Kargo faturası henüz yok ve son 60 günde faturalanmış kargo olmadığı için tahmin edilemedi"
                     : estimated > 0 ? "Mağazanın güncel kargo tarifesinden; fatura kesilince kesin tutar yansır" : "Kargo faturasından"));
-                var settledFees = settled.Contains(id);
-                serviceFee = Round(settledFees ? fees.GetValueOrDefault((id, MarketplaceFinanceCategories.ServiceFee))
+                // Trendyol bills the service fee and the withholding tax by payment day on invoices tied to no order, so an
+                // order (settled or not) without a record of its own is estimated, as the report's costs are (ReportCosts).
+                var realFee = fees.ContainsKey((id, MarketplaceFinanceCategories.ServiceFee));
+                var realTax = fees.ContainsKey((id, MarketplaceFinanceCategories.Stoppage));
+                serviceFee = Round(realFee ? fees[(id, MarketplaceFinanceCategories.ServiceFee)]
                     : ReportCosts.PlatformServiceFeePerOrder + (abroad ? order.Kept * ReportCosts.InternationalServiceFeeRate : 0m));
-                stoppage = Round(settledFees ? fees.GetValueOrDefault((id, MarketplaceFinanceCategories.Stoppage)) : keptVatFree * ReportCosts.StoppageRate);
-                vatFees = settledFees ? domesticFee.GetValueOrDefault(id) : ReportCosts.PlatformServiceFeePerOrder;
-                costs.Add(new("serviceFee", abroad ? "Hizmet Bedeli (Uluslararası Dahil)" : "Hizmet Bedeli", serviceFee, !settledFees,
-                    settledFees ? "Trendyol cari hesabından" : abroad ? "10,99 ₺ + KDV ve satışın %6'sı" : "Sipariş başına 10,99 ₺ + KDV"));
-                costs.Add(new("stoppage", "Stopaj", stoppage, !settledFees, settledFees ? "Trendyol cari hesabından" : "KDV hariç satışın %1'i"));
+                stoppage = Round(realTax ? fees[(id, MarketplaceFinanceCategories.Stoppage)] : keptVatFree * ReportCosts.StoppageRate);
+                vatFees = realFee ? domesticFee.GetValueOrDefault(id) : ReportCosts.PlatformServiceFeePerOrder;
+                costs.Add(new("serviceFee", abroad ? "Hizmet Bedeli (Uluslararası Dahil)" : "Hizmet Bedeli", serviceFee, !realFee,
+                    realFee ? "Trendyol cari hesabından" : abroad ? "10,99 ₺ + KDV ve satışın %6'sı" : "Sipariş başına 10,99 ₺ + KDV"));
+                costs.Add(new("stoppage", "Stopaj", stoppage, !realTax, realTax ? "Trendyol cari hesabından" : "KDV hariç satışın %1'i"));
             }
             else
             {

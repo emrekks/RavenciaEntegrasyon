@@ -79,7 +79,12 @@ export type ReportCosts = {
   financeOrders: number; settledOrders: number; coverage: number | null; realCostTotal: number | null
   commission: { real: number; realOrders: number; estimatedForSettled: number; estimatedForUnsettled: number; combined: number } | null
   cargo: { real: number; billedOrders: number; unbilledOrders: number; averagePerOrder: number | null; sampleOrders: number; estimated: number | null; combined: number; platformOrders?: number; platformEstimated?: number; desiSources?: ReportDesiSources | null } | null
-  lines: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number; orderLinked: number; unlinked: number; estimated?: number }>
+  // The costs of the period's orders only: amount = orderLinked (their own records) + estimated (orders without one).
+  lines: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number; orderLinked: number; estimated?: number }>
+  // The records of the period's dates tied to no order of the period (the previous payment day's service fee and
+  // withholding tax, advertising): never in a profit figure, shown apart; unlinkedTotal adds up the deductions (isCost).
+  unlinked?: Array<{ category: string; label: string; isCost: boolean; amount: number; records: number }> | null
+  unlinkedTotal?: number
   // The net VAT of the Trendyol orders (server-side estimate): sales VAT less the VAT in the product cost and in Trendyol's
   // charges; below zero it is carried forward.
   netVat?: { salesVat: number; productCostVat: number; expenseVat: number; net: number } | null

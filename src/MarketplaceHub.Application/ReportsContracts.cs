@@ -230,9 +230,12 @@ public sealed record ReportChannelView(Guid Id, string PlatformCode, string Disp
 // Real marketplace costs, read from the marketplace's own accounting (today Trendyol's current account statement of
 // production stores), next to the estimates above, which keep their meaning. Source is "trendyol-finance" when the
 // period has real records, else "estimate": then RealCostTotal and Commission are null and the lists are empty, never
-// zeros. A record tied to an order counts in the period of the order; one without (service fee, withholding tax,
-// penalty, a cargo invoice whose lines could not be read) by its own date. Amounts are what the seller was charged
-// (debt - credit); a negative amount was paid back or credited (sales are negative).
+// zeros. A record tied to an order counts in the period of the order. A record tied to no order of the period (Trendyol's
+// service fee and withholding tax invoices of a payment day, advertising, penalties, a record of an order never imported)
+// counts by its own date in Unlinked only (owner, 5 Nov 2026): it never enters Lines, Channels, Commission, Cargo,
+// NetVat or RealCostTotal, so every profit figure carries only the costs of the period's own orders (their records, or
+// the estimates when there is none). Amounts are what the seller was charged (debt - credit); a negative amount was
+// paid back or credited (sales are negative).
 // LastSyncedAt: the oldest last finished read among the report's Trendyol stores (null while one was never read);
 // CoveredFrom/CoveredThrough: the dates every one of them has read. FinanceOrders: the period's Trendyol orders (not
 // cancelled, TRY); SettledOrders: those with a settlement record (Trendyol writes them after delivery).
@@ -250,21 +253,29 @@ public sealed record ReportCostsView(
     IReadOnlyList<ReportCostLineView> Lines,
     IReadOnlyList<ReportCostChannelView> Channels,
     IReadOnlyList<ReportCostProductView> Products,
-    ReportNetVatView? NetVat = null);
+    ReportNetVatView? NetVat = null,
+    IReadOnlyList<ReportUnlinkedCostView>? Unlinked = null,
+    decimal UnlinkedTotal = 0m);
+
+// The records of the period's dates tied to no order of the period, by category (see ReportCostsView). IsCost: a
+// deduction, added to UnlinkedTotal; a sale, return or discount of an order never imported is not.
+public sealed record ReportUnlinkedCostView(string Category, string Label, bool IsCost, decimal Amount, int Records);
 
 // The VAT the seller pays over the period's Trendyol orders, estimated: the VAT inside the domestic sales (a micro-export
 // sale carries none) less the VAT inside the product cost (the entered cost taken as VAT-inclusive at the line's rate)
-// and inside Trendyol's commission, cargo, platform service fee and advertising (20 %; the international service fee is
-// VAT-free). Net is what is left to pay; below zero it is VAT carried forward.
+// and inside Trendyol's commission, cargo and platform service fee of the period's orders (20 %; the international
+// service fee is VAT-free); the records tied to no order (Unlinked) are left out. Net is what is left to pay; below zero
+// it is VAT carried forward.
 public sealed record ReportNetVatView(decimal SalesVat, decimal ProductCostVat, decimal ExpenseVat, decimal Net);
 
 // One category (SALE, RETURN, DISCOUNT, COUPON, COMMISSION, CARGO, SERVICE_FEE, STOPPAGE, PENALTY, EARLY_PAYMENT,
 // ADVERTISING, OTHER). IsCost: added to RealCostTotal (OTHER is not: an unrecognised record may go either way).
 // COMMISSION is the commission of the settlement lines plus the commission corrections (Trendyol's commission invoice
-// bills that same commission and is not added again); CARGO the lines of the cargo invoices. OrderLinked: the part
-// tied to an order of the period; Unlinked: the part counted by date.
-// Estimated: the part of Amount estimated for orders Trendyol has not settled yet (service fees and withholding tax).
-public sealed record ReportCostLineView(string Category, string Label, bool IsCost, decimal Amount, int Records, decimal OrderLinked, decimal Unlinked, decimal Estimated = 0m);
+// bills that same commission and is not added again); CARGO the lines of the cargo invoices. Amount = OrderLinked +
+// Estimated. OrderLinked: the records tied to an order of the period (Records counts them); Estimated: what was
+// estimated for the period's orders that have no record of the category (Trendyol's service fee and withholding tax,
+// which its statement never ties to an order; the other platforms' tariffs).
+public sealed record ReportCostLineView(string Category, string Label, bool IsCost, decimal Amount, int Records, decimal OrderLinked, decimal Estimated = 0m);
 
 // The commission of the period's orders, real where Trendyol settled it: Real over the orders with settlement records
 // (RealOrders), what the estimate said for those same orders, the estimate for every other order (all platforms), and
@@ -286,7 +297,7 @@ public sealed record ReportCargoCostView(decimal Real, int BilledOrders, int Unb
 
 public sealed record ReportDesiSourcesView(int Marketplace, int Manual, int Measured, int Default, int MeasuredParcels);
 
-// One store. RealCommission: its settled orders and its commission records tied to no order of the period;
+// One store. RealCommission: its settled orders (a commission record tied to no order of the period is in Unlinked);
 // EstimatedCommission: its other orders; Amounts: its real costs by category (commission apart); EstimatedCargo: the
 // cargo of its orders not billed yet. Source: "trendyol-finance" for a store with records, else "estimate".
 public sealed record ReportCostChannelView(Guid ConnectionId, string PlatformCode, string DisplayName, string Source, decimal RealCommission, decimal EstimatedCommission,
