@@ -65,6 +65,8 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 ## Statuses
 - Item codes: 3 Created; 12 Picking; 18 CancelRequested (OnHold); 6/13 Cancelled; 5/16/19 Shipped; 11/7/9 Delivered;
   14 Undelivered; 8/10 Returned.
+- Package status: an active item of unknown code makes the package ManualReview (İnceleme Gerekli), before an item
+  being cancelled (18) holds it; otherwise the least advanced known item decides. Code: `PazaramaOrderMapper.PackageStatus`.
 - Refund codes: 1 WaitingInAction; 2/4/6/8 Accepted; 3/5 Rejected; 7 Cancelled.
 
 ## Quirks

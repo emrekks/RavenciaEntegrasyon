@@ -242,7 +242,7 @@ public static class OpenOrderLifecyclePolicy
 
     public static bool ShouldPollWithoutPackage(string? platformCode, string? derivedStatus) =>
         string.Equals(platformCode?.Trim(), "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)
-        && derivedStatus?.Trim().ToUpperInvariant() is "NEW" or "ON_HOLD";
+        && derivedStatus?.Trim().ToUpperInvariant() is "NEW" or "ON_HOLD" or "MANUAL_REVIEW";
 }
 
 public static class HepsiburadaOrderLifecycleStatusPolicy
@@ -254,19 +254,34 @@ public static class HepsiburadaOrderLifecycleStatusPolicy
         "PACKAGED" or "INVOICED" or "READY_TO_SHIP" or "READYTOSHIP" => ShipmentPackageStatus.ReadyToShip,
         "SHIPPED" or "IN_TRANSIT" or "INTRANSIT" => ShipmentPackageStatus.Shipped,
         "DELIVERED" => ShipmentPackageStatus.Delivered,
-        "UNDELIVERED" => ShipmentPackageStatus.OnHold,
+        // The carrier could not deliver: Teslim Edilemedi as on every other marketplace, so no sale invoice is issued
+        // for it (DashboardMetricPolicy.IsSaleInvoiceBlockedOrder). It was a hold (Askıda) before 5 Nov 2026.
+        "UNDELIVERED" => ShipmentPackageStatus.Undelivered,
         "CANCELLED" or "CANCELED" or "CANCELLEDBYMERCHANT" or "CANCELLEDBYCUSTOMER" or "CANCELLEDBYSAP" => ShipmentPackageStatus.Cancelled,
         "RETURNED" => ShipmentPackageStatus.Returned,
         _ => null
     };
 
-    public static ShipmentPackageStatus AggregatePackages(IEnumerable<ShipmentPackageStatus> statuses)
+    // Hepsiburada's packages make the order status as on every other marketplace: an undelivered package is
+    // Undelivered, not a hold.
+    public static ShipmentPackageStatus AggregatePackages(IEnumerable<ShipmentPackageStatus> statuses) =>
+        ShipmentPackageStatusPolicy.Aggregate(statuses);
+
+    // The order status when no package decides it and the read's lifecycle status is not one this panel knows. A
+    // status Hepsiburada gave but this panel cannot read, or a new order read without any status, is reviewed
+    // (MANUAL_REVIEW, İnceleme Gerekli): it is never shown as a new order to ship. A read of a known order that carries
+    // no status at all says nothing new, so the order keeps the status it has. Null when the lifecycle status is known.
+    public static string? UnknownUnpackagedStatus(string? currentDerivedStatus, bool isNewOrder, bool isFresh, string? remoteStatus)
     {
-        var values = statuses.ToArray();
-        if (values.Contains(ShipmentPackageStatus.ManualReview)) return ShipmentPackageStatus.ManualReview;
-        if (values.Contains(ShipmentPackageStatus.Undelivered)) return ShipmentPackageStatus.OnHold;
-        return ShipmentPackageStatusPolicy.Aggregate(values);
+        if (FromRemote(remoteStatus) is not null) return null;
+        if (isNewOrder || string.IsNullOrWhiteSpace(currentDerivedStatus)) return "MANUAL_REVIEW";
+        return isFresh && !string.IsNullOrWhiteSpace(remoteStatus) ? "MANUAL_REVIEW" : currentDerivedStatus.Trim();
     }
+
+    // The status a lifecycle read of an order without packages may not move back from. A review set because the
+    // lifecycle status was unknown is no such status: the next known lifecycle status replaces it.
+    public static string? UnpackagedBaseline(string? currentDerivedStatus) =>
+        string.Equals(currentDerivedStatus?.Trim(), "MANUAL_REVIEW", StringComparison.OrdinalIgnoreCase) ? null : currentDerivedStatus;
 
     public static ShipmentPackageStatus? Reconcile(
         string? currentCanonicalStatus,

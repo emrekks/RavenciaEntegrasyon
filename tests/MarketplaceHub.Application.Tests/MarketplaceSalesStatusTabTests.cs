@@ -256,12 +256,14 @@ public sealed class MarketplaceSalesStatusTabTests
         var sql = query.ToQueryString();
         Assert.Contains("HEPSIBURADA", sql, StringComparison.Ordinal);
         Assert.Contains("ON_HOLD", sql, StringComparison.Ordinal);
-        Assert.Contains("Undelivered", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("Undelivered", sql, StringComparison.Ordinal);
         Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
     }
 
+    // Item 6: a Hepsiburada undelivered package is listed as on every other marketplace (Teslim Edilemedi and Kargoda),
+    // no longer under Askıda.
     [Fact]
-    public void Hepsiburada_undelivered_package_filter_uses_the_hold_tab_instead_of_shipped()
+    public void Hepsiburada_undelivered_package_is_listed_like_every_other_marketplace()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
@@ -271,17 +273,38 @@ public sealed class MarketplaceSalesStatusTabTests
         var tenantId = Guid.NewGuid();
         IQueryable<Order> shippedQuery = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
         IQueryable<Order> holdQuery = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+        IQueryable<Order> undeliveredQuery = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
 
         service.ApplyOrderFilters(ref shippedQuery, new OrderListQuery(Status: "SHIPPED"), tenantId);
         service.ApplyOrderFilters(ref holdQuery, new OrderListQuery(Status: "ON_HOLD"), tenantId);
+        service.ApplyOrderFilters(ref undeliveredQuery, new OrderListQuery(Status: "UNDELIVERED"), tenantId);
 
-        var shippedSql = shippedQuery.ToQueryString();
-        var holdSql = holdQuery.ToQueryString();
-        Assert.Contains("HEPSIBURADA", shippedSql, StringComparison.Ordinal);
-        Assert.Contains("Undelivered", shippedSql, StringComparison.Ordinal);
-        Assert.Contains("NOT EXISTS", shippedSql, StringComparison.Ordinal);
-        Assert.Contains("HEPSIBURADA", holdSql, StringComparison.Ordinal);
-        Assert.Contains("Undelivered", holdSql, StringComparison.Ordinal);
+        Assert.Contains("Undelivered", shippedQuery.ToQueryString(), StringComparison.Ordinal);
+        Assert.Contains("Undelivered", undeliveredQuery.ToQueryString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Undelivered", holdQuery.ToQueryString(), StringComparison.Ordinal);
+        Assert.Equal(
+            MarketplaceSalesService.PackageStatusesForOrderTab("UNDELIVERED"),
+            [ShipmentPackageStatus.Undelivered]);
+    }
+
+    // Item 6: an order without a package reviewed because its marketplace status is unknown is in İnceleme Gerekli.
+    [Fact]
+    public void Manual_review_filter_includes_unpackaged_orders_under_review()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql("Host=localhost;Port=5432;Database=metadata-only;Username=metadata-only;Password=metadata-only")
+            .Options;
+        using var db = new AppDbContext(options);
+        var service = new MarketplaceSalesService(db, null!, null!, null!, null!, null!, null!, TimeProvider.System);
+        var tenantId = Guid.NewGuid();
+        IQueryable<Order> query = db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId);
+
+        service.ApplyOrderFilters(ref query, new OrderListQuery(Status: "MANUAL_REVIEW"), tenantId);
+
+        var sql = query.ToQueryString();
+        Assert.Contains("ManualReview", sql, StringComparison.Ordinal);
+        Assert.Contains("MANUAL_REVIEW", sql, StringComparison.Ordinal);
+        Assert.Contains("NOT EXISTS", sql, StringComparison.Ordinal);
     }
 
     [Fact]

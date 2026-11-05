@@ -123,23 +123,29 @@ public static class PttAvmOrderMapper
         // Payment not yet confirmed (bank transfer, approval): not to be prepared yet.
         "havale_onayi_bekleniyor" or "onay_surecinde" => "Awaiting",
         "gonderilmis" or "gonderildi" => "Shipped",
-        // The parcel came back to the store without being delivered.
-        "gondericisine_teslim_edildi" => "Undelivered",
+        // "Delivered to its sender": the parcel came back to the store without being delivered. The same panel state as
+        // Trendyol's UnDeliveredAndReturned (Returned: the goods are back with the seller, no sale invoice), not
+        // Undelivered, which is a parcel still with the carrier. The line keeps the distinct name, so PTT AVM's return
+        // read (iade lines only) does not take it for a customer return.
+        "gondericisine_teslim_edildi" => "UndeliveredAndReturned",
         "tamamlandi" => "Delivered",
         "iptal" or "odeme_gecersiz" => "Cancelled",
         "iade" => "Returned",
         _ => $"Unknown:{value?.Trim() ?? "null"}"
     };
 
-    private static bool Shipped(string raw) => raw is "Shipped" or "Delivered" or "Undelivered" or "Returned";
+    private static bool Shipped(string raw) => raw is "Shipped" or "Delivered" or "Undelivered" or "UndeliveredAndReturned" or "Returned";
 
-    // The package status from the statuses of the lines still in the order; all cancelled is cancelled. Otherwise
-    // the package is where its least advanced line is, so a line still to be shipped is not hidden behind one
-    // already shipped. Each line keeps its own status and shipped quantity.
+    // The package status from the statuses of the lines still in the order; all cancelled is cancelled. A line whose
+    // status the panel does not know is not hidden behind a known one: the package is reviewed (İnceleme Gerekli), as
+    // on every other marketplace. Otherwise the package is where its least advanced line is, so a line still to be
+    // shipped is not hidden behind one already shipped. Each line keeps its own status and shipped quantity.
     internal static string PackageStatus(IReadOnlyCollection<string> lineStatuses)
     {
         var active = lineStatuses.Where(status => status != "Cancelled").ToList();
         if (active.Count == 0) return "Cancelled";
+        if (active.FirstOrDefault(status => TrendyolShipmentPackageStatusPolicy.FromRemote(status) == ShipmentPackageStatus.ManualReview) is { } unknown)
+            return unknown;
         return active.OrderBy(status => ShipmentPackageStatusPolicy.Rank(TrendyolShipmentPackageStatusPolicy.FromRemote(status))).First();
     }
 
@@ -157,6 +163,7 @@ public static class PttAvmOrderMapper
         "Delivered" => 5,
         "Cancelled" => 6,
         "Returned" => 7,
+        "UndeliveredAndReturned" => 8,
         _ => 0
     });
 
