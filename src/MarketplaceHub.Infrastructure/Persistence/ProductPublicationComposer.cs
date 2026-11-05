@@ -143,6 +143,14 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                                 join variantOption in db.VariantOptionValues.AsNoTracking() on new { optionValue.TenantId, OptionValueId = optionValue.Id } equals new { variantOption.TenantId, OptionValueId = variantOption.OptionValueId }
                                 where option.TenantId == tenantId && option.ProductId == productId && variantIds.Contains(variantOption.VariantId)
                                 select new { variantOption.VariantId, option.Label, ValueLabel = optionValue.Label }).ToListAsync(cancellationToken);
+        // Some rows keep their colour and size only in the option signature ("Renk: Mavi | Beden: XL"), with no option
+        // value rows (live 5.11.2026: the MZ021Y-CD Mavi card's CD-25..27, refused for a missing Web Color). Such a row
+        // takes its colour and size from the signature, as Shopify does, so its Renk, Beden and the Web Color taken from
+        // Renk still go.
+        optionRows.AddRange(variants.Where(variant => optionRows.All(row => row.VariantId != variant.Id))
+            .SelectMany(variant => VariantOptionSignature.Parse(variant.OptionSignature)
+                .Where(option => VariantOptionSignature.IsColorName(option.Key) || VariantOptionSignature.IsSizeName(option.Key))
+                .Select(option => new { VariantId = variant.Id, Label = option.Key, ValueLabel = option.Value })));
         var offers = await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId) && x.Status == "ACTIVE").ToDictionaryAsync(x => x.VariantId, cancellationToken);
         var inventories = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId) && x.LocationCode == "MAIN").ToDictionaryAsync(x => x.VariantId, cancellationToken);
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Trendyol fiyat teklifi gerekir.");

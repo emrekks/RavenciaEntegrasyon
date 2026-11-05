@@ -904,7 +904,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // A just-created n11 product can be missing from the product query for a while, so a
         // missing n11 stock code stays pending instead of resetting the publication.
         if (!isN11 && !isPazarama && !isPttAvm && candidates.Count == listings.Count
-            && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remoteByBarcode.Values.ToArray()))
+            && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remoteByBarcode.Values.ToArray(), payload.StartedAt, timeProvider.GetUtcNow()))
             return await ResetMissingPublication(tenantId, connectionId, profile, listings, states, payload.PayloadHash, payload.JobId, cancellationToken);
 
         var approvedStatuses = remoteByBarcode.Values.Where(x => x.Status == "APPROVED").ToList();

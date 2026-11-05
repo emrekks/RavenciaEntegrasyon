@@ -26,6 +26,21 @@ public sealed class ProductApprovalReconciliationPolicyTests
     }
 
     [Fact]
+    public void AJustSentCardMissingFromTheMarketplaceStaysPendingForADay()
+    {
+        var allMissing = new[]
+        {
+            new RemotePublicationStatus("100", "NOT_FOUND", null, null, null, "{}"),
+            new RemotePublicationStatus("200", "NOT_FOUND", null, null, null, "{}")
+        };
+        var startedAt = new DateTimeOffset(2026, 11, 5, 0, 59, 27, TimeSpan.Zero);
+
+        Assert.False(ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(2, allMissing, startedAt, startedAt.AddMinutes(4)));
+        Assert.False(ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(2, allMissing, startedAt, startedAt.AddHours(23)));
+        Assert.True(ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(2, allMissing, startedAt, startedAt.AddHours(24)));
+    }
+
+    [Fact]
     public void DetectsMultipleApprovedContentIdsAndOnlyBlocksWritesForThatCondition()
     {
         var split = new[]
