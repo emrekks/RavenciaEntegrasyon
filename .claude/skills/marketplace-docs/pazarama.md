@@ -28,6 +28,13 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
 - Status changes of older orders: open orders re-read by number every 3 min until closed or 45 days old.
 - Page sizes: refunds 100, approved products 100 (cursor), brands 500, price/stock batch result 1000.
 
+- Finance `order/paymentAgreement` line: `trxCode`, `trxId`, `orderId`, `amount`, `commissionAmount` (negative on a
+  sale), `allowanceAmount` (hakediş: what the payout pays), `couponDiscount`, `integrationAmount`, `merchantCargoDebt`,
+  `stoppageAmount`, `status`, `transactionDate`, `transferredDate` (null until paid). Source: official docs
+  `pazarama-api-son.md:3666-3716` (Muhasebe ve Finans Servisi). A line without a code, `amount`, `allowanceAmount` or
+  `transactionDate` is not stored and opens a FINANCE_RECORD_INCOMPLETE issue; coupon/integration/cargo/stoppage left
+  out are 0; a missing commission is stored null and the report keeps the order's commission estimate (5 Nov 2026).
+
 ## Time
 Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 

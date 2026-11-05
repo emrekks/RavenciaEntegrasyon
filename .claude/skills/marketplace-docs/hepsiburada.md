@@ -85,6 +85,11 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
 - The live-proven invoice PUT body sends a MIME `contentType` and no serialNumber/rowNumber; the schema copy differs
   and was never confirmed.
 - No single-claim GET; action results are confirmed by the periodic status scan.
+- Accounting record (`transactions/merchantid`): `id`, `amount {value, currencyCode}` (949 = TRY), `isIncome`, and
+  the days `invoiceDate` / `orderDate` / `dueDate` / `paymentDate` (Istanbul time). Source:
+  `HepsiburadaFinance.cs` and the guide's Kayıt Bazlı Muhasebe Servisi. A record without `id`, a readable
+  `amount.value` or any of invoice/order/due day is not stored and opens a FINANCE_RECORD_INCOMPLETE issue; the rest
+  of the 60-day read goes on (before 5 Nov 2026 one such record failed the whole job).
 - Webhooks: Basic auth only; answer within 5 s — more than 20 slow answers in an hour blacklists the feed. Changes
   made through the API are not echoed back as webhooks.
 
