@@ -1286,6 +1286,16 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var storedVariantAttributes = attributeUpdateIds.Length == 0
                 ? []
                 : await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.VariantId != null && attributeUpdateIds.Contains(x.VariantId.Value)).ToListAsync(cancellationToken);
+            // CAT-03: a family save carries every colour card's rows, but only the opened card's version is checked above.
+            // A row the save would change, whose variant moved on since the editor loaded it (another colour card saved,
+            // a quick price edit, an import), is refused instead of written back over the newer values.
+            foreach (var update in variantUpdates)
+            {
+                if (update.LoadedVersion is not long loadedVersion) continue;
+                var variant = existingVariants.Single(x => x.Id == update.Id);
+                if (variant.Version != loadedVersion && VariantDataChanged(variant, update, storedVariantAttributes.Where(x => x.VariantId == variant.Id)))
+                    return Conflict<ProductView>("VARIANT_CHANGED", $"{variant.Sku} varyantı bu form açıkken başka bir işlemle değişti (ör. aynı modelin başka bir renk kartı kaydedildi ya da hızlı fiyat düzenlendi). Değişiklikler kaydedilmedi; sayfayı yenileyip tekrar deneyin.");
+            }
             foreach (var update in variantUpdates)
             {
                 var variant = existingVariants.Single(x => x.Id == update.Id);

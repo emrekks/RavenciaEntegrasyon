@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
+import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorSnapshotWithWebColor, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
 
 describe('saved variant rows and code conflicts', () => {
   it('gives rows still under a temporary key the id of the saved variant with their stock code', () => {
@@ -86,6 +86,20 @@ describe('product editor state', () => {
     const before = editorSnapshot({ ...base, variantRows: [row] })
     expect(editorSnapshot({ ...base, variantRows: [{ ...row, platformStatuses: [{ offerVersion: 2 }] } as typeof row] })).toBe(before)
     expect(editorSnapshot({ ...base, variantRows: [{ ...row, stock: 2 }] })).not.toBe(before)
+  })
+
+  it('counts the marketplace prices and the Web Color typed in the editor as unsaved edits', () => {
+    const base = { form: { title: 'T' }, variantRows: [], attributeSelections: {}, attributeTextValues: {}, familyMediaOrder: [], pendingMediaFileCount: 0, removedVariantIds: [], webColor: { autoEnabled: true, manualValueId: '' } }
+    const before = editorSnapshot(base)
+    expect(editorSnapshot({ ...base, channelPricing: { ty: { listPrice: '150', salePrice: '120' } } })).not.toBe(before)
+    expect(editorSnapshot({ ...base, variantChannelPricing: { 'v1:ty': { listPrice: '150', salePrice: '150' } } })).not.toBe(before)
+    expect(editorSnapshot({ ...base, webColor: { autoEnabled: false, manualValueId: 'wc1' } })).not.toBe(before)
+    // The order the stores were switched on in does not matter.
+    const a = { listPrice: '1', salePrice: '1' }
+    expect(editorSnapshot({ ...base, channelPricing: { x: a, y: a } })).toBe(editorSnapshot({ ...base, channelPricing: { y: a, x: a } }))
+    // The Web Color an edit is filled with later becomes the snapshot's own: no unsaved edit.
+    const seeded = { autoEnabled: false, manualValueId: 'wc1' }
+    expect(editorSnapshotWithWebColor(before, seeded)).toBe(editorSnapshot({ ...base, webColor: seeded }))
   })
 
   it('maps server field errors onto editor fields', () => {

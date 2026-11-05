@@ -164,7 +164,10 @@ public sealed record CreateVariantCommand(string Sku, string? Barcode, string? M
 // CostPrice: null leaves the stored cost as it is. A sent cost carries LoadedCostPrice, the cost the editor was
 // loaded with (null: it was empty); the update is refused when the stored cost is no longer that one (K2). Desi works
 // the same way with LoadedDesi, since the products import writes desi too.
-public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, string? ModelCode, int SortOrder = 0, IReadOnlyDictionary<string, string>? Options = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null, decimal? CostPrice = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, decimal? LoadedCostPrice = null, decimal? Desi = null, decimal? LoadedDesi = null);
+// LoadedVersion: the variant's version the editor loaded the row with. A row whose data the save would change is refused
+// (409 VARIANT_CHANGED) when the variant moved on since, so a family save never writes a sibling colour card's older
+// price, stock code or barcode over a newer one. Null (an older client) skips the check.
+public sealed record UpdateVariantCommand(Guid Id, string Sku, string? Barcode, string? ModelCode, int SortOrder = 0, IReadOnlyDictionary<string, string>? Options = null, IReadOnlyList<ProductAttributeCommand>? Attributes = null, decimal? CostPrice = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, decimal? LoadedCostPrice = null, decimal? Desi = null, decimal? LoadedDesi = null, long? LoadedVersion = null);
 public sealed record ProductAttributeCommand(Guid AttributeId, Guid? ValueId, string? TextValue, decimal? NumberValue, bool? BooleanValue, int SortOrder);
 public sealed record CreateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<CreateVariantCommand> Variants, IReadOnlyList<ProductAttributeCommand>? Attributes = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null);
 public sealed record BulkProductStatusCommand(IReadOnlyList<Guid> ProductIds, string Status);
