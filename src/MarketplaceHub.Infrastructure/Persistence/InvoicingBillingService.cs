@@ -1530,11 +1530,8 @@ public sealed partial class InvoicingBillingService(
                 .Select(connection => connection.PlatformCode).ToListAsync(cancellationToken)).All(InvoiceDeliveryAutoRetryPolicy.RetriesUncertainDelivery);
         if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode) && !pendingWithoutState && !pendingUncertain) return ServiceResult<Guid>.Fail("INVOICE_STATE_INVALID", "Fatura pazaryerine iletime hazır değil.", 409);
         if (!await db.InvoiceDocuments.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PermanentUrl != null, cancellationToken)) return ServiceResult<Guid>.Fail("INVOICE_PERMANENT_LINK_REQUIRED", "Pazaryerine iletim için kalıcı HTTPS fatura bağlantısı henüz hazır değil.", 409);
-        var packages = await db.ShipmentPackages.AsNoTracking()
-            .Where(item => item.TenantId == tenantId && (invoice.PackageId == null
-                ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
-                : item.Id == invoice.PackageId.Value))
-            .OrderBy(item => item.Id).ToListAsync(cancellationToken);
+        // The packages the delivery job targets: one a resend or a split replaced is left out.
+        var packages = await InvoicingJobProcessor.DeliveryTargetPackages(db, tenantId, invoice).ToListAsync(cancellationToken);
         if (packages.Count == 0) return Invalid<Guid>("packageId", "Faturaya bağlı etkin pazaryeri paketi bulunamadı.");
         var marketplaceConnectionIds = packages.Select(item => item.ConnectionId).Distinct().ToArray();
         var environments = await db.PlatformConnections.AsNoTracking()
