@@ -89,6 +89,7 @@ public sealed class FillVariantOptionRowsFromSignaturePostgreSqlTests(PostgreSql
         {
             await using var db = fixture.CreateContext();
             await db.AuditLogs.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.IntegrationOutboxEvents.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.VariantOptionValues.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.ProductOptionValues.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.ProductOptions.Where(x => x.TenantId == tenant.Id).ExecuteDeleteAsync();
