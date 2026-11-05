@@ -17,14 +17,13 @@ public static class ProductApprovalReconciliationPolicy
         && statuses.Count == expectedVariantCount
         && statuses.All(status => string.Equals(status.Status?.Trim(), "NOT_FOUND", StringComparison.OrdinalIgnoreCase));
 
-    // Trendyol can answer a product it accepted minutes ago as on neither its approved nor its unapproved list (live
-    // 5.11.2026: MZ021Y-CD-34..36 were sent at 00:59, listed as pending, then missing at 01:03; the reset sent them
-    // again and Trendyol refused the barcodes as already present). So a card counts as missing only after a day of checks;
-    // until then a missing product stays pending.
-    public static readonly TimeSpan MissingPublicationGrace = TimeSpan.FromHours(24);
-
-    public static bool ShouldResetMissingPublication(int expectedVariantCount, IReadOnlyCollection<RemotePublicationStatus> statuses, DateTimeOffset startedAt, DateTimeOffset now) =>
-        now - startedAt >= MissingPublicationGrace
+    // A barcode the marketplace's own batch result reported as created (SUCCESS, recorded SENT on the create job) exists
+    // there, whatever its product lists say a few minutes later: live 5.11.2026 Trendyol listed MZ021Y-CD-34..36 as
+    // pending at 00:59, on neither list at 01:03; the reset sent them again and Trendyol refused the barcodes as already
+    // present. So "not found" resets a card only when no barcode of it was confirmed created; a confirmed card stays
+    // pending until the check's deadline, which hands it to review.
+    public static bool ShouldResetMissingPublication(int expectedVariantCount, IReadOnlyCollection<RemotePublicationStatus> statuses, bool createConfirmed) =>
+        !createConfirmed
         && ShouldResetMissingPublication(expectedVariantCount, statuses);
 
     public static bool HasSplitApprovedContents(IEnumerable<RemotePublicationStatus> statuses) => statuses

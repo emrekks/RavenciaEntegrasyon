@@ -904,7 +904,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // A just-created n11 product can be missing from the product query for a while, so a
         // missing n11 stock code stays pending instead of resetting the publication.
         if (!isN11 && !isPazarama && !isPttAvm && candidates.Count == listings.Count
-            && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remoteByBarcode.Values.ToArray(), payload.StartedAt, timeProvider.GetUtcNow()))
+            && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remoteByBarcode.Values.ToArray(), await CreateConfirmedAsync(tenantId, connectionId, payload, cancellationToken)))
             return await ResetMissingPublication(tenantId, connectionId, profile, listings, states, payload.PayloadHash, payload.JobId, cancellationToken);
 
         var approvedStatuses = remoteByBarcode.Values.Where(x => x.Status == "APPROVED").ToList();
@@ -1363,6 +1363,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductApprovalReconcile, listings, null, cancellationToken, payload.PayloadHash, states);
         await db.SaveChangesAsync(cancellationToken);
         return JobExecutionResult.Success();
+    }
+
+    // Whether the marketplace's batch result confirmed any barcode of this payload as created (its create job recorded it
+    // SENT); see ProductApprovalReconciliationPolicy.ShouldResetMissingPublication.
+    private async Task<bool> CreateConfirmedAsync(Guid tenantId, Guid connectionId, ProductApprovalReconciliationJobPayload payload, CancellationToken cancellationToken)
+    {
+        var createDedup = $"product-create:{connectionId:N}:{payload.ProductId:N}:{payload.PayloadHash}";
+        return await (from job in db.IntegrationJobs.AsNoTracking()
+                      join result in db.JobVariantResults.AsNoTracking() on new { job.TenantId, JobId = job.Id } equals new { result.TenantId, result.JobId }
+                      where job.TenantId == tenantId && job.ConnectionId == connectionId && job.JobType == MarketplaceJobTypes.ProductCreate
+                          && job.JobDedupKey == createDedup && result.Status == JobVariantResultPolicy.Sent
+                      select result.Id).AnyAsync(cancellationToken);
     }
 
     private async Task<JobExecutionResult> ResetMissingPublication(

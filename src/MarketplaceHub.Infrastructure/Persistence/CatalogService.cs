@@ -1308,7 +1308,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 }
                 variant.UpdatedAt = updatedAt; variant.Version++;
             }
-            var optionUpdatesByProduct = variantUpdates.Where(update => update.Options is not null && changedVariantIds.Contains(update.Id))
+            // A row's colour and size are its option value rows; a row saved without them (its signature alone naming them)
+            // takes them on the next save even when nothing else changed, so the publication reads the Renk the editor shows.
+            var optionUpdateIds = variantUpdates.Where(update => update.Options is not null).Select(update => update.Id).ToArray();
+            var idsWithOptionRows = optionUpdateIds.Length == 0
+                ? []
+                : (await db.VariantOptionValues.AsNoTracking().Where(x => x.TenantId == tenantId && optionUpdateIds.Contains(x.VariantId)).Select(x => x.VariantId).Distinct().ToListAsync(cancellationToken)).ToHashSet();
+            var optionUpdatesByProduct = variantUpdates.Where(update => update.Options is not null && (changedVariantIds.Contains(update.Id) || (update.Options.Count > 0 && !idsWithOptionRows.Contains(update.Id))))
                 .GroupBy(update => existingVariants.Single(variant => variant.Id == update.Id).ProductId);
             foreach (var productOptionUpdates in optionUpdatesByProduct)
             {
