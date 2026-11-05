@@ -748,7 +748,7 @@ public static class TrendyolJsonMapper
     public static AdapterPageResult<RemoteReturnClaim> Returns(string json)
     {
         using var document = JsonDocument.Parse(json); var root = document.RootElement; var rows = new List<RemoteReturnClaim>();
-        foreach (var claim in RequiredContent(root))
+        foreach (var claim in ClaimContent(root))
         {
             var claimId = Text(claim, "claimId", "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
             var lines = ReturnLines(claim);
@@ -994,6 +994,18 @@ public static class TrendyolJsonMapper
         root.ValueKind == JsonValueKind.Object && root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
             ? content.EnumerateArray()
             : throw new JsonException("Trendyol page has no content list.");
+    // A claim page: its content list, or, live since 5 Nov 2026, no list at all on an empty claimItemStatus bucket. That
+    // answer is "no claims" only when the page says so itself (totalElements 0); anything else without the list stays a
+    // broken contract, its top-level keys named in the error so the log shows what came instead.
+    private static IEnumerable<JsonElement> ClaimContent(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array) return content.EnumerateArray();
+        if (root.ValueKind == JsonValueKind.Object && (!root.TryGetProperty("content", out var missing) || missing.ValueKind == JsonValueKind.Null)
+            && NullableLong(root, "totalElements") == 0) return [];
+        var keys = root.ValueKind == JsonValueKind.Object ? string.Join(',', root.EnumerateObject().Select(property => $"{property.Name}:{property.Value.ValueKind}")) : root.ValueKind.ToString();
+        throw new JsonException($"Trendyol claim page has no content list ({keys}).");
+    }
+
     private static IEnumerable<JsonElement> ClaimItems(JsonElement claim)
     {
         if (claim.TryGetProperty("claimItems", out var directClaimItems) && directClaimItems.ValueKind == JsonValueKind.Array)

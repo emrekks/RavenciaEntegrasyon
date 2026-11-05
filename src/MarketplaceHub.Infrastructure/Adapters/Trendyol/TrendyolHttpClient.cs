@@ -1158,7 +1158,11 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 claims.AddRange(result.Items);
                 if (result.HasMore) nextPages.Add((bucket.Status, bucket.Page + 1));
             }
-            catch (JsonException) { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit); }
+            catch (JsonException exception)
+            {
+                logger.LogWarning("Trendyol claims bucket {Status} page {Page} broke the page contract: {Reason}", bucket.Status, bucket.Page, exception.Message);
+                return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(TrendyolErrorMapper.Contract(), response.RateLimit);
+            }
         }
         var uniqueClaims = claims.GroupBy(x => x.ExternalClaimId, StringComparer.OrdinalIgnoreCase).Select(group =>
         {

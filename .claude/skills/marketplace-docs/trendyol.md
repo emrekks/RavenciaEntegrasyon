@@ -126,6 +126,9 @@ purpose (`TurkeyTime.cs`).
   state stays on its link (`SaleState`) and offer. Source: `MarketplaceJobProcessor.MappedImportBrandId`.
 - Order and claim pages always carry `content` (an empty list when nothing matches); a 200 without it is a contract
   error, never "no orders" (`TrendyolJsonMapper.RequiredContent`, report item 15, 5 Nov 2026).
+- Exception, claims: since 5 Nov 2026 22:43 (live, main store) an empty `claimItemStatus` bucket of getClaims can answer
+  without `content`; it counts as empty only when it says `totalElements` 0 (`TrendyolJsonMapper.ClaimContent`). Any
+  other claim page without the list is still a contract error and its top-level keys are logged per bucket.
 - Webhook package body names `supplierId` (`trendyol-api-son.md:6047`); a delivery whose `supplierId` is not the
   connection's seller id is answered 200, recorded (WEBHOOK_MERCHANT_MISMATCH) and dropped, as on Hepsiburada
   (`MarketplaceWebhookService.ForeignSupplier`, report item 17).

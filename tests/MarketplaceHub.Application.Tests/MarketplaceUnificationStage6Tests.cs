@@ -117,7 +117,20 @@ public sealed class MarketplaceUnificationStage6Tests
     {
         Assert.Throws<JsonException>(() => TrendyolJsonMapper.Orders("""{"totalElements":0,"totalPages":0}"""));
         Assert.Throws<JsonException>(() => TrendyolJsonMapper.Returns("""{"page":0}"""));
+        Assert.Throws<JsonException>(() => TrendyolJsonMapper.Returns("""{"totalElements":3,"totalPages":1}"""));
+        Assert.Contains("totalElements:Number", Assert.Throws<JsonException>(() => TrendyolJsonMapper.Returns("""{"totalElements":3}""")).Message);
         Assert.Empty(TrendyolJsonMapper.Orders("""{"content":[],"totalPages":0}""").Items);
+    }
+
+    // Live since 5 Nov 2026 22:43: an empty claimItemStatus bucket answers without a content list; it says totalElements 0.
+    [Theory]
+    [InlineData("""{"totalElements":0,"totalPages":0,"page":0,"size":50}""")]
+    [InlineData("""{"content":null,"totalElements":0,"totalPages":0,"page":0,"size":50}""")]
+    public void AnEmptyTrendyolClaimBucketThatSaysZeroIsAnEmptyPage(string json)
+    {
+        var page = TrendyolJsonMapper.Returns(json);
+        Assert.Empty(page.Items);
+        Assert.False(page.HasMore);
     }
 
     [Fact]
