@@ -103,6 +103,48 @@ public sealed class OrderLineVariantRematchPostgreSqlTests(PostgreSqlTenantIsola
         }
     }
 
+    // Live 5 Nov 2026: Shopify #R1013's two lines were cancelled in full and still kept two open notices. A fully cancelled
+    // line takes no stock whatever it matches: it raises no notice, and the one it raised before is resolved.
+    [PostgreSqlFact]
+    public async Task Rematch_RaisesNoNoticeForAFullyCancelledLineAndResolvesItsOldOne()
+    {
+        var tenant = NewTenant("order-line-rematch-cancelled");
+        var shopify = NewConnection(tenant, "SHOPIFY");
+        var order = NewOrder(tenant, shopify, "#R1013", "CANCELLED");
+        var cancelled = NewLine(tenant, order, "MZ001TK23", "MZ001TK23", "{}");
+        cancelled.CancelledQuantity = 1m;
+        var key = $"order-line-variant-unmatched:{shopify.Id:N}:MZ001TK23";
+        await using (var seed = fixture.CreateContext())
+        {
+            seed.Tenants.Add(tenant);
+            seed.PlatformConnections.Add(shopify);
+            seed.Orders.Add(order);
+            seed.OrderLines.Add(cancelled);
+            seed.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = tenant.Id, DedupeKey = key, Code = MarketplaceJobProcessor.UnmatchedOrderLineIssueCode, Summary = "eski", Status = IssueStatus.Open, FirstSeenAt = fixture.Now.AddDays(-6), LastSeenAt = fixture.Now.AddHours(-2), OccurrenceCount = 1 });
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(new MarketplaceJobProcessor.OrderLineRematchOutcome(1, 0, 1), await Processor(db).RematchUnmatchedOrderLines(tenant.Id, shopify.Id, CancellationToken.None));
+
+        await using var verify = fixture.CreateContext();
+        Assert.Null((await verify.OrderLines.AsNoTracking().SingleAsync(x => x.Id == cancelled.Id)).VariantId);
+        var issue = await verify.OperationalIssues.AsNoTracking().SingleAsync(x => x.TenantId == tenant.Id);
+        Assert.Equal(IssueStatus.Resolved, issue.Status);
+    }
+
+    [Fact]
+    public void The_stock_shortfall_notice_names_the_marketplace_order_and_code()
+    {
+        var summary = MarketplaceJobProcessor.StockShortfallSummary("TRENDYOL", "11789787348", "MZ029YD10", 1m);
+        Assert.Contains("Trendyol siparişi 11789787348", summary);
+        Assert.Contains("MZ029YD10 kodlu", summary);
+        Assert.Contains("1 adet stoktan düşülemedi", summary);
+        var bare = MarketplaceJobProcessor.StockShortfallSummary(null, null, null, 2m);
+        Assert.Contains("Pazaryeri siparişindeki kodsuz ürünün", bare);
+        Assert.Contains("2 adet", bare);
+    }
+
     // A line already holding stock movements (a reset's carry rows, or rows of its own) is not given a second baseline.
     [PostgreSqlFact]
     public async Task Rematch_LeavesALineThatAlreadyHasStockRowsToTheProjection()
