@@ -789,9 +789,10 @@ public static class TrendyolJsonMapper
         {
             if (item.ValueKind != JsonValueKind.Object) continue;
             var newStatus = NullText(item, "newStatus");
-            if (string.IsNullOrWhiteSpace(newStatus) || !item.TryGetProperty("date", out var date) || !date.TryGetInt64(out var milliseconds)) continue;
+            // O9: a null or text date is no date (TryGetInt64 would throw on it); the entry is left out like a missing one.
+            if (string.IsNullOrWhiteSpace(newStatus) || !item.TryGetProperty("date", out var date) || RemoteJson.EpochMilliseconds(date) is not { } at) continue;
             var user = item.TryGetProperty("userInfoDocument", out var info) && info.ValueKind == JsonValueKind.Object ? info : default;
-            audits.Add(new(Clip(NullText(item, "previousStatus"), 64), newStatus.Trim(), user.ValueKind == JsonValueKind.Object ? Clip(NullText(user, "executorApp"), 64) : null, user.ValueKind == JsonValueKind.Object ? Clip(NullText(user, "executorUser"), 128) : null, DateTimeOffset.FromUnixTimeMilliseconds(milliseconds)));
+            audits.Add(new(Clip(NullText(item, "previousStatus"), 64), newStatus.Trim(), user.ValueKind == JsonValueKind.Object ? Clip(NullText(user, "executorApp"), 64) : null, user.ValueKind == JsonValueKind.Object ? Clip(NullText(user, "executorUser"), 128) : null, at));
         }
         return audits.OrderBy(x => x.At).ToList();
     }
@@ -1144,7 +1145,8 @@ public static class TrendyolJsonMapper
     private static bool TryDecimal(JsonElement value, out decimal result, params string[] names)
     {
         foreach (var name in names)
-            if (value.TryGetProperty(name, out var item) && item.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) && (item.ValueKind == JsonValueKind.Number && item.TryGetDecimal(out result) || decimal.TryParse(item.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result))) return true;
+            // O5: a text amount is read dot-decimal only; "1234,50" stays unknown instead of becoming 123450.
+            if (value.TryGetProperty(name, out var item) && RemoteJson.Decimal(item) is { } number) { result = number; return true; }
         result = 0;
         return false;
     }
@@ -1159,7 +1161,7 @@ public static class TrendyolJsonMapper
                 var nested = DecimalNullable(item, name is "price" ? "salePrice" : "listPrice");
                 if (nested is not null) return nested;
             }
-            else if (item.ValueKind == JsonValueKind.Number && item.TryGetDecimal(out var result) || decimal.TryParse(item.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out result)) return result;
+            else if (RemoteJson.Decimal(item) is { } result) return result;
         }
         return null;
     }
@@ -1206,7 +1208,8 @@ public static class TrendyolJsonMapper
             {
                 try { return DateTimeOffset.FromUnixTimeMilliseconds(milliseconds); } catch (ArgumentOutOfRangeException) { }
             }
-            if (DateTimeOffset.TryParse(item.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) return parsed;
+            // D12: a text date with an offset ("…+03:00") is stored as its UTC instant; Npgsql timestamptz takes offset 0 only.
+            if (DateTimeOffset.TryParse(item.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)) return parsed.ToUniversalTime();
         }
         return null;
     }

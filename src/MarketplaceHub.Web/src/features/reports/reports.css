@@ -593,6 +593,19 @@
 .app-shell.stitch-shell main .reports-page .reports-costlines i { background: var(--reports-line, var(--rv-color-border-strong)); }
 .app-shell.stitch-shell main .reports-page .reports-donut-part { stroke: var(--reports-line, var(--rv-color-border-strong)); }
 
+/* Siparişe Bağlı Olmayan Kesintiler: each category a soft tile, the total last, outlined and in bold; the "i" beside
+   the card's title says they stay out of the profit. Tiles share the row's height, 12px apart. */
+.app-shell.stitch-shell main .reports-page .reports-card-title .reports-tip-trigger { display: inline; }
+.app-shell.stitch-shell main .reports-page .reports-unlinked { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); align-items: stretch; gap: 12px; margin: 0; }
+.app-shell.stitch-shell main .reports-page .reports-unlinked > div { display: grid; grid-template-rows: auto 1fr; align-content: start; gap: 6px; min-width: 0; padding: 12px 14px; background: var(--rv-color-surface-soft); border: 1px solid transparent; border-radius: 12px; }
+/* A tip as wide as its words, not as narrow as its tile or the title. */
+.app-shell.stitch-shell main .reports-page :is(.reports-unlinked .reports-hover-tip, .reports-card-unlinked .reports-card-title > .reports-hover-tip) { width: 260px; max-width: calc(100vw - 32px); }
+.app-shell.stitch-shell main .reports-page .reports-unlinked dt { min-width: 0; color: var(--rv-color-muted); font-size: 13px; }
+.app-shell.stitch-shell main .reports-page .reports-unlinked dd { display: grid; gap: 2px; margin: 0; color: var(--rv-color-ink); font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-unlinked dd small { color: var(--rv-color-subtle); font-size: 12px; font-weight: 400; }
+.app-shell.stitch-shell main .reports-page .reports-unlinked > .is-total { background: transparent; border-color: var(--rv-color-border-strong); }
+.app-shell.stitch-shell main .reports-page .reports-unlinked > .is-total dt { color: var(--rv-color-ink); font-weight: 600; }
+
 /* Kâr Köprüsü: a name, a bar on the sales' scale and the amount per row; the rows share the card's height. */
 /* One grid for the rows, so every bar track has the same width and the bars line up under each other. */
 .app-shell.stitch-shell main .reports-page .reports-bridge { display: grid; grid-template-columns: minmax(140px, 200px) minmax(0, 1fr) max-content; column-gap: 14px; margin: 0; padding: 0; list-style: none; }

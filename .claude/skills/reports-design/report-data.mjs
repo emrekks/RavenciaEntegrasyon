@@ -31,7 +31,10 @@ const report = {
     source: 'trendyol-finance', lastSyncedAt: '2026-10-23T08:00:00Z', coveredFrom: '2026-07-24T00:00:00Z', coveredThrough: '2026-10-23T08:00:00Z', financeOrders: 600, settledOrders: 420, coverage: 0.7, realCostTotal: 0,
     commission: { real: commission * 0.7, realOrders: 420, estimatedForSettled: 0, estimatedForUnsettled: commission * 0.3, combined: commission },
     cargo: { real: cargo * 0.8, billedOrders: 560, unbilledOrders: 140, averagePerOrder: 72, sampleOrders: 560, estimated: cargo * 0.2, combined: cargo },
-    lines: [{ category: 'SERVICE_FEE', label: 'Hizmet', isCost: true, amount: fees * 0.6, records: 30, orderLinked: 0, unlinked: 0 }, { category: 'STOPPAGE', label: 'Stopaj', isCost: true, amount: fees * 0.1, records: 30, orderLinked: 0, unlinked: 0 }, { category: 'ADVERTISING', label: 'Reklam', isCost: true, amount: fees * 0.3, records: 4, orderLinked: 0, unlinked: 0 }],
+    lines: [{ category: 'SERVICE_FEE', label: 'Hizmet', isCost: true, amount: fees * 0.85, records: 0, orderLinked: 0, estimated: fees * 0.85 }, { category: 'STOPPAGE', label: 'Stopaj', isCost: true, amount: fees * 0.15, records: 0, orderLinked: 0, estimated: fees * 0.15 }],
+    // Dated in the period, tied to none of its orders (the previous payment day's invoices, the ad budget): kept out of the profit.
+    unlinked: [{ category: 'SERVICE_FEE', label: 'Platform hizmet bedeli', isCost: true, amount: 1079.54, records: 4 }, { category: 'STOPPAGE', label: 'Stopaj', isCost: true, amount: 448.01, records: 1 }, { category: 'ADVERTISING', label: 'Reklam', isCost: true, amount: 5000, records: 1 }],
+    unlinkedTotal: 6527.55,
     channels: [], products: []
   },
   geography: { countries: [group('TR', 'Türkiye')], previousCities: [], previousCountries: [], abroadOrders: 0 },

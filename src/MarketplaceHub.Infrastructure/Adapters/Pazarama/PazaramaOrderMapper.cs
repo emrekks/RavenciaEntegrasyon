@@ -27,7 +27,7 @@ public static class PazaramaOrderMapper
                 issues.Add(new("ORDER_PACKAGE_INVALID", Text(order, "orderId") ?? "unknown", "Pazarama siparişi içeri alınmadı: sipariş numarası yok."));
                 continue;
             }
-            try { rows.Add(Order(order, orderNumber, issues)); }
+            try { rows.Add(Order(order, orderNumber)); }
             catch (JsonException exception)
             {
                 issues.Add(new("ORDER_PACKAGE_INVALID", orderNumber, $"Pazarama siparişi {orderNumber} içeri alınmadı: {exception.Message}"));
@@ -50,7 +50,7 @@ public static class PazaramaOrderMapper
         return null;
     }
 
-    private static RemoteOrder Order(JsonElement order, string orderNumber, List<AdapterPageIssue> issues)
+    private static RemoteOrder Order(JsonElement order, string orderNumber)
     {
         var lines = new List<RemoteOrderLine>();
         var allocations = new List<RemotePackageAllocation>();
@@ -71,11 +71,11 @@ public static class PazaramaOrderMapper
                 var product = item.TryGetProperty("product", out var productValue) && productValue.ValueKind == JsonValueKind.Object ? productValue : default;
                 var quantity = Decimal(item, "quantity");
                 var unitPrice = Money(item, "salePrice");
+                // O12: an order with a line that cannot be read is not imported at all. Dropping the line would store the
+                // order with a lower total and fewer items than the buyer paid for; the page records the issue and the
+                // order is read again by a later poll (the window overlaps), so its value stays unknown, not wrong.
                 if (itemId is null || quantity is not > 0 || unitPrice is null or < 0)
-                {
-                    issues.Add(new("ORDER_PACKAGE_LINE_INVALID", $"{orderNumber}:{itemId ?? "?"}", $"Pazarama siparişi {orderNumber} alındı ancak bir ürün satırında kalem kimliği, adet veya fiyat eksik."));
-                    continue;
-                }
+                    throw new JsonException($"bir ürün satırında (kalem {itemId ?? "?"}) kalem kimliği, adet veya fiyat okunamadı; sipariş sonraki okumada yeniden denenecek.");
                 var statusCode = (int?)Decimal(item, "orderItemStatus") ?? 0;
                 var raw = ItemStatus(statusCode);
                 itemStatuses.Add(raw);
@@ -121,7 +121,8 @@ public static class PazaramaOrderMapper
         if (hasLiveItem) (gross, discount, net, dueAt) = (liveGross, liveDiscount, liveNet, liveDueAt);
         if (!hasItemTotals) net = gross - discount;
         net = Math.Clamp(net, 0, gross);
-        var ordered = OrderDate(order) ?? lastItemChange ?? DateTimeOffset.UnixEpoch;
+        // D13: an order without any date is not imported as 1970; the page records it and a later read takes it again.
+        var ordered = OrderDate(order) ?? lastItemChange ?? throw new JsonException("siparişin tarihi yok (orderDate ve kalem geçmişi okunamadı).");
         var modified = lastItemChange ?? ordered;
         var packageStatus = PackageStatus(itemStatuses);
         // Contracted cargo: the shipment code (PZ...) is what the label and the cargo process use.
@@ -279,8 +280,8 @@ public static class PazaramaOrderMapper
     private static decimal? Decimal(JsonElement element, string property)
     {
         if (element.ValueKind != JsonValueKind.Object || !element.TryGetProperty(property, out var value)) return null;
-        if (value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number)) return number;
-        return value.ValueKind == JsonValueKind.String && decimal.TryParse(value.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) ? parsed : null;
+        // O5: text amounts are dot-decimal; "1234,50" stays unknown instead of being read as 123450.
+        return RemoteJson.Decimal(value);
     }
 
     private static string? Text(JsonElement element, string property)

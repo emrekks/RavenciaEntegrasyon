@@ -123,8 +123,8 @@ public static class PttAvmProductUpdateRules
             }
             var root = items[0];
             string? Text(string name) => root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
-            decimal? Number(string name) => root.TryGetProperty(name, out var value) && value.TryGetDecimal(out var number) ? number : null;
-            int? Whole(string name) => root.TryGetProperty(name, out var value) && value.TryGetInt32(out var number) ? number : null;
+            decimal? Number(string name) => RemoteJson.NumberDecimal(root, name);
+            int? Whole(string name) => RemoteJson.Int32(root, name);
             List<string>? Texts(JsonElement element) => element.ValueKind == JsonValueKind.Array ? element.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.String ? x.GetString()?.Trim() : null).OfType<string>().ToList() : null;
             var fields = root.TryGetProperty("fields", out var fieldList) ? Texts(fieldList) ?? [] : [];
             var images = root.TryGetProperty("images", out var imageList) ? Texts(imageList) : null;

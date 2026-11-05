@@ -293,7 +293,8 @@ function TipText({ text }: { text: string }) {
   return <><b>{what}</b>{sentences(how).map(line => <span key={line}>{line}</span>)}</>
 }
 
-// Genel Bakış: the period's six figures in one strip, its costs round a donut, the way from the sales to the profit
+// Genel Bakış: the period's six figures in one strip, its costs round a donut (the deductions tied to no order of the
+// period apart, under it), the way from the sales to the profit
 // beside the period's buckets, then the product, order and advertising figures and the returns and operations. Every
 // amount comes from one account (moneyBreakdown), so the cards agree with each other and with the profit tab; a row's
 // explanation shows while the pointer or the focus is on it. Each card plays its animation once, when first in view.
@@ -302,6 +303,7 @@ function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   return <div className="reports-overview">
     <OverviewFigures data={data} money={money} />
     <CostLinesCard data={data} money={money} />
+    <UnlinkedDeductions data={data} />
     <div className="reports-overview-row is-two">
       <ProfitBridge data={data} money={money} onMore={onMore} />
       <PeriodCard data={data} />
@@ -320,11 +322,15 @@ function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
 
 // A board card: its icon and title, its actions, and its content, which learns when the card first came into view so
 // its chart can play then.
-function Card({ title, icon, actions, className, children }: { title: string; icon?: UiIconName; actions?: ReactNode; className?: string; children: (shown: boolean) => ReactNode }) {
+// tip: what the card shows, opened from an "i" beside its title.
+function Card({ title, icon, actions, className, tip, children }: { title: string; icon?: UiIconName; actions?: ReactNode; className?: string; tip?: string; children: (shown: boolean) => ReactNode }) {
   const [ref, shown] = useReveal<HTMLElement>()
+  const tipId = useId()
   return <section ref={ref} className={`reports-card${className ? ` ${className}` : ''}${shown ? ' is-shown' : ''}`}>
     <header>
-      <span className="reports-card-title">{icon && <span className="reports-card-icon" aria-hidden="true"><UiIcon name={icon} size={16} /></span>}<h2>{title}</h2></span>
+      <span className={`reports-card-title${tip ? ' reports-tip-host' : ''}`}>{icon && <span className="reports-card-icon" aria-hidden="true"><UiIcon name={icon} size={16} /></span>}
+        {tip ? <><h2><button type="button" className="reports-tip-trigger" aria-describedby={tipId}>{title}<TipMark /></button></h2>
+          <span role="tooltip" id={tipId} className="reports-hover-tip"><TipText text={tip} /></span></> : <h2>{title}</h2>}</span>
       {actions && <div className="reports-card-actions">{actions}</div>}
     </header>
     {children(shown)}
@@ -412,7 +418,8 @@ function moneyBreakdown(data: ReportSales, flow: ProfitSteps): Money | null {
   if (!flow.steps) return null
   const now = data.summary
   const finance = financeCosts(data)
-  const deductions: MoneyPart[] = flow.steps.filter(step => step.kind === 'minus' && step.value !== null && step.value > 0)
+  // Every deduction that is not zero: one below zero (a fee credited back) adds to what is left, as on the bridge.
+  const deductions: MoneyPart[] = flow.steps.filter(step => step.kind === 'minus' && step.value !== null && step.value !== 0)
     .map(step => ({ key: step.key, label: step.label, value: step.value ?? 0, tone: deductionTones[step.key] ?? 'fees', note: step.note }))
   const deducted = deductions.reduce((sum, part) => sum + part.value, 0)
   const left = now.grossSales - deducted
@@ -591,8 +598,10 @@ function costLines(data: ReportSales, money: Money): OverviewCost[] {
     { key: 'commission', label: commission?.label ?? 'Komisyon', value: commission?.value ?? null, tone: 'commission', note: explain('commission', commission?.note || 'Siparişte komisyon gelmedi.') },
     { key: 'cargo', label: 'Kargo', value: finance ? cargo?.value ?? 0 : null, tone: 'cargo', note: explain('cargo', finance ? cargo?.note || 'Bu dönemde kargo yok.' : notRead) },
     { key: 'returned', label: 'İade Edilen Tutar', value: part('returned')?.value ?? 0, tone: 'returned', note: explain('returned', `Bu dönemde ${formatNumber(data.summary.returnedQuantity)} adet ürün iade edildi.`) },
-    // "Diğer Kesinti" (deduction invoices no rule names) and "Ödeme Komisyonu" (Shopify only) are listed only when there is one.
-    ...feeCategories.filter(fee => !['OTHER_DEDUCTION', 'PAYMENT_FEE'].includes(fee.category) || finance?.lines.some(item => item.category === fee.category && item.amount !== 0)).map(fee => {
+    // The service fee and the withholding tax are on every order. The rest is listed only when an order of the period
+    // carries one: advertising, penalties and the like are tied to no order and stand in Siparişe Bağlı Olmayan
+    // Kesintiler instead ("Diğer Kesinti" and "Ödeme Komisyonu" also not when nothing is read).
+    ...feeCategories.filter(fee => ['SERVICE_FEE', 'STOPPAGE'].includes(fee.category) || (finance ? finance.lines.some(item => item.category === fee.category && item.amount !== 0) : !['OTHER_DEDUCTION', 'PAYMENT_FEE'].includes(fee.category))).map(fee => {
       const line = finance?.lines.find(item => item.category === fee.category)
       return { key: fee.key, label: fee.category === 'EARLY_PAYMENT' ? 'Erken Ödeme Kesintisi' : fee.label, value: finance ? line?.amount ?? 0 : null, tone: fee.key,
         note: explain(fee.key, !finance ? notRead : line ? feeNote(line) : 'Bu dönemde kaydı yok.') }
@@ -613,8 +622,9 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
   const [active, setActive] = useState<string | null>(null)
   if (!money) return <Card title="Masraf Kalemleri" className="reports-card-costlines">{() => <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>}</Card>
   const lines = costLines(data, money)
-  const total = money.deducted + (money.cost ?? 0)
   const parts: Part[] = lines.filter(line => line.value !== null && line.value > 0).map(line => ({ key: line.key, label: line.label, value: line.value ?? 0, tone: line.tone }))
+  // The total is what the ring draws, so the shares add up to 100 %.
+  const total = parts.reduce((sum, part) => sum + part.value, 0)
   const picked = parts.find(part => part.key === active) ?? null
   const pick = (key: string) => parts.some(part => part.key === key) ? setActive(key) : undefined
   return <Card title="Masraf Kalemleri" className="reports-card-costlines">
@@ -642,6 +652,48 @@ function CostLinesCard({ data, money }: { data: ReportSales; money: Money | null
       </li>)}</ul>
     </div>}
   </Card>
+}
+
+// What each deduction tied to no order of the period is, under the pointer.
+const unlinkedMeaning: Record<string, string> = {
+  SERVICE_FEE: 'Trendyol\'un ödeme günü faturasıyla kestiği platform ve uluslararası hizmet bedeli.\nÖnceki ödeme gününün siparişlerine aittir; dönemin siparişlerininki Masraf Kalemleri\'nde tahmin edilir.',
+  STOPPAGE: 'Ödeme günü kesilen e-ticaret stopajı.\nÖnceki ödeme gününün siparişlerine aittir; dönemin siparişlerininki Masraf Kalemleri\'nde tahmin edilir.',
+  ADVERTISING: 'Reklam bütçesi satın alımları ve reklam bedelleri.\nBir siparişe bağlı değildir.',
+  CARGO: 'Dönemin siparişlerine bağlanamayan kargo faturası satırları.\nPanelde olmayan siparişlerin ya da satırları okunamayan faturaların kargosu.',
+  COMMISSION: 'Dönemin siparişlerine bağlı olmayan komisyon kayıtları.\nPanelde olmayan siparişlerin komisyonu ya da düzeltmeler.',
+  PENALTY: 'Trendyol\'un kestiği cezalar (geç kargo, iptal gibi).\nBir siparişe bağlı değildir.',
+  EARLY_PAYMENT: 'Hakedişi erken almak için ödenen kesinti.\nBir siparişe bağlı değildir.',
+  OTHER_DEDUCTION: 'Trendyol\'un türünü belirtmeden kestiği kesinti faturaları.\nBir siparişe bağlı değildir.'
+}
+const unlinkedLabels: Record<string, string> = { SERVICE_FEE: 'Hizmet Bedeli', STOPPAGE: 'Stopaj', ADVERTISING: 'Reklam', CARGO: 'Kargo', COMMISSION: 'Komisyon', PENALTY: 'Ceza', EARLY_PAYMENT: 'Erken Ödeme Kesintisi', OTHER_DEDUCTION: 'Diğer Kesinti', PAYMENT_FEE: 'Ödeme Komisyonu' }
+const unlinkedTip = 'Bu dönemde kesilen ama dönemin siparişlerine bağlı olmayan kesintiler.\nÖr. önceki ödeme gününün hizmet bedeli ve stopajı, reklam bütçesi. Kâra dahil edilmez.'
+
+// The deductions of the period's dates tied to no order of the period (only from Trendyol's statement), largest first.
+function unlinkedDeductions(costs: ReportCosts | null | undefined) {
+  const lines = (costs?.unlinked ?? []).filter(line => line.isCost && line.amount !== 0)
+    .map(line => ({ key: line.category, label: unlinkedLabels[line.category] ?? line.label, amount: line.amount, records: line.records }))
+    .sort((a, b) => b.amount - a.amount)
+  return { lines, total: lines.reduce((sum, line) => sum + line.amount, 0) }
+}
+
+// Siparişe Bağlı Olmayan Kesintiler: each category with its amount and records, then their total; nothing of it is in
+// the profit above. Not drawn when the period has none. A board card on Genel Bakış; a panel, like its neighbours, on
+// Kârlılık.
+function UnlinkedDeductions({ data, panel = false }: { data: ReportSales; panel?: boolean }) {
+  const tip = useId()
+  const { lines, total } = unlinkedDeductions(trendyolRead(data) ? data.costs : null)
+  if (!lines.length) return null
+  const title = 'Siparişe Bağlı Olmayan Kesintiler'
+  const tiles = <dl className="reports-unlinked">
+      {lines.map(line => <div key={line.key} className="reports-tip-host">
+        <dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-${line.key}`}>{line.label}<TipMark /></button></dt>
+        <dd>{signedTl(line.amount)}<small>{formatCount(line.records)} kayıt</small></dd>
+        <span role="tooltip" id={`${tip}-${line.key}`} className="reports-hover-tip"><TipText text={unlinkedMeaning[line.key] ?? 'Dönemin siparişlerine bağlı olmayan kesinti.\nBir siparişe bağlı değildir.'} /></span>
+      </div>)}
+      <div className="is-total"><dt>Toplam</dt><dd>{signedTl(total)}<small>Kâra dahil edilmez</small></dd></div>
+    </dl>
+  return panel ? <Panel title={title} description={unlinkedTip} className="reports-card-unlinked">{tiles}</Panel>
+    : <Card title={title} className="reports-card-unlinked" tip={unlinkedTip}>{() => tiles}</Card>
 }
 
 type BridgeRow = { key: string; label: string; from: number; to: number; kind: 'total' | 'minus' | 'end'; note: string }
@@ -677,7 +729,8 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
     rows.push({ key: item.key, label: item.label, from: at - item.value, to: at, kind: 'minus', note: item.note })
     at -= item.value
   }
-  const result = money.profit ?? money.left
+  // Without a product cost the steps still take the net VAT off, so the result is where they end, not Masraflar Sonrası.
+  const result = money.profit ?? money.left - (money.tax ?? 0)
   // What the account could not take off is said on the result as well, not only in the deductions' own notes.
   const leftOut = money.leftNote.split(' Düşülmeyenler: ')[1]
   rows.push({ key: 'result', label: money.profit === null ? 'Masraflar Sonrası' : result < 0 ? 'Tahmini Zarar' : 'Tahmini Net Kâr', from: 0, to: result, kind: 'end',
@@ -755,7 +808,7 @@ function ProfitLedger({ money }: { money: Money }) {
     </div>
   return <dl className="reports-ledger">
     {row('sales', undefined, 'Satış Tutarı', formatTl(money.total), 'Liste fiyatından satıcı indirimi düşülmüş satış.\nPazaryerinin kendi indirimi dahildir. İptaller hariç, iadeler düşülmeden.')}
-    {money.deductions.map(part => row(part.key, 'is-minus', part.label, `− ${formatTl(part.value)}`, `${costMeaning[part.key] ?? part.label}\n${share(part.value)}`))}
+    {money.deductions.map(part => row(part.key, part.value < 0 ? undefined : 'is-minus', part.label, part.value < 0 ? `+ ${formatTl(-part.value)}` : `− ${formatTl(part.value)}`, `${costMeaning[part.key] ?? part.label}\n${share(part.value)}`))}
     {row('left', `is-total is-${money.left < 0 ? 'bad' : 'good'}`, 'Masraflar Sonrası', amount(money.left), `Satıştan iade ve pazaryeri masrafları düştükten sonra kalan.\n${share(money.left)}`)}
     {money.tax !== null && row('vat', money.tax < 0 ? undefined : 'is-minus', 'Net KDV', money.tax < 0 ? `+ ${formatTl(-money.tax)}` : `− ${formatTl(money.tax)}`,
       `${costMeaning.vat}\n${share(money.tax)}${money.tax < 0 ? ' Eksi çıktığı için devreden KDV\'dir ve kârı artırır.' : ''}`)}
@@ -833,12 +886,14 @@ function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
 // Reklam: what was spent on advertising and what it weighs against the profit and the revenue; what is not read says so.
 function adMetrics(data: ReportSales, money: Money | null): Metric[] {
   const finance = trendyolRead(data) ? financeCosts(data) : null
-  const spend = finance ? finance.lines.find(line => line.category === 'ADVERTISING')?.amount ?? 0 : null
+  // Advertising is tied to no order: it is read from the deductions kept out of the profit (and, should Trendyol ever
+  // tie one to an order, from the costs).
+  const spend = finance ? (finance.lines.find(line => line.category === 'ADVERTISING')?.amount ?? 0) + (finance.unlinked?.find(line => line.category === 'ADVERTISING')?.amount ?? 0) : null
   const profit = money?.profit ?? null
   const revenue = data.summary.netRevenue
   return [
     { key: 'spend', label: 'Toplam Reklam Harcaması', value: spend === null ? '—' : formatTl(spend),
-      note: spend === null ? 'Dönemde reklama harcanan tutar.\nReklam bedeli yalnız Trendyol cari hesabından okunabiliyor.' : 'Dönemde reklama harcanan tutar.\nTrendyol cari hesabındaki reklam bedelleri, işlem tarihine göre. Brandcenter ve influencer kesintileri ayrı okunmuyor.' },
+      note: spend === null ? 'Dönemde reklama harcanan tutar.\nReklam bedeli yalnız Trendyol cari hesabından okunabiliyor.' : 'Dönemde reklama harcanan tutar.\nTrendyol cari hesabındaki reklam bedelleri, işlem tarihine göre; siparişe bağlı olmadığı için kâra dahil edilmez. Brandcenter ve influencer kesintileri ayrı okunmuyor.' },
     { key: 'profit', label: 'Reklam / Kâr', value: spend !== null && profit !== null && profit > 0 ? formatPercent(spend / profit, 2) : '—', note: 'Kârın ne kadarının reklama gittiği.\nReklam harcaması ÷ tahmini net kâr.' },
     { key: 'revenue', label: 'Reklam / Ciro', value: spend !== null && revenue > 0 ? formatPercent(spend / revenue, 2) : '—', note: 'Cironun ne kadarının reklama gittiği.\nReklam harcaması ÷ net ciro.' },
     { key: 'roas', label: 'Reklam Cirosu ve ROAS', value: '—', note: 'Reklamdan gelen satış ve reklamın getirisi.\nTrendyol reklam raporu panele bağlı olmadığı için gösterilemiyor.' }
@@ -859,7 +914,7 @@ function returnMetrics(data: ReportSales): Metric[] {
       note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi. Önceki dönem ${formatPercent(before.returnRate)}.` },
     { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'units', label: 'İade Edilen Adet', value: `${formatNumber(now.returnedQuantity)} adet`, detail: 'returns', note: 'İade edilen ürün adedi.' },
-    { key: 'returned', label: 'İade Edilen Tutar', value: formatTl(returnedAtList(now)), detail: 'returns', note: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nSatıştan ödenen tutarı düşülür.' },
+    { key: 'returned', label: 'İade Liste Tutarı', value: formatTl(returnedAtList(now)), detail: 'returns', note: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nMasraf Kalemleri ve Kâr Köprüsü\'ndeki İade Edilen Tutar müşterinin ödediğidir; satıştan o düşülür.' },
     { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nİade kargosu kargo faturasında ayrı okunamadığı için gösterilemiyor.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil); uyarı eşiği ${formatPercent(warning)}.` },
@@ -976,6 +1031,7 @@ ${formatNumber(cost.profitQuantity)} adet; kâr bunlar üzerinden en doğru hesa
   return <div className="reports-summary">
     <KpiStrip label="Kârlılığın göstergeleri" items={items} />
     <CostAndProfit data={data} />
+    <UnlinkedDeductions data={data} panel />
     <Platforms data={data} />
   </div>
 }
@@ -1048,8 +1104,8 @@ function feeLines(costs: ReportCosts) {
 
 // A fee line's note: how many records were read and how much was estimated for the orders not settled yet.
 function feeNote(line: ReportCosts['lines'][number]) {
-  const read = line.records > 0 ? `Trendyol cari hesabındaki ${formatCount(line.records)} kayıttan, işlem tarihine göre.` : null
-  const estimated = line.estimated ? `${formatTl(line.estimated)} tahmini: Trendyol'da hesap kesimi olmayan siparişler, diğer platformlarda 2026 tarifeleri.` : null
+  const read = line.records > 0 ? `Trendyol cari hesabında dönemin siparişlerine bağlı ${formatCount(line.records)} kayıttan.` : null
+  const estimated = line.estimated ? `${formatTl(line.estimated)} tahmini: Trendyol bu kesintiyi siparişe bağlamadan ödeme günü faturasıyla keser, dönemin her siparişi için tahmin edilir; diğer platformlarda 2026 tarifeleri.` : null
   return [read, estimated].filter(Boolean).join(' ') || 'Bu dönemde kaydı yok.'
 }
 
@@ -1091,7 +1147,7 @@ function profitSteps(data: ReportSales): ProfitSteps {
   const finance = financeCosts(data)
   const unread = unreadFeePlatforms(data)
   const description = finance
-    ? `${trendyolRead(data) ? 'Trendyol\'da komisyon ve kargo gerçek tutarla, henüz kesinleşmeyenler tahmini; kesintiler cari hesaptan.' : 'Komisyon siparişteki orandan tahmini.'} Diğer platformların kargo ve kesintileri 2026 tarifelerinden tahmini.${unread.length ? ` ${unread.join(', ')} kargo ve hizmet bedeli düşülmedi.` : ''}`
+    ? `${trendyolRead(data) ? 'Trendyol\'da komisyon ve kargo gerçek tutarla, henüz kesinleşmeyenler tahmini; hizmet bedeli ve stopaj sipariş başına tahmini. Siparişe bağlı olmayan kesintiler (reklam, önceki ödeme gününün faturaları) kâra dahil edilmez.' : 'Komisyon siparişteki orandan tahmini.'} Diğer platformların kargo ve kesintileri 2026 tarifelerinden tahmini.${unread.length ? ` ${unread.join(', ')} kargo ve hizmet bedeli düşülmedi.` : ''}`
     : 'Yalnız okunabilen kalemlerle; kargo, hizmet bedeli, stopaj, reklam ve ceza düşülmedi.'
   if (now.ordersWithAmount === 0) return { steps: null, description }
   const hasCommission = commission.coveredRevenue > 0
@@ -1110,7 +1166,7 @@ function profitSteps(data: ReportSales): ProfitSteps {
         note: `${commissionNote(finance)}${partialCommission ? ' Komisyon oranı bilinmeyen satışlardan komisyon düşülmedi.' : ''}` },
       { key: 'cargo', label: 'Kargo', value: finance.cargo.combined, kind: 'minus', note: cargoNote(finance.cargo) },
       { key: 'fees', label: 'Kesintiler', value: feeTotal, kind: 'minus',
-        note: fees.length ? `${fees.map(fee => fee.label).join(', ')} · Trendyol cari hesabından ve diğer platformların tarifelerinden` : 'Bu dönemde kesinti yok' },
+        note: fees.length ? `${fees.map(fee => fee.label).join(', ')} · dönemin siparişlerinin, Trendyol cari hesabından ya da tahmini` : 'Bu dönemde kesinti yok' },
       { key: 'payout', label: 'Masraflar Düşülmüş', value: now.netRevenue - charged, kind: 'total',
         note: finance.cargo.estimated === null && finance.cargo.unbilledOrders > 0 ? 'Faturası gelmeyen kargo eksik; ürün maliyeti hariç' : 'Gerçek ve tahmini kalemlerle; ürün maliyeti hariç' }
     )
@@ -1341,7 +1397,7 @@ function Returns({ data }: { data: ReportSales }) {
       note: previousText(formatNumber(then.returnedQuantity)), tip: 'Müşterilerin geri gönderdiği ürün adedi.\nKabul edilen iadeler sayılır.' },
     { key: 'rate', label: 'İade Oranı', value: now.returnRate, format: percent, delta: change(now.returnRate, then.returnRate, 'rate'), invert: true,
       note: previousText(formatPercent(then.returnRate)), tip: 'Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi.' },
-    { key: 'amount', label: 'İade Tutarı', value: now.ordersWithAmount > 0 ? returnedAtList(now) : null, format: formatTl, empty: 'Tutar yok',
+    { key: 'amount', label: 'İade Liste Tutarı', value: now.ordersWithAmount > 0 ? returnedAtList(now) : null, format: formatTl, empty: 'Tutar yok',
       delta: now.ordersWithAmount > 0 ? change(returnedAtList(now), returnedAtList(then)) : null, invert: true,
       note: previousText(then.ordersWithAmount > 0 ? formatTl(returnedAtList(then)) : null), tip: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nSatış tutarından ödenen tutarı düşülür.' }
   ]
@@ -1575,23 +1631,34 @@ function StatementLines({ data }: { data: ReportSales }) {
   const [picked, setPicked] = useState(() => read && platforms.includes('TRENDYOL') ? 'TRENDYOL' : platforms[0] ?? 'TRENDYOL')
   const selected = platforms.includes(picked) ? picked : platforms[0] ?? picked
   // The costs A to Z, then what is not a cost (sales, returns, discounts) A to Z under them.
-  const rows = selected === 'TRENDYOL' && read && finance ? [...finance.lines].sort((a, b) => Number(!a.isCost) - Number(!b.isCost) || a.label.localeCompare(b.label, 'tr')) : []
+  const rows = selected === 'TRENDYOL' && read && finance ? statementRows(finance).sort((a, b) => Number(!a.isCost) - Number(!b.isCost) || a.label.localeCompare(b.label, 'tr')) : []
   const toolbar = platforms.length > 1 && <div className="reports-segmented" role="group" aria-label="Pazaryeri">
     {platforms.map(code => <button key={code} type="button" aria-pressed={selected === code} onClick={() => setPicked(code)}>{platformName(code)}</button>)}
   </div>
   return <DataTable<CostLine> key={selected} title={`${platformName(selected)} Cari Hesap Kalemleri`} csvName={`rapor-${selected.toLowerCase()}-cari`} rows={rows} rowKey={row => row.category} toolbar={toolbar}
     empty={`${platformName(selected)} cari hesabı henüz okunmuyor; şimdilik yalnız Trendyol'un hesap ekstresi okunuyor.`}
-    description="Siparişe bağlı kalemler siparişin dönemine, bağlı olmayanlar işlem tarihine göre; eksi tutar satıcıya ödenendir."
+    description="Kâra Dahil: dönemin siparişlerine bağlı kayıtlar ve kaydı olmayan siparişlerin tahmini. Siparişe Bağlı Olmayan: dönemde kesilip dönemin siparişlerine bağlı olmayan kayıtlar, işlem tarihine göre; kâra dahil edilmez. Eksi tutar satıcıya ödenendir."
     columns={[
       { key: 'label', header: 'Kalem', value: row => row.label, render: row => <span className="reports-cell-label">{row.label}{!row.isCost && <em className="reports-tag">Masraf Değil</em>}</span> },
-      { key: 'amount', header: 'Tutar', value: row => row.amount, render: row => formatTl(row.amount), numeric: true },
+      { key: 'amount', header: 'Kâra Dahil', value: row => row.amount, render: row => formatTl(row.amount), numeric: true },
       { key: 'linked', header: 'Siparişe Bağlı', value: row => row.orderLinked, render: row => formatTl(row.orderLinked), numeric: true },
-      { key: 'unlinked', header: 'Tarihe Göre', value: row => row.unlinked, render: row => formatTl(row.unlinked), numeric: true },
+      { key: 'estimated', header: 'Tahmini', value: row => row.estimated, render: row => formatTl(row.estimated), numeric: true },
+      { key: 'unlinked', header: 'Siparişe Bağlı Olmayan', value: row => row.unlinked, render: row => formatTl(row.unlinked), numeric: true },
       { key: 'records', header: 'Kayıt', value: row => row.records, render: row => formatCount(row.records), numeric: true }
     ]} />
 }
 
-type CostLine = ReportCosts['lines'][number]
+// One row per category of the statement: what enters the profit (the period's orders' records and estimates) beside
+// what was charged in the period but belongs to no order of it (kept out of the profit).
+type CostLine = { category: string; label: string; isCost: boolean; amount: number; orderLinked: number; estimated: number; unlinked: number; records: number }
+function statementRows(costs: ReportCosts): CostLine[] {
+  const rows = new Map<string, CostLine>(costs.lines.map(line => [line.category, { category: line.category, label: unlinkedLabels[line.category] ?? line.label, isCost: line.isCost, amount: line.amount, orderLinked: line.orderLinked, estimated: line.estimated ?? 0, unlinked: 0, records: line.records }]))
+  for (const line of costs.unlinked ?? []) {
+    const row = rows.get(line.category) ?? { category: line.category, label: unlinkedLabels[line.category] ?? line.label, isCost: line.isCost, amount: 0, orderLinked: 0, estimated: 0, unlinked: 0, records: 0 }
+    rows.set(line.category, { ...row, unlinked: row.unlinked + line.amount, records: row.records + line.records })
+  }
+  return [...rows.values()]
+}
 
 // Fatura: the packages by invoice state as one bar beside each platform's counts.
 function Invoices({ data }: { data: ReportSales }) {
@@ -1814,6 +1881,14 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const [search, setSearch] = useState(() => readUrlText(params, 'hq'))
   const [draft, setDraft] = useState({ ...applied, platforms, search })
   const [tab, setTab] = useState<'upcoming' | 'past'>(() => applied.state === 'PAID' ? 'past' : 'upcoming')
+  // The page's Platform filter, once changed while the tab is open, sets the marketplaces here too (the address's hp
+  // only picks them when the tab opens).
+  const [pageSeen, setPageSeen] = useState(pagePlatforms)
+  if (pageSeen !== pagePlatforms) {
+    setPageSeen(pagePlatforms)
+    setPlatforms(pagePlatforms ?? [])
+    setDraft(current => ({ ...current, platforms: pagePlatforms ?? [] }))
+  }
   const [open, setOpen] = useState<string | null>(null)
   // Trendyol's regions open under its card on a click of its Bölgeler button and close on the next click (or Escape).
   const [regionsOpen, setRegionsOpen] = useState(false)
@@ -1988,7 +2063,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
           <div className="rr-fbtns"><button type="button" className="rr-btn" onClick={clear}>Temizle</button><button type="button" className="rr-btn rr-primary" onClick={() => apply(draft)}>Filtrele</button></div>
         </div></RrFilterCard>
       </div>
-      {search.trim() ? <PayoutLinesTable platforms={platforms.length ? platforms : null} search={search} />
+      {search.trim() ? <PayoutLinesTable key={`${search}|${platforms.join(',')}`} platforms={platforms.length ? platforms : null} search={search} />
         : <>
           <SubTabs label="Ödemeler" value={tab} onChange={next => { setTab(next); setOpen(null) }}
             items={[{ value: 'upcoming', label: 'Gelecek Ödemeler', icon: 'calendarClock' }, { value: 'past', label: 'Geçmiş Ödemeler', icon: 'circleCheck' }]} />

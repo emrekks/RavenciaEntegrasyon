@@ -154,3 +154,10 @@ export function istanbulHour(instant: string) {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Istanbul', hour: '2-digit', hourCycle: 'h23' }).format(date))
   return Number.isFinite(hour) ? hour : 23
 }
+
+// The change against the previous period; none (shown as "—") when the previous period had nothing to compare with.
+export function periodTrend(current: number, previous: number): [string, boolean] | null {
+  if (previous <= 0) return null
+  const delta = ((current - previous) / previous) * 100
+  return [`${delta < 0 ? '-' : ''}%${Math.abs(delta).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`, delta >= 0]
+}
