@@ -465,6 +465,8 @@ function Figure({ value, format, shown }: { value: number; format: (value: numbe
 type Kpi = {
   key: string; label: string; value: number | null; format?: (value: number) => string; text?: string; empty?: string
   delta?: Change | null; invert?: boolean; note?: string; tip: string; tone?: 'good' | 'bad' | 'warn'; icon?: CardIconName
+  // Rows the explanation lists under it (the figure per platform); the card then opens it on hover, not only its label.
+  split?: Array<{ key: string; label: string; value: string }>
 }
 
 // The icon drawn into a figure's background, from what it measures (its label), unless the figure names one.
@@ -506,12 +508,12 @@ function KpiStrip({ label, items, marks = true, aligned = false }: { label: stri
       // Whole counts stay whole while they count up; money shows whole liras (the kuruş rounded) in a strip.
       const format = item.format === formatTl ? formatTlWhole : item.format ?? (Number.isInteger(item.value) ? (value: number) => formatNumber(Math.round(value)) : formatNumber)
       return <div key={item.key} className={`${missing && empty !== '—' ? 'is-missing' : ''}${item.text !== undefined ? ' is-text' : ''}${item.tone ? ` is-${item.tone}` : ''}${open?.key === item.key ? ' is-open' : ''}`.trim() || undefined}
-        onMouseEnter={marks ? undefined : event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
+        onMouseEnter={marks && !item.split?.length ? undefined : event => show(item.key, event.currentTarget)} onMouseLeave={hide}>
         <CardBackgroundIcon name={kpiIcon(item)} tone={item.tone === 'good' ? 'ok' : item.tone} />
         <button type="button" className="reports-tip-trigger reports-kpi-label" aria-describedby={id}
           onMouseEnter={marks ? event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement) : undefined}
           // With a "?" mark the tip belongs to the label: it closes as the pointer leaves it, not only the card.
-          onMouseLeave={marks ? hide : undefined}
+          onMouseLeave={marks && !item.split?.length ? hide : undefined}
           onFocus={event => event.currentTarget.parentElement && show(item.key, event.currentTarget.parentElement)} onBlur={hide}>{item.label}{marks && <TipMark />}</button>
         <strong>{item.text ?? (item.value === null ? empty : <Figure value={item.value} format={format} shown={shown} />)}</strong>
         {/* The previous period's figure opens under the change chip on a tap, instead of always taking a line. */}
@@ -520,7 +522,7 @@ function KpiStrip({ label, items, marks = true, aligned = false }: { label: stri
         <span id={id} className="reports-sr">{item.tip.replace('\n', ' ')}</span>
       </div>
     })}</div>
-    {open && current && <div key={current.key} className="reports-hover-tip is-floating" aria-hidden="true" style={{ top: open.top, left: open.left, width: open.width }}><TipText text={current.tip} /></div>}
+    {open && current && <div key={current.key} className="reports-hover-tip is-floating" aria-hidden="true" style={{ top: open.top, left: open.left, width: open.width }}><TipText text={current.tip} />{current.split && current.split.length > 0 && <dl className="reports-tip-split">{current.split.map(row => <div key={row.key}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl>}</div>}
   </div>
 }
 
@@ -552,9 +554,13 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
   const onCost = profit !== null && money?.cost ? profit / money.cost : null
   const earlierProfit = earlier?.profit ?? null
   const earlierOnCost = earlierProfit !== null && earlier?.cost ? earlierProfit / earlier.cost : null
+  // What each platform brought to the figure, the biggest first; a platform without the figure is left out.
+  const split = (pick: (row: ReportGroup) => number | null, format: (value: number) => string) => data.platforms
+    .map(row => ({ row, value: pick(row) })).filter((item): item is { row: ReportGroup; value: number } => item.value !== null && item.value !== 0)
+    .sort((left, right) => right.value - left.value).map(item => ({ key: item.row.key, label: platformName(item.row.label), value: format(item.value) }))
   const items: Kpi[] = [
     { key: 'net', label: 'Net Ciro', value: noAmount ? null : now.netRevenue, format: formatTl, empty: 'Tutar yok', delta: noAmount ? null : change(now.netRevenue, then.netRevenue),
-      note: previousText(then.ordersWithAmount > 0 ? formatTl(then.netRevenue) : null), tip: 'Satış tutarından iadeler düşülmüş ciro; iptal edilen siparişler sayılmaz.\nGenel Bakış\'taki Ciro iadeler dahildir, bu yüzden ondan düşüktür.' },
+      note: previousText(then.ordersWithAmount > 0 ? formatTl(then.netRevenue) : null), tip: 'Satış tutarından iadeler düşülmüş ciro; iptal edilen siparişler sayılmaz.\nGenel Bakış\'taki Ciro iadeler dahildir, bu yüzden ondan düşüktür.', split: split(row => row.ordersWithAmount > 0 ? row.netRevenue : null, formatTl) },
     { key: 'profit', label: profit !== null && profit < 0 ? 'Tahmini Zarar' : 'Net Kâr', value: profit, format: formatTl, empty: noAmount ? 'Tutar yok' : 'Maliyet girilmemiş',
       delta: change(profit, earlierProfit), note: previousText(earlierProfit === null ? null : signedTl(earlierProfit)),
       tip: profit === null ? 'Ürün maliyeti girilince hesaplanır.\nÜrün kartında varyantların maliyetini girin.' : netProfitTip,
@@ -563,9 +569,9 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
       note: previousText(formatPercent(earlier?.margin)), tip: 'Satışın yüzde kaçının kâr olarak kaldığı.\nTahmini net kâr ÷ satış tutarı (iadeler düşülmeden; Net Ciro değil), Kâr Köprüsü\'ndeki paylar gibi.', tone: (money?.margin ?? 0) < 0 ? 'bad' : undefined },
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: previousText(formatPercent(earlierOnCost)), tip: 'Ürüne harcanan her liranın ne kadar kâr getirdiği.\nTahmini net kâr ÷ ürün maliyeti.', tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
-    { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: previousText(formatCount(then.orders)), tip: 'Dönemde gelen sipariş sayısı.\nİptal edilen siparişler sayılmaz.' },
+    { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: previousText(formatCount(then.orders)), tip: 'Dönemde gelen sipariş sayısı.\nİptal edilen siparişler sayılmaz.', split: split(row => row.orders, formatCount) },
     { key: 'kept', label: 'Net Satılan Adet', value: now.keptQuantity, delta: change(now.keptQuantity, then.keptQuantity), note: previousText(formatNumber(then.keptQuantity)),
-      tip: now.soldQuantity > 0 ? `Müşteride kalan ürün adedi.\n${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşüldü.` : 'Bu dönemde satış yok.' }
+      tip: now.soldQuantity > 0 ? `Müşteride kalan ürün adedi.\n${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşüldü.` : 'Bu dönemde satış yok.', split: split(row => row.soldQuantity - row.returnedQuantity, formatNumber) }
   ]
   return <KpiStrip label="Dönemin göstergeleri" items={items} />
 }

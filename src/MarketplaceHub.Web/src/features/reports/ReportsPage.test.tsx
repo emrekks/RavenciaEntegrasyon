@@ -494,6 +494,15 @@ describe('ReportsPage', () => {
     expect(figures[4]).toContain('—')
   })
 
+  it('lists the Genel Bakış Sipariş figure per platform when the card is hovered', async () => {
+    const page = await open()
+    const card = Array.from(page.querySelectorAll<HTMLElement>('.reports-kpis > div')).find(cell => cell.querySelector('.reports-kpi-label')?.textContent === 'Sipariş')!
+    await act(async () => { card.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })) })
+    const rows = Array.from(page.querySelectorAll('.reports-hover-tip.is-floating .reports-tip-split > div'))
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows[0].querySelector('dt')?.textContent).toBeTruthy()
+  })
+
   it('opens an older shared link on its tab and keeps the unknown city row last', async () => {
     const page = await open('?detail=cities')
     expect(selectedTab(page)).toContain('Coğrafya')

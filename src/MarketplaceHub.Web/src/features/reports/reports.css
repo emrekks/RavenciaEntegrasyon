@@ -1025,3 +1025,9 @@ main .rr.rr.reports-payout-filters .rr-trigger:disabled { opacity: .5; cursor: n
   .app-shell.stitch-shell main .reports-page .reports-time-days button { padding: 8px; }
   .app-shell.stitch-shell main .reports-page .reports-time-days span { font-size: 11.5px; }
 }
+
+/* A figure's explanation can list it per platform under the text (Genel Bakış: Net Ciro, Sipariş, Net Satılan Adet). */
+.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split { display: grid; gap: 4px; margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--rv-color-border); }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split > div { display: flex; justify-content: space-between; gap: 12px; }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split dt { color: var(--rv-color-muted); }
+.app-shell.stitch-shell main .reports-page .reports-hover-tip .reports-tip-split dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
