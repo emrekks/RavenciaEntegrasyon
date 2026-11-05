@@ -2232,7 +2232,11 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             .Where(invoice => invoice.TenantId == tenantId
                 && invoice.SequencePurpose == "SALE" && invoice.OriginalInvoiceId == null
                 && invoice.ExternalReference != null
-                && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplaceFailed || invoice.Status == InvoiceStatus.MarketplacePending)
+                && (invoice.Status == InvoiceStatus.Accepted || invoice.Status == InvoiceStatus.MarketplaceFailed
+                    // A pending invoice only when nothing was sent (no delivery state): one waiting for its confirmation
+                    // is the delivery job's and must not take this batch's places.
+                    || invoice.Status == InvoiceStatus.MarketplacePending
+                        && !db.MarketplaceDeliveryStates.Any(state => state.TenantId == invoice.TenantId && state.InvoiceId == invoice.Id))
                 && (invoice.IssuedAt ?? invoice.CreatedAt) >= issuedSince
                 && invoice.UpdatedAt <= settledBefore
                 && invoice.DeliveryRetryAttempts < InvoiceDeliveryAutoRetryPolicy.MaxAttempts
