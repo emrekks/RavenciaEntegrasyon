@@ -1736,7 +1736,9 @@ public sealed class PttAvmAdapterTests
         var live = PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("true"), "mz059ync-01", ownedById);
         Assert.Equal(("MZ059YNC-01", "APPROVED", "900777", "mz059ync-01"), (live.Barcode, live.Status, live.ExternalProductId, live.ExternalVariantId));
         Assert.Equal("APPROVED", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("true"), "mz059ync-01", ownedByBarcode).Status);
-        Assert.Equal("PENDING_APPROVAL", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("false"), "mz059ync-01", ownedById).Status);
+        // A passive product is closed (ARCHIVED); one listed without Aktif is unknown, never live.
+        Assert.Equal("ARCHIVED", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("false"), "mz059ync-01", ownedById).Status);
+        Assert.Equal("UNKNOWN", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("true") with { RawJson = "{}" }, "mz059ync-01", ownedById).Status);
         // Not named by PTT AVM yet, or no parent product: still waiting; named under another product: for the operator.
         Assert.Equal("NOT_FOUND", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", Parent("true"), null, null).Status);
         Assert.Equal("NOT_FOUND", PttAvmProductPayloadRules.CodeCheckStatus("MZ059YNC-01", null, "MZ059YNC-01", ownedById).Status);
@@ -1818,8 +1820,8 @@ public sealed class PttAvmAdapterTests
         // The same colour and size listed twice is not proof of either.
         var twice = PttAvmProductMapper.Product(Row("true"), [], new Dictionary<string, IReadOnlyList<XElement>> { ["MZ059YNC"] = [Entry("1", "Gri / L"), Entry("2", "gri / l")] })!;
         Assert.Null(PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-01", "Gri", "L"), twice));
-        // A passive product keeps its variants waiting.
-        Assert.Equal("PENDING_APPROVAL", PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-01", "Gri", "L"), PttAvmProductMapper.Product(Row("false"), [], entries)!)!.Status);
+        // A passive product closes its variants (ARCHIVED, for review); it does not keep them waiting.
+        Assert.Equal("ARCHIVED", PttAvmProductPayloadRules.NamedVariantStatus(new("MZ059YNC-01", "Gri", "L"), PttAvmProductMapper.Product(Row("false"), [], entries)!)!.Status);
     }
 
     [Fact]

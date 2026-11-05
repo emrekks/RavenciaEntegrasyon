@@ -124,6 +124,17 @@ purpose (`TurkeyTime.cs`).
   (BRAND_MAPPING_MISSING issue, `GET /reference-data/brands/unmapped`, Marka Eşleme card 2). The import no longer
   syncs the brand list itself. It does not change the panel product's or variant's status either; the listing's sale
   state stays on its link (`SaleState`) and offer. Source: `MarketplaceJobProcessor.MappedImportBrandId`.
+- Order and claim pages always carry `content` (an empty list when nothing matches); a 200 without it is a contract
+  error, never "no orders" (`TrendyolJsonMapper.RequiredContent`, report item 15, 5 Nov 2026).
+- Webhook package body names `supplierId` (`trendyol-api-son.md:6047`); a delivery whose `supplierId` is not the
+  connection's seller id is answered 200, recorded (WEBHOOK_MERCHANT_MISMATCH) and dropped, as on Hepsiburada
+  (`MarketplaceWebhookService.ForeignSupplier`, report item 17).
+- A request whose quota wait ran out before it got its token was never sent: LOCAL_QUOTA_WAIT (RateLimit, the job
+  keeps its attempt). One that was sent and timed out stays REMOTE_TIMEOUT (outcome unknown on a write)
+  (`TrendyolHttpClient.SendAsync`, report item 16).
+- A product-create line refused as "Aynı barkodlu bir ürününüz bulunduğundan…" is not a refusal: it stays
+  CREATE_RESULT_UNKNOWN and the approval check reads the barcode; the same now holds for any marketplace's
+  "zaten mevcut/kayıtlı/var", "already exist" wording (`ProductBatchResultPolicy.SaysBarcodeExists`, report item 14).
 
 ## Job types
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),

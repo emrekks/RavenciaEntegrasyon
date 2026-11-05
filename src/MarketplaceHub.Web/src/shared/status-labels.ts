@@ -104,7 +104,7 @@ const statusLabels: Record<string, string> = {
   UNKNOWN_RESULT: 'Bilinmeyen sonuç',
   VERIFIED: 'Doğrulandı',
   WAITING_FOR_SHIPMENT: 'Kargo bekliyor',
-  WAITINGINACTION: 'Trendyol’da karar bekliyor',
+  WAITINGINACTION: 'Pazaryerinde karar bekliyor',
   LABEL_READ: 'Etiketi oku',
   LABEL_WRITE: 'Etiket oluşturmayı dene',
   AUTO: 'Otomatik',
@@ -114,14 +114,16 @@ const statusLabels: Record<string, string> = {
   TEMELFATURA: 'Temel fatura'
 }
 
+// Status keys are ASCII codes (WAITINGINACTION, FATURA_IPTAL): plain upper case, so a raw lower-case word's "i" becomes
+// "I" and finds its key, where Turkish casing made it "İ" and missed it.
 function normalizedStatus(value: string) {
-  return value.trim().toLocaleUpperCase('tr-TR')
+  return value.trim().toUpperCase()
 }
 
 export type InvoiceStatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
 
 export function invoiceStatusLabel(value: string | null | undefined) {
-  const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
+  const normalized = value?.trim().toUpperCase() ?? ''
   // An n11 / PTT AVM / Pazarama state the marketplace cannot verify waits for an invoice like any not-invoiced one.
   if (['FATURA_BEKLIYOR', 'FATURA_DOGRULANAMADI', 'PENDING', 'DRAFT'].includes(normalized)) return 'Fatura Bekliyor'
   if (['FATURA_KONTROLDE', 'FATURA_YUKLENDI', 'FATURA_KESILDI', 'COMPLETED'].includes(normalized)) return 'Faturası Mevcut'
@@ -147,7 +149,7 @@ export function invoiceStatusDisplayLabel(value: string | null | undefined, isMi
 }
 
 export function invoiceStatusTone(value: string | null | undefined): InvoiceStatusTone {
-  const normalized = value?.trim().toLocaleUpperCase('tr-TR') ?? ''
+  const normalized = value?.trim().toUpperCase() ?? ''
   if (['FATURA_BEKLIYOR', 'PENDING', 'DRAFT'].includes(normalized)) return 'warning'
   if (['FATURA_ISLENIYOR', 'FATURA_PLATFORMA_BEKLIYOR', 'PROCESSING', 'SUBMITTING', 'SUBMITTED', 'MARKETPLACE_PENDING', 'READY', 'ACCEPTED'].includes(normalized)) return 'info'
   if (['FATURA_BELIRSIZ', 'UNKNOWN_RESULT', 'FATURA_CEVAP_BEKLENIYOR', 'ADJUSTMENT_REQUIRED', 'FATURA_DUZELTME_GEREKLI', 'FATURA_DOGRULANAMADI', 'FATURA_INCELENECEK', 'FATURA_INCELEME_GEREKLI'].includes(normalized)) return 'warning'

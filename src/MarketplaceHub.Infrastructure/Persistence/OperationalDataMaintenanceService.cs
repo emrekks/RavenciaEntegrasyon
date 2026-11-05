@@ -60,6 +60,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         await ArchivePurgedFilesAsync(tenantId, cancellationToken);
         connection.Status = "DELETED";
         connection.LastErrorCode = null;
+        connection.LastErrorClass = null;
         connection.Version++;
         db.AuditLogs.Add(Audit(tenantId, actorUserId, "CONNECTION_DEEP_DELETED", "PlatformConnection", connectionId.ToString("D"), $"{connection.PlatformCode}:{connection.ExternalStoreId}", correlationId));
         await db.SaveChangesAsync(cancellationToken);

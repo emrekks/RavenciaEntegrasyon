@@ -91,11 +91,13 @@ public sealed partial class N11HttpClient
 
     // D18: the HTTP status alone does not decide. A SOAP service answers a fault with HTTP 500, so the fault is read
     // first and classified; only a 5xx without a fault and without the operation's answer is the service's own trouble.
-    // A 401/403 (n11's gateway answers it with an HTML page) is the credentials, not a contract or server error. Null
-    // when the body is to be read as a SOAP answer (SoapResponse).
+    // A 401, or a 403 that is not an HTML page, is the credentials, not a contract or server error. A 403 HTML page is
+    // the security gateway, a temporary block, as on every marketplace (MarketplaceErrorRules). Null when the body is to
+    // be read as a SOAP answer (SoapResponse).
     internal static AdapterError? SoapHttpError(HttpStatusCode status, string body, string operation)
     {
         var answered = body.Contains(operation + "Response", StringComparison.Ordinal);
+        if (!answered && MarketplaceErrorRules.GatewayBlocked(status, body, "N11", "N11") is { } gatewayBlock) return gatewayBlock;
         if (status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden && !answered)
             return new(AdapterErrorClass.Authentication, "N11_CREDENTIALS_REJECTED", "N11 API anahtarı veya şifresi reddedildi. N11 satıcı panelinde Hesabım > API Hesapları altındaki güncel bilgileri girin.", (int)status, null, null);
         if ((int)status < 500 || answered) return null;

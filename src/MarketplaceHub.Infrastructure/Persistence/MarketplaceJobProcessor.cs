@@ -300,7 +300,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var errorCode = result.ErrorCode;
         await db.PlatformConnections
             .Where(x => x.TenantId == tenantId && x.Id == connectionId && (x.LastErrorCode == null || x.LastErrorCode != errorCode))
-            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastErrorCode, errorCode), cancellationToken);
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.LastErrorCode, errorCode).SetProperty(x => x.LastErrorClass, nameof(AdapterErrorClass.Authentication)), cancellationToken);
     }
 
     private async Task RecordSyncAttempt(Guid tenantId, Guid connectionId, string resourceType, CancellationToken cancellationToken)
@@ -570,7 +570,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // Shopify wrote the product and only its Online Store publication failed: the outcome is known, and a
                 // retry or resend repeats only the publication.
                 var shopifyPublishOnly = string.Equals(platformCode, "SHOPIFY", StringComparison.OrdinalIgnoreCase) && ShopifyFamilySend.IsPublishOnlyFailure(error.Code);
-                if (!shopifyPublishOnly && error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug)
+                if (!shopifyPublishOnly && WriteOutcomePolicy.IsUncertain(error))
                     return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "EXTERNAL_EFFECT_AMBIGUOUS", JobExecutionResult.ManualReview("EXTERNAL_EFFECT_AMBIGUOUS", AmbiguousCreateSummary(error), error.RemoteRequestId), cancellationToken, payload.PayloadHash);
                 db.ExternalEffectRecords.Remove(effect);
                 await db.SaveChangesAsync(cancellationToken);
@@ -664,8 +664,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var lines = operationStatus.Lines.Where(x => !string.IsNullOrWhiteSpace(x.ExternalKey)).ToList();
         var remoteKeyLabel = isN11 ? "stok kodu" : isShopify || isHepsiburada ? "merchantSku" : "barkod";
         var marketplaceName = isShopify ? "Shopify" : isHepsiburada ? "Hepsiburada" : isN11 ? "N11" : string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase) ? "Pazarama" : string.Equals(platformCode, "PTTAVM", StringComparison.OrdinalIgnoreCase) ? "PTT AVM" : "Trendyol";
-        // No lines at all is a result not written yet (it waits below), except for Shopify, which answers at once.
-        if ((lines.Count == 0 && isShopify) || lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
+        // No lines at all is a result not written yet: it waits below like any unlisted item, then the approval check
+        // settles it (Shopify included, which used to go to review at once).
+        if (lines.GroupBy(x => x.ExternalKey, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1)) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Tamamlanan {marketplaceName} sonucu eksik veya yinelenen {remoteKeyLabel} satırları içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         var resultKeys = listings.Select(x => keyedBySku ? x.ExternalSku ?? "" : x.ExternalBarcode ?? "").ToList();
         if (resultKeys.Any(string.IsNullOrWhiteSpace) || resultKeys.Distinct(StringComparer.OrdinalIgnoreCase).Count() != listings.Count) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", $"Uzak sonuç eşlemesi için listing {remoteKeyLabel} değerleri eksik veya yinelenmiş.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
         var resultKeyByListing = listings.ToDictionary(x => keyedBySku ? x.ExternalSku! : x.ExternalBarcode!, x => x, StringComparer.OrdinalIgnoreCase);
@@ -676,25 +677,28 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (pttAvmParentBarcode is not null) resultByKey = PttAvmProductPayloadRules.FamilyResultLines(pttAvmParentBarcode, resultByKey, resultKeyByListing.Keys);
         else if (isShopify) resultByKey = resultByKey.Where(x => resultKeyByListing.ContainsKey(x.Key)).ToDictionary(x => x.Key, x => x.Value, StringComparer.OrdinalIgnoreCase);
         if (resultByKey.Keys.Any(key => !resultKeyByListing.ContainsKey(key))) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu bilinmeyen merchantSku/barkod içeriyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
-        // A sent item the result does not list yet, or (Trendyol) lists without a final SUCCESS/FAILED, has no answer yet.
-        var isTrendyol = string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase);
+        // A sent item the result does not list yet, or lists without a final outcome (a refusal it marks retryable, as
+        // Trendyol's not-yet SUCCESS/FAILED line), has no answer yet, on every marketplace.
         var missingKeys = resultKeyByListing.Keys
-            .Where(key => !resultByKey.TryGetValue(key, out var listed) || (isTrendyol && !listed.Succeeded && listed.Retryable))
+            .Where(key => !resultByKey.TryGetValue(key, out var listed) || (!listed.Succeeded && listed.Retryable))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (missingKeys.Count > 0 && isShopify) return await MarkPublicationResult(tenantId, connectionId, profile, "MANUAL_REVIEW", "PRODUCT_BATCH_CONTRACT_INVALID", JobExecutionResult.ManualReview("PRODUCT_BATCH_CONTRACT_INVALID", "Batch sonucu gönderilen tüm merchantSku/barkodları içermiyor.", payload.ExternalOperationId), cancellationToken, payload.PayloadHash);
-        if (ProductBatchResultPolicy.KeepWaiting(missingKeys.Count, timeProvider.GetUtcNow() - payload.SubmittedAt.Value))
+        // A result the marketplace has finished (UnlistedLinesUnconfirmed: Pazarama's done batch names only some codes)
+        // will not name the rest later, so those go straight to the approval check instead of waiting.
+        var elapsed = timeProvider.GetUtcNow() - payload.SubmittedAt.Value;
+        if (!operationStatus.UnlistedLinesUnconfirmed && ProductBatchResultPolicy.KeepWaiting(missingKeys.Count, elapsed))
         {
-            profile.ActualStatus = isHepsiburada ? "IMPORT_IN_PROGRESS" : "BATCH_IN_PROGRESS";
+            profile.ActualStatus = isHepsiburada ? "IMPORT_IN_PROGRESS" : isShopify ? "SHOPIFY_IN_PROGRESS" : "BATCH_IN_PROGRESS";
             profile.Version++;
             await SetListingStatus(tenantId, connectionId, profile.Id, profile.ActualStatus, null, cancellationToken, payload.PayloadHash);
             await db.SaveChangesAsync(cancellationToken);
-            return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", ProductBatchResultPolicy.WaitingMessage(marketplaceName, listings.Count - missingKeys.Count, listings.Count), TimeSpan.FromSeconds(15), payload.ExternalOperationId);
+            // Shopify's answer is kept with the job and does not change while it waits: one wait to the end of the grace.
+            var wait = isShopify ? ProductBatchResultPolicy.IncompleteGrace - elapsed : TimeSpan.FromSeconds(15);
+            return JobExecutionResult.Retry("PRODUCT_BATCH_PENDING", ProductBatchResultPolicy.WaitingMessage(marketplaceName, listings.Count - missingKeys.Count, listings.Count), wait < TimeSpan.FromSeconds(15) ? TimeSpan.FromSeconds(15) : wait, payload.ExternalOperationId);
         }
 
-        // A Trendyol barcode the store already holds is read by barcode in the approval check, as an unlisted one is.
-        var existingKeys = isTrendyol
-            ? resultByKey.Where(x => !missingKeys.Contains(x.Key) && !x.Value.Succeeded && ProductBatchResultPolicy.SaysBarcodeExists(LineReason(x.Value))).Select(x => x.Key).ToHashSet(StringComparer.OrdinalIgnoreCase)
-            : [];
+        // A barcode the marketplace refuses as one the store already holds (each marketplace in its own words) is read
+        // by barcode in the approval check, as an unlisted one is: the product may be there, only the panel does not know it.
+        var existingKeys = resultByKey.Where(x => !missingKeys.Contains(x.Key) && !x.Value.Succeeded && ProductBatchResultPolicy.SaysBarcodeExists(LineReason(x.Value))).Select(x => x.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var succeeded = 0;
         var unknown = 0;
         var missingReason = ProductBatchResultPolicy.MissingReason(marketplaceName);
@@ -731,10 +735,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             }
         }
         var refused = listings.Count - succeeded - unknown;
-        profile.ActualStatus = refused == 0 ? (isHepsiburada ? "IMPORT_ACCEPTED" : isShopify ? "LIVE" : "APPROVAL_PENDING") : succeeded + unknown == 0 ? "CREATE_REJECTED" : "PARTIAL_FAILURE";
+        profile.ActualStatus = refused == 0 ? (isHepsiburada ? "IMPORT_ACCEPTED" : isShopify && unknown == 0 ? "LIVE" : "APPROVAL_PENDING") : succeeded + unknown == 0 ? "CREATE_REJECTED" : "PARTIAL_FAILURE";
         profile.LastRejectionCode = listings.Select(x => x.RejectionCode).FirstOrDefault(x => x is not null);
         profile.Version++;
-        if (succeeded + unknown > 0 && !isShopify)
+        // Shopify has no approval step, but a SKU its answer left out is read by the same check (by SKU).
+        if (isShopify ? unknown > 0 : succeeded + unknown > 0)
             await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, payload.ExternalOperationId);
         string? ListingReason(ChannelListingVariant listing)
         {
@@ -970,6 +975,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         foreach (var listing in candidates)
         {
             var remote = remoteByBarcode[approvalKey(listing)!];
+            // The adapters answer only these shared words: a state they do not recognise is UNKNOWN and a closed listing
+            // ARCHIVED, both of which go to review here (never read as waiting or live).
             var localStatus = remote.Status switch
             {
                 "APPROVED" => "LIVE",
@@ -1311,8 +1318,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     // Shopify answers each SKU at once. Every SKU missing from the store resets the card to unpublished; every SKU on
-    // an active product makes it live. Anything else (a read that fails, a draft product, some SKUs missing) leaves
-    // the state for a person to look at instead of guessing. A model family shares one Shopify product, so no product
+    // an active product makes it live. A draft product or a SKU not shown yet waits for the next check; anything else
+    // (a read that fails, an archived product, an unknown status) leaves the state for a person to look at instead of guessing. A model family shares one Shopify product, so no product
     // link is written here: the store's product is not this card's alone.
     private async Task<JobExecutionResult> ReconcileShopifyPublication(
         Guid tenantId,
@@ -1347,6 +1354,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         if (candidates.Count == listings.Count && ProductApprovalReconciliationPolicy.ShouldResetMissingPublication(listings.Count, remote))
             return await ResetMissingPublication(tenantId, connectionId, profile, listings, states, payload.PayloadHash, payload.JobId, cancellationToken);
+        // A draft product or a SKU Shopify does not show yet waits like a pending approval elsewhere (until the
+        // deadline); an archived product or a status the adapter does not know goes to review.
+        if (remote.Count == candidates.Count
+            && remote.All(status => status.Status is "APPROVED" or "PENDING_APPROVAL" or "NOT_FOUND")
+            && remote.Any(status => status.Status is "PENDING_APPROVAL" or "NOT_FOUND"))
+            return JobExecutionResult.Retry("PRODUCT_APPROVAL_PENDING", "Shopify ürünü henüz etkin değil veya stok kodu henüz görünmüyor.", ProductApprovalReconciliationPolicy.PendingRecheckDelay(payload.StartedAt, payload.DeadlineAt, timeProvider.GetUtcNow()));
         if (remote.Count != candidates.Count || remote.Any(status => !string.Equals(status.Status, "APPROVED", StringComparison.Ordinal)))
         {
             var missing = remote.Where(status => !string.Equals(status.Status, "APPROVED", StringComparison.Ordinal)).Select(status => $"{status.Barcode} ({status.Status})");
@@ -2432,7 +2445,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var sendLog = await PriceStockSendLogRecorder.PendingAsync(db, tenantId, job.Id, payload.ExternalOperationId, timeProvider.GetUtcNow(), cancellationToken);
         if (string.Equals(platformCode, "PAZARAMA", StringComparison.OrdinalIgnoreCase))
             return await RecordPazaramaPriceInventory(tenantId, connectionId, job.Id, payload, offers, lineByBarcode, sendLog, StockCurrent, PriceCurrent, cancellationToken);
-        var success = 0; var failed = 0; var superseded = 0;
+        var success = 0; var failed = 0; var superseded = 0; var uncertain = 0;
         var unknownCodes = new Dictionary<Guid, string>();
         var confirmedCodes = new List<Guid>();
         foreach (var line in payload.Lines)
@@ -2446,17 +2459,20 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : lineByBarcode.TryGetValue(isPttAvm ? line.ExternalVariantId ?? line.Barcode : line.Barcode, out var remoteLineByBarcode)
                     ? (Found: true, Remote: remoteLineByBarcode)
                     : (Found: false, Remote: (RemoteOperationLine?)null);
-            // PTT AVM answers per product barcode; a product it leaves out of the answer is reported and sent again
-            // with the next change, while the products it did answer are recorded.
-            if (!found.Found && isPttAvm)
+            // A line the answer does not name (Trendyol, n11, PTT AVM; Pazarama is judged below in its own way) is
+            // neither applied nor refused: it stays uncertain (UNKNOWN), is not recorded as sent, so the same values go
+            // again with the next send, and the job asks for a look. The lines the answer names are recorded as usual.
+            // Only Hepsiburada lists the refused lines alone, so there a line left out was applied (its API says so).
+            if (!found.Found && !isHepsiburada)
             {
-                failed++;
-                var missing = $"PTT AVM fiyat-stok sonucu {line.ExternalVariantId ?? line.Barcode} ürününü içermiyor; {line.Barcode} gönderilmiş sayılmadı.";
-                await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.ExternalVariantId ?? line.Barcode}:PTTAVM_TRACKING_LINE_MISSING", "PTTAVM_TRACKING_LINE_MISSING", missing, cancellationToken);
-                sendLog.Settle(line, PriceStockSendResults.Failed, "PTTAVM_TRACKING_LINE_MISSING", missing);
+                uncertain++;
+                var missingCode = isPttAvm ? "PTTAVM_TRACKING_LINE_MISSING" : "PRICE_INVENTORY_LINE_UNCONFIRMED";
+                var missingKey = isPttAvm ? line.ExternalVariantId ?? line.Barcode : line.Barcode;
+                var missing = $"Pazar yeri fiyat-stok sonucu {missingKey} için satır vermedi; {line.Barcode} için sonuç belirsiz, gönderilmiş sayılmadı.";
+                await RecordIssue(tenantId, $"price-inventory:{connectionId}:{missingKey}:{missingCode}", missingCode, missing, cancellationToken);
+                sendLog.Settle(line, PriceStockSendResults.Unknown, missingCode, missing);
                 continue;
             }
-            if (!found.Found && !isHepsiburada) return await SettleSendLogAsync(tenantId, job.Id, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
             // A Hepsiburada upload that failed as a whole proves nothing of the lines it leaves out: they are not recorded
             // as sent, so the same values go again with the next send.
             if (!found.Found && operation.Value.UnlistedLinesUnconfirmed)
@@ -2511,6 +2527,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // A code refused as unknown is looked up at the marketplace by itself: a well-formed answer without it breaks
         // the link at once, one with it heals the link, and anything else leaves the strikes above to decide.
         await QueueListingLookupsForRefusedCodes(tenantId, connectionId, unknownCodes.Keys.ToArray(), cancellationToken);
+        if (uncertain > 0) return UncertainLinesResult(uncertain, failed, payload.ExternalOperationId);
         if (failed == 0) return SupersededNote(superseded) ?? JobExecutionResult.Success();
         return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }
@@ -2720,15 +2737,23 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // A value Pazarama refused because it already holds it is recorded as sent. A list split after such a refusal
         // carries one part per piece, so each barcode is judged by the part that carried it.
         var outcomeOf = MarketplaceHub.Infrastructure.Adapters.Pazarama.PazaramaBatchMapper.LineOutcomes(payload.ExternalOperationId!, payload.PayloadJson);
-        var success = 0; var failed = 0; var superseded = 0;
+        var success = 0; var failed = 0; var superseded = 0; var uncertain = 0;
         var unknownCodes = new Dictionary<Guid, string>();
         var confirmedCodes = new List<Guid>();
         foreach (var line in payload.Lines)
         {
             lineByBarcode.TryGetValue(line.Barcode, out var remote);
             var (priceOk, stockOk, notSentCode, missingResult) = outcomeOf(line.Barcode, remote);
+            // A barcode a sent request's result does not name: uncertain, not recorded as sent (as on the other
+            // marketplaces), while the barcodes it names are recorded.
             if (missingResult)
-                return await SettleSendLogAsync(tenantId, jobId, payload, PriceStockSendResults.Unknown, JobExecutionResult.ManualReview("PRICE_INVENTORY_BATCH_CONTRACT_INVALID", "Fiyat-stok batch sonucu tüm barkodları içermiyor.", payload.ExternalOperationId), cancellationToken);
+            {
+                uncertain++;
+                var missing = $"Pazarama fiyat-stok sonucu {line.Barcode} için satır vermedi; sonuç belirsiz, gönderilmiş sayılmadı.";
+                await RecordIssue(tenantId, $"price-inventory:{connectionId}:{line.Barcode}:PRICE_INVENTORY_LINE_UNCONFIRMED", "PRICE_INVENTORY_LINE_UNCONFIRMED", missing, cancellationToken);
+                sendLog.Settle(line, PriceStockSendResults.Unknown, "PRICE_INVENTORY_LINE_UNCONFIRMED", missing);
+                continue;
+            }
             var code = remote?.ErrorCode;
             var offer = offers[line.OfferId];
             // Per line, as on the other marketplaces: what Pazarama took is its confirmed value, and a mark moves on only
@@ -2766,9 +2791,15 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             await db.SaveChangesAsync(cancellationToken);
         }
         await QueueListingLookupsForRefusedCodes(tenantId, connectionId, unknownCodes.Keys.ToArray(), cancellationToken);
+        if (uncertain > 0) return UncertainLinesResult(uncertain, failed, payload.ExternalOperationId);
         if (failed == 0) return SupersededNote(superseded) ?? JobExecutionResult.Success();
         return success == 0 ? JobExecutionResult.Blocked("PRICE_INVENTORY_REJECTED", "Pazar yeri fiyat-stok batch içindeki tüm satırları reddetti.", payload.ExternalOperationId) : JobExecutionResult.ManualReview("PRICE_INVENTORY_PARTIAL_FAILURE", "Pazar yeri fiyat-stok batch kısmi başarısızlıkla tamamlandı.", payload.ExternalOperationId);
     }
+
+    // Lines the answer did not name are uncertain: the job asks for a look, saying how many, beside any refusals.
+    internal static JobExecutionResult UncertainLinesResult(int uncertain, int refused, string? operationId) =>
+        JobExecutionResult.ManualReview("PRICE_INVENTORY_LINES_UNCONFIRMED",
+            $"Pazar yeri fiyat-stok sonucu {uncertain} satırı adlandırmadı; bu satırların sonucu belirsiz ve gönderilmiş sayılmadı{(refused > 0 ? $", {refused} satır reddedildi" : "")}.", operationId);
 
     // The adapter's own code and message stay in the summary, so the cause of an uncertain create can be read.
     internal static string AmbiguousCreateSummary(AdapterError error) =>
@@ -2814,7 +2845,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return true;
     }
 
-    private static bool IsAmbiguous(AdapterError error) => error.Class is AdapterErrorClass.TransientNetwork or AdapterErrorClass.Remote5xx or AdapterErrorClass.ContractViolation or AdapterErrorClass.InternalBug;
+    private static bool IsAmbiguous(AdapterError error) => WriteOutcomePolicy.IsUncertain(error);
     // An n11 task body carries its SKUs under payload.skus.
     internal static bool HasItems(string payloadJson) { try { using var doc = JsonDocument.Parse(payloadJson); var root = doc.RootElement; return root.ValueKind == JsonValueKind.Array ? root.GetArrayLength() > 0 : root.ValueKind == JsonValueKind.Object && (root.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array && items.GetArrayLength() > 0 || root.TryGetProperty("payload", out var n11) && n11.ValueKind == JsonValueKind.Object && n11.TryGetProperty("skus", out var skus) && skus.ValueKind == JsonValueKind.Array && skus.GetArrayLength() > 0); } catch (JsonException) { return false; } }
     private static string UpdatePayload(ProductUpdateJobPayload payload, string phase) => phase switch { "SUBMIT_UNAPPROVED" or "POLL_UNAPPROVED" => payload.UnapprovedPayloadJson, "SUBMIT_CONTENT" or "POLL_CONTENT" => payload.ApprovedContentPayloadJson, "SUBMIT_VARIANTS" or "POLL_VARIANTS" => payload.ApprovedVariantPayloadJson, "SUBMIT_DELIVERY" or "POLL_DELIVERY" => payload.ApprovedDeliveryPayloadJson, _ => "{}" };
@@ -3218,8 +3249,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var connection = await db.PlatformConnections.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM"), cancellationToken); if (connection is null) return false; var now = timeProvider.GetUtcNow(); connection.LastTestedAt = now;
         IConnectionPort port = connections;
-        var context = Context(tenantId, connectionId, correlationId, "connection-test"); TrackRequest(); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { TrackResultFailure(result.Error); connection.LastErrorCode = result.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
-        TrackRequest(); var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { TrackResultFailure(discovery.Error); connection.LastErrorCode = discovery.Error!.Code; connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
+        var context = Context(tenantId, connectionId, correlationId, "connection-test"); TrackRequest(); var result = await port.TestAsync(context, cancellationToken); if (!result.IsSuccess) { TrackResultFailure(result.Error); connection.LastErrorCode = result.Error!.Code; connection.LastErrorClass = result.Error.Class.ToString(); connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(result.Error!); }
+        TrackRequest(); var discovery = await port.DiscoverCapabilitiesAsync(context, cancellationToken); if (!discovery.IsSuccess) { TrackResultFailure(discovery.Error); connection.LastErrorCode = discovery.Error!.Code; connection.LastErrorClass = discovery.Error.Class.ToString(); connection.Version++; await db.SaveChangesAsync(cancellationToken); throw JobProcessingException.FromAdapter(discovery.Error!); }
         if (connection.PlatformCode == "SHOPIFY")
         {
             connection.ApiVersion = result.Value!.ApiVersion;
@@ -3257,6 +3288,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(supportedAfter.Contains))
         {
             connection.LastErrorCode = $"{connection.PlatformCode}_REQUIRED_READ_CAPABILITY";
+            connection.LastErrorClass = nameof(AdapterErrorClass.NotSupported);
             connection.Version++;
             await db.SaveChangesAsync(cancellationToken);
             throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.NotSupported, connection.LastErrorCode,
@@ -3266,6 +3298,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             && !new[] { MarketplaceCapabilities.ProductRead, MarketplaceCapabilities.OrderRead }.All(code => discovery.Value.Any(item => item.Code == code && item.SupportLevel == "SUPPORTED")))
         {
             connection.LastErrorCode = "SHOPIFY_REQUIRED_READ_SCOPE";
+            connection.LastErrorClass = nameof(AdapterErrorClass.Authentication);
             connection.Version++;
             await db.SaveChangesAsync(cancellationToken);
             var failedCapabilities = discovery.Value
@@ -3279,7 +3312,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 : string.Join(" ", failedCapabilities);
             throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.Authentication, "SHOPIFY_REQUIRED_READ_SCOPE", $"{detail} Gerekli izinler: read_products, read_inventory, read_orders ve read_locations.", 403, null, null));
         }
-        connection.LastSuccessAt = now; connection.LastErrorCode = null; if (connection.Status == "DRAFT") connection.Status = "VERIFIED"; connection.Version++; await db.SaveChangesAsync(cancellationToken); return true;
+        connection.LastSuccessAt = now; connection.LastErrorCode = null; connection.LastErrorClass = null; if (connection.Status == "DRAFT") connection.Status = "VERIFIED"; connection.Version++; await db.SaveChangesAsync(cancellationToken); return true;
     }
 
 

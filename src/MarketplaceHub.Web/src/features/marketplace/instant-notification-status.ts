@@ -3,7 +3,11 @@ import type { WebhookSetup } from './webhook-setup'
 // GET /connections/{id}/instant-notifications (InstantNotificationService.StatusAsync): the connection's webhook as the
 // integration page shows it. The overview reads the same answer under the same query key.
 export type InstantNotificationState = 'UNSUPPORTED' | 'OFF' | 'ACTIVE' | 'PASSIVE' | 'MISSING' | 'UNKNOWN' | 'WAITING' | 'QUIET' | 'CONNECTION_INACTIVE'
-export type InstantNotificationStatus = { state: InstantNotificationState; endpoint: string | null; registeredAt: string | null; lastReceivedAt: string | null; receivedLast24Hours: number; message: string | null; setup?: WebhookSetup | null; lastRejectedAt?: string | null; lastRejectedReason?: string | null; previousPreparedAt?: string | null; adoptableFrom?: { connectionName: string; environment: string; preparedAt: string } | null }
+export type InstantNotificationStatus = { state: InstantNotificationState; endpoint: string | null; registeredAt: string | null; lastReceivedAt: string | null; receivedLast24Hours: number; message: string | null; setup?: WebhookSetup | null; lastRejectedAt?: string | null; lastRejectedReason?: string | null; previousPreparedAt?: string | null; adoptableFrom?: { connectionName: string; environment: string; preparedAt: string } | null; routeOnly?: boolean }
+
+// A Shopify webhook opened without the app's secret key is admitted by its secret address and store name alone; the
+// panel asks for the key so every delivery's signature is checked too.
+export const routeOnlyWebhookMessage = 'Bu webhook Uygulama Gizli Anahtarı olmadan açık: bildirimler yalnız gizli adres ve mağaza adıyla kabul ediliyor, imzaları doğrulanmıyor. Webhook’u kapatıp uygulamanın API secret key’ini girerek yeniden açın.'
 
 // ACTIVE comes only once notifications have arrived and keep arriving: before the first one the server says WAITING,
 // and QUIET when an order came without its notification. The marketplace is named by instantNotificationStateLabel.

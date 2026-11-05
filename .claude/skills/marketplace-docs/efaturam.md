@@ -12,6 +12,9 @@ Code: `Adapters/TrendyolEFaturam/` — `TrendyolEFaturamHttpClient.cs`, `Trendyo
 - Stage `https://stage-apigateway.trendyolefaturam.com/` (IP whitelist), production `https://apigateway.trendyolecozum.com/`.
 - `POST api/auth/signin` returns the token in `x-access-token`; the JWT carries `companyId`, `userId` and `privs`.
   Our account is a direct API_USER (source `PORTAL`), not a marketplace partner: the token has no partner id.
+- A 408 is a timeout (EFATURAM_REMOTE_TIMEOUT, TransientNetwork), not a refusal: on an invoice creation the outcome
+  is unknown (`InvoiceSubmissionOutcomePolicy`) and the invoice is read back by its own UUID, never sent again blind
+  (`TrendyolEFaturamErrorMapper.FromStatus`, report item 16, 5 Nov 2026). Before, a 408 read as "request refused".
 
 ## e-Fatura taxpayer lookup (live since 31 Oct 2026)
 - `GET api/invoice/taxpayers/{taxId}?showDeleted=false` ("Mükellef Sorgulama / getTaxPayersByTaxId").

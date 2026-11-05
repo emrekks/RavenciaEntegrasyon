@@ -4848,6 +4848,16 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 var active = (await Service(db).StatusAsync(tenant.Id, connection.Id, "status", CancellationToken.None)).Value!;
                 Assert.Equal("ACTIVE", active.State);
                 Assert.Null(active.LastRejectedAt);
+                // A package of another seller (supplierId) is answered 200, recorded and dropped; this seller's is taken.
+                var receiver = new MarketplaceWebhookService(db, hasher, new TrendyolWebhookVerifier(db, dataProtection), fixture.TimeProvider);
+                var routeToken = port.CreatedUrl!.Split('/').Last();
+                var basic = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes($"{port.CreatedUsername}:{port.CreatedPassword}"));
+                var foreign = await receiver.ReceiveAsync(connection.PublicId, routeToken, Encoding.UTF8.GetBytes("""{"content":[{"orderNumber":"2","shipmentPackageId":2,"supplierId":99999999}]}"""), new Dictionary<string, string> { ["Authorization"] = basic }, "webhook-test", CancellationToken.None);
+                Assert.Null(foreign.Error);
+                Assert.False(foreign.Value);
+                Assert.True(await db.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.DedupeKey == MarketplaceWebhookService.RejectedPrefix(connection.Id) + MarketplaceWebhookService.MerchantMismatchCode && x.Status == IssueStatus.Open));
+                var own = await receiver.ReceiveAsync(connection.PublicId, routeToken, Encoding.UTF8.GetBytes($$"""{"content":[{"orderNumber":"3","shipmentPackageId":3,"supplierId":"{{connection.ExternalStoreId}}"}]}"""), new Dictionary<string, string> { ["Authorization"] = basic }, "webhook-test", CancellationToken.None);
+                Assert.True(own.Value);
                 var disabled = await Service(db).DisableAsync(tenant.Id, connection.Id, "disable", CancellationToken.None);
                 Assert.Equal("OFF", disabled.Value!.State);
             }
@@ -5140,16 +5150,35 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
             await using (var db = fixture.CreateContext())
             {
                 var receiver = new MarketplaceWebhookService(db, hasher, new MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier(db, dataProtection), fixture.TimeProvider);
-                var headers = new Dictionary<string, string> { ["X-Shopify-Hmac-Sha256"] = "unverifiable", ["X-Shopify-Topic"] = "orders/updated", ["X-Shopify-Webhook-Id"] = "delivery-2" };
-                var received = await receiver.ReceiveAsync(connection.PublicId, port.CreatedUrl!.Split('/').Last(), Encoding.UTF8.GetBytes("""{"id":123}"""), headers, "webhook-test", CancellationToken.None);
+                var route = port.CreatedUrl!.Split('/').Last();
+                // A route-only delivery must name this store (X-Shopify-Shop-Domain): nothing else ties it to the store.
+                var headers = new Dictionary<string, string> { ["X-Shopify-Hmac-Sha256"] = "unverifiable", ["X-Shopify-Topic"] = "orders/updated", ["X-Shopify-Webhook-Id"] = "delivery-2", ["X-Shopify-Shop-Domain"] = $"{connection.ExternalStoreId}.myshopify.com" };
+                var received = await receiver.ReceiveAsync(connection.PublicId, route, Encoding.UTF8.GetBytes("""{"id":123}"""), headers, "webhook-test", CancellationToken.None);
                 Assert.Null(received.Error);
+                Assert.True(received.Value);
                 var wrongRoute = await receiver.ReceiveAsync(connection.PublicId, "wrong-route", Encoding.UTF8.GetBytes("""{"id":123}"""), headers, "webhook-test", CancellationToken.None);
                 Assert.NotNull(wrongRoute.Error);
+                // Another store's delivery, or one naming no store, is answered 200, recorded and dropped.
+                var otherShop = new Dictionary<string, string>(headers) { ["X-Shopify-Shop-Domain"] = "another-store.myshopify.com" };
+                var foreign = await receiver.ReceiveAsync(connection.PublicId, route, Encoding.UTF8.GetBytes("""{"id":124}"""), otherShop, "webhook-test", CancellationToken.None);
+                Assert.Null(foreign.Error);
+                Assert.False(foreign.Value);
+                var unnamed = new Dictionary<string, string>(headers);
+                unnamed.Remove("X-Shopify-Shop-Domain");
+                Assert.False((await receiver.ReceiveAsync(connection.PublicId, route, Encoding.UTF8.GetBytes("""{"id":125}"""), unnamed, "webhook-test", CancellationToken.None)).Value);
+                // A topic the panel does not subscribe to is recorded as an unknown event, not taken for an order.
+                var unknownTopic = new Dictionary<string, string>(headers) { ["X-Shopify-Topic"] = "customers/create" };
+                var unknown = await receiver.ReceiveAsync(connection.PublicId, route, Encoding.UTF8.GetBytes("""{"id":126}"""), unknownTopic, "webhook-test", CancellationToken.None);
+                Assert.Null(unknown.Error);
+                Assert.False(unknown.Value);
+                Assert.True(await db.OperationalIssues.AnyAsync(x => x.TenantId == tenant.Id && x.Code == "WEBHOOK_UNKNOWN_EVENT"));
+                Assert.Equal(1, await db.IntegrationJobs.CountAsync(x => x.TenantId == tenant.Id && x.TriggerType == "webhook"));
             }
         }
         finally
         {
             await using var cleanupDb = fixture.CreateContext();
+            await cleanupDb.OperationalIssues.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.InboxMessages.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await cleanupDb.WebhookSubscriptions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();

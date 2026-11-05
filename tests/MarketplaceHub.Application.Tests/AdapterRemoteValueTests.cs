@@ -194,7 +194,8 @@ public sealed class AdapterRemoteValueTests
     {
         const string html = "<html><body><h1>403 Forbidden</h1></body></html>";
 
-        Assert.Equal(AdapterErrorClass.Authentication, N11HttpClient.SoapHttpError(HttpStatusCode.Forbidden, html, "GetSettlementList")!.Class);
+        // A 403 HTML page is the security gateway on every marketplace (a temporary block); a 401 is the credentials.
+        Assert.Equal(AdapterErrorClass.RateLimit, N11HttpClient.SoapHttpError(HttpStatusCode.Forbidden, html, "GetSettlementList")!.Class);
         Assert.Equal(AdapterErrorClass.Authentication, N11HttpClient.SoapHttpError(HttpStatusCode.Unauthorized, html, "GetSettlementList")!.Class);
         Assert.Equal(AdapterErrorClass.Remote5xx, N11HttpClient.SoapHttpError(HttpStatusCode.BadGateway, html, "GetSettlementList")!.Class);
         Assert.Null(N11HttpClient.SoapHttpError(HttpStatusCode.OK, "<x/>", "GetSettlementList"));

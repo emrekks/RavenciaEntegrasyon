@@ -15,7 +15,7 @@ export function deliveryText(item: Order): DeliveryInfo {
   if (item.derivedStatus === 'CANCELLED') return { kind: 'cancelled', label: 'İptal Tarihi', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'İptal zamanı bekleniyor', note: null, overdue: false }
   if (item.derivedStatus === 'DELIVERED') return { kind: 'delivered', label: 'Teslim Edildi', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Teslimat zamanı bekleniyor', note: null, overdue: false }
   if (item.derivedStatus === 'UNVERIFIED') return { kind: 'status', label: 'Sipariş Durumu', value: 'Durumu doğrulanmadı', note: 'Paket veya güncel sipariş yaşam döngüsü bilgisi bulunmadığından teslimat durumu doğrulanamadı.', overdue: false }
-  if (item.derivedStatus === 'PAYMENT_PENDING') return { kind: 'status', label: 'Sipariş Durumu', value: 'Trendyol ödeme onayı bekleniyor', note: 'Ödeme onaylanana kadar paket işlemleri kullanılamaz.', overdue: false }
+  if (item.derivedStatus === 'PAYMENT_PENDING') return { kind: 'status', label: 'Sipariş Durumu', value: 'Ödeme onayı bekleniyor', note: 'Ödeme onaylanana kadar paket işlemleri kullanılamaz.', overdue: false }
   // An undelivered order reads the same on every marketplace, Hepsiburada included (item 6, 5 Nov 2026).
   if (['SHIPPED', 'UNDELIVERED'].includes(item.derivedStatus)) return { kind: 'shipping', label: 'Taşıma Durumunda', value: shipment?.statusOccurredAt ? longDate(shipment.statusOccurredAt) : 'Kargo zamanı bekleniyor', note: 'Kargoya teslim edildi', overdue: false }
   if (item.derivedStatus === 'ON_HOLD') return { kind: 'status', label: 'Sipariş Durumu', value: onHoldOrderStatusText(item.platformCode, rawStatuses), note: null, overdue: false }

@@ -11,6 +11,9 @@ internal static class TrendyolEFaturamErrorMapper
         HttpStatusCode.TooManyRequests => new(AdapterErrorClass.RateLimit, "EFATURAM_RATE_LIMITED", "E-Faturam hız sınırı yanıtı verdi.", 429, retryAfter, remoteRequestId),
         HttpStatusCode.NotFound => new(AdapterErrorClass.NotFound, "EFATURAM_RESOURCE_NOT_FOUND", "E-Faturam kaynağı bulunamadı.", 404, null, remoteRequestId),
         HttpStatusCode.Conflict => new(AdapterErrorClass.BusinessConflict, "EFATURAM_CONFLICT", "E-Faturam aynı işleme ilişkin çakışma bildirdi.", 409, null, remoteRequestId),
+        // A 408 says E-Faturam stopped waiting, not that it refused: on an invoice creation the invoice may exist. It is
+        // a timeout (outcome unknown, InvoiceSubmissionOutcomePolicy), read back by the invoice's own UUID, never resent blind.
+        HttpStatusCode.RequestTimeout => new(AdapterErrorClass.TransientNetwork, "EFATURAM_REMOTE_TIMEOUT", "E-Faturam isteği kendi tarafında zaman aşımına uğrattı; sonuç faturanın kimliğiyle sorgulanacak.", 408, retryAfter ?? TimeSpan.FromSeconds(30), remoteRequestId),
         >= HttpStatusCode.InternalServerError => new(AdapterErrorClass.Remote5xx, "EFATURAM_SERVER_ERROR", "E-Faturam geçici sunucu hatası verdi.", (int)status, retryAfter, remoteRequestId),
         _ => new(AdapterErrorClass.Validation, "EFATURAM_REQUEST_REJECTED", "E-Faturam isteği reddetti.", (int)status, null, remoteRequestId)
     };

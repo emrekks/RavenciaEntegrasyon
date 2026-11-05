@@ -43,7 +43,7 @@ public sealed class PazaramaOperationIdTests
     }
 
     [Fact]
-    public void ABatchFinishedWithOnlyFailuresListedReportsTheOtherBarcodesFromTheId()
+    public void ABatchFinishedWithOnlyFailuresListedLeavesTheOtherBarcodesUnknown()
     {
         var operationId = PazaramaOperationId.Batch(Guid.NewGuid().ToString(), ["B1", "B2"]);
         PazaramaOperationId.TryBatch(operationId, out _, out var codes);
@@ -51,7 +51,9 @@ public sealed class PazaramaOperationIdTests
 
         var status = PazaramaProductWriteMapper.BatchStatus(json.RootElement, operationId, codes);
 
-        Assert.True(status.Lines.Single(line => line.ExternalKey == "B1").Succeeded);
+        // B1 is not named: not created, not refused; the approval check reads it by barcode.
+        Assert.DoesNotContain(status.Lines, line => line.ExternalKey == "B1");
+        Assert.True(status.UnlistedLinesUnconfirmed);
         Assert.False(status.Lines.Single(line => line.ExternalKey == "B2").Succeeded);
     }
 

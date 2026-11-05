@@ -66,6 +66,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         connection.LastTestedAt = now;
         var result = await provider.TestConnectionAsync(Context(tenantId, connectionId, correlationId, "connection-test"), cancellationToken);
         connection.LastErrorCode = result.Error?.Code;
+        connection.LastErrorClass = result.Error?.Class.ToString();
         if (result.IsSuccess)
         {
             connection.LastSuccessAt = now;

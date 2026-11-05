@@ -355,11 +355,8 @@ public sealed partial class PazaramaHttpClient(
         };
     }
 
-    internal static bool LooksLikeHtml(string body)
-    {
-        var trimmed = body.AsSpan().TrimStart();
-        return trimmed.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) || trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase);
-    }
+    // The shared test (MarketplaceErrorRules); Pazarama keeps its own wording for the gateway block above.
+    internal static bool LooksLikeHtml(string body) => MarketplaceErrorRules.LooksLikeHtml(body);
 
     // A 200 answer can still say success=false; userMessage is meant for the seller.
     internal static AdapterError? EnvelopeError(JsonElement root)

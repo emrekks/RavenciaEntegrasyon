@@ -177,14 +177,14 @@ public sealed class PazaramaProductWriteTests
         Assert.Equal("IN_PROGRESS", PazaramaProductWriteMapper.BatchStatus(Parse(Batch(1)), "b:x:2", ["B1", "B2"]).Status);
 
     [Fact]
-    public void A_done_batch_reports_failures_and_the_remembered_rest_as_accepted()
+    public void A_done_batch_reports_failures_and_leaves_the_unnamed_rest_unknown()
     {
         var status = PazaramaProductWriteMapper.BatchStatus(Parse(Batch(2, """{"productName":"x","productCode":"B2","errorReason":"Özellik eksik"}""")), "b:x:2", ["B1", "B2"]);
 
         Assert.Equal("COMPLETED", status.Status);
-        var b1 = status.Lines.Single(x => x.ExternalKey == "B1");
+        Assert.DoesNotContain(status.Lines, x => x.ExternalKey == "B1");
+        Assert.True(status.UnlistedLinesUnconfirmed);
         var b2 = status.Lines.Single(x => x.ExternalKey == "B2");
-        Assert.True(b1.Succeeded);
         Assert.False(b2.Succeeded);
         Assert.Equal("PAZARAMA_PRODUCT_REJECTED", b2.ErrorCode);
         Assert.Contains("Özellik eksik", b2.Status);
@@ -225,12 +225,13 @@ public sealed class PazaramaProductWriteTests
     }
 
     [Fact]
-    public void An_error_batch_that_lists_its_failures_keeps_the_remembered_rest_as_accepted()
+    public void An_error_batch_that_lists_its_failures_leaves_the_unnamed_rest_unknown()
     {
         var status = PazaramaProductWriteMapper.BatchStatus(Parse(Batch(3, """{"productCode":"B2","errorReason":"Görsel eksik"}""")), "b:x:2", ["B1", "B2"]);
 
         Assert.Equal("COMPLETED", status.Status);
-        Assert.True(status.Lines.Single(x => x.ExternalKey == "B1").Succeeded);
+        Assert.DoesNotContain(status.Lines, x => x.ExternalKey == "B1");
+        Assert.True(status.UnlistedLinesUnconfirmed);
         Assert.False(status.Lines.Single(x => x.ExternalKey == "B2").Succeeded);
     }
 
@@ -244,13 +245,14 @@ public sealed class PazaramaProductWriteTests
     }
 
     [Fact]
-    public void A_done_batch_without_lines_still_accepts_the_remembered_barcodes()
+    public void A_done_batch_without_lines_leaves_the_remembered_barcodes_unknown()
     {
         var status = PazaramaProductWriteMapper.BatchStatus(Parse(Batch(2)), "b:x:2", ["B1", "B2"]);
 
+        // Nothing named is nothing known: neither created nor refused, settled by the approval check.
         Assert.Equal("COMPLETED", status.Status);
-        Assert.All(status.Lines, line => Assert.True(line.Succeeded));
-        Assert.Equal(2, status.Lines.Count);
+        Assert.Empty(status.Lines);
+        Assert.True(status.UnlistedLinesUnconfirmed);
     }
 
     [Theory]
@@ -298,6 +300,8 @@ public sealed class PazaramaProductWriteTests
     [InlineData("""{"code":"B1","status":null,"waitingApproveExp":null}""", "PENDING_APPROVAL", null)]
     [InlineData("""{"code":"B1","status":"Onay bekliyor","waitingApproveExp":"İnceleniyor"}""", "PENDING_APPROVAL", null)]
     [InlineData("""{"code":"B1","status":"Reddedildi","waitingApproveExp":"Görsel uygun değil"}""", "REJECTED", "PAZARAMA_PRODUCT_REJECTED")]
+    // A text the panel does not know stays unknown (the approval check sends it to review), never "waiting".
+    [InlineData("""{"code":"B1","status":"Askıya alındı","waitingApproveExp":null}""", "UNKNOWN", null)]
     public void Unapproved_products_wait_or_were_turned_down(string json, string status, string? code)
     {
         var result = PazaramaProductWriteMapper.Publication(Parse(json), "B1", unapproved: true);

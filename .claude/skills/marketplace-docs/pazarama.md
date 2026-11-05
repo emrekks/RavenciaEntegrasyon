@@ -81,6 +81,15 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
   with an issue and a re-read; a read without the field is lira. An order with an unreadable item takes `orderAmount`
   as its amount; an order without `orderDate` is refused and read again, never dated by an item's history (5 Nov 2026,
   `PazaramaOrderMapper.cs`).
+- Unapproved list (`product/products/unapproved`): "onay sürecinde olan veya reddedilen" products; the documented
+  sample sends `status` and `waitingApproveExp` null (`pazarama-api-son.md:1160-1200`, no value list). The panel reads
+  no text as waiting, "red…" (without "bekl…") as REJECTED, "bekl…"/"incele…" as waiting, and any other text as
+  UNKNOWN (review), never as waiting (`PazaramaProductWriteMapper.Publication`, report item 13, 5 Nov 2026).
+- Product create batch (status 2 done / 3 error) names its failed and, sometimes, its done products. A sent barcode
+  it names neither way is no longer taken as created: it is CREATE_RESULT_UNKNOWN at once (the batch will not name it
+  later) and the approval check reads it from the lists (`PazaramaProductWriteMapper.BatchStatus`, report item 14).
+- Order list `data: null` is still read as an empty page (`PazaramaOrderMapper`): whether Pazarama answers an empty
+  window with `null` or `[]` needs a read-only look at live logs first (report item 15, left as is on 5 Nov 2026).
 
 ## Job types
 PAZARAMA_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min), _ORDER_STATUS_SYNC,

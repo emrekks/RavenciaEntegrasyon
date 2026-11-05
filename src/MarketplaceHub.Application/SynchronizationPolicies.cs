@@ -990,11 +990,24 @@ public static class ConnectionRetestPolicy
             || errorCode.EndsWith("_ACCESS_DENIED", StringComparison.Ordinal)
             || errorCode is "CREDENTIALS_REJECTED" or "ACCESS_DENIED");
 
-    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, DateTimeOffset now, DateTimeOffset? credentialSavedAt = null)
+    // The stored error class (AdapterErrorClass name, PlatformConnection.LastErrorClass) decides, the same measure on
+    // every marketplace: a quota or gateway refusal, a network fault or a server fault comes and goes; a refusal of the
+    // credentials or access is an auth refusal. A row without a class (written before the class was kept, or a code the
+    // panel set itself) falls back to the code's spelling.
+    public static bool IsTransientClass(string? errorClass) =>
+        errorClass is nameof(AdapterErrorClass.RateLimit) or nameof(AdapterErrorClass.TransientNetwork) or nameof(AdapterErrorClass.Remote5xx);
+
+    public static bool IsAuthRefusalClass(string? errorClass) => errorClass is nameof(AdapterErrorClass.Authentication);
+
+    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, DateTimeOffset now, DateTimeOffset? credentialSavedAt = null) =>
+        ShouldRetest(status, lastTestedAt, lastErrorCode, null, now, credentialSavedAt);
+
+    public static bool ShouldRetest(string status, DateTimeOffset? lastTestedAt, string? lastErrorCode, string? lastErrorClass, DateTimeOffset now, DateTimeOffset? credentialSavedAt = null)
     {
         if (status != "DRAFT" || lastTestedAt is not { } tested) return false;
-        if (IsTransient(lastErrorCode)) return now - tested >= Interval;
-        return IsAuthRefusal(lastErrorCode)
+        var classKnown = !string.IsNullOrWhiteSpace(lastErrorClass);
+        if (classKnown ? IsTransientClass(lastErrorClass) : IsTransient(lastErrorCode)) return now - tested >= Interval;
+        return (classKnown ? IsAuthRefusalClass(lastErrorClass) : IsAuthRefusal(lastErrorCode))
             && credentialSavedAt is { } saved && saved <= tested
             && now - saved < AuthRefusalWindow
             && now - tested >= AuthRefusalPause(saved, tested);

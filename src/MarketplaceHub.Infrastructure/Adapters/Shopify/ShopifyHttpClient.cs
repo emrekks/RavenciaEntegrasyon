@@ -488,7 +488,7 @@ public sealed partial class ShopifyHttpClient(
         catch (Exception exception) when (exception is FormatException or JsonException or ArgumentException) { return Unsupported<RemoteOperationStatus>("Shopify operation sonucu geçersiz."); }
     }
     // The publication state of one SKU: NOT_FOUND when no variant of the store carries it, APPROVED when an
-    // active product does, PENDING when its product is a draft or archived.
+    // active product does, PENDING_APPROVAL for a draft, ARCHIVED for an archived product, UNKNOWN otherwise.
     public async Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken)
     {
         var sku = barcode.Trim();
@@ -609,7 +609,15 @@ public sealed partial class ShopifyHttpClient(
         // A model family is one product: a card is live when its SKUs are variants of an active product, whichever card's
         // job wrote it.
         var product = matches[0].GetProperty("product");
-        var status = string.Equals(TextValue(product, "status"), "ACTIVE", StringComparison.OrdinalIgnoreCase) ? "APPROVED" : "PENDING";
+        // ProductStatus: ACTIVE is live, DRAFT not yet published (waits like an unapproved product), ARCHIVED a closed
+        // listing; any other status (UNLISTED, a new one) is unknown and goes to review.
+        var status = TextValue(product, "status")?.Trim().ToUpperInvariant() switch
+        {
+            "ACTIVE" => "APPROVED",
+            "DRAFT" => "PENDING_APPROVAL",
+            "ARCHIVED" => "ARCHIVED",
+            _ => "UNKNOWN"
+        };
         return new(sku, status, TextValue(product, "id"), TextValue(matches[0], "id"), null, matches[0].GetRawText());
     }
     public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => Unsupported<RemoteOperationRef>("Shopify ürün yazma ilk sürümde kapalıdır.");
@@ -1248,6 +1256,13 @@ public sealed partial class ShopifyHttpClient(
             JsonDocument? parsed = null;
             try { parsed = JsonDocument.Parse(raw); }
             catch (JsonException) when (!response.IsSuccessStatusCode) { }
+            // A success status whose body is not JSON (an HTML page from a proxy, a cut-off body) is a broken contract,
+            // reported as one instead of escaping the adapter as an exception.
+            catch (JsonException)
+            {
+                var requestId = response.Headers.TryGetValues("X-Request-ID", out var ids) ? ids.FirstOrDefault() : null;
+                return Failure<JsonDocument>(new(AdapterErrorClass.ContractViolation, "SHOPIFY_RESPONSE_NOT_JSON", "Shopify başarılı yanıtı JSON değil; yanıt okunamadı.", (int)HttpStatusCode.BadGateway, null, requestId));
+            }
             using var document = parsed;
             var rate = document is null ? null : ReadRateLimit(document);
             if (document is not null) LogQueryCost(document, context.Shop);
@@ -1849,7 +1864,10 @@ public sealed partial class ShopifyHttpClient(
         if (window.ModifiedBefore is { } until) terms.Add($"updated_at:<='{until.UtcDateTime:yyyy-MM-ddTHH:mm:ssZ}'");
         return terms.Count == 0 ? null : string.Join(' ', terms);
     }
-    internal static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) => status switch
+    internal static AdapterError MapHttpError(HttpStatusCode status, string body, TimeSpan? retryAfter = null, string? remoteRequestId = null) =>
+        MarketplaceErrorRules.GatewayBlocked(status, body, "Shopify", "SHOPIFY", remoteRequestId) ?? MapHttpStatus(status, retryAfter, remoteRequestId);
+
+    private static AdapterError MapHttpStatus(HttpStatusCode status, TimeSpan? retryAfter, string? remoteRequestId) => status switch
     {
         HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "SHOPIFY_ACCESS_DENIED", "Shopify erişim izni reddedildi.", (int)status, null, remoteRequestId),
         (HttpStatusCode)429 => new(AdapterErrorClass.RateLimit, "SHOPIFY_RATE_LIMITED", "Shopify API sınırına ulaşıldı.", (int)status, retryAfter ?? TimeSpan.FromSeconds(5), remoteRequestId),

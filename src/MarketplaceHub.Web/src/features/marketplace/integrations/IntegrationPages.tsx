@@ -12,7 +12,7 @@ import { statusLabel } from '../../../shared/status-labels'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { PlatformSquareMark } from '../../../shared/platform-square-mark'
 import { webhookSetupText, type WebhookSetup } from '../webhook-setup'
-import { instantNotificationsQueryKey, instantNotificationStateLabel, type InstantNotificationStatus } from '../instant-notification-status'
+import { instantNotificationsQueryKey, instantNotificationStateLabel, routeOnlyWebhookMessage, type InstantNotificationStatus } from '../instant-notification-status'
 import { RrModal, titleTr } from '../returns-ui'
 import { externalWriteEvidenceState, externalWriteGroupState } from '../external-write-group-state'
 import { lockPageScroll } from '../../../shared/hooks/useScrollLock'
@@ -421,6 +421,7 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
         {data.lastRejectedAt && <div><dt>Son Reddedilen</dt><dd>{time(data.lastRejectedAt)}</dd></div>}
       </dl>}
       {registered && data.lastRejectedReason && <p className="instant-notifications-message is-danger" role="alert">{data.lastRejectedReason}</p>}
+      {registered && shopify && data.routeOnly && <p className="instant-notifications-message" role="note">{routeOnlyWebhookMessage}</p>}
       {data.message
         ? <p className="instant-notifications-message" role="status">{data.message}</p>
         : !registered && !connectionActive && data.state !== 'UNSUPPORTED' && <p className="instant-notifications-message">Webhook’u açmak için önce bağlantıyı aktif edin.</p>}
@@ -445,7 +446,7 @@ function InstantNotificationsPanel({ connectionId, connectionActive, platformCod
         <li>Bildirim yalnız hangi siparişin değiştiğini söyler; panel o siparişi mevcut Shopify bağlantısıyla yeniden okur.</li>
         <li>Shopify başarısız gönderimlerden sonra bir aboneliği kaldırırsa panel bir saat içinde yeniden oluşturur.</li>
       </ul>
-      <label className="instant-notifications-secret"><FieldLabel text="Uygulama Gizli Anahtarı (İsteğe Bağlı)" helpId="shopify-webhook-secret-help" help="Girerseniz panel Shopify’ın her bildirime koyduğu imzayı da doğrular. Boş bırakabilirsiniz; bildirimler panelin ürettiği gizli adresle kabul edilir. Bu bağlantının erişim anahtarını üreten uygulamanın API secret key’i olmalıdır: Shopify’da uygulamanın API kimlik bilgileri bölümünde “API secret key” adıyla durur, harf ve rakamlardan oluşur. API key ya da Admin API access token (shpat_…) değil. Yanlış anahtarla her bildirim reddedilir. Anahtar Shopify’da uygulamanın API kimlik bilgileri bölümündedir ve şifreli saklanır." />
+      <label className="instant-notifications-secret"><FieldLabel text="Uygulama Gizli Anahtarı (İsteğe Bağlı)" helpId="shopify-webhook-secret-help" help="Girerseniz panel Shopify’ın her bildirime koyduğu imzayı da doğrular; girmeniz önerilir. Boş bırakılırsa bildirimler yalnız panelin ürettiği gizli adres ve mağaza adıyla kabul edilir, imzaları doğrulanmaz. Bu bağlantının erişim anahtarını üreten uygulamanın API secret key’i olmalıdır: Shopify’da uygulamanın API kimlik bilgileri bölümünde “API secret key” adıyla durur, harf ve rakamlardan oluşur. API key ya da Admin API access token (shpat_…) değil. Yanlış anahtarla her bildirim reddedilir. Anahtar Shopify’da uygulamanın API kimlik bilgileri bölümündedir ve şifreli saklanır." />
         <input type="password" autoComplete="off" value={clientSecret} onChange={event => setClientSecret(event.target.value)} placeholder="API secret key" aria-describedby="shopify-webhook-secret-help" />
       </label>
     </RrModal>}

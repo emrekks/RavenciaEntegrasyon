@@ -15,7 +15,7 @@ import {
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
 import { transactionLabel } from './transaction-labels'
-import { byDay, emptyPayoutFilters, filterGroups, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
+import { byDay, emptyPayoutFilters, filterGroups, isRolledToPayoutDay, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
 import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../shared/list-url-state'
 import { RrAnchor, RrFilterCard, RrIcon } from '../marketplace/returns-ui'
 import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../marketplace/shared'
@@ -2063,6 +2063,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
       {expanded && <div className="reports-payout-detail">
         {gap !== null && <p className="reports-payout-gap" role="note">Okunan kayıtların toplamı {formatTl(group.linesAmount)}; ödeme tutarından {formatTl(gap)} farklı (kesinti ya da başka ödemede listelenen kayıt).</p>}
         {group.kind === 'PAYOUT' && group.linesAmount === null && <p className="reports-payout-gap" role="note">Bu ödemenin kayıtları ödemeden bir gün sonra okunur; henüz okunmadı.</p>}
+        {isRolledToPayoutDay(group) && <p className="reports-payout-gap" role="note">{rolledPayoutNote}</p>}
         <PayoutLinesTable platforms={platforms.length ? platforms : null} group={group} />
       </div>}
     </li>

@@ -313,6 +313,7 @@ public sealed class InstantNotificationService(
             ? await AdoptableDefinitionAsync(connection, cancellationToken)
             : null;
         return new(state, endpoint, registeredAt, subscription?.LastReceivedAt, received, message, LastRejectedAt: rejected?.LastSeenAt, LastRejectedReason: rejected?.Summary,
+            RouteOnly: connection.PlatformCode == "SHOPIFY" && subscription?.AuthenticationType == "ROUTE_TOKEN",
             PreviousPreparedAt: previous is null ? null : PreparedAt(previous.Id),
             AdoptableFrom: adoptable is null ? null : new(adoptable.Value.Source.DisplayName, adoptable.Value.Source.Environment == "PRODUCTION" ? "Canlı" : "Test (SIT)", PreparedAt(adoptable.Value.Subscription.Id)));
     }

@@ -137,11 +137,18 @@ export function RrWordmark({ code, name }: { code: string | null | undefined; na
 }
 
 // Square platform logos (popups, the platform filter).
-const logoKeys: Record<string, string> = { TRENDYOL: 'trendyol', HEPSIBURADA: 'hepsiburada', PAZARAMA: 'pazarama', N11: 'n11', SHOPIFY: 'shopify' }
+// PTT AVM has no return icon of its own: its entry names its square logo, so every marketplace is in the map.
+const logoSources: Record<string, string> = {
+  TRENDYOL: '/platforms/returns/icon-trendyol.png',
+  HEPSIBURADA: '/platforms/returns/icon-hepsiburada.png',
+  PAZARAMA: '/platforms/returns/icon-pazarama.png',
+  N11: '/platforms/returns/icon-n11.png',
+  SHOPIFY: '/platforms/returns/icon-shopify.png',
+  PTTAVM: '/platforms/pttavm.webp',
+}
 export function RrLogo({ code, large }: { code: string | null | undefined; large?: boolean }) {
-  const key = logoKeys[(code ?? '').toUpperCase()]
-  // A platform without a return icon (PTT AVM) uses its square logo, so it is never shown without one.
-  const source = key ? `/platforms/returns/icon-${key}.png` : platformLogoSource(code)
+  // A platform outside the map still shows its square logo, never nothing.
+  const source = logoSources[(code ?? '').trim().toUpperCase()] ?? platformLogoSource(code)
   return source ? <img className={`rr-logo${large ? ' rr-lg' : ''}`} src={source} alt="" /> : <span className={`rr-logo${large ? ' rr-lg' : ''}`} aria-hidden="true" />
 }
 

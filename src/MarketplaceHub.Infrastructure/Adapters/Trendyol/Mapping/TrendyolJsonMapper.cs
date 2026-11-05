@@ -14,7 +14,7 @@ public static class TrendyolJsonMapper
         using var document = JsonDocument.Parse(json); var root = document.RootElement;
         var rows = new List<RemoteOrder>();
         var issues = new List<AdapterPageIssue>();
-        foreach (var package in Content(root))
+        foreach (var package in RequiredContent(root))
         {
             var externalPackageId = Text(package, "id", "shipmentPackageId", "packageId"); var orderNumber = Text(package, "orderNumber");
             if (string.IsNullOrWhiteSpace(externalPackageId) || string.IsNullOrWhiteSpace(orderNumber))
@@ -748,7 +748,7 @@ public static class TrendyolJsonMapper
     public static AdapterPageResult<RemoteReturnClaim> Returns(string json)
     {
         using var document = JsonDocument.Parse(json); var root = document.RootElement; var rows = new List<RemoteReturnClaim>();
-        foreach (var claim in Content(root))
+        foreach (var claim in RequiredContent(root))
         {
             var claimId = Text(claim, "claimId", "id"); var orderNumber = Text(claim, "orderNumber"); if (claimId.Length == 0 || orderNumber.Length == 0) continue;
             var lines = ReturnLines(claim);
@@ -986,6 +986,14 @@ public static class TrendyolJsonMapper
 
     private static RemoteReferenceItem Reference(string type, JsonElement item, string idName, string nameName, string? parent, int depth, bool leaf) { var name = Text(item, nameName); return new(type, Text(item, idName), parent, name, name, depth, leaf, true, item.GetRawText()); }
     private static IEnumerable<JsonElement> Content(JsonElement root) => root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array ? content.EnumerateArray() : [];
+
+    // An order or claim page always carries its content list (empty when the window holds nothing). A successful answer
+    // without it is a broken contract, never "no orders": the callers turn the JsonException into a contract error, so
+    // the sync stops visibly instead of moving its window past orders it never saw.
+    private static IEnumerable<JsonElement> RequiredContent(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array
+            ? content.EnumerateArray()
+            : throw new JsonException("Trendyol page has no content list.");
     private static IEnumerable<JsonElement> ClaimItems(JsonElement claim)
     {
         if (claim.TryGetProperty("claimItems", out var directClaimItems) && directClaimItems.ValueKind == JsonValueKind.Array)
