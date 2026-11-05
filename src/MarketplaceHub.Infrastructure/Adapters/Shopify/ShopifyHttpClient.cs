@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ListingSaleState = MarketplaceHub.Domain.ListingSaleState;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Shopify;
 
@@ -1270,7 +1271,7 @@ public sealed partial class ShopifyHttpClient(
         }
     }
 
-    private static RemoteCatalogProduct MapProduct(JsonElement edge)
+    internal static RemoteCatalogProduct MapProduct(JsonElement edge)
     {
         var product = edge.GetProperty("node");
         var productId = ShortId(product.GetProperty("id").GetString());
@@ -1291,7 +1292,13 @@ public sealed partial class ShopifyHttpClient(
             && minPrice.TryGetProperty("currencyCode", out var currencyElement)
             ? currencyElement.GetString()
             : null;
-        var variants = product.GetProperty("variants").GetProperty("nodes").EnumerateArray().Select((variant, index) => MapVariant(variant, index, archived, currency)).ToList();
+        // Sale state from the product status, which "controls visibility across all sales channels": DRAFT and ARCHIVED
+        // are closed. ACTIVE is not proof of sale (a sales channel may not publish it; publications are not read), so it
+        // stays unknown.
+        var (saleState, saleReason) = isDraft ? (ListingSaleState.OffSale, ListingSaleState.Draft)
+            : archived ? (ListingSaleState.OffSale, ListingSaleState.Archived)
+            : ((string?)null, (string?)null);
+        var variants = product.GetProperty("variants").GetProperty("nodes").EnumerateArray().Select((variant, index) => MapVariant(variant, index, archived, currency) with { SaleState = saleState, SaleStateReason = saleReason }).ToList();
         return new(productId, null, product.GetProperty("title").GetString() ?? productId, product.GetProperty("descriptionHtml").GetString() ?? "", product.GetProperty("vendor").GetString(), product.GetProperty("vendor").GetString(), categoryId, categoryName, images, variants, product.GetRawText(), isDraft);
     }
 

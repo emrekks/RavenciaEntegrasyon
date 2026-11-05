@@ -616,6 +616,69 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await transaction.RollbackAsync();
     }
 
+    // T2-D30: a live listing the marketplace closed to sale keeps its publication status (LIVE), carries its sale state
+    // beside it and is found by the Satışa Kapalı filter; a closure only for a stock of 0 is counted but not filtered.
+    [PostgreSqlFact]
+    public async Task ProductViews_CarryTheSaleStateBesideALiveStatusAndTheFilterFindsClosedListings()
+    {
+        var tenant = NewTenant("listing-sale-state");
+        var connection = new PlatformConnection { Id = Guid.CreateVersion7(), TenantId = tenant.Id, PublicId = Guid.CreateVersion7(), PlatformCode = "TRENDYOL", Environment = "STAGE", DisplayName = "Sale state test", ExternalStoreId = $"store-{Guid.NewGuid():N}", Status = "ACTIVE", ApiVersion = "V2", Version = 1 };
+        var created = fixture.Now;
+        Product NewProduct(string title)
+        {
+            created = created.AddSeconds(1);
+            return new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = title, Description = "Sale state test", Status = ProductStatus.Active, CreatedAt = created, UpdatedAt = created, Version = 1 };
+        }
+        ProductVariant NewVariant(Product product, int order)
+        {
+            var sku = $"SALE-{Guid.NewGuid():N}";
+            return new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, SortOrder = order, Sku = sku, SkuNormalized = sku, OptionSignature = $"Beden={order}", CreatedAt = created, UpdatedAt = created, Version = 1 };
+        }
+        MarketplaceVariantLink Link(ProductVariant variant, string? state, string? reason = null) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variant.Id, ExternalId = variant.Sku, LastSeenAt = fixture.Now, SaleState = state, SaleStateReason = reason };
+        ChannelListingProfile LiveProfile(Product product) => new() { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, ConnectionId = connection.Id, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "LIVE", Version = 1 };
+
+        var closed = NewProduct("Closed card");
+        var stockOut = NewProduct("Stock out card");
+        var open = NewProduct("Open card");
+        var closedVariants = new[] { NewVariant(closed, 0), NewVariant(closed, 1) };
+        var stockOutVariant = NewVariant(stockOut, 0);
+        var openVariant = NewVariant(open, 0);
+
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.PlatformConnections.Add(connection);
+        db.Products.AddRange(closed, stockOut, open);
+        db.ProductVariants.AddRange([.. closedVariants, stockOutVariant, openVariant]);
+        db.MarketplaceVariantLinks.AddRange(
+            Link(closedVariants[0], ListingSaleState.OffSale, ListingSaleState.BySeller), Link(closedVariants[1], ListingSaleState.OffSale, null),
+            Link(stockOutVariant, ListingSaleState.OffSale, ListingSaleState.StockZero),
+            Link(openVariant, ListingSaleState.OnSale));
+        db.ChannelListingProfiles.AddRange(LiveProfile(closed), LiveProfile(stockOut), LiveProfile(open));
+        await db.SaveChangesAsync();
+
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+        async Task<ProductView> View(Product product) => (await service.GetProductAsync(tenant.Id, product.Id, CancellationToken.None)).Value!;
+        ProductPlatformStatusView StatusOf(ProductView view) => Assert.Single(view.PlatformStatuses!, x => x.Platform == connection.DisplayName);
+
+        var closedView = await View(closed);
+        var closedStatus = StatusOf(closedView);
+        Assert.Equal(("LIVE", 2, 0, 2, 0), (closedStatus.Status, closedStatus.MatchedVariantCount, closedStatus.OnSaleVariantCount, closedStatus.OffSaleVariantCount, closedStatus.OffSaleStockZeroVariantCount));
+        var variantStatus = Assert.Single(closedView.Variants.Single(x => x.Id == closedVariants[0].Id).PlatformStatuses!);
+        Assert.Equal(("LIVE", ListingSaleState.OffSale, ListingSaleState.BySeller), (variantStatus.Status, variantStatus.SaleState, variantStatus.SaleStateReason));
+        var stockOutStatus = StatusOf(await View(stockOut));
+        Assert.Equal(("LIVE", 1, 1), (stockOutStatus.Status, stockOutStatus.OffSaleVariantCount, stockOutStatus.OffSaleStockZeroVariantCount));
+        var openStatus = StatusOf(await View(open));
+        Assert.Equal(("LIVE", 1, 0), (openStatus.Status, openStatus.OnSaleVariantCount, openStatus.OffSaleVariantCount));
+
+        async Task<Guid[]> Filtered(string platform) => (await service.ListProductsAsync(tenant.Id, 50, null, null, null, platform, null, null, CancellationToken.None)).Items.Select(x => x.Id).Order().ToArray();
+        Assert.Equal(new[] { closed.Id }, await Filtered("TRENDYOL:OFF_SALE"));
+        // Closed or not, every card is still live and active there.
+        Assert.Equal(new[] { closed.Id, stockOut.Id, open.Id }.Order(), await Filtered("TRENDYOL:ACTIVE"));
+
+        await transaction.RollbackAsync();
+    }
+
     [PostgreSqlFact]
     public async Task ProductVariantAttributesAndDefaultPrices_RoundTripThroughProductUpdateAndReload()
     {

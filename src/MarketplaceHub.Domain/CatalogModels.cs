@@ -385,7 +385,44 @@ public sealed class MarketplaceVariantLink
     // The marketplace keeps and ships the stock itself (n11depom: sender N11; Hepsiburada: isFulfilledByHB), so the
     // panel may send the price only. Null until an import read the field: an absent field says nothing.
     public bool? FulfilledByMarketplace { get; set; }
+    // Whether the marketplace sells the listing now (ListingSaleState), beside its publication/approval state and
+    // separate from it: price/stock eligibility never reads it. Written only by a catalog read that saw the code (the
+    // nightly verification, a product import); null is unknown (never read, or the answer did not say).
+    public string? SaleState { get; set; }
+    public string? SaleStateReason { get; set; }
+    public DateTimeOffset? SaleStateReadAt { get; set; }
     public long Version { get; set; } = 1;
+}
+
+// One rule for every marketplace: a listing that is approved and listed may still be closed to sale there (Trendyol
+// onSale=false, Hepsiburada isSalable=false, n11 saleStatus other than On_Sale, Pazarama productStatus 10, PTT AVM
+// Aktif=false, Shopify DRAFT/ARCHIVED). The sale state sits next to the publication state and never changes it, so the
+// price/stock sends that check the publication state are not affected. Unknown (null) is never inferred.
+public static class ListingSaleState
+{
+    public const string OnSale = "ON_SALE";
+    public const string OffSale = "OFF_SALE";
+
+    // Why the marketplace says it is closed, when its answer names it. StockZero means the same answer showed no stock
+    // (Hepsiburada's StockIsLessThanOrEqualToZero, n11 Out_Of_Stock, a Trendyol variant with quantity 0).
+    public const string StockZero = "STOCK_ZERO";
+    public const string PriceZero = "PRICE_ZERO";
+    public const string BySeller = "BY_SELLER";
+    public const string Suspended = "SUSPENDED";
+    public const string Locked = "LOCKED";
+    public const string Frozen = "FROZEN";
+    public const string Blacklisted = "BLACKLISTED";
+    public const string Archived = "ARCHIVED";
+    public const string Draft = "DRAFT";
+    public const string BeforeSale = "BEFORE_SALE";
+
+    public static string? From(bool? onSale) => onSale switch { true => OnSale, false => OffSale, null => null };
+
+    public static bool IsOffSale(string? state) => state == OffSale;
+
+    // Closed for a reason other than zero stock (or for a reason the marketplace does not name): what the products
+    // list's "Satışa Kapalı" filter finds. A listing closed only because its stock is 0 is found by the stock filter.
+    public static bool ClosedBeyondStock(string? state, string? reason) => state == OffSale && reason != StockZero;
 }
 
 public static class MarketplaceVariantLinkHealth

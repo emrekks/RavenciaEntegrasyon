@@ -63,6 +63,13 @@ purpose (`TurkeyTime.cs`).
 | Stage test order | POST `test/order/orders/core` (header `sellerId`) |
 | Reference | GET `product/product-categories`, `product/brands`, `product/categories/{c}/attributes[/{a}/values]` |
 
+## Sale state (T2-D30, 2026-11-05)
+- Approved v2 list `variants[].onSale` (boolean) is the sale state; `locked`, `blacklisted`, `archived` sit beside it.
+  Source: offline doc `## Ürün Filtreleme - Onaylı Ürün v2` (sample response; the list also filters `status=onSale|notOnSale`).
+- Live (import staging 2026-10-07, 3,605 variants): `onSale=false` on every variant with stock 0 and on none with
+  stock, so most closures are stock-outs. Code: `TrendyolJsonMapper.SaleState/SaleStateReason` (STOCK_ZERO when the same
+  answer has quantity 0). The unapproved list has no sale state.
+
 ## Statuses
 - Packages: shared mapping. The order uses the top-level package `status`, not `shipmentPackageStatus`.
 - Claims read: Created, WaitingInAction, WaitingFraudCheck (accepted as a request parameter: **unverified**),

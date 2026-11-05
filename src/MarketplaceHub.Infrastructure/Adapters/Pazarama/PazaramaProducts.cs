@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using ListingSaleState = MarketplaceHub.Domain.ListingSaleState;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 
@@ -135,9 +136,19 @@ public static class PazaramaProductMapper
 {
     // Product status 10 closes a product for sale; every other value (0 unset, 1 open) is on sale.
     private const int ClosedProductStatus = 10;
+    private const int OpenProductStatus = 1;
     private const string EmptyGuid = "00000000-0000-0000-0000-000000000000";
 
     public sealed record ScanPosition(char Phase, string? Cursor, int PageIndex, string? FirstCode);
+
+    // An approved item's productStatus as the shared sale state: 1 open, 10 closed (the values "Kataloglu Ürünleri
+    // Satışa Kapatıp-Açma" writes). 0 (unset), another value or none says nothing: unknown, not on sale.
+    internal static string? SaleState(int? productStatus) => productStatus switch
+    {
+        OpenProductStatus => ListingSaleState.OnSale,
+        ClosedProductStatus => ListingSaleState.OffSale,
+        _ => null
+    };
 
     public sealed record ProductPage(
         IReadOnlyList<RemoteCatalogProduct> Items,
@@ -242,7 +253,9 @@ public static class PazaramaProductMapper
             "TRY",
             item.GetRawText(),
             imageUrls,
-            Desi: item.TryGetProperty("desi", out var desiElement) ? ImportedDesi.FromJson(desiElement.ValueKind == JsonValueKind.Object && desiElement.TryGetProperty("value", out var desiValue) ? desiValue : desiElement) : null);
+            Desi: item.TryGetProperty("desi", out var desiElement) ? ImportedDesi.FromJson(desiElement.ValueKind == JsonValueKind.Object && desiElement.TryGetProperty("value", out var desiValue) ? desiValue : desiElement) : null,
+            SaleState: pending ? null : SaleState((int?)Number(item, "productStatus")),
+            SaleStateReason: !pending && (int?)Number(item, "productStatus") == ClosedProductStatus ? ListingSaleState.BySeller : null);
         return new(
             groupCode is null ? $"code:{code}" : $"group:{groupCode}",
             groupCode,

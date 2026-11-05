@@ -29,6 +29,10 @@ Shared across all of them:
 - Time: a text timestamp without an offset is Turkey time, UTC+3 with no daylight saving (`Adapters/TurkeyTime.cs`).
   Trendyol and n11 epoch-ms dates are documented as GMT+3 but are deliberately sent and read as plain UTC epochs.
 - Sync windows and lookbacks live in `SynchronizationPolicies.cs`; quotas and URLs in each adapter's `*Options.cs`.
+- Sale state (Satışta / Satışa Kapalı / unknown): every adapter fills `RemoteCatalogVariant.SaleState/SaleStateReason`
+  (`ListingSaleState` in `CatalogModels.cs`); the nightly LISTING_VERIFY scan and product imports store it on
+  `catalog.marketplace_variant_links` (`MarkVariantLinksSeen`). Shown beside the publication status, never part of it
+  or of any price/stock rule. The field per marketplace is in its file ("Sale state").
 
 ## Official docs, offline (search these first)
 

@@ -464,13 +464,14 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var variantsByProductForPlatform = allVariants
                 .GroupBy(variant => variant.ProductId)
                 .ToDictionary(group => group.Key, group => (IReadOnlyList<ProductVariant>)group.ToList());
-            var (matchedVariantIds, missingVariantIds) = await PlatformVariantStatesAsync(tenantId, platformFilterCode, allProducts, allVariants, cancellationToken);
+            var (matchedVariantIds, missingVariantIds, offSaleVariantIds) = await PlatformVariantStatesAsync(tenantId, platformFilterCode, allProducts, allVariants, cancellationToken);
             var matchingFamilyKeys = allProducts
                 .GroupBy(product => ProductFamilyKey(product, variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []), StringComparer.Ordinal)
                 .Where(group => PlatformFilterMatchesFamily(
                     group.SelectMany(product => variantsByProductForPlatform.GetValueOrDefault(product.Id) ?? []).Select(variant => variant.Id),
                     matchedVariantIds,
                     missingVariantIds,
+                    offSaleVariantIds,
                     platformFilterState))
                 .Select(group => group.Key)
                 .ToHashSet(StringComparer.Ordinal);
@@ -2363,7 +2364,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var variantLinks = await db.MarketplaceVariantLinks.AsNoTracking()
             .Where(x => x.TenantId == tenantId && variantIds.Contains(x.VariantId))
             .KnownOnMarketplace(db, tenantId)
-            .Select(x => new { x.ConnectionId, x.VariantId, x.HealthStatus })
+            .Select(x => new { x.ConnectionId, x.VariantId, x.HealthStatus, x.SaleState, x.SaleStateReason })
             .ToListAsync(cancellationToken);
         var profileIds = profiles.Select(x => x.Id).ToArray();
         var listingVariants = await db.ChannelListingVariants.AsNoTracking()
@@ -2484,6 +2485,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                         var isLinked = linkedConnectionIds.Contains(connectionId) || listingConnectionIds.Contains(connectionId);
                         var isMissing = missingLinks.Contains((variant.Id, connectionId));
                         offerByVariantConnection.TryGetValue((variant.Id, connectionId), out var channelOffer);
+                        // The sale state rides on the variant's link; a variant the marketplace no longer knows has none.
+                        var saleLink = isMissing ? null : productLinks.FirstOrDefault(x => x.VariantId == variant.Id && x.ConnectionId == connectionId);
                         return new ProductVariantPlatformStatusView(
                             connection.Value.DisplayName,
                             connection.Value.PlatformCode,
@@ -2502,7 +2505,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                             linkedConnectionIds.Contains(connectionId) || liveListingConnectionIds.Contains(connectionId),
                             isMissing,
                             channelOffer?.Status,
-                            channelOffer?.FollowsPanelPrice);
+                            channelOffer?.FollowsPanelPrice,
+                            saleLink?.SaleState,
+                            saleLink?.SaleStateReason);
                     })
                     .ToList();
                 return new ProductVariantView(variant.Id, variant.Sku, variant.Barcode, variant.ModelCode, variant.OptionSignature, variant.Status.ToString().ToUpperInvariant(), variant.Version, variant.Weight, variant.Width, variant.Height, variant.Length, variant.Desi, variant.CostPrice, inventory?.OnHand ?? 0, inventory?.Available ?? 0, inventory?.Version, offer?.Id, offer?.ListPrice, offer?.SalePrice, offer?.Currency, offer?.Status, offer?.PriceVersion, offer?.Version, offer?.VatRate, offer?.VatInclusion, offer?.RoundingMode, offer?.SafetyStock, mediaUrlsByVariant.GetValueOrDefault(variant.Id), variantOptionsByVariant.GetValueOrDefault(variant.Id), variantPlatformStatuses, variant.DefaultListPrice, variant.DefaultSalePrice, variantAttributesByVariant.GetValueOrDefault(variant.Id), variant.ProductId);
@@ -2525,7 +2530,13 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                     var matchedVariantCount = linkedVariantIds.Count;
                     var status = ProductListingHealth.Status(profile?.ActualStatus, matchedVariantCount, missingVariantCount, productVariantIds.Count);
                     var connection = connections[connectionId];
-                    return new ProductPlatformStatusView(connection.DisplayName, status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus), connection.PlatformCode, missingVariantCount);
+                    // The sale state of the matched variants, from their links (a variant matched only through a LIVE
+                    // listing has no link and stays unknown).
+                    var saleLinks = productLinks.Where(x => x.ConnectionId == connectionId && linkedVariantIds.Contains(x.VariantId)).ToList();
+                    return new ProductPlatformStatusView(connection.DisplayName, status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus), connection.PlatformCode, missingVariantCount,
+                        saleLinks.Count(x => x.SaleState == ListingSaleState.OnSale),
+                        saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale),
+                        saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale && x.SaleStateReason == ListingSaleState.StockZero));
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -2818,10 +2829,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
 
     // The catalog's variants matched on a marketplace (a variant link or a listing on one of its active connections) and
     // those the marketplace no longer knows (a NOT_FOUND or REJECTED link, as the product views count them). A missing
-    // variant is matched only through another connection of the same marketplace where it still holds.
-    private async Task<(HashSet<Guid> Matched, HashSet<Guid> Missing)> PlatformVariantStatesAsync(Guid tenantId, string platformCode, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken)
+    // variant is matched only through another connection of the same marketplace where it still holds. OffSale: matched
+    // variants whose link says the marketplace closed them to sale for a reason other than a stock of 0.
+    private async Task<(HashSet<Guid> Matched, HashSet<Guid> Missing, HashSet<Guid> OffSale)> PlatformVariantStatesAsync(Guid tenantId, string platformCode, IReadOnlyList<Product> products, IReadOnlyList<ProductVariant> variants, CancellationToken cancellationToken)
     {
-        if (variants.Count == 0) return ([], []);
+        if (variants.Count == 0) return ([], [], []);
         var variantIds = variants.Select(variant => variant.Id).ToArray();
         var connectionIds = db.PlatformConnections
             .Where(connection => connection.TenantId == tenantId && connection.PlatformCode == platformCode && (connection.Status == "ACTIVE" || connection.Status == "VERIFIED"))
@@ -2829,7 +2841,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var links = await db.MarketplaceVariantLinks.AsNoTracking()
             .Where(link => link.TenantId == tenantId && connectionIds.Contains(link.ConnectionId) && variantIds.Contains(link.VariantId))
             .KnownOnMarketplace(db, tenantId)
-            .Select(link => new { link.VariantId, link.ConnectionId, link.HealthStatus })
+            .Select(link => new { link.VariantId, link.ConnectionId, link.HealthStatus, link.SaleState, link.SaleStateReason })
             .ToListAsync(cancellationToken);
         var listings = await (from listing in db.ChannelListingVariants.AsNoTracking()
                               join profile in db.ChannelListingProfiles.AsNoTracking() on new { listing.TenantId, Id = listing.ProfileId } equals new { profile.TenantId, profile.Id }
@@ -2858,13 +2870,17 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Concat(listings.Where(listing => !missingLinks.Contains((listing.VariantId, listing.ConnectionId))).Select(listing => listing.VariantId))
             .ToHashSet();
         var missing = missingLinks.Select(link => link.VariantId).Where(variantId => !matched.Contains(variantId)).ToHashSet();
-        return (matched, missing);
+        var offSale = links
+            .Where(link => !missingLinks.Contains((link.VariantId, link.ConnectionId)) && ListingSaleState.ClosedBeyondStock(link.SaleState, link.SaleStateReason))
+            .Select(link => link.VariantId)
+            .ToHashSet();
+        return (matched, missing, offSale);
     }
 
-    private static bool PlatformFilterMatchesFamily(IEnumerable<Guid> familyVariantIds, IReadOnlySet<Guid> matchedVariantIds, IReadOnlySet<Guid> missingVariantIds, string platformState)
+    private static bool PlatformFilterMatchesFamily(IEnumerable<Guid> familyVariantIds, IReadOnlySet<Guid> matchedVariantIds, IReadOnlySet<Guid> missingVariantIds, IReadOnlySet<Guid> offSaleVariantIds, string platformState)
     {
         var variantIds = familyVariantIds.Distinct().ToArray();
-        return ProductListingHealth.MatchesFilter(platformState, variantIds.Length, variantIds.Count(matchedVariantIds.Contains), variantIds.Count(missingVariantIds.Contains));
+        return ProductListingHealth.MatchesFilter(platformState, variantIds.Length, variantIds.Count(matchedVariantIds.Contains), variantIds.Count(missingVariantIds.Contains), variantIds.Count(offSaleVariantIds.Contains));
     }
 
     internal static bool TryProductPlatformFilter(string value, out string platformCode, out string platformState)
@@ -2873,7 +2889,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         platformCode = parts.Length == 2 ? parts[0].ToUpperInvariant() : string.Empty;
         platformState = parts.Length == 2 ? parts[1].ToUpperInvariant() : string.Empty;
         return platformCode is "TRENDYOL" or "SHOPIFY" or "HEPSIBURADA" or "N11" or "PAZARAMA" or "PTTAVM"
-            && platformState is "ACTIVE" or "PARTIAL" or "PASSIVE" or ProductListingHealth.NotFound;
+            && platformState is "ACTIVE" or "PARTIAL" or "PASSIVE" or ProductListingHealth.NotFound or ProductListingHealth.OffSale;
     }
 
     private Guid Decode(string? cursor) => cursors.TryDecode(cursor, out var id) ? id : throw new ArgumentException("Cursor geçersiz veya süresi dolmuş.", nameof(cursor));

@@ -67,6 +67,13 @@ Turkey time (`HepsiburadaJsonMapper.QueryTime`). Migration `20261019140000_Corre
 | Questions | `api/v1.0/issues[/{id}[/answer|/reject]]` (1 waiting, 2 answered, 3 rejected, 4 expired) |
 | Stage test order | POST `orders/merchantId/{m}` on the stub host |
 
+## Sale state (T2-D30, 2026-11-05)
+- Listing API `isSalable` ("Listingin satış durumunu belirtir. True: satışta / False: satışta değil"), with
+  `isSuspended`, `isLocked`, `isFrozen`, `deactivationReasons`. Source: offline doc `#### Listing Bilgilerini Çekme`.
+- Live reasons (import staging 2026-10-22, 2,590 listings): `StockIsLessThanOrEqualToZero` alone (1,634),
+  `PriceIsLessThanOrEqualToZero`+stock (47), `ByMerchant`+stock (1); `isSalable=false` exactly when stock is 0.
+  Code: `HepsiburadaJsonMapper.SaleStateReason`.
+
 ## Statuses (own mapping in `OrderModels.cs`)
 OPEN/UNPACKED → New; PROCESSING → Processing; PACKAGED/INVOICED/READY_TO_SHIP → ReadyToShip; SHIPPED/INTRANSIT →
 Shipped; DELIVERED; UNDELIVERED → **OnHold**; CANCELLED* (BYMERCHANT/BYCUSTOMER/BYSAP) → Cancelled; RETURNED.

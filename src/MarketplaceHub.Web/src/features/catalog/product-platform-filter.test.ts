@@ -9,13 +9,14 @@ describe('product platform status filters', () => {
       'HEPSIBURADA:ACTIVE',
       'HEPSIBURADA:PARTIAL',
       'HEPSIBURADA:PASSIVE',
-      'HEPSIBURADA:NOT_FOUND'
+      'HEPSIBURADA:NOT_FOUND',
+      'HEPSIBURADA:OFF_SALE'
     ])
   })
 
-  it('offers Bulunamadı on every marketplace', () => {
+  it('offers Bulunamadı and Satışa Kapalı on every marketplace', () => {
     expect(productPlatformFilterGroups.map(group => group.label)).toEqual(['Trendyol', 'Shopify', 'Hepsiburada', 'N11', 'Pazarama', 'PTT AVM'])
     for (const group of productPlatformFilterGroups)
-      expect(group.options.at(-1)?.label).toBe('Bulunamadı')
+      expect(group.options.slice(-2).map(option => option.label)).toEqual(['Bulunamadı', 'Satışa Kapalı'])
   })
 })

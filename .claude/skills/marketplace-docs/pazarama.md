@@ -50,6 +50,11 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 | Reference | GET `brand/getBrands`, `category/getCategoryTree`, `category/getCategoryWithAttributes?Id=` |
 | Questions | POST `QuestionAnswer/getApprovalAnswersByMerchantSearch`; GET `getApprovalAnswerById`; PUT `sellerAnswer` |
 
+## Sale state (T2-D30, 2026-11-05)
+- Approved list `productStatus`: 1 open, 10 closed, the values `product/external-status` writes (offline doc
+  `## Kataloglu Ürünleri Satışa Kapatıp-Açma`). That the read field uses the same enum is **unverified** (the doc
+  sample shows 0); 0 or another value stays unknown. Code: `PazaramaProductMapper.SaleState`.
+
 ## Statuses
 - Item codes: 3 Created; 12 Picking; 18 CancelRequested (OnHold); 6/13 Cancelled; 5/16/19 Shipped; 11/7/9 Delivered;
   14 Undelivered; 8/10 Returned.

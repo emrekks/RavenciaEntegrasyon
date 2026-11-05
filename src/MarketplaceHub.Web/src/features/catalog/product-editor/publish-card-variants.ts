@@ -1,16 +1,22 @@
+import { isOffSale } from '../sale-state'
 import type { VariantPlatformStatus } from '../shared'
 
 type VariantRow = { platformStatuses?: VariantPlatformStatus[] | null }
 
 // How the family's variants stand on one connection: present there (a variant link or a LIVE listing) and missing (the
 // marketplace no longer knows them: link NOT_FOUND or REJECTED). A variant with neither stays out of both: no link is
-// never read as missing.
+// never read as missing. offSale: present variants the marketplace says are closed to sale (offSaleStockZero: those whose
+// only named reason is a stock of 0); a variant whose sale state is unknown is in neither.
 export function publishCardVariantLinks(rows: ReadonlyArray<VariantRow>, connectionId: string) {
   const statusOf = (row: VariantRow) => row.platformStatuses?.find(status => status.connectionId === connectionId)
+  const present = rows.filter(row => statusOf(row)?.isMatched && !statusOf(row)?.isMissing)
+  const closed = present.filter(row => isOffSale(statusOf(row)?.saleState))
   return {
     total: rows.length,
-    linked: rows.filter(row => statusOf(row)?.isMatched && !statusOf(row)?.isMissing).length,
-    missing: rows.filter(row => statusOf(row)?.isMissing).length
+    linked: present.length,
+    missing: rows.filter(row => statusOf(row)?.isMissing).length,
+    offSale: closed.length,
+    offSaleStockZero: closed.filter(row => statusOf(row)?.saleStateReason === 'STOCK_ZERO').length
   }
 }
 
@@ -81,8 +87,8 @@ export function withLatestVariantLinks<R extends LinkedRow>(rows: ReadonlyArray<
     const merged = own.map(status => {
       const fresh = latest.find(item => item.connectionId === status.connectionId)
       return fresh
-        ? { ...status, isLinked: fresh.isLinked, isMatched: fresh.isMatched, isMissing: fresh.isMissing, status: fresh.status }
-        : { ...status, isLinked: false, isMatched: false, isMissing: false }
+        ? { ...status, isLinked: fresh.isLinked, isMatched: fresh.isMatched, isMissing: fresh.isMissing, status: fresh.status, saleState: fresh.saleState, saleStateReason: fresh.saleStateReason }
+        : { ...status, isLinked: false, isMatched: false, isMissing: false, saleState: null, saleStateReason: null }
     })
     const added = latest.filter(item => !own.some(status => status.connectionId === item.connectionId))
     return { ...row, platformStatuses: [...merged, ...added] }

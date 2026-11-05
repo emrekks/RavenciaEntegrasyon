@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
+using ListingSaleState = MarketplaceHub.Domain.ListingSaleState;
 
 namespace MarketplaceHub.Infrastructure.Adapters.N11;
 
@@ -183,6 +184,7 @@ public static class N11ProductMapper
             ? urls.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!.Trim()).Where(x => x.Length > 0).ToList()
             : [];
         var currency = Text(item, "currencyType") is { } code && !string.Equals(code, "TL", StringComparison.OrdinalIgnoreCase) ? code.ToUpperInvariant() : "TRY";
+        var sale = Sale(status, Text(item, "saleStatus"));
         var variant = new RemoteCatalogVariant(
             stockCode ?? $"n11:{n11ProductId}",
             stockCode ?? n11ProductId!,
@@ -199,7 +201,9 @@ public static class N11ProductMapper
             item.GetRawText(),
             images,
             Desi: item.TryGetProperty("desi", out var desiElement) ? ImportedDesi.FromJson(desiElement) : null,
-            FulfilledByMarketplace: Depot(Text(item, "sender")));
+            FulfilledByMarketplace: Depot(Text(item, "sender")),
+            SaleState: sale.State,
+            SaleStateReason: sale.Reason);
         return new(
             externalProductId,
             productMainId,
@@ -256,6 +260,23 @@ public static class N11ProductMapper
         "SELLER" => false,
         _ => null
     };
+
+    // The product query's saleStatus (On_Sale, Out_Of_Stock, Sale_Closed, Before_Sale; SOAP GetProductList's 1 Satış
+    // Öncesi, 2 Satışta, 3 Stok Yok, 4 Satışa Kapalı) as the shared sale state; a Suspended product is closed whatever
+    // its saleStatus. A product still in approval, refused, or with another or no value has no known sale state.
+    internal static (string? State, string? Reason) Sale(string? status, string? saleStatus)
+    {
+        if (status is "InApproval" or "InCatalogApproval" or "CatalogRejected" or "Prohibited") return (null, null);
+        if (status == "Suspended") return (ListingSaleState.OffSale, ListingSaleState.Suspended);
+        return saleStatus?.Trim().ToUpperInvariant() switch
+        {
+            "ON_SALE" => (ListingSaleState.OnSale, null),
+            "OUT_OF_STOCK" => (ListingSaleState.OffSale, ListingSaleState.StockZero),
+            "SALE_CLOSED" => (ListingSaleState.OffSale, null),
+            "BEFORE_SALE" => (ListingSaleState.OffSale, ListingSaleState.BeforeSale),
+            _ => (null, null)
+        };
+    }
 
     private sealed record Attribute(string? Id, string Name, string Value);
 

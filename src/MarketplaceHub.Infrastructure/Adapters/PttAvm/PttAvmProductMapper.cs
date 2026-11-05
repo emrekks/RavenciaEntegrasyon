@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Nodes;
 using System.Xml.Linq;
 using MarketplaceHub.Application;
+using ListingSaleState = MarketplaceHub.Domain.ListingSaleState;
 
 namespace MarketplaceHub.Infrastructure.Adapters.PttAvm;
 
@@ -38,7 +39,8 @@ public static class PttAvmProductMapper
         var title = Value(row, "UrunAdi") ?? barcode;
         var vatRate = Number(row, "KDVOran");
         var price = SalePrice(row, vatRate);
-        var active = Bool(row, "Aktif") ?? true;
+        var activeFlag = Bool(row, "Aktif");
+        var active = activeFlag ?? true;
         var images = Images(row);
         var desi = Number(row, "Desi");
         var variants = new List<RemoteCatalogVariant>();
@@ -60,16 +62,25 @@ public static class PttAvmProductMapper
             foreach (var read in reads)
                 variants.Add(new(read.Barcode ?? PttAvmVariantMapper.ModelVariantId(barcode, read.VariantId!), read.Barcode ?? $"{barcode}-{read.Options[PttAvmVariantMapper.VariantNameOption]}", read.Barcode, barcode,
                     read.Options, !active || read.Active == false,
-                    PttAvmVariantMapper.SalePrice(read, price), null, vatRate, read.Quantity, "TRY", Snapshot(read.Source).ToJsonString(), images, Desi: desi));
+                    PttAvmVariantMapper.SalePrice(read, price), null, vatRate, read.Quantity, "TRY", Snapshot(read.Source).ToJsonString(), images, Desi: desi,
+                    SaleState: SaleState(activeFlag, read.Active)));
         }
         // The product's stock code is UrunKodu; the documentation says the barcode replaced it, so it falls back to the barcode.
         if (variants.Count == 0)
             variants.Add(new(barcode, Value(row, "UrunKodu") ?? barcode, barcode, null, new Dictionary<string, string>(), !active,
-                price, null, vatRate, Number(row, "Miktar"), "TRY", "{}", images, Desi: desi));
+                price, null, vatRate, Number(row, "Miktar"), "TRY", "{}", images, Desi: desi, SaleState: SaleState(activeFlag, null)));
         // The product barcode groups the variants (for a model it is the model code).
         return new(productId, barcode, title, Value(row, "UzunAciklama") ?? Value(row, "Aciklama") ?? "", null, null,
             Value(row, "YeniKategoriId") is { } category && category != "0" ? category : null, null, images, variants, Snapshot(row).ToJsonString());
     }
+
+    // The product row's Aktif ("Ürünün aktiflik bilgisi", set by Aktif Yap) and a variant entry's own Aktif as the shared
+    // sale state: either one false closes the variant; an active product whose variant does not say is on sale. A row
+    // without Aktif says nothing.
+    internal static string? SaleState(bool? productActive, bool? variantActive) =>
+        productActive == false || variantActive == false ? ListingSaleState.OffSale
+        : productActive == true ? ListingSaleState.OnSale
+        : null;
 
     // KDVli is the VAT-inclusive price; when PTT AVM answers 0 there it is worked out from KDVsiz and the VAT rate.
     internal static decimal? SalePrice(XElement row, decimal? vatRate)

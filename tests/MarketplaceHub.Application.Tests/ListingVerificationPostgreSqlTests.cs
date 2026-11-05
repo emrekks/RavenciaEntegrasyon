@@ -58,6 +58,35 @@ public sealed class ListingVerificationPostgreSqlTests(PostgreSqlTenantIsolation
         Assert.NotNull(state.LastCompletedAt);
     }
 
+    // T2-D30: the scan records what the marketplace says about the sale of each code it sees, beside the health; an
+    // answer that does not say leaves it unknown, and the publication state is never touched.
+    [PostgreSqlFact]
+    public async Task A_verification_run_records_the_sale_state_the_marketplace_gives_and_unknown_when_it_does_not_say()
+    {
+        var seed = await Seed("TRENDYOL");
+        var closed = Remote("Ürün", "869100000001");
+        closed = closed with { Variants = [closed.Variants[0] with { SaleState = ListingSaleState.OffSale, SaleStateReason = ListingSaleState.BySeller }] };
+        var port = new ScriptedProductPort { Catalog = [closed] };
+
+        Assert.True((await Verify(seed, port)).Succeeded);
+
+        await using (var db = fixture.CreateContext())
+        {
+            var seen = await Link(db, seed.Connection.Id, seed.Seen.Id);
+            Assert.Equal((ListingSaleState.OffSale, ListingSaleState.BySeller), (seen.SaleState, seen.SaleStateReason));
+            Assert.NotNull(seen.SaleStateReadAt);
+            // A code the scan did not see keeps the unknown it had.
+            Assert.Null((await Link(db, seed.Connection.Id, seed.Missed.Id)).SaleState);
+            Assert.False(await db.MarketplaceListingStates.AnyAsync(x => x.ConnectionId == seed.Connection.Id && x.ActualStatus == ListingSaleState.OffSale));
+        }
+
+        // The next answer has no sale flag: the state is unknown again, never guessed from the last one.
+        Assert.True((await Verify(seed, new ScriptedProductPort { Catalog = [Remote("Ürün", "869100000001")] })).Succeeded);
+        await using var after = fixture.CreateContext();
+        var again = await Link(after, seed.Connection.Id, seed.Seen.Id);
+        Assert.Equal(((string?)null, (string?)null, (DateTimeOffset?)null), (again.SaleState, again.SaleStateReason, again.SaleStateReadAt));
+    }
+
     [PostgreSqlFact]
     public async Task A_well_formed_answer_without_the_code_marks_it_not_found_at_once_and_leaves_one_summary()
     {

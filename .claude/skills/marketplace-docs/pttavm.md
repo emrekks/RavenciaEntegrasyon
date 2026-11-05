@@ -35,6 +35,11 @@ may not repeat within 5 min (`PTTAVM_REPEAT_REQUEST_WAIT`). Price/stock ≤ 1000
 `StokKontrolListesi`, `BarkodKontrol`, `GetCategoryTree`, `GetMainCategories`, `KullaniciTedarikciBilgisiGetir`,
 `KargoBilgiListesi`. Shipping is a separate REST service (`shipment.pttavm.com`) and is blocked.
 
+## Sale state (T2-D30, 2026-11-05)
+- StokKontrolListesi row `Aktif` ("Ürünün aktiflik bilgisi", set by `Aktif Yap`) and a variant entry's own `Aktif`;
+  `Mevcut` is stock, not sale. Source: offline doc `# Aktif Yap` and the product list field table. A row without
+  `Aktif` stays unknown. Code: `PttAvmProductMapper.SaleState`.
+
 ## Statuses (SiparisDurumu, Turkish letters folded)
 kargo_yapilmasi_bekleniyor → Created; havale_onayi_bekleniyor / onay_surecinde → Awaiting (OnHold); gonderilmis /
 gonderildi → Shipped; gondericisine_teslim_edildi → Undelivered; tamamlandi → Delivered; iptal / odeme_gecersiz →

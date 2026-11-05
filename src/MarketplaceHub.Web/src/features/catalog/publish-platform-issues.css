@@ -196,6 +196,8 @@
 .publish-issue-lead > span { color: var(--rv-color-muted); font-size: 12.5px; overflow-wrap: anywhere; }
 .publish-issue-lead > span.is-danger { color: var(--rv-color-danger); }
 .publish-issue-lead > span.is-success { color: var(--rv-color-accent); }
+/* The marketplace closed the listing to sale (Satışa Kapalı): a warning, not an error. */
+.publish-issue-lead > span.is-warning { color: var(--rv-color-warning); }
 .publish-issue-lead > span.is-info { color: var(--rv-color-info); }
 /* Its foot: the card's actions (stop, İş Ayrıntısı), 36 px like every control. */
 .publish-issue-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rv-color-border); }

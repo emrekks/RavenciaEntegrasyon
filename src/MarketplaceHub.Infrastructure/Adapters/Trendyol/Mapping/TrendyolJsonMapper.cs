@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
+using ListingSaleState = MarketplaceHub.Domain.ListingSaleState;
 using ReturnRejectedPackageStates = MarketplaceHub.Domain.ReturnRejectedPackageStates;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping;
@@ -482,7 +483,9 @@ public static class TrendyolJsonMapper
                     NestedText(variant, "price", "currency"),
                     variant.GetRawText(),
                     variantImages,
-                    Desi: ImportedDesi.From(DecimalNullable(variant, "dimensionalWeight") ?? DecimalNullable(product, "dimensionalWeight"))));
+                    Desi: ImportedDesi.From(DecimalNullable(variant, "dimensionalWeight") ?? DecimalNullable(product, "dimensionalWeight")),
+                    SaleState: isPendingApproval ? null : SaleState(variant),
+                    SaleStateReason: isPendingApproval ? null : SaleStateReason(variant)));
             }
         }
         if (variants.Count == 0)
@@ -491,7 +494,7 @@ public static class TrendyolJsonMapper
             var sku = NullText(product, "stockCode", "merchantSku", "sku") ?? barcode;
             var variantId = NullText(product, "variantId", "id", "barcode", "stockCode");
             if (!string.IsNullOrWhiteSpace(variantId) && !string.IsNullOrWhiteSpace(sku))
-                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, contentOptions, Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText(), VariantImageUrls(product), Desi: ImportedDesi.From(DecimalNullable(product, "dimensionalWeight"))));
+                variants.Add(new(variantId!, sku!, barcode, NullText(product, "modelCode", "productMainId") ?? productMainId, contentOptions, Bool(product, "archived"), DecimalNullable(product, "salePrice") ?? NestedDecimalNullable(product, "price", "salePrice"), DecimalNullable(product, "listPrice") ?? NestedDecimalNullable(product, "price", "listPrice"), DecimalNullable(product, "vatRate"), DecimalNullable(product, "quantity") ?? NestedDecimalNullable(product, "stock", "quantity"), NestedText(product, "price", "currency"), product.GetRawText(), VariantImageUrls(product), Desi: ImportedDesi.From(DecimalNullable(product, "dimensionalWeight")), SaleState: isPendingApproval ? null : SaleState(product), SaleStateReason: isPendingApproval ? null : SaleStateReason(product)));
         }
         var productImages = images;
         var allImages = productImages
@@ -1179,6 +1182,22 @@ public static class TrendyolJsonMapper
             || item.ValueKind == JsonValueKind.String && bool.TryParse(item.GetString(), out var parsed) && parsed
             || item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var number) && number != 0;
     }
+    // The approved list's onSale (Ürün Filtreleme - Onaylı Ürün v2): the variant is on sale now. A product still waiting
+    // for approval has no sale state; an answer without the field says nothing.
+    private static string? SaleState(JsonElement variant) => ListingSaleState.From(BoolAny(variant, "onSale"));
+
+    // Why a variant is off sale, from the same answer: blacklisted, locked or archived as Trendyol flags them, else a
+    // stock of 0 in the same answer. Off sale with stock and no flag names no reason.
+    private static string? SaleStateReason(JsonElement variant)
+    {
+        if (BoolAny(variant, "onSale") != false) return null;
+        if (BoolAny(variant, "blacklisted") == true) return ListingSaleState.Blacklisted;
+        if (BoolAny(variant, "locked") == true) return ListingSaleState.Locked;
+        if (BoolAny(variant, "archived") == true) return ListingSaleState.Archived;
+        var quantity = DecimalNullable(variant, "quantity") ?? NestedDecimalNullable(variant, "stock", "quantity");
+        return quantity is <= 0 ? ListingSaleState.StockZero : null;
+    }
+
     private static bool? BoolAny(JsonElement value, params string[] names)
     {
         foreach (var name in names)

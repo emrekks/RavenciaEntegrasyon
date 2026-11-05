@@ -31,9 +31,16 @@ describe('publish card links after a status check', () => {
       { key: 'new-row', platformStatuses: [] as VariantPlatformStatus[] }
     ]
     const merged = withLatestVariantLinks(rows, [{ id: 'v1', platformStatuses: [status('ty', { isMissing: true }), status('hb', { isLinked: true, isMatched: true })] }])
-    expect(publishCardVariantLinks(merged, 'ty')).toEqual({ total: 2, linked: 0, missing: 1 })
-    expect(publishCardVariantLinks(merged, 'hb')).toEqual({ total: 2, linked: 1, missing: 0 })
+    expect(publishCardVariantLinks(merged, 'ty')).toEqual({ total: 2, linked: 0, missing: 1, offSale: 0, offSaleStockZero: 0 })
+    expect(publishCardVariantLinks(merged, 'hb')).toEqual({ total: 2, linked: 1, missing: 0, offSale: 0, offSaleStockZero: 0 })
     expect(merged[1]).toBe(rows[1])
+  })
+
+  it('takes the sale state of the latest product, so a listing closed to sale since the form was filled reads so', () => {
+    const rows = [{ key: 'v1', platformStatuses: [status('ty', { isLinked: true, isMatched: true, saleState: 'ON_SALE' })] }]
+    const merged = withLatestVariantLinks(rows, [{ id: 'v1', platformStatuses: [status('ty', { isLinked: true, isMatched: true, saleState: 'OFF_SALE', saleStateReason: 'BY_SELLER' })] }])
+    expect(merged[0].platformStatuses[0]).toMatchObject({ saleState: 'OFF_SALE', saleStateReason: 'BY_SELLER' })
+    expect(publishCardVariantLinks(merged, 'ty')).toMatchObject({ linked: 1, offSale: 1, offSaleStockZero: 0 })
   })
 
   it('keeps the rows when the latest product carries no statuses (a save answer without them)', () => {
