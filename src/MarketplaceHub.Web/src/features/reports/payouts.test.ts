@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { parseAmount, payoutGap, payoutLinesQuery, type PayoutGroup } from './payouts'
+import { isRolledToPayoutDay, parseAmount, payoutGap, payoutLinesQuery, rolledPayoutNote, type PayoutGroup } from './payouts'
+
+describe('payout day roll', () => {
+  it('notes a Trendyol or Hepsiburada payout day as the next payout day of records already due, nothing else', () => {
+    expect(isRolledToPayoutDay({ kind: 'PAYOUT_DAY', platformCode: 'HEPSIBURADA' })).toBe(true)
+    expect(isRolledToPayoutDay({ kind: 'PAYOUT_DAY', platformCode: 'trendyol' })).toBe(true)
+    expect(isRolledToPayoutDay({ kind: 'DUE_DAY', platformCode: 'TRENDYOL' })).toBe(false)
+    expect(isRolledToPayoutDay({ kind: 'PAYOUT', platformCode: 'HEPSIBURADA' })).toBe(false)
+    expect(isRolledToPayoutDay({ kind: 'PAYOUT_DAY', platformCode: 'N11' })).toBe(false)
+    expect(rolledPayoutNote).toBe('Vadesi dolan kayıtlar sonraki ödeme gününe aktarıldı.')
+  })
+})
 
 describe('amount filter', () => {
   it('reads Turkish thousands and decimals, and a dot followed by two digits as a decimal point', () => {

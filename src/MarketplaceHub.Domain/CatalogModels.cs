@@ -201,6 +201,10 @@ public sealed class PlatformConnection
     public DateTimeOffset? LastTestedAt { get; set; }
     public DateTimeOffset? LastSuccessAt { get; set; }
     public string? LastErrorCode { get; set; }
+    // The adapter's error class of LastErrorCode (AdapterErrorClass name: RateLimit, Remote5xx, Authentication, ...), so
+    // the automatic retest decides by the kind of failure, not by the code's spelling. Null for an older row or a code
+    // the panel set itself.
+    public string? LastErrorClass { get; set; }
     // When the connection was last disabled (or hidden); re-enabling it needs
     // a successful connection test newer than this.
     public DateTimeOffset? DisabledAt { get; set; }

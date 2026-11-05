@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { invoiceStatusLabel, invoiceStatusTone, statusLabel } from './status-labels'
 
+describe('raw lower-case status words', () => {
+  it('find their key with plain upper casing (an "i" is not turned into "İ") and name no marketplace', () => {
+    expect(statusLabel('waitinginaction')).toBe('Pazaryerinde karar bekliyor')
+    expect(statusLabel('WaitingInAction')).toBe('Pazaryerinde karar bekliyor')
+    expect(invoiceStatusLabel('fatura_iptal')).toBe('Fatura İptal')
+    expect(invoiceStatusTone('fatura_bekliyor')).toBe('warning')
+  })
+})
+
 describe('package status enum names', () => {
   it('read the same as their underscored codes', () => {
     expect(statusLabel('READYTOSHIP')).toBe('Kargoya hazır')

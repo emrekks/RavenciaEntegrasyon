@@ -38,9 +38,11 @@ public static class N11OrderMapper
         }
 
         var page = Long(root, "page") ?? Long(root, "number") ?? 0;
-        var totalPages = Long(root, "totalPages") ?? 0;
-        var hasMore = content.GetArrayLength() > 0 && page + 1 < totalPages;
         var total = Long(root, "totalElements");
+        // A page without totalPages does not say it is the last one: a non-empty page is followed by the next, until an
+        // empty page ends the walk (one request more, never a skipped page).
+        var totalPages = Long(root, "totalPages");
+        var hasMore = content.GetArrayLength() > 0 && (totalPages is null || page + 1 < totalPages);
         return new(LinkSplitPackages(rows), hasMore ? (page + 1).ToString(CultureInfo.InvariantCulture) : null, hasMore, total is > int.MaxValue ? int.MaxValue : (int?)total, issues);
     }
 

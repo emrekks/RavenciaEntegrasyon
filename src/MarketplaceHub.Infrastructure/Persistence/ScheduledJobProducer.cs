@@ -512,13 +512,14 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
                 x.Status,
                 x.LastTestedAt,
                 x.LastErrorCode,
+                x.LastErrorClass,
                 CredentialSavedAt = db.PlatformCredentials.Where(credential => credential.ConnectionId == x.Id && credential.RevokedAt == null).Max(credential => (DateTimeOffset?)credential.CreatedAt)
             })
             .ToListAsync(cancellationToken);
         var added = 0;
         foreach (var draft in drafts)
         {
-            if (!ConnectionRetestPolicy.ShouldRetest(draft.Status, draft.LastTestedAt, draft.LastErrorCode, now, draft.CredentialSavedAt)) continue;
+            if (!ConnectionRetestPolicy.ShouldRetest(draft.Status, draft.LastTestedAt, draft.LastErrorCode, draft.LastErrorClass, now, draft.CredentialSavedAt)) continue;
             var jobType = MarketplaceJobTypes.ForPlatform(draft.PlatformCode, MarketplaceJobTypes.ConnectionTest);
             var dedupPrefix = $"scheduled:connection-retest:{draft.Id:N}:";
             var pending = await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == draft.TenantId && x.ConnectionId == draft.Id

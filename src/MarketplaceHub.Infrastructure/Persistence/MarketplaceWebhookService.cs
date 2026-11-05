@@ -39,8 +39,34 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
         // an address that was moved to the live store) is answered 200 and dropped, and the panel is told.
         if (connection.PlatformCode == "HEPSIBURADA" && ForeignMerchant(envelope.RawJson, connection.ExternalStoreId) is { } foreign)
         {
-            await NoteRejectedAsync(connection, "WEBHOOK_MERCHANT_MISMATCH", $"başka bir mağazanın ({foreign}) bildirimi geldi ve işlenmedi; bu adresi o mağaza için tanımlıysa Hepsiburada'dan kaldırmasını isteyin", cancellationToken);
+            await NoteRejectedAsync(connection, MerchantMismatchCode, $"başka bir mağazanın ({foreign}) bildirimi geldi ve işlenmedi; bu adresi o mağaza için tanımlıysa Hepsiburada'dan kaldırmasını isteyin", cancellationToken);
             return ServiceResult<bool>.Ok(false);
+        }
+        // The same check on every notification that names its store: a Trendyol package names its supplierId, a Shopify
+        // delivery its shop in X-Shopify-Shop-Domain. Another store's notification is answered 200, recorded and dropped.
+        if (connection.PlatformCode == "TRENDYOL" && ForeignSupplier(envelope.RawJson, connection.ExternalStoreId) is { } foreignSupplier)
+        {
+            await NoteRejectedAsync(connection, MerchantMismatchCode, $"başka bir satıcının ({foreignSupplier}) bildirimi geldi ve işlenmedi; bu adres o satıcı için Trendyol'da tanımlıysa oradan kaldırın", cancellationToken);
+            return ServiceResult<bool>.Ok(false);
+        }
+        if (connection.PlatformCode == "SHOPIFY")
+        {
+            var shopDomain = headers.FirstOrDefault(x => string.Equals(x.Key, "X-Shopify-Shop-Domain", StringComparison.OrdinalIgnoreCase)).Value;
+            // A subscription admitted by its route alone (no secret, nothing signed) must name this store; a signed one
+            // that does not name it is still this app's delivery.
+            var routeOnly = subscription.AuthenticationType == "ROUTE_TOKEN";
+            if (ForeignShop(shopDomain, connection.ExternalStoreId, required: routeOnly) is { } foreignShop)
+            {
+                await NoteRejectedAsync(connection, MerchantMismatchCode, $"başka bir mağazanın ({foreignShop}) bildirimi geldi ve işlenmedi; bu adres o mağaza için Shopify'da tanımlıysa oradan kaldırın", cancellationToken);
+                return ServiceResult<bool>.Ok(false);
+            }
+            // A topic the panel does not subscribe to is not taken for an order: answered 200, recorded, not processed.
+            if (envelope.ResourceType == MarketplaceHub.Infrastructure.Adapters.Shopify.ShopifyWebhookVerifier.UnknownEventResourceType)
+            {
+                var topic = headers.FirstOrDefault(x => string.Equals(x.Key, "X-Shopify-Topic", StringComparison.OrdinalIgnoreCase)).Value;
+                await NoteRejectedAsync(connection, UnknownEventCode, $"panelin tanımadığı bir Shopify olayı geldi ({SafeTopic(topic)}); kaydedildi, sipariş olarak işlenmedi", cancellationToken, received: true);
+                return ServiceResult<bool>.Ok(false);
+            }
         }
         // A product deleted in Shopify names only the product id, which the panel does not keep: the delivery starts the
         // connection's link verification now instead of at night. The scan misses the deleted codes and the lookups confirm
@@ -70,12 +96,16 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
     // own deliveries and stays open.
     internal static string RejectedPrefix(Guid connectionId) => $"webhook-rejected:{connectionId:N}:";
 
+    internal const string MerchantMismatchCode = "WEBHOOK_MERCHANT_MISMATCH";
+    internal const string UnknownEventCode = "WEBHOOK_UNKNOWN_EVENT";
+
     private Task<int> ResolveRejectedAsync(PlatformConnection connection, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var prefix = RejectedPrefix(connection.Id);
-        var merchantMismatch = prefix + "WEBHOOK_MERCHANT_MISMATCH";
+        var merchantMismatch = prefix + MerchantMismatchCode;
+        var unknownEvent = prefix + UnknownEventCode;
         return db.OperationalIssues
-            .Where(x => x.TenantId == connection.TenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix) && x.DedupeKey != merchantMismatch)
+            .Where(x => x.TenantId == connection.TenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(prefix) && x.DedupeKey != merchantMismatch && x.DedupeKey != unknownEvent)
             .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, IssueStatus.Resolved).SetProperty(x => x.ResolvedAt, now), cancellationToken);
     }
     private async Task<ServiceResult<bool>> QueueListingVerifyAsync(PlatformConnection connection, Guid subscriptionId, string correlationId, CancellationToken cancellationToken)
@@ -117,11 +147,11 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
     // A refused delivery for a known connection (old address, wrong password, a body that does not verify) leaves an
     // operational issue, so a marketplace that calls and is turned away is told apart from one that never calls; the
     // log alone is lost with every restart. One row per connection and code, touched at most once a minute.
-    private async Task NoteRejectedAsync(PlatformConnection connection, string code, string reason, CancellationToken cancellationToken)
+    private async Task NoteRejectedAsync(PlatformConnection connection, string code, string reason, CancellationToken cancellationToken, bool received = false)
     {
         var now = timeProvider.GetUtcNow();
         var key = RejectedPrefix(connection.Id) + code;
-        var summary = $"{connection.DisplayName} bildirimi reddedildi ({code}): {reason}";
+        var summary = received ? $"{connection.DisplayName} bildirimi alındı ({code}): {reason}" : $"{connection.DisplayName} bildirimi reddedildi ({code}): {reason}";
         if (summary.Length > 1000) summary = summary[..1000];
         try
         {
@@ -133,7 +163,7 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
                     .SetProperty(x => x.LastSeenAt, now)
                     .SetProperty(x => x.OccurrenceCount, x => x.OccurrenceCount + 1), cancellationToken);
             if (touched > 0 || await db.OperationalIssues.AsNoTracking().AnyAsync(x => x.TenantId == connection.TenantId && x.DedupeKey == key, cancellationToken)) return;
-            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, DedupeKey = key, Code = "WEBHOOK_DELIVERY_REJECTED", Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
+            db.OperationalIssues.Add(new OperationalIssue { Id = Guid.CreateVersion7(), TenantId = connection.TenantId, DedupeKey = key, Code = received ? code : "WEBHOOK_DELIVERY_REJECTED", Summary = summary, Status = IssueStatus.Open, FirstSeenAt = now, LastSeenAt = now, OccurrenceCount = 1 });
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException exception) when (IsDuplicateCandidate(exception)) { db.ChangeTracker.Clear(); }
@@ -169,6 +199,52 @@ public sealed class MarketplaceWebhookService(AppDbContext db, TokenHasher token
             }
             return null;
         }
+    }
+
+    // The first supplierId of a Trendyol package page ({"content":[...]}) that is not the connection's seller id, or null
+    // when every package names this seller or none names one. Trendyol sends it as a number (documented sample).
+    internal static string? ForeignSupplier(string pageJson, string supplierId)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(pageJson);
+            if (!document.RootElement.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array) return null;
+            foreach (var package in content.EnumerateArray())
+            {
+                if (package.ValueKind != JsonValueKind.Object || !package.TryGetProperty("supplierId", out var value)) continue;
+                var named = value.ValueKind switch
+                {
+                    JsonValueKind.Number => value.GetRawText(),
+                    JsonValueKind.String => value.GetString(),
+                    _ => null
+                };
+                if (!string.IsNullOrWhiteSpace(named) && !string.Equals(named.Trim(), supplierId.Trim(), StringComparison.OrdinalIgnoreCase)) return named.Trim();
+            }
+            return null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    // The shop X-Shopify-Shop-Domain names ("store.myshopify.com") when it is not the connection's store (kept as the
+    // shop name, with or without the domain), or null when it is. A missing header is foreign only when required (a
+    // route-only subscription, whose deliveries nothing else ties to the store).
+    internal static string? ForeignShop(string? shopDomain, string connectionShop, bool required)
+    {
+        static string Shop(string value)
+        {
+            var shop = value.Trim().ToLowerInvariant();
+            return shop.EndsWith(".myshopify.com", StringComparison.Ordinal) ? shop[..^".myshopify.com".Length] : shop;
+        }
+        if (string.IsNullOrWhiteSpace(shopDomain)) return required ? "mağaza adı yok" : null;
+        return string.Equals(Shop(shopDomain), Shop(connectionShop), StringComparison.Ordinal) ? null : SafeTopic(shopDomain);
+    }
+
+    // A header value shown in the panel: trimmed, at most 100 characters.
+    private static string SafeTopic(string? value)
+    {
+        var text = (value ?? "").Trim();
+        if (text.Length == 0) return "adı yok";
+        return text.Length <= 100 ? text : text[..100];
     }
 
     private static bool IsDuplicateCandidate(DbUpdateException exception) => exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };

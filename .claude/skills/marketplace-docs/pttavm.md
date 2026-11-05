@@ -64,6 +64,12 @@ least advanced known line decides. Code: `PttAvmOrderMapper.PackageStatus`.
   total, only line amounts (`KdvDahilToplamTutar`) (`pttavm-api-son.md:1597-1632`). Since 5 Nov 2026 a line's code is
   the barcode, else `UrunKodu`, never `UrunId` or the line id; an order with an unread line says its amount may be
   short (ORDER_AMOUNT_MAY_BE_INCOMPLETE, order list mark) (`PttAvmOrderMapper.cs`).
+- No product approval step. The publication check reads the listed product's `Aktif` (and a variant entry's own
+  `Aktif`) as the sale state: on sale → APPROVED, passive → ARCHIVED (review), no `Aktif` → UNKNOWN (review); a missing
+  flag is never "live" (`PttAvmProductPayloadRules.ListedStatus`, report item 13, 5 Nov 2026). Before, passive meant
+  "still waiting" and a missing flag meant live.
+- A price/stock tracking answer that leaves a product out settles that line UNKNOWN (not sent; it goes again with the
+  next change), the job asks for a look (PRICE_INVENTORY_LINES_UNCONFIRMED) (report item 14).
 
 ## Job types
 PTTAVM_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORDER_STATUS_SYNC.

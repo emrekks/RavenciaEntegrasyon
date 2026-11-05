@@ -202,7 +202,12 @@ public sealed class ShopifyFamilyPublicationTests
         Assert.Equal("NOT_FOUND", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", none.RootElement).Status);
         var approved = ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", live.RootElement);
         Assert.Equal(("APPROVED", "p-1", "v-1"), (approved.Status, approved.ExternalProductId, approved.ExternalVariantId));
-        Assert.Equal("PENDING", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", draft.RootElement).Status);
+        // DRAFT waits like an unapproved product; ARCHIVED is a closed listing; a status the panel does not know stays unknown.
+        Assert.Equal("PENDING_APPROVAL", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", draft.RootElement).Status);
+        using var archived = JsonDocument.Parse("""{ "nodes": [ { "id": "v-3", "sku": "MZ-S-L", "product": { "id": "p-3", "status": "ARCHIVED", "publishedAt": null } } ] }""");
+        Assert.Equal("ARCHIVED", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", archived.RootElement).Status);
+        using var other = JsonDocument.Parse("""{ "nodes": [ { "id": "v-4", "sku": "MZ-S-L", "product": { "id": "p-4", "status": "UNLISTED", "publishedAt": null } } ] }""");
+        Assert.Equal("UNKNOWN", ShopifyHttpClient.MapSkuPublicationStatus("MZ-S-L", other.RootElement).Status);
     }
 
     // Live 2026-10-28: every Shopify product written before the publish fix was active but not on the Online Store, and

@@ -1216,6 +1216,8 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
                 var body = await response.Content.ReadBoundedStringAsync(linked.Token);
                 if (TrendyolErrorMapper.RepeatRequest(response.StatusCode, body, remoteRequestId) is { } repeat)
                     return AdapterResult<string>.Failure(repeat, rate with { RetryAfter = TrendyolStockRules.RepeatRequestWait });
+                if (MarketplaceErrorRules.GatewayBlocked(response.StatusCode, body, "Trendyol", "TRENDYOL", remoteRequestId) is { } gatewayBlock)
+                    return AdapterResult<string>.Failure(gatewayBlock, rate with { RetryAfter = MarketplaceErrorRules.GatewayBlockWait });
                 var vendorCode = TrendyolErrorMapper.SafeVendorCode(body);
                 return AdapterResult<string>.Failure(TrendyolErrorMapper.FromStatus(response.StatusCode, retryAfter, remoteRequestId, vendorCode), rate);
             }
@@ -1226,6 +1228,11 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
             // An instant action that never got a quota token was not sent; it is queued instead.
             if (instantLimits is not null && !quotaAcquired)
                 return AdapterResult<string>.Failure(new(AdapterErrorClass.RateLimit, "LOCAL_QUOTA_BUSY", "Pazaryeri istek kotası şu an dolu.", 429, TimeSpan.FromSeconds(10), null));
+            // Any other request whose quota wait ran out was never sent either (the token is taken right before the
+            // send): a local quota wait that keeps the job's attempt, as on n11, not an outcome-unknown timeout.
+            // A request that was sent and then timed out stays REMOTE_TIMEOUT, so a write is never taken as unsent.
+            if (!quotaAcquired)
+                return AdapterResult<string>.Failure(new(AdapterErrorClass.RateLimit, LocalQuotaWaitCode, "Trendyol istek kotası dolu olduğu için istek gönderilmedi; yeniden denenecek.", 429, TimeSpan.FromSeconds(15), null));
             logger.LogWarning("Trendyol {Method} {Path} (storefront {StoreFront}) timed out after the quota wait", method.Method, request.RequestUri?.AbsolutePath, includeStoreFrontCode ? storeFrontCode : "none");
             return AdapterResult<string>.Failure(new(AdapterErrorClass.TransientNetwork, "REMOTE_TIMEOUT", "Platform isteği zaman aşımına uğradı.", null, TimeSpan.FromSeconds(5), null));
         }
@@ -1233,6 +1240,7 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     }
 
     private static readonly TimeSpan MaximumQuotaWait = TimeSpan.FromMinutes(10);
+    internal const string LocalQuotaWaitCode = "LOCAL_QUOTA_WAIT";
 
     // Trendyol documents 5 MB per evidence file; the decimal megabyte is the safe reading.
     internal const long MaxClaimEvidenceBytes = 5_000_000;

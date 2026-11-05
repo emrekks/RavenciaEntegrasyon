@@ -110,6 +110,10 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   sum (`HepsiburadaHttpClient.PollAsync`, `HepsiburadaJsonMapper.PaidOrderLine`, `MarketplaceJobProcessor`).
 - Webhooks: Basic auth only; answer within 5 s — more than 20 slow answers in an hour blacklists the feed. Changes
   made through the API are not echoed back as webhooks.
+- A 403 HTML page is a gateway block (HEPSIBURADA_GATEWAY_BLOCKED, RateLimit, 15 min); a 403 that is not a page stays
+  HEPSIBURADA_ACCESS_FORBIDDEN (`MarketplaceErrorRules`, report item 16, 5 Nov 2026).
+- Price/stock results list only the refused SKUs, so a SKU left out was applied: the one marketplace where an unnamed
+  line counts as applied (the others settle it UNKNOWN, report item 14).
 
 ## Job types
 HEPSIBURADA_CONNECTION_TEST, _REFERENCE_SYNC, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC (also reads packages,

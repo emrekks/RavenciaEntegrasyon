@@ -121,6 +121,13 @@ export function filterGroups(groups: PayoutGroup[], filters: PayoutFilters) {
   return filters.sort === 'amount' ? [...kept].sort((a, b) => b.amount - a.amount) : kept
 }
 
+// Trendyol and Hepsiburada pay on fixed days, so a record falls due on its own day but is paid on the next payout day
+// (PAYOUT_DAY groups): the rule stays, and the group says so in a short note.
+export const rolledPayoutNote = 'Vadesi dolan kayıtlar sonraki ödeme gününe aktarıldı.'
+export function isRolledToPayoutDay(group: Pick<PayoutGroup, 'kind' | 'platformCode'>) {
+  return group.kind === 'PAYOUT_DAY' && ['TRENDYOL', 'HEPSIBURADA'].includes(group.platformCode.trim().toUpperCase())
+}
+
 // When each marketplace pays, as read from its paid records (Oct-Nov 2026), for the next payout's explanation.
 export const payoutRuleText: Record<string, string> = {
   TRENDYOL: 'Trendyol Türkiye-Körfez pazartesi o haftanın pazartesi–çarşamba vadelerini, perşembe perşembe–pazar vadelerini öder (resmi tatil kaydırır); Azerbaycan ve Avrupa vade gününde gösterilir.',

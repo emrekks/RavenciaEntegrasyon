@@ -214,6 +214,8 @@ public sealed partial class N11HttpClient(
     internal static AdapterError Error(HttpStatusCode status, string body, TimeSpan? retryAfter)
     {
         var remote = RemoteMessage(body) is { } remoteText ? N11ErrorAdvice.WithAdvice(remoteText) : null;
+        // A 403 HTML page is the security gateway, as on every marketplace (MarketplaceErrorRules).
+        if (MarketplaceErrorRules.GatewayBlocked(status, body, "N11", "N11") is { } gatewayBlock) return gatewayBlock;
         return status switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => new(AdapterErrorClass.Authentication, "N11_CREDENTIALS_REJECTED", "N11 API anahtarı veya şifresi reddedildi. N11 satıcı panelinde Hesabım > API Hesapları altındaki güncel bilgileri girin.", (int)status, null, null),

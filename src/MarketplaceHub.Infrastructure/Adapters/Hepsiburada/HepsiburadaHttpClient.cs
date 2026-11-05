@@ -1392,7 +1392,8 @@ public sealed partial class HepsiburadaHttpClient(
                     ?? (response.Headers.RetryAfter?.Date is { } retryDate ? retryDate - timeProvider.GetUtcNow() : null);
                 var error = response.StatusCode == HttpStatusCode.Unauthorized && IsProductUpdatePath(path)
                     ? ProductUpdateAuthenticationRejected(requestId)
-                    : Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
+                    : MarketplaceErrorRules.GatewayBlocked(response.StatusCode, body, "Hepsiburada", "HEPSIBURADA", requestId)
+                        ?? Error(response.StatusCode, retryAfter ?? rate?.RetryAfter, requestId);
                 var invoiceErrorDetails = method == HttpMethod.Put
                     && path.EndsWith("/invoice", StringComparison.OrdinalIgnoreCase)
                     ? SafeInvoiceErrorDetails(body)

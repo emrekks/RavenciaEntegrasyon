@@ -29,8 +29,15 @@ public static class ProductBatchResultPolicy
     // the approval check reads it by barcode, so the panel matches the product instead of sending it again.
     public const string BarcodeExistsMarker = "Aynı barkodlu bir ürününüz bulunduğundan";
 
+    // The same refusal on the other marketplaces, in their words. Their documentation names no exact text (checked in
+    // the offline docs, Nov 2026), so the common phrasings are matched; a match only sends the item to the approval
+    // check, which reads it by barcode, so a wrong match costs a read and never counts a product as created.
+    private static readonly string[] OtherBarcodeExistsMarkers = ["zaten mevcut", "zaten kayıtlı", "zaten kayitli", "zaten var", "already exist"];
+
     public static bool SaysBarcodeExists(string? reason) =>
-        reason?.Contains(BarcodeExistsMarker, StringComparison.OrdinalIgnoreCase) == true;
+        reason is not null
+        && (reason.Contains(BarcodeExistsMarker, StringComparison.OrdinalIgnoreCase)
+            || OtherBarcodeExistsMarkers.Any(marker => reason.Contains(marker, StringComparison.OrdinalIgnoreCase)));
 
     // What the job's summary says about the variants it left to the approval check: the ones the result did not list and
     // the ones Trendyol named as already in the store, each in its own words.

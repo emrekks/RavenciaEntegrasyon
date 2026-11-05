@@ -397,6 +397,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             connection.LastTestedAt = null;
             connection.LastSuccessAt = null;
             connection.LastErrorCode = null;
+            connection.LastErrorClass = null;
             connection.Status = "DRAFT";
             foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken))
             {
@@ -485,7 +486,7 @@ public sealed class MarketplaceConnectionService(AppDbContext db, CursorCodec cu
             connection.SettingsJson = JsonSerializer.Serialize(new ShopifyConnectionSettings(ReadShopifySettings(connection).ExternalWritesEnabled, MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson)));
         else if (connection.PlatformCode == "HEPSIBURADA")
             connection.SettingsJson = JsonSerializer.Serialize(ReadHepsiburadaSettings(connection));
-        connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.Status = "DRAFT"; connection.Version++;
+        connection.LastTestedAt = null; connection.LastSuccessAt = null; connection.LastErrorCode = null; connection.LastErrorClass = null; connection.Status = "DRAFT"; connection.Version++;
         foreach (var capability in await db.PlatformCapabilities.Where(x => x.TenantId == tenantId && x.ConnectionId == id).ToListAsync(cancellationToken)) { capability.SupportLevel = CapabilitySupportLevel.Unknown; capability.VerifiedAt = null; capability.EvidenceNote = "Credential rotasyonu sonrası yeniden doğrulama gerekiyor."; capability.Version++; }
         await db.SaveChangesAsync(cancellationToken); return ServiceResult<ConnectionView>.Ok(Map(connection, true));
     }

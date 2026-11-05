@@ -335,21 +335,22 @@ public static class PazaramaProductWriteMapper
                 failed[code] = failed.TryGetValue(code, out var earlier) ? $"{earlier} {reason}".Trim() : reason ?? "";
             }
 
-        // Successful codes: the ones Pazarama lists, else every remembered barcode that did not fail.
+        // Successful codes: only the ones Pazarama names. A sent barcode the finished batch names neither as failed nor as
+        // done is not taken as created: its outcome is unknown (UnlistedLinesUnconfirmed, the batch will not name it
+        // later), and the approval check settles it by reading the barcode from Pazarama's product lists.
         var succeeded = new List<string>();
         if (data.TryGetProperty("batchResult", out var results) && results.ValueKind == JsonValueKind.Array)
             foreach (var item in results.EnumerateArray())
                 if (item.ValueKind == JsonValueKind.Object && (item.TryGetProperty("productCode", out var c) || item.TryGetProperty("code", out c)) && c.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(c.GetString()))
                     succeeded.Add(c.GetString()!.Trim());
-        // An error batch that names no product, failed or done, applied nothing: the remembered barcodes stand for
-        // the rest of a batch answered product by product, not for a batch Pazarama ended in error.
+        // An error batch that names no product, failed or done, applied nothing.
         if (status == 3 && failed.Count == 0 && succeeded.Count == 0) return new(operationId, "REJECTED", []);
-        if (succeeded.Count == 0 && codes is not null) succeeded.AddRange(codes.Where(code => !failed.ContainsKey(code)));
 
         var lines = failed.Select(entry => new RemoteOperationLine(entry.Key, false, null, "PAZARAMA_PRODUCT_REJECTED", false, PazaramaErrorAdvice.WithAdvice(entry.Value.Length <= 300 ? entry.Value : entry.Value[..300])))
             .Concat(succeeded.Where(code => !failed.ContainsKey(code)).Distinct(StringComparer.OrdinalIgnoreCase).Select(code => new RemoteOperationLine(code, true, null, null, false, "Ürün onaya gönderildi.")))
             .ToList();
-        return new(operationId, "COMPLETED", lines);
+        var unnamed = codes is not null && codes.Any(code => !lines.Any(line => string.Equals(line.ExternalKey, code, StringComparison.OrdinalIgnoreCase)));
+        return new(operationId, "COMPLETED", lines, UnlistedLinesUnconfirmed: unnamed);
     }
 
     // A barcode lookup Pazarama refused because no product matched ("Ürün bulunamadı", "Listelenecek veri
@@ -370,7 +371,12 @@ public static class PazaramaProductWriteMapper
         }
         var text = ((Text(item, "status") ?? "") + " " + (Text(item, "waitingApproveExp") ?? "")).Trim().ToLower(new CultureInfo("tr-TR"));
         var rejected = text.Contains("red", StringComparison.Ordinal) && !text.Contains("bekl", StringComparison.Ordinal);
-        return new(barcode, rejected ? "REJECTED" : "PENDING_APPROVAL", externalProductId, barcode, rejected ? "PAZARAMA_PRODUCT_REJECTED" : null, item.GetRawText());
+        if (rejected) return new(barcode, "REJECTED", externalProductId, barcode, "PAZARAMA_PRODUCT_REJECTED", item.GetRawText());
+        // No text (the documented sample sends status and waitingApproveExp null) or a waiting/review text: still
+        // waiting. Any other text is a state the panel does not know: UNKNOWN, which the approval check hands to
+        // review instead of reading it as "waiting".
+        var waiting = text.Length == 0 || text.Contains("bekl", StringComparison.Ordinal) || text.Contains("incele", StringComparison.Ordinal);
+        return new(barcode, waiting ? "PENDING_APPROVAL" : "UNKNOWN", externalProductId, barcode, null, item.GetRawText());
     }
 
     // {"items":[{"barcode":"...","archived":true}]}; archived means closed for sale.

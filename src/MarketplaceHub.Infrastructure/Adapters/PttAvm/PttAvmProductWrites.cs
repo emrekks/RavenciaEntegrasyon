@@ -563,8 +563,17 @@ public static class PttAvmProductPayloadRules
         var match = listed.SelectMany(product => product.Variants.Select(variant => (product, variant)))
             .FirstOrDefault(x => string.Equals(x.variant.Barcode, barcode, StringComparison.OrdinalIgnoreCase));
         if (match.product is null) return new(barcode, "NOT_FOUND", null, null, null, "{}");
-        return new(barcode, match.variant.Archived ? "PENDING_APPROVAL" : "APPROVED", match.product.ExternalProductId, match.variant.Barcode, null, match.product.RawJson);
+        return new(barcode, ListedStatus(match.variant.SaleState), match.product.ExternalProductId, match.variant.Barcode, null, match.product.RawJson);
     }
+
+    // PTT AVM has no approval step: a listed product is live while it is on sale (Aktif), closed (ARCHIVED) when it or
+    // its variant is passive, and UNKNOWN when the list does not carry Aktif. A missing flag is never "on sale".
+    internal static string ListedStatus(string? saleState) => saleState switch
+    {
+        MarketplaceHub.Domain.ListingSaleState.OnSale => "APPROVED",
+        MarketplaceHub.Domain.ListingSaleState.OffSale => "ARCHIVED",
+        _ => "UNKNOWN"
+    };
 
     // A forced variant-list read for family statuses at most once in five minutes per connection: the list is a few
     // pages for the whole store, and every card of every waiting family asks each minute.
@@ -592,8 +601,8 @@ public static class PttAvmProductPayloadRules
                 && Turkish.CompareInfo.Compare(nameColor, color, CompareOptions.IgnoreCase) == 0 && Turkish.CompareInfo.Compare(nameSize, size, CompareOptions.IgnoreCase) == 0)
             .ToList();
         if (matches.Count != 1) return null;
-        var active = !matches[0].Archived && ProductActive(product) == true;
-        return new(variant.Barcode, active ? "APPROVED" : "PENDING_APPROVAL", product.ExternalProductId, matches[0].ExternalVariantId, null, product.RawJson);
+        // The variant's sale state is the product row's Aktif and the entry's own Aktif (PttAvmProductMapper.SaleState).
+        return new(variant.Barcode, ListedStatus(matches[0].SaleState), product.ExternalProductId, matches[0].ExternalVariantId, null, product.RawJson);
     }
 
     // Live 28 Oct 2026 (MZ059YNC): GetProductsWithVariants lists a family made through UpdateProductsV3 not as
@@ -668,7 +677,7 @@ public static class PttAvmProductPayloadRules
     public static RemotePublicationStatus? ListedVariantStatus(string barcode, RemoteCatalogProduct product)
     {
         var variant = product.Variants.FirstOrDefault(x => string.Equals(x.Barcode?.Trim(), barcode.Trim(), StringComparison.OrdinalIgnoreCase));
-        return variant is null ? null : new(barcode, variant.Archived ? "PENDING_APPROVAL" : "APPROVED", product.ExternalProductId, variant.Barcode!.Trim(), null, product.RawJson);
+        return variant is null ? null : new(barcode, ListedStatus(variant.SaleState), product.ExternalProductId, variant.Barcode!.Trim(), null, product.RawJson);
     }
 
     // The status a BarkodKontrol answer gives a variant barcode. The owner is the product PTT AVM names for the code
@@ -682,7 +691,7 @@ public static class PttAvmProductPayloadRules
         var ownedByParent = string.Equals(owner.ExternalProductId, product.ExternalProductId, StringComparison.Ordinal)
             || string.Equals(owner.Barcode?.Trim(), product.ProductMainId?.Trim(), StringComparison.OrdinalIgnoreCase);
         if (!ownedByParent) return new(barcode, "OWNED_BY_OTHER_PRODUCT", owner.ExternalProductId, null, null, owner.RawJson);
-        return new(barcode, ProductActive(product) == true ? "APPROVED" : "PENDING_APPROVAL", product.ExternalProductId, recognisedCode, null, product.RawJson);
+        return new(barcode, ListedStatus(PttAvmProductMapper.SaleState(ProductActive(product), null)), product.ExternalProductId, recognisedCode, null, product.RawJson);
     }
 
     // The product's own Aktif flag as PTT AVM listed it; null when the list did not carry it.

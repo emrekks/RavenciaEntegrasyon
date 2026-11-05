@@ -67,6 +67,18 @@ UTC, ISO with Z.
   `currentTotalPriceSet` holds the tax either way. When false, the adapter adds each line's tax to its unit price and
   grosses the reported discounts up by the lines' tax share, so the stored line price is what the customer paid
   (raw line snapshot keeps Shopify's pre-tax price) (`ShopifyHttpClient.MapOrder`).
+- Publication check by SKU (report item 13, 5 Nov 2026): product `status` ACTIVE → APPROVED, DRAFT → PENDING_APPROVAL
+  (waits like an unapproved product), ARCHIVED → ARCHIVED (review), any other (UNLISTED, new) → UNKNOWN (review)
+  (`ShopifyHttpClient.MapSkuPublicationStatus`). A create answer that leaves a SKU out waits the same 30-minute grace
+  as the other marketplaces, then the approval check reads it (report item 14).
+- A 200 whose body is not JSON is a contract error (SHOPIFY_RESPONSE_NOT_JSON); a 403 HTML page is a gateway block
+  (SHOPIFY_GATEWAY_BLOCKED, 15 min) (`ShopifyHttpClient.QueryAsync`, `MapHttpError`, report items 15-16).
+- Webhook `X-Shopify-Shop-Domain` is the store's myshopify.com domain (`shopify-rehberler-son.md:7299`). A delivery
+  naming another store is answered 200, recorded (WEBHOOK_MERCHANT_MISMATCH) and dropped; on a subscription opened
+  without the app secret (ROUTE_TOKEN, nothing signed) the header is required. A topic the panel does not subscribe to
+  (only orders/create, updated, cancelled, fulfilled, partially_fulfilled, refunds/create, products/delete) is recorded
+  as WEBHOOK_UNKNOWN_EVENT and not processed (`MarketplaceWebhookService`, `ShopifyWebhookVerifier.ResourceType`,
+  report item 17). The webhook card asks for the secret key on a route-only subscription.
 
 ## Job types
 SHOPIFY_CONNECTION_TEST, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORDER_STATUS_SYNC, _ORDER_RECONCILIATION,

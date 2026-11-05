@@ -77,10 +77,22 @@ public sealed class ShopifyWebhookVerifier(AppDbContext db, IDataProtectionProvi
         return AdapterResult<VerifiedWebhookEnvelope>.Success(new(externalMessageId, payloadHash, ResourceType(topic), Encoding.UTF8.GetString(rawBody.Span)));
     }
 
-    // A refund's id is the refund's; it names its order in order_id. A deleted product starts the link check.
-    internal static string ResourceType(string topic) =>
-        string.Equals(topic.Trim(), "products/delete", StringComparison.OrdinalIgnoreCase) ? ProductDeleteResourceType
-        : topic.StartsWith("refunds/", StringComparison.OrdinalIgnoreCase) ? "REFUNDS" : "ORDERS";
+    // A topic the panel does not subscribe to: MarketplaceWebhookService answers it 200, records it and does not process it.
+    internal const string UnknownEventResourceType = "UNKNOWN_EVENT";
+
+    // A refund's id is the refund's; it names its order in order_id. A deleted product starts the link check. Only the
+    // order topics the panel subscribes to are orders; any other topic is an unknown event, never read as an order.
+    internal static string ResourceType(string topic)
+    {
+        var normalized = topic.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "products/delete" => ProductDeleteResourceType,
+            "refunds/create" => "REFUNDS",
+            "orders/create" or "orders/updated" or "orders/cancelled" or "orders/fulfilled" or "orders/partially_fulfilled" => "ORDERS",
+            _ => UnknownEventResourceType
+        };
+    }
 
     internal static string MessageId(string? topic, ReadOnlySpan<byte> rawBody)
     {
