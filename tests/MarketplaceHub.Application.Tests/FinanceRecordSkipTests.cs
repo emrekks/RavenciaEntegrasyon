@@ -166,6 +166,7 @@ public sealed class FinanceRecordSkipPostgreSqlTests(PostgreSqlTenantIsolationFi
             await using var db = fixture.CreateContext();
             await db.MarketplaceFinanceTransactions.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.OperationalIssues.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            await db.IntegrationOutboxEvents.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.PlatformConnections.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             await db.Tenants.Where(row => row.Id == tenant.Id).ExecuteDeleteAsync();
         }

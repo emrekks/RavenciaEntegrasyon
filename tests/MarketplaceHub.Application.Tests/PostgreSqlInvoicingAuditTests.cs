@@ -629,6 +629,8 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         {
             var seed = NewSeed($"audit-vat-unknown-{platformCode.ToLowerInvariant()}");
             seed.Marketplace.PlatformCode = platformCode;
+            // Shopify's invoicing switch is off unless turned on (MarketplaceInvoiceCreationPolicy).
+            if (platformCode == "SHOPIFY") seed.Marketplace.SettingsJson = """{"InvoiceCreationEnabled":true}""";
             var line = NewLine(seed.Tenant.Id, seed.Order.Id);
             line.VatRate = 0m;
             line.SourceSnapshotJson = snapshot;
