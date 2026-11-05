@@ -744,7 +744,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (succeeded == listings.Count && operationStatus.IssueCode is { } issueCode)
             return JobExecutionResult.Blocked(issueCode, operationStatus.IssueSummary ?? issueCode, payload.ExternalOperationId);
         if (succeeded == listings.Count) return JobExecutionResult.Success();
-        var incomplete = unknown > 0 ? " " + ProductBatchResultPolicy.IncompleteSummary(marketplaceName, unknown, listings.Count) : string.Empty;
+        var incomplete = unknown > 0 ? " " + ProductBatchResultPolicy.IncompleteSummary(marketplaceName, unknown - existingKeys.Count, existingKeys.Count, listings.Count) : string.Empty;
         if (refused == 0) return JobExecutionResult.SuccessWithNote(ProductBatchResultPolicy.IncompleteResultCode, incomplete.Trim());
         // The marketplace's own reason per refused SKU (Trendyol failureReasons, n11's task line text), so it shows on the card.
         var reasons = RejectionReasons(listings

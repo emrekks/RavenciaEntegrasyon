@@ -45,6 +45,12 @@ public sealed class ProductApprovalReconciliationPolicyTests
         Assert.True(ProductBatchResultPolicy.SaysBarcodeExists("Aynı barkodlu bir ürününüz bulunduğundan yeni ürün oluşturulamaz. Barkod: MZ021Y-CD-34"));
         Assert.False(ProductBatchResultPolicy.SaysBarcodeExists("Web Color alanı zorunludur."));
         Assert.False(ProductBatchResultPolicy.SaysBarcodeExists(null));
+
+        // The job summary names barcodes Trendyol found in the store as found, not as unlisted.
+        Assert.Equal("Trendyol 3 varyantın 3 tanesinin barkodunu mağazada zaten buldu; bu varyantların durumu onay kontrolünde barkodla sorgulanıp eşleştiriliyor.",
+            ProductBatchResultPolicy.IncompleteSummary("Trendyol", 0, 3, 3));
+        Assert.Equal("Trendyol batch sonucu 4 varyantın 1 tanesini listelemedi; Trendyol 4 varyantın 2 tanesinin barkodunu mağazada zaten buldu; bu varyantların durumu onay kontrolünde barkodla sorgulanıp eşleştiriliyor.",
+            ProductBatchResultPolicy.IncompleteSummary("Trendyol", 1, 2, 4));
     }
 
     [Fact]

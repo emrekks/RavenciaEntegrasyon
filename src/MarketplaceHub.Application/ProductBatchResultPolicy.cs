@@ -32,6 +32,13 @@ public static class ProductBatchResultPolicy
     public static bool SaysBarcodeExists(string? reason) =>
         reason?.Contains(BarcodeExistsMarker, StringComparison.OrdinalIgnoreCase) == true;
 
-    public static string IncompleteSummary(string marketplaceName, int missing, int sent) =>
-        $"{marketplaceName} batch sonucu {sent} varyantın {missing} tanesini listelemedi; bu varyantların durumu onay kontrolünde barkodla sorgulanıyor.";
+    // What the job's summary says about the variants it left to the approval check: the ones the result did not list and
+    // the ones Trendyol named as already in the store, each in its own words.
+    public static string IncompleteSummary(string marketplaceName, int missing, int alreadyThere, int sent)
+    {
+        var parts = new List<string>(2);
+        if (missing > 0) parts.Add($"{marketplaceName} batch sonucu {sent} varyantın {missing} tanesini listelemedi");
+        if (alreadyThere > 0) parts.Add($"{marketplaceName} {sent} varyantın {alreadyThere} tanesinin barkodunu mağazada zaten buldu");
+        return parts.Count == 0 ? string.Empty : $"{string.Join("; ", parts)}; bu varyantların durumu onay kontrolünde barkodla sorgulanıp eşleştiriliyor.";
+    }
 }
