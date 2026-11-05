@@ -13,7 +13,11 @@ public sealed record DashboardMetricsView(
     int ManualReviewJobCount = 0,
     int RecentJobCount = 0,
     // The products of the pending orders (ordered less cancelled), per store; null while unknown.
-    IReadOnlyDictionary<string, decimal>? PendingUnitsByConnection = null);
+    IReadOnlyDictionary<string, decimal>? PendingUnitsByConnection = null,
+    // The pending orders by the cargo company of their current package (empty name: none known yet), with their products.
+    IReadOnlyList<DashboardPendingCargoView>? PendingByCargo = null);
+
+public sealed record DashboardPendingCargoView(string Cargo, int Orders, decimal Units);
 
 public sealed record DashboardChannelView(Guid ConnectionId, string PlatformCode, string DisplayName, string Status);
 public sealed record DashboardIntegrationCellView(string State, DateTimeOffset? LastSuccessAt, DateTimeOffset? LastProblemAt);

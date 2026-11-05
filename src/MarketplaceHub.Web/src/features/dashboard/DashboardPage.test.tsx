@@ -12,7 +12,7 @@ vi.mock('../../shared/api', async importOriginal => {
   const respond = async (path: string) => {
     const route = path.split('?')[0]
     if (apiState.failing.has(route)) throw new Error(`${route} failed`)
-    if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 4, lateOrders: 1, pendingReturns: 2, pendingByConnection: { ty: 3, hb: 1 }, pendingUnitsByConnection: bootstrapOverride.units === undefined ? { ty: 34, hb: 1 } : bootstrapOverride.units }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
+    if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 4, lateOrders: 1, pendingReturns: 2, pendingByConnection: { ty: 3, hb: 1 }, pendingUnitsByConnection: bootstrapOverride.units === undefined ? { ty: 34, hb: 1 } : bootstrapOverride.units, pendingByCargo: [{ cargo: 'Yurtiçi Kargo Marketplace', orders: 3, units: 34 }, { cargo: '', orders: 1, units: 1 }] }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
     if (route === '/dashboard/cancellations') return { stores: [
       { connectionId: 'ty', cancelledOrders: 2, partialOrders: 1, cancelledUnits: 4, unknownTimeOrders: 0, unknownTimeUnits: 0 },
       { connectionId: 'hb', cancelledOrders: 0, partialOrders: 0, cancelledUnits: 0, unknownTimeOrders: 1, unknownTimeUnits: 3 },
@@ -109,14 +109,15 @@ describe('DashboardPage', () => {
     await render()
     expect(pendingCard().querySelector('strong')?.textContent).toBe('4Paket | 35 Adet Ürün')
     expect(pendingCard().getAttribute('href')).toBe('/orders?status=PENDING')
-    expect(Array.from(pendingCard().querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol3 paket · 34 adet', 'Hepsiburada1 paket · 1 adet'])
+    expect(Array.from(pendingCard().querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol3 paket · 34 adet', 'Hepsiburada1 paket · 1 adet', 'Yurtiçi Kargo3 paket · 34 adet', 'Kargo Belirlenmedi1 paket · 1 adet'])
+    expect(pendingCard().querySelector('.rr-bd-first')?.getAttribute('data-head')).toBe('Kargo Firmasına Göre')
   })
 
   it('leaves the units out while they are unknown, never as 0', async () => {
     bootstrapOverride.units = null
     await render()
     expect(pendingCard().querySelector('strong')?.textContent).toBe('4Paket')
-    expect(Array.from(pendingCard().querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol3 paket', 'Hepsiburada1 paket'])
+    expect(Array.from(pendingCard().querySelectorAll('.rr-bd-r:not(:has(.rr-bd-cargo))')).map(row => row.textContent)).toEqual(['Trendyol3 paket', 'Hepsiburada1 paket'])
   })
 
   it('reads "N Bekleyen | M Yaklaşan" in one wide invoice card that opens the pending invoices', async () => {
