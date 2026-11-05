@@ -40,6 +40,9 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
 - Claims `GET order/sellers/{id}/claims`: dates filter the claim's lastModifiedDate; one cursor bucket per
   `claimItemStatus`; page 200 and 3-month depth **unverified**; no storeFrontCode sent (TR only).
 - Finance `finance/che`: max 15-day window, page 500 or 1000, `supplierId` required.
+- A statement record carries both `debt` and `credit` (one of them 0.0), `id` and `transactionDate` (epoch ms).
+  Source: official docs `trendyol-api-son.md:12410-12437`. A record without `id`, `transactionDate` or any readable
+  debt/credit is not stored (the page's other records are) and opens a FINANCE_RECORD_INCOMPLETE issue (5 Nov 2026).
 - Platform service fee ("Platform Hizmet Bedeli", DeductionInvoices/PlatformServiceFee), international service fee
   ("Uluslararası Hizmet Bedeli") and e-commerce withholding tax (Stoppage, "E-ticaret Stopajı") come as invoices of a
   payment day: `orderNumber`, `shipmentPackageId`, `orderLineItemId` and `orderDate` are null; only `paymentOrderId`

@@ -97,29 +97,47 @@ internal static class TrendyolFinanceRequestContract
 
 internal static class TrendyolFinanceMapper
 {
-    // A record without an id or a date cannot be stored once and only once; the whole page is then a contract error
-    // (the window stays unread) instead of a record silently dropped.
+    // A record without an id or a transaction date, or with neither a readable debt nor a readable credit (the main
+    // amount: Trendyol sends both, one of them 0), is not stored: it is listed in Skipped and the page's other records
+    // are kept. A debt or credit that is left out (or null) beside a readable other one is 0; one sent but unreadable
+    // makes the record skipped, never a made-up 0.
     public static RemoteStatementPage Page(string json, string source, string requestedType, string? transactionSubType)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object) throw new JsonException("Finance page is not an object.");
         var items = new List<RemoteStatementRecord>();
+        var skipped = new List<RemoteSkippedFinanceRecord>();
         if (root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array)
             foreach (var item in content.EnumerateArray())
             {
                 if (item.ValueKind != JsonValueKind.Object) throw new JsonException("Finance record is not an object.");
-                var id = Text(item, "id") ?? throw new JsonException("Finance record has no id.");
-                var date = Time(item, "transactionDate") ?? throw new JsonException("Finance record has no transaction date.");
-                items.Add(new(id, source, requestedType, transactionSubType, Text(item, "transactionType"), date, Text(item, "description"),
+                var id = Text(item, "id");
+                var date = Time(item, "transactionDate");
+                var debt = Amount(item, "debt");
+                var credit = Amount(item, "credit");
+                var amountMissing = !debt.Readable || !credit.Readable || debt.Value is null && credit.Value is null;
+                if (id is null || date is null || amountMissing)
+                {
+                    skipped.Add(SkippedFinanceRecords.Skip(id, item.GetRawText(), Text(item, "orderNumber"), Text(item, "transactionType") ?? requestedType, id is null, amountMissing, date is null));
+                    continue;
+                }
+                items.Add(new(id, source, requestedType, transactionSubType, Text(item, "transactionType"), date.Value, Text(item, "description"),
                     Text(item, "orderNumber"), Text(item, "shipmentPackageId"), Text(item, "barcode"),
-                    Number(item, "debt") ?? 0m, Number(item, "credit") ?? 0m, Number(item, "commissionRate"), Number(item, "commissionAmount"), Number(item, "sellerRevenue"),
+                    debt.Value ?? 0m, credit.Value ?? 0m, Number(item, "commissionRate"), Number(item, "commissionAmount"), Number(item, "sellerRevenue"),
                     Text(item, "paymentOrderId"), Time(item, "paymentDate"), item.GetRawText(),
                     Text(item, "country"), Text(item, "affiliate"), Text(item, "currency"), Text(item, "commissionInvoiceSerialNumber")));
             }
         else if (root.TryGetProperty("content", out var other) && other.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
             throw new JsonException("Finance page content is not a list.");
-        return new(items, Int(root, "page") ?? 0, Int(root, "totalPages") ?? 0, (long)(Number(root, "totalElements") ?? items.Count));
+        return new(items, Int(root, "page") ?? 0, Int(root, "totalPages") ?? 0, (long)(Number(root, "totalElements") ?? items.Count + skipped.Count), skipped);
+    }
+
+    // Left out or null: readable, no value. Sent but not a number: unreadable.
+    private static (bool Readable, decimal? Value) Amount(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null) return (true, null);
+        return RemoteJson.Decimal(value) is { } number ? (true, number) : (false, null);
     }
 
     // A payout without an id cannot be matched to its records; the page is then a contract error.
