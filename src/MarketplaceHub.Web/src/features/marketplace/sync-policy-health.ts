@@ -11,6 +11,18 @@ export type SyncPolicyHealthPresentation = {
   stalled: boolean
 }
 
+/**
+ * The enabled flows an integration card warns about: late past their window after an earlier success (OFFLINE) or
+ * partly failing (DEGRADED). A flow that has not run yet waits; a closed or paused one says nothing.
+ */
+export function flowsNeedingAttention<T extends SyncPolicyHealthInput>(policies: readonly T[]): T[] {
+  return policies.filter(policy => {
+    if (!policy.enabled) return false
+    const health = policy.healthStatus?.trim().toUpperCase()
+    return health === 'DEGRADED' || (health === 'OFFLINE' && !!policy.lastSuccessAt)
+  })
+}
+
 export function syncPolicyHealthPresentation(
   policy: SyncPolicyHealthInput,
   effectiveEnabled = policy.enabled,

@@ -71,26 +71,50 @@ public sealed class InstantNotificationService(
             return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, manualState, manualMessage, cancellationToken));
         }
 
+        var platform = PlatformName(connection.PlatformCode);
+        // A connection that is not active refuses every delivery (the receiver admits active connections only), so the
+        // registration is not called open whatever the marketplace lists.
+        if (connection.Status is not ("ACTIVE" or "VERIFIED"))
+            return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "CONNECTION_INACTIVE", $"Bağlantı aktif değil; {platform}'dan gelen bildirimler bağlantı etkinleşene kadar reddediliyor. Bağlantıyı kontrol edip etkinleştirin.", cancellationToken));
         var remote = await registrations.ListWebhooksAsync(Context(tenantId, connectionId, correlationId, "webhook-status"), cancellationToken);
         if (!remote.IsSuccess)
-            return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "UNKNOWN", $"Trendyol'daki durum okunamadı: {remote.Error!.SafeMessage}", cancellationToken));
-        var state = RemoteState(subscription.ExternalSubscriptionId!, remote.Value!);
+            return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "UNKNOWN", $"{platform}'daki durum okunamadı: {remote.Error!.SafeMessage}", cancellationToken));
+        var remoteState = RemoteState(subscription.ExternalSubscriptionId!, remote.Value!);
         var gaps = ScheduledJobProducer.WebhookGaps(await db.SyncCursors.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == WebhookPollingPolicy.HealthCursorResource)
             .Select(x => x.OpaqueCursor)
             .FirstOrDefaultAsync(cancellationToken));
         var healthy = WebhookPollingPolicy.IsHealthy(subscription.LastReceivedAt, subscription.VerifiedAt, gaps, timeProvider.GetUtcNow(),
             await ScheduledJobProducer.UnnotifiedOrderAsync(db, tenantId, connectionId, subscription.LastReceivedAt ?? subscription.VerifiedAt, timeProvider.GetUtcNow(), cancellationToken));
-        var message = state switch
+        var state = RegisteredState(remoteState, subscription.LastReceivedAt, healthy);
+        // While the notifications count as healthy the order read is only the safety net; otherwise it runs at its own cadence.
+        var readMinutes = healthy ? WebhookPollingPolicy.SafetyNetSeconds / 60 : await OrderReadMinutesAsync(tenantId, connectionId, cancellationToken);
+        return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, state, RegisteredMessage(connection.PlatformCode, state, healthy, readMinutes), cancellationToken));
+    }
+
+    // A registration the marketplace lists as active is "ACTIVE" only once a notification has come and the notifications
+    // are healthy: before the first one it waits (WAITING), and an order that came without its notification makes it
+    // QUIET. A missing or stopped registration keeps the marketplace's answer.
+    internal static string RegisteredState(string remoteState, DateTimeOffset? lastReceivedAt, bool healthy) =>
+        remoteState != "ACTIVE" ? remoteState
+        : lastReceivedAt is null ? "WAITING"
+        : healthy ? "ACTIVE"
+        : "QUIET";
+
+    internal static string RegisteredMessage(string platformCode, string state, bool healthy, int readMinutes)
+    {
+        var platform = PlatformName(platformCode);
+        return state switch
         {
-            "MISSING" => $"{PlatformName(connection.PlatformCode)}'da bu bildirim kaydı bulunamadı; kapatıp yeniden açabilirsiniz.",
-            "PASSIVE" => connection.PlatformCode == "SHOPIFY"
+            "MISSING" => $"{platform}'da bu bildirim kaydı bulunamadı; kapatıp yeniden açabilirsiniz.",
+            "PASSIVE" => platformCode == "SHOPIFY"
                 ? "Shopify bildirim aboneliklerinin bir kısmını kaldırmış; panel bir saat içinde yeniden oluşturur."
                 : "Trendyol bildirimleri durdurmuş; panel bir saat içinde yeniden açar.",
-            _ when !healthy => $"Son siparişin bildirimi gelmedi; sipariş kontrolü {await OrderReadMinutesAsync(tenantId, connectionId, cancellationToken)} dakikada bir sürüyor.",
-            _ => "Bildirimler düzenli geliyor; sipariş kontrolü yedek olarak 8 dakikada bir yapılıyor."
+            "WAITING" when !healthy => $"Henüz bildirim gelmedi: webhook açıldıktan sonra gelen sipariş için {platform}'dan bildirim gelmedi. Siparişler düzenli kontrolle {readMinutes} dakikada bir gelmeye devam ediyor.",
+            "WAITING" => $"Henüz bildirim gelmedi; {platform} ilk yeni siparişte ya da sipariş değişikliğinde bildirim gönderir. O zamana kadar sipariş kontrolü {readMinutes} dakikada bir yapılıyor.",
+            "QUIET" => $"Son siparişin bildirimi {platform}'dan gelmedi; sipariş kontrolü {readMinutes} dakikada bir sürüyor.",
+            _ => $"Bildirimler düzenli geliyor; sipariş kontrolü yedek olarak {readMinutes} dakikada bir yapılıyor."
         };
-        return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, state, message, cancellationToken));
     }
 
     // The cadence of the connection's own order read (the fallback while notifications are not coming), in whole minutes.
@@ -117,6 +141,9 @@ public sealed class InstantNotificationService(
             : clientSecret.Trim();
         if (clientSecret is { Length: > 200 })
             return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_INVALID", "Shopify gizli anahtarı geçersiz.", 422);
+        // An access token typed in place of the secret would make every delivery fail its signature.
+        if (connection.PlatformCode == "SHOPIFY" && clientSecret is not null && IsShopifyAccessToken(clientSecret))
+            return ServiceResult<InstantNotificationView>.Fail("SHOPIFY_CLIENT_SECRET_INVALID", "Girilen değer bir erişim anahtarı (access token); Shopify bildirimleri uygulamanın API secret key'i (shpss_…) ile imzalar. O anahtarı girin ya da alanı boş bırakın.", 422);
         if (connection.Status is not ("ACTIVE" or "VERIFIED"))
             return ServiceResult<InstantNotificationView>.Fail("CONNECTION_INACTIVE", "Bağlantı pasif olduğu için anlık bildirim açılamaz.", 422);
         if (PublicBaseUrl() is not { } baseUrl)
@@ -167,7 +194,8 @@ public sealed class InstantNotificationService(
         subscription.Version++;
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("{Platform} order webhook {WebhookId} registered for connection {ConnectionId}", connection.PlatformCode, created.Value, connectionId);
-        return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "ACTIVE", null, cancellationToken));
+        // Registered, but no notification has come yet: the same state the status read gives until the first one.
+        return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, subscription, "WAITING", RegisteredMessage(connection.PlatformCode, "WAITING", healthy: true, WebhookPollingPolicy.SafetyNetSeconds / 60), cancellationToken));
     }
 
     public async Task<ServiceResult<InstantNotificationView>> DisableAsync(Guid tenantId, Guid connectionId, string correlationId, CancellationToken cancellationToken)
@@ -185,6 +213,12 @@ public sealed class InstantNotificationService(
         subscription.Status = "DELETED";
         subscription.Version++;
         await db.SaveChangesAsync(cancellationToken);
+        // The refusals were the closed definition's: a webhook opened again (with a corrected secret) starts without them.
+        var rejectedPrefix = MarketplaceWebhookService.RejectedPrefix(connectionId);
+        var now = timeProvider.GetUtcNow();
+        await db.OperationalIssues
+            .Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && x.DedupeKey.StartsWith(rejectedPrefix))
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, IssueStatus.Resolved).SetProperty(x => x.ResolvedAt, now), cancellationToken);
         return ServiceResult<InstantNotificationView>.Ok(await ViewAsync(connection, null, "OFF", null, cancellationToken));
     }
 
@@ -260,7 +294,7 @@ public sealed class InstantNotificationService(
         var endpoint = PublicBaseUrl() is { } baseUrl ? $"{baseUrl}/api/v1/hooks/{subscription?.RoutePublicId ?? connection.PublicId:D}/…" : null;
         // The last delivery the receiver turned away (MarketplaceWebhookService): it tells a marketplace that calls
         // and is refused from one that never calls.
-        var rejectedPrefix = $"webhook-rejected:{connection.Id:N}:";
+        var rejectedPrefix = MarketplaceWebhookService.RejectedPrefix(connection.Id);
         var rejected = await db.OperationalIssues.AsNoTracking()
             .Where(x => x.TenantId == connection.TenantId && x.DedupeKey.StartsWith(rejectedPrefix) && x.Status == IssueStatus.Open)
             .OrderByDescending(x => x.LastSeenAt)
@@ -396,6 +430,11 @@ public sealed class InstantNotificationService(
     }
 
     private sealed record StoredShopifyCredential(string? ClientSecret, string? ApiSecret);
+
+    // Shopify's access tokens carry a kind prefix (shpat_ Admin API, shpca_ custom app, shppa_ private app, shpua_ user);
+    // a client secret is shpss_ or a bare hex string.
+    internal static bool IsShopifyAccessToken(string value) =>
+        new[] { "shpat_", "shpca_", "shppa_", "shpua_" }.Any(prefix => value.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
 
     private AdapterContext Context(Guid tenantId, Guid connectionId, string correlationId, string purpose) =>
         new(tenantId, connectionId, correlationId, $"{purpose}:{connectionId:N}", timeProvider.GetUtcNow().AddSeconds(30));

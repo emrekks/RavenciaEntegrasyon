@@ -1,7 +1,7 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { activationErrorMessage, ConnectionAuthAlert, ConnectionAuthBadge, connectionAuthProblem, reactivationNeedsTest } from './connection-auth-alert'
+import { activationErrorMessage, ConnectionAuthAlert, ConnectionAuthBadge, connectionAuthProblem, connectionProblem, reactivationNeedsTest } from './connection-auth-alert'
 
 const base = { status: 'ACTIVE', lastErrorCode: null as string | null, lastErrorAt: null as string | null, lastTestedAt: '2026-10-19T08:00:00Z', lastSuccessAt: '2026-10-19T08:00:00Z', disabledAt: null as string | null }
 
@@ -114,7 +114,50 @@ describe('ConnectionAuthAlert', () => {
   })
 
   it('renders nothing for a healthy connection', () => {
-    act(() => root.render(<ConnectionAuthAlert item={{ ...base, lastErrorCode: 'REMOTE_TIMEOUT' }} />))
+    act(() => root.render(<ConnectionAuthAlert item={base} />))
     expect(container.innerHTML).toBe('')
+  })
+
+  it('shows a timeout the last test left as a warning instead of hiding it', () => {
+    act(() => root.render(<ConnectionAuthAlert item={{ ...base, lastErrorCode: 'REMOTE_TIMEOUT' }} />))
+    const alert = container.querySelector('.connection-auth-alert.is-warning')!
+    expect(alert.textContent).toContain('yanıt vermedi')
+    expect(alert.textContent).toContain('REMOTE_TIMEOUT')
+  })
+
+  it('puts a card whose read capabilities were not confirmed in the Hata state', () => {
+    act(() => root.render(<ConnectionAuthBadge item={{ ...base, lastErrorCode: 'N11_REQUIRED_READ_CAPABILITY' }} />))
+    expect(container.querySelector('.connection-auth-badge.is-danger')).not.toBeNull()
+    expect(container.querySelector('[role="tooltip"]')!.textContent).toContain('N11_REQUIRED_READ_CAPABILITY')
+  })
+
+  it('warns on the card about flows that need attention when the connection itself is fine', () => {
+    act(() => root.render(<ConnectionAuthBadge item={base} flows={{ count: 2 }} />))
+    const badge = container.querySelector('.connection-auth-badge.is-warning')!
+    expect(badge.textContent).toContain('Uyarı')
+    expect(container.querySelector('[role="tooltip"]')!.textContent).toContain('2 akış')
+  })
+
+  it('keeps the badge out when no flow needs attention', () => {
+    act(() => root.render(<ConnectionAuthBadge item={base} flows={{ count: 0 }} />))
+    expect(container.innerHTML).toBe('')
+  })
+})
+
+describe('connectionProblem', () => {
+  it('sorts every code a test can leave, auth codes first', () => {
+    expect(connectionProblem('PAZARAMA_CREDENTIALS_REJECTED')).toBe('credentials')
+    expect(connectionProblem('N11_REQUIRED_READ_CAPABILITY')).toBe('capability')
+    expect(connectionProblem('HEPSIBURADA_REQUIRED_READ_CAPABILITY')).toBe('capability')
+    expect(connectionProblem('REMOTE_TIMEOUT')).toBe('transient')
+    expect(connectionProblem('N11_RATE_LIMITED')).toBe('transient')
+    expect(connectionProblem('TRENDYOL_SERVICE_UNAVAILABLE')).toBe('transient')
+    expect(connectionProblem('N11_STORE_MISMATCH')).toBe('other')
+  })
+
+  it('leaves webhook codes and an empty code out', () => {
+    expect(connectionProblem(null)).toBeNull()
+    expect(connectionProblem('SHOPIFY_WEBHOOK_SIGNATURE_INVALID')).toBeNull()
+    expect(connectionProblem('WEBHOOK_AUTHENTICATION_FAILED')).toBeNull()
   })
 })

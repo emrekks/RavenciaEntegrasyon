@@ -234,12 +234,16 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
         }
         // Only recurring read syncs may coalesce: the job already holding the lock performs the
         // same read. Writes, actions, webhooks, imports and targeted requests carry their own work
-        // and must wait for the lock instead of being reported as done.
+        // and must wait for the lock instead of being reported as done. The folded job is marked (CoalescedCode) so
+        // that health views do not take it for a read that ran.
         return IsCoalescableRead(jobType) && sameTypeRunning
-            ? JobExecutionResult.Success()
+            ? JobExecutionResult.SuccessWithNote(CoalescedCode, "Aynı okuma bu bağlantıda zaten sürüyordu; bu iş onunla birleştirildi.")
             : JobExecutionResult.Deferred("CONNECTION_OPERATION_BUSY",
                 "Bu bağlantıda aynı türde başka bir işlem sürüyor; işlem tamamlanınca otomatik çalıştırılacak.", TimeSpan.FromSeconds(30));
     }
+
+    // The note of a scheduled read folded into the same read already running: it succeeded without reading anything.
+    public const string CoalescedCode = "SYNC_COALESCED";
 
     internal static bool IsCoalescableRead(string jobType) => jobType is
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync

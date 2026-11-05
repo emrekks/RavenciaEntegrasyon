@@ -36,6 +36,18 @@ describe('webhookCell', () => {
 
   it('puts the integration page label and explanation in the hover text', () => {
     expect(webhookCell(status('QUIET', { message: 'Son bildirimden sonra gelen sipariş için bildirim gelmedi.' }), false, since).title)
-      .toBe('Webhook · Son saatlerde bildirim yok · Son bildirimden sonra gelen sipariş için bildirim gelmedi.')
+      .toBe('Webhook · Son siparişin bildirimi gelmedi · Son bildirimden sonra gelen sipariş için bildirim gelmedi.')
+  })
+
+  it('names the webhook’s own marketplace, not Trendyol, in the hover text', () => {
+    expect(webhookCell(status('PASSIVE'), false, since, 'SHOPIFY').title).toBe('Webhook · Shopify durdurdu')
+    expect(webhookCell(status('MISSING'), false, since, 'TRENDYOL').title).toBe('Webhook · Trendyol’da kayıt yok')
+    expect(webhookCell(status('MISSING'), false, since).title).toBe('Webhook · Pazaryerinde kayıt yok')
+  })
+
+  it('marks a webhook still waiting for its first notification only when deliveries were turned away', () => {
+    expect(webhookCell(status('WAITING'), false, since).tone).toBe('off')
+    expect(webhookCell(status('WAITING', { lastRejectedAt: '2026-11-02T23:14:30Z', lastRejectedReason: 'Shopify webhook imzası doğrulanamadı.' }), false, since))
+      .toMatchObject({ tone: 'warn', text: 'Reddedilen Var' })
   })
 })

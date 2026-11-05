@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { syncPolicyHealthPresentation } from './sync-policy-health'
+import { flowsNeedingAttention, syncPolicyHealthPresentation } from './sync-policy-health'
+
+describe('flowsNeedingAttention', () => {
+  it('counts enabled flows late after a success or partly failing, not new, closed or paused ones', () => {
+    const flows = [
+      { enabled: true, healthStatus: 'OFFLINE', lastSuccessAt: '2026-11-01T10:00:00Z' },
+      { enabled: true, healthStatus: 'DEGRADED', lastSuccessAt: '2026-11-05T10:00:00Z' },
+      { enabled: true, healthStatus: 'OFFLINE', lastSuccessAt: null },
+      { enabled: false, healthStatus: 'OFFLINE', lastSuccessAt: '2026-11-01T10:00:00Z' },
+      { enabled: true, healthStatus: 'PAUSED_NO_OPEN_RETURNS', lastSuccessAt: '2026-11-01T10:00:00Z' },
+      { enabled: true, healthStatus: 'HEALTHY', lastSuccessAt: '2026-11-05T10:00:00Z' },
+    ]
+    expect(flowsNeedingAttention(flows)).toEqual([flows[0], flows[1]])
+  })
+})
 
 describe('syncPolicyHealthPresentation', () => {
   it('surfaces cursor stagnation even when the schedule health is healthy', () => {
