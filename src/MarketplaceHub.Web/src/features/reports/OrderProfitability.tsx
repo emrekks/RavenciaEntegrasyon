@@ -74,7 +74,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
 
   return <section className="reports-panel reports-order-profit" aria-labelledby="order-profit-title">
     <header className="reports-order-profit-head">
-      <h2 id="order-profit-title">Sipariş Kârlılık Analizi<TitleHint label="Sipariş Kârlılık Analizi">Her sipariş için ürün maliyeti, komisyon, kargo, hizmet bedeli, stopaj ve net KDV düştükten sonra kalan kâr. Henüz kesinleşmeyen kalemler tahminidir.</TitleHint></h2>
+      <h2 id="order-profit-title">Sipariş Kârlılık Analizi<TitleHint label="Sipariş Kârlılık Analizi">Her sipariş için ürün maliyeti, komisyon, kargo, hizmet bedeli, stopaj ve net KDV düştükten sonra kalan kâr. Henüz kesinleşmeyen kalemler tahminidir. Reklam, ceza gibi siparişe bağlı olmayan kesintiler bir siparişe dağıtılamadığı için burada yoktur; Siparişlerin Kârı bu yüzden Kârlılık'taki Net Kâr'dan farklıdır (o, bu kesintileri de düşer).</TitleHint></h2>
       <form className="reports-order-search" onSubmit={event => { event.preventDefault(); setApplied(search); setPage(0) }}>
         <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Sipariş no, ürün, barkod" aria-label="Sipariş ara" />
         <button type="submit" className="secondary">Ara</button>
@@ -83,7 +83,8 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
     {data && <dl className="reports-order-summary">
       <div><dt>Sipariş</dt><dd>{data.totalCount.toLocaleString('tr-TR')}</dd></div>
       <div><dt>Sipariş Tutarı</dt><dd>{money(data.amount)}</dd></div>
-      <div><dt>Kâr</dt><dd className={tone(data.profit)}>{data.profit === null ? '—' : money(data.profit)}</dd></div>
+      {/* Only the orders' own charges: the deductions tied to no order are taken off Kârlılık's Net Kâr, not here. */}
+      <div title="Siparişe bağlı olmayan kesintiler (reklam, ceza…) hariç; Kârlılık'taki Net Kâr bunları da düşer."><dt>Siparişlerin Kârı</dt><dd className={tone(data.profit)}>{data.profit === null ? '—' : money(data.profit)}</dd></div>
       <div><dt>Kâr Marjı</dt><dd>{percent(data.margin)}</dd></div>
       {data.missingCost > 0 && <div className="is-warn"><dt>Maliyeti Eksik</dt><dd>{count(data.missingCost)} sipariş</dd></div>}
       {data.missingCargo > 0 && <div className="is-warn"><dt>Kargosu Bilinmeyen</dt><dd>{count(data.missingCargo)} sipariş</dd></div>}
