@@ -437,3 +437,11 @@ html body .app-shell.stitch-shell main :is(.rr.rr-dashboard, .rr-layer.rr-layer)
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart { touch-action: pan-y; }
 /* Touch: holding a finger on the chart shows the point (no text selection or iOS callout steals the press). */
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-chart { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+/* Operation cards lift like the catalog's summary cards (motion.css). They are links, and the global link transition
+   (no translate) outranks motion.css's :where() rule, so the lift is timed here; the card under the pointer, or with
+   its store breakdown open, sits above its neighbours so the breakdown is not drawn under the next row. */
+@media (hover: hover) {
+  :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard { transition: translate var(--rv-motion-fast) var(--rv-ease-out), background-color var(--rv-motion-fast) var(--rv-ease-standard), border-color var(--rv-motion-fast) var(--rv-ease-standard), box-shadow var(--rv-motion-fast) var(--rv-ease-standard); }
+}
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-opgrid > .rr-opcard:is(:hover, :focus-within, .rr-bd-open) { z-index: 3; }
