@@ -108,7 +108,8 @@ public sealed class OwnerRulesNov6SaleReturnPostgreSqlTests(PostgreSqlTenantIsol
             Assert.Equal(preview.TaxTotal, draft.Value.TaxTotal);
             await using var verification = fixture.CreateContext();
             var lines = await verification.InvoiceLines.Where(line => line.TenantId == seed.Tenant.Id).OrderBy(line => line.LineSequence).ToListAsync();
-            Assert.Equal([(first.Id, 1m), (second.Id, 1m)], lines.Select(line => (line.OrderLineId!.Value, line.Quantity)));
+            // The lines follow the order lines' id order, which a version 7 id does not fix within one millisecond.
+            Assert.Equal([(first.Id, 1m), (second.Id, 1m)], lines.Select(line => (line.OrderLineId!.Value, line.Quantity)).OrderBy(line => line.Value == second.Id));
             Assert.Equal(135m, lines.Sum(line => line.LineTotal));
         }
         finally

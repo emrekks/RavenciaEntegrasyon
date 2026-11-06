@@ -530,6 +530,8 @@ public sealed record InvoiceWorkspaceItemView(
     // "İade Belgesi Gerekli": lines of the issued invoice were returned (a partial return); the invoice is still
     // delivered, the returned lines need a return document. Null when nothing is due (InvoiceAdjustmentTracking).
     string? ReturnDocumentNote = null,
+    // The invoice status the seller set by hand ("UPLOADED" / "PENDING"); null when none was set by hand.
+    string? ManualInvoiceStatus = null,
     // How much of the order came back before it was invoiced (owner's rule of 6 Nov 2026): FULL (no sale invoice is
     // issued, SaleReturnNote says why), PARTIAL (the invoice leaves the returned units out, see Lines' ReturnedQuantity);
     // null when nothing came back.
