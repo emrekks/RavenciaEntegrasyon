@@ -123,6 +123,21 @@ describe('returns page', () => {
     expect(row.querySelector('.rr-thumb-none')).toBeNull()
   })
 
+  it('labels a Pazarama return cargo code as "İade Kargo Kodu" with a hint and never links it', async () => {
+    const hubApi = (await import('../../../shared/api')).hubApi as unknown as { getMockImplementation(): ((path: string) => Promise<unknown>) | undefined; mockImplementationOnce(fn: (path: string) => Promise<unknown>): void }
+    const original = hubApi.getMockImplementation()!
+    hubApi.mockImplementationOnce(async (path: string) => {
+      if (path.startsWith('/returns/summary')) return original(path)
+      return { items: [claim('9', { platformCode: 'PAZARAMA', platformDisplayName: 'Pazarama', cargoTrackingNumber: 'PZ15649905156', cargoTrackingLink: 'https://example.com/track' })], nextCursor: null, hasMore: false, totalCount: 1 }
+    })
+    const { host } = renderPage()
+    await waitFor(() => host.textContent!.includes('PZ15649905156'))
+    const cargoCell = host.querySelector<HTMLElement>('[data-l="Kargo"]')!
+    expect(cargoCell.textContent).toContain('İade Kargo Kodu: PZ15649905156')
+    expect(cargoCell.querySelector('[title="Pazarama\'nın iade talebiyle verdiği anlaşmalı kargo kodu; paketin kargoya verildiğini göstermez."]')).not.toBeNull()
+    expect(cargoCell.querySelector('a')).toBeNull()
+  })
+
   it('continues with the cursor and jumps to a page by number', async () => {
     const { host } = renderPage()
     await waitFor(() => host.textContent?.includes('#2'))
