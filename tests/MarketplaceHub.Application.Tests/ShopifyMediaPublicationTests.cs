@@ -52,6 +52,28 @@ public sealed class ShopifyMediaPublicationTests
         Assert.Equal(Url("siyah", 0), plan.VariantUrls[variant]);
     }
 
+    // Live 6.11.2026, RYP006-18: a picture assignment renumbered the variant's rows and put the size chart at 0. The
+    // variant picture is the first of its pictures in the panel's strip, not the variant's own first row.
+    [Fact]
+    public void AVariantsPictureIsItsFirstInThePanelsOrder_NotItsOwnRenumberedFirst()
+    {
+        var variant = Guid.NewGuid();
+        var rows = new List<ShopifyMediaRow>
+        {
+            new(Card, variant, 0, Url("vizon", 9)),
+            new(Card, variant, 1, Url("vizon", 0)),
+            new(Card, variant, 2, Url("vizon", 1)),
+            new(Card, null, 1380, Url("vizon", 0)),
+            new(Card, null, 1472, Url("vizon", 1)),
+            new(Card, null, 1656, Url("vizon", 9))
+        };
+
+        var plan = ShopifyProductPublicationComposer.PlanMedia(rows, [Card], [(variant, Card)]);
+
+        Assert.Equal([Url("vizon", 0), Url("vizon", 1), Url("vizon", 9)], plan.ProductUrls);
+        Assert.Equal(Url("vizon", 0), plan.VariantUrls[variant]);
+    }
+
     [Fact]
     public void AVariantWithoutItsOwnPictureShowsItsCardsFirstOnlyInAFamily()
     {

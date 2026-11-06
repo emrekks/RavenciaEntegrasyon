@@ -65,6 +65,40 @@ public sealed class TrendyolContentGroupsTests
         Assert.Equal("PRODUCT_CONTENT_GROUP_MISMATCH", resolved.Error?.Code);
     }
 
+    // Live 6.11.2026, RYP006 Vizon (content 1228880360): -18's own picture rows were renumbered with the size chart first.
+    // The composer takes each size's pictures in the panel's order, so the three sizes agree and go as one content
+    // whose first picture is the strip's front one. A size with a different picture set still stops the update.
+    [Fact]
+    public void ThreeSizesOneRenumbered_GoAsOneContent_InThePanelsOrder()
+    {
+        var (s16, s17, s18) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var media = new (Guid? VariantId, string Url)[]
+        {
+            (s18, "chart"), (s18, "1"), (s18, "2"), (s18, "3"),
+            (null, "1"), (s16, "1"), (s17, "1"),
+            (null, "2"), (s16, "2"), (s17, "2"),
+            (null, "3"), (s16, "3"), (s17, "3"),
+            (null, "chart"), (s16, "chart"), (s17, "chart")
+        };
+        var assets = media.Select(item => item.Url).Distinct().ToDictionary(url => url, _ => Guid.NewGuid());
+        string[] Images(Guid size) => [.. MarketplaceHub.Infrastructure.Persistence.PublicationVariantMedia
+            .For(media, size, item => item.VariantId, item => assets[item.Url]).Select(item => $"https://img/vizon/{item.Url}.jpg")];
+        var sizes = new[] { ("RYP006-16", Images(s16)), ("RYP006-17", Images(s17)), ("RYP006-18", Images(s18)) };
+
+        var resolved = TrendyolContentGroups.Resolve(Payload(sizes), ByBarcode([new("1228880360", ["RYP006-16", "RYP006-17", "RYP006-18"])]));
+
+        Assert.True(resolved.Succeeded, resolved.Error?.Message);
+        var item = Assert.Single(Items(resolved.Value!))!.AsObject();
+        Assert.Equal(1228880360L, item["contentId"]!.GetValue<long>());
+        Assert.Equal(["https://img/vizon/1.jpg", "https://img/vizon/2.jpg", "https://img/vizon/3.jpg", "https://img/vizon/chart.jpg"],
+            item["images"]!.AsArray().Select(image => image!["url"]!.GetValue<string>()));
+
+        // A real difference (-18 without the size chart) is still a mismatch.
+        var differentSet = new[] { sizes[0], sizes[1], ("RYP006-18", sizes[2].Item2[..3]) };
+        var refused = TrendyolContentGroups.Resolve(Payload(differentSet), ByBarcode([new("1228880360", ["RYP006-16", "RYP006-17", "RYP006-18"])]));
+        Assert.Equal("PRODUCT_CONTENT_GROUP_MISMATCH", refused.Error?.Code);
+    }
+
     [Fact]
     public void OneColourUnderTwoContents_GoesToEachWithTheSameImages()
     {
@@ -129,6 +163,18 @@ public sealed class TrendyolContentGroupsTests
             ["description"] = "Açıklama",
             ["images"] = new JsonArray(new JsonObject { ["url"] = $"https://img/{variant.Colour}/1.jpg" }),
             ["attributes"] = new JsonArray(new JsonObject { ["attributeId"] = 47, ["customAttributeValue"] = variant.Colour }, new JsonObject { ["attributeId"] = 293, ["customAttributeValue"] = variant.Barcode })
+        })])
+    }.ToJsonString();
+
+    private static string Payload(params (string Barcode, string[] Images)[] variants) => new JsonObject
+    {
+        ["items"] = new JsonArray([.. variants.Select(variant => (JsonNode)new JsonObject
+        {
+            ["barcode"] = variant.Barcode,
+            ["title"] = "Kazak",
+            ["description"] = "Açıklama",
+            ["images"] = new JsonArray([.. variant.Images.Select(url => (JsonNode)new JsonObject { ["url"] = url })]),
+            ["attributes"] = new JsonArray(new JsonObject { ["attributeId"] = 47, ["customAttributeValue"] = "Vizon" }, new JsonObject { ["attributeId"] = 293, ["customAttributeValue"] = variant.Barcode })
         })])
     }.ToJsonString();
 

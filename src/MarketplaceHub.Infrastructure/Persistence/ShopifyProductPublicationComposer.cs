@@ -343,7 +343,12 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
         var variantUrls = new Dictionary<Guid, string>();
         foreach (var (variantId, productId) in variants)
         {
-            var own = rows.Where(row => row.VariantId == variantId).OrderBy(row => row.SortOrder).Select(row => row.Url).FirstOrDefault(sent.Contains);
+            // The variant's first picture in the panel's order: its card's strip decides, not the variant's own numbering.
+            var own = PublicationVariantMedia.InPanelOrder(
+                    rows.Where(row => row.VariantId == variantId).OrderBy(row => row.SortOrder),
+                    rows.Where(row => row.ProductId == productId && row.VariantId is null).OrderBy(row => row.SortOrder),
+                    row => row.Url, StringComparer.OrdinalIgnoreCase)
+                .Select(row => row.Url).FirstOrDefault(sent.Contains);
             var image = own ?? (memberIds.Count > 1 ? imagesByMember.GetValueOrDefault(productId)?.FirstOrDefault(sent.Contains) : null);
             if (image is not null) variantUrls[variantId] = image;
         }
