@@ -11612,7 +11612,27 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     // Trendyol's claims feed is date-bounded for the initial scan. Invalidating
     // the previous all-time cursor makes the next read start at three months.
     private const string ShopifyReturnSyncStateVersion = "shopify-returns-v1";
-    private sealed record ShopifyReturnSyncState(string Version, string? Cursor, DateTimeOffset? ModifiedAfter, DateTimeOffset Anchor);
+    // Pages counts the pages read with the current query (Cursor), for the restart before Shopify's 25,000-result cap.
+    internal sealed record ShopifyReturnSyncState(string Version, string? Cursor, DateTimeOffset? ModifiedAfter, DateTimeOffset Anchor, int Pages = 0);
+    internal const int ShopifyReturnInitialLookbackDays = 180;
+    internal static readonly TimeSpan ShopifyReturnOverlap = TimeSpan.FromMinutes(15);
+
+    // Where a new Shopify return read starts: 180 days back on the first read or when asked for a full read, otherwise
+    // 15 minutes before the last completed read began. A failed run never widens the read: the watermark moves only when
+    // a whole run completes, so the next run still covers everything the failed one missed (the failure counters on the
+    // RETURNS cursor are the job's telemetry, and one throttled page used to turn every next run into a 180-day read).
+    internal static DateTimeOffset ShopifyReturnReadStart(bool forceFull, DateTimeOffset? lastSuccessAt, DateTimeOffset? lastModifiedWatermark, DateTimeOffset now) =>
+        forceFull || lastSuccessAt is null || (lastModifiedWatermark ?? lastSuccessAt) is not { } watermark
+            ? now.AddDays(-ShopifyReturnInitialLookbackDays)
+            : watermark - ShopifyReturnOverlap;
+
+    // The orders are sorted by updated_at, oldest first, and one query pages through at most 25,000 of them; near that cap
+    // (200 pages, as for orders) the read starts a new query from the latest order change it has seen. Orders read twice
+    // are harmless (claims are upserted). Without a later change time the query keeps paging.
+    internal static ShopifyReturnSyncState NextShopifyReturnPage(ShopifyReturnSyncState state, string nextCursor, DateTimeOffset? lastModifiedSeen) =>
+        state.Pages + 1 >= ShopifyOrderHistoryPolicy.PagesBeforeRestart && lastModifiedSeen is { } seen && (state.ModifiedAfter is not { } from || seen > from)
+            ? state with { ModifiedAfter = seen, Cursor = null, Pages = 0 }
+            : state with { Cursor = nextCursor, Pages = state.Pages + 1 };
     internal const string ReturnSyncStateVersion = "returns-v10";
     // PageCursor is the adapter's NextCursor kept as it came (Trendyol: "s:Created=2,Accepted=5", one next page per
     // claim status bucket that still has claims). Page counts the pages read and is the request cursor only when
@@ -11770,14 +11790,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var cursor = await Cursor(tenantId, connectionId, "RETURNS", cancellationToken);
         var now = timeProvider.GetUtcNow();
-        var state = ReadBoolean(payloadJson, "forceFull") ? null : ReadShopifyReturnSyncState(cursor.OpaqueCursor);
-        if (state is null)
-        {
-            var forceFull = ReadBoolean(payloadJson, "forceFull") || cursor.LastSuccessAt is null || cursor.ConsecutiveFailureCount > 0 || !string.IsNullOrWhiteSpace(cursor.LastError);
-            var watermark = cursor.LastModifiedWatermark ?? cursor.LastSuccessAt;
-            var modifiedAfter = forceFull ? now.AddDays(-180) : watermark?.AddMinutes(-15);
-            state = new(ShopifyReturnSyncStateVersion, null, modifiedAfter, now);
-        }
+        var forceFull = ReadBoolean(payloadJson, "forceFull");
+        // A run stopped between pages resumes its saved query, so the page cursor is always sent with the query it came from.
+        var state = (forceFull ? null : ReadShopifyReturnSyncState(cursor.OpaqueCursor))
+            ?? new(ShopifyReturnSyncStateVersion, null, ShopifyReturnReadStart(forceFull, cursor.LastSuccessAt, cursor.LastModifiedWatermark, now), now);
         while (!cancellationToken.IsCancellationRequested)
         {
             TrackRequest();
@@ -11789,7 +11805,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (string.IsNullOrWhiteSpace(page.Value.NextCursor) || string.Equals(page.Value.NextCursor, state.Cursor, StringComparison.Ordinal))
                     throw JobProcessingException.FromAdapter(new AdapterError(AdapterErrorClass.ContractViolation, "SHOPIFY_RETURN_CURSOR_INVALID", "Shopify iade akışı geçersiz veya yinelenen sayfa imleci döndürdü.", 502, null, null));
-                state = state with { Cursor = page.Value.NextCursor };
+                state = NextShopifyReturnPage(state, page.Value.NextCursor, page.Value.LastModifiedSeen);
                 cursor.OpaqueCursor = JsonSerializer.Serialize(state);
                 cursor.Version++;
                 await db.SaveChangesAsync(cancellationToken);

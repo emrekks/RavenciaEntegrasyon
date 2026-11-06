@@ -109,6 +109,19 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   `hepsiburada-api-son.md:19600-19650` (Kayıt Tipi Bilgileri). Since 5 Nov 2026 the reports cost an order with its own
   `Commission` record (one per current package when they name packages) at the net of these records
   (debt − credit) and label it Gerçek Komisyon; otherwise the estimate (`ReportMarketplaceCommissions`).
+- Commission VAT (live, 6 Nov 2026, all 107 `Commission` records Sep-Nov): the record charges 1.20 x the line's
+  `commission.amount` (232.02 on the line of 4091991027, 278.42 charged): the line's amount and `commissionRate` are
+  without VAT, Hepsiburada adds 20 % (`ReportBuckets.EstimatedCommission`).
+- Hepsiburada's own campaign discount: the line's `hbDiscount.unitPrice.amount` (the seller's own is
+  `merchantDiscount`). Hepsiburada credits it as a `CampaignDiscount` record grossed up from the product's VAT to 20 %
+  (194.85 at 10 % -> 212.57; `CampaignDiscountRefund` gives it back on a return). The order's and package's
+  `totalPrice` is the price paid, without it. Since 6 Nov 2026 it is the line's `PlatformDiscount` and counts in the
+  sale (`HepsiburadaJsonMapper.PlatformDiscount`); October's Hepsiburada sales then equal Payment + CampaignDiscount
+  (at the product's VAT) − Return for all 20 orders.
+- Other accounting record types seen live: `ShipmentCostSharingExpense` (cargo, 98.39 = 81.99 + VAT a hepsiJET
+  parcel, twice on a return), `Stoppage` (1 % of the VAT-free payment) / `StoppageRefund`,
+  `PaymentServiceCostReflection` (~0.87 % of the payment) / its Refund, `ProcessingFeeExpense` (13.19, rare),
+  `CustomerSatisfaction` (150.00), `TotalPayment` (the week's payout, equal to its records to the kuruş).
 - Money objects carry `"currency": "TRY"` (e.g. `hepsiburada-api-son.md:8371`, `:12479`). Since 5 Nov 2026 an order
   with another, unknown currency value is refused with an issue and read again; a read without any currency is lira.
   The paid-order list (one item per line) no longer fails the page on one unreadable line: that order is read by

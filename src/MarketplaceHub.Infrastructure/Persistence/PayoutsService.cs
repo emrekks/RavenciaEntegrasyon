@@ -27,7 +27,7 @@ public sealed class PayoutsService(AppDbContext db, TimeProvider timeProvider) :
             .ToListAsync(cancellationToken);
         var payouts = await db.MarketplacePayoutOrders.AsNoTracking()
             .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId) && x.PayoutDate >= since)
-            .Select(x => new PayoutOrderRow(x.ConnectionId, x.ExternalId, x.Amount, x.PayoutDate, x.RegionCode, x.RegionName))
+            .Select(x => new PayoutOrderRow(x.ConnectionId, x.ExternalId, x.Amount, x.PayoutDate, x.RegionCode, x.RegionName, x.LinesReadAt != null))
             .ToListAsync(cancellationToken);
         var synced = await db.MarketplaceFinanceSyncStates.AsNoTracking()
             .Where(x => x.TenantId == tenantId && ids.Contains(x.ConnectionId))
@@ -133,7 +133,9 @@ internal sealed record PayoutStore(Guid Id, string PlatformCode, string StoreNam
 // An order accepted or shipped but not delivered yet: its store, storefront (Trendyol: TR, SA, RO…) and net amount.
 internal sealed record PendingOrderRow(Guid ConnectionId, string? StoreFrontCode, decimal Amount);
 
-internal sealed record PayoutOrderRow(Guid ConnectionId, string ExternalId, decimal Amount, DateTimeOffset? PayoutDate, string? RegionCode, string? RegionName);
+// LinesRead: Trendyol lists a payout when it pays it and its records a day later (LinesReadAt); until then the records
+// that already carry its id (a deduction or two) are not its total.
+internal sealed record PayoutOrderRow(Guid ConnectionId, string ExternalId, decimal Amount, DateTimeOffset? PayoutDate, string? RegionCode, string? RegionName, bool LinesRead = true);
 
 internal sealed record PayoutRow
 {
@@ -354,7 +356,9 @@ internal static class PayoutBuilder
         var past = payouts.Where(x => x.PayoutDate is not null && stores.ContainsKey(x.ConnectionId))
             .Select(payout =>
             {
-                var read = paidLines.TryGetValue((payout.ConnectionId, payout.ExternalId), out var sum) ? sum : ((decimal Net, int Count)?)null;
+                // A payout whose records are not read yet has no records total: the panel says so instead of a gap (5 Nov 2026:
+                // 14 deductions read, −13,454.74 shown beside a 25,118.00 payout).
+                var read = payout.LinesRead && paidLines.TryGetValue((payout.ConnectionId, payout.ExternalId), out var sum) ? sum : ((decimal Net, int Count)?)null;
                 return Group($"payout:{payout.ConnectionId:N}:{payout.ExternalId}", "PAYOUT", stores, payout.ConnectionId, PayoutRegion(payout.RegionCode, payout.RegionName), payout.RegionName ?? payout.RegionCode,
                     Day(payout.PayoutDate!.Value), payout.Amount, read?.Net, read?.Count ?? 0, Paid);
             })

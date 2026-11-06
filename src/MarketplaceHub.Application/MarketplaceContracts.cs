@@ -453,7 +453,9 @@ public sealed record AdapterPageRequest(string? Cursor, int Limit);
 // unknown currency, a malformed package…). The order joins the re-read list (RejectedOrderRereadPolicy) on every
 // marketplace, and a read by that number answers with the same refusal as a contract error, not "not found".
 public sealed record AdapterPageIssue(string Code, string Identity, string Message, string? RereadOrderId = null);
-public sealed record AdapterPageResult<T>(IReadOnlyList<T> Items, string? NextCursor, bool HasMore, int? TotalCount = null, IReadOnlyList<AdapterPageIssue>? Issues = null);
+// LastModifiedSeen: the latest change time among the page's parent records (Shopify: every order a return page walked,
+// with or without a return), so a read sorted by that time can restart its query from there before the 25,000-result cap.
+public sealed record AdapterPageResult<T>(IReadOnlyList<T> Items, string? NextCursor, bool HasMore, int? TotalCount = null, IReadOnlyList<AdapterPageIssue>? Issues = null, DateTimeOffset? LastModifiedSeen = null);
 public sealed record ConnectionIdentity(string PlatformCode, string Environment, string ExternalStoreId, string ApiVersion, string ScopeFingerprint);
 public sealed record CapabilityEvidence(string Code, string SupportLevel, string ApiVersion, string Environment, string StoreScope, string SourceUrl, string SourceVersion, string? RequiredScope, string? ConstraintsJson, string EvidenceNote, string? FixtureChecksum, DateTimeOffset VerifiedAt);
 public sealed record RemoteReferenceItem(string ResourceType, string ExternalId, string? ParentExternalId, string Name, string Path, int Depth, bool IsLeaf, bool IsActive, string RawJson, bool? IsRequired = null, bool? AllowsCustomValue = null, bool? AllowsMultipleValues = null);
