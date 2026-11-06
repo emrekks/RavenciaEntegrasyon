@@ -13,7 +13,7 @@ import { fallbackJobChange, jobRelatedLinks, type JobChange } from './job-change
 import { isProductLevelJob, type JobWriteSummary } from './job-write-summary'
 import { JobWriteDetail } from './JobWriteDetail'
 import type { JobVariantResults } from '../catalog/product-editor/PublicationJobVariants'
-import { jobPresentation, jobSubtitle, jobTitle, jobTypeCode, type JobTypeIconName } from './job-presentation'
+import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
 import { isJobInTimeRange, jobTimeRanges, timeRangeLabel, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
@@ -378,7 +378,7 @@ export function JobsPage({ me }: { me: Me }) {
   // the platform, which the server applies to the list and the counts.
   const [searchParams, setSearchParams] = useSearchParams()
   const view = readJobsViewState(searchParams)
-  const { category, status, search, timeRange, pageSize, page: pageNumber } = view
+  const { category, direction, status, search, timeRange, pageSize, page: pageNumber } = view
   const statusChips = view.chips
   const platform = jobPlatformFromSearch(searchParams.get('platform'))
   const updateView = (patch: Partial<JobsViewState>) => setSearchParams(current => writeJobsViewState(current, patch), { replace: true })
@@ -391,6 +391,7 @@ export function JobsPage({ me }: { me: Me }) {
   const showPanelFeedback = (next: IntegrationFeedback) => setFeedback({ message: next.message, tone: next.kind === 'error' ? 'danger' : next.kind, context: { ...next.context, title: next.title ?? next.context?.title } })
   const setCategory = (next: string) => updateView({ category: next as JobCategory })
   const setStatus = (next: '' | JobStatus) => updateView({ status: next })
+  const setDirection = (next: '' | JobDirection) => updateView({ direction: next })
   const setSearch = (next: string) => updateView({ search: next })
   const setTimeRange = (next: JobTimeRange) => updateView({ timeRange: next })
   const setPageSize = (next: number) => updateView({ pageSize: next })
@@ -426,9 +427,17 @@ export function JobsPage({ me }: { me: Me }) {
   })
   // The tab's job types come from its fixed definition, never from the live counts, so a count refresh that brings a
   // new type cannot change the list key and send the list back to page 1 (G22).
-  const categoryJobTypes = jobTypesForCategoryTab(category)
+  // Okuma / Yazma / Bildirim / Panel İçi narrows the tab's job types further; when no type is left, a type no job has
+  // keeps the server list empty instead of unfiltered.
+  const categoryJobTypes = useMemo(() => {
+    const byCategory = jobTypesForCategoryTab(category)
+    if (!direction) return byCategory
+    const byDirection = jobTypesForDirection(direction)
+    const both = byCategory ? byDirection.filter(type => byCategory.includes(type)) : byDirection
+    return both.length ? both : ['NO_MATCHING_JOB_TYPE']
+  }, [category, direction])
   const list = useInfiniteQuery({
-    queryKey: ['jobs', 'page', serverStatus, timeRange, category, platform],
+    queryKey: ['jobs', 'page', serverStatus, timeRange, category, direction, platform],
     queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform })}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
@@ -440,14 +449,14 @@ export function JobsPage({ me }: { me: Me }) {
   // With older pages loaded the list itself stops polling; its first page is polled on its own and put in front.
   const loadedServerPages = list.data?.pages.length ?? 0
   const listHead = useQuery({
-    queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, platform],
+    queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, direction, platform],
     queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform })}`),
     enabled: loadedServerPages > 1 && !listHidden,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
   useEffect(() => {
-    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(['jobs', 'page', serverStatus, timeRange, category, platform], current => withFreshFirstPage(current, listHead.data))
-  }, [listHead.data, client, serverStatus, timeRange, category, platform])
+    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(['jobs', 'page', serverStatus, timeRange, category, direction, platform], current => withFreshFirstPage(current, listHead.data))
+  }, [listHead.data, client, serverStatus, timeRange, category, direction, platform])
   const detail = useQuery({
     queryKey: ['job', selectedId],
     queryFn: () => hubPoll<JobDetail>(`/jobs/${selectedId}`),
@@ -499,11 +508,12 @@ export function JobsPage({ me }: { me: Me }) {
     return rangeFiltered.filter(job => {
       const matchCategory = categoryMatcher(job.jobType)
       if (!matchCategory) return false
+      if (direction && jobPresentation(job.jobType).direction !== direction) return false
       if (statusChips.length && !statusChips.includes(jobStatusChip(job.status))) return false
       if (!term) return true
       return [job.id, job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
     })
-  }, [rangeFiltered, category, search, statusChips])
+  }, [rangeFiltered, category, direction, search, statusChips])
   // A count toggles its filter; several can be on at once and tapping one again takes it off.
   const statusChipProps = (chip: JobStatusChip) => {
     const on = statusChips.includes(chip)
@@ -534,7 +544,10 @@ export function JobsPage({ me }: { me: Me }) {
   const retryable = selected && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(selected.status)
   const cancellable = selected && !['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(selected.status)
   const selectedIsRunning = selected?.status === 'LEASED'
-  const countRows = useMemo(() => serverCounts.data ?? rangeFiltered.map(job => ({ status: job.status, jobType: job.jobType, count: 1 })), [serverCounts.data, rangeFiltered])
+  const countRows = useMemo(() => {
+    const rows = serverCounts.data ?? rangeFiltered.map(job => ({ status: job.status, jobType: job.jobType, count: 1 }))
+    return direction ? rows.filter(row => jobPresentation(row.jobType).direction === direction) : rows
+  }, [serverCounts.data, rangeFiltered, direction])
   const statusSummary = useMemo(() => {
     const summary = { success: 0, running: 0, waiting: 0, error: 0, cancelled: 0 }
     for (const row of countRows) summary[jobStatusChip(row.status)] += row.count
@@ -565,9 +578,10 @@ export function JobsPage({ me }: { me: Me }) {
           </div>}
         </div>
         <div className="jobs-reference-filter-wrap">
-          <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><JobsIcon name="filter" />Filtrele{platform && <span className="jobs-reference-filter-platform"><PlatformSquareMark code={platform} name={jobPlatformLabel(platform)} />{jobPlatformLabel(platform)}</span>}</button>
+          <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><JobsIcon name="filter" />Filtrele{direction && <span className="jobs-reference-filter-direction">{direction}</span>}{platform && <span className="jobs-reference-filter-platform"><PlatformSquareMark code={platform} name={jobPlatformLabel(platform)} />{jobPlatformLabel(platform)}</span>}</button>
           {filterOpen && <div className="jobs-reference-filter-panel" role="dialog" aria-label="İşlem filtreleri">
             <label className="jobs-reference-filter-platform-field">Platform<span className="jobs-reference-platform-select">{platform && <PlatformSquareMark code={platform} name={jobPlatformLabel(platform)} />}<select aria-label="Platform" value={platform ?? ''} onChange={event => setPlatform(event.target.value || null)}><option value="">Tümü</option>{platformOptions.map(code => <option key={code} value={code}>{jobPlatformLabel(code)}</option>)}</select></span></label>
+            <label>Yön<select aria-label="Yön" value={direction} onChange={event => setDirection(event.target.value as '' | JobDirection)}><option value="">Tümü</option>{jobDirections.map(item => <option key={item} value={item}>{item}</option>)}</select></label>
             <label>Durum<select value={status} onChange={event => setStatus(event.target.value as '' | JobStatus)}>{statuses.map(item => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select></label>
             <label>Sayfa Başına<select aria-label="Sayfa başına işlem" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{jobPageSizes.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
           </div>}

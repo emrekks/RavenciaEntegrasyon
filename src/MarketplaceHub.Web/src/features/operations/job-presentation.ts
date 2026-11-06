@@ -1,3 +1,4 @@
+import { knownJobTypes } from './job-categories'
 // How İşlem Takibi names a job. The title is the platform and the area ("N11 Sipariş İşlemi"); the line under it says
 // which way the data goes and what is done ("Okuma · Yeni Sipariş Çekme"); the tooltip explains it.
 
@@ -84,6 +85,13 @@ function unknownJob(jobType: string): JobPresentation {
   if (/ORDER|SHIPMENT|PACKAGE|LABEL/.test(type)) return job('Sipariş', 'order', PANEL, words, 'Siparişle ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')
   if (/PRODUCT|CATALOG|CATEGORY|ATTRIBUTE|BRAND/.test(type)) return job('Ürün', 'product', PANEL, words, 'Ürün veya katalogla ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')
   return job('Sistem', 'generic', PANEL, words, 'İşlem arka planda yürütülür; ayrıntılar için kaydı açabilirsiniz.')
+}
+
+export const jobDirections: readonly JobDirection[] = [READ, SEND, NOTICE, PANEL]
+
+/** The known job types that go the given way; the list asks the server for these. */
+export function jobTypesForDirection(direction: JobDirection): string[] {
+  return [...new Set([...knownJobTypes, ...Object.keys(catalogue)])].filter(type => jobPresentation(type).direction === direction)
 }
 
 export function jobPresentation(jobType: string): JobPresentation {
