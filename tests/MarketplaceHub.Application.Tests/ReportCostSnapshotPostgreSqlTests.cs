@@ -104,6 +104,40 @@ public sealed class ReportCostSnapshotPostgreSqlTests(PostgreSqlTenantIsolationF
         }));
     }
 
+    // Owner, 6 Nov 2026: an exchange is no return, the sale goes on. An approved claim the customer asked as an exchange
+    // (CustomerRequest CHANGE) takes no unit or money off the sale and is no return claim; one that asked for a refund
+    // does, and one whose request is unknown counts as a return as before.
+    [PostgreSqlFact]
+    public async Task An_approved_exchange_claim_is_no_return_in_the_sales_report()
+    {
+        foreach (var (request, returned) in new (string?, decimal)[] { (ReturnCustomerRequestPolicy.Change, 0m), (ReturnCustomerRequestPolicy.Refund, 1m), (null, 1m) })
+        {
+            var seed = Seed($"cs-exch-{request ?? "none"}".ToLowerInvariant(), lineMatched: true, costAtSale: 40m);
+            await RunAsync(seed, async () =>
+            {
+                var claim = new ReturnClaim { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ConnectionId = seed.Connection.Id, OrderId = seed.Order.Id, ExternalClaimId = $"claim-{Guid.NewGuid():N}", Status = ReturnClaimStatus.Approved, RawStatus = "Accepted", CustomerRequest = request, CreatedAt = ReportNow, UpdatedAt = ReportNow };
+                await using (var db = fixture.CreateContext())
+                {
+                    db.ReturnClaims.Add(claim);
+                    db.ReturnLines.Add(new ReturnLine { Id = Guid.CreateVersion7(), TenantId = seed.Tenant.Id, ClaimId = claim.Id, OrderLineId = seed.Line.Id, ExternalLineId = "claim-line-1", Quantity = 1m, RawStatus = "Accepted" });
+                    await db.SaveChangesAsync();
+                }
+                try
+                {
+                    var summary = (await ReportAsync(seed.Tenant.Id)).Summary;
+                    Assert.Equal((returned, 2m - returned, returned > 0 ? 1 : 0), (summary.ReturnedQuantity, summary.KeptQuantity, summary.ReturnClaims));
+                    Assert.Equal(returned * 100m, summary.ReturnedAmount);
+                }
+                finally
+                {
+                    await using var db = fixture.CreateContext();
+                    await db.ReturnLines.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+                    await db.ReturnClaims.Where(row => row.TenantId == seed.Tenant.Id).ExecuteDeleteAsync();
+                }
+            });
+        }
+    }
+
     private sealed record Seeded(Tenant Tenant, PlatformConnection Connection, Product Product, ProductVariant Variant, Order Order, OrderLine Line);
 
     private static Seeded Seed(string code, bool lineMatched, decimal? costAtSale, decimal? variantCost = 40m, decimal? variantDesi = 2m)
