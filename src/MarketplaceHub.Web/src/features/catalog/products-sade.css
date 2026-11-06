@@ -219,7 +219,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn b { font-weight: 600 !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn small { font-weight: 400 !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { display: none; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:hover > .rr-vtip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:focus-within > .rr-vtip { display: grid; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:has(> .rr-varcell:hover) > .rr-vtip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:focus-within > .rr-vtip { display: grid; }
 /* Opened above its row when the list's scroll box has no room below (placeVariantTip in ProductsPage.tsx). */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover[data-up] > .rr-vtip { top: auto; bottom: calc(100% + 6px); }
 /* compact variant stock table: colours down, sizes across */
@@ -303,7 +303,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td:is([data-l="Fiyat"], [data-l="Stok"], [data-l="Varyant"])::before { display: block !important; margin: 0; color: var(--rr-subtle); font-size: 11.5px; font-weight: 500; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="Fiyat"] { border-left: 1px solid var(--rr-line) !important; border-radius: 12px 0 0 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl.rr-ptbl tbody tr > td[data-l="Varyant"] { border-right: 1px solid var(--rr-line) !important; border-radius: 0 12px 12px 0; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-qbtn, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-varcell { justify-items: start; padding: 0; text-align: left; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-qbtn, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-varcell { justify-items: start; padding: 0; text-align: left; width: fit-content; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-vhover { display: block; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-pmarks { justify-content: flex-start; flex-wrap: nowrap; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-actcell { display: grid !important; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
