@@ -222,6 +222,54 @@ public static class ReturnCustomerRequestPolicy
         Change => "Change",
         _ => null
     };
+
+    // How Hepsiburada closed an approved claim, read from its finalizedWith ("Refund": ücret iadesi, "Change": yeni ürün
+    // ile değişim; hepsiburada-api-son.md:26135). Anything else is unknown (null), never guessed.
+    public static string? ResolvedWithFromHepsiburada(string? finalizedWith) => finalizedWith?.Trim().ToUpperInvariant() switch
+    {
+        "REFUND" => Refund,
+        "CHANGE" => Change,
+        _ => null
+    };
+}
+
+/// <summary>
+/// Owner decision (6 Nov 2026): when a Hepsiburada claim is closed as an exchange (yeni ürün ile değişim) for an order
+/// whose invoice link was already delivered, the same invoice link is sent to Hepsiburada again (no new invoice, no
+/// cancellation). Hepsiburada's own guide (Talep Önemli Bilgiler) asks for cancel + new invoice; the owner chose re-send.
+/// Only a known exchange outcome counts: an approved (or completed) claim whose finalizedWith (or the panel's own
+/// approval) says Change and that was not refunded. An open claim, a refund or an unknown outcome sends nothing.
+/// </summary>
+public static class ExchangeInvoiceResendPolicy
+{
+    public const string ResentCode = "HEPSIBURADA_EXCHANGE_INVOICE_RESENT";
+    public const string PackageUnknownCode = "HEPSIBURADA_EXCHANGE_INVOICE_PACKAGE_UNKNOWN";
+    public const string DeliveryDisabledCode = "HEPSIBURADA_EXCHANGE_INVOICE_DELIVERY_DISABLED";
+    public const string FailedCode = "HEPSIBURADA_EXCHANGE_INVOICE_RESEND_FAILED";
+    public const string JobKeyPrefix = "hb-exchange-invoice-resend:";
+
+    // resolvedWith: the claim's own finalizedWith (ReturnClaim.ResolvedWith); panelApprovedWith: the FinalizedWith of the
+    // panel's own approval of this claim that Hepsiburada confirmed, used only when the claim does not say.
+    public static bool ClosedAsExchange(ReturnClaimStatus status, string? rawStatus, string? resolvedWith, string? panelApprovedWith)
+    {
+        if (status is not (ReturnClaimStatus.Approved or ReturnClaimStatus.Completed)) return false;
+        if (string.Equals(rawStatus?.Trim(), ReturnCustomerRequestPolicy.RefundedRawStatus, StringComparison.OrdinalIgnoreCase)) return false;
+        var outcome = resolvedWith ?? ReturnCustomerRequestPolicy.ResolvedWithFromHepsiburada(panelApprovedWith);
+        return outcome == ReturnCustomerRequestPolicy.Change;
+    }
+
+    public static string JobKey(Guid claimId) => $"{JobKeyPrefix}{claimId:N}";
+    public static string IssueKey(Guid claimId) => $"hb-exchange-invoice:{claimId:N}";
+
+    // The package the same invoice goes to again. Hepsiburada's claim names no replacement package (the claim model has
+    // no package field), so the replacement is never inferred: the invoice goes back to the package it was delivered to.
+    // deliveredPackages: the packages the order's invoice link was confirmed on; claimPackages: the packages that hold
+    // the claimed lines (empty when no allocation is stored). Null when the package is not known for certain.
+    public static Guid? TargetPackage(IReadOnlyCollection<Guid> deliveredPackages, IReadOnlyCollection<Guid> claimPackages)
+    {
+        var candidates = claimPackages.Count > 0 ? deliveredPackages.Where(claimPackages.Contains).Distinct().ToList() : deliveredPackages.Distinct().ToList();
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
 }
 
 public static class ReturnClaimStoragePolicy
@@ -259,6 +307,9 @@ public sealed class ReturnClaim
     // What the customer asked for (ReturnCustomerRequestPolicy: REFUND or CHANGE), read from the claim; only
     // Hepsiburada reports it. Null when the claim does not say (unknown, never guessed).
     public string? CustomerRequest { get; set; }
+    // How the marketplace closed an approved claim (ReturnCustomerRequestPolicy: REFUND or CHANGE), from Hepsiburada's
+    // finalizedWith. Null when the claim does not say (unknown, never guessed).
+    public string? ResolvedWith { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public long Version { get; set; } = 1;

@@ -12780,6 +12780,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (claim.DecidedAt != decidedAt) { claim.DecidedAt = decidedAt; claimChanged = true; }
             // What the customer asked for is kept once known; a read that does not say it leaves it as it is.
             if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
+            if (remote.ResolvedWith is { } resolvedWith && !string.Equals(claim.ResolvedWith, resolvedWith, StringComparison.Ordinal)) { claim.ResolvedWith = resolvedWith; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
         if (!remoteIsFresh)
@@ -12842,6 +12843,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // dropped when it shows them rejected; committed with the read, under the lines' locks.
         var claimId = claim.Id;
         await ReturnPendingStock.SettleAndSaveAsync(db, () => ReturnPendingStock.SettleClaimAsync(db, tenantId, claimId, $"return-stock:{claimId:N}", now, cancellationToken), cancellationToken);
+        // Owner decision (6 Nov 2026): a Hepsiburada claim closed as an exchange sends the order's delivered invoice link again.
+        if (await HepsiburadaExchangeInvoiceResend.QueueAsync(db, tenantId, claim,
+                configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+                configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"),
+                now, cancellationToken))
+            await db.SaveChangesAsync(cancellationToken);
     }
 
     // A read whose marketplace change time is older than the one stored is stale. A read without a change time (or a
@@ -12939,6 +12946,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         RejectedPackageState = status == ReturnClaimStatus.Rejected ? remote.RejectedPackageState : null,
         DecidedAt = status is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected ? remote.DecidedAt?.ToUniversalTime() : null,
         CustomerRequest = remote.CustomerRequest,
+        ResolvedWith = remote.ResolvedWith,
         CreatedAt = now,
         UpdatedAt = now,
         Version = 1

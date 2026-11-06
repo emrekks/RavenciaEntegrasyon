@@ -1054,6 +1054,22 @@ public sealed partial class HepsiburadaHttpClient(
         if (!(regularWriteAllowed && automaticInvoiceWriteAllowed) && !explicitManualInvoiceWriteAllowed && !oneTimeInvoiceWriteAllowed)
             return await Unsupported<InvoiceDeliveryResult>("Hepsiburada fatura teslimi yalnız genel dış yazma izinleri, ayrı fatura iletme izni veya doğrulanmış tek seferlik fatura yetkisi açıkken kullanılabilir.");
 
+        if (context.IsExchangeInvoiceResend)
+        {
+            // Owner decision (6 Nov 2026): after an exchange the SAME invoice link already on the package is sent again,
+            // only through the automatic delivery gate. The package holds an invoice already, so neither the "empty
+            // before" check nor the read-back can prove anything here: Hepsiburada's 2xx is the result, a refusal (409
+            // too) is a failure the owner sees.
+            if (!(regularWriteAllowed && automaticInvoiceWriteAllowed))
+                return await Unsupported<InvoiceDeliveryResult>("Değişim sonrası fatura yeniden gönderimi yalnız otomatik fatura iletme izinleri açıkken yapılır.");
+            var resendBody = HepsiburadaInvoiceDeliveryPolicy.Body(invoice!);
+            using var resendContent = new StringContent(resendBody, Encoding.UTF8, "application/json");
+            var resend = await SendAsync(account, account.OmsBaseAddress, HttpMethod.Put, InvoiceLink(account, invoice.PackageNumber), resendContent, cancellationToken);
+            return resend.IsSuccess
+                ? AdapterResult<InvoiceDeliveryResult>.Success(new(invoice.PackageNumber, "INVOICED", false, invoice.InvoiceNumber, invoice.InvoiceLink.AbsoluteUri), resend.RateLimit)
+                : AdapterResult<InvoiceDeliveryResult>.Failure(resend.Error!, resend.RateLimit);
+        }
+
         // hasInvoice cannot identify which invoice is attached. Only send when
         // the package is observed empty immediately before this request; a
         // successful post-write read then ties the observation to this attempt.

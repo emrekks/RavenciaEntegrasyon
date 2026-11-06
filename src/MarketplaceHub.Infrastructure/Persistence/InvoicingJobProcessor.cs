@@ -609,6 +609,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     private async Task<bool> Deliver(Guid tenantId, Guid jobConnectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        if (ReadExchangeResendClaimId(payloadJson) is { } exchangeClaimId)
+            return await ResendForExchange(tenantId, jobConnectionId, exchangeClaimId, payloadJson, correlationId, cancellationToken);
         if (!TryReadOneTimeInvoiceDeliveryAuthorization(payloadJson, out var oneTimeAuthorization)) return false;
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null) return false;
@@ -626,6 +628,120 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             if (!succeeded) return false;
         }
         return true;
+    }
+
+    private static Guid? ReadExchangeResendClaimId(string payloadJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("exchangeResendClaimId", out var value)
+                && value.ValueKind == JsonValueKind.String
+                && Guid.TryParse(value.GetString(), out var claimId)
+                ? claimId
+                : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// Owner decision (6 Nov 2026, ExchangeInvoiceResendPolicy): a Hepsiburada claim closed as an exchange sends the SAME
+    /// invoice link again to the package it was delivered to. No new invoice, no cancellation, no E-Faturam call; the
+    /// invoice and its delivery record stay as they are. Everything is checked again here, since the claim, the invoice or
+    /// the switches may have changed after the job was queued; a stop or a failure leaves a note for the owner.
+    /// </summary>
+    private async Task<bool> ResendForExchange(Guid tenantId, Guid jobConnectionId, Guid claimId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
+        var packageId = ReadPackageId(payloadJson);
+        if (invoice is null || packageId is null) return false;
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken);
+        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId && x.OrderId == invoice.OrderId, cancellationToken);
+        if (claim is null || package is null || claim.OrderId != invoice.OrderId || package.ConnectionId != jobConnectionId || claim.ConnectionId != jobConnectionId) return false;
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (!string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)) return false;
+        var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId).Select(x => new { x.OrderNumber, x.StoreFrontCode }).SingleOrDefaultAsync(cancellationToken);
+        var issueKey = ExchangeInvoiceResendPolicy.IssueKey(claim.Id);
+        var facts = $"sipariş {order?.OrderNumber}, fatura {invoice.InvoiceNumber}, paket {package.ExternalPackageId}";
+
+        var panelApprovedWith = claim.ResolvedWith is null
+            ? await db.ReturnDecisions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.Action == "APPROVE" && x.Status == "SUCCEEDED")
+                .OrderByDescending(x => x.CreatedAt).Select(x => x.ReasonCode).FirstOrDefaultAsync(cancellationToken)
+            : null;
+        if (!ExchangeInvoiceResendPolicy.ClosedAsExchange(claim.Status, claim.RawStatus, claim.ResolvedWith, panelApprovedWith))
+            throw new JobProcessingException(JobExecutionResult.Blocked("HEPSIBURADA_EXCHANGE_NOT_CONFIRMED",
+                $"Talep {claim.ExternalClaimId} artık değişimle kapanmış görünmüyor; fatura yeniden gönderilmedi ({facts})."));
+        if (InvoiceDeliveryGuardPolicy.InvoiceBlocksDelivery(invoice.Status))
+            throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.InvoiceNotDeliverableCode,
+                $"Fatura iptal sürecinde, iptal edilmiş, reddedilmiş veya düzeltme bekliyor; Hepsiburada'ya yeniden gönderilmedi ({facts})."));
+        var state = await db.MarketplaceDeliveryStates.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id, cancellationToken);
+        var document = await LoadPermanentInvoiceDocumentAsync(tenantId, invoice.Id, cancellationToken);
+        if (state?.Status != "CONFIRMED" || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+            || !Uri.TryCreate(document?.PermanentUrl, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps)
+            throw new JobProcessingException(JobExecutionResult.Blocked("HEPSIBURADA_EXCHANGE_INVOICE_NOT_DELIVERED",
+                $"Bu paketin faturası Hepsiburada'ya teslim edilmiş görünmüyor veya fatura bağlantısı yok; yeniden gönderilmedi ({facts})."));
+
+        var now = timeProvider.GetUtcNow();
+        if (!IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
+                configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+                configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites")))
+        {
+            var message = $"Değişim onaylandı ancak pazaryerine fatura iletme kapalı; mevcut fatura Hepsiburada'ya yeniden gönderilmedi ({facts}).";
+            await HepsiburadaExchangeInvoiceResend.NoteAsync(db, tenantId, issueKey, ExchangeInvoiceResendPolicy.DeliveryDisabledCode, message, now, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(JobExecutionResult.Blocked(ExchangeInvoiceResendPolicy.DeliveryDisabledCode, message));
+        }
+
+        var payload = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["shipmentPackageId"] = package.ExternalPackageId,
+            ["invoiceLink"] = link.AbsoluteUri,
+            ["invoiceDateTime"] = invoice.IssuedAt?.ToUnixTimeMilliseconds(),
+            ["invoiceNumber"] = invoice.InvoiceNumber,
+            ["arrangementDate"] = invoice.IssuedAt?.ToString("O", CultureInfo.InvariantCulture),
+            ["contentType"] = document!.MimeType,
+            ["orderNumber"] = order?.OrderNumber,
+            ["micro"] = false
+        });
+        var context = Context(tenantId, package.ConnectionId, correlationId, ExchangeInvoiceResendPolicy.JobKey(claim.Id), IntegrationOperation.Automatic) with
+        {
+            IsAutomaticInvoiceMarketplaceDelivery = true,
+            IsExchangeInvoiceResend = true
+        };
+        AdapterResult<InvoiceDeliveryResult> result;
+        try
+        {
+            result = await marketplace.DeliverAsync(context, new(package.ExternalPackageId, "LINK", payload, Hash($"exchange-resend:{claim.Id:N}:{invoice.Id:N}:{package.Id:N}"), order?.StoreFrontCode), cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not JobProcessingException)
+        {
+            var message = $"Değişim için fatura Hepsiburada'ya yeniden gönderilirken sonuç alınamadı; otomatik tekrar gönderilmedi ({facts}).";
+            await HepsiburadaExchangeInvoiceResend.NoteAsync(db, tenantId, issueKey, ExchangeInvoiceResendPolicy.FailedCode, message, timeProvider.GetUtcNow(), CancellationToken.None);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RESULT_UNKNOWN", message));
+        }
+
+        if (!result.IsSuccess)
+        {
+            var error = result.Error!;
+            await HepsiburadaExchangeInvoiceResend.NoteAsync(db, tenantId, issueKey, ExchangeInvoiceResendPolicy.FailedCode,
+                $"Değişim onaylandı ancak mevcut fatura Hepsiburada'ya yeniden gönderilemedi ({facts}): {error.SafeMessage}", timeProvider.GetUtcNow(), CancellationToken.None);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw JobProcessingException.FromAdapter(error);
+        }
+
+        var done = $"Değişim onaylandı; mevcut fatura Hepsiburada'ya yeniden gönderildi ({facts}).";
+        var doneAt = timeProvider.GetUtcNow();
+        await HepsiburadaExchangeInvoiceResend.NoteAsync(db, tenantId, issueKey, ExchangeInvoiceResendPolicy.ResentCode, done, doneAt, cancellationToken, resolved: true);
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = ExchangeInvoiceResendPolicy.ResentCode, TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"exchange-claim:{claim.ExternalClaimId}:package:{package.ExternalPackageId}", CorrelationId = correlationId, CreatedAt = doneAt });
+        await db.SaveChangesAsync(cancellationToken);
+        throw new JobProcessingException(JobExecutionResult.SuccessWithNote(ExchangeInvoiceResendPolicy.ResentCode, done));
     }
 
     private async Task<bool> DeliverManualOrderInvoiceDocument(Guid tenantId, Guid jobConnectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
