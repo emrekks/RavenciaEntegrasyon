@@ -459,8 +459,8 @@
 .cm-card .cm-product-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; color: var(--rv-color-warning); background: color-mix(in srgb, var(--rv-color-warning) 16%, transparent); border-radius: 7px; font-size: 11px; font-weight: 600; vertical-align: middle; white-space: nowrap; }
 /* The values (colours) a product still needs mapped: a count and their names above the list, each marked in it; once
    none is left a short green line. */
-.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value.needs-mapping, .cm-card .web-color-panel-value.needs-mapping { background: color-mix(in srgb, var(--rv-color-warning) 12%, transparent); border-color: color-mix(in srgb, var(--rv-color-warning) 55%, transparent); }
-.cm-card .web-color-panel-value .cm-need-tag { flex: none; margin-left: auto; color: var(--rv-color-warning); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+/* A panel colour this product needs mapped: its name stays readable, the red frame alone marks it (title says why). */
+.app-shell.stitch-shell main .cm-webcolor .web-color-panel-value.needs-mapping, .cm-card .web-color-panel-value.needs-mapping { border-color: var(--rv-color-danger); }
 
 /* The value table gets the height (3 Nov 2026: about 2.5 rows showed under the gap note): the blocks above it sit
    closer, the status legend moves into the footer row, value rows are 44 px around a 36 px picker. */
