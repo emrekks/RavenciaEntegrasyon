@@ -25,10 +25,19 @@ http://127.0.0.1:8081 {
 		Referrer-Policy "no-referrer"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), interest-cohort=()"
 		Cross-Origin-Opener-Policy "same-origin"
-		Cross-Origin-Resource-Policy "same-origin"
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.dsmcdn.com https://productimages.hepsiburada.net https://www.hepsijet.com https://img.pzrmcdn.com; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests"
 	}
+
+	# Cross-Origin-Resource-Policy: same-origin everywhere except the product pictures sent to the marketplaces
+	# (/api/v1/public/product-media/{id}/content, ProductPublicationComposer). A marketplace seller panel shows them from
+	# its own site until it has copied them (live 2026-11-06: the new Zümrüt card of MZ028IH showed two broken pictures
+	# in Trendyol's panel, Chrome refused the same-origin images there). Two matchers, not an override: a deferred
+	# header block would apply last and win.
+	@marketplace_pictures path /api/v1/public/product-media/*
+	header @marketplace_pictures Cross-Origin-Resource-Policy "cross-origin"
+	@not_marketplace_pictures not path /api/v1/public/product-media/*
+	header @not_marketplace_pictures Cross-Origin-Resource-Policy "same-origin"
 
 	@webhook path /api/v1/hooks/*
 	request_body @webhook {
