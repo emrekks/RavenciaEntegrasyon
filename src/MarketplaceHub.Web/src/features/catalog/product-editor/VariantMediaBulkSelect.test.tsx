@@ -59,3 +59,14 @@ describe('VariantMediaBulkSelect', () => {
     expect(trigger.disabled).toBe(true)
   })
 })
+
+describe('VariantMediaBulkSelect image count', () => {
+  it('shows how many images a value has in the round badge', () => {
+    const { host } = render(<VariantMediaBulkSelect label="Seçenek Değeri" placeholder="Değer Seçin" value="bordo" options={[{ id: 'bordo', label: 'Bordo', assigned: true, imageCount: 4 }, { id: 'gri', label: 'Gri' }]} onChange={vi.fn()} />)
+    const trigger = host.querySelector<HTMLButtonElement>('.category-attribute-select-trigger')!
+    expect(trigger.querySelector('.variant-media-value-check')!.textContent).toBe('4')
+    click(trigger)
+    expect(options(host)[1].querySelector('.variant-media-value-check')!.textContent).toBe('4')
+    expect(options(host)[1].textContent).toContain('4 görsel atandı')
+  })
+})
