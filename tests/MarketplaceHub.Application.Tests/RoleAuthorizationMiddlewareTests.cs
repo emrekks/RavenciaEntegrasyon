@@ -135,8 +135,11 @@ public sealed class RoleAuthorizationMiddlewareTests
     [InlineData("OPERATIONS", "POST", "/api/v1/orders/shopify-csv-import", true)]
     [InlineData("ACCOUNTING", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/instant-process", false)]
     [InlineData("READONLY", "POST", "/api/v1/orders/11111111-1111-1111-1111-111111111111/instant-process", false)]
-    [InlineData("OPERATIONS", "POST", "/api/v1/invoice-workspace/confirm", true)]
-    [InlineData("ACCOUNTING", "POST", "/api/v1/invoice-workspace/confirm", true)]
+    // Issuing the previewed invoices is for the owner and administrators (6 Nov); previewing stays invoice work.
+    [InlineData("OPERATIONS", "POST", "/api/v1/invoice-workspace/confirm", false)]
+    [InlineData("ADMINISTRATOR", "POST", "/api/v1/invoice-workspace/confirm", true)]
+    [InlineData("ACCOUNTING", "POST", "/api/v1/invoice-workspace/preview", true)]
+    [InlineData("ACCOUNTING", "POST", "/api/v1/invoice-workspace/confirm", false)]
     [InlineData("ACCOUNTING", "PUT", "/api/v1/invoice-workspace/manual-status", true)]
     [InlineData("READONLY", "POST", "/api/v1/invoice-workspace/confirm", false)]
     [InlineData("READONLY", "POST", "/api/v1/invoice-workspace/preview", false)]

@@ -85,12 +85,19 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         {
             case "billing":
                 return AccountingRoles;
+            // No invoice goes out without the owner's approval (6 Nov): issuing an e-invoice, cancelling it, and sending
+            // or removing its link at the marketplace are for the owner and administrators. Drafts, validation,
+            // previews, uploads and status reads stay invoice work.
             case "invoices":
-                return InvoiceRoles;
+                return last is "submit-jobs" or "cancellation-jobs" or "marketplace-delivery-jobs" or "delivery-retry-jobs"
+                        || segments.Length == 6 && segments[4].Equals("marketplace-link-revocations", StringComparison.OrdinalIgnoreCase)
+                    ? ElevatedRoles
+                    : InvoiceRoles;
             // Overriding what the fiscal records say (a cancelled invoice replaced, no remote invoice, delivered by
-            // the marketplace) is an administrator decision; the rest of the workspace is invoice work.
+            // the marketplace) is an administrator decision, as are issuing the previewed invoices (confirm) and sending
+            // a hand-uploaded invoice's link to the marketplace (delivery-jobs); the rest of the workspace is invoice work.
             case "invoice-workspace":
-                return last is "replace-cancelled-invoice" or "confirm-no-remote-invoice" or "confirm-marketplace-delivered" ? ElevatedRoles : InvoiceRoles;
+                return last is "replace-cancelled-invoice" or "confirm-no-remote-invoice" or "confirm-marketplace-delivered" or "confirm" or "delivery-jobs" ? ElevatedRoles : InvoiceRoles;
             // Order work (picking, packages, Shopify status, CSV import) is daily operational work; recording that a
             // label was printed is open to every role that works with orders (accounting prints labels too).
             case "orders":

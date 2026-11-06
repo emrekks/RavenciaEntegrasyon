@@ -259,6 +259,94 @@ public sealed class InvoiceLinkAndWriteSwitchApiTests(ApiEndToEndFixture fixture
         }
     }
 
+    // No invoice goes out without the owner's approval (6 Nov): issuing, cancelling, and sending or removing the
+    // invoice link at the marketplace are for the owner and administrators; operations and accounting keep drafts,
+    // previews, uploads and reads.
+    public static TheoryData<string, string> InvoiceOutboundRoutes() => new()
+    {
+        { "POST", $"/api/v1/invoices/{Guid.NewGuid():D}/submit-jobs" },
+        { "POST", $"/api/v1/invoices/{Guid.NewGuid():D}/cancellation-jobs" },
+        { "POST", $"/api/v1/invoices/{Guid.NewGuid():D}/marketplace-delivery-jobs" },
+        { "POST", $"/api/v1/invoices/{Guid.NewGuid():D}/delivery-retry-jobs" },
+        { "POST", $"/api/v1/invoices/{Guid.NewGuid():D}/marketplace-link-revocations/{Guid.NewGuid():D}" },
+        { "POST", "/api/v1/invoice-workspace/confirm" },
+        { "POST", $"/api/v1/invoice-workspace/manual-documents/{Guid.NewGuid():D}/delivery-jobs" }
+    };
+
+    private static HttpRequestMessage Outbound(string method, string path, string csrf, object? body = null)
+    {
+        var request = ApiTestHost.Json(new HttpMethod(method), path, csrf, body ?? new { confirmed = true });
+        request.Headers.Add("Idempotency-Key", Guid.NewGuid().ToString());
+        request.Headers.TryAddWithoutValidation("If-Match", "\"v1\"");
+        return request;
+    }
+
+    [PostgreSqlTheory]
+    [MemberData(nameof(InvoiceOutboundRoutes))]
+    public async Task Only_the_owner_and_administrators_issue_cancel_or_send_invoices(string method, string path)
+    {
+        using var host = Host();
+        foreach (var role in new[] { MembershipRole.Operations, MembershipRole.Accounting })
+        {
+            var (client, csrf) = await SignInAsync(host, fixture, role);
+            using (client)
+            {
+                using var refused = await client.SendAsync(Outbound(method, path, csrf));
+                Assert.True(refused.StatusCode == HttpStatusCode.Forbidden, $"{role} {method} {path}: {(int)refused.StatusCode}");
+                Assert.Equal("PERMISSION_DENIED", (await ApiTestHost.ProblemAsync(refused)).GetProperty("code").GetString());
+            }
+        }
+        var (admin, adminCsrf) = await SignInAsync(host, fixture, MembershipRole.Administrator);
+        using (admin)
+        {
+            // Past the gate: the unknown invoice (or the unmatched preview) is the endpoint's own answer.
+            using var passed = await admin.SendAsync(Outbound(method, path, adminCsrf));
+            Assert.True(passed.StatusCode != HttpStatusCode.Forbidden, $"Administrator {method} {path}: {(int)passed.StatusCode} {await passed.Content.ReadAsStringAsync()}");
+        }
+    }
+
+    [PostgreSqlFact]
+    public async Task Invoice_drafting_and_reads_stay_open_to_operations_and_accounting()
+    {
+        using var host = Host();
+        foreach (var role in new[] { MembershipRole.Operations, MembershipRole.Accounting })
+        {
+            var (client, csrf) = await SignInAsync(host, fixture, role);
+            using (client)
+            {
+                using var validate = await client.SendAsync(Outbound("POST", $"/api/v1/invoices/{Guid.NewGuid():D}/validate", csrf));
+                using var reconcile = await client.SendAsync(Outbound("POST", $"/api/v1/invoices/{Guid.NewGuid():D}/reconcile-jobs", csrf));
+                using var preview = await client.SendAsync(Outbound("POST", "/api/v1/invoice-workspace/preview", csrf, new { orderIds = Array.Empty<Guid>() }));
+                using var list = await client.GetAsync("/api/v1/invoices");
+                Assert.All(new[] { validate, reconcile, preview, list }, response => Assert.NotEqual(HttpStatusCode.Forbidden, response.StatusCode));
+            }
+        }
+    }
+
+    // INVOICED (the package's invoice number sent to the marketplace) is elevated like the invoice routes; the other
+    // package actions stay operational work.
+    [PostgreSqlFact]
+    public async Task Only_the_owner_and_administrators_send_the_invoiced_package_status()
+    {
+        using var host = Host();
+        var path = $"/api/v1/shipments/{Guid.NewGuid():D}/actions";
+        var (operations, csrf) = await SignInAsync(host, fixture, MembershipRole.Operations);
+        using (operations)
+        {
+            using var invoiced = await operations.SendAsync(Outbound("POST", path, csrf, new { action = " invoiced ", payloadJson = "{}" }));
+            Assert.Equal(HttpStatusCode.Forbidden, invoiced.StatusCode);
+            Assert.Equal("PERMISSION_DENIED", (await ApiTestHost.ProblemAsync(invoiced)).GetProperty("code").GetString());
+            using var picking = await operations.SendAsync(Outbound("POST", path, csrf, new { action = "PICKING", payloadJson = "{}" }));
+            Assert.Equal(HttpStatusCode.NotFound, picking.StatusCode);
+        }
+        var (admin, adminCsrf) = await SignInAsync(host, fixture, MembershipRole.Administrator);
+        using (admin)
+        {
+            using var invoiced = await admin.SendAsync(Outbound("POST", path, adminCsrf, new { action = "INVOICED", payloadJson = "{}" }));
+            Assert.Equal(HttpStatusCode.NotFound, invoiced.StatusCode);
+        }
+    }
+
     // The panel's copy of a hand-uploaded invoice PDF is personal data and stays out of browser and proxy caches,
     // like the system invoice documents and the public link.
     [PostgreSqlFact]

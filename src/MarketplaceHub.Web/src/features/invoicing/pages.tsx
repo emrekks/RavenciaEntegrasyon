@@ -5,6 +5,7 @@ import { Link, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll, loadAllPages } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
+import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/useCanSendInvoices'
 import { ValueBadge } from '../../shared/components/ValueBadge'
 import { setManualInvoiceStatus } from './manual-invoice-status'
 import { invoiceDueText } from './invoice-due-text'
@@ -275,6 +276,8 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, can
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState({ left: 8, top: 8 })
+  // Sending an invoice to the marketplace and overriding the fiscal record are for the owner and administrators.
+  const canSend = useCanSendInvoices()
   const hasManualDocument = Boolean(item.manualInvoiceDocumentId)
   const canSendManual = hasManualDocument && item.manualInvoiceDeliveryStatus !== 'CONFIRMED'
   const canRetryInvoice = Boolean(item.platformCode !== 'SHOPIFY' && item.invoiceId && isInvoiceFailureStatus(item.invoiceStatus) && isInvoiceCreationActionVisible(item))
@@ -287,8 +290,10 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, can
     : canRetryInvoice
       ? item.invoiceStatus === 'FATURA_PLATFORMA_AKTARILMADI' ? 'Platforma Tekrar Gönder' : 'Tekrar Dene'
       : 'Fatura Oluştur'
-  const manualDeliveryDisabled = deliveryPending || !canSendManual || !item.manualInvoiceIssuedAt
-  const manualDeliveryTitle = deliveryPending
+  const manualDeliveryDisabled = !canSend || deliveryPending || !canSendManual || !item.manualInvoiceIssuedAt
+  const manualDeliveryTitle = !canSend
+    ? invoiceSendDeniedReason
+    : deliveryPending
     ? 'Fatura iletimi zaten sırada.'
     : !hasManualDocument
       ? 'Önce manuel fatura belgesi ekleyin.'
@@ -328,14 +333,14 @@ function InvoiceReferenceActionsMenu({ item, canCreateInvoice, canSyncOrder, can
       <span>İşlemler</span><UiIcon name="chevronDown" />
     </button>
     {open && createPortal(<div ref={menuRef} className="invoice-reference-actions-popover" role="menu" aria-label={`${displayInvoiceOrderNumber(item.orderNumber)} sipariş işlemleri`} style={{ left: position.left, top: position.top }}>
-      <button type="button" role="menuitem" disabled={!invoiceActionAvailable} title={!invoiceActionAvailable ? 'Bu sipariş için fatura oluşturma şu anda uygun değil.' : undefined} onClick={() => { setOpen(false); if (canRetryDelivery) onRetryDelivery(); else onCreateInvoice() }}><UiIcon name="invoice" size={16} />{invoiceActionLabel}</button>
+      <button type="button" role="menuitem" disabled={!invoiceActionAvailable || canRetryDelivery && !canSend} title={!invoiceActionAvailable ? 'Bu sipariş için fatura oluşturma şu anda uygun değil.' : canRetryDelivery && !canSend ? invoiceSendDeniedReason : undefined} onClick={() => { setOpen(false); if (canRetryDelivery) onRetryDelivery(); else onCreateInvoice() }}><UiIcon name="invoice" size={16} />{invoiceActionLabel}</button>
       {item.platformCode === 'SHOPIFY'
         ? <button type="button" role="menuitem" onClick={() => { setOpen(false); onToggleHidden() }}><UiIcon name={hidden ? 'eye' : 'eyeOff'} size={16} />{hidden ? 'Gizlemeden Çıkar' : 'Siparişi Gizle'}</button>
         : item.platformCode !== 'TRENDYOL' && <button type="button" role="menuitem" disabled={!canSyncOrder} title={!canSyncOrder ? 'Pazaryeri sipariş bilgileri bulunamadı veya bağlantı etkin değil.' : undefined} onClick={() => { setOpen(false); onSyncOrder() }}><UiIcon name="refresh" size={16} />Sipariş Durumunu Güncelle</button>}
       <button type="button" role="menuitem" disabled={!canRefreshInvoiceStatus || invoiceStatusRefreshing} title={handSetInvoiceStatusPlatforms.has(item.platformCode) ? 'Bu pazaryeri siparişteki faturayı bildirmez; fatura durumunu elle değiştirirsiniz. İptal edilen faturanın yerine yenisi için “Fatura Bekliyor”u seçin.' : canRefreshInvoiceStatus ? 'Fatura durumunu pazaryerinden yeniden okur; hiçbir şey göndermez.' : 'Pazaryeri bağlantısı etkin değil veya sipariş bilgileri eksik.'} onClick={() => { setOpen(false); onRefreshInvoiceStatus() }}><UiIcon name="sync" size={16} />{invoiceStatusRefreshing ? 'Fatura Durumu Güncelleniyor…' : 'Fatura Durumu Güncelle'}</button>
-      {item.platformCode !== 'SHOPIFY' && ['FATURA_ISLENIYOR', 'FATURA_REDDEDILDI', 'FATURA_BELIRSIZ'].includes(item.invoiceStatus ?? '') && !invoiceAwaitsProviderAnswer(item.invoiceStatus, item.invoiceErrorCode) && <button type="button" role="menuitem" title="Gönderim sonucu kaybolmuş ve sağlayıcı portalında fatura görünmüyorsa yeniden gönderimi açar." onClick={() => { setOpen(false); onConfirmNoRemoteInvoice() }}><UiIcon name="sync" size={16} />Sağlayıcıda Fatura Yok, Yeniden Gönder</button>}
-      {item.platformCode !== 'SHOPIFY' && item.invoiceId && item.invoiceNumber && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_REDDEDILDI', 'FATURA_PLATFORMA_BEKLIYOR'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı pazaryerinin satıcı panelinde gördüyseniz tamamlandı olarak işaretler." onClick={() => { setOpen(false); onConfirmDelivered() }}><UiIcon name="circleCheck" size={16} />{deliveryUnderReview(item) ? 'İletildi Say' : 'Pazaryerinde Gördüm, Tamamla'}</button>}
-      {item.platformCode !== 'SHOPIFY' && item.invoiceId && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_KONTROLDE'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" title="Faturayı E-Faturam portalında iptal ettiyseniz bu kaydı kapatır ve yeni fatura kesmenize izin verir." onClick={() => { setOpen(false); onReplaceCancelledInvoice() }}><UiIcon name="undo" size={16} />Portalda İptal Ettim, Yeni Fatura Kes</button>}
+      {item.platformCode !== 'SHOPIFY' && ['FATURA_ISLENIYOR', 'FATURA_REDDEDILDI', 'FATURA_BELIRSIZ'].includes(item.invoiceStatus ?? '') && !invoiceAwaitsProviderAnswer(item.invoiceStatus, item.invoiceErrorCode) && <button type="button" role="menuitem" disabled={!canSend} title={!canSend ? invoiceSendDeniedReason : "Gönderim sonucu kaybolmuş ve sağlayıcı portalında fatura görünmüyorsa yeniden gönderimi açar."} onClick={() => { setOpen(false); onConfirmNoRemoteInvoice() }}><UiIcon name="sync" size={16} />Sağlayıcıda Fatura Yok, Yeniden Gönder</button>}
+      {item.platformCode !== 'SHOPIFY' && item.invoiceId && item.invoiceNumber && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_REDDEDILDI', 'FATURA_PLATFORMA_BEKLIYOR'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" disabled={!canSend} title={!canSend ? invoiceSendDeniedReason : "Faturayı pazaryerinin satıcı panelinde gördüyseniz tamamlandı olarak işaretler."} onClick={() => { setOpen(false); onConfirmDelivered() }}><UiIcon name="circleCheck" size={16} />{deliveryUnderReview(item) ? 'İletildi Say' : 'Pazaryerinde Gördüm, Tamamla'}</button>}
+      {item.platformCode !== 'SHOPIFY' && item.invoiceId && ['FATURA_PLATFORMA_AKTARILMADI', 'FATURA_KONTROLDE'].includes(item.invoiceStatus ?? '') && <button type="button" role="menuitem" disabled={!canSend} title={!canSend ? invoiceSendDeniedReason : "Faturayı E-Faturam portalında iptal ettiyseniz bu kaydı kapatır ve yeni fatura kesmenize izin verir."} onClick={() => { setOpen(false); onReplaceCancelledInvoice() }}><UiIcon name="undo" size={16} />Portalda İptal Ettim, Yeni Fatura Kes</button>}
       <hr className="invoice-reference-actions-separator" /><button type="button" role="menuitem" onClick={() => { setOpen(false); onAddManualInvoice() }}><UiIcon name="upload" size={16} />{hasManualDocument ? 'Manuel Faturayı Değiştir' : 'Manuel Fatura Ekle'}</button>
       <button type="button" role="menuitem" disabled={manualDeliveryDisabled} title={manualDeliveryDisabled ? manualDeliveryTitle : undefined} onClick={() => { setOpen(false); onSendManualInvoice() }}><UiIcon name="link" size={16} />{deliveryPending ? 'Kuyruğa Alınıyor…' : 'Manuel Faturayı Pazaryerine Gönder'}</button>
     </div>, document.body)}
@@ -802,6 +807,9 @@ function InvoiceWorkspaceUploadModal({ item, onClose, onFeedback }: { item: Invo
   </DialogSurface></div>
 }
 
+// Issuing, cancelling and sending to the marketplace: owner and administrators only (RoleAuthorizationMiddleware).
+const invoiceSendActions = new Set(['SUBMIT', 'CANCEL', 'DELIVER', 'RETRY_DELIVERY'])
+
 export function InvoiceDetailPage() {
   const { id = '' } = useParams(); const [searchParams] = useSearchParams(); const client = useQueryClient(); const [notice, setNoticeState] = useState(''); const [noticeKind, setNoticeKind] = useState<InvoiceNoticeKind>('info'); const [confirmed, setConfirmed] = useState(false); const [uploadFile, setUploadFile] = useState<File | null>(null)
   // Every notice of this page is about this invoice: its number (or its order's) and a link back to it.
@@ -816,6 +824,7 @@ export function InvoiceDetailPage() {
     return () => window.clearTimeout(timeout)
   }, [notice, noticeKind])
   const query = useQuery({ queryKey: ['invoice', id], queryFn: () => hubApi<InvoiceDetail>(`/invoices/${id}`) })
+  const canSend = useCanSendInvoices()
   const operation = useMutation({
     mutationFn: async ({ action, invoice }: { action: string; invoice: InvoiceDetail }) => {
       if (action === 'VALIDATE') return hubApi<InvoiceDetail>(`/invoices/${id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${invoice.version}"` } })
@@ -845,7 +854,7 @@ export function InvoiceDetailPage() {
     <InvoiceLinkRevocationPanel invoiceId={invoice.id} invoiceNumber={invoice.invoiceNumber} items={invoice.linkRevocations ?? []} onNotice={setNotice} />
     <div className={`panel invoice-documents-panel ${searchParams.get('upload') === '1' ? 'invoice-upload-highlight' : ''}`}><div className="invoice-panel-heading"><div><h2>Belgeler<TitleHint label="Belgeler">Fatura sağlayıcısından gelen belge ve platforma iletilecek güvenli bağlantı.</TitleHint></h2></div>{invoice.documents.length > 0 && <a className="invoice-document-link" href={`/api/v1/invoices/${invoice.id}/documents/latest/content`} target="_blank" rel="noreferrer">Fatura Linkini Aç <UiIcon name="externalLink" /></a>}</div>{invoice.documents.length ? <div className="card-list">{invoice.documents.map(document => <a className="record-card" key={document.id} href={`/api/v1/invoices/${invoice.id}/documents/${document.id}/content`} target="_blank" rel="noreferrer"><span><strong>{statusLabel(document.documentType)}</strong><small>SHA-256 {document.sha256.slice(0, 16)}…</small></span><span>Güvenli Aç <UiIcon name="externalLink" /></span></a>)}</div> : <p>Henüz belge eklenmedi. Fatura sağlayıcısının belgesi alındığında ayrıca güvenli biçimde saklanır.</p>}<form className="invoice-document-upload" onSubmit={event => { event.preventDefault(); if (uploadFile) upload.mutate(uploadFile) }}><div><strong>Fatura Belgesi Yükle<TitleHint label="Fatura Belgesi Yükle">PDF, JPEG veya PNG · en fazla 10 MiB · sadece özel arşive kaydedilir.</TitleHint></strong></div><input type="file" accept="application/pdf,image/jpeg,image/png" onChange={event => setUploadFile(event.target.files?.[0] ?? null)} aria-label="Fatura belgesi seç" /><button type="submit" disabled={!uploadFile || upload.isPending}>{upload.isPending ? 'Yükleniyor…' : 'Belgeyi Yükle'}</button></form></div>
     {protectedActions.length > 0 && <form className="panel form-panel" onSubmit={event => event.preventDefault()}><h2>Dış Mali İşlem Onayı<TitleHint label="Dış Mali İşlem Onayı">Canlı ortamdaki mali işlemler açık onay ister. Sunucu, bağlantının ve yazma ayarlarının bu işleme izin verdiğini ayrıca denetler.</TitleHint></h2><label className="check"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> Bu dış mali işlemi açıkça onaylıyorum.</label></form>}
-    <div className="panel"><h2>Kullanılabilir İşlemler{invoice.allowedActions.length ? <TitleHint label="Kullanılabilir İşlemler">Fatura belgesi hazırsa “Pazaryerine Fatura Linkini İlet” işlemi, güvenli bağlantıyı siparişin pazaryerindeki paketine gönderir.</TitleHint> : null}</h2>{invoice.allowedActions.length ? <><div className="button-row">{invoice.allowedActions.map(action => <button key={action} type="button" onClick={() => operation.mutate({ action, invoice })} disabled={operation.isPending || (protectedActions.includes(action) && !confirmed)}>{invoiceDetailActionLabel(action, invoice.status)}</button>)}</div></> : <div className="unknown"><strong>Dış İşlemler Kapalı</strong><p>Bağlantı, teknik doğrulama ve güvenli yazma koşulları işlem öncesi denetlenir.</p></div>}</div>
+    <div className="panel"><h2>Kullanılabilir İşlemler{invoice.allowedActions.length ? <TitleHint label="Kullanılabilir İşlemler">Fatura belgesi hazırsa “Pazaryerine Fatura Linkini İlet” işlemi, güvenli bağlantıyı siparişin pazaryerindeki paketine gönderir.</TitleHint> : null}</h2>{invoice.allowedActions.length ? <><div className="button-row">{invoice.allowedActions.map(action => <button key={action} type="button" onClick={() => operation.mutate({ action, invoice })} disabled={operation.isPending || (protectedActions.includes(action) && !confirmed) || (!canSend && invoiceSendActions.has(action))} title={!canSend && invoiceSendActions.has(action) ? invoiceSendDeniedReason : undefined}>{invoiceDetailActionLabel(action, invoice.status)}</button>)}</div></> : <div className="unknown"><strong>Dış İşlemler Kapalı</strong><p>Bağlantı, teknik doğrulama ve güvenli yazma koşulları işlem öncesi denetlenir.</p></div>}</div>
   </section>
 }
 

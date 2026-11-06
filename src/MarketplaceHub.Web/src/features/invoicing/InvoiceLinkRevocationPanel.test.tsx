@@ -30,8 +30,9 @@ function button(label: string) {
 }
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) }) }
 
-async function render(items: InvoiceLinkRevocation[]) {
+async function render(items: InvoiceLinkRevocation[], role = 'ADMINISTRATOR') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  client.setQueryData(['me'], { id: 'user-1', email: 'u@example.invalid', displayName: 'U', role, state: 'ACTIVE', tenantId: 'tenant-1' })
   await act(async () => {
     root.render(<QueryClientProvider client={client}><InvoiceLinkRevocationPanel invoiceId="invoice-1" invoiceNumber="GIB2026000000001" items={items} onNotice={(message, kind) => notices.push({ message, kind })} /></QueryClientProvider>)
   })
@@ -94,6 +95,13 @@ describe('InvoiceLinkRevocationPanel', () => {
     await render([{ ...trendyol, canAct: false, blockedReason: 'Sunucudaki genel dış yazma anahtarı kapalı.' }])
     expect(button('Fatura Linkini Kaldır').disabled).toBe(true)
     expect(container.textContent).toContain('Sunucudaki genel dış yazma anahtarı kapalı.')
+  })
+
+  it.each(['OPERATIONS', 'ACCOUNTING', 'READONLY'])('keeps the removal closed for %s and says it is for the owner and administrators', async role => {
+    await render([trendyol], role)
+    expect(button('Fatura Linkini Kaldır').disabled).toBe(true)
+    expect(container.textContent).toContain('yalnız sahip ve yöneticiler içindir')
+    expect(calls.requests).toHaveLength(0)
   })
 
   it('needs no password on a live provider: the confirmation alone sends the removal', async () => {
