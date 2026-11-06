@@ -13,8 +13,10 @@ public sealed record JobWriteSummaryView(
     IReadOnlyList<JobWritePartView> Parts,
     IReadOnlyList<JobWriteRequestView> Requests);
 
-// Key: CREATE, UNAPPROVED (the whole product, a card not yet approved), CONTENT, VARIANTS or DELIVERY.
-public sealed record JobWritePartView(string Key, int ItemCount, IReadOnlyList<string> Fields, IReadOnlyList<string> Barcodes, int ContentCount, IReadOnlyList<JobWriteAttributeView> Attributes);
+// Key: CREATE, UNAPPROVED (the whole product, a card not yet approved), CONTENT, VARIANTS or DELIVERY. ClearedFields:
+// the fields an item sent as null. Trendyol deletes such a field on the product, so the drawer lists them ("silinir")
+// instead of hiding them.
+public sealed record JobWritePartView(string Key, int ItemCount, IReadOnlyList<string> Fields, IReadOnlyList<string> Barcodes, int ContentCount, IReadOnlyList<JobWriteAttributeView> Attributes, IReadOnlyList<string>? ClearedFields = null);
 
 // Name: the marketplace's attribute name from the connection's reference data; null when it is not known.
 public sealed record JobWriteAttributeView(string Id, string? Name);
@@ -80,6 +82,7 @@ public static class JobWritePayloadReader
             var items = Items(document.RootElement);
             if (items is null) return null;
             var fields = new List<string>();
+            var cleared = new List<string>();
             var barcodes = new List<string>();
             var attributes = new List<string>();
             var contents = 0;
@@ -89,7 +92,10 @@ public static class JobWritePayloadReader
                 count++;
                 if (item.ValueKind != JsonValueKind.Object) continue;
                 foreach (var property in item.EnumerateObject())
-                    if (property.Value.ValueKind != JsonValueKind.Null && !fields.Contains(property.Name, StringComparer.Ordinal)) fields.Add(property.Name);
+                {
+                    var target = property.Value.ValueKind == JsonValueKind.Null ? cleared : fields;
+                    if (!target.Contains(property.Name, StringComparer.Ordinal)) target.Add(property.Name);
+                }
                 if ((Text(item, "barcode") ?? Text(item, "merchantSku") ?? Text(item, "stockCode")) is { } barcode && !barcodes.Contains(barcode, StringComparer.OrdinalIgnoreCase))
                     barcodes.Add(barcode);
                 if (Property(item, "contentId") is { ValueKind: JsonValueKind.Number or JsonValueKind.String }) contents++;
@@ -100,7 +106,7 @@ public static class JobWritePayloadReader
                             && !attributes.Contains(attributeId, StringComparer.Ordinal))
                             attributes.Add(attributeId);
             }
-            return new JobWritePartView(key, count, fields, barcodes, contents, attributes.Select(x => new JobWriteAttributeView(x, null)).ToList());
+            return new JobWritePartView(key, count, fields, barcodes, contents, attributes.Select(x => new JobWriteAttributeView(x, null)).ToList(), cleared);
         }
         catch (JsonException) { return null; }
     }

@@ -473,16 +473,18 @@ public sealed record ProductPublicationJobPayload(Guid JobId, Guid ProductId, Gu
 public sealed record ProductApprovalReconciliationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string PayloadHash, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt, string? ExternalOperationId = null);
 public sealed record ProductUpdatePublication(Guid ProductId, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson);
 // The product information "Platformlarda Güncelle" sends, as the requests a marketplace takes it in. Trendyol updates an
-// approved product in three separate calls: content (title, description, images, attributes), variant (desi, VAT rate;
-// the listing's origin rides along) and delivery (the product card's Teslimat Süresi); each goes only when one of its
-// fields was picked. The variant and delivery requests go whole; the content request carries only the picked content
-// fields (ContentParts): content-bulk-update takes a partial update (only contentId is required) except for the
-// attributes, which go as the whole list when any of them goes (Trendyol doc, updateContentBulk). A product Trendyol
-// has not approved yet, and every Hepsiburada product, takes one full update carrying all of it.
+// approved product in three separate calls: content (title, description, images, attributes), variant (desi, VAT rate)
+// and delivery (the product card's Teslimat Süresi); each goes only when one of its fields was picked. The content
+// request carries only the picked content fields (ContentParts): content-bulk-update takes a partial update (only
+// contentId is required) except for the attributes, which go as the whole list when any of them goes (Trendyol doc,
+// updateContentBulk). The variant request carries the barcode and only the picked variant fields (VariantParts):
+// Trendyol's guide (Ürün Güncelleme Onaylı Ürün v2, Varyant Güncelleme, checked 6.11.2026) takes a partial update there
+// and deletes a field sent as null. A product Trendyol has not approved yet, and every Hepsiburada product, takes one
+// full update carrying all of it.
 // Hepsiburada: whether a field its single update carries was picked (it alone takes the warranty); its delivery time
 // goes apart, as Delivery, in a listing shipping-info upload.
-// ContentParts: the picked content fields; null is all of them (a send with no field list).
-public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true, ProductContentParts? ContentParts = null)
+// ContentParts / VariantParts: the picked content / variant fields; null is all of them (a send with no field list).
+public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true, ProductContentParts? ContentParts = null, ProductVariantParts? VariantParts = null)
 {
     public static readonly ProductUpdateSections All = new(true, true, true);
     // Whether a Trendyol request has a picked field: a pick Trendyol does not carry (the warranty alone) sends nothing
@@ -491,6 +493,17 @@ public sealed record ProductUpdateSections(bool Content, bool Variants, bool Del
     public bool Any => Trendyol || Hepsiburada;
     // The fields the approved Trendyol content request carries: none when no content field was picked.
     public ProductContentParts ContentFields => Content ? ContentParts ?? ProductContentParts.All : ProductContentParts.None;
+    // The fields the approved Trendyol variant request carries beside the barcode: none when no variant field was picked.
+    public ProductVariantParts VariantFields => Variants ? VariantParts ?? ProductVariantParts.All : ProductVariantParts.None;
+}
+
+// The fields of Trendyol's approved variant request (products/variants/bulk-update) that go beside the barcode. Never the
+// stock code or the origin: nothing picks them, and a field sent there is overwritten (a null one deleted).
+public sealed record ProductVariantParts(bool Desi, bool VatRate)
+{
+    public static readonly ProductVariantParts All = new(true, true);
+    public static readonly ProductVariantParts None = new(false, false);
+    public bool Any => Desi || VatRate;
 }
 
 // The fields of Trendyol's approved content request (content-bulk-update) that go. Attributes is the whole attribute
@@ -512,9 +525,9 @@ public static class ProductUpdateFields
     public const string VatRate = "VAT_RATE";
     public const string Delivery = "DELIVERY";
     public const string Warranty = "WARRANTY";
-    // Menşei is no field of its own: it is a category attribute (it goes with ATTRIBUTES) and Trendyol's variant request
-    // carries the listing's origin whole whenever DESI or VAT_RATE goes. A page opened before that still sends "ORIGIN";
-    // it is dropped instead of refusing the whole update.
+    // Menşei is no field of its own: it is a category attribute (it goes with ATTRIBUTES); Trendyol's variant request
+    // never carries the listing's origin. A page opened before that still sends "ORIGIN"; it is dropped instead of
+    // refusing the whole update.
     private const string RetiredOrigin = "ORIGIN";
 
     private static readonly string[] ContentFields = [Title, Description, Images, Attributes];
@@ -556,7 +569,8 @@ public static class ProductUpdateFields
         var unknown = codes.Where(code => !Known.Contains(code)).ToList();
         if (unknown.Count > 0) return ServiceResult<ProductUpdateSections>.Fail("PRODUCT_UPDATE_FIELD_UNKNOWN", $"Tanınmayan ürün bilgisi alanı: {string.Join(", ", unknown.Take(5))}.", 422);
         var parts = new ProductContentParts(codes.Contains(Title), codes.Contains(Description), codes.Contains(Images), codes.Contains(Attributes));
-        var sections = new ProductUpdateSections(parts.Any, VariantFields.Any(codes.Contains), codes.Contains(Delivery), HepsiburadaFields.Any(codes.Contains), parts.Any ? parts : null);
+        var variantParts = new ProductVariantParts(codes.Contains(Desi), codes.Contains(VatRate));
+        var sections = new ProductUpdateSections(parts.Any, variantParts.Any, codes.Contains(Delivery), HepsiburadaFields.Any(codes.Contains), parts.Any ? parts : null, variantParts.Any ? variantParts : null);
         return sections.Any ? ServiceResult<ProductUpdateSections>.Ok(sections) : ServiceResult<ProductUpdateSections>.Fail("PRODUCT_UPDATE_FIELDS_REQUIRED", "Gönderilecek en az bir ürün bilgisi alanı seçin.", 422);
     }
 }

@@ -114,6 +114,20 @@ describe('PlatformUpdateDialog', () => {
     expect(card('TRENDYOL Mağaza')!.querySelector('.is-skipped')).toBeNull()
   })
 
+  it('sends only the picked desi or VAT rate to Trendyol, with no stock code or origin riding along', () => {
+    const { onConfirm } = render(['ty'], ['VAT_RATE'])
+    expect(chipsOf('TRENDYOL Mağaza')).toEqual(['KDV Oranı'])
+    expect(extraChipsOf('TRENDYOL Mağaza')).toEqual([])
+    expect(sendsOf('TRENDYOL Mağaza')).not.toContain('Menşei')
+    expect(sendsOf('TRENDYOL Mağaza')).not.toContain('Stok Kodu')
+    act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!.click())
+    expect(onConfirm).toHaveBeenLastCalledWith(['VAT_RATE'])
+    act(() => root?.unmount()); root = undefined
+    render(['ty'], ['DESI'])
+    expect(chipsOf('TRENDYOL Mağaza')).toEqual(['Desi'])
+    expect(extraChipsOf('TRENDYOL Mağaza')).toEqual([])
+  })
+
   it('keeps the bar out of the scrolling body, as the window footer', () => {
     render(['ty'], ['TITLE'])
     expect(document.querySelector('.platform-update-modal > footer.publish-selection-footer')).not.toBeNull()

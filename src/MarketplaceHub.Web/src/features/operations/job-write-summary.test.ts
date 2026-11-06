@@ -9,6 +9,11 @@ describe('job write summary', () => {
       .toEqual(['Başlık', 'Açıklama', 'Görseller', 'Özellikler', 'Teslim Süresi', 'customField'])
   })
 
+  // Audit D1: a field sent as null deletes the value on the marketplace, so it is never hidden.
+  it('lists a field sent as null as one that is deleted', () => {
+    expect(writeFieldLabels(['barcode', 'vatRate'], ['origin', 'barcode'])).toEqual(['KDV Oranı', 'Menşei (silinir)'])
+  })
+
   it('names an attribute it has no name for by its id', () => {
     expect(writeAttributeNames([{ id: '338', name: 'Beden' }, { id: '47', name: null }])).toEqual(['Beden', 'Özellik #47'])
   })

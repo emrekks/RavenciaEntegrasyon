@@ -36,7 +36,7 @@ public sealed class PlatformUpdateFieldSelectionTests
     {
         var sections = ProductUpdateFields.Sections(fields);
         Assert.True(sections.Succeeded, sections.Error?.Message);
-        Assert.Equal(new ProductUpdateSections(content, variants, delivery, hepsiburada), sections.Value! with { ContentParts = null });
+        Assert.Equal(new ProductUpdateSections(content, variants, delivery, hepsiburada), sections.Value! with { ContentParts = null, VariantParts = null });
         Assert.Equal(content || variants || delivery, sections.Value!.Trendyol);
         Assert.Equal(content, sections.Value.ContentFields.Any);
     }
@@ -49,6 +49,15 @@ public sealed class PlatformUpdateFieldSelectionTests
         Assert.Equal(ProductContentParts.None, ProductUpdateFields.Sections(["DESI"]).Value!.ContentFields);
         // No field list (an older client) is every content field, as before.
         Assert.Equal(ProductContentParts.All, ProductUpdateFields.Sections(null).Value!.ContentFields);
+    }
+
+    [Fact]
+    public void VariantPicks_AreKeptFieldByField()
+    {
+        Assert.Equal(new ProductVariantParts(false, true), ProductUpdateFields.Sections(["VAT_RATE"]).Value!.VariantFields);
+        Assert.Equal(new ProductVariantParts(true, false), ProductUpdateFields.Sections(["DESI", "TITLE"]).Value!.VariantFields);
+        Assert.Equal(ProductVariantParts.None, ProductUpdateFields.Sections(["TITLE"]).Value!.VariantFields);
+        Assert.Equal(ProductVariantParts.All, ProductUpdateFields.Sections(null).Value!.VariantFields);
     }
 
     // Owner, 6.11.2026: Görseller alone for RYP007 sent the title, the description and all 18 attributes too.
@@ -208,16 +217,62 @@ public sealed class PlatformUpdateFieldSelectionTests
     }
 
     [Fact]
-    public void ApprovedTrendyol_VariantsOnly_SendsDesiVatAndOriginPerBarcode()
+    public void ApprovedTrendyol_VariantsOnly_SendsDesiAndVatPerBarcode_NeverStockCodeOrOrigin()
     {
         var publication = Split("123", new(false, true, false));
         Assert.Empty(Items(publication.ApprovedContentPayloadJson));
         var variants = Items(publication.ApprovedVariantPayloadJson);
         Assert.Equal(["B1", "B2"], variants.Select(item => item!["barcode"]!.GetValue<string>()));
+        Assert.All(variants, item => Assert.Equal(["barcode", "vatRate", "dimensionalWeight"], item!.AsObject().Select(property => property.Key)));
         Assert.All(variants, item => Assert.Equal(2, item!["dimensionalWeight"]!.GetValue<int>()));
-        // Menşei left the dialog, but the variant request still carries the listing's origin whole.
-        Assert.All(variants, item => Assert.Equal("TR", item!["origin"]!.GetValue<string>()));
         Assert.Empty(Items(publication.ApprovedDeliveryPayloadJson));
+    }
+
+    // Audit Y1, 6.11.2026: Trendyol's variant update is partial (barcode + the field to change) and a field sent as null
+    // is deleted on the product; the old request carried stockCode and origin with every desi or VAT send.
+    [Fact]
+    public void ApprovedTrendyol_VatOnly_SendsBarcodeAndVatRateAlone()
+    {
+        var variants = Items(Split("123", ProductUpdateFields.Sections(["VAT_RATE"]).Value!).ApprovedVariantPayloadJson);
+        Assert.Equal(2, variants.Count);
+        Assert.All(variants, item => Assert.Equal(["barcode", "vatRate"], item!.AsObject().Select(property => property.Key)));
+        Assert.Equal(20, variants[0]!["vatRate"]!.GetValue<int>());
+    }
+
+    [Fact]
+    public void ApprovedTrendyol_DesiOnly_SendsBarcodeAndDimensionalWeightAlone()
+    {
+        var variants = Items(Split("123", ProductUpdateFields.Sections(["DESI"]).Value!).ApprovedVariantPayloadJson);
+        Assert.All(variants, item => Assert.Equal(["barcode", "dimensionalWeight"], item!.AsObject().Select(property => property.Key)));
+    }
+
+    [Fact]
+    public void ApprovedTrendyol_VariantValueTheCardLacks_IsLeftOut_NeverNull()
+    {
+        // All 14 live Trendyol profiles have no origin: an empty origin must never reach the request (null deletes Menşei).
+        const string card = """{"items":[{"barcode":"B1","stockCode":"S1","origin":null,"vatRate":10,"dimensionalWeight":null},{"barcode":"B2","stockCode":"S2","origin":null,"vatRate":null,"dimensionalWeight":null}]}""";
+        var both = ProductUpdateComposer.Split(Guid.CreateVersion7(), "123", card, ProductUpdateFields.Sections(["VAT_RATE", "DESI"]).Value!);
+        Assert.True(both.Succeeded, both.Error?.Message);
+        Assert.DoesNotContain("null", both.Value!.ApprovedVariantPayloadJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("origin", both.Value.ApprovedVariantPayloadJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("stockCode", both.Value.ApprovedVariantPayloadJson, StringComparison.Ordinal);
+        // B2 has neither value: its barcode alone does not go.
+        var item = Assert.Single(Items(both.Value.ApprovedVariantPayloadJson))!.AsObject();
+        Assert.Equal(["barcode", "vatRate"], item.Select(property => property.Key));
+        // Desi alone: no card has one, so there is nothing to send.
+        var desi = ProductUpdateComposer.Split(Guid.CreateVersion7(), "123", card, ProductUpdateFields.Sections(["DESI"]).Value!);
+        Assert.Equal("PRODUCT_UPDATE_NOTHING_TO_SEND", desi.Error?.Code);
+    }
+
+    [Fact]
+    public void ApprovedTrendyol_DeliveryRequest_NeverCarriesANull()
+    {
+        const string card = """{"items":[{"barcode":"B1","vatRate":null,"deliveryOption":{"deliveryDuration":3}},{"barcode":"B2","deliveryOption":null}]}""";
+        var result = ProductUpdateComposer.Split(Guid.CreateVersion7(), "123", card, ProductUpdateFields.Sections(["DELIVERY"]).Value!);
+        Assert.True(result.Succeeded, result.Error?.Message);
+        Assert.DoesNotContain("null", result.Value!.ApprovedDeliveryPayloadJson, StringComparison.Ordinal);
+        var item = Assert.Single(Items(result.Value.ApprovedDeliveryPayloadJson))!.AsObject();
+        Assert.Equal(["barcode", "deliveryOptions"], item.Select(property => property.Key));
     }
 
     [Fact]
