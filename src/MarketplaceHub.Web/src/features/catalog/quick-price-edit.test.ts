@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bulkEditValues, channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, priceFieldText, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceTarget } from './quick-price-edit'
+import { bulkEditValues, offerHasSalePrice, unpricedOfferWarning,channelKeepsOwnPrice, editorChannelOfferPrices, editorCustomChannelPrices, offerFollowsPanel, panelFollowChoiceVariantIds, typedOfferPriceChoice, channelTakesListPrice, hasAtMostTwoDecimals, inlinePrices, PANEL_PRICE_CHOICE, panelPriceIsFallback, panelPrices, panelPriceTarget, QUICK_EDIT_SYNC_KEYS, formatPriceField, initialCustomChannels, priceFieldText, offerMatchesPanel, panelFollowerColumns, panelFollowerWrites, quickEditOfferPrices, quickPriceColumns, quickInlinePrices, quickPriceBody, quickPriceChoiceHelp, quickPriceTarget } from './quick-price-edit'
 
 describe('panel price choice', () => {
   const product = { defaultListPrice: 300, defaultSalePrice: 250 }
@@ -304,5 +304,19 @@ describe('Toplu Fiyat/Stok values', () => {
     expect(values('1,250.50', '100', '')).toEqual({ ok: false, message: 'Fiyat okunamadı; 1.250,50 biçiminde girin.' })
     expect(values('100', '150', '')).toMatchObject({ ok: false })
     expect(values('', '0', '')).toMatchObject({ ok: false })
+  })
+})
+
+// Owner 7.11.2026, MZ052BOD: three variants of one colour had a panel price of 0; the editor still wrote their
+// Trendyol offers with a sale price of 0, the server refused them (422) and the save stopped as "İşlem Yarım Kaldı".
+describe('variants without a panel price', () => {
+  it('get no marketplace price write, and the save names them', () => {
+    const panelOnly = (salePrice: number) => editorChannelOfferPrices({ custom: false, panel: { listPrice: salePrice, salePrice }, card: { listPrice: 0, salePrice: 0 }, cardEdited: false, variantPrice: null, offer: null, takesListPrice: true })
+    expect(offerHasSalePrice(panelOnly(599))).toBe(true)
+    expect(offerHasSalePrice(panelOnly(0))).toBe(false)
+    expect(offerHasSalePrice({ salePrice: null })).toBe(false)
+    expect(offerHasSalePrice({ salePrice: Number.NaN })).toBe(false)
+    expect(unpricedOfferWarning([])).toBeNull()
+    expect(unpricedOfferWarning(['MZ052BOD-17', 'MZ052BOD-20', 'MZ052BOD-17'])).toBe('Fiyatı girilmemiş 2 varyantın pazaryeri fiyatı yazılmadı: MZ052BOD-17, MZ052BOD-20. Varyant tablosunda Satış Fiyatı girip tekrar kaydedin.')
   })
 })

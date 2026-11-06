@@ -39,7 +39,7 @@ import { attributeIssueTip } from '../publish-issue-chips'
 import { attributeMappingPlatform, mappingFocusItems } from '../../marketplace/mappings/mapping-focus'
 import { PRODUCT_IMAGE_ACCEPT, toProductImage } from './product-image-file'
 import { LocalImagePreview, MediaAddTile, MediaMoveButtons, MediaZoomButton } from './media-tiles'
-import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, newFileAfterFamilyPicture, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs, takePendingCreateMedia, type PendingCreateMedia } from './pending-create-media'
 import { MarketplaceCodesDialog } from './MarketplaceCodesDialog'
 import { PublicationJobDialog } from './PublicationJobDialog'
@@ -62,7 +62,7 @@ import { canSaveAsDraft, draftBlockingIssues, draftMissingSummary, draftProductT
 import { copyRemovedMediaKeys, historyStateWithCopyRemovedMedia, withCopyRemovedMedia, withoutCopyRemovedMedia, withoutCopyRemovedMediaRefs } from '../product-copy-media-removals'
 import { clearAllMediaConfirmationText, clearAllMediaFeedbackText, familyItemsShownInStrip, familyMediaClearPlan, removePendingFamilyMedia, withPendingFamilyMediaRemovals } from '../family-media-clear'
 import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
-import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, editorOfferUnchanged, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
+import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, editorOfferUnchanged, offerHasSalePrice, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice, unpricedOfferWarning } from '../quick-price-edit'
 import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorSnapshotWithWebColor, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, TURKISH_VAT_RATES, variantCodeConflictsFrom, variantCodeKey, type EditorFieldErrors, type EditorWebColor } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
 import { isApprovalDeadlineExpired, isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
@@ -2920,7 +2920,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // edit page a moved strip is written by the family reorder below, which takes the new files in their places too.
       const productMediaOrder = savedMediaOrder([...mediaStrip.filter(ref => ref.startsWith('file|') || draftMediaKeys.has(mediaImageKey(ref.slice(4)))), ...mediaUrls.map(url => `url|${url}`)], storedUrlByFileId)
       const appendedMediaOrder = savedMediaOrder([...mediaUrls.map(url => `url|${url}`), ...mediaFiles.map(item => `file|${item.id}`)], storedUrlByFileId)
-      if (storedUrlByFileId.size && !(editProductId && familyMediaOrderDirty) && !mediaRefsEqual(productMediaOrder, appendedMediaOrder)) {
+      // A new file shown after the other colours' pictures (a new upload goes to the end of the strip) keeps that place
+      // only through a family order: the card's own list alone puts it back after the card's own pictures (owner
+      // 7.11.2026, MZ052BOD: a size chart uploaded last came back 4th, after the first colour's 3 pictures).
+      const writeFamilyMediaOrder = Boolean(editProductId) && (familyMediaOrderDirty || (storedUrlByFileId.size > 0 && newFileAfterFamilyPicture(mediaStrip, draftMediaKeys)))
+      if (storedUrlByFileId.size && !writeFamilyMediaOrder && !mediaRefsEqual(productMediaOrder, appendedMediaOrder)) {
         await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: null, items: productMediaOrder.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
       }
       const rowsBySku = new Map(rows.map(row => [row.sku.trim().toLocaleUpperCase('tr-TR'), row]))
@@ -2953,7 +2957,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         }))
         setPendingFamilyMediaRemovals([])
       }
-      if (editProductId && familyMediaOrderDirty) {
+      if (editProductId && writeFamilyMediaOrder) {
         const result = await hubApi<{ changedProductCount: number }>('/files/product-media-family-reorder', {
           method: 'PUT',
           headers: { 'Idempotency-Key': newIdempotencyKey() },
@@ -2999,6 +3003,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         return row ? targetConnectionIds.map(connectionId => ({ variant, row, connectionId })) : []
       })
       let offersWritten = 0
+      const unpricedOfferSkus = new Set<string>()
       await mapWithConcurrency(offerWrites, channelOfferWriteConcurrency, async ({ variant, row, connectionId }) => {
         const pricing = channelPriceDraft(connectionId)
         const platform = row.platformStatuses?.find(item => item.connectionId === connectionId)
@@ -3014,6 +3019,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           offer: platform,
           takesListPrice: channelTakesListPrice(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? platform?.platformCode)
         })
+        // A variant without a panel price (0 or empty in the variant table, often a colour imported without one) has
+        // no price to write: the server refuses a sale price of zero, and one such row used to stop the whole save
+        // after the card was written (owner 7.11.2026, MZ052BOD: "Satış fiyatı sıfırdan büyük olmalıdır").
+        if (!offerHasSalePrice(offerPrices)) { unpricedOfferSkus.add(row.sku); return }
         const offerCommand = { connectionId, variantId: variant.id, listPrice: offerPrices.listPrice, salePrice: offerPrices.salePrice, followsPanelPrice: offerPrices.followsPanelPrice, currency: platform?.currency ?? form.currency ?? 'TRY', vatRate: Number(form.vatRate || platform?.vatRate || 0), vatInclusion: form.vatIncluded || platform?.vatInclusion || 'INCLUDED', roundingMode: platform?.roundingMode ?? 'HALF_EVEN', safetyStock: Number(form.safetyStock || platform?.safetyStock || 0), status: 'ACTIVE', reason: platformUpdate ? 'Ürün platform güncellemesi' : 'İlk ürün fiyatı' }
         // An offer the variant already has is written at the version this form loaded (PATCH + If-Match), so a price
         // changed meanwhile elsewhere is refused instead of overwritten; one the write would leave as it is is skipped.
@@ -3032,6 +3041,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         offersWritten++
         if (offerWrites.length > channelOfferWriteConcurrency) showProgress(mediaSaveProgressMessage('prices', offersWritten, offerWrites.length))
       })
+      const unpricedWarning = unpricedOfferWarning(unpricedOfferSkus)
+      if (unpricedWarning) warnings.push(unpricedWarning)
       // An edit names the stock only when a changed stock was written; a new product names the stock it opened with.
       if (stockResult.saved.length > 0 || rows.some(row => !existingVariantIds.has(row.key) && editorOpeningStock(row.stock) > 0)) completed.push('stok')
       if (!editProductId && targetConnectionIds.length) completed.push('kanal fiyatları')

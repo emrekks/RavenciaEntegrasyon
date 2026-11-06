@@ -3,7 +3,7 @@
 // product sent 72 uploads of 18 files). The server already stores one file per content hash, so the saved media
 // are the same either way.
 
-import { uniqueMediaUrls } from '../product-media-editor'
+import { mediaImageKey, uniqueMediaUrls } from '../product-media-editor'
 
 export type ReconcileItem ={ url: string; sortOrder: number }
 export type PendingVariantUpload = { fileId: string; sortOrder: number }
@@ -38,6 +38,20 @@ export function savedMediaOrder(stripRefs: readonly string[], storedUrlByFileId:
     const storedUrl = ref.startsWith('file|') ? storedUrlByFileId.get(ref.slice(5)) : undefined
     return storedUrl ? [storedUrl] : []
   }))
+}
+
+// True when a new file ('file|…') stands after one of the other colours' pictures (a 'url|…' the card does not own):
+// such a place is kept only by a family order, the card's own list puts the file back after the card's own pictures.
+export function newFileAfterFamilyPicture(stripRefs: readonly string[], ownUrlKeys: ReadonlySet<string>): boolean {
+  let familyPictureSeen = false
+  for (const ref of stripRefs) {
+    if (ref.startsWith('file|')) {
+      if (familyPictureSeen) return true
+    } else if (ref.startsWith('url|') && !ownUrlKeys.has(mediaImageKey(ref.slice(4)))) {
+      familyPictureSeen = true
+    }
+  }
+  return false
 }
 
 // Runs the tasks at most `limit` at a time and keeps the results in input order; the first failure is thrown

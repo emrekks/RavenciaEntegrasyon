@@ -181,6 +181,19 @@ export function editorChannelOfferPrices(input: EditorChannelOfferInput): { list
   return { ...(input.cardEdited || !own ? input.card : own), followsPanelPrice }
 }
 
+// A marketplace price the editor can write: a sale price above zero (no marketplace takes zero, and the server refuses
+// it). A variant whose panel price is 0 or empty gets no offer write.
+export function offerHasSalePrice(prices: { salePrice: number | null | undefined }): boolean {
+  return typeof prices.salePrice === 'number' && Number.isFinite(prices.salePrice) && prices.salePrice > 0
+}
+
+// The editor's warning for variants left without a marketplace price write, null when there are none.
+export function unpricedOfferWarning(skus: Iterable<string>): string | null {
+  const list = [...new Set(skus)]
+  if (!list.length) return null
+  return `Fiyatı girilmemiş ${list.length} varyantın pazaryeri fiyatı yazılmadı: ${list.join(', ')}. Varyant tablosunda Satış Fiyatı girip tekrar kaydedin.`
+}
+
 // The choice a price typed for one variant's marketplace offer stores: a price apart from the variant's panel price is
 // its own (false); one equal to it keeps the stored choice (undefined: not sent).
 export function typedOfferPriceChoice(prices: { listPrice: number; salePrice: number }, panel: { listPrice: number | null; salePrice: number | null }, takesListPrice: boolean): false | undefined {

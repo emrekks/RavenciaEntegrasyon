@@ -17,6 +17,10 @@ public static class SizeChartPlacement
         return urls.Where(url => !string.Equals(CatalogImageIdentity.Key(url), key, StringComparison.OrdinalIgnoreCase)).Concat(chart.Take(1)).ToList();
     }
 
+    // A model family's strip: every card's chart moved to the end (each card has its own), the other pictures in order.
+    public static IReadOnlyList<string> LastAll(IReadOnlyList<string> urls, IEnumerable<string?> chartUrls) =>
+        TakeKeepingCharts(urls, int.MaxValue, chartUrls.OfType<string>().ToList());
+
     // A variant's publication pictures with the chart last, and the chart added when the variant's own pictures lack
     // it (it belongs to every variant of the card). The chart is taken from the card's rows (chartRows).
     public static List<T> Last<T>(List<T> pictures, IEnumerable<T> chartRows, Func<T, bool> isChart)

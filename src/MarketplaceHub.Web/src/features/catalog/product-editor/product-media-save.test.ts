@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mediaImageKey, mediaStripOwnPosition, mediaStripRefs, reorderItems } from '../product-media-editor'
-import { mapWithConcurrency, mediaSaveProgressMessage, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
+import { mapWithConcurrency, mediaSaveProgressMessage, newFileAfterFamilyPicture, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 
 describe('one picture strip', () => {
   const front = 'https://cdn.example.com/front.jpg'
@@ -93,4 +93,33 @@ describe('mapWithConcurrency', () => {
 
 it('names the step and the count', () => {
   expect(mediaSaveProgressMessage('upload', 5, 18)).toBe('Görseller yükleniyor (5/18)…')
+})
+
+// Owner 7.11.2026, MZ052BOD (Beden × Renk, 7 colours on 7 cards): a size chart uploaded at the end of the strip, after
+// every colour's pictures, came back 4th after the save (after the opened colour's 3 pictures), because only the
+// card's own list was written. A new file after the other colours' pictures needs the family order written.
+describe('a new file after the other colours\' pictures', () => {
+  const own = ['https://cdn.example.com/navy-1.jpg', 'https://cdn.example.com/navy-2.jpg', 'https://cdn.example.com/navy-3.jpg']
+  const otherColours = ['red', 'green', 'beige', 'black', 'white', 'grey'].flatMap(colour => [1, 2, 3].map(index => `https://cdn.example.com/${colour}-${index}.jpg`))
+  const ownKeys = new Set(own.map(mediaImageKey))
+  const strip = mediaStripRefs([...own, ...otherColours], ['chart'], [])
+
+  it('is the last tile before the save and asks for the family order', () => {
+    expect(strip[strip.length - 1]).toBe('file|chart')
+    expect(strip.indexOf('file|chart')).toBe(own.length + otherColours.length)
+    expect(newFileAfterFamilyPicture(strip, ownKeys)).toBe(true)
+    // The family order the save writes keeps it last, after all 21 colour pictures.
+    const chartUrl = storedProductMediaUrl('44444444-4444-4444-8444-444444444444')
+    const saved = savedMediaOrder(strip, new Map([['chart', chartUrl]]))
+    expect(saved).toHaveLength(22)
+    expect(saved[saved.length - 1]).toBe(chartUrl)
+  })
+
+  it('leaves a file among the card\'s own pictures to the card\'s own list', () => {
+    const amongOwn = mediaStripRefs([...own, ...otherColours], ['chart'], [`url|${own[0]}`, 'file|chart', ...[...own.slice(1), ...otherColours].map(url => `url|${url}`)])
+    expect(amongOwn[1]).toBe('file|chart')
+    expect(newFileAfterFamilyPicture(amongOwn, ownKeys)).toBe(false)
+    // A card with no other colour never needs it.
+    expect(newFileAfterFamilyPicture(mediaStripRefs(own, ['chart'], []), ownKeys)).toBe(false)
+  })
 })

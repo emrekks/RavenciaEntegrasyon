@@ -1212,16 +1212,20 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var familyRows = familyMediaRows.Select(item => new CatalogFamilyMedia.Row(item.MediaId, item.ProductId, item.VariantId, item.SortOrder, CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url))).ToList();
         var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles, familyProducts.Select(item => item.Id).ToList());
         var familyOrderedMediaUrls = CatalogFamilyMedia.OrderedUrls(familyRows);
+        var familyChartUrls = familyViews.Select(view => view.SizeChartUrl).ToList();
+        IReadOnlyList<string> FamilyStripWithChartsLast(IReadOnlyList<string> urls, string? ownChartUrl) =>
+            SizeCharts.SizeChartPlacement.Last(SizeCharts.SizeChartPlacement.LastAll(urls, familyChartUrls), ownChartUrl);
         return ServiceResult<ProductView>.Ok(primaryView with
         {
             Variants = allVariants,
             TotalStock = allVariants.Sum(x => x.OnHand),
             StartingPrice = CatalogPricePolicy.MinimumPositivePrice(familyViews.SelectMany(view => view.Variants.Select(variant => CatalogPricePolicy.EffectiveSalePrice(variant.SalePrice, variant.DefaultSalePrice, view.DefaultSalePrice)))),
             Options = allOptions,
-            // The opened card's size chart closes its strip, after the family's other pictures too.
-            FamilyMediaUrls = SizeCharts.SizeChartPlacement.Last(familyMediaUrls, primaryView.SizeChartUrl),
+            // The size charts close the strip, after the family's other pictures: the opened card's last, any other
+            // colour's before it (each card has its own), so no chart stands among the colours' pictures.
+            FamilyMediaUrls = FamilyStripWithChartsLast(familyMediaUrls, primaryView.SizeChartUrl),
             FamilyMediaItems = familyMediaItems,
-            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? SizeCharts.SizeChartPlacement.Last(familyOrderedMediaUrls, primaryView.SizeChartUrl) : null,
+            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? FamilyStripWithChartsLast(familyOrderedMediaUrls, primaryView.SizeChartUrl) : null,
             FamilyProductIds = familyViews.Select(view => view.Id).ToList()
         });
     }

@@ -110,6 +110,43 @@ public sealed class SizeChartPlacementTests
     public void An_upload_saved_after_the_chart_still_comes_before_it() =>
         Assert.Equal([A, B, Chart], SizeChartPlacement.Last([A, Chart, B], Chart));
 
+    // Owner 7.11.2026, MZ052BOD: Beden × Renk, 7 colours each on its own card with 3 pictures. The family strip lists
+    // card by card (the opened card first), so the opened card's chart, its 4th picture, stood after its 3 pictures
+    // and before the other 6 colours. Every card's chart closes the strip, the opened card's the very last.
+    [Fact]
+    public void A_multi_colour_family_strip_ends_with_the_charts_the_opened_cards_last()
+    {
+        var cards = Enumerable.Range(1, 7).Select(index => new Guid($"00000000-0000-0000-0000-0000000000{index:D2}")).ToList();
+        string Url(int card, int picture) => $"https://cdn.example.com/card-{card}-{picture}.jpg";
+        const string OtherChart = "https://cdn.example.com/card-3-chart.jpg";
+        const string OwnChart = "https://cdn.example.com/card-1-chart.jpg";
+        var rows = new List<CatalogFamilyMedia.Row>();
+        for (var card = 0; card < cards.Count; card++)
+        {
+            for (var picture = 0; picture < 3; picture++)
+                rows.Add(new CatalogFamilyMedia.Row(Guid.NewGuid(), cards[card], null, picture, Url(card + 1, picture)));
+            // Every variant of the card holds the card's pictures too, numbered 0, 1, 2 (and the chart 3).
+            rows.Add(new CatalogFamilyMedia.Row(Guid.NewGuid(), cards[card], Guid.NewGuid(), 0, Url(card + 1, 0)));
+        }
+        rows.Add(new CatalogFamilyMedia.Row(Guid.NewGuid(), cards[0], null, 20, OwnChart));
+        rows.Add(new CatalogFamilyMedia.Row(Guid.NewGuid(), cards[0], Guid.NewGuid(), 3, OwnChart));
+        rows.Add(new CatalogFamilyMedia.Row(Guid.NewGuid(), cards[2], null, 3, OtherChart));
+        var titles = cards.ToDictionary(id => id, _ => "Kışlık Saç Örgü Triko Düğmeli Yumuşak Bluz");
+
+        var (defaultUrls, _) = CatalogFamilyMedia.Build(rows, titles, cards);
+        Assert.Equal(OwnChart, defaultUrls[3]); // what the owner saw: the chart 4th, after the opened colour's 3 pictures
+
+        var strip = SizeChartPlacement.Last(SizeChartPlacement.LastAll(defaultUrls, [OwnChart, null, OtherChart]), OwnChart);
+        Assert.Equal(23, strip.Count);
+        Assert.Equal([OtherChart, OwnChart], strip.TakeLast(2));
+        Assert.Equal([Url(1, 0), Url(1, 1), Url(1, 2), Url(2, 0)], strip.Take(4));
+
+        // A custom family order (a family reorder ranks every row) keeps the charts last too.
+        var ordered = SizeChartPlacement.Last(SizeChartPlacement.LastAll(CatalogFamilyMedia.OrderedUrls(rows), [OwnChart, OtherChart]), OwnChart);
+        Assert.Equal(OwnChart, ordered[^1]);
+        Assert.Equal(OtherChart, ordered[^2]);
+    }
+
     [Fact]
     public void A_reorder_that_put_the_chart_first_leaves_it_last() =>
         Assert.Equal([A, B, Chart], SizeChartPlacement.Last([Chart, A, B], Chart));
