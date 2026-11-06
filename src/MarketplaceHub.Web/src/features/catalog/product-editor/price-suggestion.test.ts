@@ -51,3 +51,13 @@ describe('appliedPrices', () => {
     expect(appliedPrices(499.9, '600')).toEqual({ salePrice: '499.9', listPrice: '600' })
   })
 })
+
+describe('a profit target in lira', () => {
+  it('finds the price whose profit is the amount, cost or no cost', () => {
+    for (const amount of [100, 37.5, 250]) {
+      const found = suggestPrice({ ...base, targetKind: 'amount', targetRate: amount })!
+      expect(Math.abs(found.profit - amount)).toBeLessThanOrEqual(0.02)
+    }
+    expect(suggestPrice({ ...base, cost: 0, targetKind: 'amount', targetRate: 50 })).not.toBeNull()
+  })
+})
