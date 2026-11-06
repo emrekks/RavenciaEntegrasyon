@@ -196,23 +196,45 @@ export function activityActor(entry: ProductActivityEntry) {
   return ['ORDER', 'MARKETPLACE_IMPORT', 'CLASSIC_IMPORT'].includes(entry.source) ? 'Sistem' : '—'
 }
 
+/**
+ * The movement types the "Hareket Türü" filter offers, one per label activityTypeLabel shows beside a change. The values
+ * are the server's codes (ProductActivityMovements).
+ */
+export const activityMovements: Array<{ value: string; label: string }> = [
+  { value: 'SALE', label: 'Satış' },
+  { value: 'ORDER_CANCEL', label: 'Sipariş İptali / Değişikliği' },
+  { value: 'SHORTFALL', label: 'Stok Yetersiz' },
+  { value: 'MANUAL_STOCK', label: 'Stok Düzenleme' },
+  { value: 'OPENING_STOCK', label: 'Açılış Stoğu' },
+  { value: 'MARKETPLACE_STOCK', label: 'Pazaryeri Stoğu' },
+  { value: 'RETURN_RESTOCKED', label: 'İade Stoğa Eklendi' },
+  { value: 'RETURN_KEPT_OUT', label: 'İade Stoğa Eklenmedi' },
+  { value: 'OFFER_PRICE', label: 'Mağaza Fiyatı' },
+  { value: 'PANEL_PRICE', label: 'Panel Fiyatı' },
+  { value: 'STATUS', label: 'Satış Durumu' }
+]
+
 export type ActivityFilters = {
   search: string
   platforms: string[]
   kinds: string[]
+  /** Movement type codes (activityMovements); none means every type. */
+  movements: string[]
+  /** First prices (no price before them) are hidden unless this is on. */
+  initialPrices: boolean
   range: JobListTimeRange
   /** Istanbul calendar days, YYYY-MM-DD, or '' for no bound. */
   from: string
   to: string
 }
 
-export const emptyActivityFilters: ActivityFilters = { search: '', platforms: [], kinds: [], range: 'all', from: '', to: '' }
+export const emptyActivityFilters: ActivityFilters = { search: '', platforms: [], kinds: [], movements: [], initialPrices: false, range: 'all', from: '', to: '' }
 
 const hasDays = (filters: Pick<ActivityFilters, 'from' | 'to'>) => Boolean(filters.from || filters.to)
 
 /** How many filters the Filtrele panel holds: platform, kind, and the chosen days once. */
 export function activityPanelFilterCount(filters: ActivityFilters) {
-  return [filters.platforms.length, filters.kinds.length, hasDays(filters)].filter(Boolean).length
+  return [filters.platforms.length, filters.kinds.length, filters.movements.length, filters.initialPrices, hasDays(filters)].filter(Boolean).length
 }
 
 /** How many filters narrow the list: the search, the panel's filters, and a range other than Tüm Zamanlar. */
@@ -238,6 +260,8 @@ function commonParams(params: URLSearchParams, filters: ActivityFilters, now: nu
   const search = filters.search.trim().slice(0, 100)
   if (search) params.set('search', search)
   if (filters.platforms.length) params.set('platforms', [...new Set(filters.platforms.map(code => code.toUpperCase()))].join(','))
+  if (filters.movements.length) params.set('movements', [...new Set(filters.movements)].join(','))
+  if (filters.initialPrices) params.set('includeInitialPrices', 'true')
   if (hasDays(filters)) {
     const from = istanbulDayToIso(filters.from)
     const to = istanbulDayToIso(filters.to, true)
@@ -265,6 +289,15 @@ export function activityCountsQueryString(filters: ActivityFilters, now = Date.n
   commonParams(params, filters, now)
   const query = params.toString()
   return query ? `?${query}` : ''
+}
+
+/**
+ * The product column's lines: the model code and the barcode named outright ("Model: MZ029YD · Barkod: 8680…"; the stock
+ * code only when there is no barcode), and the variant on a line of its own.
+ */
+export function activityProductLines(entry: Pick<ProductActivityEntry, 'modelCode' | 'barcode' | 'sku' | 'optionText'>) {
+  const codes = [entry.modelCode && `Model: ${entry.modelCode}`, entry.barcode ? `Barkod: ${entry.barcode}` : entry.sku && `Stok Kodu: ${entry.sku}`].filter(Boolean).join(' · ')
+  return { codes: codes || null, variant: activityVariantText(entry.optionText) }
 }
 
 /** The variant as the owner reads it: "Renk: Siyah | Beden: M" → "Varyant: Siyah / M". */

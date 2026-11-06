@@ -34,7 +34,7 @@ public sealed class ProductActivityPostgreSqlTests(PostgreSqlTenantIsolationFixt
         await using var db = fixture.CreateContext();
         var service = new ProductActivityService(db);
 
-        var page = await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(), CancellationToken.None);
+        var page = await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(IncludeInitialPrices: true), CancellationToken.None);
 
         Assert.True(page.Succeeded, page.Error?.Message);
         var items = page.Value!.Items;
@@ -70,7 +70,7 @@ public sealed class ProductActivityPostgreSqlTests(PostgreSqlTenantIsolationFixt
         string? after = null;
         do
         {
-            var page = (await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Limit: 2, After: after), CancellationToken.None)).Value!;
+            var page = (await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Limit: 2, After: after, IncludeInitialPrices: true), CancellationToken.None)).Value!;
             seen.AddRange(page.Items.Select(x => x.Id));
             after = page.HasMore ? page.NextCursor : null;
         } while (after is not null);
@@ -87,21 +87,51 @@ public sealed class ProductActivityPostgreSqlTests(PostgreSqlTenantIsolationFixt
         await using var db = fixture.CreateContext();
         var service = new ProductActivityService(db);
 
-        var prices = (await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Kinds: ["PRICE"]), CancellationToken.None)).Value!.Items;
+        var prices = (await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Kinds: ["PRICE"], IncludeInitialPrices: true), CancellationToken.None)).Value!.Items;
         Assert.All(prices, x => Assert.Equal(ProductActivityKinds.Price, x.Kind));
         Assert.Equal(2, prices.Count);
         // Only rows of a Trendyol connection: the offer prices and the marketplace opening stock.
-        var trendyol = (await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Platforms: ["TRENDYOL"]), CancellationToken.None)).Value!.Items;
+        var trendyol = (await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Platforms: ["TRENDYOL"], IncludeInitialPrices: true), CancellationToken.None)).Value!.Items;
         Assert.Equal(["OFFER_PRICE", "OFFER_PRICE", "IMPORT_OPENING"], trendyol.Select(x => x.Type).ToArray());
         Assert.Empty((await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Platforms: ["N11"]), CancellationToken.None)).Value!.Items);
         // A search by the variant's code finds its rows and the card-wide status change of its product.
-        Assert.Equal(5, (await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Search: seed.Sku), CancellationToken.None)).Value!.Items.Count);
+        Assert.Equal(5, (await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Search: seed.Sku, IncludeInitialPrices: true), CancellationToken.None)).Value!.Items.Count);
         Assert.Empty((await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Search: "yok-boyle-bir-kod"), CancellationToken.None)).Value!.Items);
         // Another tenant sees nothing.
-        Assert.Empty((await service.PageAsync(Guid.CreateVersion7(), new ProductActivityQuery(), CancellationToken.None)).Value!.Items);
+        Assert.Empty((await service.PageAsync(Guid.CreateVersion7(), new ProductActivityQuery(IncludeInitialPrices: true), CancellationToken.None)).Value!.Items);
 
-        var counts = (await service.CountsAsync(seed.Tenant.Id, new ProductActivityQuery(Kinds: ["STATUS"]), CancellationToken.None)).Value!;
+        var counts = (await service.CountsAsync(seed.Tenant.Id, new ProductActivityQuery(Kinds: ["STATUS"], IncludeInitialPrices: true), CancellationToken.None)).Value!;
         Assert.Equal([new ProductActivityCount("PRICE", 2), new ProductActivityCount("STATUS", 1), new ProductActivityCount("STOCK", 2)], counts);
+    }
+
+    [PostgreSqlFact]
+    public async Task A_first_price_is_hidden_unless_asked_for_and_the_movement_filter_narrows_list_and_counts()
+    {
+        var seed = await Seed();
+        await using var db = fixture.CreateContext();
+        var service = new ProductActivityService(db);
+        async Task<string[]> Types(ProductActivityQuery query) => (await service.PageAsync(seed.Tenant.Id, query, CancellationToken.None)).Value!.Items.Select(x => x.Type).ToArray();
+
+        // The user's first price (no price before it) is left out by default, the marketplace's real change stays.
+        Assert.Equal(["STATUS", "OFFER_PRICE", "MANUAL_ADJUSTMENT", "IMPORT_OPENING"], await Types(new ProductActivityQuery()));
+        Assert.Equal(["STATUS", "OFFER_PRICE", "OFFER_PRICE", "MANUAL_ADJUSTMENT", "IMPORT_OPENING"], await Types(new ProductActivityQuery(IncludeInitialPrices: true)));
+        var defaultPrices = (await service.PageAsync(seed.Tenant.Id, new ProductActivityQuery(Kinds: ["PRICE"]), CancellationToken.None)).Value!.Items;
+        Assert.Equal(110m, Assert.Single(defaultPrices).NewSalePrice);
+
+        Assert.Equal(["MANUAL_ADJUSTMENT"], await Types(new ProductActivityQuery(Movements: ["MANUAL_STOCK"])));
+        Assert.Equal(["IMPORT_OPENING"], await Types(new ProductActivityQuery(Movements: ["OPENING_STOCK"])));
+        Assert.Equal(["MANUAL_ADJUSTMENT", "STATUS"], (await Types(new ProductActivityQuery(Movements: ["STATUS", "MANUAL_STOCK"]))).Order().ToArray());
+        Assert.Equal(["OFFER_PRICE"], await Types(new ProductActivityQuery(Movements: ["OFFER_PRICE"])));
+        Assert.Equal(["OFFER_PRICE", "OFFER_PRICE"], await Types(new ProductActivityQuery(Movements: ["OFFER_PRICE"], IncludeInitialPrices: true)));
+        Assert.Empty(await Types(new ProductActivityQuery(Movements: ["SALE", "PANEL_PRICE", "RETURN_RESTOCKED"], IncludeInitialPrices: true)));
+        // A movement code the page does not know leaves nothing, never everything.
+        Assert.Empty(await Types(new ProductActivityQuery(Movements: ["NOPE"])));
+
+        // The counts follow the same filters (the kind filter apart).
+        Assert.Equal([new ProductActivityCount("PRICE", 1), new ProductActivityCount("STATUS", 1), new ProductActivityCount("STOCK", 2)],
+            (await service.CountsAsync(seed.Tenant.Id, new ProductActivityQuery(), CancellationToken.None)).Value!);
+        Assert.Equal([new ProductActivityCount("STOCK", 1)],
+            (await service.CountsAsync(seed.Tenant.Id, new ProductActivityQuery(Movements: ["MANUAL_STOCK"]), CancellationToken.None)).Value!);
     }
 
     [PostgreSqlFact]
