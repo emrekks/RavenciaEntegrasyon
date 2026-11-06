@@ -22,6 +22,7 @@ public static class ClaudePricing
         ["claude-opus-5-5"] = (4m, 20m, 0.20m, 5m),
         ["claude-opus-5"] = (5m, 25m, 0.50m, 6.25m),
         ["claude-haiku-5-5"] = (0.10m, 0.50m, 0.01m, 0.125m),
+        ["claude-fable-5-1"] = (10m, 50m, 0.25m, 12.50m),
     };
 
     // Null when the model's price is unknown or the API reported no usage. Code-execution container time is billed

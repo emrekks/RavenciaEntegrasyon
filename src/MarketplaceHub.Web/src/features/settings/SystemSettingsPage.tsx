@@ -1211,6 +1211,13 @@ type AiSkillView = { key: string; title: string; description: string; bundleHash
 type AiSettings = { apiKeySaved: boolean; defaultModel: string; updatedAt: string | null; version: number; skills: AiSkillView[] }
 type AiUsageEntry = { id: string; createdAt: string; feature: string; featureLabel: string; userName: string | null; subjectLabel: string | null; model: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null; status: 'SUCCEEDED' | 'FAILED'; error: string | null; durationMs: number }
 const defaultAiModel = 'claude-sonnet-5-5'
+// The Claude models the panel offers, with their list price per million tokens (input / output, USD).
+const aiModelOptions = [
+  { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 — dengeli (2 $ / 10 $)' },
+  { value: 'claude-opus-5-5', label: 'Claude Opus 5.5 — güçlü (4 $ / 20 $)' },
+  { value: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 — en ucuz (0,10 $ / 0,50 $)' },
+  { value: 'claude-fable-5-1', label: 'Claude Fable 5.1 — en yetenekli (10 $ / 50 $)' }
+]
 
 function aiCost(value: number | null) {
   return value == null ? '—' : `$${value.toFixed(4)}`
@@ -1298,7 +1305,7 @@ function AiSettingsSection() {
             ? <div className="ss-in ss-secret"><span className="ss-secret-dots" aria-hidden="true">••••••••••••••••</span><span className="ss-secret-state"><SettingsGlyph state="done" />Kayıtlı</span><button type="button" className="ss-btn is-xs" onClick={() => setChangingKey(true)}>Değiştir</button></div>
             : <div className="ss-alert-row ss-secret-edit"><input className="ss-in" type="password" autoComplete="new-password" spellCheck={false} aria-label="Claude API Anahtarı" value={apiKey} maxLength={300} placeholder="sk-ant-…" onChange={event => setApiKey(event.target.value)} />{saved.apiKeySaved && <button type="button" className="ss-btn is-xs" onClick={() => { setApiKey(''); setChangingKey(false) }}>Vazgeç</button>}</div>}
           </div>
-          <label className="ss-fld"><small>Varsayılan Model</small><input className="ss-in" autoComplete="off" spellCheck={false} value={model} maxLength={80} placeholder={defaultAiModel} onChange={event => setModel(event.target.value)} /></label>
+          <label className="ss-fld"><small>Varsayılan Model</small><select className="ss-in" value={model} onChange={event => setModel(event.target.value)}>{aiModelOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}{!aiModelOptions.some(option => option.value === model) && <option value={model}>{model}</option>}</select></label>
         </div>
         <div className="ss-alert-row">
           <button type="button" className="ss-btn" disabled={!configured || dirty || busy !== null} onClick={() => void testConnection()}><SettingsIcon name="sparkle" />{busy === 'test' ? 'Sınanıyor…' : 'Bağlantıyı Sına'}</button>
