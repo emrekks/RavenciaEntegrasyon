@@ -332,7 +332,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                               Active = line.OrderedQuantity - line.CancelledQuantity,
                               ReturnedQuantity = returnBooked ? line.ReturnedQuantity : 0m,
                               Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
-                                      && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
+                                      && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
                                           && (returned.RawStatus == null || returned.RawStatus == ""
                                               ? acceptedClaims.Contains(claim.Status)
                                               : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
@@ -397,7 +397,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           AcceptedReturnQuantity = unbookedReturns.Contains(row.Order.Id)
                               ? 0m
                               : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
-                                  && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
+                                  && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
                                       && (returned.RawStatus == null || returned.RawStatus == ""
                                           ? acceptedClaims.Contains(claim.Status)
                                           : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
@@ -415,7 +415,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                       join claim in db.ReturnClaims.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { claim.TenantId, claim.OrderId }
                       // A micro-export order's claim counts once Trendyol's statement records the return, as its units do (LineRowsAsync).
                       // An exchange is no return: the sale goes on (owner, 6 Nov 2026).
-                      where !unbookedReturns.Contains(row.Order.Id) && claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
+                      where !unbookedReturns.Contains(row.Order.Id) && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
                       select new ReportClaimRow { OrderId = claim.OrderId, ConnectionId = claim.ConnectionId, Status = claim.Status, ReasonCode = claim.ReasonCode, ReasonText = claim.ReasonText })
             .ToListAsync(cancellationToken);
     }
@@ -513,6 +513,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                    CASE WHEN jsonb_typeof(j->'commission') = 'object' THEN j->'commission'->>'amount' ELSE j->>'commission' END AS "Commission",
                    j->>'commissionRate' AS "CommissionRate",
                    j->>'Komisyon' AS "Komisyon",
+                   CASE WHEN j->>'lineGrossAmount' ~ '^[0-9]+([.][0-9]+)?$' THEN (j->>'lineGrossAmount')::numeric END AS "ListUnitPrice",
                    coalesce(nullif(j->>'cancelReason', ''), nullif(j->>'cancelReasonCode', ''), nullif(j->>'cancellationReason', ''), nullif(j->>'CancelReason', ''), nullif(j->>'IptalNedeni', '')) AS "CancelReason"
             FROM src
             """;

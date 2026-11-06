@@ -143,6 +143,16 @@ public sealed class ReportsTests
         Assert.Equal(expected, ReportBuilder.InvoiceBucket(new ReportPackageRow { ManualInvoiceStatus = manual, MarketplaceInvoiceStatus = marketplace, PanelInvoiced = panel }));
 
     [Fact]
+    public void A_partly_cancelled_line_is_counted_at_its_list_price_per_unit()
+    {
+        var row = new ReportLineRow { UnitPrice = 573.34m, PlatformDiscount = 0m, CancelledQuantity = 1m };
+        // Trendyol's own list price per unit wins; else the price paid plus the marketplace's discount.
+        Assert.Equal(608.67m, ReportBuilder.PartlyListUnitPrice(new(row, 1m, 0m, 0m, null, null, 608.67m)));
+        Assert.Equal(573.34m, ReportBuilder.PartlyListUnitPrice(new(row, 1m, 0m, 0m, null, null)));
+        Assert.Equal(600m, ReportBuilder.PartlyListUnitPrice(new(new ReportLineRow { UnitPrice = 550m, PlatformDiscount = 50m }, 1m, 0m, 0m, null, null)));
+    }
+
+    [Fact]
     public void A_not_invoiced_package_that_came_back_is_no_invoice_due()
     {
         static ReportBuilder.OrderFact Order(decimal active, decimal back) =>

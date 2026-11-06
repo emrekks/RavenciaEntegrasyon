@@ -235,7 +235,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
         where !row.Returned
         let active = line.OrderedQuantity - line.CancelledQuantity
         let accepted = !row.ReturnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == line.TenantId && returned.OrderLineId == line.Id
-                && db.ReturnClaims.Any(claim => claim.TenantId == returned.TenantId && claim.Id == returned.ClaimId && claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
+                && db.ReturnClaims.Any(claim => claim.TenantId == returned.TenantId && claim.Id == returned.ClaimId && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
                     && (returned.RawStatus == null || returned.RawStatus == ""
                         ? AcceptedClaims.Contains(claim.Status)
                         : AcceptedLines.Contains(returned.RawStatus.ToUpper()))))
@@ -357,7 +357,7 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                        Active = line.OrderedQuantity - line.CancelledQuantity,
                        ReturnedQuantity = returnBooked ? line.ReturnedQuantity : 0m,
                        Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
-                               && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
+                               && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
                                    && (returned.RawStatus == null || returned.RawStatus == ""
                                        ? acceptedClaims.Contains(claim.Status)
                                        : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
