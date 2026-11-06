@@ -705,6 +705,48 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             : null;
     }
 
+    // Owner, 6 Nov 2026: a card saved before its variants were generated holds an option-less "Tek Ürün" variant; once
+    // the editor replaces it with generated variants, the save removes it, but only when nothing is tied to it: no option
+    // values, no marketplace link, listing state or offer, no order line, no stock movement, reservation or return, no
+    // pending job, and at least one other variant stays. Anything else keeps it (the editor then says so); unlike an
+    // explicit variant delete, a kept placeholder never fails the save.
+    private async Task<IReadOnlyList<Guid>> RemovablePlaceholderVariantIdsAsync(Guid tenantId, List<ProductVariant> existingVariants, IReadOnlyList<Guid> placeholderIds, IReadOnlyCollection<Guid> deletingIds, int createdCount, IReadOnlySet<Guid> updatedIds, CancellationToken cancellationToken)
+    {
+        var candidates = existingVariants
+            .Where(variant => placeholderIds.Contains(variant.Id) && !updatedIds.Contains(variant.Id) && IsPlaceholderSignature(variant.OptionSignature))
+            .Select(variant => variant.Id)
+            .ToList();
+        if (candidates.Count == 0) return [];
+        var tied = new HashSet<Guid>();
+        tied.UnionWith(await db.VariantOptionValues.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => x.VariantId).ToListAsync(cancellationToken));
+        tied.UnionWith(await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => x.VariantId).ToListAsync(cancellationToken));
+        tied.UnionWith(await db.MarketplaceListingStates.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => x.VariantId).ToListAsync(cancellationToken));
+        tied.UnionWith(await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => x.VariantId).ToListAsync(cancellationToken));
+        tied.UnionWith(await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.VariantId != null && candidates.Contains(x.VariantId.Value)).Select(x => x.VariantId!.Value).ToListAsync(cancellationToken));
+        var inventory = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => new { x.Id, x.VariantId }).ToListAsync(cancellationToken);
+        var inventoryIds = inventory.Select(x => x.Id).ToArray();
+        if (inventoryIds.Length > 0)
+        {
+            var movedInventoryIds = new HashSet<Guid>();
+            movedInventoryIds.UnionWith(await db.StockLedgerEntries.AsNoTracking().Where(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId)).Select(x => x.InventoryItemId).ToListAsync(cancellationToken));
+            movedInventoryIds.UnionWith(await db.StockReservations.AsNoTracking().Where(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId)).Select(x => x.InventoryItemId).ToListAsync(cancellationToken));
+            movedInventoryIds.UnionWith(await db.ReturnStockDispositions.AsNoTracking().Where(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId)).Select(x => x.InventoryItemId).ToListAsync(cancellationToken));
+            tied.UnionWith(inventory.Where(x => movedInventoryIds.Contains(x.Id)).Select(x => x.VariantId));
+        }
+        var removable = new List<Guid>();
+        foreach (var candidate in candidates.Where(candidate => !tied.Contains(candidate)))
+        {
+            if (await StockHistoryDeleteBlockAsync(tenantId, [], [candidate], [], cancellationToken) is not null) continue;
+            var remaining = existingVariants.Count(variant => !deletingIds.Contains(variant.Id) && !removable.Contains(variant.Id) && variant.Id != candidate) + createdCount;
+            if (remaining < 1) continue;
+            removable.Add(candidate);
+        }
+        return removable;
+    }
+
+    private static bool IsPlaceholderSignature(string? signature) =>
+        string.IsNullOrWhiteSpace(signature) || signature.Trim() == "-" || string.Equals(signature.Trim(), "Tek Ürün", StringComparison.OrdinalIgnoreCase);
+
     public Task<ServiceResult<ProductDeleteResult>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken) =>
         DeleteProductsAsync(tenantId, [id], expectedVersion, cancellationToken);
 
@@ -1221,7 +1263,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // product status leaves its variants on their previous status.
         var familyVariantProductIds = await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken);
         var variantIdsToDelete = (command.VariantIdsToDelete ?? []).Distinct().ToList();
-        var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || variantIdsToDelete.Count > 0 || command.Status is not null
+        var placeholderIdsToDelete = (command.PlaceholderVariantIdsToDelete ?? []).Distinct().Where(placeholderId => !variantIdsToDelete.Contains(placeholderId)).ToList();
+        var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || variantIdsToDelete.Count > 0 || placeholderIdsToDelete.Count > 0 || command.Status is not null
             ? await db.ProductVariants.Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken)
             : [];
         if (variantIdsToDelete.Count > 0)
@@ -1237,6 +1280,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (variantDeleteBlock is not null)
                 return Conflict<ProductView>("VARIANT_DELETE_BLOCKED", $"Varyant {variantDeleteBlock} bağlı olduğu için silinemiyor. Stok geçmişini korumak için ürünü arşivleyin.");
         }
+        if (placeholderIdsToDelete.Count > 0)
+            variantIdsToDelete.AddRange(await RemovablePlaceholderVariantIdsAsync(tenantId, existingVariants, placeholderIdsToDelete, variantIdsToDelete, variantsToCreate.Count, variantUpdates.Select(update => update.Id).ToHashSet(), cancellationToken));
         var changedVariantIds = new HashSet<Guid>();
         foreach (var update in variantUpdates)
         {
