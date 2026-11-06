@@ -1215,8 +1215,7 @@ const defaultAiModel = 'claude-sonnet-5-5'
 const aiModelOptions = [
   { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5 — dengeli (2 $ / 10 $)' },
   { value: 'claude-opus-5-5', label: 'Claude Opus 5.5 — güçlü (4 $ / 20 $)' },
-  { value: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 — en ucuz (0,10 $ / 0,50 $)' },
-  { value: 'claude-fable-5-1', label: 'Claude Fable 5.1 — en yetenekli (10 $ / 50 $)' }
+  { value: 'claude-haiku-5-5', label: 'Claude Haiku 5.5 — en ucuz (0,10 $ / 0,50 $)' }
 ]
 
 function aiCost(value: number | null) {
