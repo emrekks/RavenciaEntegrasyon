@@ -10934,7 +10934,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
 
         var openKeys = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var group in unmatched.GroupBy(x => UnmatchedOrderLineIssueKey(codes[x.Line.Id]), StringComparer.Ordinal))
+        // A line cancelled in full takes no stock whether it matches or not: it stays unmatched (a later variant still
+        // matches it) but raises no notice, and the notice it raised before is resolved below (live 5 Nov 2026: Shopify
+        // #R1013's two cancelled lines kept two open notices).
+        foreach (var group in unmatched.Where(x => !OrderLineFullyCancelled(x.Line)).GroupBy(x => UnmatchedOrderLineIssueKey(codes[x.Line.Id]), StringComparer.Ordinal))
         {
             var key = issuePrefix + group.Key;
             openKeys.Add(key);
@@ -10959,6 +10962,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             : db.OperationalIssues.Where(x => x.TenantId == tenantId && x.Status != IssueStatus.Resolved && keys.Contains(x.DedupeKey)).ToListAsync(cancellationToken);
     }
 
+    internal static bool OrderLineFullyCancelled(OrderLine line) => line.OrderedQuantity > 0 && line.CancelledQuantity >= line.OrderedQuantity;
+
     private static string UnmatchedOrderLineIssueKey(OrderLineCodes codes) =>
         codes.DisplayCode is { } code && CatalogKeyNormalizer.Key(code, 120) is { Length: > 0 } key ? key : "-";
 
@@ -10968,20 +10973,40 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var orders = numbers.Count <= 5 ? string.Join(", ", numbers) : $"{string.Join(", ", numbers.Take(5))} ve {numbers.Count - 5} sipariş daha";
         var code = codes.DisplayCode is { } displayCode ? $"{displayCode} kodlu" : "kodsuz";
         var product = string.IsNullOrWhiteSpace(title) ? "" : $" ({title.Trim()})";
-        var marketplace = platformCode switch
-        {
-            "TRENDYOL" => "Trendyol",
-            "HEPSIBURADA" => "Hepsiburada",
-            "N11" => "n11",
-            "PAZARAMA" => "Pazarama",
-            "PTTAVM" => "PTT AVM",
-            "SHOPIFY" => "Shopify",
-            _ => platformCode
-        };
+        var marketplace = IssueMarketplaceName(platformCode);
         return ambiguous
             ? $"Eşleşmeyen sipariş satırı: {marketplace} siparişi {orders} içindeki {code} ürün{product} paneldeki birden fazla varyanta uyuyor; hangisi olduğu belirsiz olduğu için satır stoğu etkilemiyor. Kodların bir varyanta özgü olmasını sağlayın."
             : $"Eşleşmeyen sipariş satırı: {marketplace} siparişi {orders} içindeki {code} ürün{product} paneldeki hiçbir varyanta eşlenemedi; satır stoğu etkilemiyor. Bu kodla bir varyant oluşturun ya da pazaryeri ürününü bir varyanta eşleyin.";
     }
+
+    private static string IssueMarketplaceName(string? platformCode) => platformCode switch
+    {
+        "TRENDYOL" => "Trendyol",
+        "HEPSIBURADA" => "Hepsiburada",
+        "N11" => "n11",
+        "PAZARAMA" => "Pazarama",
+        "PTTAVM" => "PTT AVM",
+        "SHOPIFY" => "Shopify",
+        null or "" => "Pazaryeri",
+        _ => platformCode
+    };
+
+    // The notice of an order line stock could not fully give names the order and the code, so the owner knows which
+    // count to check (live 5 Nov 2026: 29 notices that said only "1 adet stoktan düşülemedi").
+    internal static string StockShortfallSummary(string? platformCode, string? orderNumber, string? code, decimal shortfall)
+    {
+        var order = string.IsNullOrWhiteSpace(orderNumber) ? $"{IssueMarketplaceName(platformCode)} siparişindeki" : $"{IssueMarketplaceName(platformCode)} siparişi {orderNumber.Trim()} içindeki";
+        var product = string.IsNullOrWhiteSpace(code) ? "kodsuz ürünün" : $"{code.Trim()} kodlu ürünün";
+        var units = shortfall.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+        return $"Sipariş stoğu kısmen düşürüldü: {order} {product} paneldeki fiziksel stoğu yetersizdi, {units} adet stoktan düşülemedi. Paneldeki stok sayısını kontrol edin. Rezervasyon tutulmaz; stok sıfırın altına inmedi (bilgi amaçlı).";
+    }
+
+    private async Task<string?> ConnectionPlatformCode(Guid tenantId, Guid connectionId, CancellationToken cancellationToken) =>
+        await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+
+    private async Task<string?> OrderNumberOf(Guid tenantId, Guid orderId, CancellationToken cancellationToken) =>
+        db.Orders.Local.FirstOrDefault(x => x.TenantId == tenantId && x.Id == orderId)?.OrderNumber
+        ?? await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == orderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
 
     // One issue per unmatched code of a connection. A pass that finds the same lines again only keeps it alive (the
     // retention resolves issues not seen for days) at most hourly; a new order with the code, or an issue resolved
@@ -11148,6 +11173,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             .ToDictionary(group => group.Key, group => group.Sum(x => x.QuantityDelta), StringComparer.Ordinal);
         var now = timeProvider.GetUtcNow();
         var outbox = new List<StockProjectionChange>();
+        string? platformCode = null;
         foreach (var line in lines)
         {
             var variantId = line.VariantId!.Value;
@@ -11252,7 +11278,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                         tenantId,
                         $"stock-order-consumption:{line.Id:N}",
                         "STOCK_ORDER_CONSUMPTION_BLOCKED",
-                        $"Sipariş stoğu kısmen düşürüldü: fiziksel stok yetersizdi, {shortfallAfter.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)} adet stoktan düşülemedi. Rezervasyon tutulmaz; stok sıfırın altına inmedi (bilgi amaçlı).",
+                        StockShortfallSummary(platformCode ??= await ConnectionPlatformCode(tenantId, connectionId, cancellationToken), await OrderNumberOf(tenantId, line.OrderId, cancellationToken), line.Sku ?? line.Barcode, shortfallAfter),
                         cancellationToken);
                 // The units that could not be taken are no longer ordered (a cancellation), so the notice closes.
                 else if (shortfallAfter <= 0) await ResolveIssue(tenantId, $"stock-order-consumption:{line.Id:N}", cancellationToken);

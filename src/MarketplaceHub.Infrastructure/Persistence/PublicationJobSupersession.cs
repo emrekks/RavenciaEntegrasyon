@@ -89,6 +89,50 @@ public static class PublicationJobSupersession
                         .SetProperty(x => x.Version, x => x.Version + 1), cancellationToken);
             }
         }
+        await SettleCreateEffectsAsync(db, now, cancellationToken);
         return closed;
+    }
+
+    // A superseded product publish that had ended in EXTERNAL_EFFECT_AMBIGUOUS still held its open PRODUCT_CREATE effect
+    // record, which the effect sweep closed a week later as unresolved with an "check the marketplace panel" notice (live
+    // 4 Nov 2026: 24 notices for two Shopify products that a later publish had long put live). A later success of the same
+    // product on the same connection answers what that notice asks, so the record is settled as superseded and its notice
+    // resolved; a record the sweep already closed as unresolved is settled the same way. Idempotent: a settled record no
+    // longer matches.
+    internal static async Task<int> SettleCreateEffectsAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var effects = await db.ExternalEffectRecords
+            .Where(x => x.EffectType == MarketplaceJobTypes.ProductCreate && (x.CompletedAt == null || x.Outcome == ExternalEffectReconcilePolicy.UnresolvedOutcome))
+            .OrderBy(x => x.CreatedAt)
+            .Take(500)
+            .ToListAsync(cancellationToken);
+        if (effects.Count == 0) return 0;
+        var keys = effects.Select(x => x.IdempotencyKey).Distinct(StringComparer.Ordinal).ToArray();
+        var superseded = (await db.IntegrationJobs.AsNoTracking()
+                .Where(x => x.JobType == MarketplaceJobTypes.ProductCreate && x.Status == JobStatus.Cancelled && x.LastErrorCode == Code
+                    && keys.Contains(x.EffectIdempotencyKey))
+                .Select(x => new { x.TenantId, x.EffectIdempotencyKey })
+                .ToListAsync(cancellationToken))
+            .Select(x => (x.TenantId, x.EffectIdempotencyKey))
+            .ToHashSet();
+        var settled = effects.Where(x => superseded.Contains((x.TenantId, x.IdempotencyKey))).ToList();
+        if (settled.Count == 0) return 0;
+        foreach (var effect in settled)
+        {
+            effect.CompletedAt ??= now;
+            effect.Outcome = ExternalEffectReconcilePolicy.SupersededOutcome;
+        }
+        var issueKeys = settled.Select(x => $"external-effect:{x.Id}").ToArray();
+        var tenantIds = settled.Select(x => x.TenantId).Distinct().ToArray();
+        var issues = await db.OperationalIssues
+            .Where(x => x.TenantId != null && tenantIds.Contains(x.TenantId.Value) && issueKeys.Contains(x.DedupeKey) && x.Status != IssueStatus.Resolved)
+            .ToListAsync(cancellationToken);
+        foreach (var issue in issues.Where(issue => settled.Any(effect => effect.TenantId == issue.TenantId && issue.DedupeKey == $"external-effect:{effect.Id}")))
+        {
+            issue.Status = IssueStatus.Resolved;
+            issue.ResolvedAt = now;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+        return settled.Count;
     }
 }

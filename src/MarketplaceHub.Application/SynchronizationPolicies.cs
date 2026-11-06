@@ -1098,6 +1098,9 @@ public static class ExternalEffectReconcilePolicy
     // read telling (Q-2: that is not "applied"). A record closed by a successful send carries none.
     public const string AppliedOutcome = "APPLIED";
     public const string UnresolvedOutcome = "UNRESOLVED";
+    // A product publish whose own answer was unclear, closed because a later publish of the same product on the same
+    // connection succeeded (PublicationJobSupersession): not a read of this request's effect, but nothing is left to check.
+    public const string SupersededOutcome = "SUPERSEDED";
 
     public static readonly TimeSpan MinimumAgeForNotApplied = TimeSpan.FromMinutes(2);
     public static readonly TimeSpan UnresolvedAfter = TimeSpan.FromMinutes(30);
