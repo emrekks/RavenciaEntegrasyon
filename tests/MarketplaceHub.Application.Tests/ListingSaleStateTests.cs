@@ -178,6 +178,23 @@ public sealed class ListingSaleStateTests
         Assert.False(ListingSaleState.ClosedBeyondStock(null, null));
     }
 
+    // Owner, 6 Nov 2026: the reason counts behind the list's dot and the publish card leave a stock-0 closure out
+    // entirely and a closure without a named reason to the rest; on sale and unknown are no closures.
+    [Fact]
+    public void TheReasonCountsLeaveStockZeroAndUnnamedClosuresOut()
+    {
+        var counts = ListingSaleState.ClosedBeyondStockReasonCounts([
+            (ListingSaleState.OffSale, ListingSaleState.Blacklisted),
+            (ListingSaleState.OffSale, ListingSaleState.Blacklisted),
+            (ListingSaleState.OffSale, ListingSaleState.PriceZero),
+            (ListingSaleState.OffSale, ListingSaleState.StockZero),
+            (ListingSaleState.OffSale, null),
+            (ListingSaleState.OnSale, null),
+            (null, null)]);
+        Assert.Equal(new Dictionary<string, int> { [ListingSaleState.Blacklisted] = 2, [ListingSaleState.PriceZero] = 1 }, counts);
+        Assert.Empty(ListingSaleState.ClosedBeyondStockReasonCounts([(ListingSaleState.OffSale, ListingSaleState.StockZero)]));
+    }
+
     [Fact]
     public void TheFilterAcceptsOffSaleOnEveryMarketplace()
     {

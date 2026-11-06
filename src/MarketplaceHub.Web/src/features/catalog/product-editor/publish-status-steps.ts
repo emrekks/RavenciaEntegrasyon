@@ -22,8 +22,8 @@ export type PublishStepsInput = {
   optionalWarnings: number
   /** Every variant is live and none is missing. */
   live: boolean
-  /** Live, but the marketplace says every variant is closed to sale: the label it reads instead of "Yayında" ("Satışa
-   *  Kapalı"). The steps stay done: the listing is there. */
+  /** Live, but the marketplace closed every variant ("Satışa Kapalı · {reason}") or some ("Kısmen Satışta") for a
+   *  reason other than a stock of 0: the label it reads instead of "Yayında". The steps stay done: the listing is there. */
   saleClosedLabel?: string | null
   /** Partly live: how many of how many (variants, or colour cards of the family). */
   partial?: { live: number; total: number; unit: 'varyant' | 'renk' } | null

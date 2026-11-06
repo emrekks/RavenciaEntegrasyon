@@ -31,8 +31,8 @@ describe('publish card links after a status check', () => {
       { key: 'new-row', platformStatuses: [] as VariantPlatformStatus[] }
     ]
     const merged = withLatestVariantLinks(rows, [{ id: 'v1', platformStatuses: [status('ty', { isMissing: true }), status('hb', { isLinked: true, isMatched: true })] }])
-    expect(publishCardVariantLinks(merged, 'ty')).toEqual({ total: 2, linked: 0, missing: 1, offSale: 0, offSaleStockZero: 0 })
-    expect(publishCardVariantLinks(merged, 'hb')).toEqual({ total: 2, linked: 1, missing: 0, offSale: 0, offSaleStockZero: 0 })
+    expect(publishCardVariantLinks(merged, 'ty')).toEqual({ total: 2, linked: 0, missing: 1, offSale: 0, offSaleStockZero: 0, offSaleReasons: {} })
+    expect(publishCardVariantLinks(merged, 'hb')).toEqual({ total: 2, linked: 1, missing: 0, offSale: 0, offSaleStockZero: 0, offSaleReasons: {} })
     expect(merged[1]).toBe(rows[1])
   })
 
