@@ -251,8 +251,13 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
                       let platformDiscount = orderLines.Where(line => line.OrderId == order.Id && line.PlatformDiscount != null)
                           .Sum(line => line.PlatformDiscount!.Value * (line.OrderedQuantity - line.CancelledQuantity))
+                      // The lines at the same base as the amount: the price paid plus the marketplace's own discount.
+                      let lineValue = orderLines.Where(line => line.OrderId == order.Id)
+                          .Sum(line => (line.UnitPrice + (line.PlatformDiscount ?? 0m)) * (line.OrderedQuantity - line.CancelledQuantity))
                       // Never above the list price: an amount that already is the list price (no net known) takes nothing more.
-                      let ceiling = listAmount > paid ? listAmount : paid
+                      // Hepsiburada's list is the price paid, so its own discount (HepsiburadaJsonMapper.PlatformDiscount) is
+                      // bounded by the lines' value at that base instead (DashboardReadService.PerformanceOrders, the same).
+                      let ceiling = listAmount > paid ? (listAmount > lineValue ? listAmount : lineValue) : (paid > lineValue ? paid : lineValue)
                       let amount = paid + platformDiscount > ceiling ? ceiling : paid + platformDiscount
                       // A Trendyol micro-export order's return (claim, returned line or package, returned status) counts once Trendyol's
                       // statement records the refund, on the overview too (DashboardRevenuePolicy.OrdersWithUnbookedReturn).
@@ -267,9 +272,6 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                                where line.PlatformDiscount != null
                                select line.PlatformDiscount!.Value * allocation.AllocatedQuantity).Sum()
                           : 0m
-                      // The lines at the same base as the amount: the price paid plus the marketplace's own discount.
-                      let lineValue = orderLines.Where(line => line.OrderId == order.Id)
-                          .Sum(line => (line.UnitPrice + (line.PlatformDiscount ?? 0m)) * (line.OrderedQuantity - line.CancelledQuantity))
                       let lineBack = orderLines.Where(line => line.OrderId == order.Id)
                           .Select(line => new
                           {

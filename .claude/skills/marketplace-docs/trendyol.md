@@ -129,6 +129,17 @@ purpose (`TurkeyTime.cs`).
 - Exception, claims: since 5 Nov 2026 22:43 (live, main store) an empty `claimItemStatus` bucket of getClaims can answer
   without `content`; it counts as empty only when it says `totalElements` 0 (`TrendyolJsonMapper.ClaimContent`). Any
   other claim page without the list is still a contract error and its top-level keys are logged per bucket.
+- Per-sale fees by storefront (live payouts Oct-Nov 2026, 6 Nov reconciliation): the platform service fee is 13.19
+  TL (10.99 + VAT) a sale package on Türkiye-Körfez and Avrupa payouts and 10.99 TL without VAT on the Azerbaijan ones
+  ("AZ-Platform Hizmet Bedeli", Trendyol's AZ company); the international fee is exactly 6.00 % of the micro-export
+  sale net of the seller's discounts and coupons; the e-commerce withholding tax is cut on every storefront's sales
+  (0.855-0.886 % of all sales on each TR and CEE payout, Bulgarian, Greek, Romanian and Gulf sales included) but on
+  none of the Azerbaijan payouts (`ReportCosts.TrendyolServiceFee`, `TrendyolStoppageBase`).
+- Settlement lines vs the panel: for all 453 October 2026 orders with a settlement, Sale − Discount − Coupon − Return
+  equals the report's kept amount, and the commission the report's, to the kuruş.
+- A payout's `paymentOrderId` is sometimes stamped on a record another payout of the same day netted (±196.68 between
+  the AZ and TR payouts of 5, 12 and 19 Oct; ±413.91 between 30 Oct and 2 Nov): the payouts of a day add up, one alone
+  may not. Its lines are read a day after the payout (`LinesReadAt`); until then the Hakediş shows no records total.
 - Webhook package body names `supplierId` (`trendyol-api-son.md:6047`); a delivery whose `supplierId` is not the
   connection's seller id is answered 200, recorded (WEBHOOK_MERCHANT_MISMATCH) and dropped, as on Hepsiburada
   (`MarketplaceWebhookService.ForeignSupplier`, report item 17).

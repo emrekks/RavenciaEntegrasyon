@@ -46,7 +46,7 @@ internal static class ReportOrderProfit
                 var amount = TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit);
                 if (category == MarketplaceFinanceCategories.Cargo) { cargo[orderId] = cargo.GetValueOrDefault(orderId) + amount; shipped.Add(orderId); continue; }
                 fees[(orderId, category)] = fees.GetValueOrDefault((orderId, category)) + amount;
-                if (category == MarketplaceFinanceCategories.ServiceFee && !ReportCosts.IsInternationalFee(row)) domesticFee[orderId] = domesticFee.GetValueOrDefault(orderId) + amount;
+                if (category == MarketplaceFinanceCategories.ServiceFee && ReportCosts.CarriesVat(row)) domesticFee[orderId] = domesticFee.GetValueOrDefault(orderId) + amount;
             }
             foreach (var item in finance.CargoItems)
             {
@@ -118,13 +118,15 @@ internal static class ReportOrderProfit
                 // order (settled or not) without a record of its own is estimated, as the report's costs are (ReportCosts).
                 var realFee = fees.ContainsKey((id, MarketplaceFinanceCategories.ServiceFee));
                 var realTax = fees.ContainsKey((id, MarketplaceFinanceCategories.Stoppage));
-                serviceFee = Round(realFee ? fees[(id, MarketplaceFinanceCategories.ServiceFee)]
-                    : ReportCosts.PlatformServiceFeePerOrder + (abroad ? order.Kept * ReportCosts.InternationalServiceFeeRate : 0m));
-                stoppage = Round(realTax ? fees[(id, MarketplaceFinanceCategories.Stoppage)] : keptVatFree * ReportCosts.StoppageRate);
-                vatFees = realFee ? domesticFee.GetValueOrDefault(id) : ReportCosts.PlatformServiceFeePerOrder;
+                // The withholding tax on every storefront but Azerbaijan's, micro-export ones included (ReportCosts).
+                var azerbaijan = order.Country == ReportCosts.Azerbaijan;
+                serviceFee = Round(realFee ? fees[(id, MarketplaceFinanceCategories.ServiceFee)] : ReportCosts.TrendyolServiceFee(order));
+                stoppage = Round(realTax ? fees[(id, MarketplaceFinanceCategories.Stoppage)] : ReportCosts.TrendyolStoppageBase(order) * ReportCosts.StoppageRate);
+                vatFees = realFee ? domesticFee.GetValueOrDefault(id) : ReportCosts.TrendyolVatFee(order);
                 costs.Add(new("serviceFee", abroad ? "Hizmet Bedeli (Uluslararası Dahil)" : "Hizmet Bedeli", serviceFee, !realFee,
-                    realFee ? "Trendyol cari hesabından" : abroad ? "10,99 ₺ + KDV ve satışın %6'sı" : "Sipariş başına 10,99 ₺ + KDV"));
-                costs.Add(new("stoppage", "Stopaj", stoppage, !realTax, realTax ? "Trendyol cari hesabından" : "KDV hariç satışın %1'i"));
+                    realFee ? "Trendyol cari hesabından" : azerbaijan ? "10,99 ₺ (KDV'siz) ve satışın %6'sı" : abroad ? "10,99 ₺ + KDV ve satışın %6'sı" : "Sipariş başına 10,99 ₺ + KDV"));
+                costs.Add(new("stoppage", "Stopaj", stoppage, !realTax, realTax ? "Trendyol cari hesabından"
+                    : azerbaijan ? "Azerbaycan vitrininde stopaj kesilmez" : "KDV hariç satışın %1'i"));
             }
             else
             {

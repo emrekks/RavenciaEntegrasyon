@@ -203,6 +203,42 @@ public sealed class PostgreSqlDashboardRevenueTests(PostgreSqlTenantIsolationFix
         }
     }
 
+    // Hepsiburada's list is the price paid (its totalPrice), so its own campaign discount (hbDiscount, which it pays the
+    // seller) is counted up to the lines' value; a Trendyol order with no net known keeps its list price, discount inside.
+    [PostgreSqlFact]
+    public async Task Hepsiburadas_own_discount_counts_in_the_sale_and_an_order_without_a_net_takes_nothing_more()
+    {
+        var tenant = NewTenant("rev-hbd");
+        var hepsiburada = NewConnection(tenant.Id, "HEPSIBURADA", "ACTIVE");
+        var trendyol = NewConnection(tenant.Id, "TRENDYOL", "ACTIVE");
+        // Live 4091991027: 1,094.15 paid, Hepsiburada's discount 194.85 (credited 212.57 with VAT at 20 % instead of 10 %).
+        var hbOrder = NewOrder(tenant.Id, hepsiburada.Id, "hbd", Noon, 1094.15m, "DELIVERED");
+        var hbLine = NewLine(hbOrder, "hbd-line", 1094.15m, 1m);
+        hbLine.PlatformDiscount = 194.85m;
+        var tyOrder = NewOrder(tenant.Id, trendyol.Id, "tyd", Noon, 490m, "DELIVERED");
+        tyOrder.NetAmount = 0m;
+        var tyLine = NewLine(tyOrder, "tyd-line", 470m, 1m);
+        tyLine.PlatformDiscount = 20m;
+        try
+        {
+            await SeedAsync(tenant, [hepsiburada, trendyol], db =>
+            {
+                db.Orders.AddRange(hbOrder, tyOrder);
+                db.ShipmentPackages.Add(NewPackage(hbOrder, "hbd-1", 1094.15m, ShipmentPackageStatus.Delivered));
+                db.OrderLines.AddRange(hbLine, tyLine);
+            });
+
+            var rows = (await PerformanceAsync(tenant.Id)).Current;
+
+            Assert.Equal(1289.00m, rows.Single(row => row.ConnectionId == hepsiburada.Id).Amount);
+            Assert.Equal(490m, rows.Single(row => row.ConnectionId == trendyol.Id).Amount);
+        }
+        finally
+        {
+            await DeleteTenantAsync(tenant.Id);
+        }
+    }
+
     private async Task<Application.DashboardPerformanceView> PerformanceAsync(Guid tenantId)
     {
         await using var db = fixture.CreateContext();
