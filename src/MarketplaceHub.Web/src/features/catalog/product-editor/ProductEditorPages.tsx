@@ -3437,8 +3437,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               updateField('salePrice', prices.salePrice); updateField('listPrice', prices.listPrice)
               const sale = Number(prices.salePrice)
               if (variantRows.length && Number.isFinite(sale)) setVariantRows(rows => rows.map(row => ({ ...row, salePrice: sale, listPrice: row.listPrice >= sale ? row.listPrice : sale })))
-            }} />
-            <SizeChartButton productId={editProductId ?? null} sizes={sizeChartSizes} disabledReason={sizeChartDisabledReason} onUse={applySizeChart} /></div></div>
+            }} /></div></div>
           <div className="product-step-grid">
             {/* Like Stok Kodu and Barkod: a card with variants prices each variant, so these stay grey and empty. */}
             <label title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined}>Liste Fiyatı<input value={variantRows.length > 1 ? '' : form.listPrice} disabled={variantRows.length > 1} title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
@@ -3449,6 +3448,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             <label>KDV Dahil mi<select value={form.vatIncluded} onChange={event => updateField('vatIncluded', event.target.value)}><option value="INCLUDED">Evet</option><option value="EXCLUDED">Hayır</option></select></label>
             <label title={showVariantStockTotal || variantRows.length > 1 ? 'Varyantların toplam stoğu' : undefined}>{showVariantStockTotal || variantRows.length > 1 ? 'Toplam Stok' : 'Stok'}<input value={showVariantStockTotal || variantRows.length > 1 ? String(variantStockTotal) : form.initialStock} onChange={event => updateField('initialStock', event.target.value)} type="number" min="0" step="1" readOnly={showVariantStockTotal || variantRows.length > 1} /></label>
             <label>Güvenlik Stoğu<input value={form.safetyStock} onChange={event => updateField('safetyStock', event.target.value)} type="number" min="0" step="1" /></label>
+            <SizeChartButton productId={editProductId ?? null} sizes={sizeChartSizes} disabledReason={sizeChartDisabledReason} onUse={applySizeChart} />
           </div>
           {platformCards.length > 0 && <button type="button" className={`marketplace-pricing-open${marketplacePricingOpen ? ' is-open' : ''}`} aria-expanded={marketplacePricingOpen} aria-controls="marketplace-pricing-panel" onClick={() => setMarketplacePricingOpen(open => !open)}>
             <span className="marketplace-pricing-open-title"><strong>Pazaryerlerine Özel Fiyat</strong><UiIcon name="chevronDown" size={16} /></span>
