@@ -17,8 +17,8 @@ export function SizeChartButton({ productId, sizes, disabledReason, onUse }: { p
   const [open, setOpen] = useState(false)
   // A field of the price and stock grid (beside Güvenlik Stoğu): an empty label line keeps the button level with the inputs.
   return <div className="size-chart-trigger">
-    <span className="size-chart-trigger-label" aria-hidden="true">Beden Tablosu</span>
-    <button type="button" className="secondary size-chart-button" disabled={Boolean(disabledReason)} title={disabledReason ?? 'Ölçüleri girip Ravencia tasarımında beden tablosu görseli oluşturun.'} aria-describedby={disabledReason ? 'size-chart-disabled-reason' : undefined} onClick={() => setOpen(true)}>Beden Tablosu Oluştur</button>
+    <span className="size-chart-trigger-label" aria-hidden="true">&nbsp;</span>
+    <button type="button" className="secondary size-chart-button" disabled={Boolean(disabledReason)} title={disabledReason ?? 'Ölçüleri girip Ravencia tasarımında beden tablosu görseli oluşturun.'} aria-describedby={disabledReason ? 'size-chart-disabled-reason' : undefined} onClick={() => setOpen(true)}>Beden Tablosu</button>
     {disabledReason && <small id="size-chart-disabled-reason" className="size-chart-disabled-reason">{disabledReason}</small>}
     {open && productId && createPortal(<SizeChartDialog productId={productId} sizes={sizes} onClose={() => setOpen(false)} onUse={url => { onUse(url); setOpen(false) }} />, document.body)}
   </div>
