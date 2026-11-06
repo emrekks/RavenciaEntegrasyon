@@ -233,7 +233,7 @@ public sealed class ApiEndToEndFixture : IAsyncLifetime
         var now = DateTimeOffset.UtcNow;
         db.Tenants.Add(new Tenant { Id = TenantId, Code = $"e2e-{Run}", DisplayName = $"E2E {Run}", CreatedAt = now, UpdatedAt = now });
         await db.SaveChangesAsync();
-        foreach (var role in new[] { MembershipRole.Administrator, MembershipRole.Operations, MembershipRole.ReadOnly })
+        foreach (var role in new[] { MembershipRole.Administrator, MembershipRole.Operations, MembershipRole.Accounting, MembershipRole.ReadOnly })
         {
             var user = new ApplicationUser { Id = Guid.CreateVersion7(), UserName = Email(role), Email = Email(role), DisplayName = $"E2E {role}", ForcePasswordChange = false, CreatedAt = now, UpdatedAt = now };
             var created = await users.CreateAsync(user, Password);
