@@ -200,7 +200,6 @@ html body .mfs-sort-sheet [role="listbox"] > button.is-selected { color: var(--r
 
 /* Mobile menu: the logo replaces the text title, and every link/group is spaced evenly. */
 .rv-drawer-logo { display: block; width: auto; height: 28px; max-width: 170px; object-fit: contain; }
-html[data-theme="light"] .rv-drawer-logo { filter: invert(1); }
 .rv-mobile-drawer > header { min-height: 0; padding: 16px 20px; }
 .rv-mobile-drawer > header h2 { line-height: 0; }
 .rv-mobile-navigation, .rv-mobile-navigation .nav-group { display: grid; gap: 4px; margin: 0; padding: 0; }
