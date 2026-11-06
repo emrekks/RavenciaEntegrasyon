@@ -1209,7 +1209,7 @@ function AlertEmailSettingsSection() {
 
 type AiSkillView = { key: string; title: string; description: string; bundleHash: string; uploaded: { skillId: string; version: string; uploadedAt: string; bundleHash: string } | null; upToDate: boolean }
 type AiSettings = { apiKeySaved: boolean; defaultModel: string; updatedAt: string | null; version: number; skills: AiSkillView[] }
-type AiUsageEntry = { id: string; createdAt: string; feature: string; featureLabel: string; userName: string | null; subjectLabel: string | null; model: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null; status: 'SUCCEEDED' | 'FAILED'; error: string | null; durationMs: number }
+type AiUsageEntry = { id: string; createdAt: string; feature: string; featureLabel: string; userName: string | null; subjectLabel: string | null; model: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null; status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED'; error: string | null; durationMs: number }
 const defaultAiModel = 'claude-sonnet-5-5'
 // The Claude models the panel offers, with their list price per million tokens (input / output, USD).
 const aiModelOptions = [
