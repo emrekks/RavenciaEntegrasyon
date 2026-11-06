@@ -9,16 +9,19 @@ namespace MarketplaceHub.Application;
 // - one card holds the colour: that card;
 // - several do (a card that already holds rows of other colours, as the Mavi card above): a card holding only that
 //   colour, then the opened card, then the card with most rows of it;
-// - no card holds it: the opened card when the family is that card alone; otherwise the colour has no card and the
-//   save is refused (the editor has no way to open a new colour card, and a new card may not take a model code another
-//   card holds), so nothing lands on a card of another colour.
+// - no card holds it: the opened card when the family is that card alone; otherwise the colour has no card yet
+//   (ColorsWithoutCard, and the row's entry in RowColorsWithoutCard): the save opens a new colour card for it in the
+//   family (ProductFamilyNewColorCard; live 2026-11-06, MZ028IH: Zümrüt added to a family of nine colour cards was
+//   refused), so nothing lands on a card of another colour.
 // Rows being deleted in the same save count only when no remaining row holds the colour (a card whose rows are all
 // replaced keeps its new ones).
 public static class ProductFamilyVariantPlacement
 {
     public sealed record ExistingRow(Guid ProductId, string? OptionSignature, bool Deleting = false);
 
-    public sealed record Placement(IReadOnlyList<Guid> ProductIds, IReadOnlyList<string> ColorsWithoutCard);
+    // ProductIds: the card of each new row (the opened card for a row whose colour has no card yet).
+    // RowColorsWithoutCard: per row, the colour (spelled as in ColorsWithoutCard) that still needs its own card, or null.
+    public sealed record Placement(IReadOnlyList<Guid> ProductIds, IReadOnlyList<string> ColorsWithoutCard, IReadOnlyList<string?> RowColorsWithoutCard);
 
     public static string? ColorOf(IReadOnlyDictionary<string, string>? options)
     {
@@ -35,6 +38,7 @@ public static class ProductFamilyVariantPlacement
         var singleCard = familyProductIds.Count(productId => productId != openedProductId) == 0;
         var productIds = new List<Guid>(newRowOptions.Count);
         var missing = new List<string>();
+        var rowMissing = new List<string?>(newRowOptions.Count);
         foreach (var options in newRowOptions)
         {
             var color = ColorOf(options);
@@ -42,18 +46,26 @@ public static class ProductFamilyVariantPlacement
             if (key is null || !familySplitByColor)
             {
                 productIds.Add(openedProductId);
+                rowMissing.Add(null);
                 continue;
             }
             var target = CardFor(openedProductId, rows.Where(row => !row.Deleting).Select(row => (row.ProductId, row.Color)).ToList(), key)
                 ?? CardFor(openedProductId, rows.Select(row => (row.ProductId, row.Color)).ToList(), key);
-            if (target is Guid card) productIds.Add(card);
-            else
+            productIds.Add(target ?? openedProductId);
+            if (target is not null || singleCard)
             {
-                productIds.Add(openedProductId);
-                if (!singleCard && !missing.Any(name => CatalogKeyNormalizer.SameKey(name, color))) missing.Add(color!);
+                rowMissing.Add(null);
+                continue;
             }
+            var spelled = missing.FirstOrDefault(name => CatalogKeyNormalizer.SameKey(name, color));
+            if (spelled is null)
+            {
+                spelled = color!;
+                missing.Add(spelled);
+            }
+            rowMissing.Add(spelled);
         }
-        return new(productIds, missing);
+        return new(productIds, missing, rowMissing);
     }
 
     private static Guid? CardFor(Guid openedProductId, IReadOnlyList<(Guid ProductId, string? Color)> rows, string key)
@@ -75,7 +87,26 @@ public static class ProductFamilyVariantPlacement
         return key.Length == 0 ? null : key;
     }
 
-    public static string MissingCardMessage(IReadOnlyList<string> colors) =>
-        $"{string.Join(", ", colors)} {(colors.Count == 1 ? "rengi" : "renkleri")} için bu model kodunda renk kartı yok; yeni varyantlar başka renkteki açık karta eklenmez. "
-        + $"{(colors.Count == 1 ? "Bu rengin" : "Bu renklerin")} satırlarını kaldırıp yalnızca kartı olan renkler için varyant oluşturun.";
+    // The option set of a row as one comparable key (names and values folded, order aside), so a new row that repeats a
+    // row the family already holds is found whatever its spelling ("Renk: SİYAH | Beden: L" = Beden L, Renk siyah).
+    public static string? OptionKey(IEnumerable<KeyValuePair<string, string>>? options)
+    {
+        var pairs = (options ?? [])
+            .Select(pair => (Name: CatalogKeyNormalizer.Key(pair.Key, 320).Replace("-", "", StringComparison.Ordinal), Value: CatalogKeyNormalizer.Key(pair.Value, 320)))
+            .Where(pair => pair.Name.Length > 0 && pair.Value.Length > 0)
+            .Select(pair => $"{pair.Name}={pair.Value}")
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+        return pairs.Count == 0 ? null : string.Join("|", pairs);
+    }
+
+    public static string? OptionKey(string? optionSignature) => OptionKey(VariantOptionSignature.Parse(optionSignature));
+
+    public static string DuplicateRowMessage(IReadOnlyList<string> labels) =>
+        $"{string.Join(", ", labels)} {(labels.Count == 1 ? "varyantı" : "varyantları")} bu model kodunda zaten var; aynı seçenekler ikinci kez eklenmez. "
+        + "Sayfayı yenileyip yalnızca eksik seçenekleri ekleyin.";
+
+    public static string NewCardModelCodeMessage(string? modelCode) =>
+        $"Yeni renk kartının varyantları ailenin model kodunu ({modelCode}) taşımalıdır; model kodu farklı satırlar başka bir ürün olur.";
 }

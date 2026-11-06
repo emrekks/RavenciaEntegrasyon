@@ -2091,10 +2091,12 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
     }
 
     // Live 2026-11-01 (MZ021Y-CD): Varyantları Oluştur on the Mavi card saved the new rows of every colour on the Mavi
-    // card. A new row goes to the family card of its own colour, with its options and stock there; a colour without a
-    // card in a family of several cards refuses the save and writes nothing.
+    // card. A new row goes to the family card of its own colour, with its options and stock there. Live 2026-11-06
+    // (MZ028IH): a colour without a card in a family of several cards (Zümrüt on nine cards) was refused; it now gets its
+    // own card in the same save, with the opened card's fields, its title in the new colour and the card Renk attribute
+    // set to the new colour. A row repeating one the family holds is refused.
     [PostgreSqlFact]
-    public async Task FamilySave_PutsNewRowsOnTheCardOfTheirColour_AndRefusesAColourWithoutACard()
+    public async Task FamilySave_PutsNewRowsOnTheCardOfTheirColour_AndOpensACardForANewColour()
     {
         var tenant = NewTenant("family-colour-cards");
         await using (var seed = fixture.CreateContext())
@@ -2116,19 +2118,59 @@ public sealed class StockPricePostgreSqlTests(PostgreSqlTenantIsolationFixture f
         db.ProductVariants.Add(new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = bordo.Id, Sku = $"{modelCode}-B-L", SkuNormalized = $"{modelCode}-B-L", ModelCode = modelCode, OptionSignature = "Renk: Bordo | Beden: L", Status = ProductStatus.Active, CreatedAt = now, UpdatedAt = now });
         await db.SaveChangesAsync();
 
-        db.ChangeTracker.Clear();
-        var refused = await service.UpdateProductAsync(tenant.Id, mavi.Value!.Id, mavi.Value.Version, new UpdateProductCommand("Bluz Mavi", "Açıklama", null, null,
-            VariantsToCreate: [new CreateVariantCommand($"{modelCode}-B-XL", null, modelCode, Options("Bordo", "XL")), new CreateVariantCommand($"{modelCode}-H-L", null, modelCode, Options("Haki", "L"))], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
-        Assert.Equal((422, "VARIANT_COLOR_CARD_MISSING"), (refused.Error!.Status, refused.Error.Code));
-        Assert.StartsWith("Haki rengi için", refused.Error.Message);
-        db.ChangeTracker.Clear();
-        Assert.Equal(2, await db.ProductVariants.CountAsync(x => x.TenantId == tenant.Id && x.ModelCode == modelCode));
+        var colorAttribute = await service.CreateAttributeAsync(tenant.Id, new CreateAttributeCommand($"renk-{suffix}", "Renk", "SINGLE_SELECT", "SINGLE", null, [new("Mavi", 0), new("Haki", 1)]), CancellationToken.None);
+        var fabricAttribute = await service.CreateAttributeAsync(tenant.Id, new CreateAttributeCommand($"kumas-{suffix}", "Kumaş", "SINGLE_SELECT", "SINGLE", null, [new("Triko", 0)]), CancellationToken.None);
+        Assert.True(colorAttribute.Succeeded && fabricAttribute.Succeeded);
+        var cardAttributes = new List<ProductAttributeCommand>
+        {
+            new(colorAttribute.Value!.Id, colorAttribute.Value.Values.Single(x => x.Value == "Mavi").Id, null, null, null, 0),
+            new(fabricAttribute.Value!.Id, fabricAttribute.Value.Values.Single().Id, null, null, null, 1)
+        };
 
-        var saved = await service.UpdateProductAsync(tenant.Id, mavi.Value.Id, mavi.Value.Version, new UpdateProductCommand("Bluz Mavi", "Açıklama", null, null,
-            VariantsToCreate: [new CreateVariantCommand($"{modelCode}-B-XL", null, modelCode, Options("bordo", "XL"), OnHand: 2m), new CreateVariantCommand($"{modelCode}-M-XL", null, modelCode, Options("Mavi", "XL"))], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        // The same colour and size the family holds (another spelling) is not added twice; nothing is written.
+        db.ChangeTracker.Clear();
+        var duplicate = await service.UpdateProductAsync(tenant.Id, mavi.Value!.Id, mavi.Value.Version, new UpdateProductCommand("Bluz Mavi", "Açıklama", null, null,
+            VariantsToCreate: [new CreateVariantCommand($"{modelCode}-B-L2", null, modelCode, Options("BORDO", "l"))], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.Equal((422, "VARIANT_OPTIONS_DUPLICATE"), (duplicate.Error!.Status, duplicate.Error.Code));
+
+        // A new colour's rows must carry the family model code, or they would not join the family.
+        db.ChangeTracker.Clear();
+        var otherCode = await service.UpdateProductAsync(tenant.Id, mavi.Value.Id, mavi.Value.Version, new UpdateProductCommand("Bluz Mavi", "Açıklama", null, null,
+            VariantsToCreate: [new CreateVariantCommand($"{modelCode}-H-S", null, "BASKA", Options("Haki", "S"))], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
+        Assert.Equal(422, otherCode.Error!.Status);
+        db.ChangeTracker.Clear();
+        Assert.Equal(2, await db.ProductVariants.CountAsync(x => x.TenantId == tenant.Id));
+        Assert.Equal(2, await db.Products.CountAsync(x => x.TenantId == tenant.Id));
+
+        var withNewColour = await service.UpdateProductAsync(tenant.Id, mavi.Value.Id, mavi.Value.Version, new UpdateProductCommand("Bluz Mavi", "Açıklama", null, null, Attributes: cardAttributes,
+            VariantsToCreate: [new CreateVariantCommand($"{modelCode}-B-XL", null, modelCode, Options("Bordo", "XL")), new CreateVariantCommand($"{modelCode}-H-L", null, modelCode, Options("Haki", "L"), OnHand: 4m), new CreateVariantCommand($"{modelCode}-H-XL", null, modelCode, Options("haki", "XL"))],
+            VatRate: 10m, VatInclusion: "INCLUDED", WarrantyMonths: 6, DeliveryDays: 3, DefaultSalePrice: 500m, DefaultListPrice: 600m), CancellationToken.None);
+        Assert.True(withNewColour.Succeeded, withNewColour.Error?.Message);
+        db.ChangeTracker.Clear();
+        var hakiCard = await db.Products.SingleAsync(x => x.TenantId == tenant.Id && x.Id != mavi.Value.Id && x.Id != bordo.Id);
+        // The opened Mavi card was created as a draft, so the new card takes that status.
+        Assert.Equal(("Bluz Haki", "Açıklama", ProductStatus.Draft, 10m, "INCLUDED", 6, 3, 500m, 600m), (hakiCard.Title, hakiCard.Description, hakiCard.Status, hakiCard.VatRate, hakiCard.VatInclusion, hakiCard.WarrantyMonths, hakiCard.DeliveryDays, hakiCard.DefaultSalePrice, hakiCard.DefaultListPrice));
+        Assert.Null(hakiCard.TrendyolWebColorValueId);
+        var hakiRows = await db.ProductVariants.Where(x => x.TenantId == tenant.Id && x.ProductId == hakiCard.Id).OrderBy(x => x.Sku).ToListAsync();
+        Assert.Equal([$"{modelCode}-H-L", $"{modelCode}-H-XL"], hakiRows.Select(x => x.Sku));
+        Assert.Equal(4m, (await db.InventoryItems.SingleAsync(x => x.TenantId == tenant.Id && x.VariantId == hakiRows[0].Id)).OnHand);
+        Assert.Equal(bordo.Id, (await db.ProductVariants.SingleAsync(x => x.TenantId == tenant.Id && x.Sku == $"{modelCode}-B-XL")).ProductId);
+        var hakiOptions = await (from value in db.VariantOptionValues where hakiRows.Select(x => x.Id).Contains(value.VariantId) join option in db.ProductOptions on value.OptionId equals option.Id select option.ProductId).ToListAsync();
+        Assert.NotEmpty(hakiOptions);
+        Assert.All(hakiOptions, productId => Assert.Equal(hakiCard.Id, productId));
+        var hakiAttributes = await db.ProductAttributeAssignments.Where(x => x.TenantId == tenant.Id && x.ProductId == hakiCard.Id && x.VariantId == null).ToListAsync();
+        Assert.Equal(colorAttribute.Value.Values.Single(x => x.Value == "Haki").Id, hakiAttributes.Single(x => x.AttributeId == colorAttribute.Value.Id).ValueId);
+        Assert.Equal(fabricAttribute.Value.Values.Single().Id, hakiAttributes.Single(x => x.AttributeId == fabricAttribute.Value.Id).ValueId);
+        Assert.Contains(withNewColour.Value!.Variants, variant => variant.ProductId == hakiCard.Id);
+
+        var saved = await service.UpdateProductAsync(tenant.Id, mavi.Value.Id, withNewColour.Value.Version, new UpdateProductCommand("Bluz Mavi", "Açıklama", null, null,
+            VariantsToCreate: [new CreateVariantCommand($"{modelCode}-B-2XL", null, modelCode, Options("bordo", "2XL"), OnHand: 2m), new CreateVariantCommand($"{modelCode}-M-XL", null, modelCode, Options("Mavi", "XL")), new CreateVariantCommand($"{modelCode}-H-2XL", null, modelCode, Options("Haki", "2XL"))], VatRate: 10m, VatInclusion: "INCLUDED"), CancellationToken.None);
         Assert.True(saved.Succeeded, saved.Error?.Message);
         db.ChangeTracker.Clear();
-        var bordoXl = await db.ProductVariants.SingleAsync(x => x.TenantId == tenant.Id && x.Sku == $"{modelCode}-B-XL");
+        Assert.Equal(hakiCard.Id, (await db.ProductVariants.SingleAsync(x => x.TenantId == tenant.Id && x.Sku == $"{modelCode}-H-2XL")).ProductId);
+        Assert.Equal(3, await db.Products.CountAsync(x => x.TenantId == tenant.Id));
+        db.ChangeTracker.Clear();
+        var bordoXl = await db.ProductVariants.SingleAsync(x => x.TenantId == tenant.Id && x.Sku == $"{modelCode}-B-2XL");
         var maviXl = await db.ProductVariants.SingleAsync(x => x.TenantId == tenant.Id && x.Sku == $"{modelCode}-M-XL");
         Assert.Equal((bordo.Id, mavi.Value.Id), (bordoXl.ProductId, maviXl.ProductId));
         Assert.Equal(ProductStatus.Active, bordoXl.Status);
