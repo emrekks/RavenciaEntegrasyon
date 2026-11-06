@@ -355,6 +355,14 @@ public sealed partial class PazaramaHttpClient(
         };
     }
 
+    // "İşleminiz şu anda gerçekleştirilemiyor. Lütfen daha sonra tekrar deneyiniz." in a success=false envelope is
+    // Pazarama saying it is busy, not refusing the request: seen live on order/getOrdersForApi on 28 Oct 23:25 and on
+    // 5 and 6 Nov 00:07-00:11 Istanbul time, each read passing on the next run. Retried like a server error (before
+    // 6 Nov 2026 it was a refusal, PAZARAMA_REQUEST_REJECTED).
+    internal static bool SaysTryLater(string? message) =>
+        message is not null && (message.Contains("daha sonra tekrar dene", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("şu anda gerçekleştirilemiyor", StringComparison.OrdinalIgnoreCase));
+
     // The shared test (MarketplaceErrorRules); Pazarama keeps its own wording for the gateway block above.
     internal static bool LooksLikeHtml(string body) => MarketplaceErrorRules.LooksLikeHtml(body);
 
@@ -364,6 +372,8 @@ public sealed partial class PazaramaHttpClient(
         if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("success", out var success) || success.ValueKind != JsonValueKind.False) return null;
         var message = Text(root, "userMessage") ?? Text(root, "message");
         var code = Text(root, "messageCode");
+        if (SaysTryLater(message))
+            return new(AdapterErrorClass.Remote5xx, "PAZARAMA_REMOTE_BUSY", $"Pazarama şu an işlemi yapamadığını bildirdi ({message}); işlem biraz sonra yeniden denenecek.", null, TimeSpan.FromSeconds(60), null);
         return new(AdapterErrorClass.Validation, "PAZARAMA_REQUEST_REJECTED",
             message is null ? code is null ? "Pazarama isteği reddetti." : $"Pazarama isteği reddetti (kod {code})." : $"Pazarama isteği reddetti: {PazaramaErrorAdvice.WithAdvice(message)}",
             null, null, null);

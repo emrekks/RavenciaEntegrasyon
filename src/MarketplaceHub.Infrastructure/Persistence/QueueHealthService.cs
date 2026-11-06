@@ -149,7 +149,10 @@ public sealed class QueueHealthService(AppDbContext db, IOptions<TrendyolOptions
             foreach (var (lane, suffix, limit) in new[] { ("FOREGROUND", "fg", foreground), ("BACKGROUND", "bg", background) })
             {
                 // The shared bucket key is trendyol:orders:{host}:{sellerId}:{fg|bg}.
-                var pattern = $"trendyol:orders:%:{connection.ExternalStoreId}:{suffix}";
+                // The seller id is matched literally: the table has no tenant column, so a '%' or '_' in it would add
+                // up other sellers' requests (PostgreSQL's LIKE escapes with a backslash).
+                var sellerId = connection.ExternalStoreId.Replace(@"\", @"\\", StringComparison.Ordinal).Replace("%", @"\%", StringComparison.Ordinal).Replace("_", @"\_", StringComparison.Ordinal);
+                var pattern = $"trendyol:orders:%:{sellerId}:{suffix}";
                 var usage = await db.Database.SqlQuery<QuotaRow>($"""
                     SELECT coalesce(sum("Requests"), 0)::int AS "Requests", coalesce(max("Requests"), 0)::int AS "Peak"
                     FROM integration.rate_limit_usage

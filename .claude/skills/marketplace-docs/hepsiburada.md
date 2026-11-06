@@ -41,7 +41,14 @@ Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs`, `HepsiburadaPackag
   limit ≤ 100, no dates = last day only. Imports only OPEN/UNPACKED orders inside 1 month.
 - Packages `GET packages/merchantid/{m}`: 24 h window, limit ≤ 10, **Open packages only**. Shipped / delivered /
   undelivered come from `.../{status}` with limit 50 and a 1-month lookback (**unverified** on the web).
-- Cancelled orders and missing-invoice lists: limit ≤ 50; missing-invoice has no date filter, covers the last month.
+- Cancelled orders and missing-invoice lists: limit ≤ 50; missing-invoice has no date filter, covers the last month
+  (the code's assumption; the OpenAPI text says "all packages").
+- The missing-invoice list decides INVOICED by absence for orders whose detail has no `hasInvoice`. It is read by
+  offset and shrinks as invoices are uploaded, so since 6 Nov 2026 it is read twice, a pass whose pages give different
+  totals changes nothing (HEPSIBURADA_MISSING_INVOICE_FEED_MOVED), and a package listed in either pass stays
+  NOT_INVOICED (`HepsiburadaMissingInvoiceStatusPolicy`).
+- Open packages: the docs spell the paging parameter `Offset`, the code sends `offset` (**unverified** whether the
+  service reads both; live never had ≥ 10 open packages in one window).
 - Claims `GET claims/merchantId/{m}/status/{Status}`: limit ≤ 100; `beginDate`, `endDate`, `statusBeginDate`,
   `statusEndDate`. Status must be PascalCase ("Wrong Claim Status" otherwise). First read 30 days; incremental passes
   look back ≥ 2 days because the status filter misses claims; first pass each hour is full.
