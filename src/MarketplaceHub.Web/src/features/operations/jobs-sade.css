@@ -19,6 +19,7 @@
 .app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-platform-select, .jobs-reference-filter-platform) .platform-square-mark { flex: none; width: 24px; height: 24px; border-radius: 7px; overflow: hidden; }
 .app-shell.stitch-shell main .jobs-reference-page :is(.jobs-reference-platform-select, .jobs-reference-filter-platform) .platform-square-mark img { width: 100%; height: 100%; object-fit: contain; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-platform { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding-left: 8px; border-left: 1px solid var(--rv-color-border); color: var(--rv-color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-direction { display: inline-flex; align-items: center; min-width: 0; padding-left: 8px; border-left: 1px solid var(--rv-color-border); color: var(--rv-color-ink); white-space: nowrap; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-platform .platform-square-mark { width: 18px; height: 18px; }
 
 /* Queue metrics card */
