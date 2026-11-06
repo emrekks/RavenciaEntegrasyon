@@ -400,6 +400,8 @@ public static class InvoicingEndpoints
                          where document.TenantId == tenant.TenantId && document.Id == id && asset.Status == "ACTIVE"
                          select new { asset.RelativePath, asset.MimeType, asset.OriginalNameSafe }).SingleOrDefaultAsync(http.RequestAborted);
         if (row is null) return Results.NotFound();
+        // An invoice PDF carries the buyer's personal data: no browser or proxy keeps a copy (as Stream() and the public link).
+        http.Response.Headers.CacheControl = "private, no-store";
         return Results.File(await storage.OpenReadAsync(tenant.TenantId, row.RelativePath, http.RequestAborted), row.MimeType, row.OriginalNameSafe ?? $"invoice-{id:N}.pdf", enableRangeProcessing: false);
     }
 

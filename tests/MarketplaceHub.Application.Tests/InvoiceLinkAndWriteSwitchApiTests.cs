@@ -235,4 +235,44 @@ public sealed class InvoiceLinkAndWriteSwitchApiTests(ApiEndToEndFixture fixture
             Assert.All(routes, route => Assert.Equal("/api/v1/settings/shipping-label", route));
         }
     }
+
+    // Authorization matrix (6 Nov): the N11 return-shipment-company list is read from N11 live on every call, so like
+    // the rejection reasons it is for the roles that work with orders, not READONLY.
+    [PostgreSqlFact]
+    public async Task ReadOnly_cannot_spend_marketplace_quota_on_return_shipment_companies()
+    {
+        using var host = Host();
+        var path = $"/api/v1/returns/{Guid.NewGuid():D}/return-shipment-companies";
+        var (readOnly, _) = await SignInAsync(host, fixture, MembershipRole.ReadOnly);
+        using (readOnly)
+        {
+            using var refused = await readOnly.GetAsync(path);
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+            Assert.Equal("PERMISSION_DENIED", (await ApiTestHost.ProblemAsync(refused)).GetProperty("code").GetString());
+        }
+        var (operations, _) = await SignInAsync(host, fixture, MembershipRole.Operations);
+        using (operations)
+        {
+            // Past the gate: the unknown return is the endpoint's own answer.
+            using var unknown = await operations.GetAsync(path);
+            Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+        }
+    }
+
+    // The panel's copy of a hand-uploaded invoice PDF is personal data and stays out of browser and proxy caches,
+    // like the system invoice documents and the public link.
+    [PostgreSqlFact]
+    public async Task A_manual_invoice_document_opened_in_the_panel_is_not_cached()
+    {
+        using var host = Host();
+        var (_, orderId, _) = await SeedOrderAsync(host, "y07", externalWrites: false);
+        var (admin, csrf) = await SignInAsync(host, fixture, MembershipRole.Administrator);
+        using (admin)
+        {
+            var uploaded = await UploadPdfAsync(admin, csrf, orderId, Encoding.ASCII.GetBytes("%PDF-1.4\n% CACHE\n%%EOF\n"));
+            using var content = await admin.GetAsync($"/api/v1/invoice-workspace/manual-documents/{uploaded.GetProperty("id").GetGuid():D}/content");
+            Assert.Equal(HttpStatusCode.OK, content.StatusCode);
+            Assert.True(content.Headers.CacheControl is { NoStore: true, Private: true }, $"Cache-Control: {content.Headers.CacheControl}");
+        }
+    }
 }

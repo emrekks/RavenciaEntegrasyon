@@ -2221,6 +2221,41 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // The usage table has no tenant column: a seller id with LIKE wildcards must not add up other sellers' requests.
+    [PostgreSqlFact]
+    public async Task QueueHealth_QuotaOfASellerIdWithWildcardsCountsOnlyThatSeller()
+    {
+        var tenant = NewTenant("quota-wildcard");
+        var connection = NewQuestionConnection(tenant);
+        connection.ExternalStoreId = "%";
+        var otherKey = $"trendyol:orders:apigw.trendyol.com:other-{Guid.NewGuid():N}:fg";
+        var now = fixture.Now;
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            await seedDb.SaveChangesAsync();
+            await seedDb.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO integration.rate_limit_usage ("Key", "Minute", "Requests") VALUES ({otherKey}, {now.AddMinutes(-4)}, 9)
+                """);
+        }
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var service = new QueueHealthService(db, Options.Create(new MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolOptions()), fixture.TimeProvider);
+            var quota = await service.QuotaAsync(tenant.Id, CancellationToken.None);
+
+            Assert.All(quota, row => Assert.Equal(0, row.LastHourRequests));
+        }
+        finally
+        {
+            await using var cleanup = fixture.CreateContext();
+            await cleanup.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM integration.rate_limit_usage WHERE \"Key\" = {otherKey}");
+            await DeleteInvoiceTestTenantAsync(tenant.Id);
+        }
+    }
+
     [PostgreSqlFact]
     public async Task QueueHealth_OldestRunnableJobIgnoresJobsWaitingForTheirLockGroupOrAQuotaBackoff()
     {
