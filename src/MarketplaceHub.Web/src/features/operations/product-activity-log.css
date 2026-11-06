@@ -20,6 +20,8 @@
 .app-shell.stitch-shell main .jobs-reference-page .pal-change-flow { display: inline-flex; align-items: baseline; gap: 0; white-space: nowrap; font-size: 13px; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-change-label, .app-shell.stitch-shell main .jobs-reference-page .pal-change-from { color: var(--rv-color-muted); font-weight: 500; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-change-arrow { color: var(--rv-color-subtle); white-space: pre; }
+/* A flex item drops its trailing space: the label keeps its distance from the price with a margin. */
+.app-shell.stitch-shell main .jobs-reference-page .pal-change-label { margin-right: 4px; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-change-to { color: var(--rv-color-ink); font-size: 14px; font-weight: 700; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-change-delta { padding: 0 6px; border-radius: 5px; font-size: 11.5px; font-weight: 600; line-height: 18px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); white-space: nowrap; }
 .app-shell.stitch-shell main .jobs-reference-page .pal-change-delta.is-up { color: var(--rv-color-accent); background: var(--rv-color-accent-soft); }

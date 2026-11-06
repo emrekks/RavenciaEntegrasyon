@@ -51,7 +51,7 @@ function ChangeChip({ entry }: { entry: ProductActivityEntry }) {
       ? <span className={`pal-change-text is-${change.tone}`}>{change.text}</span>
       : <span className="pal-change-line">
         <span className="pal-change-flow">
-          {change.label && <span className="pal-change-label">{change.label} </span>}
+          {change.label && <span className="pal-change-label">{change.label}</span>}
           {change.from !== undefined && <><span className="pal-change-from">{change.from}</span><span className="pal-change-arrow" aria-label="iken"> → </span></>}
           <span className="pal-change-to">{change.to}</span>
         </span>
