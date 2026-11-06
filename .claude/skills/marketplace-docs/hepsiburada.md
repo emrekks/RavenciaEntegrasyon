@@ -134,6 +134,10 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   parcel, twice on a return), `Stoppage` (1 % of the VAT-free payment) / `StoppageRefund`,
   `PaymentServiceCostReflection` (~0.87 % of the payment) / its Refund, `ProcessingFeeExpense` (13.19, rare),
   `CustomerSatisfaction` (150.00), `TotalPayment` (the week's payout, equal to its records to the kuruş).
+- Service charges per order (live read-only SQL, 6 Nov 2026, the 27 billed clothing orders of 8 Sep-6 Nov): 206.08 TL
+  of `PaymentServiceCostReflection` (net of refunds) and `ProcessingFeeExpense` = 7.63 TL an order (0.86 % of the
+  sale); `ProcessingFeeExpense` (13.19) was on 2 of them only. The reports still cost 10.99 + VAT on every order
+  (`ReportPlatformCosts`); Fiyat Hesapla's hint shows the records' mean (`ReportPriceAssumptions`).
 - Money objects carry `"currency": "TRY"` (e.g. `hepsiburada-api-son.md:8371`, `:12479`). Since 5 Nov 2026 an order
   with another, unknown currency value is refused with an issue and read again; a read without any currency is lira.
   The paid-order list (one item per line) no longer fails the page on one unreadable line: that order is read by
