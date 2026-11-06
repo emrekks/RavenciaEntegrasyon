@@ -325,8 +325,8 @@
 
 @layer features {
   .option-chip-list { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
-  /* A long value group (Renk) stops at five chip rows and scrolls inside, so it stands as tall as Beden beside it. */
-  .attribute-builder-values .option-chip-list { max-height: 252px; overflow-y: auto; align-content: flex-start; padding: 2px; margin: -2px; }
+  /* The unselected values show three chip rows and a half (36px chips, 8px gaps), so the cut-off row hints that the list scrolls. */
+  .attribute-builder-values .option-chip-list { max-height: 158px; overscroll-behavior: contain; overflow-y: auto; align-content: flex-start; padding: 2px; margin: -2px; }
   /* Pointing at one option group lights every group, since they open and close together. */
   .attribute-builder-list:has(.attribute-builder-disclosure:hover:not(:disabled)) .attribute-builder-card { border-color: var(--rv-color-primary); box-shadow: 0 0 0 1px color-mix(in srgb, var(--rv-color-primary) 30%, transparent); }
   /* One chip size: a grid of equal cells, a longer value spanning two or three of them. */
@@ -334,6 +334,11 @@
   .attribute-builder-values .option-chip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .attribute-builder-values .option-chip.is-wide { grid-column: span 2; }
   .attribute-builder-values .option-chip.is-wider { grid-column: span 3; }
+  /* Chosen values sit on top as removable chips; they wrap and never scroll. */
+  .attribute-builder-values .option-chip-selected { display: flex; flex-wrap: wrap; gap: var(--rv-space-2); }
+  .attribute-builder-values .option-chip-selected .option-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: 36px; padding: 0 10px 0 12px; }
+  .attribute-builder-values .option-chip-chosen .option-chip-label { overflow: hidden; text-overflow: ellipsis; }
+  .attribute-builder-values .option-chip-remove { font-size: 16px; line-height: 1; opacity: .85; }
 }
 
 @layer features {

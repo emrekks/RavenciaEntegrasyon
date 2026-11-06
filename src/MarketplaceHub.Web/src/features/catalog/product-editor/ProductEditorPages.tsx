@@ -72,7 +72,8 @@ import { useOperationFeedbackToasts, type OperationFeedback } from '../operation
 import { ModelCodeHolderNotice, useModelCodeHolder } from '../model-code-holder'
 import { focusOnMount } from '../../../shared/focus'
 import { channelOfferPostKey, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, rowsWithSavedOffer, type ChannelPricingDraft, type SavedChannelOffer } from './marketplace-channel-pricing'
-import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
+import { OptionValueChips, sortOptionValues } from './OptionValueChips'
+import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
 // The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
@@ -167,16 +168,6 @@ function displayVariantOptionSignature(signature: string, savedOptions: Record<s
   const options = displayVariantOptionEntriesFromSignature(signature, savedOptions)
   if (!options.length) return signature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' ? signature : '—'
   return joinVariantOptionLabels(options.map(({ name, value }) => `${formatCatalogOptionLabel(name)}: ${isSizeOptionName(name) ? value.toLocaleUpperCase('tr-TR') : formatCatalogOptionLabel(value)}`))
-}
-function sortOptionValues<T extends { id: string; value: string }>(attributeName: string, values: T[]) {
-  return values
-    .map((value, index) => ({ value, index, rank: optionValueSortRank(attributeName, value.value) }))
-    .sort((left, right) => left.rank.bucket - right.rank.bucket
-      || left.rank.primary - right.rank.primary
-      || left.rank.secondary - right.rank.secondary
-      || left.rank.text.localeCompare(right.rank.text, 'tr', { numeric: true, sensitivity: 'base' })
-      || left.index - right.index)
-    .map(item => item.value)
 }
 // A saved row and a generated combination of the same options are one row (variantOptionSetKey), whatever their spelling.
 const variantSignatureKey = variantOptionSetKey
@@ -3458,12 +3449,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               const expandable = item.attribute.values.length > 0
               const expanded = !expandable || (expandedOptionGroupIds[item.attributeId] ?? false)
               const valueQuery = attributeValueQueries[item.attributeId] ?? ''
-              const filteredValues = filterAttributeOptionValues(sortOptionValues(item.attribute.name, item.attribute.values), valueQuery)
+              const sortedValues = sortOptionValues(item.attribute.name, item.attribute.values)
+              const filteredValues = filterAttributeOptionValues(sortedValues, valueQuery)
               return (
               <article className={`attribute-builder-card ${expanded ? 'is-open' : ''}`} key={item.attributeId}>
                 <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={expanded ? `option-values-${item.attributeId}` : undefined} disabled={!expandable} title={expanded ? 'Bütün seçenek gruplarını kapat' : 'Bütün seçenek gruplarını birlikte aç'} onClick={() => { if (window.matchMedia('(max-width: 760px)').matches) { setExpandedOptionGroupIds(current => ({ ...current, [item.attributeId]: !expanded })); return } setExpandedOptionGroupIds(Object.fromEntries(visibleOptionRequirements.map(other => [other.attributeId, !expanded]))) }}>
-                  <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong><small>{item.attribute.values.length} değer</small></span>
-                  <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{(attributeSelections[item.attributeId]?.length ?? 0) > 0 ? `${attributeSelections[item.attributeId].length} değer seçildi` : 'Değer seçin'}</small>{expandable && <UiIcon name="chevronDown" />}</span>
+                  <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong></span>
+                  <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{`${attributeSelections[item.attributeId]?.length ?? 0} / ${item.attribute.values.length} Seçili`}</small>{expandable && <UiIcon name="chevronDown" />}</span>
                 </button>
                 {expanded && <div id={`option-values-${item.attributeId}`} className="attribute-builder-values">
                 {item.attribute.values.length ? (
@@ -3484,26 +3476,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                     }}
                   />
                   <OptionValueAddButton attributeName={item.attribute.name} values={item.attribute.values} query={valueQuery} adding={addingOptionValueFor === item.attributeId} onAdd={newValue => void addOptionValue(item, newValue)} />
-                  <div className="option-chip-list">
-                    {filteredValues.map(value => {
-                      const isSelected = (attributeSelections[item.attributeId] ?? []).includes(value.id)
-                      // Chips share one size; a longer value (Standart, Kahverengi) takes two or three cells of the grid.
-                      const length = cleanOptionValue(value.value).length
-                      const span = length > 10 ? ' is-wider' : length > 5 ? ' is-wide' : ''
-                      return (
-                        <button
-                          type="button"
-                          key={value.id}
-                          title={cleanOptionValue(value.value)}
-                          aria-pressed={isSelected}
-                          className={`option-chip${span}${isSelected ? ' active' : ''}`}
-                          onClick={() => toggleAttributeValue(item.attributeId, value.id)}
-                        >
-                          {cleanOptionValue(value.value)}
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <OptionValueChips groupName={item.attribute.name} values={sortedValues} selectedIds={attributeSelections[item.attributeId] ?? []} filter={rest => filterAttributeOptionValues(rest, valueQuery)} onToggle={valueId => toggleAttributeValue(item.attributeId, valueId)} />
                   {filteredValues.length === 0 && !optionValueToAdd(item.attribute.name, item.attribute.values, valueQuery) && <p className="attribute-builder-no-values">Eşleşen değer bulunamadı.</p>}
                   </>
                 ) : item.attribute.dataType === 'BOOLEAN' ? (
