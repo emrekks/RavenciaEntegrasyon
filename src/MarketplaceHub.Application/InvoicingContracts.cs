@@ -524,7 +524,9 @@ public sealed record InvoiceWorkspaceItemView(
     InvoiceDeliveryRetryView? DeliveryRetry = null,
     // "İade Belgesi Gerekli": lines of the issued invoice were returned (a partial return); the invoice is still
     // delivered, the returned lines need a return document. Null when nothing is due (InvoiceAdjustmentTracking).
-    string? ReturnDocumentNote = null);
+    string? ReturnDocumentNote = null,
+    // The invoice status the seller set by hand ("UPLOADED" / "PENDING"); null when none was set by hand.
+    string? ManualInvoiceStatus = null);
 
 public sealed record MarketplaceInvoiceReferenceHistoryView(
     string? InvoiceNumber,

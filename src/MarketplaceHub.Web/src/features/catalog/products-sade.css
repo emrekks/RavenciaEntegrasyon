@@ -72,6 +72,9 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm.rr-none i { display: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm[data-tip]:hover::after,
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-pm[data-tip]:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 70; bottom: calc(100% + 8px); left: 50%; width: max-content; max-width: 240px; padding: 8px 10px; color: var(--rr-muted); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 12px; box-shadow: var(--rv-shadow-popover, 0 8px 24px rgb(0 0 0 / 18%)); font-size: 12px; line-height: 1.45; text-align: left; transform: translateX(-50%); white-space: normal; }
+/* The table scrolls sideways, so it clips anything above its first rows: there the platform tip opens below the logos. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) tbody tr:nth-child(-n+2) .rr-pm[data-tip]:hover::after,
+:is(main .rr.rr-products, .rr-layer.rr-layer) tbody tr:nth-child(-n+2) .rr-pm[data-tip]:focus-visible::after { top: calc(100% + 8px); bottom: auto; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-xsel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 16px; color: var(--rr-muted); background: var(--rr-raised); border-top: 1px solid var(--rr-line); font-size: 13px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-xsel b { color: var(--rr-ink); font-weight: 600; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-menu > button.rr-two { align-items: flex-start; }

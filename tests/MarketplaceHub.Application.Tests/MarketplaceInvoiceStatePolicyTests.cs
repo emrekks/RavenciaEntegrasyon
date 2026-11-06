@@ -63,6 +63,18 @@ public sealed class MarketplaceInvoiceStatePolicyTests
         Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.PackageInvoiceLabel(package, null, "{}", [package.RawStatus], platformCode));
     }
 
+    // Audit 2026-10-19 W13: the screens say a status was set by hand, so the hand-set value reaches the order and
+    // invoice views as it is stored; anything else (no status, an unknown word) is not a hand-set status.
+    [Theory]
+    [InlineData("UPLOADED", "UPLOADED")]
+    [InlineData(" uploaded ", "UPLOADED")]
+    [InlineData("PENDING", "PENDING")]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("DONE", null)]
+    public void HandSetInvoiceStatusIsShownAsStored(string? manual, string? expected) =>
+        Assert.Equal(expected, MarketplaceHub.Infrastructure.Persistence.MarketplaceSalesService.HandSetInvoiceStatus(manual));
+
     [Fact]
     public void InvoicedStateCannotBeDowngradedByAnOlderOrIncompleteSnapshot()
     {

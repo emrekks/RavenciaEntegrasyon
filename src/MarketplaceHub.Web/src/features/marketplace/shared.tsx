@@ -1,5 +1,6 @@
 // Code the marketplace routes share (orders, shipments, returns, integrations, mappings): types, helpers and the
 // windows several screens open. Each route lives in its own module so it loads as its own chunk.
+import { handSetInvoiceStatusNote } from '../invoicing/manual-invoice-status'
 import { marketplaceProductSearchUrl } from '../questions/marketplace-product-link'
 import { Fragment, type ReactNode } from 'react'
 import { UiIcon } from '../../shared/components'
@@ -32,7 +33,7 @@ export function productLineQuantity(line: { quantity?: number; orderedQuantity?:
   const orderedQuantity = line.orderedQuantity ?? line.quantity ?? 0
   return Math.max(0, orderedQuantity - (line.cancelledQuantity ?? 0))
 }
-export type Shipment = { id: string; orderId: string; orderNumber: string; externalPackageId: string; status: string; rawStatus: string; cargoTrackingNumber: string | null; cargoProviderName: string | null; statusOccurredAt: string; version: number; isResend: boolean }
+export type Shipment = { id: string; orderId: string; orderNumber: string; externalPackageId: string; status: string; rawStatus: string; cargoTrackingNumber: string | null; cargoProviderName: string | null; statusOccurredAt: string; version: number; isResend: boolean; manualInvoiceStatus?: string | null }
 export type ReturnLine = { status?: string | null; decisionPending?: boolean; stockDispositionAvailable?: boolean; stockPending?: boolean; acceptDetail?: string | null; marketplaceNote?: string | null; resolved?: boolean | null; acceptedBySeller?: boolean | null; id: string; externalLineId: string; orderLineId: string; sku: string; barcode: string | null; title: string; quantity: number; disposedQuantity: number; remainingQuantity: number; unitPrice: number; imageUrl: string | null; hasInventoryMapping: boolean; optionSignature?: string | null; modelCode?: string | null; color?: string | null; size?: string | null; approvedAt?: string | null; systemNote?: string | null; reasonText?: string | null; sellerDescription?: string | null; platformApprovalReason?: string | null; platformDescription?: string | null; returnAmounts?: ReturnAmounts | null };
 export type IntegrationFeedback = { kind: 'success' | 'error' | 'info'; message: string; details?: NotificationDetail[]; target?: NotificationTarget | null; title?: string; context?: NotificationContext }
 export function Empty({ children }: { children: string }) { return <div className="empty"><span className="empty-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Kayıt yok</strong><p>{children}</p></div> }
@@ -62,7 +63,8 @@ export function orderDisplayShipment(item: Pick<Order, 'platformCode' | 'package
 export function returnDateText(value: string | null | undefined) { if (!value) return '—'; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : formatIstanbul(date, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) }
 export const invoiceRing: Record<string, [RingTone, number]> = { 'Fatura Bekliyor': ['wait', 0.2], 'Fatura İletiliyor': ['move', 0.66], 'Faturası Mevcut': ['ok', 1], 'Fatura İletilemedi': ['bad', 0.66], 'Fatura Oluşturulamadı': ['bad', 0.33], 'Fatura İptal': ['off', 0] }
 export const invoiceFailureText: Record<string, string> = { 'Fatura İletilemedi': 'Fatura pazar yerine iletilemedi. Ayrıntılar Faturalar sayfasında.', 'Fatura Oluşturulamadı': 'Fatura oluşturulamadı. Ayrıntılar Faturalar sayfasında.' }
-export function ReturnInvoiceRing({ status, isMicroExport }: { status: string; isMicroExport: boolean }) {
+// setByHand: the seller set the status by hand (W13); the ring says so under its label.
+export function ReturnInvoiceRing({ status, isMicroExport, setByHand = false }: { status: string; isMicroExport: boolean; setByHand?: boolean }) {
   const base = invoiceStatusDisplayLabel(status, false)
   const label = invoiceStatusDisplayLabel(status, isMicroExport)
   const [baseTone, progress] = invoiceRing[base] ?? ['off', 0]
@@ -73,7 +75,7 @@ export function ReturnInvoiceRing({ status, isMicroExport }: { status: string; i
   // "İhracat Faturası Bekliyor" takes two lines in the narrow column instead of three.
   const words = label.split(' ')
   const shown = label.length <= 18 ? label.replace(/ /g, ' ') : words.length >= 4 ? words.reduce<string[]>((pairs, word, index) => index % 2 ? [...pairs.slice(0, -1), `${pairs[pairs.length - 1]}\u00a0${word}`] : [...pairs, word], []).join(' ') : label
-  const ring = <RrRing tone={tone} progress={progress} label={shown} />
+  const ring = <RrRing tone={tone} progress={progress} label={shown} detail={setByHand ? handSetInvoiceStatusNote : undefined} />
   // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can read why the invoice failed
   return invoiceFailureText[base] ? <span className="rr-reason-tip" tabIndex={0}>{ring}<span className="rr-reason-pop" role="tooltip"><b>{label}</b>{invoiceFailureText[base]}</span></span> : ring
 }

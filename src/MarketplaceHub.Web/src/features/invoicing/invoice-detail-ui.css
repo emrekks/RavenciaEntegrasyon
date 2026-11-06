@@ -30,5 +30,7 @@
 .invoice-delivery-retry > span, .invoice-return-document > span { flex: 1; min-width: 0; }
 .invoice-delivery-retry strong, .invoice-return-document strong { color: var(--rv-color-ink); font-weight: 600; }
 .app-shell main .invoice-delivery-retry > button { flex: none; height: 36px; min-height: 0; padding: 0 12px; border-radius: 7px; }
+/* A status the seller set by hand (W13): a quiet note under the label, so it never reads like a confirmed invoice. */
+:is(.invoice-reference-status, .invoice-detail-invoice-status) > .invoice-hand-set-note { display: block; color: var(--rv-color-muted); font-size: 12px; line-height: 1.35; }
 .invoice-reference-status > .invoice-delivery-retry-note { display: block; color: var(--rv-color-muted); font-size: 12px; line-height: 1.35; }
 .invoice-reference-status > .invoice-return-document-note { display: block; color: var(--rv-color-ink); font-size: 12px; font-weight: 600; line-height: 1.35; }

@@ -25,7 +25,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
     {
         var variants = ListedVariants(tenantId);
         var total = await variants.CountAsync(cancellationToken);
-        var missingCost = await variants.CountAsync(variant => variant.CostPrice == null, cancellationToken);
+        var missingCost = await variants.CountAsync(variant => variant.CostPrice == null || variant.CostPrice <= 0, cancellationToken);
         var missingDesi = await variants.CountAsync(variant => variant.Desi == null, cancellationToken);
         return ServiceResult<ProductTransferSummaryView>.Ok(new ProductTransferSummaryView(total, missingCost, missingDesi));
     }
@@ -33,7 +33,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
     public async Task<ServiceResult<byte[]>> ExportAsync(Guid tenantId, ProductTransferExportFilter filter, Guid? brandId, Guid? categoryId, CancellationToken cancellationToken)
     {
         var variants = ListedVariants(tenantId);
-        if (filter == ProductTransferExportFilter.MissingCost) variants = variants.Where(variant => variant.CostPrice == null);
+        if (filter == ProductTransferExportFilter.MissingCost) variants = variants.Where(variant => variant.CostPrice == null || variant.CostPrice <= 0);
         if (filter == ProductTransferExportFilter.MissingDesi) variants = variants.Where(variant => variant.Desi == null);
         var rows = await (
             from variant in variants
@@ -123,7 +123,7 @@ public sealed class ProductTransferService(AppDbContext db, TimeProvider timePro
             new object?[] { "Varyant, Marka, Kategori ve Durum sütunları yalnız bilgi içindir; değiştirmeniz hiçbir şeyi değiştirmez. Stok Kodu satırın eşleştirme anahtarıdır ve değiştirilemez." },
             new object?[] { "Ürün Adı ve KDV Oranı ürünün kendisine aittir: bir ürünün tüm satırlarına aynı değeri yazın. Barkod tek bir varyantta olabilir ve silinemez; barkodu değiştirirken satır yalnız Stok Kodu ile eşleştirilir. Model kodunu silmek için - yazın." },
             new object?[] { "Panel Satış Fiyatı ve Panel Liste Fiyatı ürünün panel ana fiyatıdır; liste fiyatı satış fiyatından küçük olamaz. Panel fiyatı ve KDV panele kaydedilir, pazaryerine fiyat göndermez." },
-            new object?[] { "Maliyet: 1 adetin Türk lirası maliyeti, ürün kartındaki \"Maliyet\" alanıyla aynı değer. Kâr raporu bu değeri, müşterinin ödediği KDV dahil satış tutarından düşer. 0 geçerli bir maliyettir." },
+            new object?[] { "Maliyet: 1 adetin Türk lirası maliyeti, ürün kartındaki \"Maliyet\" alanıyla aynı değer. Kâr raporu bu değeri, müşterinin ödediği KDV dahil satış tutarından düşer. 0 maliyet girilmemiş sayılır: kayıtlı maliyeti siler, kâr hesaplanmaz ve varyant eksik maliyet listesinde kalır." },
             new object?[] { "Desi: kargo hacim ağırlığı. Raporlar kargo ücretini, pazaryeri kargo tutarı gelmediğinde bu değerle tahmin eder. 0'dan büyük olmalıdır." },
             new object?[] { "Stok: ana depodaki eldeki stok, tam sayı. Ürün sayfasındaki stok değişikliği gibi kaydedilir: stok gönderimi açık mağazalara yeni stok gönderilir." },
             new object?[] { "Mağaza fiyatları: her mağaza için satış ve liste fiyatı. Yalnız o mağazada fiyat kaydı olan varyantlar güncellenir; liste fiyatı satış fiyatından küçük olamaz. Fiyat panele kaydedilir, kendisi pazaryerine fiyat göndermez." },

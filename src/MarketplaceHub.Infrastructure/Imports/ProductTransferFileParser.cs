@@ -200,9 +200,13 @@ public static partial class ProductTransferFileParser
 
     private static ProductTransferValue FormulaError => ProductTransferValue.Invalid("Formül içeren hücre okunmaz; değerleri \"Değerleri Yapıştır\" ile yazın.");
 
-    // Cost in TL; 0 is a valid cost.
-    public static ProductTransferValue ParseCost(string text, bool fromCsv) =>
-        ParseNumber(text, fromCsv, "Maliyet", MaximumCost, "10.000.000 ₺", zeroAllowed: true);
+    // Cost in TL. K3 (owner decision 2026-11-06): a cost of 0 means "not entered", so a 0 removes the stored cost like
+    // "-" does and is never stored; the reports and the missing-cost template read 0 as missing too.
+    public static ProductTransferValue ParseCost(string text, bool fromCsv)
+    {
+        var value = ParseNumber(text, fromCsv, "Maliyet", MaximumCost, "10.000.000 ₺", zeroAllowed: true);
+        return value is { Kind: ProductTransferValueKind.Set, Amount: 0m } ? ProductTransferValue.Clear : value;
+    }
 
     // Desi (volumetric weight); 0 is not one, as the product editor stores 0 as "no desi".
     public static ProductTransferValue ParseDesi(string text, bool fromCsv) =>

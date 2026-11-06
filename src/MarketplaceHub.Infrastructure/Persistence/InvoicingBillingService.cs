@@ -172,7 +172,7 @@ public sealed partial class InvoicingBillingService(
                 ?? invoiceReadIssues.GetValueOrDefault($"order-invoice-reconciliation:{order.ConnectionId}:{order.ExternalOrderId}");
             if (invoiceReadIssue is not null && !InvoiceWorkspaceReadIssuePolicy.ShouldDisplay(invoiceReadIssue.Code))
                 invoiceReadIssue = null;
-            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus), order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary, connection?.Environment ?? "UNKNOWN", package.MarketplaceInvoiceUrl);
+            return new InvoiceWorkspaceItemView(order.Id, package.Id, order.OrderNumber, customerName, order.OrderedAt, package.Status.ToString().ToUpperInvariant(), deliveredAt, dueAt, dueSoon, order.Currency, package.NetAmount > 0 ? package.NetAmount : order.NetAmount, orderLines.Count, image, package.CargoProviderExternalId, package.CargoTrackingNumber, invoice?.Id, invoiceStatus, ResolveInvoiceNumber(invoice?.InvoiceNumber, package.MarketplaceInvoiceNumber), MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus), order.ShipmentAddressSnapshotJson, order.InvoiceAddressSnapshotJson, workspaceLines, invoice?.LastErrorCode, deliveryState?.Status ?? deliveryAttempt?.Status, deliveryState?.ExternalReference ?? deliveryAttempt?.ExternalReference, invoice is not null && invoiceDocumentIds.Contains(invoice.Id), connection?.PlatformCode ?? "TRENDYOL", connection?.DisplayName ?? "Trendyol", connection is not null && MarketplaceInvoiceCreationPolicy.IsEnabled(connection.PlatformCode, connection.SettingsJson), invoiceReadIssue?.Code, invoiceReadIssue?.Summary, connection?.Environment ?? "UNKNOWN", package.MarketplaceInvoiceUrl, ManualInvoiceStatus: MarketplaceSalesService.HandSetInvoiceStatus(package.ManualInvoiceStatus));
         }).Where(x => x is not null).Select(x => x!).ToList();
     }
 
@@ -849,7 +849,8 @@ public sealed partial class InvoicingBillingService(
                 orderSnapshotsForItem?.ExternalOrderId,
                 packageDetailsForItem?.ExternalPackageId ?? candidate.Package.ExternalPackageId,
                 candidate.Invoice is null ? null : deliveryRetries.GetValueOrDefault(candidate.Invoice.Id)?.View,
-                candidate.Invoice is null ? null : returnDocumentNotes.GetValueOrDefault(candidate.Invoice.Id));
+                candidate.Invoice is null ? null : returnDocumentNotes.GetValueOrDefault(candidate.Invoice.Id),
+                MarketplaceSalesService.HandSetInvoiceStatus(candidate.Package.ManualInvoiceStatus));
         }).ToList();
     }
 

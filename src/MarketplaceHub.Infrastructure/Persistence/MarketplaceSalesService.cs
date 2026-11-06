@@ -3439,6 +3439,10 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             _ => null
         };
 
+    // The hand-set status itself ("UPLOADED" / "PENDING"), so the screens can say the label was set by hand.
+    internal static string? HandSetInvoiceStatus(string? manualInvoiceStatus) =>
+        ManualInvoiceLabel(manualInvoiceStatus) is null ? null : manualInvoiceStatus!.Trim().ToUpperInvariant();
+
     // The orders filter and the row label read an issued invoice with these same two rules (P4, 1 Nov 2026):
     // - not on the platform: the marketplace leg failed, or it stopped with an error while waiting;
     // - needs review: the provider issued it (it has an external reference) and it stopped for review, for example
@@ -3827,7 +3831,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                orderby connection.Id
                select connection).FirstOrDefaultAsync(cancellationToken);
 
-    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId), x.UnreadableLineCount);
+    private static ShipmentView Map(ShipmentPackage x, string orderNumber) => new(x.Id, x.OrderId, orderNumber, x.ExternalPackageId, Wire(x.Status), x.RawStatus, x.CargoTrackingNumber, x.StatusOccurredAt, x.Version, x.CargoProviderExternalId, ShipmentPackageClassification.IsResend(x.CreatedBy, x.OriginExternalPackageId), x.UnreadableLineCount, HandSetInvoiceStatus(x.ManualInvoiceStatus));
     private static string Wire<T>(T value) where T : Enum => string.Concat(value.ToString().Select((ch, index) => char.IsUpper(ch) && index > 0 ? "_" + ch : ch.ToString())).ToUpperInvariant();
     private const string VerifyingCode = "EXTERNAL_EFFECT_VERIFYING";
     private const string VerifyingMessage = "Pazaryerinin yanıtı kesinleşmedi; sonuç birkaç saniye içinde pazaryerinden okunup panel güncellenecek. İşlemi yeniden göndermeyin.";

@@ -1415,7 +1415,10 @@ public sealed record ShipmentView(
     bool IsResend = false,
     // Product lines of the package the marketplace listed but the panel could not read (kept without them; no
     // invoice until a later read fills them in). 0 when every line was read.
-    int UnreadableLineCount = 0);
+    int UnreadableLineCount = 0,
+    // The invoice status the seller set by hand ("UPLOADED" / "PENDING"), so the screens can say the label was marked
+    // by hand; null when no status was set by hand.
+    string? ManualInvoiceStatus = null);
 public sealed record OrderDetailView(
     Guid Id,
     string OrderNumber,

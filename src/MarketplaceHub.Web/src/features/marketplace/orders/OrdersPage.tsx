@@ -11,7 +11,8 @@ import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotenc
 import { safeExternalUrl } from '../../../shared/safe-url'
 import { useMediaQuery } from '../../../shared/hooks/useMediaQuery'
 import { invoiceSendDeniedReason, useCanSendInvoices } from '../../../shared/hooks/useCanSendInvoices'
-import { setManualInvoiceStatus, type ManualInvoiceStatus } from '../../invoicing/manual-invoice-status'
+import { handSetInvoiceStatus, setManualInvoiceStatus, type ManualInvoiceStatus } from '../../invoicing/manual-invoice-status'
+import { ShopifyInvoiceStatusDialog, shopifyInvoiceStatusHint, shopifyUploadedNote } from '../../invoicing/ShopifyInvoiceStatusDialog'
 import { NoticeToast } from '../../../shared/components/NoticeToast'
 import { invoiceStatusDisplayLabel, statusLabel } from '../../../shared/status-labels'
 import { DateRangePicker } from '../../../shared/DateRangePicker'
@@ -268,39 +269,13 @@ function InvoiceUploadModal({ item, onClose, onFeedback }: { item: Order; onClos
     {message && <div className={`rr-callout${failed ? ' rr-danger' : ''}`} role={failed ? 'alert' : 'status'}><RrIcon name={failed ? 'alert' : 'info'} /><span>{message}</span></div>}
   </RrModal>
 }
-function ShopifyInvoiceStatusModal({ item, onClose, onFeedback }: { item: Order; onClose: () => void; onFeedback: IntegrationFeedbackHandler }) {
-  const client = useQueryClient()
-  // A hand-set "uploaded" reads as FATURA_KONTROLDE ("Faturası Mevcut") on every screen.
-  const [status, setStatus] = useState<'PENDING' | 'UPLOADED'>(['FATURA_YUKLENDI', 'FATURA_KONTROLDE'].includes(item.invoiceStatus) ? 'UPLOADED' : 'PENDING')
-  const [message, setMessage] = useState('')
-  const detail = useQuery({ queryKey: orderDetailQueryKey(item.id), queryFn: () => hubApi<OrderDetail>(`/orders/${item.id}`) })
-  const update = useMutation({
-    mutationFn: async () => {
-      if (!detail.data || detail.data.platformCode !== 'SHOPIFY') throw new Error('Manuel fatura durumu yalnız Shopify siparişlerinde kullanılabilir.')
-      const packageId = orderDisplayShipment(detail.data)?.id
-      if (!packageId) throw new Error('Fatura durumu için Shopify sipariş paketi bulunamadı.')
-      if (status === 'UPLOADED' && !item.invoiceDocumentUrl) throw new Error('Faturası yüklendi durumuna geçmeden önce mevcut yerel fatura kaydına belge ekleyin.')
-      return setManualInvoiceStatus([packageId], status)
-    },
-    onSuccess: async () => {
-      const successMessage = status === 'UPLOADED' ? 'Fatura durumu “Faturası yüklendi” olarak güncellendi.' : 'Fatura durumu “Fatura bekliyor” olarak güncellendi.'
-      onFeedback(successMessage, 'success')
-      await Promise.all([client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice-viewer'] }), client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] })])
-      onClose()
-    },
-    onError: error => {
-      const errorMessage = error instanceof Error ? error.message : 'Fatura durumu güncellenemedi.'
-      setMessage(errorMessage)
-      onFeedback(errorMessage, 'error')
-    }
-  })
-  return <RrModal crumb="Shopify" title="Fatura Durumunu Değiştir" desc={displayOrderNumber(item.orderNumber)} hint="Bu değişiklik yalnızca paneldeki paket durumunu günceller." size="sm" locked={update.isPending} onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose} disabled={update.isPending}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => update.mutate()} disabled={update.isPending || !detail.data || (status === 'UPLOADED' && !item.invoiceDocumentUrl)} title={status === 'UPLOADED' && !item.invoiceDocumentUrl ? 'Önce mevcut fatura kaydına belge ekleyin.' : undefined}>{update.isPending ? 'Kaydediliyor…' : 'Durumu Kaydet'}</button></>}>
-    {detail.isLoading ? <RrLoading text="Sipariş ve fatura bilgileri yükleniyor…" /> : detail.isError || !detail.data ? <RrError error={detail.error} onRetry={() => void detail.refetch()} /> : <>
-      <label className="rr-fld"><small>Yeni Fatura Durumu</small><select className="rr-in" value={status} onChange={event => setStatus(event.target.value as 'PENDING' | 'UPLOADED')} disabled={update.isPending}><option value="PENDING">Fatura Bekliyor</option><option value="UPLOADED">Faturası Yüklendi</option></select></label>
-      {status === 'UPLOADED' && !item.invoiceDocumentUrl && <div className="rr-callout rr-warn" role="status"><RrIcon name="alert" /><span>Yüklenen belgeyle ilişkilendirilmiş yerel fatura bağlantısı yok. Önce belgeyi mevcut fatura kaydına ekleyin.</span></div>}
-      {message && <div className="rr-callout rr-danger" role="alert"><RrIcon name="alert" /><span>{message}</span></div>}
-    </>}
-  </RrModal>
+// The Shopify package whose invoice status is set by hand: the order detail names it (the list row may not carry it).
+async function shopifyInvoicePackageId(orderId: string) {
+  const detail = await hubApi<OrderDetail>(`/orders/${orderId}`)
+  if (detail.platformCode !== 'SHOPIFY') throw new Error('Manuel fatura durumu yalnız Shopify siparişlerinde kullanılabilir.')
+  const packageId = orderDisplayShipment(detail)?.id
+  if (!packageId) throw new Error('Fatura durumu için Shopify sipariş paketi bulunamadı.')
+  return packageId
 }
 function customerDisplayName(item: Order) {
   if (item.customerName && item.customerName !== '—' && item.customerName.trim() !== '') return item.customerName
@@ -607,7 +582,7 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
       <article className="rr-scard"><header><div className="rr-h3">Sipariş Bilgileri</div><RrRing tone={ringTone} progress={ringProgress} label={ringLabel} detail={ringDetail.text} detailClass={ringDetail.cls} /></header><dl className="rr-kv"><dt>Platform</dt><dd>{item.platformDisplayName || returnPlatformName(item.platformCode)}</dd><dt>Sipariş Numarası</dt><dd className="rr-num">{displayOrderNumber(item.orderNumber)}<button type="button" className="rr-icon-btn" style={{ width: 22, height: 22 }} onClick={copyOrderNumber} aria-label={`Sipariş numarası ${item.orderNumber} kopyala`}><RrIcon name={copied ? 'check' : 'copy'} size={14} /></button></dd><dt>Sipariş Tarihi</dt><dd className="rr-num">{returnDateText(item.orderedAt)}</dd><dt>Paket No</dt><dd className="rr-num">{packageNoText}</dd><dt>Alıcı</dt><dd>{customerDisplayName(item)}</dd>{item.buyerType && <><dt>Alıcı Tipi</dt><dd><BuyerTypeTag buyerType={item.buyerType} /><small className="rr-buyer-reason">{item.buyerType.reason}</small></dd></>}{(item.platformInfo ?? []).map(info => <Fragment key={info.label}><dt>{info.label}</dt><dd>{safeExternalUrl(info.url) ? <a className="rr-btn rr-link" href={safeExternalUrl(info.url)!} target="_blank" rel="noreferrer noopener">{info.value}</a> : info.value}</dd></Fragment>)}</dl></article>
       <article className="rr-scard"><header><div className="rr-h3">Ürünler</div></header>{rowLines(item, 'ALL', showCancelled).length ? <div className="rr-plines">{rowLines(item, 'ALL', showCancelled).map(line => { const cancel = lineCancel(line); return <div className={`rr-pline${cancel.whole ? ' rr-pline-off' : ''}`} key={line.id}><RrThumb src={lineImage(line)} fallbackSrc={thumbFallback(line)} quantity={cancel.whole ? cancel.ordered : cancel.active} alt={line.title} onOpen={() => openPreview(line)} /><div><b>{line.title}</b>{cancel.whole && <span className="sr-only">İptal edildi</span>}<ReturnFactLines facts={facts(line)} /><small><span>Birim Fiyatı:</span> <b className="rr-num">{cancel.whole && line.unitPrice <= 0 ? '—' : money(line.unitPrice)}</b></small>{cancel.partial && <small className="rr-pline-cut">{partialQuantityText(line)}</small>}</div></div> })}</div> : <p className="rr-lead">Ürün bilgisi eşitleme bekliyor</p>}</article>
       <article className="rr-scard"><header><div className="rr-h3">Kargo Bilgileri</div></header><dl className="rr-kv"><dt>Kargo Firması</dt><dd>{cargoLabel(cargoName)}</dd><dt>Kargo Kodu</dt><dd className="rr-num">{deliveryNoText}</dd>{item.shippedAt && <><dt>Kargoya Veriliş</dt><dd className="rr-num">{returnDateText(item.shippedAt)}</dd></>}</dl></article>
-      <article className="rr-scard"><header><div className="rr-h3">Fatura Bilgileri</div>{isCancelledOrder && invoiceStatusDisplayLabel(item.invoiceStatus, false) === 'Fatura Bekliyor' ? <span className="rr-muted-note">İptal edildi</span> : <ReturnInvoiceRing status={item.invoiceStatus} isMicroExport={item.isMicroExport} />}</header><dl className="rr-kv">{hasDiscount && <><dt>Satış Tutarı</dt><dd className="rr-num">{money(saleTotal)}</dd><dt>Satıcı İndirimi</dt><dd className="rr-num">{money(item.discountAmount)}</dd></>}<dt>Faturalanacak Tutar</dt><dd className="rr-num"><b>{money(invoiceableTotal)}</b></dd>{!invoiceNeedsAction && invoiceDocumentHref && <><dt>Fatura Belgesi</dt><dd><a className="rr-btn rr-link" href={invoiceDocumentHref} download>Faturayı Gör</a></dd></>}</dl></article>
+      <article className="rr-scard"><header><div className="rr-h3">Fatura Bilgileri</div>{isCancelledOrder && invoiceStatusDisplayLabel(item.invoiceStatus, false) === 'Fatura Bekliyor' ? <span className="rr-muted-note">İptal edildi</span> : <ReturnInvoiceRing status={item.invoiceStatus} isMicroExport={item.isMicroExport} setByHand={Boolean(handSetInvoiceStatus(shipment?.manualInvoiceStatus))} />}</header><dl className="rr-kv">{hasDiscount && <><dt>Satış Tutarı</dt><dd className="rr-num">{money(saleTotal)}</dd><dt>Satıcı İndirimi</dt><dd className="rr-num">{money(item.discountAmount)}</dd></>}<dt>Faturalanacak Tutar</dt><dd className="rr-num"><b>{money(invoiceableTotal)}</b></dd>{!invoiceNeedsAction && invoiceDocumentHref && <><dt>Fatura Belgesi</dt><dd><a className="rr-btn rr-link" href={invoiceDocumentHref} download>Faturayı Gör</a></dd></>}</dl></article>
     </div>
     <footer className="rr-sheet-f">
       {detailActionsOpen && detailMenuActions.length > 0 && <div ref={detailMenuRef} className="rr-menu rr-sheet-menu" role="menu">{detailMenuActions.map(action => <button type="button" role="menuitem" key={action.key} disabled={action.disabled} onClick={closeDetailThen(action.run)}>{action.label}</button>)}</div>}
@@ -623,11 +598,11 @@ function OrderReferenceRow({ item, selected, onSelect, selectionMode, onMenuChan
     <td className="rr-wide" data-l="Bilgiler"><div className="rr-plines">{lines.length ? lines.map(line => { const cancel = lineCancel(line); const off = cancel.whole || cancelledPart; return <div className={`rr-pline${off ? ' rr-pline-off' : ''}`} key={line.id}><RrThumb src={lineImage(line)} fallbackSrc={thumbFallback(line)} quantity={cancelledPart ? cancel.cancelled : cancel.whole ? cancel.ordered : cancel.active} alt={line.title} onOpen={() => openPreview(line)} /><div><b title={line.title}><ProductTitleLink platformCode={item.platformCode} line={line} /></b>{off && <span className="sr-only">İptal edildi</span>}<small className="rr-card-only"><span>Birim Fiyatı:</span> <b className="rr-num">{off && line.unitPrice <= 0 ? '—' : money(line.unitPrice)}</b></small>{facts(line).map(([label, value]) => <small key={label} title={`${label}: ${value}`}><span>{label}:</span> <b className="rr-num">{value}</b></small>)}</div></div> }) : <div className="rr-pline"><RrThumb src={item.primaryImageUrl} alt="Ürün" /><div><b>Ürün bilgisi eşitleme bekliyor</b></div></div>}</div></td>
     <td className="rr-mid rr-price-col" data-l="Birim Fiyat"><div className="rr-prices">{lines.length ? lines.map(line => { const cancel = lineCancel(line); const off = cancel.whole || cancelledPart; const quantity = cancelledPart ? cancel.cancelled : cancel.whole ? cancel.ordered : cancel.active; return <div className={`rr-pr${off ? ' rr-pr-off' : ''}`} key={line.id}><b className="rr-num">{off && line.unitPrice <= 0 ? '—' : money(line.unitPrice)}</b>{cancel.partial && !cancelledPart ? <small>{partialQuantityText(line)}</small> : off ? <small>{quantity} adet iptal</small> : quantity > 1 && <small>{quantity} adet</small>}</div> }) : <div className="rr-pr"><b className="rr-num">{money(item.netAmount)}</b></div>}</div></td>
     <td className="rr-mid" data-l="Kargo"><div className="rr-cargocell">{cargoIcon ? <img className="rr-cargo-img" src={cargoIcon} alt={cargoLabel(cargoName)} title={cargoLabel(cargoName)} referrerPolicy="no-referrer" loading="lazy" /> : <span className="rr-muted">{cargoName?.trim() ? cargoLabel(cargoName) : 'Kargo bekleniyor'}</span>}<small className="rr-num">{trackingNumber ?? (isHepsiburadaUnverifiedWithoutPackage ? 'Gönderi durumu doğrulanmadı' : 'Takip no bekleniyor')}</small>{item.shippedAt && <small className="rr-shipdate" title="Kargoya veriliş tarihi"><span>Kargoya Veriliş</span><b className="rr-num">{returnDateText(item.shippedAt)}</b></small>}{isCargoTrackingStage && shipment?.cargoTrackingNumber && <Link className="rr-btn rr-link" style={{ fontSize: 12 }} to={`/shipments/${shipment.id}`}>Kargo Takip <RrIcon name="open" /></Link>}</div></td>
-    <td data-l="Fatura"><div className="rr-invcell">{hasDiscount && <><span className="rr-m"><span>Satış Tutarı</span><b className="rr-num">{money(saleTotal)}</b></span><span className="rr-m"><span>Satıcı İndirimi</span><b className="rr-num">{money(item.discountAmount)}</b></span></>}<span className="rr-m rr-pay"><span>Faturalanacak Tutar</span><b className="rr-num">{money(invoiceableTotal)}</b></span>{isCancelledOrder && invoiceStatusDisplayLabel(item.invoiceStatus, false) === 'Fatura Bekliyor' ? <span className="rr-muted-note">İptal edildi</span> : <ReturnInvoiceRing status={item.invoiceStatus} isMicroExport={item.isMicroExport} />}{!isCancelledOrder && <RrAnchor trigger={(open, toggle) => <button type="button" className="rr-btn rr-link rr-inv-trigger" aria-haspopup="menu" aria-expanded={open} onClick={toggle}>Fatura İşlemleri <RrIcon name="chev" /></button>}>{() => menu(invoiceItems, `${displayOrderNumber(item.orderNumber)} fatura işlemleri`)}</RrAnchor>}</div></td>
+    <td data-l="Fatura"><div className="rr-invcell">{hasDiscount && <><span className="rr-m"><span>Satış Tutarı</span><b className="rr-num">{money(saleTotal)}</b></span><span className="rr-m"><span>Satıcı İndirimi</span><b className="rr-num">{money(item.discountAmount)}</b></span></>}<span className="rr-m rr-pay"><span>Faturalanacak Tutar</span><b className="rr-num">{money(invoiceableTotal)}</b></span>{isCancelledOrder && invoiceStatusDisplayLabel(item.invoiceStatus, false) === 'Fatura Bekliyor' ? <span className="rr-muted-note">İptal edildi</span> : <ReturnInvoiceRing status={item.invoiceStatus} isMicroExport={item.isMicroExport} setByHand={Boolean(handSetInvoiceStatus(shipment?.manualInvoiceStatus))} />}{!isCancelledOrder && <RrAnchor trigger={(open, toggle) => <button type="button" className="rr-btn rr-link rr-inv-trigger" aria-haspopup="menu" aria-expanded={open} onClick={toggle}>Fatura İşlemleri <RrIcon name="chev" /></button>}>{() => menu(invoiceItems, `${displayOrderNumber(item.orderNumber)} fatura işlemleri`)}</RrAnchor>}</div></td>
     <td className="rr-mid" data-l="İşlemler">{isCancelledOrder ? <div className="rr-actcell"><span className="rr-muted-note">İşlem yapılamaz</span>{detailOpenButton}</div> : <div className="rr-actcell">{canPrintLabels && labelFormat && <button type="button" className={`rr-btn rr-lbl${labelPrinted ? ' rr-printed' : ''}`} disabled={labelBlockedByInvoice} title={labelBlockedByInvoice ? 'Mikro ihracat faturası kesilmeden kargo etiketi yazdırılamaz.' : labelPrinted ? `${labelFormat === 'a4' ? 'A4' : 'Sticker'} etiketi daha önce yazdırıldı; tekrar yazdırılabilir.` : `${labelFormat === 'a4' ? 'A4' : 'Sticker'} Etiketi Yazdır`} onClick={() => onPrintLabel(labelFormat)}><RrIcon name="print" />Etiket</button>}<RrAnchor trigger={(open, toggle) => <button type="button" className={`rr-trigger${open ? ' rr-on' : ''}`} aria-haspopup="menu" aria-expanded={open} onClick={toggle}><span>İşlemler</span><RrIcon name="chev" /></button>}>{() => menu(actionItems, `${displayOrderNumber(item.orderNumber)} sipariş işlemleri`)}</RrAnchor>{detailOpenButton}</div>}</td>
   </tr>
     {detailSheet}
-    {invoiceStatusModalOpen && <ShopifyInvoiceStatusModal item={item} onClose={() => setInvoiceStatusModalOpen(false)} onFeedback={(message, kind) => { if (kind !== 'pending') appendNotification({ ...orderNotificationContext(item), operation: 'Shopify fatura durumu', message, kind: normalizeNotificationKind(message, kind) }) }} />}
+    {invoiceStatusModalOpen && <ShopifyInvoiceStatusDialog orderNumber={displayOrderNumber(item.orderNumber)} invoiceStatus={item.invoiceStatus} manualInvoiceStatus={shipment?.manualInvoiceStatus} resolvePackageId={() => shopifyInvoicePackageId(item.id)} onClose={() => setInvoiceStatusModalOpen(false)} onFeedback={(message, kind) => { appendNotification({ ...orderNotificationContext(item), operation: 'Shopify fatura durumu', message, kind: normalizeNotificationKind(message, kind) }) }} />}
   </>
 }
 function HepsiburadaPackageCreateModal({ item, onClose, onCreated }: { item: Order; onClose: () => void; onCreated: (packageNumber: string) => void }) {
@@ -749,7 +724,6 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
   const client = useQueryClient()
   const [status, setStatus] = useState('')
   const isInvoice = kind === 'invoice'
-  const invoiceStatusBlocked = isInvoice && status === 'UPLOADED' && items.some(item => !item.invoiceDocumentUrl)
   const update = useMutation({
     mutationFn: async () => {
       if (!status) throw new Error('Uygulanacak durumu seçin.')
@@ -767,7 +741,6 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
               if (order.platformCode !== 'SHOPIFY') throw new Error('Sipariş Shopify bağlantısına ait değil.')
               const packageId = orderDisplayShipment(order)?.id
               if (!packageId) throw new Error('Fatura durumu için Shopify sipariş paketi bulunamadı.')
-              if (status === 'UPLOADED' && !item.invoiceDocumentUrl) throw new Error('Faturası yüklendi durumuna geçmeden önce yerel fatura kaydına belge ekleyin.')
               // in the invoice mode the window offers only PENDING and UPLOADED
               await setManualInvoiceStatus([packageId], status as ManualInvoiceStatus)
             } else {
@@ -799,9 +772,9 @@ function ShopifyBulkStatusModal({ kind, items, onClose, onFeedback, onUpdated }:
     }
   })
   const validStatus = isInvoice ? status === 'PENDING' || status === 'UPLOADED' : shopifyOrderStatuses.includes(status as (typeof shopifyOrderStatuses)[number])
-  return <RrModal crumb="Shopify" title={isInvoice ? 'Toplu Fatura Durumu Değiştir' : 'Toplu Sipariş Durumu Değiştir'} desc={`${items.length} seçili Shopify siparişi`} hint={isInvoice ? 'Shopify dışındaki kayıtlar etkilenmez.' : 'Shopify dışındaki kayıtlar etkilenmez. Bu işlem yalnızca panel sipariş durumunu günceller; Shopify’daki sipariş veya kargo durumu değişmez.'} size="sm" locked={update.isPending} onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose} disabled={update.isPending}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => update.mutate()} disabled={!validStatus || update.isPending || invoiceStatusBlocked} title={invoiceStatusBlocked ? 'Önce yerel fatura belgelerini ekleyin.' : undefined}>{update.isPending ? 'Güncelleniyor…' : `${items.length} Siparişi Güncelle`}</button></>}>
+  return <RrModal crumb="Shopify" title={isInvoice ? 'Toplu Fatura Durumu Değiştir' : 'Toplu Sipariş Durumu Değiştir'} desc={`${items.length} seçili Shopify siparişi`} hint={isInvoice ? `${shopifyInvoiceStatusHint} Shopify dışındaki kayıtlar etkilenmez.` : 'Shopify dışındaki kayıtlar etkilenmez. Bu işlem yalnızca panel sipariş durumunu günceller; Shopify’daki sipariş veya kargo durumu değişmez.'} size="sm" locked={update.isPending} onClose={onClose} foot={<><span className="rr-note" /><button type="button" className="rr-btn" onClick={onClose} disabled={update.isPending}>Vazgeç</button><button type="button" className="rr-btn rr-primary" onClick={() => update.mutate()} disabled={!validStatus || update.isPending}>{update.isPending ? 'Güncelleniyor…' : `${items.length} Siparişi Güncelle`}</button></>}>
     <label className="rr-fld"><small>{isInvoice ? 'Yeni Fatura Durumu' : 'Yeni Sipariş Durumu'}</small><select className="rr-in" value={status} onChange={event => setStatus(event.target.value)} disabled={update.isPending}><option value="">Durum Seçin</option>{isInvoice ? <><option value="PENDING">Fatura Bekliyor</option><option value="UPLOADED">Faturası Yüklendi</option></> : shopifyOrderStatuses.map(value => <option key={value} value={value}>{titleTr(statusLabel(value))}</option>)}</select></label>
-    {invoiceStatusBlocked && <div className="rr-callout rr-warn"><RrIcon name="alert" /><span>“Faturası Yüklendi” için seçili Shopify siparişlerinin tamamında yerel fatura belgesi bulunmalıdır.</span></div>}
+    {isInvoice && status === 'UPLOADED' && <div className="rr-callout" role="status"><RrIcon name="info" /><span>{shopifyUploadedNote}</span></div>}
   </RrModal>
 }
 export function OrdersPage() {
