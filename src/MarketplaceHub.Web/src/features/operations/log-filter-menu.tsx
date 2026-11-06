@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { UiIcon } from '../../shared/components'
 import { useDismissable } from '../../shared/hooks/useDismissable'
 
@@ -10,7 +10,35 @@ export type FilterMenuGroup = { label?: string; options: FilterMenuOption[] }
 export function FilterMenu({ name, allLabel, unit, groups, selected, onChange, emptyText }: { name: string; allLabel: string; unit: string; groups: FilterMenuGroup[]; selected: string[]; onChange: (values: string[]) => void; emptyText?: string }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
+  const menu = useRef<HTMLDivElement>(null)
   useDismissable(open, [wrap], () => setOpen(false))
+  // The menu opens in the browser's top layer, pinned under its button (above it when there is no room below) and kept
+  // inside the window, so no panel, card, sticky header or the sidebar can clip or cover it. It closes on page scroll.
+  useLayoutEffect(() => {
+    const pop = menu.current
+    const anchor = wrap.current
+    if (!open || !pop || !anchor) return
+    const place = () => {
+      const rect = anchor.getBoundingClientRect()
+      const height = pop.offsetHeight
+      const width = pop.offsetWidth
+      const below = rect.bottom + 6
+      const top = below + height > window.innerHeight - 8 && rect.top - 6 - height > 8 ? rect.top - 6 - height : below
+      Object.assign(pop.style, { position: 'fixed', margin: '0', right: 'auto', bottom: 'auto', top: `${top}px`, left: `${Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))}px`, minWidth: `${rect.width}px`, maxHeight: `${Math.max(160, Math.min(360, window.innerHeight - top - 12))}px`, overflowY: 'auto', zIndex: '1000' })
+    }
+    if (typeof pop.showPopover === 'function') {
+      pop.setAttribute('popover', 'manual')
+      pop.showPopover()
+    }
+    place()
+  }, [open, selected.length])
+  useEffect(() => {
+    if (!open) return
+    const close = (event: Event) => { if (!(event.target instanceof Node && menu.current?.contains(event.target))) setOpen(false) }
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close) }
+  }, [open])
   const options = groups.flatMap(group => group.options)
   const single = selected.length === 1 ? options.find(option => option.value === selected[0]) : undefined
   const summary = selected.length === 0 ? allLabel : single ? single.label : `${selected.length} ${unit}`
@@ -23,7 +51,7 @@ export function FilterMenu({ name, allLabel, unit, groups, selected, onChange, e
     <button type="button" className={`psl-control psl-menu-toggle${selected.length ? ' is-set' : ''}`} aria-label={`${name}: ${summary}`} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(current => !current)}>
       {single?.mark}<span className="psl-menu-summary">{summary}</span><UiIcon name="chevronDown" size={14} />
     </button>
-    {open && <div className="psl-menu" role="group" aria-label={name}>
+    {open && <div ref={menu} className="psl-menu" role="group" aria-label={name}>
       {options.length === 0 && emptyText && <p className="psl-menu-empty">{emptyText}</p>}
       {groups.map((group, index) => {
         const picked = group.options.filter(option => selected.includes(option.value)).length
