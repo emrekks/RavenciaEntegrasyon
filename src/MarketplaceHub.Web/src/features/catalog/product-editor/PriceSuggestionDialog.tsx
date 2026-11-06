@@ -37,7 +37,7 @@ function AssumptionHint({ content }: { content: HintContent }) {
   return <span className="price-suggestion-hint">
     {content.rows.map(row => <span key={row.store} className="price-suggestion-hint-row"><strong>{row.store}</strong> {row.value}</span>)}
     {content.notes.map(note => <small key={note}>{note}</small>)}
-    <small>{content.source}</small>
+    {content.source && <small>{content.source}</small>}
   </span>
 }
 
