@@ -34,6 +34,7 @@ import { PublishStatusSteps } from './PublishStatusSteps'
 import { publishStatusSteps, publishStepsAriaLabel, publishStepsFit } from './publish-status-steps'
 import { attributeIssueTip } from '../publish-issue-chips'
 import { attributeMappingPlatform, mappingFocusItems } from '../../marketplace/mappings/mapping-focus'
+import { PRODUCT_IMAGE_ACCEPT, toProductImage } from './product-image-file'
 import { LocalImagePreview, MediaAddTile, MediaMoveButtons, MediaZoomButton } from './media-tiles'
 import { mapWithConcurrency, mediaFilesLeftAfterFailedSave, mediaSaveProgressMessage, savedMediaOrder, storedProductMediaUrl, variantMediaReconcilePlan } from './product-media-save'
 import { keepPendingCreateMedia, pendingVariantMediaRefs, takePendingCreateMedia, type PendingCreateMedia } from './pending-create-media'
@@ -411,7 +412,6 @@ export function BulkVariantPlatformPricingModal({ row, rows, platforms: unordere
 // API, inventory and publication safeguards retain the actual 1000-line limit.
 // The product workspace intentionally does not display an arbitrary UI quota.
 const MAX_VARIANTS = 1000
-const MAX_PRODUCT_MEDIA_BYTES = 6 * 1024 * 1024
 function RichTextTool({ icon, label, onClick, disabled = false, active = false }: { icon: UiIconName; label: string; onClick: () => void; disabled?: boolean; active?: boolean }) {
   return <button type="button" className={active ? 'rich-text-tool active' : 'rich-text-tool'} title={label} aria-label={label} aria-pressed={active || undefined} onClick={onClick} disabled={disabled}><span className="rich-text-tool-icon" aria-hidden="true"><UiIcon name={icon} /></span></button>
 }
@@ -1399,21 +1399,23 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   function showFeedback(title: string, message: string, kind: OperationFeedback['kind'], options: { persistent?: boolean; key?: string } = {}) {
     setFeedback({ title, message, kind, ...options })
   }
-  function handleMediaFiles(files: File[]) {
+  // A WebP, or a JPEG/PNG over 6 MB, is turned into a JPEG here (product-image-file.ts) instead of being refused.
+  async function handleMediaFiles(files: File[]) {
     const accepted: File[] = []
     const rejected: string[] = []
+    let converted = 0
     for (const file of files) {
-      const isImage = file.type === 'image/jpeg' || file.type === 'image/png'
-      if (!isImage) { rejected.push(`${file.name}: yalnız JPEG veya PNG kabul edilir.`); continue }
-      if (file.size <= 0 || file.size > MAX_PRODUCT_MEDIA_BYTES) { rejected.push(`${file.name}: dosya başına en fazla 6 MB olabilir.`); continue }
-      accepted.push(file)
+      const result = await toProductImage(file)
+      if ('error' in result) { rejected.push(result.error); continue }
+      if (result.converted) converted++
+      accepted.push(result.file)
     }
     if (accepted.length) setMediaFiles(current => [...current, ...accepted.map(file => ({ id: crypto.randomUUID(), file }))])
     if (rejected.length) {
       const message = rejected.length === 1 ? rejected[0] : `${rejected.length} görsel eklenemedi. Dosya türü ve 6 MB sınırını kontrol edin.`
       setNotice(message); showFeedback('Görsel Eklenemedi', message, 'error')
     } else if (accepted.length) {
-      const message = `${accepted.length} görsel seçildi.`; setNotice(message); showFeedback('Görsel Seçildi', message, 'info')
+      const message = `${accepted.length} görsel seçildi.${converted ? ` ${converted} görsel JPEG'e çevrildi.` : ''}`; setNotice(message); showFeedback('Görsel Seçildi', message, 'info')
     }
   }
   // Always fresh on open and on returning to the tab: the products list's quick edit (or another tab) may have changed
@@ -3175,8 +3177,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const mediaStrip = mediaStripRefs(visibleMediaUrls, mediaFiles.map(item => item.id), mediaStripOrder)
   const familyOnlyMediaItems = familyItemsShownInStrip(visibleMediaUrls, familyMediaItems, draftMediaKeys)
   const hasMediaTiles = mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
-  const mediaUploadHint = 'Adet sınırı yok · JPEG veya PNG · dosya başına en fazla 6 MB'
-  const mediaFileInput = <input ref={mediaFileInputRef} type="file" accept="image/jpeg,image/png" multiple tabIndex={hasMediaTiles ? -1 : undefined} aria-label="Ürün görsellerini dosya olarak seç" onChange={event => { handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
+  const mediaUploadHint = "Adet sınırı yok · JPEG, PNG veya WebP · WebP ve 6 MB üstü JPEG'e çevrilir"
+  const mediaFileInput = <input ref={mediaFileInputRef} type="file" accept={PRODUCT_IMAGE_ACCEPT} multiple tabIndex={hasMediaTiles ? -1 : undefined} aria-label="Ürün görsellerini dosya olarak seç" onChange={event => { void handleMediaFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = '' }} />
   const mediaChoices: ProductMediaOption[] = ([...new Set([...mediaUrls, ...familyMediaUrls.filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url))), ...assignedMediaUrls])].map((url, index) => ({ value: `url|${url}`, label: `Görsel ${String(index + 1).padStart(2, '0')}`, url })) as ProductMediaOption[]).concat(mediaFiles.map(item => ({ value: `file|${item.id}`, label: `Yüklenen Görsel · ${item.file.name}`, file: item.file })))
   const bulkMediaGroups = useMemo<VariantMediaGroup[]>(() => {
     const groups: VariantMediaGroup[] = []
