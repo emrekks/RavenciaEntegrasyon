@@ -26,8 +26,10 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
   Max 1 month per request (code 28 days), end day exclusive; by order number it looks back 6 months. Page 100
   (docs sample uses 500). First read 3 months; incremental re-reads 2 days.
 - End day excluded and 1 month at most: `pazarama-api-son.md:2294-2296`; the code sends tomorrow as the end day.
-- An order can appear in the list a day after its order date: live 500506964, ordered 29 Oct 14:48Z, first read
-  30 Oct 14:51Z after 214 clean reads. The 2-day re-read covers that; a longer delay is only caught by a full read.
+- An order appears in the list only once Pazarama creates it (first history entry, status 3), which can be a day
+  after its `orderDate`: live 500506964, orderDate 29 Oct 17:48, status 3 at 30 Oct 17:48:55 Istanbul time, read by
+  the panel three minutes later (674544454: 15 min after its orderDate). The hot read re-reads 2 days, the recovery
+  read (15 min) 7 days since 6 Nov 2026 (`PazaramaOrderHistoryPolicy.RecoveryLookbackDays`).
 - Status changes of older orders: open orders re-read by number every 3 min until closed or 45 days old.
 - `success:false` with "İşleminiz şu anda gerçekleştirilemiyor. Lütfen daha sonra tekrar deneyiniz." is a busy
   answer (live on getOrdersForApi 28 Oct 23:25 and 5/6 Nov 00:07-00:11 Istanbul time; the next run passed): since

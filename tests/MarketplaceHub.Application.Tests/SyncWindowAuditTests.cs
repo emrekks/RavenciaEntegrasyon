@@ -103,6 +103,94 @@ public sealed class SyncWindowAuditTests
         Assert.Equal(expected, MarketplaceJobProcessor.NextReconcilePage(current, next));
 
     [Fact]
+    public void A_rejected_quiet_storefront_is_read_from_its_last_good_read_but_not_tried_again_at_once()
+    {
+        var now = new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero);
+        var codes = new[] { "TR", "AE" };
+        var lastGood = now.AddHours(-2);
+        // AE sold 10 days ago (active, quiet) and was last read two hours ago; this read was answered 400.
+        var rejected = TrendyolStorefrontPolicy.Rejected("AE", new(now.AddDays(-10), lastGood), now);
+        var activity = new Dictionary<string, TrendyolStorefrontActivity> { ["AE"] = rejected };
+
+        Assert.Equal(lastGood, rejected.LastProbedAt);
+        Assert.Null(rejected.PausedUntil);
+        Assert.Empty(TrendyolStorefrontPolicy.DueQuiet(codes, activity, now.AddMinutes(5)));
+        Assert.Equal(["AE"], TrendyolStorefrontPolicy.DueQuiet(codes, activity, now.AddMinutes(31)));
+        Assert.Equal(lastGood - TimeSpan.FromMinutes(2), TrendyolStorefrontPolicy.ProbeStart(rejected, now.AddMinutes(31), TimeSpan.FromMinutes(2)));
+        // A good read afterwards clears the rejection.
+        Assert.Null(TrendyolStorefrontPolicy.Read(rejected, now.AddMinutes(31), receivedOrders: false).LastRejectedAt);
+    }
+
+    [Fact]
+    public void A_never_read_listed_storefront_that_refuses_waits_its_probe_interval()
+    {
+        var now = new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero);
+        var activity = new Dictionary<string, TrendyolStorefrontActivity> { ["DE"] = TrendyolStorefrontPolicy.Rejected("DE", null, now) };
+
+        Assert.Null(TrendyolStorefrontPolicy.NextProbe(["TR", "DE"], activity, now.AddHours(1)));
+        Assert.Equal("DE", TrendyolStorefrontPolicy.NextProbe(["TR", "DE"], activity, now.AddHours(7)));
+    }
+
+    [Fact]
+    public void A_Trendyol_product_page_that_counts_products_but_sends_no_list_is_a_broken_contract()
+    {
+        Assert.Throws<JsonException>(() => MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.CatalogProducts("""{"totalElements":120,"totalPages":2,"page":1,"size":100}"""));
+        Assert.Throws<JsonException>(() => MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.CatalogProducts("""{"content":{},"totalElements":0}"""));
+        Assert.Empty(MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.CatalogProducts("""{"totalElements":0,"totalPages":0,"page":0,"size":100}""").Items);
+        Assert.Empty(MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.CatalogProducts("""{"content":null,"page":0,"size":100}""").Items);
+    }
+
+    [Fact]
+    public void A_Trendyol_finance_page_that_counts_records_but_sends_no_list_is_a_broken_contract()
+    {
+        Assert.Throws<JsonException>(() => MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolFinanceMapper.Page("""{"page":0,"totalPages":1,"totalElements":3}""", "SETTLEMENTS", "Sale", null));
+        Assert.Empty(MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolFinanceMapper.Page("""{"page":0,"totalPages":0,"totalElements":0}""", "SETTLEMENTS", "Sale", null).Items);
+        Assert.Empty(MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolFinanceMapper.Page("""{"content":null}""", "SETTLEMENTS", "Sale", null).Items);
+    }
+
+    [Fact]
+    public void Pazarama_recovery_reads_a_week_back_and_the_hot_read_two_days()
+    {
+        var now = new DateTimeOffset(2026, 11, 6, 9, 0, 0, TimeSpan.Zero);
+        var watermark = now.AddMinutes(-15);
+
+        Assert.Equal(new DateTime(2026, 10, 30), PazaramaOrderHistoryPolicy.StartDay(false, watermark, now, PazaramaOrderHistoryPolicy.LookbackDays("ORDERS_RECOVERY")));
+        Assert.Equal(new DateTime(2026, 11, 4), PazaramaOrderHistoryPolicy.StartDay(false, watermark, now, PazaramaOrderHistoryPolicy.LookbackDays("ORDERS_HOT")));
+    }
+
+    private static AdapterPageResult<RemoteOrder> PaidPage(int? total, string? next) => new([], next, next is not null, total);
+
+    [Fact]
+    public void Hepsiburada_paid_order_window_is_read_again_when_its_list_moves_between_pages()
+    {
+        var start = new MarketplaceJobProcessor.HepsiburadaOrderSyncState("v", DateTimeOffset.UnixEpoch.AddDays(2), DateTimeOffset.UnixEpoch, 0, 0);
+
+        // 101 lines: page one, then one line is packaged and page two (offset 100) counts 100.
+        var second = MarketplaceJobProcessor.NextHepsiburadaOrderPage(start, PaidPage(101, "100"));
+        Assert.Equal((100, 101), (second.Offset, second.PageTotal));
+        var reread = MarketplaceJobProcessor.NextHepsiburadaOrderPage(second, PaidPage(100, null));
+        Assert.Equal((0, 0, 1, false), (reread.WindowIndex, reread.Offset, reread.Rereads, reread.Moved));
+
+        // A steady list closes the window at once.
+        var steady = MarketplaceJobProcessor.NextHepsiburadaOrderPage(MarketplaceJobProcessor.NextHepsiburadaOrderPage(start, PaidPage(101, "100")), PaidPage(101, null));
+        Assert.Equal((1, 0, 0), (steady.WindowIndex, steady.Offset, steady.Rereads));
+
+        // After two re-reads the window closes even if the list keeps moving.
+        var tired = start with { Offset = 100, PageTotal = 101, Rereads = MarketplaceJobProcessor.HepsiburadaOrderWindowRereads };
+        Assert.Equal(1, MarketplaceJobProcessor.NextHepsiburadaOrderPage(tired, PaidPage(99, null)).WindowIndex);
+    }
+
+    [Fact]
+    public void Hepsiburada_open_package_list_that_ignores_the_offset_is_told_apart()
+    {
+        Assert.False(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(0, null, "P1,P2"));
+        Assert.True(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(10, "P1,P2", "P1,P2"));
+        Assert.False(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(10, "P1,P2", "P3,P4"));
+        Assert.False(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(10, "P1,P2", null));
+        Assert.Null(MarketplaceJobProcessor.HepsiburadaPackagePageKey([]));
+    }
+
+    [Fact]
     public void Hepsiburada_missing_invoice_pass_stops_when_the_list_moves_between_pages()
     {
         int? total = null;

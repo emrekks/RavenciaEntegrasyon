@@ -3456,17 +3456,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 .ToArray();
             await UpsertOrders(tenantId, connectionId, importableOrders, cancellationToken);
 
-            if (page.Value.HasMore)
-            {
-                if (!int.TryParse(page.Value.NextCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var nextOffset)
-                    || nextOffset <= state.Offset)
-                    throw new InvalidOperationException("Hepsiburada sayfalaması hasMore=true döndürdü ancak ileri offset üretmedi.");
-                state = state with { Offset = nextOffset };
-            }
-            else
-            {
-                state = state with { WindowIndex = state.WindowIndex + 1, Offset = 0 };
-            }
+            state = NextHepsiburadaOrderPage(state, page.Value);
             cursor.OpaqueCursor = JsonSerializer.Serialize(state);
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
@@ -3478,7 +3468,32 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     private const string HepsiburadaOrderSyncStateVersion = "hepsiburada-orders-v2";
-    internal sealed record HepsiburadaOrderSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset);
+    // PageTotal: the totalCount the window's first page gave; Moved: a later page gave another one; Rereads: how many times
+    // the window was read again from its start for that reason.
+    internal sealed record HepsiburadaOrderSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset,
+        int? PageTotal = null, bool Moved = false, int Rereads = 0);
+
+    internal const int HepsiburadaOrderWindowRereads = 2;
+
+    // The paid-order list is the live queue of lines waiting to be packaged (hepsiburada-api-son.md:8391-8399), read by
+    // offset: a line packaged between two pages moves every later one up a place, and one is never seen; an unpacked
+    // package puts its lines back (:9222). totalCount is the count at that moment (:18089), so a window whose pages give
+    // different totals is read again from its start, at most twice (before 6 Nov 2026 the window was closed as read).
+    internal static HepsiburadaOrderSyncState NextHepsiburadaOrderPage(HepsiburadaOrderSyncState state, AdapterPageResult<RemoteOrder> page)
+    {
+        var moved = state.Moved || state.Offset > 0 && state.PageTotal is { } first && page.TotalCount is { } total && total != first;
+        var pageTotal = state.Offset == 0 ? page.TotalCount : state.PageTotal;
+        if (page.HasMore)
+        {
+            if (!int.TryParse(page.NextCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var nextOffset)
+                || nextOffset <= state.Offset)
+                throw new InvalidOperationException("Hepsiburada sayfalaması hasMore=true döndürdü ancak ileri offset üretmedi.");
+            return state with { Offset = nextOffset, PageTotal = pageTotal, Moved = moved };
+        }
+        return moved && state.Rereads < HepsiburadaOrderWindowRereads
+            ? state with { Offset = 0, PageTotal = null, Moved = false, Rereads = state.Rereads + 1 }
+            : state with { WindowIndex = state.WindowIndex + 1, Offset = 0, PageTotal = null, Moved = false, Rereads = 0 };
+    }
 
     internal static bool HepsiburadaWindowRemains(HepsiburadaOrderSyncState state) =>
         state.AnchorEnd.AddDays(-state.WindowIndex) > state.StartAt;
@@ -3638,14 +3653,25 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 await UpsertOrder(tenantId, connectionId, mergedOrder, cancellationToken);
             }
 
-            if (page.Value.HasMore)
+            var pageKey = HepsiburadaPackagePageKey(page.Value.Items);
+            if (HepsiburadaPackageOffsetIgnored(state.Offset, state.LastPageKey, pageKey))
+            {
+                // The same packages again at the next offset: the list did not take the offset (its docs spell it `Offset`,
+                // the code sends `offset` as on every other OMS list; never seen live with 10 or more open packages). The
+                // window is closed instead of being read forever; status lists, the hourly recovery and webhooks still
+                // bring the packages after the first ten.
+                await RecordIssue(tenantId, $"hepsiburada-package-offset:{connectionId}", "HEPSIBURADA_PACKAGE_OFFSET_IGNORED",
+                    "Hepsiburada açık paket listesi sonraki sayfada aynı paketleri döndürdü (offset yok sayıldı); bu pencerede ilk sayfadan sonrası okunamadı. Paketler durum listeleri ve saatlik okuma ile gelir.", cancellationToken);
+                state = state with { WindowIndex = state.WindowIndex + 1, Offset = 0, LastPageKey = null };
+            }
+            else if (page.Value.HasMore)
             {
                 if (!int.TryParse(page.Value.NextCursor, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var nextOffset)
                     || nextOffset <= state.Offset)
                     throw new InvalidOperationException("Hepsiburada paket sayfalaması hasMore=true döndürdü ancak ileri offset üretmedi.");
-                state = state with { Offset = nextOffset };
+                state = state with { Offset = nextOffset, LastPageKey = pageKey };
             }
-            else state = state with { WindowIndex = state.WindowIndex + 1, Offset = 0 };
+            else state = state with { WindowIndex = state.WindowIndex + 1, Offset = 0, LastPageKey = null };
             cursor.OpaqueCursor = JsonSerializer.Serialize(state);
             cursor.Version++;
             await db.SaveChangesAsync(cancellationToken);
@@ -3655,7 +3681,14 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     }
 
     private const string HepsiburadaPackageSyncStateVersion = "hepsiburada-packages-v2";
-    private sealed record HepsiburadaPackageSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset);
+    // LastPageKey: the package numbers of the page before, to tell a list that ignores the offset.
+    private sealed record HepsiburadaPackageSyncState(string Version, DateTimeOffset AnchorEnd, DateTimeOffset StartAt, int WindowIndex, int Offset, string? LastPageKey = null);
+
+    internal static string? HepsiburadaPackagePageKey(IReadOnlyList<RemoteOrderPackage> items) =>
+        items.Count == 0 ? null : string.Join(',', items.Select(item => item.Package.ExternalPackageId).Order(StringComparer.Ordinal));
+
+    internal static bool HepsiburadaPackageOffsetIgnored(int offset, string? previousPageKey, string? pageKey) =>
+        offset > 0 && pageKey is not null && string.Equals(previousPageKey, pageKey, StringComparison.Ordinal);
 
     // A finished order read also matches the connection's lines that still have no panel variant
     // (RematchUnmatchedOrderLines): the variant or its link may have been created after the line was read.
@@ -4289,7 +4322,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var now = timeProvider.GetUtcNow();
         var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         var baseline = allowBaseline && (full || !hasSnapshots);
-        var startDay = PazaramaOrderHistoryPolicy.StartDay(baseline, cursor.LastModifiedWatermark ?? (allowBaseline ? null : now.AddDays(-1)), now);
+        var startDay = PazaramaOrderHistoryPolicy.StartDay(baseline, cursor.LastModifiedWatermark ?? (allowBaseline ? null : now.AddDays(-1)), now,
+            PazaramaOrderHistoryPolicy.LookbackDays(cursorResourceType));
         foreach (var (windowStart, windowEnd) in PazaramaOrderHistoryPolicy.Windows(startDay, now))
         {
             string? page = null;
