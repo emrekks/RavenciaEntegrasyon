@@ -42,6 +42,17 @@ public sealed class OrderListDeepAuditPostgreSqlTests(PostgreSqlTenantIsolationF
             Assert.Equal(summary.Pending, menu.Pending);
             Assert.Equal(0, menu.All);
             Assert.Equal(menu, await service.OrderSummaryAsync(tenantId, all, CancellationToken.None, ["PENDING"], allowCached: true));
+            // The same answer carries the overview card's per-store split of those orders and their products: the
+            // badge, the card and the tab read one count (owner, 6 Nov 2026: badge 13, card 12 at the same moment).
+            Assert.NotNull(menu.PendingByConnection);
+            Assert.Equal(menu.Pending, menu.PendingByConnection!.Values.Sum());
+            Assert.NotNull(menu.PendingUnitsByConnection);
+            var pendingOrders = service.FilteredOrders(tenantId, all with { Status = "PENDING" });
+            var pendingUnits = await db.OrderLines.AsNoTracking()
+                .Where(line => line.TenantId == tenantId && pendingOrders.Any(order => order.Id == line.OrderId))
+                .SumAsync(line => line.OrderedQuantity > line.CancelledQuantity ? line.OrderedQuantity - line.CancelledQuantity : 0m);
+            Assert.True(pendingUnits > 0);
+            Assert.Equal(pendingUnits, menu.PendingUnitsByConnection!.Values.Sum());
 
             // The counters follow the list's other filters too.
             var searched = await service.OrderSummaryAsync(tenantId, all with { Search = "ışık" }, CancellationToken.None);
