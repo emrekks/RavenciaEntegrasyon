@@ -420,12 +420,9 @@ public static class CatalogEndpoints
                 .Select(media => media.FileAssetId)
                 .Distinct()
                 .ToListAsync(http.RequestAborted)).ToHashSet();
-        // A size chart just generated for a card ("Kullan") has no picture row yet; its save attaches it.
-        if (storedAssetIds.Count > 0)
-            activeTenantMediaAssetIds.UnionWith(await db.ProductSizeCharts.AsNoTracking()
-                .Where(chart => chart.TenantId == tenant.TenantId && chart.LastGeneratedAssetId != null && storedAssetIds.Contains(chart.LastGeneratedAssetId.Value))
-                .Select(chart => chart.LastGeneratedAssetId!.Value)
-                .ToListAsync(http.RequestAborted));
+        // A size chart generated for this card ("Kullan") has no picture row yet; its save attaches it. Any of the card's
+        // tries counts, not only the newest: Kullan, then Yeniden Oluştur without using it, then Kaydet (O8).
+        activeTenantMediaAssetIds.UnionWith(await MarketplaceHub.Infrastructure.SizeCharts.SizeChartService.GeneratedForProductAsync(db, tenant.TenantId, command.ProductId, storedAssetIds, http.RequestAborted));
         var assetsById = assets.ToDictionary(asset => asset.Id);
         var assetsByUrl = assets.Where(asset => externalUrls.Contains(asset.RelativePath)).ToDictionary(asset => asset.RelativePath, StringComparer.Ordinal);
         var desiredAssets = new List<FileAsset>(references.Count);
@@ -953,6 +950,12 @@ public static class CatalogEndpoints
         var affectedProducts = await db.Products
             .Where(item => item.TenantId == tenant.TenantId && affectedProductIds.Contains(item.Id))
             .ToListAsync(http.RequestAborted);
+        // D5: a picture that leaves its card is no longer the card's size chart.
+        foreach (var chart in await db.ProductSizeCharts.Where(chart => chart.TenantId == tenant.TenantId && affectedProductIds.Contains(chart.ProductId) && chart.FileAssetId == assetId).ToListAsync(http.RequestAborted))
+        {
+            chart.FileAssetId = null;
+            chart.UpdatedAt = timeProvider.GetUtcNow();
+        }
         await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, affectedProducts, timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         await transaction.CommitAsync(http.RequestAborted);
