@@ -15,10 +15,6 @@ export function sortOptionValues<T extends { id: string; value: string }>(attrib
 }
 
 // Chips share one size; a longer value (Standart, Kahverengi) takes two or three cells of the grid.
-function chipSpan(label: string) {
-  return label.length > 10 ? ' is-wider' : label.length > 5 ? ' is-wide' : ''
-}
-
 /**
  * The value picker of one option group: chosen values on top as removable chips, the rest below in a scrolling list.
  * `values` arrive already sorted (A-Z, sizes in size order); both areas keep that order, so an unselected chip returns to its place.
@@ -50,7 +46,7 @@ export function OptionValueChips({ groupName, values, selectedIds, filter, onTog
         {available.map(value => {
           const label = cleanOptionValue(value.value)
           return (
-            <button type="button" key={value.id} title={label} aria-pressed="false" className={`option-chip${chipSpan(label)}`} onClick={() => onToggle(value.id)}>
+            <button type="button" key={value.id} title={label} aria-pressed="false" className="option-chip" onClick={() => onToggle(value.id)}>
               {label}
             </button>
           )
