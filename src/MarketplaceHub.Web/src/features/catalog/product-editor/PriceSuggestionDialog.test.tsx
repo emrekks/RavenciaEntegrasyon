@@ -2,35 +2,13 @@ import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PriceAssumptionStore, PriceAssumptions } from './price-assumptions'
 
-const apiState = vi.hoisted(() => ({ paths: [] as string[], fail: false }))
+const apiState = vi.hoisted(() => ({ paths: [] as string[] }))
 
-// What the server measured on live (6 Nov 2026, 8 Sep - 6 Nov): the hint must show these, not numbers of its own.
-const store = (values: Partial<PriceAssumptionStore> & Pick<PriceAssumptionStore, 'platformCode'>): PriceAssumptionStore => ({
-  connectionId: values.platformCode, displayName: values.platformCode, orders: 0, sales: 0, commissionRate: null, commissionRateBeforeVat: null, takesCommission: true,
-  realCommissionOrders: 0, cargo: null, cargoSource: null, serviceFee: 0, serviceFeeRate: 0, serviceFeeSource: 'tariff', serviceFeeOrders: 0, azerbaijanServiceFee: null,
-  internationalServiceFeeRate: null, paymentFeeRate: null, paymentFeeFixed: null, ...values
-})
-const measured: PriceAssumptions = {
-  from: '2026-09-08', to: '2026-11-06', days: 60, clothingOnly: true, minimumOrders: 5,
-  stores: [
-    store({ platformCode: 'TRENDYOL', orders: 907, commissionRate: 20, cargo: 98.34, cargoSource: 'invoice', serviceFee: 13.19, azerbaijanServiceFee: 10.99, internationalServiceFeeRate: 6 }),
-    store({ platformCode: 'HEPSIBURADA', orders: 30, commissionRate: 21.6, commissionRateBeforeVat: 18, cargo: 98.39, cargoSource: 'tariff', serviceFee: 7.63, serviceFeeSource: 'records', serviceFeeOrders: 27 }),
-    store({ platformCode: 'N11', orders: 8, commissionRate: 20.62, cargo: 111.15, cargoSource: 'tariff', serviceFeeRate: 2 }),
-    store({ platformCode: 'PAZARAMA', orders: 4, cargo: 112.33, cargoSource: 'tariff', serviceFee: 8.28 }),
-    store({ platformCode: 'PTTAVM', orders: 2, serviceFeeRate: 1.5 }),
-    store({ platformCode: 'SHOPIFY', takesCommission: false, commissionRate: 0, cargo: 120, cargoSource: 'assumption', paymentFeeRate: 6.29, paymentFeeFixed: 0.25 })
-  ]
-}
-
+// The hints are static text: the dialog must not ask the API for anything.
 vi.mock('../../../shared/api', async importOriginal => {
   const original = await importOriginal<typeof import('../../../shared/api')>()
-  return { ...original, hubApi: vi.fn(async (path: string) => {
-    apiState.paths.push(path)
-    if (apiState.fail) throw new Error('down')
-    return measured
-  }) }
+  return { ...original, hubApi: vi.fn(async (path: string) => { apiState.paths.push(path); throw new Error('the dialog must not call the API') }) }
 })
 
 import { PriceSuggestionLink } from './PriceSuggestionDialog'
@@ -45,7 +23,6 @@ let client: QueryClient
 beforeEach(() => {
   try { window.localStorage.clear() } catch { /* no storage */ }
   apiState.paths = []
-  apiState.fail = false
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   container = document.createElement('main')
   document.body.append(container)
@@ -101,9 +78,9 @@ describe('PriceSuggestionLink', () => {
     expect(container.querySelector<HTMLInputElement>('input[aria-label="Liste Fiyatı"]')!.value).toBe(expected)
   })
 
-  it('puts an "i" beside Komisyon, Kargo and Hizmet Bedeli with what each marketplace took of the clothing sales', async () => {
+  it('puts an "i" beside Komisyon, Kargo and Hizmet Bedeli with the published women\'s clothing figures, without calling the API', async () => {
     await open()
-    expect(apiState.paths).toEqual(['/reports/price-assumptions'])
+    expect(apiState.paths).toEqual([])
     // Each input keeps its label's text as its name: the hint sits beside the label, not inside it.
     for (const label of ['Komisyon Oranı (%)', 'Kargo Ücreti (₺)', 'Hizmet Bedeli (₺)']) {
       const field = [...document.querySelectorAll('label')].find(item => item.textContent === label)!
@@ -112,43 +89,29 @@ describe('PriceSuggestionLink', () => {
     }
 
     const commission = hint('Komisyon Oranı (%)')
-    expect(commission).toContain('Trendyol %20,00 (907 satış)')
-    expect(commission).toContain('Hepsiburada %18,00 + %20 KDV → %21,60 girin (30 satış)')
-    expect(commission).toContain('n11 %20,62 (8 satış)')
-    expect(commission).toContain('Pazarama bilinmiyor: 4 satış, oran için en az 5 gerekir')
-    expect(commission).toContain('PTT AVM bilinmiyor: 2 satış')
-    expect(commission).toContain('Shopify pazaryeri komisyonu yok; kartlı ödeme kesintisi %6,29 + 0,25 ₺')
-    expect(commission).toContain('Son 60 gün (8 Eylül – 6 Kasım), giyim satışları')
+    expect(commission).toContain('Trendyol %21,5 (KDV dahil; kaynaklar %21,36–%22,5 arası)')
+    expect(commission).toContain('Hepsiburada %18 + %20 KDV (kutuya %21,6 girin)')
+    expect(commission).toContain('n11 %20 (KDV dahil; kaynak Aralık 2024)')
+    expect(commission).toContain('Pazarama kategori oranı bulunamadı; genel aralık %0–19, üstüne %20 KDV')
+    expect(commission).toContain('PTT AVM kategori oranı bulunamadı; genel aralık %5–15')
+    expect(commission).toContain('Shopify pazaryeri komisyonu yok; kart: iyzico %4,29 + 0,25 ₺ ve Shopify işlem ücreti %2 (toplam ≈ %6,29 + 0,25 ₺)')
+    expect(commission).toContain('Kesin oran mağaza panelindeki kategori tablosundadır.')
+    expect(commission).toContain('Kaynak: Trendyol / Hepsiburada / n11 komisyon: Ideasoft & Paraşüt (Eki 2026); kargo: pazaryeri kargo listeleri (Eki 2026); ayrıntı docs/KARGO-TARIFELERI-2026.md')
 
     const cargo = hint('Kargo Ücreti (₺)')
-    expect(cargo).toContain('Trendyol 98,34 ₺ (kargo faturalarındaki güncel tarife)')
-    expect(cargo).toContain('Hepsiburada 98,39 ₺ (pazaryerinin 2026 tarifesi, en sık tutar)')
-    expect(cargo).toContain('PTT AVM bilinmiyor')
-    expect(cargo).toContain('Shopify 120,00 ₺ (varsayım)')
+    expect(cargo).toContain('Trendyol 0–2 desi 81,95 ₺ (KDV dahil 98,34 ₺), 3 desi 100,20 ₺')
+    expect(cargo).toContain('Hepsiburada hepsiJET 0–2 desi 81,99 ₺, 3 desi 99,99 ₺')
+    expect(cargo).toContain('n11 PTT 0–2 desi 81,82 ₺, 3 desi 101,29 ₺ (+%2,35 PHB)')
+    expect(cargo).toContain('Pazarama Aras 1 desi 91,46 ₺, 2 desi 101,36 ₺, 3 desi 113,34 ₺ (+%2,35 PHB)')
+    expect(cargo).toContain('PTT AVM 1–2 desi 81,25 ₺ KDV dahil')
+    expect(cargo).toContain('Shopify kendi anlaşmanız (≈120 ₺)')
 
     const fee = hint('Hizmet Bedeli (₺)')
-    expect(fee).toContain('Trendyol 13,19 ₺; Azerbaycan vitrininde 10,99 ₺; yurt dışı vitrinlerde + satıştan %6,00')
-    expect(fee).toContain('Hepsiburada 7,63 ₺ (muhasebe kayıtlarında 27 siparişin ortalaması)')
-    expect(fee).toContain('n11 satıştan %2,00')
-    expect(fee).toContain('Pazarama 8,28 ₺')
+    expect(fee).toContain('Trendyol 10,99 + KDV = 13,19 ₺ / paket')
+    expect(fee).toContain('Hepsiburada 10,99 + KDV = 13,19 ₺ / teslimat (21 Eylül 2026\'dan beri)')
+    expect(fee).toContain('n11 sabit ücret yok; pazarlama %1 + pazaryeri %0,67, KDV üstüne')
+    expect(fee).toContain('Pazarama 6,90 + KDV = 8,28 ₺ / sipariş')
+    expect(fee).toContain('PTT AVM ödeme altyapı bedeli %1,5')
     expect(fee).toContain('Shopify yok')
-  })
-
-  it('says so when the figures cannot be read, and says all sales when clothing cannot be told apart', async () => {
-    apiState.fail = true
-    await open()
-    expect(hint('Komisyon Oranı (%)')).toBe('Pazaryeri değerleri alınamadı.')
-
-    act(() => root.unmount())
-    root = createRoot(container)
-    apiState.fail = false
-    client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    measured.clothingOnly = false
-    try {
-      await open()
-      expect(hint('Kargo Ücreti (₺)')).toContain('giyim kategorileri ayırt edilemedi, tüm satışlar')
-    } finally {
-      measured.clothingOnly = true
-    }
   })
 })
