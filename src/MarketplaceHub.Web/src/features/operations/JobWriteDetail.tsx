@@ -36,7 +36,7 @@ export function JobWriteDetail({ write, variantResults, approvalCheck, running, 
       <h3 id="job-write-parts-title">Gönderilen Bilgiler</h3>
       <p className="jobs-write-note">Her satır pazaryerine giden bir isteği gösterir; alanların güncel değerleri gönderilir.</p>
       <ul>{write.parts.map(part => {
-        const fields = writeFieldLabels(part.fields)
+        const fields = writeFieldLabels(part.fields, part.clearedFields ?? [])
         const attributes = writeAttributeNames(part.attributes)
         return <li key={part.key} className={part.itemCount === 0 ? 'is-empty' : undefined}>
           <div className="jobs-write-part-head"><strong>{writePartLabel(part.key)}</strong><span>{writePartCount(part)}</span></div>
