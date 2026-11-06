@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { copyText } from '../../../shared/copy-text'
+import './publication-job-variants.css'
 
 export type JobVariantResult = { barcode: string | null; stockCode: string | null; options: string | null; status: string; reason: string | null; at?: string | null }
 

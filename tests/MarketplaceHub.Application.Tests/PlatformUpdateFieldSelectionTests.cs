@@ -10,7 +10,7 @@ public sealed class PlatformUpdateFieldSelectionTests
     private const string CreatePayload = """
         {"items":[
           {"barcode":"B1","stockCode":"S1","title":"Ad","description":"Açıklama","images":[{"url":"https://x/1.jpg"}],"attributes":[{"attributeId":1,"attributeValueId":2}],"dimensionalWeight":2,"origin":"TR","vatRate":20,"quantity":5,"listPrice":150,"salePrice":120,"deliveryOption":{"deliveryDuration":2}},
-          {"barcode":"B2","stockCode":"S2","title":"Ad","description":"Açıklama","images":[{"url":"https://x/1.jpg"}],"attributes":[{"attributeId":1,"attributeValueId":3}],"dimensionalWeight":2,"origin":"TR","vatRate":20,"quantity":4,"listPrice":150,"salePrice":120}
+          {"barcode":"B2","stockCode":"S2","title":"Ad","description":"Açıklama","images":[{"url":"https://x/1.jpg"}],"attributes":[{"attributeId":1,"attributeValueId":3},{"attributeId":47,"attributeValueId":9}],"dimensionalWeight":2,"origin":"TR","vatRate":20,"quantity":4,"listPrice":150,"salePrice":120}
         ]}
         """;
 
@@ -36,8 +36,79 @@ public sealed class PlatformUpdateFieldSelectionTests
     {
         var sections = ProductUpdateFields.Sections(fields);
         Assert.True(sections.Succeeded, sections.Error?.Message);
-        Assert.Equal(new ProductUpdateSections(content, variants, delivery, hepsiburada), sections.Value);
+        Assert.Equal(new ProductUpdateSections(content, variants, delivery, hepsiburada), sections.Value! with { ContentParts = null });
         Assert.Equal(content || variants || delivery, sections.Value!.Trendyol);
+        Assert.Equal(content, sections.Value.ContentFields.Any);
+    }
+
+    [Fact]
+    public void ContentPicks_AreKeptFieldByField()
+    {
+        Assert.Equal(new ProductContentParts(false, false, true, false), ProductUpdateFields.Sections(["IMAGES"]).Value!.ContentFields);
+        Assert.Equal(new ProductContentParts(true, false, false, true), ProductUpdateFields.Sections(["TITLE", "ATTRIBUTES", "DESI"]).Value!.ContentFields);
+        Assert.Equal(ProductContentParts.None, ProductUpdateFields.Sections(["DESI"]).Value!.ContentFields);
+        // No field list (an older client) is every content field, as before.
+        Assert.Equal(ProductContentParts.All, ProductUpdateFields.Sections(null).Value!.ContentFields);
+    }
+
+    // Owner, 6.11.2026: Görseller alone for RYP007 sent the title, the description and all 18 attributes too.
+    [Fact]
+    public void ApprovedTrendyol_ImagesOnly_SendsTheBarcodeAndImagesAlone()
+    {
+        var publication = Split("123", ProductUpdateFields.Sections(["IMAGES"]).Value!);
+        var content = Items(publication.ApprovedContentPayloadJson);
+        Assert.Equal(2, content.Count);
+        Assert.All(content, item => Assert.Equal(["barcode", "images"], item!.AsObject().Select(property => property.Key)));
+        Assert.Equal("https://x/1.jpg", content[0]!["images"]![0]!["url"]!.GetValue<string>());
+        Assert.Empty(Items(publication.ApprovedVariantPayloadJson));
+        Assert.Empty(Items(publication.ApprovedDeliveryPayloadJson));
+        // Grouped per Trendyol content, the request is the contentId and the images: nothing else, no null field.
+        var resolved = MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolContentGroups.Resolve(publication.ApprovedContentPayloadJson, new Dictionary<string, MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolContentObservation>
+        {
+            ["B1"] = new("42", ["B1", "B2"]),
+            ["B2"] = new("42", ["B1", "B2"])
+        });
+        Assert.True(resolved.Succeeded, resolved.Error?.Message);
+        var item = Assert.Single(Items(resolved.Value!))!.AsObject();
+        Assert.Equal(["contentId", "images"], item.Select(property => property.Key));
+        Assert.True(MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolContentGroups.IsResolved(resolved.Value!));
+    }
+
+    [Fact]
+    public void ApprovedTrendyol_AttributesPicked_SendTheWholeAttributeList()
+    {
+        var publication = Split("123", ProductUpdateFields.Sections(["ATTRIBUTES"]).Value!);
+        var content = Items(publication.ApprovedContentPayloadJson);
+        Assert.All(content, item => Assert.Equal(["barcode", "attributes"], item!.AsObject().Select(property => property.Key)));
+        Assert.Equal(3, content[1]!["attributes"]![0]!["attributeValueId"]!.GetValue<int>());
+        Assert.Equal(2, content[1]!["attributes"]!.AsArray().Count);
+    }
+
+    [Fact]
+    public void ApprovedTrendyol_TitleAndDescription_LeaveImagesAndAttributesOut()
+    {
+        var publication = Split("123", ProductUpdateFields.Sections(["TITLE", "DESCRIPTION"]).Value!);
+        Assert.All(Items(publication.ApprovedContentPayloadJson), item => Assert.Equal(["barcode", "title", "description"], item!.AsObject().Select(property => property.Key)));
+    }
+
+    [Fact]
+    public void ApprovedTrendyol_NoContentPick_MakesNoContentRequest()
+    {
+        var publication = Split("123", ProductUpdateFields.Sections(["DESI", "DELIVERY"]).Value!);
+        Assert.Empty(Items(publication.ApprovedContentPayloadJson));
+        Assert.Equal(2, Items(publication.ApprovedVariantPayloadJson).Count);
+    }
+
+    [Fact]
+    public void ApprovedTrendyol_PickedFieldTheCardLacks_IsLeftOut_NotSentNull()
+    {
+        var withoutDescription = """{"items":[{"barcode":"B1","title":"Ad","images":[{"url":"https://x/1.jpg"}]}]}""";
+        var picked = ProductUpdateComposer.Split(Guid.CreateVersion7(), "123", withoutDescription, ProductUpdateFields.Sections(["TITLE", "DESCRIPTION"]).Value!);
+        Assert.True(picked.Succeeded, picked.Error?.Message);
+        Assert.Equal(["barcode", "title"], Assert.Single(Items(picked.Value!.ApprovedContentPayloadJson))!.AsObject().Select(property => property.Key));
+        // Only a picked field the card does not have: there is nothing to send.
+        var nothing = ProductUpdateComposer.Split(Guid.CreateVersion7(), "123", withoutDescription, ProductUpdateFields.Sections(["DESCRIPTION"]).Value!);
+        Assert.Equal("PRODUCT_UPDATE_NOTHING_TO_SEND", nothing.Error?.Code);
     }
 
     [Fact]

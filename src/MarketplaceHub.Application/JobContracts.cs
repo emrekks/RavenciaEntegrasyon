@@ -170,7 +170,8 @@ public sealed record JobDetailView(
     IReadOnlyList<JobFailureReasonView>? FailureReasons = null,
     JobInvoiceContextView? Invoice = null,
     Guid? ProductId = null,
-    JobVariantResultsView? VariantResults = null);
+    JobVariantResultsView? VariantResults = null,
+    JobWriteSummaryView? Write = null);
 
 // A publication job's per-variant answer. Source: RECORDED (the job stored it), CARD_STATE (an older job whose card
 // still holds this publication's state) or NONE (nothing is known). A variant of the product the job did not carry is

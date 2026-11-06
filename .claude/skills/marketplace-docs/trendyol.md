@@ -109,6 +109,14 @@ purpose (`TurkeyTime.cs`).
   job reads each barcode's content from `products/approved?barcode=` right before the send (`TrendyolContentGroups`).
   Source: offline docs "Ürün Güncelleme - Onaylı Ürün v2" and "Ürün Filtreleme - Onaylı Ürün V2"; live RYP006
   (6.11.2026, six colours x three sizes = six contents; the panel's product link held only the first approved one).
+- `content-bulk-update` (approved products) is a partial update: only `contentId` is required per item; `title`,
+  `description`, `images` (max 8) and `attributes` are optional and a field left out stays as Trendyol has it. The
+  exception is the attributes: if any attribute changes, the whole attribute list with every value must go. Max 1,000
+  items per request. So "Platformlarda Güncelle" sends only the picked content fields (Görseller alone = `contentId` +
+  `images`); ATTRIBUTES sends the full list (colour, size, Menşei); nothing picked from the content group = no content
+  request. A product not yet approved still goes whole via `unapproved-bulk-update`. Source: offline
+  `trendyol-api-son.md`, `updateContentBulk` / `ContentBulkUpdateRequest` / `ContentUpdateItem` (~line 31769); bug
+  6.11.2026, RYP007 images-only job 01a1b1c8-6fe7-78d3-bc90-702736436c38 had sent title, description and 18 attributes.
 - Cross-border storefronts: orders are read per `storeFrontCode` (TR, AE, SA, GR, DE, BG, QA, KW, OM, BH, AZ, SK, RO,
   CZ; QA/OM/BH/AZ only when the connection already has orders there). Listed ones probed every 6 h, others 24 h; a
   400/404 pauses one for 30 days. SA, AZ, BG, RO, GR, AE orders ship to the Istanbul export depot but count in their

@@ -61,14 +61,24 @@ describe('platform update fields', () => {
   })
 
   it('lists everything a Trendyol request carries, also what rides along', () => {
+    // The approved content request carries only the picked content fields (Trendyol takes a partial update there).
     const plan = platformUpdatePlan('TRENDYOL', ['TITLE', 'PRICE'])
-    expect(plan.fields).toEqual(['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES', 'PRICE'])
-    expect(plan.bundled).toEqual(['DESCRIPTION', 'IMAGES', 'ATTRIBUTES'])
+    expect(plan.fields).toEqual(['TITLE', 'PRICE'])
+    expect(plan.bundled).toEqual([])
     expect(plan.productFields).toEqual(['TITLE'])
     expect([plan.price, plan.stock]).toEqual([true, false])
-    expect(plan.sends).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Liste Fiyatı', 'Satış Fiyatı'])
-    expect(plan.extras).toEqual(['Renk / Beden', 'Menşei'])
-    expect(platformUpdateSummary(plan)).toBe('Ürün Adı, Açıklama, Görseller, Kategori Özellikleri, Liste Fiyatı, Satış Fiyatı, Renk / Beden, Menşei')
+    expect(plan.sends).toEqual(['Ürün Adı', 'Liste Fiyatı', 'Satış Fiyatı'])
+    expect(plan.extras).toEqual([])
+    expect(platformUpdateSummary(plan)).toBe('Ürün Adı, Liste Fiyatı, Satış Fiyatı')
+    // Owner, 6.11.2026: Görseller alone for RYP007 must not send the title, description and attributes too.
+    const images = platformUpdatePlan('TRENDYOL', ['IMAGES'])
+    expect(images.fields).toEqual(['IMAGES'])
+    expect(images.bundled).toEqual([])
+    expect(platformUpdateSummary(images)).toBe('Görseller')
+    // The attributes go as the whole list, colour, size and Menşei included.
+    const attributes = platformUpdatePlan('TRENDYOL', ['ATTRIBUTES'])
+    expect(attributes.sends).toEqual(['Kategori Özellikleri'])
+    expect(attributes.extras).toEqual(['Renk / Beden', 'Menşei'])
     const desi = platformUpdatePlan('TRENDYOL', ['DESI'])
     expect(desi.sends).toEqual(['Desi', 'KDV Oranı'])
     expect(desi.extras).toEqual(['Menşei', 'Stok Kodu'])
