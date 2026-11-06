@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MarketplaceHub.Domain;
 
 namespace MarketplaceHub.Application;
 
@@ -81,6 +82,10 @@ public static class InvoiceIssuePolicy
     // The last check right before the provider request (InvoicePreIssueCheck) found the order changed since the owner's
     // approval: nothing was issued and the invoice waits for a new approval.
     public const string PreIssueChangedCode = "INVOICE_PRE_ISSUE_ORDER_CHANGED";
+
+    // Every unit of the order was returned (InvoiceSaleReturnPolicy, owner's rule of 6 Nov 2026): no sale invoice is
+    // drafted, approved or issued for it, and no return invoice either.
+    public static readonly InvoiceIssueRefusal OrderFullyReturned = new(InvoiceSaleReturnPolicy.FullyReturnedCode, InvoiceSaleReturnPolicy.FullyReturnedMessage);
 
     /// <summary>
     /// The VAT rate an invoice line takes: the marketplace's own rate when it reported one, else the product card's
@@ -199,6 +204,7 @@ public static class InvoiceIssuePolicy
         AdjustmentFlowUnavailableCode => AdjustmentFlowUnavailable.Message,
         LineVatRateUnknownCode => LineVatRateUnknown.Message,
         OrderLineUnreadableCode => OrderLineUnreadable.Message,
+        InvoiceSaleReturnPolicy.FullyReturnedCode => OrderFullyReturned.Message,
         PreIssueChangedCode => "Fatura kesilmeden hemen önceki son kontrolde sipariş onaydan sonra değişmiş bulundu (iptal, iade, teslim edilemeyen veya ödemesi beklenen paket, ya da tutar). Fatura kesilmedi; güncel önizlemeyi açıp yeniden onaylayın.",
         RecipientTaxIdInvalidCode => "Alıcının vergi numarası veya T.C. kimlik numarası geçersiz (kontrol hanesi tutmuyor). Sipariş bilgisini pazaryerinde düzeltip yeniden eşitleyin.",
         null or "" => "Fatura doğrulanamadı.",

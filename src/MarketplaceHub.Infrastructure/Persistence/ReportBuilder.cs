@@ -446,7 +446,7 @@ internal static class ReportBuilder
             foreach (var line in rows)
             {
                 var active = Math.Max(0m, line.OrderedQuantity - line.CancelledQuantity);
-                var lineBack = returnedOrder ? active : Math.Min(active, Math.Max(line.ReturnedQuantity, line.AcceptedReturnQuantity));
+                var lineBack = OrderLineReturnPolicy.ReturnedUnits(active, returnedOrder, line.ReturnedQuantity, line.AcceptedReturnQuantity);
                 var paidUnit = isTry ? scale * (line.UnitPrice + line.PlatformDiscount) : 0m;
                 var keptUnits = active - lineBack;
                 var extra = input.LineExtras.GetValueOrDefault(line.Id);

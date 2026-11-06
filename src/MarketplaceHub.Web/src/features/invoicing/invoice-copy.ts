@@ -116,6 +116,20 @@ export function workspaceInvoiceStatusFilterLabel(status: string) {
   return status === adjustmentRequiredStatus ? 'Düzeltme Gerekiyor' : invoiceStatusLabel(status)
 }
 
+/** How much of an order came back before it was invoiced (owner's rule of 6 Nov 2026). */
+export type SaleReturnScope = 'FULL' | 'PARTIAL'
+
+export function saleReturnTitle(scope: SaleReturnScope) {
+  return scope === 'FULL' ? 'Fatura Kesilmez' : 'Kısmi İade'
+}
+
+/** A line's returned units, which a sale invoice not issued yet leaves out; null when none came back. */
+export function returnedLineText(line: { quantity: number; returnedQuantity?: number }) {
+  const returned = line.returnedQuantity ?? 0
+  if (returned <= 0) return null
+  return returned >= line.quantity ? 'Tümü iade edildi · Faturaya girmez' : `${returned} adet iade edildi · Faturaya ${line.quantity - returned} adet girer`
+}
+
 /**
  * A fresh key for every delivery attempt. A key built from the document and its delivery state came again unchanged
  * after a second failure (FAILED -> FAILED), so the server replayed the old 202 and queued nothing. A double click is

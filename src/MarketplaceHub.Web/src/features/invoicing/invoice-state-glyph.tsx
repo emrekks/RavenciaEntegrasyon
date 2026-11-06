@@ -46,7 +46,7 @@ export function invoiceGlyphKind(status: string | null | undefined): InvoiceGlyp
   if (label === 'Faturası Mevcut') return 'done'
   if (label === 'Fatura İletiliyor' || label === 'E-Faturam Cevap Bekleniyor') return 'sending'
   if (label === 'Fatura İletilemedi' || label === 'Fatura Oluşturulamadı' || label === 'Fatura Sonucu Belirsiz' || label === 'Fatura Düzeltme Gerekli' || label === 'İnceleme Gerekli') return 'failed'
-  if (label === 'Fatura İptal') return 'cancelled'
+  if (label === 'Fatura İptal' || label === 'İade Edildi, Fatura Kesilmez') return 'cancelled'
   return 'idle'
 }
 
@@ -63,7 +63,7 @@ export function invoiceStatusProgress(status: string | null | undefined) {
   if (label === 'Fatura Bekliyor' || label === 'İncelenecek') return 0.2
   if (label === 'Fatura İletiliyor' || label === 'Fatura İletilemedi' || label === 'Fatura Sonucu Belirsiz' || label === 'E-Faturam Cevap Bekleniyor' || label === 'İnceleme Gerekli') return 0.66
   if (label === 'Fatura Oluşturulamadı') return 0.33
-  if (label === 'Faturası Mevcut' || label === 'Fatura Düzeltme Gerekli') return 1
+  if (label === 'Faturası Mevcut' || label === 'Fatura Düzeltme Gerekli' || label === 'İade Edildi, Fatura Kesilmez') return 1
   return 0
 }
 

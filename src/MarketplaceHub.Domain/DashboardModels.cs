@@ -34,16 +34,18 @@ public static class DashboardMetricPolicy
     public static bool IsInvoiceEligibleOrder(string? status) =>
         !InvoiceExcludedOrderStatuses.Contains(status?.Trim().ToUpperInvariant() ?? string.Empty, StringComparer.Ordinal);
 
-    // D6: the invoice lists keep returned, undelivered and unpaid orders visible (an invoice may already exist),
-    // but a new sale invoice is not issued for them: the goods came back, never arrived or were never paid.
+    // D6: the invoice lists keep undelivered and unpaid orders visible (an invoice may already exist), but a new sale
+    // invoice is not issued for them: the goods never arrived or were never paid. A returned order or package is no
+    // longer a status gate (owner's rule of 6 Nov 2026): its returned units leave the invoice, and an order whose every
+    // unit came back gets none (InvoiceSaleReturnPolicy).
     public const string SaleInvoiceStatusBlockedCode = "INVOICE_SALE_STATUS_NOT_ELIGIBLE";
-    public static readonly string[] SaleInvoiceBlockedOrderStatuses = ["CANCELLED", "CANCELED", "RETURNED", "UNDELIVERED", "PAYMENT_PENDING"];
+    public static readonly string[] SaleInvoiceBlockedOrderStatuses = ["CANCELLED", "CANCELED", "UNDELIVERED", "PAYMENT_PENDING"];
 
     public static bool IsSaleInvoiceBlockedOrder(string? status) =>
         SaleInvoiceBlockedOrderStatuses.Contains(status?.Trim().ToUpperInvariant() ?? string.Empty, StringComparer.Ordinal);
 
     public static bool IsSaleInvoiceBlockedPackage(ShipmentPackageStatus status) =>
-        status is ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Returned or ShipmentPackageStatus.Undelivered or ShipmentPackageStatus.PaymentPending;
+        status is ShipmentPackageStatus.Cancelled or ShipmentPackageStatus.Undelivered or ShipmentPackageStatus.PaymentPending;
 }
 
 /// <summary>
