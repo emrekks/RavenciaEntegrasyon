@@ -10,6 +10,7 @@ using Xunit;
 namespace MarketplaceHub.Application.Tests;
 
 // Ayarlar › Yapay Zekâ through the API: owner/administrator only, the Claude key is write-only, encrypted and audited.
+[Collection("postgres-integration")]
 public sealed class AiSettingsEndToEndTests(ApiEndToEndFixture fixture) : IClassFixture<ApiEndToEndFixture>
 {
     private const string Key = "sk-ant-api03-e2e-secret-value-123456";
