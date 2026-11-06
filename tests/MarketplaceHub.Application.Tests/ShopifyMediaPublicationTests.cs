@@ -74,6 +74,24 @@ public sealed class ShopifyMediaPublicationTests
         Assert.Equal(Url("vizon", 0), plan.VariantUrls[variant]);
     }
 
+    // O6: in a multi-colour family each card's size chart sat mid-list (after its card's gallery) and could be cut by the
+    // file limit; now every chart goes last, once.
+    [Fact]
+    public void EveryCardsSizeChartGoesLastOnceInAFamily()
+    {
+        var other = Guid.NewGuid();
+        var (first, second) = (Guid.NewGuid(), Guid.NewGuid());
+        var rows = new List<ShopifyMediaRow>
+        {
+            new(Card, null, 0, Url("card", 0)), new(Card, null, 1, Url("chart", 0)), new(Card, null, 2, Url("card", 1)),
+            new(other, null, 0, Url("other", 0)), new(other, null, 1, Url("chart", 1))
+        };
+
+        var plan = ShopifyProductPublicationComposer.PlanMedia(rows, [Card, other], [(first, Card), (second, other)], [Url("chart", 0), Url("chart", 1)]);
+
+        Assert.Equal([Url("card", 0), Url("card", 1), Url("other", 0), Url("chart", 0), Url("chart", 1)], plan.ProductUrls);
+    }
+
     [Fact]
     public void AVariantWithoutItsOwnPictureShowsItsCardsFirstOnlyInAFamily()
     {

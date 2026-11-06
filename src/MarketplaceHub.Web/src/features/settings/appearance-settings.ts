@@ -259,13 +259,15 @@ export function useAppearanceSettings() {
 
   async function save(next: AppearanceSettings) {
     const normalized = normalizeAppearanceSettings(next)
+    // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first.
     const current = client.getQueryData<AppearanceSettingsEnvelope>(appearanceSettingsQueryKey)
+      ?? await client.fetchQuery({ queryKey: appearanceSettingsQueryKey, queryFn: () => hubApi<AppearanceSettingsEnvelope>('/settings/appearance').then(envelope => rememberAppearance(envelope)) })
     let saved: AppearanceSettingsEnvelope
     try {
       saved = await hubApi<AppearanceSettingsEnvelope>('/settings/appearance', { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify(normalized) })
     } catch (error) {
       // changed elsewhere meanwhile: read the current settings so the next save is made on them
-      if (error instanceof ApiRequestError && error.status === 412) void client.invalidateQueries({ queryKey: appearanceSettingsQueryKey })
+      if (error instanceof ApiRequestError && (error.status === 412 || error.status === 428)) void client.invalidateQueries({ queryKey: appearanceSettingsQueryKey })
       throw error
     }
     client.setQueryData(appearanceSettingsQueryKey, rememberAppearance(saved))

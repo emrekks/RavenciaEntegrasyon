@@ -927,6 +927,59 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         await transaction.RollbackAsync();
     }
 
+    // O7: an updated and a new variant given the same code in one save are refused as a 409 naming the code and both
+    // rows, nothing written (the unique index made it a 500). D6: a deleted variant's code may go to a kept one.
+    [PostgreSqlFact]
+    public async Task UpdateProductAsync_RefusesOneCodeOnTwoRowsOfTheSave_AndLetsADeletedVariantsCodeMove()
+    {
+        var tenant = NewTenant("variant-code-save");
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Code save {Guid.NewGuid():N}", VatRate = 10m, VatInclusion = "INCLUDED", Description = "Code save test", DefaultListPrice = 0m, DefaultSalePrice = 0m, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var suffix = Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
+        ProductVariant NewVariant(int order)
+        {
+            var code = $"CS{order}-{suffix}";
+            return new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, SortOrder = order, Sku = code, SkuNormalized = CatalogKeyNormalizer.Key(code), OptionSignature = $"Beden={order}", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        }
+        var kept = NewVariant(0);
+        var removed = NewVariant(1);
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(kept, removed);
+        await db.SaveChangesAsync();
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+
+        var shared = $"CSX-{suffix}";
+        var clash = await service.UpdateProductAsync(tenant.Id, product.Id, product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null,
+                VariantUpdates: [new UpdateVariantCommand(kept.Id, shared, null, null)],
+                VariantsToCreate: [new CreateVariantCommand(shared, null, null)]),
+            CancellationToken.None);
+        Assert.False(clash.Succeeded);
+        Assert.Equal("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", clash.Error!.Code);
+        Assert.Equal(409, clash.Error.Status);
+        Assert.Contains($"{shared} iki varyantta kullanılıyor", clash.Error.Message);
+        var entry = Assert.Single(clash.Error.FieldErrors!["variantCodeConflicts"]);
+        Assert.Equal($"sku\t{shared}\t\tSAME_SAVE\tvariant:{kept.Id:D},new:0", entry);
+        db.ChangeTracker.Clear();
+        Assert.Equal(kept.Sku, (await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == kept.Id)).Sku);
+        Assert.Equal(2, await db.ProductVariants.AsNoTracking().CountAsync(x => x.TenantId == tenant.Id));
+
+        // D6: the deleted row's stock code goes to the kept row in the same save.
+        var moved = await service.UpdateProductAsync(tenant.Id, product.Id, product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null,
+                VariantUpdates: [new UpdateVariantCommand(kept.Id, removed.Sku, null, null)],
+                VariantIdsToDelete: [removed.Id]),
+            CancellationToken.None);
+        Assert.True(moved.Succeeded, moved.Error?.Message);
+        db.ChangeTracker.Clear();
+        var left = Assert.Single(await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync());
+        Assert.Equal((kept.Id, removed.Sku), (left.Id, left.Sku));
+
+        await transaction.RollbackAsync();
+    }
+
     [PostgreSqlFact]
     public async Task UpdateProductAsync_WhenVariantIdsToDeleteAreSent_RemovesThemWithTheirStockAndKeepsTheRest()
     {

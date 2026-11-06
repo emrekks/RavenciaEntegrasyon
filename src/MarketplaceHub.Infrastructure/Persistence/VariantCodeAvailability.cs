@@ -72,4 +72,33 @@ public static class VariantCodeAvailability
         var message = taken.Count == 0 ? lead : $"{lead}: {string.Join(", ", shown)}{more}.";
         return (message, new Dictionary<string, string[]> { ["variantCodeConflicts"] = [.. taken.Select(item => $"{item.Field}\t{item.Code}\t{item.ProductTitle}")] });
     }
+
+    // O7/D6: a row of the family as one save leaves it: a kept variant with its updated codes ("variant:{id}") or a new
+    // one ("new:{index}"). Deleted variants are not rows, so their codes may go to another row in the same save.
+    public sealed record SaveRow(string RowRef, string? Sku, string? Barcode);
+    public sealed record DuplicateInSave(string Field, string Code, IReadOnlyList<string> RowRefs);
+    public const string SameSaveMarker = "SAME_SAVE";
+
+    // Every stock code or barcode that more than one row would hold after the save (the unique index would refuse it).
+    public static List<DuplicateInSave> DuplicatesInSave(IReadOnlyList<SaveRow> rows)
+    {
+        static IEnumerable<DuplicateInSave> Find(IReadOnlyList<SaveRow> rows, string field, Func<SaveRow, string?> codeOf) =>
+            rows.Select(row => (Row: row, Code: codeOf(row)?.Trim() ?? ""))
+                .Where(item => item.Code.Length > 0 && CatalogKeyNormalizer.Key(item.Code).Length > 0)
+                .GroupBy(item => CatalogKeyNormalizer.Key(item.Code), StringComparer.Ordinal)
+                .Where(group => group.Count() > 1)
+                .Select(group => new DuplicateInSave(field, group.First().Code, [.. group.Select(item => item.Row.RowRef)]));
+        return [.. Find(rows, "sku", row => row.Sku), .. Find(rows, "barcode", row => row.Barcode)];
+    }
+
+    // "MZ071-M iki varyantta kullanılıyor" and the field errors that mark every row holding it
+    // ("sku\tMZ071-M\t\tSAME_SAVE\tvariant:…,new:0").
+    public static (string Message, Dictionary<string, string[]> Fields) DescribeDuplicates(IReadOnlyCollection<DuplicateInSave> duplicates)
+    {
+        static string Count(int count) => count == 2 ? "iki" : count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var shown = duplicates.Take(5).Select(item => $"{item.Code} {Count(item.RowRefs.Count)} varyantta kullanılıyor");
+        var more = duplicates.Count > 5 ? $" ve {duplicates.Count - 5} kod daha" : "";
+        var message = $"Aynı kod bu kayıtta birden çok varyanta verilmiş; hiçbir değişiklik kaydedilmedi. {string.Join(", ", shown)}{more}. Kodları düzeltip tekrar kaydedin.";
+        return (message, new Dictionary<string, string[]> { ["variantCodeConflicts"] = [.. duplicates.Select(item => $"{item.Field}\t{item.Code}\t\t{SameSaveMarker}\t{string.Join(',', item.RowRefs)}")] });
+    }
 }

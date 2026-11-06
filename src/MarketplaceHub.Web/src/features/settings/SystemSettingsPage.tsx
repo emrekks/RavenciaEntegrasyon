@@ -1209,7 +1209,7 @@ function AlertEmailSettingsSection() {
 
 type AiSkillView = { key: string; title: string; description: string; bundleHash: string; uploaded: { skillId: string; version: string; uploadedAt: string; bundleHash: string } | null; upToDate: boolean }
 type AiSettings = { apiKeySaved: boolean; defaultModel: string; updatedAt: string | null; version: number; skills: AiSkillView[] }
-type AiUsageEntry = { id: string; createdAt: string; feature: string; featureLabel: string; userName: string | null; subjectLabel: string | null; model: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null; status: 'SUCCEEDED' | 'FAILED'; error: string | null; durationMs: number }
+type AiUsageEntry = { id: string; createdAt: string; feature: string; featureLabel: string; userName: string | null; subjectLabel: string | null; model: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null; status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED'; error: string | null; durationMs: number }
 const defaultAiModel = 'claude-sonnet-5-5'
 // The Claude models the panel offers, with their list price per million tokens (input / output, USD).
 const aiModelOptions = [
@@ -1261,7 +1261,9 @@ function AiSettingsSection() {
       const next = await hubApi<AiSettings>('/settings/ai', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ apiKey: changingKey && apiKey.trim() ? apiKey.trim() : null, defaultModel: model.trim() }) })
       setApiKey('')
       client.setQueryData(['ai-settings'], next)
-      setNotice({ kind: 'success', message: 'Yapay zekâ ayarları kaydedildi.' })
+      // O9: a new key belongs to another workspace; the skills uploaded with the old one are forgotten.
+      const skillsForgotten = saved.skills.some(skill => skill.uploaded) && !next.skills.some(skill => skill.uploaded)
+      setNotice({ kind: 'success', message: skillsForgotten ? 'Yapay zekâ ayarları kaydedildi. Yeni anahtar için becerileri “Beceriyi Yükle” ile yeniden yükleyin; beden tablosu ancak ondan sonra oluşturulabilir.' : 'Yapay zekâ ayarları kaydedildi.' })
     } catch (reason) {
       setNotice({ kind: 'error', message: reason instanceof Error ? reason.message : 'Yapay zekâ ayarları kaydedilemedi.' })
     } finally { setBusy(null) }
@@ -1331,7 +1333,7 @@ function AiSettingsSection() {
               <td>{entry.subjectLabel ?? '—'}</td>
               <td className="is-num">{aiTokens(entry)}</td>
               <td className="is-num">{aiCost(entry.costUsd)}</td>
-              <td title={entry.error ?? undefined}><span className="ss-tag"><SettingsGlyph state={entry.status === 'SUCCEEDED' ? 'done' : 'bad'} />{entry.status === 'SUCCEEDED' ? 'Başarılı' : 'Başarısız'}</span>{entry.error ? <small className="ss-ai-usage-error">{entry.error}</small> : null}</td>
+              <td title={entry.error ?? undefined}><span className="ss-tag"><SettingsGlyph state={entry.status === 'SUCCEEDED' ? 'done' : entry.status === 'CANCELLED' ? 'none' : 'bad'} />{entry.status === 'SUCCEEDED' ? 'Başarılı' : entry.status === 'CANCELLED' ? 'İptal Edildi' : 'Başarısız'}</span>{entry.error ? <small className="ss-ai-usage-error">{entry.error}</small> : null}</td>
             </tr>)}</tbody>
           </table></div>}
         </div>

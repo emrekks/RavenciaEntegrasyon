@@ -1,4 +1,5 @@
 import { ApiRequestError } from '../../shared/api'
+import { SAME_SAVE_CODE_HOLDER } from './platform-code-rules'
 import type { VariantStockSet } from './variant-stock-set'
 
 // The key of the product snapshot the editor form was filled from. Every place that tells the editor "this version is
@@ -153,14 +154,15 @@ export function variantCodeKey(field: 'barcode' | 'sku', code: string) {
 }
 
 // The codes a refused save names as held by another card ("sku\tMZ021Y-CD-01\tKadın … Bluz"), keyed by field and
-// code, with the holding card's title.
+// code, with the holding card's title. A code the save gave to several of its own rows ("sku\tMZ071-M\t\tSAME_SAVE\t…")
+// maps to SAME_SAVE_CODE_HOLDER, so every row holding it is marked.
 export function variantCodeConflictsFrom(error: unknown): Record<string, string> {
   if (!(error instanceof ApiRequestError)) return {}
   const entries = error.fieldErrors?.variantCodeConflicts ?? error.fieldErrors?.VariantCodeConflicts ?? []
   const result: Record<string, string> = {}
   for (const entry of entries) {
-    const [field, code, title] = entry.split('\t')
-    if ((field === 'sku' || field === 'barcode') && code?.trim()) result[variantCodeKey(field, code)] = title?.trim() || 'başka bir ürün'
+    const [field, code, title, kind] = entry.split('\t')
+    if ((field === 'sku' || field === 'barcode') && code?.trim()) result[variantCodeKey(field, code)] = kind === 'SAME_SAVE' ? SAME_SAVE_CODE_HOLDER : title?.trim() || 'başka bir ürün'
   }
   return result
 }
