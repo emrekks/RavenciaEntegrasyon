@@ -41,4 +41,15 @@ internal static class CatalogFamilyMedia
             .ToList();
         return (defaultUrls, items);
     }
+
+    // The custom family order. A picture stands where its product-level row stands: assigning pictures to variants
+    // renumbers that variant's own rows 0, 1, 2… (its primary picture first), so a variant row's number says nothing
+    // about the strip. A picture held only by variant rows follows, in its own saved order.
+    internal static IReadOnlyList<string> OrderedUrls(IReadOnlyList<Row> rows)
+    {
+        var shown = rows.Where(row => !string.IsNullOrWhiteSpace(row.Url)).ToList();
+        var productLevel = shown.Where(row => row.VariantId is null).OrderBy(row => row.SortOrder).ThenBy(row => row.ProductId).ThenBy(row => row.MediaId);
+        var variantOnly = shown.Where(row => row.VariantId is not null).OrderBy(row => row.SortOrder).ThenBy(row => row.ProductId).ThenBy(row => row.MediaId);
+        return CatalogImageIdentity.DistinctDisplayUrls(productLevel.Concat(variantOnly).Select(row => row.Url));
+    }
 }

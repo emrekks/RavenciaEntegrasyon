@@ -157,14 +157,15 @@ public sealed class ReportMarketplaceCommissionsTests
         Assert.Equal((120m, false, "Gerçek Komisyon"), (gercek.Amount, gercek.Estimated, gercek.Label));
         Assert.StartsWith(source, gercek.Source);
         var tahmini = views[estimated].Costs.Single(cost => cost.Key == "commission");
-        // Pazarama sends no rate on the order: its estimate is the store's rate over the read orders.
-        Assert.Equal((platform == "PAZARAMA" ? 120m : 108m, true, "Tahmini Komisyon"), (tahmini.Amount, tahmini.Estimated, tahmini.Label));
+        // Pazarama sends no rate on the order: its estimate is the store's rate over the read orders. Hepsiburada adds 20 % VAT
+        // to its rate (108 x 1.20).
+        Assert.Equal((platform switch { "PAZARAMA" => 120m, "HEPSIBURADA" => 129.60m, _ => 108m }, true, "Tahmini Komisyon"), (tahmini.Amount, tahmini.Estimated, tahmini.Label));
 
         var previous = input with { Orders = [], Lines = [], LineExtras = new Dictionary<Guid, ReportLineExtra>(), OrderCommissions = null };
         var commission = ReportBuilder.Build(input, previous, new Dictionary<Guid, decimal>()).Costs.Commission!;
         Assert.Equal((120m, 1), (commission.Real, commission.RealOrders));
         // What the estimate said for the same order (Pazarama has no rate on the order to estimate from).
-        Assert.Equal(platform == "PAZARAMA" ? 0m : 108m, commission.EstimatedForSettled);
+        Assert.Equal(platform switch { "PAZARAMA" => 0m, "HEPSIBURADA" => 129.60m, _ => 108m }, commission.EstimatedForSettled);
         Assert.Equal(commission.Real + commission.EstimatedForUnsettled, commission.Combined);
     }
 }
