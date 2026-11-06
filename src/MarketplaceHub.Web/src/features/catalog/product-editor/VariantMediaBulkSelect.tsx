@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { UiIcon } from '../../../shared/components'
 import { useDismissable } from '../../../shared/hooks/useDismissable'
 
-export type VariantMediaBulkSelectOption = { id: string; label: string; assigned?: boolean }
+// imageCount: how many images the value has; shown in the round badge instead of a check (owner, 6 Nov 2026).
+export type VariantMediaBulkSelectOption = { id: string; label: string; assigned?: boolean; imageCount?: number }
 
 // A native select cannot show an icon, so the bulk image picker lists its option groups and values in its own listbox:
 // a value that already has images carries the round check the image tiles use. The placeholder stays the first option,
@@ -61,8 +62,8 @@ export function VariantMediaBulkSelect({ label, value, placeholder, options, dis
   return <div className="variant-media-bulk-field category-attribute-dropdown" ref={rootRef}>
     <span id={`${id}-label`}>{label}</span>
     <button ref={triggerRef} type="button" className={`category-attribute-select-trigger active${selected ? '' : ' is-placeholder'}`} aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? `${id}-list` : undefined} aria-labelledby={`${id}-label ${id}-value`} disabled={disabled} onClick={() => setOpen(current => !current)} onKeyDown={triggerKeyDown}>
-      <span id={`${id}-value`}>{selected?.label ?? placeholder}{selected?.assigned && <span className="sr-only">, görsel atandı</span>}</span>
-      {selected?.assigned && <i className="variant-media-value-check" aria-hidden="true"><UiIcon name="check" /></i>}
+      <span id={`${id}-value`}>{selected?.label ?? placeholder}{selected?.assigned && <span className="sr-only">, {selected.imageCount ?? 0} görsel atandı</span>}</span>
+      {selected?.assigned && <i className="variant-media-value-check" aria-hidden="true">{selected.imageCount ?? <UiIcon name="check" />}</i>}
       <UiIcon name="chevronDown" />
     </button>
     {open && <div ref={listRef} id={`${id}-list`} className="category-attribute-dropdown-menu" role="listbox" tabIndex={-1} aria-labelledby={`${id}-label`} onKeyDown={listKeyDown}>
@@ -70,8 +71,8 @@ export function VariantMediaBulkSelect({ label, value, placeholder, options, dis
         {items.map(option => {
           const isSelected = option.id === value
           return <button type="button" role="option" aria-selected={isSelected} tabIndex={-1} className={`${isSelected ? 'active' : ''}${option.id ? '' : ' is-placeholder'}`} key={option.id || 'placeholder'} onClick={() => choose(option.id)}>
-            <span>{option.label}{option.assigned && <span className="sr-only">, görsel atandı</span>}</span>
-            {option.assigned ? <i className="variant-media-value-check" aria-hidden="true"><UiIcon name="check" /></i> : null}
+            <span>{option.label}{option.assigned && <span className="sr-only">, {option.imageCount ?? 0} görsel atandı</span>}</span>
+            {option.assigned ? <i className="variant-media-value-check" aria-hidden="true">{option.imageCount ?? <UiIcon name="check" />}</i> : null}
           </button>
         })}
       </div>
