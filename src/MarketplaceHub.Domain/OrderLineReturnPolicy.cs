@@ -6,7 +6,8 @@ namespace MarketplaceHub.Domain;
 /// Returned state, the units an approved return claim accepted) counts the same units, so the largest one counts, never
 /// their sum. A returned order took every unit back. Nothing is inferred from a missing field: no evidence is no
 /// return, and an open claim (requested, on its way, waiting for the seller) returns nothing until it is approved
-/// (owner, 6 Nov 2026).
+/// (owner, 6 Nov 2026). An exchange claim (ReturnClaim.CustomerRequest CHANGE) is no return at all: its units are not
+/// evidence, the sale goes on (owner, 6 Nov 2026).
 /// </summary>
 public static class OrderLineReturnPolicy
 {

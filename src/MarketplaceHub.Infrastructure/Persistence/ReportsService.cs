@@ -279,7 +279,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                               Active = line.OrderedQuantity - line.CancelledQuantity,
                               ReturnedQuantity = returnBooked ? line.ReturnedQuantity : 0m,
                               Accepted = !returnBooked ? 0m : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
-                                      && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId
+                                      && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
                                           && (returned.RawStatus == null || returned.RawStatus == ""
                                               ? acceptedClaims.Contains(claim.Status)
                                               : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
@@ -344,7 +344,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
                           AcceptedReturnQuantity = unbookedReturns.Contains(row.Order.Id)
                               ? 0m
                               : db.ReturnLines.Where(returned => returned.TenantId == tenantId && returned.OrderLineId == line.Id
-                                  && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId
+                                  && db.ReturnClaims.Any(claim => claim.TenantId == tenantId && claim.Id == returned.ClaimId && claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
                                       && (returned.RawStatus == null || returned.RawStatus == ""
                                           ? acceptedClaims.Contains(claim.Status)
                                           : acceptedLines.Contains(returned.RawStatus.ToUpper()))))
@@ -361,7 +361,8 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         return await (from row in PeriodOrders(tenantId, allowedIds, period)
                       join claim in db.ReturnClaims.AsNoTracking() on new { row.Order.TenantId, OrderId = row.Order.Id } equals new { claim.TenantId, claim.OrderId }
                       // A micro-export order's claim counts once Trendyol's statement records the return, as its units do (LineRowsAsync).
-                      where !unbookedReturns.Contains(row.Order.Id)
+                      // An exchange is no return: the sale goes on (owner, 6 Nov 2026).
+                      where !unbookedReturns.Contains(row.Order.Id) && claim.CustomerRequest != ReturnCustomerRequestPolicy.Change
                       select new ReportClaimRow { OrderId = claim.OrderId, ConnectionId = claim.ConnectionId, Status = claim.Status, ReasonCode = claim.ReasonCode, ReasonText = claim.ReasonText })
             .ToListAsync(cancellationToken);
     }
