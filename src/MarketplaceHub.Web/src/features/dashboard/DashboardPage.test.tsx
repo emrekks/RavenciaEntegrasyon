@@ -12,7 +12,9 @@ vi.mock('../../shared/api', async importOriginal => {
   const respond = async (path: string) => {
     const route = path.split('?')[0]
     if (apiState.failing.has(route)) throw new Error(`${route} failed`)
-    if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 4, lateOrders: 1, pendingReturns: 2, pendingByConnection: { ty: 3, hb: 1 }, pendingUnitsByConnection: bootstrapOverride.units === undefined ? { ty: 34, hb: 1 } : bootstrapOverride.units }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
+    // The worker's snapshot is a step behind (9 against 4): the Bekleyen card reads the menu badge's /orders/summary instead.
+    if (route === '/orders/summary') return { new: 3, processing: 1, pending: 4, pendingByConnection: { ty: 3, hb: 1 }, pendingUnitsByConnection: bootstrapOverride.units === undefined ? { ty: 34, hb: 1 } : bootstrapOverride.units }
+    if (route === '/dashboard/bootstrap') return { metrics: { pendingOrders: 9, lateOrders: 1, pendingReturns: 2, pendingByConnection: { ty: 9 }, pendingUnitsByConnection: { ty: 90 } }, channels: [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Trendyol', status: 'ACTIVE' }, { connectionId: 'hb', platformCode: 'HEPSIBURADA', displayName: 'Hepsiburada', status: 'ACTIVE' }] }
     if (route === '/dashboard/cancellations') return { stores: [
       { connectionId: 'ty', cancelledOrders: 2, partialOrders: 1, cancelledUnits: 4, unknownTimeOrders: 0, unknownTimeUnits: 0 },
       { connectionId: 'hb', cancelledOrders: 0, partialOrders: 0, cancelledUnits: 0, unknownTimeOrders: 1, unknownTimeUnits: 3 },
@@ -24,10 +26,11 @@ vi.mock('../../shared/api', async importOriginal => {
     if (route.endsWith('/instant-notifications')) return { state: 'UNSUPPORTED', endpoint: null, registeredAt: null, lastReceivedAt: null, receivedLast24Hours: 0, message: null }
     throw new Error(`unhandled ${path}`)
   }
-  return { ...original, hubApi: vi.fn(respond), loadAllPages: vi.fn(async () => ({ items: [], totalCount: 0 })) }
+  return { ...original, hubApi: vi.fn(respond), hubPoll: vi.fn(respond), loadAllPages: vi.fn(async () => ({ items: [], totalCount: 0 })) }
 })
 
 import { DashboardPage, knownCount, matrixJobsLink } from './DashboardPage'
+import { pendingOrdersQuery } from '../../shared/order-navigation-count'
 
 let container: HTMLDivElement
 let root: Root
@@ -112,6 +115,16 @@ describe('DashboardPage', () => {
     expect(Array.from(pendingCard().querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol3 paket · 34 adet', 'Hepsiburada1 paket · 1 adet'])
   })
 
+  // Owner, 6 Nov 2026: the badge said 13 while the card still said 12 from the worker's snapshot. The card now reads the
+  // badge's own query, so a new answer there (a realtime order change, a poll) moves both at once.
+  it('shows the menu badge\'s Bekleyen answer, not the dashboard snapshot, and follows it when it changes', async () => {
+    await render()
+    expect(pendingCard().querySelector('strong')?.textContent).toBe('4Paket | 35 Adet Ürün')
+    await act(async () => { client.setQueryData(pendingOrdersQuery.queryKey, { new: 13, processing: 0, pending: 13, pendingByConnection: { ty: 13 }, pendingUnitsByConnection: { ty: 17 } }); await new Promise(resolve => setTimeout(resolve, 30)) })
+    expect(pendingCard().querySelector('strong')?.textContent).toBe('13Paket | 17 Adet Ürün')
+    expect(Array.from(pendingCard().querySelectorAll('.rr-bd-r')).map(row => row.textContent)).toEqual(['Trendyol13 paket · 17 adet'])
+  })
+
   it('leaves the units out while they are unknown, never as 0', async () => {
     bootstrapOverride.units = null
     await render()
@@ -134,7 +147,7 @@ describe('DashboardPage', () => {
   })
 
   it('shows an unread invoice summary or bootstrap as unknown, not 0, and says data is missing', async () => {
-    apiState.failing = new Set(['/invoice-workspace/summary', '/dashboard/bootstrap'])
+    apiState.failing = new Set(['/invoice-workspace/summary', '/dashboard/bootstrap', '/orders/summary'])
     await render()
     expect(card('Faturalar')).toBe('—')
     expect(card('Bekleyen Siparişler')).toBe('—')

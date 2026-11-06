@@ -28,7 +28,7 @@ import { readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../
 import { ProductTransferDialog } from './ProductTransferDialog'
 import { ModelCodeCopy } from './ModelCodeCopy'
 import { productDeleteJobNote, productDeleteListing, productDeleteMoreText, productDeleteResultMessage, type ProductDeleteResponse } from './product-delete-text'
-import { loadProductsByIds, quickStockCellValue, type SavedStock } from './quick-edit-products'
+import { loadProductsByIds, quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
 import { fitTip, unfitTip } from '../../../shared/touch-tips'
 // Loaded with the editor's stylesheet only when a bulk publication opens, like a row's publish popup.
 const BulkPublishDialog = lazy(() => import('./BulkPublishDialog').then(module => ({ default: module.BulkPublishDialog })))
@@ -129,7 +129,8 @@ export function ProductQuickEditModal({ products, connections, mode = 'both', on
   const contextProduct = products[0]
   const contextTitle = contextProduct?.title || 'Toplu düzenleme'
   const contextModelCode = contextProduct ? contextProduct.modelCode || contextProduct.variants.find(variant => variant.modelCode)?.modelCode || '—' : null
-  const variants = products.flatMap(product => product.variants.map(variant => ({ product, variant })))
+  // Each variant once, beside its own card: a product read by id lists its whole family's variants.
+  const variants = quickEditVariantItems(products)
   const sortedVariants = [...variants].sort(compareVariantItemsAlphabetically)
   const groups = sortedVariants.reduce<Record<string, typeof variants>>((result, item) => {
     const color = variantColorKey(item.variant) || 'Diğer'
