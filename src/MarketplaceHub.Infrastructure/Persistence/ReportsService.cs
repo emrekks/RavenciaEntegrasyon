@@ -109,17 +109,7 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
             .Select(x => new ReportChannelView(x.Id, x.PlatformCode.Trim().ToUpperInvariant(), x.DisplayName, ReportBuckets.IsTestEnvironment(x.Environment)))
             .Where(x => !x.IsTest && (platformFilter is not { Count: > 0 } || platformFilter.Contains(x.PlatformCode)))
             .ToDictionary(x => x.Id);
-        var allowedIds = allowed.Keys.ToArray();
-
-        var orders = await OrderRowsAsync(tenantId, allowedIds, current, cancellationToken);
-        var orderIds = orders.Select(x => x.Id).ToArray();
-        var lines = await LineRowsAsync(tenantId, allowedIds, current, cancellationToken);
-        var input = new ReportInput(current, ReportBuckets.Day, timezone, allowed, orders, await OrderExtrasAsync(tenantId, orderIds, cancellationToken), lines,
-            await LineExtrasAsync(tenantId, orderIds, cancellationToken), await ClaimRowsAsync(tenantId, allowedIds, current, cancellationToken),
-            await PackageRowsAsync(tenantId, allowedIds, current, cancellationToken), await CatalogNamesAsync(tenantId, lines, cancellationToken), false,
-            await FinanceAsync(tenantId, allowed, orders, current, cancellationToken),
-            await MarketplaceCommissionsAsync(tenantId, allowed, orders, lines, cancellationToken),
-            new ReportDesiInput(await LearnedDesiAsync(tenantId, cancellationToken), await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
+        var input = await ProfitInputAsync(tenantId, allowed, current, timezone, cancellationToken);
         var all = ReportOrderProfit.Build(input, ReportBuilder.Facts(input).Orders);
 
         var term = query.Search?.Trim();
@@ -168,6 +158,69 @@ public sealed class ReportsService(AppDbContext db, TimeProvider timeProvider) :
         var totals = ReportOrderProfit.Totals(all);
         return ServiceResult<ReportOrderProfitPage>.Ok(new(page, ordered.Count, query.Page, query.PageSize, totals.Amount, totals.Profit, totals.MissingCost,
             totals.ProfitAmount, totals.ProfitOrders, totals.Margin, totals.MissingCargo, totals.MissingCommission));
+    }
+
+    // The period's orders of the allowed stores with everything the order profit costs them from (ReportOrderProfit).
+    private async Task<ReportInput> ProfitInputAsync(Guid tenantId, Dictionary<Guid, ReportChannelView> allowed, ReportPeriod current, TimeZoneInfo timezone,
+        CancellationToken cancellationToken)
+    {
+        var allowedIds = allowed.Keys.ToArray();
+        var orders = await OrderRowsAsync(tenantId, allowedIds, current, cancellationToken);
+        var orderIds = orders.Select(x => x.Id).ToArray();
+        var lines = await LineRowsAsync(tenantId, allowedIds, current, cancellationToken);
+        return new ReportInput(current, ReportBuckets.Day, timezone, allowed, orders, await OrderExtrasAsync(tenantId, orderIds, cancellationToken), lines,
+            await LineExtrasAsync(tenantId, orderIds, cancellationToken), await ClaimRowsAsync(tenantId, allowedIds, current, cancellationToken),
+            await PackageRowsAsync(tenantId, allowedIds, current, cancellationToken), await CatalogNamesAsync(tenantId, lines, cancellationToken), false,
+            await FinanceAsync(tenantId, allowed, orders, current, cancellationToken),
+            await MarketplaceCommissionsAsync(tenantId, allowed, orders, lines, cancellationToken),
+            new ReportDesiInput(await LearnedDesiAsync(tenantId, cancellationToken), await DeclaredDesiAsync(tenantId, allowed, orders, cancellationToken)));
+    }
+
+    // Fiyat Hesapla's hints: each live store's commission, cargo and service fee on the clothing orders of the last 60
+    // days up to today (ReportPriceAssumptions), costed as Sipariş Kârlılık Analizi costs them.
+    public async Task<ServiceResult<PriceAssumptionsView>> PriceAssumptionsAsync(Guid tenantId, CancellationToken cancellationToken)
+    {
+        var timezoneId = await db.Tenants.AsNoTracking().Where(x => x.Id == tenantId).Select(x => x.Timezone).SingleOrDefaultAsync(cancellationToken);
+        var timezone = DashboardReadService.ResolveTimezone(timezoneId);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(timeProvider.GetUtcNow(), timezone).DateTime);
+        var resolved = DashboardPerformancePeriod.Resolve(today.AddDays(1 - ReportPriceAssumptions.Days), today, timeProvider.GetUtcNow(), timezone);
+        if (!resolved.Succeeded) return ServiceResult<PriceAssumptionsView>.Fail(resolved.Error!.Code, resolved.Error.Message, resolved.Error.Status);
+        var period = resolved.Value!;
+        var current = new ReportPeriod(period.From, period.To, period.CurrentStart, period.CurrentEnd);
+        var excluded = DashboardRevenuePolicy.ExcludedConnectionStatuses;
+        var allowed = (await db.PlatformConnections.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && !excluded.Contains(x.Status))
+                .Select(x => new { x.Id, x.PlatformCode, x.DisplayName, x.Environment })
+                .ToListAsync(cancellationToken))
+            .Select(x => new ReportChannelView(x.Id, x.PlatformCode.Trim().ToUpperInvariant(), x.DisplayName, ReportBuckets.IsTestEnvironment(x.Environment)))
+            .Where(x => !x.IsTest)
+            .ToDictionary(x => x.Id);
+        var input = await ProfitInputAsync(tenantId, allowed, current, timezone, cancellationToken);
+
+        // The marketplace category each panel category is mapped to, by its path in that marketplace's tree.
+        var mapped = await (from mapping in db.CategoryMappings.AsNoTracking()
+                            join item in db.ReferenceItems.AsNoTracking()
+                                on new { mapping.TenantId, mapping.ConnectionId, mapping.ExternalId, ResourceType = "CATEGORIES" }
+                                equals new { item.TenantId, item.ConnectionId, item.ExternalId, item.ResourceType }
+                            where mapping.TenantId == tenantId
+                            select new { mapping.LocalId, item.Path })
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var clothing = ReportPriceAssumptions.ClothingCategories(mapped.Select(x => (x.LocalId, (string?)x.Path)));
+
+        // Hepsiburada's service charges on the period's orders, from its accounting records.
+        var hepsiburada = allowed.Values.Where(channel => channel.PlatformCode == "HEPSIBURADA").Select(channel => channel.Id).ToArray();
+        var numbers = input.Orders.Where(order => hepsiburada.Contains(order.ConnectionId)).Select(order => order.OrderNumber).Distinct(StringComparer.Ordinal).ToArray();
+        var feeTypes = ReportPriceAssumptions.HepsiburadaServiceFeeTypes.ToArray();
+        var fees = numbers.Length == 0 ? [] : (await db.MarketplaceFinanceTransactions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && hepsiburada.Contains(x.ConnectionId) && x.Source == Jobs.Handlers.HepsiburadaFinanceSyncJobHandler.Source
+                    && x.OrderNumber != null && numbers.Contains(x.OrderNumber) && x.TransactionType != null && feeTypes.Contains(x.TransactionType))
+                .Select(x => new { x.ExternalId, x.ConnectionId, x.OrderNumber, x.Debt, x.Credit })
+                .ToListAsync(cancellationToken))
+            .DistinctBy(x => (x.ConnectionId, x.ExternalId))
+            .Select(x => new ReportPriceAssumptions.FeeRecord(x.ConnectionId, x.OrderNumber!, x.Debt - x.Credit))
+            .ToList();
+        return ServiceResult<PriceAssumptionsView>.Ok(ReportPriceAssumptions.Build(input, ReportBuilder.Facts(input).Orders, clothing, fees));
     }
 
     // The listed products' catalogue details, as the product list shows them: the variant's model code and options

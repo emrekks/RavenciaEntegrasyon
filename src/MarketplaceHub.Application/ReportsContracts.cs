@@ -380,8 +380,30 @@ public sealed record ReportInventoryView(DateTimeOffset GeneratedAt, DateOnly Fr
     IReadOnlyList<ReportStockGroupView> Cover, IReadOnlyList<ReportStockItemView> TopCapital, IReadOnlyList<ReportStockItemView> Dead,
     IReadOnlyList<ReportChannelView> Channels);
 
+// Fiyat Hesapla's hints: what each store took of the owner's clothing sales over the last Days days (From-To, the
+// tenant's calendar days), costed as the reports cost them (ReportOrderProfit). ClothingOnly false: clothing could not
+// be told apart from the category tree, so every sale counts. MinimumOrders: fewer orders than this give no rate.
+public sealed record PriceAssumptionsView(DateOnly From, DateOnly To, int Days, bool ClothingOnly, int MinimumOrders, IReadOnlyList<PriceAssumptionStoreView> Stores);
+
+// One store. Orders and Sales: its clothing orders with something kept and a known commission, and their kept sale.
+// CommissionRate: their commission ÷ their sale in %, VAT included as it is charged (null: fewer than MinimumOrders);
+// CommissionRateBeforeVat: the same before the VAT a marketplace adds on top of its rate (Hepsiburada), else null;
+// TakesCommission false: no marketplace commission (the own Shopify store). RealCommissionOrders: of Orders, those
+// whose commission the marketplace's own record gave. Cargo: one parcel, VAT included (null: unknown), with its source
+// ("invoice": the store's current tariff from its cargo invoices; "tariff": the most frequent amount the platform's
+// 2026 tariff gives its clothing orders; "assumption": the own store's assumed cargo). ServiceFee (₺ per order) and
+// ServiceFeeRate (% of the sale), VAT included, with their source ("tariff": the fee the reports cost; "records": the
+// mean the marketplace's own records charged its billed clothing orders, ServiceFeeOrders of them);
+// AzerbaijanServiceFee and InternationalServiceFeeRate: Trendyol's AZ storefront fee and its micro-export fee;
+// PaymentFeeRate (%) and PaymentFeeFixed (₺): the own store's card fees.
+public sealed record PriceAssumptionStoreView(Guid ConnectionId, string PlatformCode, string DisplayName, int Orders, decimal Sales,
+    decimal? CommissionRate, decimal? CommissionRateBeforeVat, bool TakesCommission, int RealCommissionOrders,
+    decimal? Cargo, string? CargoSource, decimal ServiceFee, decimal ServiceFeeRate, string ServiceFeeSource, int ServiceFeeOrders,
+    decimal? AzerbaijanServiceFee, decimal? InternationalServiceFeeRate, decimal? PaymentFeeRate, decimal? PaymentFeeFixed);
+
 public interface IReportsService
 {
+    Task<ServiceResult<PriceAssumptionsView>> PriceAssumptionsAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<ServiceResult<ReportSalesView>> SalesAsync(Guid tenantId, ReportSalesQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<ReportOrderProfitPage>> OrderProfitabilityAsync(Guid tenantId, ReportOrderProfitQuery query, CancellationToken cancellationToken);
     Task<ServiceResult<ReportInventoryView>> StockAsync(Guid tenantId, ReportStockQuery query, CancellationToken cancellationToken);

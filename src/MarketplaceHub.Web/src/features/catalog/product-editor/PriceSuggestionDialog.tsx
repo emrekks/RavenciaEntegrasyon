@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Button, Modal } from '../../../shared/components'
+import { Button, Modal, TitleHint } from '../../../shared/components'
 import { DEFAULT_COMMISSION_RATE, DEFAULT_SERVICE_FEE, DEFAULT_VAT_RATE, appliedPrices, suggestPrice, type PriceTargetBasis, type PriceTargetKind } from './price-suggestion'
+import { cargoHint, commissionHint, serviceFeeHint, type HintContent } from './price-assumptions'
 import './price-suggestion.css'
 
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -21,7 +22,26 @@ function readAssumptions(): Assumptions {
 }
 function writeAssumptions(value: Assumptions) { try { window.localStorage.setItem(storageKey, JSON.stringify(value)) } catch { /* private window: nothing kept */ } }
 
-export type PriceSuggestionFields = { cost: string; vatRate: string; vatIncluded: boolean; listPrice: string }
+// A field of the window: its label with an optional "i" hint beside it (outside the <label>, so the input keeps the
+// label's text as its name), and the input.
+function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: (id: string) => ReactNode }) {
+  const id = useId()
+  return <div className="price-suggestion-field">
+    <span className="price-suggestion-label"><label htmlFor={id}>{label}</label>{hint ? <TitleHint label={label} icon="info">{hint}</TitleHint> : null}</span>
+    {children(id)}
+  </div>
+}
+
+// The hint's card: the marketplaces' published women's-clothing figures, one row per marketplace, then the source.
+function AssumptionHint({ content }: { content: HintContent }) {
+  return <span className="price-suggestion-hint">
+    {content.rows.map(row => <span key={row.store} className="price-suggestion-hint-row"><strong>{row.store}</strong> {row.value}</span>)}
+    {content.notes.map(note => <small key={note}>{note}</small>)}
+    {content.source && <small>{content.source}</small>}
+  </span>
+}
+
+export type PriceSuggestionFields ={ cost: string; vatRate: string; vatIncluded: boolean; listPrice: string }
 
 // "Hesapla" beside Fiyat, Stok ve Vergi: the window that suggests a selling price for a wanted profit.
 export function PriceSuggestionLink({ fields, onApply }: { fields: PriceSuggestionFields; onApply: (prices: { salePrice: string; listPrice: string }) => void }) {
@@ -66,9 +86,9 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
       {targetKind === 'rate'
         ? <label>Hedef Kâr Oranı (%)<input value={targetRate} onChange={event => setTargetRate(event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" /></label>
         : <label>Hedef Kâr Tutarı (₺)<input value={targetAmount} onChange={event => setTargetAmount(event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>}
-      <label>Komisyon Oranı (%)<input value={assumptions.commissionRate} onChange={event => updateAssumption('commissionRate', event.target.value)} type="number" min="0" max="99" step="0.1" inputMode="decimal" /></label>
-      <label>Kargo Ücreti (₺)<input value={assumptions.cargo} onChange={event => updateAssumption('cargo', event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>
-      <label>Hizmet Bedeli (₺)<input value={assumptions.serviceFee} onChange={event => updateAssumption('serviceFee', event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>
+      <Field label="Komisyon Oranı (%)" hint={<AssumptionHint content={commissionHint} />}>{id => <input id={id} value={assumptions.commissionRate} onChange={event => updateAssumption('commissionRate', event.target.value)} type="number" min="0" max="99" step="0.1" inputMode="decimal" />}</Field>
+      <Field label="Kargo Ücreti (₺)" hint={<AssumptionHint content={cargoHint} />}>{id => <input id={id} value={assumptions.cargo} onChange={event => updateAssumption('cargo', event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" />}</Field>
+      <Field label="Hizmet Bedeli (₺)" hint={<AssumptionHint content={serviceFeeHint} />}>{id => <input id={id} value={assumptions.serviceFee} onChange={event => updateAssumption('serviceFee', event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" />}</Field>
     </div>
     {suggestion ? <div className={`price-suggestion-result${suggestion.profit < 0 ? ' is-loss' : ''}`} aria-live="polite">
       <div className="price-suggestion-price"><span>Önerilen Satış Fiyatı{fields.vatIncluded ? '' : ' (KDV Hariç)'}</span><strong data-testid="price-suggestion-price">{money(suggestion.price)}</strong>

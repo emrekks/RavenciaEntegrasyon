@@ -312,7 +312,7 @@ public static class ReportBuckets
         }
     }
 
-    private const decimal HepsiburadaCommissionVat = 1.20m;
+    internal const decimal HepsiburadaCommissionVat = 1.20m;
 
     private static decimal? Rate(string? value) => Number(value) is { } rate && rate > 0 && rate <= 100 ? rate : null;
 
