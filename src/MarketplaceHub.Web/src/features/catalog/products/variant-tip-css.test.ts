@@ -16,4 +16,15 @@ describe('variant tip on the product list', () => {
     expect(css).toContain('.rr-vhover:has(> .rr-varcell:hover) > .rr-vtip')
     expect(css).not.toMatch(/\.rr-vhover:hover\s*>\s*\.rr-vtip/)
   })
+
+  it('stays open on keyboard focus only, so a mouse press and drag cannot leave it open', () => {
+    const css = read('../products-sade.css')
+    expect(css).toContain('.rr-vhover:focus-visible > .rr-vtip')
+    expect(css).not.toMatch(/\.rr-vhover:focus(-within)?\s*>\s*\.rr-vtip/)
+  })
+
+  it('does not select the "N seçenek" text when dragged', () => {
+    const rule = read('../products-sade.css').split('\n').find(line => /\.rr-varcell \{/.test(line))
+    expect(rule).toContain('user-select: none')
+  })
 })
