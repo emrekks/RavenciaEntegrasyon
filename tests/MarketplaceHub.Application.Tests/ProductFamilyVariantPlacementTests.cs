@@ -31,13 +31,32 @@ public sealed class ProductFamilyVariantPlacementTests
     }
 
     [Fact]
-    public void AColourWithoutACard_InAFamilyOfSeveralCards_IsNamedAndNotPlaced()
+    public void AColourWithoutACard_InAFamilyOfSeveralCards_IsNamedForANewCard_PerRow()
     {
         var placement = ProductFamilyVariantPlacement.Place(Mavi, [Mavi, Bordo, Murdum], Family(),
             [Options("Haki", "L"), Options("Bordo", "L"), Options("haki", "XL"), Options("Siyah", "L")]);
 
         Assert.Equal(["Haki", "Siyah"], placement.ColorsWithoutCard);
-        Assert.Contains("Haki, Siyah renkleri için", ProductFamilyVariantPlacement.MissingCardMessage(placement.ColorsWithoutCard));
+        Assert.Equal(["Haki", null, "Haki", "Siyah"], placement.RowColorsWithoutCard);
+        Assert.Equal(Bordo, placement.ProductIds[1]);
+    }
+
+    // Live 2026-11-06 (MZ028IH): the opened Siyah card's title names its colour; the new card names its own.
+    [Theory]
+    [InlineData("Kadın Siyah V Yaka Düğmeli Anne Triko Hırka", "Siyah", "Zümrüt", "Kadın Zümrüt V Yaka Düğmeli Anne Triko Hırka")]
+    [InlineData("KADIN SİYAH HIRKA", "siyah", "Zümrüt", "KADIN Zümrüt HIRKA")]
+    [InlineData("Kadın İndigo Hırka", "Indigo", "Mor", "Kadın Mor Hırka")]
+    [InlineData("Kadın Siyahımsı Hırka", "Siyah", "Mor", "Kadın Siyahımsı Hırka Mor")]
+    [InlineData("Kadın Hırka", null, "Mor", "Kadın Hırka Mor")]
+    public void ANewColourCard_TakesTheOpenedTitle_WithItsOwnColour(string title, string? openedColor, string newColor, string expected) =>
+        Assert.Equal(expected, ProductFamilyNewColorCard.Title(title, openedColor, newColor));
+
+    [Fact]
+    public void OptionKey_IgnoresSpellingAndOrder()
+    {
+        Assert.Equal(ProductFamilyVariantPlacement.OptionKey("Renk: SİYAH | Beden: Standart"), ProductFamilyVariantPlacement.OptionKey(new Dictionary<string, string> { ["Beden"] = "standart", ["renk"] = "Siyah" }));
+        Assert.NotEqual(ProductFamilyVariantPlacement.OptionKey("Renk: Siyah | Beden: Standart"), ProductFamilyVariantPlacement.OptionKey(Options("Zümrüt", "Standart")));
+        Assert.Null(ProductFamilyVariantPlacement.OptionKey((string?)null));
     }
 
     [Fact]

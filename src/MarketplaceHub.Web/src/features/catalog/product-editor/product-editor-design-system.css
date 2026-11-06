@@ -1231,3 +1231,10 @@ html body .app-shell .variant-bulk-edit-modal .variant-bulk-modes > button { hei
    no dark lines cross between the cards (owner, 5 Nov 2026: "aradaki koyu çizgi"). */
 .app-shell.stitch-shell main .product-publish-step .publish-platform-grid { gap: 12px; padding: 12px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 14px; }
 .app-shell.stitch-shell main .product-publish-step .publish-platform-grid > .publish-platform-card { background: var(--rv-color-surface-raised); box-shadow: none; }
+
+@layer features {
+  /* "… Değerini Ekle" under an option group's search box: a 36 px control (the global button rule's 44 px reset). */
+  .option-value-add { display: flex; flex-wrap: wrap; align-items: center; gap: var(--rv-space-2); }
+  .option-value-add-button { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: 36px; padding-block: 0; border-radius: 7px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .option-value-add small { color: var(--rv-color-muted); font-size: var(--rv-font-size-sm); }
+}
