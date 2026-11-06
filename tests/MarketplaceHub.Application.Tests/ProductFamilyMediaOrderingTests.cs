@@ -80,4 +80,21 @@ public sealed class ProductFamilyMediaOrderingTests
         Assert.Equal(7, ProductFamilyMediaOrdering.UploadSortOrder(7, rows, Guid.NewGuid()));
         Assert.Equal(0, ProductFamilyMediaOrdering.UploadSortOrder(0, [], picture));
     }
+
+    // RYP007 after a family reorder: the gallery sits at 0, 92, 184… The editor asks for "after the pictures I know"
+    // (their count); that number is free, but it lies between the first and second picture, so the new picture (a size
+    // chart put at the end of the strip) goes after the last live row instead.
+    [Fact]
+    public void A_new_upload_asked_for_the_end_goes_after_the_last_live_picture_between_sparse_ranks()
+    {
+        var rows = Enumerable.Range(0, 18).Select(index => (index * 92, true, Guid.NewGuid())).ToList();
+        rows.Add((1700, false, Guid.NewGuid()));
+
+        Assert.Equal(1701, ProductFamilyMediaOrdering.UploadSortOrder(18, rows, Guid.NewGuid()));
+        Assert.Equal(1701, ProductFamilyMediaOrdering.UploadSortOrder(25, rows, Guid.NewGuid()));
+        // A position inside the strip that is free stays as asked.
+        Assert.Equal(1, ProductFamilyMediaOrdering.UploadSortOrder(1, rows, Guid.NewGuid()));
+        // Sequential numbers (a card never reordered) keep the asked end position.
+        Assert.Equal(3, ProductFamilyMediaOrdering.UploadSortOrder(3, [(0, true, Guid.NewGuid()), (1, true, Guid.NewGuid()), (2, true, Guid.NewGuid())], Guid.NewGuid()));
+    }
 }

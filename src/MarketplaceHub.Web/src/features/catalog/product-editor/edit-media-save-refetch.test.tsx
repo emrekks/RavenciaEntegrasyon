@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Live 6 Nov 2026 (product 01a1a742…, 7 colours × 3 sizes, 19 new pictures): Kaydet on the product page. Every upload
 // raises a realtime "product changed", so the editor read the product again after each one while the save still ran.
-// For a product with colour variants the API's mediaUrls is the colours' variant pictures, and only the first
-// product-level picture while no variant has one yet (CatalogService.ProductMediaForView): every stored copy after the
-// first showed in the strip beside its own local preview, one more per upload, until the variant writes hid them again.
+// Every stored copy showed in the strip beside its own local preview, one more per upload, until the variant writes
+// hid them again. The API's mediaUrls is the card's strip: its product-level pictures, then those only variants hold
+// (CatalogFamilyMedia.StripUrls), so each upload's stored copy is in it as soon as it lands.
 const fixture = vi.hoisted(() => {
   const state = {
     calls: [] as string[],
@@ -21,7 +21,7 @@ const fixture = vi.hoisted(() => {
   const product = () => ({
     id: 'p1', version: state.version, title: 'Ürün', description: '', brandId: null, categoryId: null, status: 'ACTIVE', updatedAt: '2026-11-06T15:00:00Z',
     variants: [variant()], primaryImageUrl: state.productMedia[0] ?? null, totalStock: 0, startingPrice: 90, currency: 'TRY', modelCode: 'M-1', activePlatforms: [],
-    mediaUrls: state.variantMedia.length ? [...state.variantMedia] : state.productMedia.slice(0, 1),
+    mediaUrls: [...new Set([...state.productMedia, ...state.variantMedia])],
     familyMediaUrls: [...state.productMedia],
     familyMediaItems: state.productMedia.map((url, index) => ({ url, mediaIds: [`m${index + 1}`], sourceProductTitles: ['Ürün'] })),
     attributes: [], familyProductIds: ['p1']

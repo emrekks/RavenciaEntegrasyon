@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
-import { cleanOptionValue, isColorOptionName, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, variantColorKey, variantOptionEntries, type Attribute, type MarketplaceConnection, type Product, type Variant } from '../shared'
+import { cleanOptionValue, isColorOptionName, isVariantOptionName, isWebColorOptionName, normalizeVariantOptionName, variantOptionEntries, type Attribute, type MarketplaceConnection, type Product, type Variant } from '../shared'
 import { classifyPublicationAttributeIssues, type PublicationAttributeIssue, type PublicationAttributeIssues, type PublicationAttributeSelection, type PublicationMappingReference, type PublicationValueReferenceSet } from '../publication-attribute-readiness'
 import { PublicationReadinessSourceError, publicationReadinessFailureDetail, readPublicationReadinessSource } from '../publication-readiness-error'
 import { matchingVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
@@ -50,11 +50,14 @@ export function rowOptionValue(row: Pick<ReadinessRow, 'options' | 'optionSignat
     .find(option => optionRank(option.name) >= 0)?.value ?? ''
 }
 
+// A card's own pictures in its strip's order: the API's mediaUrls (CatalogFamilyMedia.StripUrls: the product-level rows
+// by SortOrder, the order the owner arranged and saved, then the pictures only variants hold). Never rebuilt colour by
+// colour from the variants' pictures: a picture every colour shares, such as a size chart uploaded last, then came
+// back after the first colour's pictures (owner, RYP007, 6.11.2026). A variant picture the list lacks goes after it.
 export function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: string[], primaryImageUrl: string | null, hasCustomMediaOrder = false) {
   if (hasCustomMediaOrder) return [...productMediaUrls]
   const ordered: string[] = []
   const seen = new Set<string>()
-  const seenColors = new Set<string>()
   const add = (url: string | null | undefined) => {
     const normalized = url?.trim()
     if (!normalized) return
@@ -64,20 +67,8 @@ export function orderMediaUrlsByVariants(variants: Variant[], productMediaUrls: 
     ordered.push(normalized)
   }
 
-  const colorVariants = variants.some(variant => variantColorKey(variant) !== null)
-  if (colorVariants) {
-    for (const variant of variants) {
-      const color = variantColorKey(variant)
-      const group = color ?? `variant:${variant.id}`
-      if (seenColors.has(group)) continue
-      seenColors.add(group)
-      for (const url of variant.mediaUrls ?? []) add(url)
-    }
-    if (!ordered.length) add(productMediaUrls[0])
-  } else {
-    for (const variant of variants) for (const url of variant.mediaUrls ?? []) add(url)
-    for (const url of productMediaUrls) add(url)
-  }
+  for (const url of productMediaUrls) add(url)
+  for (const variant of variants) for (const url of variant.mediaUrls ?? []) add(url)
   add(primaryImageUrl)
   return ordered
 }
