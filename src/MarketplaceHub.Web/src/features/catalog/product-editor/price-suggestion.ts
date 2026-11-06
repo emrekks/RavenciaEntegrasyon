@@ -6,11 +6,15 @@ import { kurus, unitProfit, type UnitProfitCosts } from '../../marketplace/integ
 // "Maliyete Göre": profit ÷ product cost (the reports' Maliyete Göre Kâr); "Satışa Göre": profit ÷ the price the
 // customer pays (the reports' Kâr Marjı).
 export type PriceTargetBasis = 'cost' | 'sale'
+// The target as a rate (% of the cost or of the sale, as basis says) or as a fixed profit in lira per unit.
+export type PriceTargetKind = 'rate' | 'amount'
 
 export type PriceSuggestionInput = {
   cost: number
+  // The rate (%) when targetKind is 'rate' (the default), the profit in lira when it is 'amount'.
   targetRate: number
   basis: PriceTargetBasis
+  targetKind?: PriceTargetKind
   commissionRate: number
   cargo: number
   serviceFee: number
@@ -41,7 +45,7 @@ const grossOf = (price: number, input: Pick<PriceSuggestionInput, 'vatIncluded' 
   input.vatIncluded ? kurus(price) : kurus(price * (100 + input.vatRate) / 100)
 
 // The profit of a price typed in Satış Fiyatı, costed as the tariff's ProfitBadge costs it.
-export function evaluatePrice(price: number, input: Omit<PriceSuggestionInput, 'targetRate' | 'basis'>): PriceSuggestion {
+export function evaluatePrice(price: number, input: Omit<PriceSuggestionInput, 'targetRate' | 'basis' | 'targetKind'>): PriceSuggestion {
   const entered = kurus(price)
   const grossPrice = grossOf(entered, input)
   const commission = kurus(grossPrice * input.commissionRate / 100)
@@ -55,14 +59,15 @@ export function evaluatePrice(price: number, input: Omit<PriceSuggestionInput, '
 
 // The profit the target asks of a price: a share of the cost, or a share of the price the customer pays.
 const targetProfit = (input: PriceSuggestionInput, grossPrice: number) =>
-  input.basis === 'cost' ? input.cost * input.targetRate / 100 : grossPrice * input.targetRate / 100
+  input.targetKind === 'amount' ? input.targetRate
+  : input.basis === 'cost' ? input.cost * input.targetRate / 100 : grossPrice * input.targetRate / 100
 
 // The price (to the kuruş) whose profit comes closest to the target; null when no price reaches it (the fees take a
 // larger share of every lira than the target leaves, or a cost-based target without a cost).
 export function suggestPrice(input: PriceSuggestionInput): PriceSuggestion | null {
   const values = [input.cost, input.targetRate, input.commissionRate, input.cargo, input.serviceFee, input.vatRate]
   if (values.some(value => !Number.isFinite(value) || value < 0) || input.commissionRate >= 100) return null
-  if (input.basis === 'cost' && input.cost <= 0) return null
+  if (input.targetKind !== 'amount' && input.basis === 'cost' && input.cost <= 0) return null
   const gap = (price: number) => { const result = evaluatePrice(price, input); return { result, gap: result.profit - targetProfit(input, result.grossPrice) } }
   // The profit is linear in the price but for the kuruş rounding: a straight line through two prices finds the point,
   // then the kuruş around it settle the rounding.

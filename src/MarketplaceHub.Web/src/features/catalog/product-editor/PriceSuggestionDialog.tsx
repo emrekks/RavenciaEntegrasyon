@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Modal } from '../../../shared/components'
-import { DEFAULT_COMMISSION_RATE, DEFAULT_SERVICE_FEE, DEFAULT_VAT_RATE, appliedPrices, suggestPrice, type PriceTargetBasis } from './price-suggestion'
+import { DEFAULT_COMMISSION_RATE, DEFAULT_SERVICE_FEE, DEFAULT_VAT_RATE, appliedPrices, suggestPrice, type PriceTargetBasis, type PriceTargetKind } from './price-suggestion'
 import './price-suggestion.css'
 
 const twoDecimals = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -37,28 +37,35 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
   const [basis, setBasis] = useState<PriceTargetBasis>('cost')
   const [cost, setCost] = useState(fields.cost)
   const [targetRate, setTargetRate] = useState('50')
+  const [targetKind, setTargetKind] = useState<PriceTargetKind>('rate')
+  const [targetAmount, setTargetAmount] = useState('100')
   const [assumptions, setAssumptions] = useState(readAssumptions)
   const vatRate = numberOf(fields.vatRate) ?? DEFAULT_VAT_RATE
   const updateAssumption = (name: keyof Assumptions, value: string) => setAssumptions(current => { const next = { ...current, [name]: value }; writeAssumptions(next); return next })
 
   const suggestion = useMemo(() => {
-    const values = { cost: numberOf(cost), targetRate: numberOf(targetRate), commissionRate: numberOf(assumptions.commissionRate), cargo: numberOf(assumptions.cargo), serviceFee: numberOf(assumptions.serviceFee) }
+    const values = { cost: numberOf(cost), targetRate: numberOf(targetKind === 'amount' ? targetAmount : targetRate), commissionRate: numberOf(assumptions.commissionRate), cargo: numberOf(assumptions.cargo), serviceFee: numberOf(assumptions.serviceFee) }
     if (Object.values(values).some(value => value === null)) return null
-    return suggestPrice({ cost: values.cost!, targetRate: values.targetRate!, basis, commissionRate: values.commissionRate!, cargo: values.cargo!, serviceFee: values.serviceFee!, vatRate, vatIncluded: fields.vatIncluded })
-  }, [cost, targetRate, assumptions, basis, vatRate, fields.vatIncluded])
+    return suggestPrice({ cost: values.cost!, targetRate: values.targetRate!, basis, targetKind, commissionRate: values.commissionRate!, cargo: values.cargo!, serviceFee: values.serviceFee!, vatRate, vatIncluded: fields.vatIncluded })
+  }, [cost, targetRate, targetAmount, targetKind, assumptions, basis, vatRate, fields.vatIncluded])
 
-  const missing = numberOf(cost) === null || numberOf(cost)! <= 0 ? 'Maliyeti girin.' : numberOf(targetRate) === null ? 'Hedef kâr oranını girin.' : 'Bu oran için fiyat bulunamadı; masraflar satışın bu kadarını bırakmıyor.'
+  const missing = numberOf(cost) === null || numberOf(cost)! <= 0 ? 'Maliyeti girin.' : numberOf(targetKind === 'amount' ? targetAmount : targetRate) === null ? (targetKind === 'amount' ? 'Hedef kâr tutarını girin.' : 'Hedef kâr oranını girin.') : 'Bu oran için fiyat bulunamadı; masraflar satışın bu kadarını bırakmıyor.'
   const footer = <>
     <Button variant="secondary" onClick={onClose}>İptal</Button>
     <Button disabled={!suggestion} onClick={() => suggestion && onApply(appliedPrices(suggestion.price, fields.listPrice))}>Fiyatı Uygula</Button>
   </>
   return <Modal open onClose={onClose} className="price-suggestion-modal" title="Fiyat Hesapla" hint="Maliyet ve istediğiniz kâr oranından satış fiyatı önerir; kâr, komisyon tarifesindeki kâr hesabıyla aynı kalemlerle bulunur." footer={footer}>
-    <div className="price-suggestion-basis" role="group" aria-label="Kâr oranı neye göre">
-      {([['cost', 'Maliyete Göre'], ['sale', 'Satışa Göre']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={basis === value} onClick={() => setBasis(value)}>{label}</button>)}
+    <div className="price-suggestion-basis" role="group" aria-label="Hedef kâr nasıl girilsin">
+      {([['rate', 'Oran (%)'], ['amount', 'Tutar (₺)']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={targetKind === value} onClick={() => setTargetKind(value)}>{label}</button>)}
     </div>
+    {targetKind === 'rate' && <div className="price-suggestion-basis" role="group" aria-label="Kâr oranı neye göre">
+      {([['cost', 'Maliyete Göre'], ['sale', 'Satışa Göre']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={basis === value} onClick={() => setBasis(value)}>{label}</button>)}
+    </div>}
     <div className="price-suggestion-fields">
       <label>Maliyet (₺)<input value={cost} onChange={event => setCost(event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>
-      <label>Hedef Kâr Oranı (%)<input value={targetRate} onChange={event => setTargetRate(event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" /></label>
+      {targetKind === 'rate'
+        ? <label>Hedef Kâr Oranı (%)<input value={targetRate} onChange={event => setTargetRate(event.target.value)} type="number" min="0" step="0.1" inputMode="decimal" /></label>
+        : <label>Hedef Kâr Tutarı (₺)<input value={targetAmount} onChange={event => setTargetAmount(event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>}
       <label>Komisyon Oranı (%)<input value={assumptions.commissionRate} onChange={event => updateAssumption('commissionRate', event.target.value)} type="number" min="0" max="99" step="0.1" inputMode="decimal" /></label>
       <label>Kargo Ücreti (₺)<input value={assumptions.cargo} onChange={event => updateAssumption('cargo', event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>
       <label>Hizmet Bedeli (₺)<input value={assumptions.serviceFee} onChange={event => updateAssumption('serviceFee', event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>
