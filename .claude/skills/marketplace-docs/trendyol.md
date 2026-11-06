@@ -97,6 +97,12 @@ purpose (`TurkeyTime.cs`).
 - Invoice: NotInvoiced, Received, Rejected, Invoiced.
 
 ## Quirks
+- One content (`contentId`) per colour: a model (`productMainId`) with several colours is several contents, each with
+  its own title, description, images and content attributes (Renk is a slicer); sizes are variants inside a content.
+  `content-bulk-update` takes one item per contentId, so a multi-colour panel card is updated content by content: the
+  job reads each barcode's content from `products/approved?barcode=` right before the send (`TrendyolContentGroups`).
+  Source: offline docs "Ürün Güncelleme - Onaylı Ürün v2" and "Ürün Filtreleme - Onaylı Ürün V2"; live RYP006
+  (6.11.2026, six colours x three sizes = six contents; the panel's product link held only the first approved one).
 - Cross-border storefronts: orders are read per `storeFrontCode` (TR, AE, SA, GR, DE, BG, QA, KW, OM, BH, AZ, SK, RO,
   CZ; QA/OM/BH/AZ only when the connection already has orders there). Listed ones probed every 6 h, others 24 h; a
   400/404 pauses one for 30 days. SA, AZ, BG, RO, GR, AE orders ship to the Istanbul export depot but count in their

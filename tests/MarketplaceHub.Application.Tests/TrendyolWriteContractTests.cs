@@ -36,6 +36,23 @@ public sealed class TrendyolWriteContractTests
         Assert.Equal(expected, request.StoreFront);
     }
 
+    [Theory]
+    [InlineData("""{"items":[{"barcode":"RYP006-01","title":"Kazak","images":[{"url":"https://x/1.jpg"}]}]}""")]
+    [InlineData("""{"items":[{"contentId":1228880360,"barcode":"RYP006-01","title":"Kazak"}]}""")]
+    [InlineData("""{"items":[{"contentId":"x","title":"Kazak"}]}""")]
+    public async Task AContentRequestNotGroupedPerContent_IsNeverSent(string contentPayload)
+    {
+        var handler = new Script();
+        var publication = new ProductUpdatePublication(Guid.CreateVersion7(), "APPROVED", "H", "{}", contentPayload, """{"items":[]}""", """{"items":[]}""");
+
+        var result = await Client(handler).UpdateApprovedContentAsync(Context(), publication, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal("PRODUCT_CONTENT_UNRESOLVED", result.Error!.Code);
+        Assert.False(WriteOutcomePolicy.IsUncertain(result.Error));
+        Assert.Empty(handler.Requests);
+    }
+
     [Fact]
     public async Task CancelItemsSendsOnlyTheValidatedLinesAndReason()
     {

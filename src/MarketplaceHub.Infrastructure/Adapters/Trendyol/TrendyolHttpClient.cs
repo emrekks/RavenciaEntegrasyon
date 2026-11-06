@@ -184,8 +184,12 @@ public sealed partial class TrendyolHttpClient(IHttpClientFactory clients, Trend
     public async Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
         await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductUpdateUnapproved, publication.UnapprovedPayloadJson, "PRODUCT_UPDATE_UNAPPROVED_V2", cancellationToken);
 
+    // Only a request whose every item names its own content goes out: one still keyed by barcode (the job did not group
+    // it per content) is refused before any call, so no content is written with data meant for another.
     public async Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
-        await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductUpdateContent, publication.ApprovedContentPayloadJson, "PRODUCT_UPDATE_CONTENT_V2", cancellationToken);
+        !TrendyolContentGroups.IsResolved(publication.ApprovedContentPayloadJson)
+            ? AdapterResult<RemoteOperationRef>.Failure(new(AdapterErrorClass.Validation, "PRODUCT_CONTENT_UNRESOLVED", "Trendyol içerik güncellemesi içerik kimliklerine ayrılmadan gönderilemez; istek gönderilmedi.", null, null, null))
+            : await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductUpdateContent, publication.ApprovedContentPayloadJson, "PRODUCT_UPDATE_CONTENT_V2", cancellationToken);
 
     public async Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) =>
         await SubmitBatchAsync(context, HttpMethod.Post, TrendyolEndpoints.ProductUpdateVariant, publication.ApprovedVariantPayloadJson, "PRODUCT_UPDATE_VARIANT_V2", cancellationToken);

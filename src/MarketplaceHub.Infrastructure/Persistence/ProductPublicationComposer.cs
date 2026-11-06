@@ -25,8 +25,10 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     };
 
     // onlyUnsentVariants: Yayınla's send, which leaves out the card's variants already on the marketplace
-    // (PublicationUnsentVariants); the update composers build from the whole card.
-    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false)
+    // (PublicationUnsentVariants); the update composers build from the whole card. contentSplitAllowed: the Trendyol
+    // update, which writes a card Trendyol split into one content per colour content by content (TrendyolContentGroups);
+    // Yayınla still stops on such a card.
+    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false, bool contentSplitAllowed = false)
     {
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound<ProductPublicationDraft>();
@@ -45,7 +47,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             return await new PazaramaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, onlyUnsentVariants);
         if (platformCode == "PTTAVM")
             return await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
-        if (ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
+        if (!contentSplitAllowed && ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
             return Fail("PRODUCT_APPROVAL_CONTENT_SPLIT", "Trendyol varyantları birden fazla içerik kimliğine ayırdı. Yanlış ilana yazmamak için ürün içeriği güncellemesi durduruldu; varyant durumları ayrı ayrı izlenebilir.", status: 409);
 
         var categoryMapping = product.CategoryId is Guid categoryId

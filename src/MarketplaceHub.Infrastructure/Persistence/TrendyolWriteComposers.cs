@@ -54,7 +54,9 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         // Trendyol takes no warranty: a pick of that alone has nothing to send there (it must not send the whole card of
         // a product Trendyol has not approved yet).
         if (!sections.Trendyol) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Trendyol'a gönderilemiyor.", 422);
-        var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        // A card Trendyol split into one content per colour is updated content by content (the job finds each barcode's
+        // content right before the send), so the publication composer's split stop does not hold an update back.
+        var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, contentSplitAllowed: true);
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
         var productLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);
@@ -69,13 +71,14 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
     // The Trendyol create payload split into the update requests. contentIdText: the product link's id once Trendyol has
     // approved the product (null before: then the create payload goes whole to the unapproved update). splitContents: the
-    // product is approved as one content per colour, so its variants and delivery go as approved, and its content (one
-    // per colour, none of them the product's) cannot go from here.
+    // product is approved as one content per colour (no product link, its variants linked), so it is approved too.
+    // The content request is written per barcode, without a contentId: Trendyol keeps one content per colour and the
+    // product link holds at most one of them (live 6.11.2026: RYP006's link is one colour's content of six), so the job
+    // asks Trendyol which content each barcode is in right before the send and sends each content once, with its own
+    // variants' data (TrendyolContentGroups).
     internal static ServiceResult<ProductUpdatePublication> Split(Guid productId, string? contentIdText, string createPayloadJson, ProductUpdateSections sections, bool splitContents = false)
     {
         var mode = contentIdText is null && !splitContents ? "UNAPPROVED" : "APPROVED";
-        if (mode == "APPROVED" && contentIdText is null && sections.Content)
-            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_CONTENT_SPLIT", "Bu ürün Trendyol'da her renk ayrı bir ürün olarak yayında; başlık, açıklama, görsel ve özellikler buradan gönderilemez. Varyant ve teslimat bilgilerini seçerek gönderebilirsiniz.", 422);
         using var source = JsonDocument.Parse(createPayloadJson);
         if (!source.RootElement.TryGetProperty("items", out var sourceItems) || sourceItems.ValueKind != JsonValueKind.Array || sourceItems.GetArrayLength() == 0)
             return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncelleme payload'ı oluşturulamadı.", 422);
@@ -87,21 +90,17 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
         if (mode == "APPROVED")
         {
-            var contentId = 0L;
-            if (contentIdText is not null && !long.TryParse(contentIdText, out contentId)) return ServiceResult<ProductUpdatePublication>.Fail("REMOTE_CONTENT_ID_INVALID", "Trendyol contentId sayısal değil; otomatik güncelleme güvenli biçimde durduruldu.", 409);
-            var first = sourceItems[0];
-            // A request whose fields were not picked goes empty; the job skips an empty phase without a call.
-            if (sections.Content && contentIdText is not null) contentItems.Add(new Dictionary<string, object?>
-            {
-                ["contentId"] = contentId,
-                ["title"] = Clone(first, "title"),
-                ["description"] = Clone(first, "description"),
-                ["images"] = Clone(first, "images"),
-                ["attributes"] = Clone(first, "attributes")
-            });
-
             foreach (var item in sourceItems.EnumerateArray())
             {
+                // A request whose fields were not picked goes empty; the job skips an empty phase without a call.
+                if (sections.Content) contentItems.Add(new Dictionary<string, object?>
+                {
+                    ["barcode"] = Text(item, "barcode"),
+                    ["title"] = Clone(item, "title"),
+                    ["description"] = Clone(item, "description"),
+                    ["images"] = Clone(item, "images"),
+                    ["attributes"] = Clone(item, "attributes")
+                });
                 if (sections.Variants) variantItems.Add(new Dictionary<string, object?>
                 {
                     ["barcode"] = Text(item, "barcode"),

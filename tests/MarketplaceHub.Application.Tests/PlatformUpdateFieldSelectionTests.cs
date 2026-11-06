@@ -116,9 +116,13 @@ public sealed class PlatformUpdateFieldSelectionTests
     {
         var publication = Split("123", ProductUpdateSections.All);
         Assert.Equal("APPROVED", publication.Mode);
-        var content = Assert.Single(Items(publication.ApprovedContentPayloadJson));
-        Assert.Equal(123, content!["contentId"]!.GetValue<long>());
-        Assert.Equal("Ad", content["title"]!.GetValue<string>());
+        // The content goes per barcode, without a contentId: the job groups it per Trendyol content before the send.
+        var content = Items(publication.ApprovedContentPayloadJson);
+        Assert.Equal(["B1", "B2"], content.Select(item => item!["barcode"]!.GetValue<string>()));
+        Assert.All(content, item => Assert.False(item!.AsObject().ContainsKey("contentId")));
+        Assert.Equal("Ad", content[0]!["title"]!.GetValue<string>());
+        Assert.Equal(3, content[1]!["attributes"]![0]!["attributeValueId"]!.GetValue<int>());
+        Assert.True(MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolContentGroups.NeedsResolution(publication.ApprovedContentPayloadJson));
         Assert.Equal(2, Items(publication.ApprovedVariantPayloadJson).Count);
         Assert.Single(Items(publication.ApprovedDeliveryPayloadJson));
     }
@@ -127,7 +131,7 @@ public sealed class PlatformUpdateFieldSelectionTests
     public void ApprovedTrendyol_ContentOnly_LeavesTheVariantAndDeliveryRequestsEmpty()
     {
         var publication = Split("123", new(true, false, false));
-        Assert.Single(Items(publication.ApprovedContentPayloadJson));
+        Assert.Equal(2, Items(publication.ApprovedContentPayloadJson).Count);
         Assert.Empty(Items(publication.ApprovedVariantPayloadJson));
         Assert.Empty(Items(publication.ApprovedDeliveryPayloadJson));
     }
@@ -170,10 +174,11 @@ public sealed class PlatformUpdateFieldSelectionTests
     }
 
     [Fact]
-    public void TrendyolColourSplit_SendsVariantsAsApproved_AndRefusesTheContent()
+    public void TrendyolColourSplit_SendsVariantsAsApproved_AndTheContentPerBarcode()
     {
         // Trendyol approved the panel product as one content per colour: no content is the product's, so it is not sent
-        // as an unapproved card either.
+        // as an unapproved card either. Its content goes per barcode, grouped per Trendyol content by the job (RYP006,
+        // 6.11.2026: it was refused as PRODUCT_CONTENT_SPLIT before).
         var variantsOnly = ProductUpdateComposer.Split(Guid.CreateVersion7(), null, CreatePayload, new(false, true, false), splitContents: true);
         Assert.True(variantsOnly.Succeeded, variantsOnly.Error?.Message);
         Assert.Equal("APPROVED", variantsOnly.Value!.Mode);
@@ -181,7 +186,9 @@ public sealed class PlatformUpdateFieldSelectionTests
         Assert.Equal(["B1", "B2"], Items(variantsOnly.Value.ApprovedVariantPayloadJson).Select(item => item!["barcode"]!.GetValue<string>()));
 
         var withContent = ProductUpdateComposer.Split(Guid.CreateVersion7(), null, CreatePayload, ProductUpdateSections.All, splitContents: true);
-        Assert.Equal("PRODUCT_CONTENT_SPLIT", withContent.Error?.Code);
+        Assert.True(withContent.Succeeded, withContent.Error?.Message);
+        Assert.Equal("APPROVED", withContent.Value!.Mode);
+        Assert.Equal(["B1", "B2"], Items(withContent.Value.ApprovedContentPayloadJson).Select(item => item!["barcode"]!.GetValue<string>()));
     }
 
     [Fact]

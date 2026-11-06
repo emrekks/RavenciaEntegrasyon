@@ -2003,6 +2003,16 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", JobExecutionResult.Blocked("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi doğrulanmadı; ürün güncellemesi gönderilmedi."), cancellationToken);
                 if (!await HasHepsiburadaPublicationEvidenceAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", "HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", JobExecutionResult.Blocked("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Ürün güncellemesi için bu mağaza/ortamda doğrulanmış fiyat ve stok yazma kanıtı bulunamadı; bağlantıyı test edin. Gönderim yapılmadı."), cancellationToken);
             }
+            // Trendyol's content request goes per content: each barcode's content is read first (TrendyolContentGroups).
+            if (phase == "SUBMIT_CONTENT" && string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+                && TrendyolContentGroups.NeedsResolution(payload.ApprovedContentPayloadJson))
+            {
+                var (resolvedContent, stop) = await ResolveTrendyolContentGroupsAsync(tenantId, connectionId, job, profile, payload.ApprovedContentPayloadJson, correlationId, cancellationToken);
+                if (stop is not null) return stop;
+                payload = payload with { ApprovedContentPayloadJson = resolvedContent! };
+                job.PayloadJson = JsonSerializer.Serialize(payload); job.PayloadHash = Hash(job.PayloadJson);
+                await db.SaveChangesAsync(cancellationToken);
+            }
             var phasePayload = UpdatePayload(payload, phase);
             if (!HasItems(phasePayload))
             {
