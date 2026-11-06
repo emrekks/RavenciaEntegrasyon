@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
 import { SAME_SAVE_CODE_HOLDER, variantCodeFieldIssueText } from './platform-code-rules'
-import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorSnapshotWithWebColor, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
+import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorSnapshotWithWebColor, editorStockUpdates, editorOpenedDesi, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
 
 describe('saved variant rows and code conflicts', () => {
   it('gives rows still under a temporary key the id of the saved variant with their stock code', () => {
@@ -86,6 +86,16 @@ describe('product editor state', () => {
     // Untouched: a desi set per variant (e.g. by the products import) is left as it is.
     expect(editorVariantDesiUpdate(2, 2, 5)).toEqual({})
     expect(editorVariantDesiUpdate(0, 2, 2)).toEqual({})
+    // A variant with no desi of its own takes the form's (the card's) desi on save even when the field was not changed.
+    expect(editorVariantDesiUpdate(2, 2, null)).toEqual({ desi: 2, loadedDesi: null })
+    expect(editorVariantDesiUpdate(0, 0, null)).toEqual({})
+  })
+
+  it('opens the desi field empty when no variant has a desi, never with a guessed 1', () => {
+    expect(editorOpenedDesi([{ desi: null }, { desi: null }])).toBeNull()
+    expect(editorOpenedDesi([])).toBeNull()
+    expect(editorOpenedDesi([{ desi: null }, { desi: 3 }])).toBe(3)
+    expect(editorOpenedDesi([{ desi: 2 }, { desi: 3 }])).toBe(2)
   })
 
   it('ignores platform prices when deciding whether the form has unsaved edits', () => {
