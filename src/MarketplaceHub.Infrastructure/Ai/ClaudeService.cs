@@ -82,13 +82,11 @@ public sealed class ClaudeService(AiSettingsService settings, IClaudeClient clie
         client.DownloadFileAsync(credentials.ApiKey, fileId, maxBytes, cancellationToken);
 
     // A call that succeeded at the API but whose result the feature refused (no image, wrong numbers): the row says so.
-    public async Task MarkFailedAsync(Guid logId, string error, CancellationToken cancellationToken)
+    // Written straight to the row (not through the tracked changes): the failure may be the context's own save (D4).
+    public async Task MarkFailedAsync(Guid logId, string error, CancellationToken cancellationToken, string status = "FAILED")
     {
-        var row = await db.AiUsageLogs.SingleOrDefaultAsync(x => x.Id == logId, cancellationToken);
-        if (row is null) return;
-        row.Status = "FAILED";
-        row.Error = Short(error);
-        await db.SaveChangesAsync(cancellationToken);
+        var text = Short(error);
+        await db.AiUsageLogs.Where(x => x.Id == logId).ExecuteUpdateAsync(setters => setters.SetProperty(x => x.Status, status).SetProperty(x => x.Error, text), cancellationToken);
     }
 
     public async Task<IReadOnlyList<AiUsageLogView>> RecentAsync(Guid tenantId, int limit, CancellationToken cancellationToken)
@@ -113,10 +111,23 @@ public sealed class ClaudeService(AiSettingsService settings, IClaudeClient clie
         }
         catch (ClaudeException exception)
         {
-            await LogAsync(context, model, exception.Usage, "FAILED", exception.Message, watch.ElapsedMilliseconds, CancellationToken.None);
+            await LogAsync(context, model, exception.Usage, exception.Code == ClaudeClient.CancelledCode ? CancelledStatus : "FAILED", exception.Message, watch.ElapsedMilliseconds, CancellationToken.None);
+            throw;
+        }
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested)
+        {
+            // D4: a call the user abandoned is logged as cancelled, not as a timeout or not at all.
+            await LogAsync(context, model, null, CancelledStatus, "İstek iptal edildi; Claude çağrısı yarıda bırakıldı.", watch.ElapsedMilliseconds, CancellationToken.None);
+            throw new ClaudeException(ClaudeClient.CancelledCode, "İstek iptal edildi; Claude çağrısı yarıda bırakıldı.", 400, inner: exception);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            await LogAsync(context, model, null, "FAILED", exception.Message, watch.ElapsedMilliseconds, CancellationToken.None);
             throw;
         }
     }
+
+    public const string CancelledStatus = "CANCELLED";
 
     private async Task<Guid> LogAsync(AiCallContext context, string model, ClaudeUsage? usage, string status, string? error, long elapsedMs, CancellationToken cancellationToken)
     {

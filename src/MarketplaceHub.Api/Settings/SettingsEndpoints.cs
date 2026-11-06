@@ -314,18 +314,21 @@ public static class SettingsEndpoints
     private static IResult Problem(HttpContext http, ServiceError error) => MarketplaceHub.Api.Security.ApiProblems.Of(http, error);
 
     // Settings answer with the strong ETag "v{version}". A save that sends If-Match is refused with 412
-    // when the setting changed meanwhile (or does not exist yet); a save without it still writes, as
-    // before, so older clients keep working.
+    // when the setting changed meanwhile (or does not exist yet). D9: a save without it writes only the first
+    // version; a stored setting needs If-Match (428), so a page that read an older version cannot write over it.
     internal static IResult? Precondition(HttpContext http, TenantSetting? setting)
     {
         var value = http.Request.Headers.IfMatch.ToString();
-        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (string.IsNullOrWhiteSpace(value)) return setting is { Version: > 0 } ? PreconditionRequired(http) : null;
         if (value.Length < 4 || !value.StartsWith("\"v", StringComparison.Ordinal) || !value.EndsWith('"') || !long.TryParse(value[2..^1], out var expected) || expected <= 0)
             return Problem(http, new("INVALID_ETAG", "If-Match güçlü ETag biçiminde olmalıdır: \"v{version}\".", 400));
         return setting is not null && setting.Version == expected
             ? null
             : Problem(http, new("PRECONDITION_FAILED", "Ayarlar başka bir oturumda değişti; sayfayı yenileyip yeniden deneyin.", 412));
     }
+
+    internal static IResult PreconditionRequired(HttpContext http) =>
+        Problem(http, new("PRECONDITION_REQUIRED", "Ayarlar kayıtlı sürümü belirtilmeden değiştirilemez (If-Match gerekli); sayfayı yenileyip yeniden kaydedin.", 428));
 
     // Two first saves of the same setting at once both insert (the second hits the primary key), and two
     // updates of one version both pass the If-Match check (the second hits the version token): the loser is

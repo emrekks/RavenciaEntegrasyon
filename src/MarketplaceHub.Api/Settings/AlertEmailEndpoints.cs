@@ -44,6 +44,8 @@ public static class AlertEmailEndpoints
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (IfMatchVersion(http, out var expected) is { } invalidEtag) return invalidEtag;
+        // D9: a stored setting is changed only over the version the page read (If-Match), never blind.
+        if (expected is null && (await service.GetAsync(tenant.TenantId, http.RequestAborted)).Version > 0) return SettingsEndpoints.PreconditionRequired(http);
         try
         {
             var result = await service.SaveAsync(tenant.TenantId, tenant.UserId, http.TraceIdentifier, request.SenderAddress, request.Recipients, request.AppPassword, expected, http.RequestAborted);

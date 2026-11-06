@@ -109,8 +109,20 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         }
         catch (ClaudeException exception)
         {
-            await claude.MarkFailedAsync(run.LogId, exception.Message, CancellationToken.None);
+            await claude.MarkFailedAsync(run.LogId, exception.Message, CancellationToken.None, exception.Code == ClaudeClient.CancelledCode ? ClaudeService.CancelledStatus : "FAILED");
             throw new SizeChartException(exception.Code, exception.Message, exception.Status);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // D4: the billed call stays on its row, marked as abandoned by the user.
+            await claude.MarkFailedAsync(run.LogId, "İstek iptal edildi; görsel eklenmedi.", CancellationToken.None, ClaudeService.CancelledStatus);
+            throw;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // D4: storing the image or the row failed after the billed call: the usage row says so.
+            await claude.MarkFailedAsync(run.LogId, $"Görsel kaydedilemedi: {exception.Message}", CancellationToken.None);
+            throw;
         }
     }
 

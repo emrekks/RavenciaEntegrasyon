@@ -307,6 +307,34 @@ public sealed class ClaudeClientTests
         Assert.Single(handler.Requests);
     }
 
+    // D4: the message is billed before the file lookups; a failed lookup keeps its usage for the cost log.
+    [Fact]
+    public async Task A_failed_file_lookup_after_the_billed_message_keeps_the_usage()
+    {
+        var handler = new FakeHandler(request => request.RequestUri!.AbsolutePath == "/v1/messages"
+            ? Json(SkillResponse)
+            : Json("""{"type":"error","error":{"type":"api_error","message":"boom"}}""", HttpStatusCode.InternalServerError));
+        var client = new ClaudeClient(new Factory(handler));
+
+        var failure = await Assert.ThrowsAsync<ClaudeException>(() => client.RunSkillAsync(new ClaudeSkillRequest(Key, "claude-sonnet-5-5", "skill_1", "v1", "system", "prompt", "low", 8000, TimeSpan.FromSeconds(30)), CancellationToken.None));
+
+        Assert.Equal("AI_UNAVAILABLE", failure.Code);
+        Assert.Equal((1500L, 400L), (failure.Usage?.InputTokens, failure.Usage?.OutputTokens));
+    }
+
+    [Fact]
+    public async Task A_call_the_user_abandoned_is_cancelled_not_a_timeout()
+    {
+        var handler = new FakeHandler(_ => Json(SkillResponse));
+        var client = new ClaudeClient(new Factory(handler));
+        using var abandoned = new CancellationTokenSource();
+        await abandoned.CancelAsync();
+
+        var failure = await Assert.ThrowsAsync<ClaudeException>(() => client.TestAsync(Key, "claude-sonnet-5-5", abandoned.Token));
+
+        Assert.Equal(ClaudeClient.CancelledCode, failure.Code);
+    }
+
     [Fact]
     public async Task A_download_larger_than_allowed_is_refused()
     {
