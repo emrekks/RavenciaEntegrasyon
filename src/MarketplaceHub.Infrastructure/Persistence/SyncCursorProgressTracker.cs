@@ -4,7 +4,22 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 
 public static class SyncCursorProgressTracker
 {
+    // Resources no schedule runs: the product import starts only from the panel (PRODUCT_SYNC_MANUAL_ONLY), so the time
+    // since its last run says nothing about a stuck cursor and it is never marked stagnant (audit 2026-11-06 O2).
+    public static bool IsManualOnly(string? resourceType) => string.Equals(resourceType, "PRODUCTS", StringComparison.Ordinal);
+
     public static void TrackModification(
+        SyncCursor cursor,
+        string? previousOpaqueCursor,
+        DateTimeOffset? previousLastModifiedWatermark,
+        DateTimeOffset? previousLastSuccessAt,
+        DateTimeOffset now)
+    {
+        Track(cursor, previousOpaqueCursor, previousLastModifiedWatermark, previousLastSuccessAt, now);
+        if (IsManualOnly(cursor.ResourceType)) cursor.CursorStagnantSince = null;
+    }
+
+    private static void Track(
         SyncCursor cursor,
         string? previousOpaqueCursor,
         DateTimeOffset? previousLastModifiedWatermark,

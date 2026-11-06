@@ -172,6 +172,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "POST   /api/v1/jobs/{id:guid}/cancel Elevated",
         "POST   /api/v1/jobs/{id:guid}/invoice-delivery-once Elevated",
         "POST   /api/v1/jobs/{id:guid}/retry Elevated",
+        "GET    /api/v1/jobs/attention SignedIn",
         "GET    /api/v1/jobs/counts SignedIn",
         "GET    /api/v1/jobs/metrics SignedIn",
         "GET    /api/v1/jobs/metrics/lanes SignedIn",

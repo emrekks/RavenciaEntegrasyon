@@ -23,6 +23,11 @@ public static class JobEndpoints
                     new JobListQuery(status, since, List(jobTypes), limit, after, Platforms(platform, platforms)),
                     http.RequestAborted))
                 : Unauthorized(http));
+        // The notification center's background notices: reads failing run after run, approvals that ran out of time.
+        api.MapGet("/attention", async (HttpContext http, IAttentionNoticeService service) =>
+            Tenant(http) is { } tenant
+                ? Results.Ok(await service.ListAsync(tenant.TenantId, http.RequestAborted))
+                : Unauthorized(http));
         api.MapGet("/counts", async (HttpContext http, IJobOperationsService service, DateTimeOffset? since, string? platform, string? platforms) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.CountAsync(tenant.TenantId, since, Platforms(platform, platforms), http.RequestAborted))

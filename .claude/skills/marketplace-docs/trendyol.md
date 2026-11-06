@@ -117,6 +117,18 @@ purpose (`TurkeyTime.cs`).
   request. A product not yet approved still goes whole via `unapproved-bulk-update`. Source: offline
   `trendyol-api-son.md`, `updateContentBulk` / `ContentBulkUpdateRequest` / `ContentUpdateItem` (~line 31769); bug
   6.11.2026, RYP007 images-only job 01a1b1c8-6fe7-78d3-bc90-702736436c38 had sent title, description and 18 attributes.
+- A content's attribute list is built for the content, not taken from its first variant (`TrendyolContentGroups
+  .ContentAttributes`, owner 6.11.2026): the category's **varianter** attribute (the size, one value per variant
+  inside a content) is left out of `content-bulk-update`; every other attribute, the **slicer** (Renk) included, must
+  have the same value on every variant of the content, else that content is not sent (PRODUCT_CONTENT_GROUP_MISMATCH,
+  "aynı içerikteki varyantların özellikleri farklı: …"). The flags come from `getCategoryAttributes` (`varianter`,
+  `slicer`), read right before the send; when they cannot be read nothing is left out and any differing attribute stops
+  the content. Source: offline `trendyol-api-son.md` ~2081-2100 (slicer opens separate contents, varianter = sizes of
+  one content, one varianter per category), ~2135 and ~2208 ("Onaylı ürünlerde … slicer veya varianter olan attribute
+  value değerleri güncellenememektedir"; updatable only when both flags are false). **Unverified on live:** the guide
+  also says a content attribute update must carry "tüm attribute ve değerleri"; whether Trendyol accepts the list
+  without the varianter has not been seen yet (live RYP007 6.11.2026 went with the first variant's size and was
+  accepted). Check the first ATTRIBUTES content update's batch result.
 - Approved-product variant update (`variant-bulk-update`) is partial too, and a null DELETES: the guide says a partial
   request is taken when you send the `barcode` plus the field to change, and that sending a field as null (e.g.
   `vatRate: null`) removes that field's current value from the product entirely. So the variant request carries

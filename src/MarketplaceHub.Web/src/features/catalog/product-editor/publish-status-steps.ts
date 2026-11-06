@@ -1,3 +1,5 @@
+import { approvalDeadlineExpiredLabel, isApprovalDeadlineExpired } from '../publication-status'
+
 // A publish card's "Yayın Durumu" as four steps: Hazırlık (the product and its mappings), Gönderim (the send),
 // Onay (the marketplace's check) and Yayında (live there). Each step is one of:
 // done (green check), next (dashed green: ready, waiting to be sent), fail (red x: blocked or refused at that step),
@@ -17,6 +19,8 @@ export type PublishStepsInput = {
   statusUnavailable?: boolean
   actualStatus?: string | null
   lastJobStatus?: string | null
+  /** The card's last refusal or review code: an approval check that ran out of time is not a refusal. */
+  rejectionCode?: string | null
   /** Required gaps that block the send (0 when none). */
   requiredGaps: number
   optionalWarnings: number
@@ -116,6 +120,8 @@ export function publishStatusSteps(input: PublishStepsInput): PublishSteps {
   // A required gap is what the user can act on: it leads, also over an earlier refusal.
   if (prepFailed) return build(['fail', 'idle', 'idle', 'idle'], 'Zorunlu Eksik')
   if (status === 'PARTIAL_REJECTED') return build(['done', 'done', 'fail', 'half'], 'Kısmen Reddedildi')
+  // The approval check ran out of time: the marketplace neither approved nor refused it as far as the panel knows.
+  if (isApprovalDeadlineExpired(status, input.rejectionCode)) return build(['done', 'done', 'fail', 'idle'], approvalDeadlineExpiredLabel)
   if (rejectedStatuses.has(status)) return build(['done', 'done', 'fail', 'idle'], 'Reddedildi')
   if (partlyFailedStatuses.has(status)) return build(['done', 'fail', 'idle', 'half'], 'Kısmen Başarısız')
   if (blockedStatuses.has(status)) return build(['done', 'fail', 'idle', 'idle'], 'Gönderilemedi')

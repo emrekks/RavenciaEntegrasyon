@@ -67,6 +67,7 @@ public static class DependencyInjection
         services.AddScoped<IPriceStockSendLogService, PriceStockSendLogService>();
         services.AddScoped<IProductActivityService, ProductActivityService>();
         services.AddScoped<IDashboardReadService, DashboardReadService>();
+        services.AddScoped<IAttentionNoticeService, AttentionNoticeService>();
         services.AddScoped<IReportsService, ReportsService>();
         services.AddScoped<IPayoutsService, PayoutsService>();
         services.AddScoped<IScheduledJobProducer, ScheduledJobProducer>();

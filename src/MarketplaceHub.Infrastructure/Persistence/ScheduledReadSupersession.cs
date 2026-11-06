@@ -10,10 +10,24 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // code SUPERSEDED_BY_LATER_RUN. Only untargeted scheduled reads qualify (the scheduler's "scheduled:" key, a read job
 // type from the list below, the same key series without its time bucket); a write, a user request, or a targeted read
 // (one order, one package) is never touched.
+// A read that went to manual review for a passing cause is closed the same way (audit 2026-11-06 O1: 7 Pazarama reads
+// on a refused token of 4 Nov and 24 Trendyol return reads on an unreadable answer of 5 Nov stayed in review although
+// the next runs read the same data): only the codes below qualify, never a review a person has to settle.
 public static class ScheduledReadSupersession
 {
     public const string Code = "SUPERSEDED_BY_LATER_RUN";
     public const string ScheduledPrefix = "scheduled:";
+
+    // Manual-review codes of a read that the next successful run of the same read makes moot: a token the marketplace
+    // refused for a while, an answer that could not be read once.
+    internal static readonly IReadOnlySet<string> TransientReviewCodes = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "PAZARAMA_TOKEN_INVALID", "REMOTE_CONTRACT_INVALID"
+    };
+
+    public static bool IsClosableFailure(JobStatus status, string? errorCode) =>
+        status is JobStatus.Blocked or JobStatus.Dead
+        || status == JobStatus.ManualReview && errorCode is not null && TransientReviewCodes.Contains(errorCode);
 
     internal static readonly IReadOnlySet<string> ReadJobTypes = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -35,8 +49,9 @@ public static class ScheduledReadSupersession
 
     public static bool Supersedes(
         (Guid ConnectionId, string JobType, string DedupKey, JobStatus Status, DateTimeOffset CreatedAt) failed,
-        (Guid ConnectionId, string JobType, string DedupKey, JobStatus Status, DateTimeOffset CreatedAt) later) =>
-        failed.Status is JobStatus.Blocked or JobStatus.Dead
+        (Guid ConnectionId, string JobType, string DedupKey, JobStatus Status, DateTimeOffset CreatedAt) later,
+        string? failedErrorCode = null) =>
+        IsClosableFailure(failed.Status, failedErrorCode)
         && later.Status == JobStatus.Succeeded
         && failed.ConnectionId == later.ConnectionId
         && string.Equals(failed.JobType, later.JobType, StringComparison.Ordinal)
@@ -51,8 +66,11 @@ public static class ScheduledReadSupersession
     internal static async Task<int> CloseAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
     {
         var types = ReadJobTypes.ToArray();
+        var reviewCodes = TransientReviewCodes.ToArray();
         var failed = (await db.IntegrationJobs.AsNoTracking()
-                .Where(x => (x.Status == JobStatus.Blocked || x.Status == JobStatus.Dead) && x.ConnectionId != null
+                .Where(x => (x.Status == JobStatus.Blocked || x.Status == JobStatus.Dead
+                        || x.Status == JobStatus.ManualReview && x.LastErrorCode != null && reviewCodes.Contains(x.LastErrorCode))
+                    && x.ConnectionId != null
                     && x.JobDedupKey.StartsWith(ScheduledPrefix) && types.Contains(x.JobType))
                 .OrderBy(x => x.CreatedAt)
                 .Select(x => new { x.Id, x.TenantId, ConnectionId = x.ConnectionId!.Value, x.JobType, x.JobDedupKey, x.Status, x.CreatedAt, x.LastErrorCode })
@@ -75,11 +93,11 @@ public static class ScheduledReadSupersession
             if (latest is null) continue;
             foreach (var job in series.Where(x => Supersedes(
                          (x.ConnectionId, x.JobType, x.JobDedupKey, x.Status, x.CreatedAt),
-                         (series.Key.ConnectionId, series.Key.JobType, latest.JobDedupKey, JobStatus.Succeeded, latest.CreatedAt))))
+                         (series.Key.ConnectionId, series.Key.JobType, latest.JobDedupKey, JobStatus.Succeeded, latest.CreatedAt), x.LastErrorCode)))
             {
                 var summary = Summary(job.LastErrorCode);
                 closed += await db.IntegrationJobs
-                    .Where(x => x.Id == job.Id && x.TenantId == job.TenantId && (x.Status == JobStatus.Blocked || x.Status == JobStatus.Dead))
+                    .Where(x => x.Id == job.Id && x.TenantId == job.TenantId && x.Status == job.Status && x.LastErrorCode == job.LastErrorCode)
                     .ExecuteUpdateAsync(setters => setters
                         .SetProperty(x => x.Status, JobStatus.Cancelled)
                         .SetProperty(x => x.LastErrorCode, Code)

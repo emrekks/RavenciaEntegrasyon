@@ -11,6 +11,14 @@ public sealed class TrendyolContentGroupsTests
 {
     private static readonly string[] Colours = ["Haki", "Kahverengi", "Kiremit", "Lacivert", "Siyah", "Vizon"];
 
+    // The category's attribute flags as getCategoryAttributes gives them: 293 the size (varianter), 47 the colour (slicer).
+    private static readonly TrendyolAttributeRoles Roles = TrendyolAttributeRoles.FromCategoryAttributes([
+        """{"attribute":{"id":293,"name":"Beden"},"varianter":true,"slicer":false}""",
+        """{"attribute":{"id":47,"name":"Renk"},"varianter":false,"slicer":true}"""]);
+
+    private static ServiceResult<string> Resolve(string payload, IReadOnlyDictionary<string, TrendyolContentObservation> contents) =>
+        TrendyolContentGroups.Resolve(payload, contents, Roles);
+
     [Fact]
     public void ASixColourCard_GoesOncePerContent_WithItsOwnColoursImages()
     {
@@ -19,7 +27,7 @@ public sealed class TrendyolContentGroupsTests
         Assert.False(TrendyolContentGroups.IsResolved(payload));
         var contents = Colours.Select((colour, index) => new TrendyolContentObservation($"{1228880360 + index}", Sizes(index))).ToList();
 
-        var resolved = TrendyolContentGroups.Resolve(payload, ByBarcode(contents));
+        var resolved = Resolve(payload, ByBarcode(contents));
 
         Assert.True(resolved.Succeeded, resolved.Error?.Message);
         Assert.True(TrendyolContentGroups.IsResolved(resolved.Value!));
@@ -33,7 +41,9 @@ public sealed class TrendyolContentGroupsTests
             Assert.False(item.ContainsKey("barcode"));
             Assert.Equal($"https://img/{Colours[index]}/1.jpg", item["images"]![0]!["url"]!.GetValue<string>());
             Assert.Equal("Kazak", item["title"]!.GetValue<string>());
-            Assert.NotNull(item["attributes"]);
+            // The colour (slicer) goes as the content's; the size (varianter 293) is no content's attribute and stays out.
+            Assert.Equal([47], item["attributes"]!.AsArray().Select(attribute => attribute!["attributeId"]!.GetValue<int>()));
+            Assert.Equal(Colours[index], item["attributes"]![0]!["customAttributeValue"]!.GetValue<string>());
         }
     }
 
@@ -41,7 +51,7 @@ public sealed class TrendyolContentGroupsTests
     public void ASingleContentCard_GoesAsOneItem()
     {
         var payload = Payload(("B1", "red"), ("B2", "red"));
-        var resolved = TrendyolContentGroups.Resolve(payload, ByBarcode([new("777", ["B1", "B2"])]));
+        var resolved = Resolve(payload, ByBarcode([new("777", ["B1", "B2"])]));
         Assert.True(resolved.Succeeded, resolved.Error?.Message);
         var item = Assert.Single(Items(resolved.Value!))!.AsObject();
         Assert.Equal(777L, item["contentId"]!.GetValue<long>());
@@ -51,7 +61,7 @@ public sealed class TrendyolContentGroupsTests
     public void AContentHoldingAnotherCardsBarcode_IsRefused()
     {
         var payload = Payload(("B1", "red"), ("B2", "red"));
-        var resolved = TrendyolContentGroups.Resolve(payload, ByBarcode([new("777", ["B1", "B2", "OTHER-1"])]));
+        var resolved = Resolve(payload, ByBarcode([new("777", ["B1", "B2", "OTHER-1"])]));
         Assert.Equal("PRODUCT_CONTENT_SHARED", resolved.Error?.Code);
         Assert.Contains("OTHER-1", resolved.Error!.Message);
     }
@@ -61,7 +71,7 @@ public sealed class TrendyolContentGroupsTests
     {
         // Trendyol keeps B1 and B2 in one content but the panel gives them different pictures: neither may overwrite it.
         var payload = Payload(("B1", "red"), ("B2", "blue"));
-        var resolved = TrendyolContentGroups.Resolve(payload, ByBarcode([new("777", ["B1", "B2"])]));
+        var resolved = Resolve(payload, ByBarcode([new("777", ["B1", "B2"])]));
         Assert.Equal("PRODUCT_CONTENT_GROUP_MISMATCH", resolved.Error?.Code);
     }
 
@@ -85,7 +95,7 @@ public sealed class TrendyolContentGroupsTests
             .For(media, size, item => item.VariantId, item => assets[item.Url]).Select(item => $"https://img/vizon/{item.Url}.jpg")];
         var sizes = new[] { ("RYP006-16", Images(s16)), ("RYP006-17", Images(s17)), ("RYP006-18", Images(s18)) };
 
-        var resolved = TrendyolContentGroups.Resolve(Payload(sizes), ByBarcode([new("1228880360", ["RYP006-16", "RYP006-17", "RYP006-18"])]));
+        var resolved = Resolve(Payload(sizes), ByBarcode([new("1228880360", ["RYP006-16", "RYP006-17", "RYP006-18"])]));
 
         Assert.True(resolved.Succeeded, resolved.Error?.Message);
         var item = Assert.Single(Items(resolved.Value!))!.AsObject();
@@ -95,7 +105,7 @@ public sealed class TrendyolContentGroupsTests
 
         // A real difference (-18 without the size chart) is still a mismatch.
         var differentSet = new[] { sizes[0], sizes[1], ("RYP006-18", sizes[2].Item2[..3]) };
-        var refused = TrendyolContentGroups.Resolve(Payload(differentSet), ByBarcode([new("1228880360", ["RYP006-16", "RYP006-17", "RYP006-18"])]));
+        var refused = Resolve(Payload(differentSet), ByBarcode([new("1228880360", ["RYP006-16", "RYP006-17", "RYP006-18"])]));
         Assert.Equal("PRODUCT_CONTENT_GROUP_MISMATCH", refused.Error?.Code);
     }
 
@@ -104,7 +114,7 @@ public sealed class TrendyolContentGroupsTests
     {
         // A duplicate listing: the same colour's sizes sit in two contents. Each gets the colour's own data.
         var payload = Payload(("B1", "red"), ("B2", "red"));
-        var resolved = TrendyolContentGroups.Resolve(payload, ByBarcode([new("777", ["B1"]), new("778", ["B2"])]));
+        var resolved = Resolve(payload, ByBarcode([new("777", ["B1"]), new("778", ["B2"])]));
         Assert.True(resolved.Succeeded, resolved.Error?.Message);
         Assert.Equal([777L, 778L], Items(resolved.Value!).Select(item => item!["contentId"]!.GetValue<long>()));
     }
@@ -113,11 +123,11 @@ public sealed class TrendyolContentGroupsTests
     public void ABarcodeNotApproved_IsLeftOut_AndNoApprovedBarcodeIsRefused()
     {
         var payload = Payload(("B1", "red"), ("B2", "blue"));
-        var partial = TrendyolContentGroups.Resolve(payload, ByBarcode([new("777", ["B1"])]));
+        var partial = Resolve(payload, ByBarcode([new("777", ["B1"])]));
         Assert.True(partial.Succeeded, partial.Error?.Message);
         Assert.Equal(777L, Assert.Single(Items(partial.Value!))!["contentId"]!.GetValue<long>());
 
-        Assert.Equal("PRODUCT_CONTENT_NOT_APPROVED", TrendyolContentGroups.Resolve(payload, ByBarcode([])).Error?.Code);
+        Assert.Equal("PRODUCT_CONTENT_NOT_APPROVED", Resolve(payload, ByBarcode([])).Error?.Code);
     }
 
     [Fact]
@@ -137,7 +147,7 @@ public sealed class TrendyolContentGroupsTests
     [Fact]
     public void AContentIdThatIsNotANumber_IsRefused()
     {
-        var resolved = TrendyolContentGroups.Resolve(Payload(("B1", "red")), ByBarcode([new("RYP006", ["B1"])]));
+        var resolved = Resolve(Payload(("B1", "red")), ByBarcode([new("RYP006", ["B1"])]));
         Assert.Equal("REMOTE_CONTENT_ID_INVALID", resolved.Error?.Code);
     }
 

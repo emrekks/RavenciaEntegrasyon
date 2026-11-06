@@ -14,7 +14,7 @@ import { usePageEntryReveal } from './hooks/usePageEntryReveal'
 import { releaseOrphanedScrollLock, useScrollLock } from '../shared/hooks/useScrollLock'
 import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
-import { readNotificationHistory, registerNotificationConnectionResolver, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
+import { readNotificationHistory, registerNotificationConnectionResolver, subscribeNotificationHistory, syncAttentionNotices, type AppNotification, type AttentionNotice } from '../shared/notifications'
 import { connectionIdentityFromCache } from '../shared/notification-connections'
 import { orderNavigationCount, pendingOrdersQuery } from '../shared/order-navigation-count'
 import { clearPersonalStorage, setStorageScope } from '../shared/storage-scope'
@@ -84,6 +84,9 @@ function Shell({ me }: { me: Me }) {
   // The same query as the overview's Bekleyen Siparişler card: the badge and the card always say the same number.
   const orderSummary = useQuery(pendingOrdersQuery)
   const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
+  // Background states for the notification center (reads failing again and again, approvals that ran out of time).
+  const attentionNotices = useQuery({ queryKey: ['jobs', 'attention'], queryFn: () => hubPoll<AttentionNotice[]>('/jobs/attention'), staleTime: 60_000, refetchInterval: 300_000, refetchOnWindowFocus: true })
+  useEffect(() => { if (Array.isArray(attentionNotices.data)) syncAttentionNotices(attentionNotices.data) }, [attentionNotices.data])
   const [sidebarPinned, setSidebarPinned] = useState(() => readStoredItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
