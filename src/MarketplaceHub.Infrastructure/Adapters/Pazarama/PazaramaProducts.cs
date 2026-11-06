@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using Microsoft.Extensions.Logging;
 using ListingSaleState = MarketplaceHub.Domain.ListingSaleState;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
@@ -64,6 +65,10 @@ public sealed partial class PazaramaHttpClient : IProductPort
         try
         {
             var parsed = PazaramaProductMapper.Page(document.RootElement, pending: false);
+            // The read side of the sale state: which productStatus values the approved list sends (6 Nov 2026: the links of
+            // this store never got 1 or 10). Counts only, no product data.
+            if (string.IsNullOrWhiteSpace(filter.Barcode) && parsed.Items.Count > 0)
+                logger.LogInformation("Pazarama approved page productStatus values. ConnectionId: {ConnectionId}, Values: {Values}", account.Connection.Id, PazaramaProductMapper.ProductStatusSummary(parsed.Items));
             var more = parsed.NextCursor is not null && parsed.Items.Count + parsed.Issues.Count > 0;
             // The approved list is done: continue with the unapproved one when pending products are wanted.
             var next = more ? "A:" + parsed.NextCursor : filter.IncludePendingApproval ? "U:1:" : null;
@@ -143,6 +148,23 @@ public static class PazaramaProductMapper
 
     // An approved item's productStatus as the shared sale state: 1 open, 10 closed (the values "Kataloglu Ürünleri
     // Satışa Kapatıp-Açma" writes). 0 (unset), another value or none says nothing: unknown, not on sale.
+    // "1:3, 0:139, none:2": how many approved variants sent each productStatus value.
+    internal static string ProductStatusSummary(IEnumerable<RemoteCatalogProduct> items) =>
+        string.Join(", ", items.SelectMany(product => product.Variants).Select(variant => StatusOf(variant.RawJson))
+            .GroupBy(value => value).OrderByDescending(group => group.Count()).Select(group => $"{group.Key}:{group.Count()}"));
+
+    private static string StatusOf(string rawJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(rawJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object && document.RootElement.TryGetProperty("productStatus", out var value)
+                ? value.ValueKind == JsonValueKind.Number ? value.GetRawText() : value.ValueKind.ToString().ToLowerInvariant()
+                : "none";
+        }
+        catch (JsonException) { return "unreadable"; }
+    }
+
     internal static string? SaleState(int? productStatus) => productStatus switch
     {
         OpenProductStatus => ListingSaleState.OnSale,

@@ -190,6 +190,48 @@ public sealed class SyncWindowAuditTests
         Assert.Null(MarketplaceJobProcessor.HepsiburadaPackagePageKey([]));
     }
 
+    private static RemoteCatalogProduct PttModel(bool active, params string[] names)
+    {
+        System.Xml.Linq.XNamespace a = "http://schemas.datacontract.org/2004/07/ePttAVMService";
+        System.Xml.Linq.XNamespace n = "http://schemas.datacontract.org/2004/07/ePttAVMService.New";
+        var row = new System.Xml.Linq.XElement(a + "StokKontrolDetay", new System.Xml.Linq.XElement(a + "Aktif", active ? "true" : "false"),
+            new System.Xml.Linq.XElement(a + "Barkod", "FK4530"), new System.Xml.Linq.XElement(a + "KDVli", "500"), new System.Xml.Linq.XElement(a + "UrunAdi", "Etek"),
+            new System.Xml.Linq.XElement(a + "UrunId", "900001"));
+        var entries = names.Select((name, index) => new System.Xml.Linq.XElement(n + "Variant", new System.Xml.Linq.XElement(n + "Quantity", "1"),
+            new System.Xml.Linq.XElement(n + "VariantId", (7100 + index).ToString()), new System.Xml.Linq.XElement(n + "VariantName", name))).ToList();
+        return MarketplaceHub.Infrastructure.Adapters.PttAvm.PttAvmProductMapper.Product(row, [], new Dictionary<string, IReadOnlyList<System.Xml.Linq.XElement>> { ["FK4530"] = entries })!;
+    }
+
+    [Fact]
+    public void Ptt_model_variants_count_as_seen_when_the_model_lists_their_colour_and_size()
+    {
+        var product = PttModel(true, "Bordo", "S", "M");
+        var listed = Guid.NewGuid();
+        var sizeMissing = Guid.NewGuid();
+        var otherModel = Guid.NewGuid();
+        var panel = new (Guid, string?, string?)[]
+        {
+            (listed, "FK4530", "Renk: Bordo | Beden: S"),
+            (sizeMissing, "FK4530", "Renk: Bordo | Beden: XL"),
+            (otherModel, "FK9999", "Renk: Bordo | Beden: S")
+        };
+
+        Assert.Equal([listed], MarketplaceJobProcessor.PttAvmModelVariantsSeen(product, panel));
+        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OnSale, MarketplaceJobProcessor.PttAvmModelSaleState(product).State);
+        Assert.Equal(MarketplaceHub.Domain.ListingSaleState.OffSale, MarketplaceJobProcessor.PttAvmModelSaleState(PttModel(false, "Bordo", "S")).State);
+        // A model that lists no values says nothing about its variants.
+        Assert.Empty(MarketplaceJobProcessor.PttAvmModelVariantsSeen(product with { Variants = [] }, panel));
+    }
+
+    [Fact]
+    public void Pazarama_approved_page_productStatus_values_are_counted()
+    {
+        RemoteCatalogVariant Variant(string raw) => new("v", "s", "b", null, new Dictionary<string, string>(), false, null, null, null, null, "TRY", raw);
+        var product = new RemoteCatalogProduct("p", null, "t", "", null, null, null, null, [], [Variant("""{"productStatus":0}"""), Variant("""{"productStatus":0}"""), Variant("""{"code":"x"}"""), Variant("""{"productStatus":10}""")], "{}");
+
+        Assert.Equal("0:2, none:1, 10:1", PazaramaProductMapper.ProductStatusSummary([product]));
+    }
+
     [Fact]
     public void Hepsiburada_missing_invoice_pass_stops_when_the_list_moves_between_pages()
     {

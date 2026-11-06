@@ -41,6 +41,13 @@ may not repeat within 5 min (`PTTAVM_REPEAT_REQUEST_WAIT`). Price/stock ≤ 1000
 - StokKontrolListesi row `Aktif` ("Ürünün aktiflik bilgisi", set by `Aktif Yap`) and a variant entry's own `Aktif`;
   `Mevcut` is stock, not sale. Source: offline doc `# Aktif Yap` and the product list field table. A row without
   `Aktif` stays unknown. Code: `PttAvmProductMapper.SaleState`.
+- A product with variants is listed under its model code; GetProductsWithVariants names its variants only by
+  colour/size value (live shape `Variant[Limit,PriceDifference,Quantity,VariantId,VariantName]`, no code, no Aktif), and
+  BarkodKontrol on a panel variant stock code answered no product (300 lookups a night, all UNKNOWN). The nightly
+  LISTING_VERIFY therefore saw 20 of 3,017 linked codes from 30 Oct to 6 Nov 2026 (only products without variants):
+  StokKontrolListesi returns 204 products, paging was not the cause. Since 6 Nov 2026 a linked panel variant of a
+  listed model counts as seen when the model lists its colour and size values (the rule `MapPttAvmProduct` links it
+  by), and its sale state is the model's Aktif (`MarketplaceJobProcessor.MarkPttAvmModelLinksSeen`).
 
 ## Statuses (SiparisDurumu, Turkish letters folded)
 kargo_yapilmasi_bekleniyor → Created; havale_onayi_bekleniyor / onay_surecinde → Awaiting (OnHold); gonderilmis /

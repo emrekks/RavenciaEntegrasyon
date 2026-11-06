@@ -1,6 +1,7 @@
 using System.Text.Json;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
+using MarketplaceHub.Infrastructure.Adapters.PttAvm;
 using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Persistence;
@@ -69,6 +70,7 @@ public sealed partial class MarketplaceJobProcessor
                 throw new InvalidOperationException("Pazar yeri ürün sayfası hasMore=true ancak nextPageToken boş döndü.");
             // An observing run records only when a code was seen; it heals nothing.
             await MarkVariantLinksSeen(tenantId, connectionId, page.Items, cancellationToken, heal: !observe);
+            if (connection.PlatformCode == "PTTAVM") await MarkPttAvmModelLinksSeen(tenantId, connectionId, page.Items, heal: !observe, cancellationToken);
             state = state with { Next = page.HasMore ? page.NextCursor : null, Pages = state.Pages + 1, Received = state.Received + page.Items.Count };
             await SaveListingVerifyState(cursor, state, cancellationToken);
             slicePages++;
@@ -377,6 +379,67 @@ public sealed partial class MarketplaceJobProcessor
             await db.SaveChangesAsync(cancellationToken);
         }
         return JobExecutionResult.SuccessWithNote("LISTING_LOOKUP_COMPLETED", lookupSummary);
+    }
+
+    // PTT AVM lists a product with variants under its model code and names its variants only by their colour and size
+    // values (GetProductsWithVariants: VariantId, VariantName, no code), while the panel links each variant by its own
+    // stock code (MapPttAvmProduct). Matching codes alone therefore saw only products without variants: 20 of 3,017
+    // linked codes every night from 30 Oct to 6 Nov 2026. A linked panel variant of the listed model counts as seen by
+    // the same rule the mapping links it by: PTT AVM lists every colour and size value it has. Its sale state is the
+    // model's (a variant entry carries no Aktif of its own), and only when every listed variant says the same.
+    private async Task MarkPttAvmModelLinksSeen(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> page, bool heal, CancellationToken cancellationToken)
+    {
+        var models = page.Where(product => !string.IsNullOrWhiteSpace(product.ProductMainId)
+                && product.Variants.Any(variant => PttAvmVariantMapper.IsModelVariantId(variant.ExternalVariantId)))
+            .ToList();
+        if (models.Count == 0) return;
+        var codes = models.Select(product => product.ProductMainId!.Trim()).Distinct(StringComparer.Ordinal).ToArray();
+        var panelVariants = await db.ProductVariants.AsNoTracking()
+            .Where(variant => variant.TenantId == tenantId && variant.Status != ProductStatus.Archived && variant.ModelCode != null && codes.Contains(variant.ModelCode))
+            .Select(variant => new { variant.Id, variant.ModelCode, variant.OptionSignature })
+            .ToListAsync(cancellationToken);
+        if (panelVariants.Count == 0) return;
+        var now = timeProvider.GetUtcNow();
+        var seen = new Dictionary<Guid, (string? State, string? Reason)>();
+        foreach (var product in models)
+            foreach (var id in PttAvmModelVariantsSeen(product, panelVariants.Select(variant => (variant.Id, variant.ModelCode, (string?)variant.OptionSignature))))
+                seen[id] = PttAvmModelSaleState(product);
+        if (seen.Count == 0) return;
+        var ids = seen.Keys.ToArray();
+        foreach (var link in await db.MarketplaceVariantLinks
+                     .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && ids.Contains(x.VariantId))
+                     .ToListAsync(cancellationToken))
+        {
+            if (heal) MarketplaceVariantLinkHealth.MarkSeen(link, now);
+            else link.LastSeenAt = now;
+            var (state, reason) = seen[link.VariantId];
+            link.SaleState = state;
+            link.SaleStateReason = reason;
+            link.SaleStateReadAt = state is null ? null : now;
+        }
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    // The panel variants of the listed model (ModelCode = the PTT AVM product barcode) whose colour and size values the
+    // product lists; none when it lists no values (nothing to tell its variants apart by).
+    internal static IReadOnlyList<Guid> PttAvmModelVariantsSeen(RemoteCatalogProduct product, IEnumerable<(Guid Id, string? ModelCode, string? OptionSignature)> panelVariants)
+    {
+        var optionValues = PttAvmOptionValues(product.Variants);
+        if (optionValues.Count == 0 || string.IsNullOrWhiteSpace(product.ProductMainId)) return [];
+        var model = product.ProductMainId.Trim();
+        return panelVariants
+            .Where(variant => string.Equals(variant.ModelCode?.Trim(), model, StringComparison.Ordinal)
+                && !string.IsNullOrWhiteSpace(variant.OptionSignature)
+                && PttAvmMissingOptionValues(variant.OptionSignature, optionValues).Count == 0)
+            .Select(variant => variant.Id)
+            .ToList();
+    }
+
+    internal static (string? State, string? Reason) PttAvmModelSaleState(RemoteCatalogProduct product)
+    {
+        var reads = product.Variants.Where(variant => PttAvmVariantMapper.IsModelVariantId(variant.ExternalVariantId))
+            .Select(variant => (variant.SaleState, variant.SaleStateReason)).Distinct().ToList();
+        return reads.Count == 1 ? reads[0] : (null, null);
     }
 
     // Asks the marketplace about one link by the code its lookup takes (ListingVerificationPolicy.LookupKey). A quota or
