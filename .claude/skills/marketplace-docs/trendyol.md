@@ -164,6 +164,12 @@ purpose (`TurkeyTime.cs`).
 - A product-create line refused as "Aynı barkodlu bir ürününüz bulunduğundan…" is not a refusal: it stays
   CREATE_RESULT_UNKNOWN and the approval check reads the barcode; the same now holds for any marketplace's
   "zaten mevcut/kayıtlı/var", "already exist" wording (`ProductBatchResultPolicy.SaysBarcodeExists`, report item 14).
+- Product `images[].url`: https only, at most 8 per barcode, pictures 1200x1800 at 96 dpi (offline docs
+  `trendyol-api-son.md`, product create/update "images"). We send our own pictures as
+  `https://panel.ravencia.com/api/v1/public/product-media/{assetId}/content` (`ProductPublicationComposer`). While a
+  product waits for approval the seller panel shows these URLs from partner.trendyol.com itself, so the response must
+  carry `Cross-Origin-Resource-Policy: cross-origin` or Chrome shows broken pictures there (live 2026-11-06, MZ028IH-10
+  Zümrüt: two empty picture slots; `deploy/caddy/Caddyfile.production`).
 
 ## Job types
 TRENDYOL_CONNECTION_TEST, _REFERENCE_SYNC, _ORDER_SYNC (60 s), _ORDER_RECOVERY_SYNC (15 min),

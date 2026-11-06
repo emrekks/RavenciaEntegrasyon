@@ -24,8 +24,14 @@ Code: `Adapters/Shopify/` — `ShopifyHttpClient.cs` (+ `.Webhooks.cs`), `Shopif
 ## Windows and paging
 - Cursor paging, `first` ≤ 250 (setting 100), filter `updated_at:>='…Z'` in UTC.
 - One query pages through at most 25,000 results — the code restarts after 200 pages.
-- Returns: `SyncShopifyReturns` exists but no RETURNS policy is scheduled for Shopify
-  (`ScheduledJobProducer.IsShopifyReadPolicy`); live has no Shopify RETURN_SYNC job and no return claims (6 Nov 2026).
+- Returns (RETURN_SYNC, read since 6 Nov 2026; before that no RETURNS policy existed for Shopify and no return was
+  ever read): `orders(sortKey:UPDATED_AT)` with `updated_at:>=` and each order's `returns(first:20)`. Scheduled at
+  the common return cadence (10 min at most, `ReturnCadencePolicy`, thins out while none is open) and queued full on
+  activation. First or full read 180 days back, later reads from the last completed read's start − 15 min; a failed
+  run resumes its saved query and never widens the read. Restarts its query from the latest order `updatedAt` after
+  200 pages (25k cap), like orders (`MarketplaceJobProcessor.SyncShopifyReturns`, `NextShopifyReturnPage`).
+  Needs `read_returns` or `read_marketplace_returns` (live token has it, RETURN_READ verified 29 Oct 2026).
+  Approve/decline stays behind RETURN_WRITE.
 - Nested lists are not paged: `lineItems(first:250)`, `fulfillmentLineItems(first:250)`, `events(first:50)`,
   `refunds(first:100)` (`ShopifyHttpClient.cs`).
 - First read 3 months, daily baseline re-read, watermark − 10 min. Without `read_all_orders` only the last 60 days
@@ -86,7 +92,7 @@ UTC, ISO with Z.
 
 ## Job types
 SHOPIFY_CONNECTION_TEST, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC, _ORDER_STATUS_SYNC, _ORDER_RECONCILIATION,
-_ORDER_INVOICE_RECONCILIATION, _WEBHOOK_INGEST, _ORDER_CSV_IMPORT.
+_ORDER_INVOICE_RECONCILIATION, _WEBHOOK_INGEST, _ORDER_CSV_IMPORT. Returns use the shared RETURN_SYNC.
 
 ## Returns, invoices, buyer (stage 5, 5 Nov 2026)
 - ReturnStatus REQUESTED waits for the seller (ActionRequired); OPEN approved, CLOSED completed, DECLINED rejected,
