@@ -16,6 +16,7 @@ import { placePublishPopover } from '../publish-popover-placement'
 import { revealFieldError } from './field-error-reveal'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import { appendNotification, notificationError, productNotificationSubject } from '../../../shared/notifications'
+import { recordProductUpdateNotices, type ProductUpdateAccepted } from './product-update-notices'
 import { toggleProductAttributeValue } from '../attribute-selection'
 import { buildVariantAttributeAssignments } from '../variant-attribute-assignments'
 import { filterAttributeOptionValues, optionValueToAdd } from '../attribute-value-search'
@@ -3048,7 +3049,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             // Only what this marketplace takes of the pick goes: the product fields it carries, and the price and/or stock.
             const plan = platformUpdatePlan(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? '', platformUpdate.fields)
             if (plan.productFields.length) {
-              await hubApi<AcceptedJob>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields }) })
+              const accepted = await hubApi<ProductUpdateAccepted>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields }) })
+              recordProductUpdateNotices(accepted, { productId: product.id, productName: form.title, modelCode: form.modelCode, platformCode: connections.data?.items.find(item => item.id === connectionId)?.platformCode, connectionId })
               update.queued.productInformation = true
             }
             if (plan.price || plan.stock) {

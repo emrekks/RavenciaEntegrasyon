@@ -2014,6 +2014,46 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // fields: the product information "Platformlarda Güncelle" picked (ProductUpdateFields); null sends all of it.
     public async Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null)
     {
+        var queued = await EnqueueProductUpdateWithNoticesAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, cancellationToken, fields);
+        return queued.Succeeded ? ServiceResult<Guid>.Ok(queued.Value!.JobId) : ServiceResult<Guid>.Fail(queued.Error!.Code, queued.Error.Message, queued.Error.Status, queued.Error.FieldErrors);
+    }
+
+    // A product matched to a marketplace listing gets its listing profile only from a product sync that reads the
+    // products' information (ImportedListingProfiles); the update never makes one (owner decision 6 Nov 2026), and a card
+    // without one is refused with what to run (ImportedListingProfiles.MissingPublicationMessage). On such a profile the
+    // card's values go: a field the update sends that the card lacks stops it here, before anything is queued, and the
+    // notices say where the card's value went in place of the profile's.
+    public async Task<ServiceResult<ProductUpdateQueued>> EnqueueProductUpdateWithNoticesAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null)
+    {
+        var card = await ImportedProfileCardAsync(tenantId, productId, connectionId, cancellationToken);
+        if (card is not null && ImportedProfileCardFallbacks.EmptyCardField(card.PlatformCode, card.PlatformName, card.ShortLabel, card.Source, card.ProfileDeliveryDays, card.CardDeliveryDays, fields) is { } empty)
+            return ServiceResult<ProductUpdateQueued>.Fail(ImportedProfileCardFallbacks.EmptyCardFieldCode, empty, 422, new Dictionary<string, string[]> { ["deliveryDays"] = [empty] });
+        var queued = await EnqueueProductUpdateCoreAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, cancellationToken, fields);
+        if (!queued.Succeeded) return ServiceResult<ProductUpdateQueued>.Fail(queued.Error!.Code, queued.Error.Message, queued.Error.Status, queued.Error.FieldErrors);
+        var notices = card is null ? [] : ImportedProfileCardFallbacks.Notices(card.PlatformCode, card.PlatformName, card.LongLabel, card.Source, card.ProfileDeliveryDays, card.ProfileWarranty, card.CardDeliveryDays, card.CardWarrantyMonths, fields);
+        return ServiceResult<ProductUpdateQueued>.Ok(new(queued.Value, notices));
+    }
+
+    private sealed record ImportedProfileCard(string PlatformCode, string PlatformName, string ShortLabel, string LongLabel, string? Source, int? ProfileDeliveryDays, string? ProfileWarranty, int? CardDeliveryDays, int? CardWarrantyMonths);
+
+    // The card and its marketplace-import profile, or null when the profile is the panel's own (or there is none).
+    private async Task<ImportedProfileCard?> ImportedProfileCardAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var profile = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId)
+            .Select(x => new { x.Source, x.DeliveryTimeDays, x.Warranty }).SingleOrDefaultAsync(cancellationToken);
+        if (profile?.Source != ChannelListingProfileSource.MarketplaceImport) return null;
+        var product = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.Title, x.DeliveryDays, x.WarrantyMonths }).SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (product is null || platformCode is null) return null;
+        var modelCode = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ModelCode != null).OrderBy(x => x.SortOrder).Select(x => x.ModelCode).FirstOrDefaultAsync(cancellationToken);
+        var title = product.Title.Trim();
+        var shortLabel = string.IsNullOrWhiteSpace(modelCode) ? title : modelCode.Trim();
+        var longLabel = string.IsNullOrWhiteSpace(modelCode) ? title : $"{modelCode.Trim()} ({title})";
+        return new(platformCode, ListingVerificationPolicy.PlatformName(platformCode), shortLabel, longLabel, profile.Source, profile.DeliveryTimeDays, profile.Warranty, product.DeliveryDays, product.WarrantyMonths);
+    }
+
+    private async Task<ServiceResult<Guid>> EnqueueProductUpdateCoreAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields)
+    {
         // Shopify takes the product whole (ShopifyProductPublicationComposer): an update is the publication's productSet again
         // under the handle the panel gave the product, which Shopify applies to that product in place. The picked fields do
         // not narrow it (price and stock ride along), and the send never creates a product.

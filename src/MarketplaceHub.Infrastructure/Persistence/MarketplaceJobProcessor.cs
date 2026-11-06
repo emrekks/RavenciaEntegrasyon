@@ -6136,6 +6136,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             : !newOnly && !mappingOnly
             ? updateExistingProducts ? " · Mevcut ürün bilgileri güncellenecek" : " · Mevcut ürün bilgileri korunacak"
             : "";
+        // A run that reads the products' information (full scan, the incremental scan, "Mevcut ürünleri güncelle", a single
+        // lookup) completes the listing profiles of the products it matched; new-only, mapping-only and options-only runs
+        // do not (owner decision 6 Nov 2026).
+        var completesListingProfiles = !newOnly && !mappingOnly && !optionsOnly && ImportedListingProfiles.Supported(connection.PlatformCode);
         var importJobId = jobId ?? Guid.CreateVersion7();
         var importSession = await db.ProductImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -6491,6 +6495,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // PTT AVM lists colour and size rows, not variants; its mapping writes the variant codes itself.
                 if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
+                if (completesListingProfiles) await CompleteImportedListingProfiles(tenantId, connectionId, snapshotGroups, cancellationToken);
                 await db.ProductImportStagingRecords
                     .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
                     .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "COMPLETED").SetProperty(x => x.FinalizedAt, timeProvider.GetUtcNow()), cancellationToken);
@@ -6565,6 +6570,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (jobId is { } completedJob)
             await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken, keepExistingTotal: true);
         return true;
+    }
+
+    // The listing profiles of the products this batch matched (ImportedListingProfiles). The batch is already saved; a
+    // failure here leaves the import as it is (the next run completes the profile; an update never makes one).
+    private async Task CompleteImportedListingProfiles(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken)
+    {
+        var codes = snapshots.SelectMany(snapshot => snapshot.Variants)
+            .SelectMany(variant => new[] { Short(variant.ExternalVariantId, 256), string.IsNullOrWhiteSpace(variant.Barcode) ? null : Short(variant.Barcode.Trim(), 160) })
+            .Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code!).ToHashSet(StringComparer.Ordinal);
+        try
+        {
+            var productIds = await ImportedListingProfiles.ProductIdsForCodesAsync(db, tenantId, connectionId, codes, cancellationToken);
+            await ImportedListingProfiles.EnsureAsync(db, tenantId, connectionId, productIds, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            db.ChangeTracker.Clear();
+        }
     }
 
     private Task<int> UpdateProductSyncProgressAsync(Guid tenantId, Guid jobId, int current, int? total, int? percent, string label, CancellationToken cancellationToken, bool keepExistingTotal = false)

@@ -288,6 +288,8 @@ public sealed class PlatformUpdateFieldSelectionTests
         var withoutDelivery = """{"items":[{"barcode":"B1","title":"Ad","dimensionalWeight":2}]}""";
         var result = ProductUpdateComposer.Split(Guid.CreateVersion7(), "123", withoutDelivery, new(false, false, true));
         Assert.Equal("PRODUCT_UPDATE_NOTHING_TO_SEND", result.Error?.Code);
+        // The refusal names the field the card lacks.
+        Assert.StartsWith("Teslimat Süresi gönderilemedi: ürün kartında teslimat süresi yok.", result.Error!.Message);
     }
 
     [Fact]

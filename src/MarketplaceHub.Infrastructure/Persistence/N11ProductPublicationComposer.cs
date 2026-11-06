@@ -43,7 +43,7 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         if (shipmentTemplate is null) return Fail("N11_SHIPMENT_TEMPLATE_REQUIRED", "N11'de ürün açmak için kargo şablonu seçilmemiş. Sol menüden Entegrasyonlar sayfasını açın, N11 bağlantısının kartındaki Yönet düğmesine basın, açılan pencerede Araçlar sekmesine geçin. N11 Ürün Açma Ayarları bölümündeki Kargo Şablonu listesinden (şablonlar N11 satıcı panelinizden okunur) birini seçip Ayarları Kaydet'e basın, sonra ürünü N11'e yeniden yayınlayın.");
         if (preparingDay is < 1 or > MaxPreparingDay) return Fail("N11_PREPARING_DAY_INVALID", $"Ürün kartındaki teslimat süresi (yoksa N11 bağlantısındaki hazırlık süresi) 1-{MaxPreparingDay} gün arasında olmalıdır.");
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi N11 bağlantısına ait listing profile oluşturulmalıdır.");
+        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("N11"));
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
 
         var loaded = await LoadAttributeContextAsync(tenantId, product, connectionId, profile, cancellationToken);

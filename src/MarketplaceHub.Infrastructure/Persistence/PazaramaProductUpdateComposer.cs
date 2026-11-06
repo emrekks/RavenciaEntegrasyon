@@ -15,7 +15,7 @@ internal sealed class PazaramaProductUpdateComposer(AppDbContext db)
     public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
     {
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Pazarama güncellemesi için bu bağlantıda yayın kaydı gerekir.");
+        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("Pazarama"));
         // The job reads every listing of the card, so each one must name the barcode Pazarama holds.
         var listings = await (from listing in db.ChannelListingVariants.AsNoTracking()
                               join variant in db.ProductVariants.AsNoTracking() on new { listing.TenantId, listing.VariantId } equals new { variant.TenantId, VariantId = variant.Id }

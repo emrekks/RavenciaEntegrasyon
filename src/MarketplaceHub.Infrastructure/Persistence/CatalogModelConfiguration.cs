@@ -182,7 +182,7 @@ internal static class CatalogModelConfiguration
         });
         builder.Entity<ChannelListingProfile>(entity =>
         {
-            entity.ToTable("channel_listing_profiles", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.VatOverride).HasPrecision(7, 4); entity.Property(x => x.Version).IsConcurrencyToken();
+            entity.ToTable("channel_listing_profiles", "catalog"); entity.HasKey(x => x.Id); entity.HasAlternateKey(x => new { x.TenantId, x.Id }); entity.Property(x => x.VatOverride).HasPrecision(7, 4); entity.Property(x => x.Source).HasMaxLength(32); entity.Property(x => x.Version).IsConcurrencyToken();
             entity.HasIndex(x => new { x.TenantId, x.ConnectionId, x.ProductId }).IsUnique(); entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<ChannelListingVariant>(entity =>

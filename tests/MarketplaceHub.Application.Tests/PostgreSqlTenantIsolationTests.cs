@@ -8987,6 +8987,84 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         }
     }
 
+    // Owner decision 6 Nov 2026: a product sync that reads the products' information completes the listing profile of a
+    // product it matched (ImportedListingProfiles); a new-only run does not. The import itself writes nothing remote.
+    [PostgreSqlFact]
+    public async Task TrendyolImport_CompletesTheMatchedProductsListingProfile_OnlyInARunThatReadsItsInformation()
+    {
+        var tenant = NewTenant("trendyol-import-profile");
+        var connection = NewQuestionConnection(tenant);
+        var productId = Guid.CreateVersion7();
+        var variantId = Guid.CreateVersion7();
+        var listing = new RemoteCatalogProduct(
+            "content-ryp003t", "RYP003T", "Kadın Haki Kazak", "", "100", "Uzak Marka", null, null, [],
+            [new RemoteCatalogVariant("1489791218", "RYP003T20", "RYP003T20", "RYP003T", new Dictionary<string, string>(), Archived: false, SalePrice: 100m, ListPrice: 120m, VatRate: 10m, StockQuantity: 2m, Currency: "TRY", RawJson: "{}")],
+            "{}");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.ReferenceSnapshots.AddRange(
+                new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "BRANDS", SourceVersion = "test", ContentHash = "test", FetchedAt = fixture.Now, IsCurrent = true },
+                new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "CATEGORIES", SourceVersion = "test", ContentHash = "test", FetchedAt = fixture.Now, IsCurrent = true });
+            seedDb.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Kadın Haki Kazak", Description = "", Status = ProductStatus.Active, CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-2), Version = 1 });
+            seedDb.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenant.Id, ProductId = productId, SortOrder = 0, Sku = "RYP003T20", SkuNormalized = "RYP003T20", Barcode = "RYP003T20", BarcodeNormalized = "RYP003T20", ModelCode = "RYP003T", OptionSignature = "RYP003T20", CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-2) });
+            seedDb.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = productId, ExternalId = "content-ryp003t", LastImportedProductVersion = 1, SyncStatus = "SYNCED", Version = 1 });
+            seedDb.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variantId, ExternalId = "1489791218", Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        async Task RunAsync(string payloadJson)
+        {
+            await using var processorDb = fixture.CreateContext();
+            var port = new ReadOnlyCatalogProductTestPort(listing);
+            var processor = new MarketplaceJobProcessor(processorDb, null!, null!, port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, payloadJson, "trendyol-import-profile", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+            Assert.Equal(0, port.WriteAttempts);
+        }
+
+        try
+        {
+            await RunAsync("{\"newOnly\":true}");
+            await using (var db = fixture.CreateContext())
+                Assert.False(await db.ChannelListingProfiles.AnyAsync(row => row.TenantId == tenant.Id));
+
+            await RunAsync("{\"existingOnly\":true,\"updateExistingProducts\":true}");
+            await using (var db = fixture.CreateContext())
+            {
+                var profile = await db.ChannelListingProfiles.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+                Assert.Equal((productId, ChannelListingProfileSource.MarketplaceImport, true, "UNKNOWN"), (profile.ProductId, profile.Source, profile.Enabled, profile.ActualStatus));
+                // The listing's category and brand stay out of the profile: the card's verified mappings decide.
+                Assert.Null(profile.ExternalCategoryId);
+                Assert.Null(profile.ExternalBrandId);
+                var listed = await db.ChannelListingVariants.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+                Assert.Equal((variantId, "RYP003T20", "RYP003T20"), (listed.VariantId, listed.ExternalBarcode, listed.ExternalSku));
+            }
+
+            // A second run finds it complete.
+            await RunAsync("{\"existingOnly\":true,\"updateExistingProducts\":true}");
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal(1, await db.ChannelListingProfiles.CountAsync(row => row.TenantId == tenant.Id));
+                Assert.Equal(1, await db.ChannelListingVariants.CountAsync(row => row.TenantId == tenant.Id));
+            }
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.ChannelPriceHistory.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.StockLedgerEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ProductChangeEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ReferenceSnapshots.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteCatalogOptionRepairTestTenantAsync(tenant.Id);
+        }
+    }
+
     // A listing whose barcode the panel does not know but whose stock code is another panel product's opened a product
     // with no variant on the barcode-keyed marketplaces (the variant goes to no one twice). No mode keeps it.
     [PostgreSqlTheory]

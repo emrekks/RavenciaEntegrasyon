@@ -576,7 +576,16 @@ public sealed class ChannelListingProfile
     public required string DesiredStatus { get; set; }
     public required string ActualStatus { get; set; }
     public string? LastRejectionCode { get; set; }
+    // Who made the profile: null is the panel (Yayınla, the listing profile form); MARKETPLACE_IMPORT is a product the
+    // panel matched to a listing read from the marketplace (ImportedListingProfiles). Such a profile carries no override:
+    // the card and its verified mappings stay the source of every update.
+    public string? Source { get; set; }
     public long Version { get; set; } = 1;
+}
+
+public static class ChannelListingProfileSource
+{
+    public const string MarketplaceImport = "MARKETPLACE_IMPORT";
 }
 
 public sealed class ChannelListingVariant

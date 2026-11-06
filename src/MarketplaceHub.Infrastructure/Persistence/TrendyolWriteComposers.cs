@@ -136,7 +136,9 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
         // A pick with nothing behind it (the delivery alone on a product with no delivery time) makes no job.
         if (mode == "APPROVED" && contentItems.Count == 0 && variantItems.Count == 0 && deliveryItems.Count == 0)
-            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_NOTHING_TO_SEND", "Seçilen ürün bilgileri için Trendyol'a gönderilecek değer yok.", 422);
+            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_NOTHING_TO_SEND", sections.Delivery && !sections.ContentFields.Any && !sections.VariantFields.Any
+                ? "Teslimat Süresi gönderilemedi: ürün kartında teslimat süresi yok. Ürün kartına teslimat süresini girip tekrar deneyin."
+                : "Seçilen ürün bilgileri için Trendyol'a gönderilecek değer yok.", 422);
         var contentPayload = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = contentItems }, JsonOptions);
         var variantPayload = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = variantItems }, JsonOptions);
         var deliveryPayload = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = deliveryItems }, JsonOptions);
@@ -247,11 +249,12 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 row.Link?.ExternalSku ?? row.ListingSku, row.Link?.ExternalId, row.Link?.ExternalSku is not null,
                 isShopify ? MarketplaceVariantLinkHealth.RemoteVariantId(row.Link?.ExternalId) : null, row.Link?.FulfilledByMarketplace))
             .ToList();
-        // An imported variant has no listing rows: it goes by the marketplace codes its link carries.
+        // An imported variant has no listing rows: it goes by the marketplace codes its link carries. The listing rows the
+        // panel made for a matched product (ImportedListingProfiles) do not change that until a status check reads it live.
         var publishedVariantIds = published.Select(row => row.Variant.Id).ToHashSet();
         var listedVariantIds = await (from profile in db.ChannelListingProfiles.AsNoTracking()
                                       join listingVariant in db.ChannelListingVariants.AsNoTracking() on new { profile.TenantId, ProfileId = profile.Id } equals new { listingVariant.TenantId, listingVariant.ProfileId }
-                                      where profile.TenantId == tenantId && profile.ConnectionId == connectionId
+                                      where profile.TenantId == tenantId && profile.ConnectionId == connectionId && (profile.Source == null || profile.Source != ChannelListingProfileSource.MarketplaceImport)
                                       select listingVariant.VariantId).Distinct().ToListAsync(cancellationToken);
         var imported = await (from offer in db.ChannelOffers.AsNoTracking()
                               join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
