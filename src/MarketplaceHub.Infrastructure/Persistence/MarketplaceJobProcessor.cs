@@ -48,6 +48,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private int telemetryImportProcessedCount;
     private int telemetryImportSkippedCount;
     private int telemetryImportFailedCount;
+    // A product import run reports to its cursor what the job reports (received, processed, skipped, failed), counted
+    // over the whole import, not each product the pages brought as changed (audit 2026-11-06 O3).
+    private bool productImportTelemetry;
+    private int telemetryImportReceivedCount;
 
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken, Guid? jobId = null)
     {
@@ -143,8 +147,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     // A finished slice of a long job is progress, not a failure; it is recorded as a slice, and
                     // only the run's last slice moves the last success and resets the failure count.
-                    // Waiting for the connection's order read (decision C) is not a failure either.
-                    if (directResult.Continues || directResult.ErrorCode == OrderFreshnessGatePolicy.WaitCode)
+                    // Waiting for the connection's order read (decision C) is not a failure either, nor is a
+                    // marketplace that has not settled an approval or a batch yet.
+                    if (directResult.Continues || directResult.ErrorCode == OrderFreshnessGatePolicy.WaitCode || IsRemoteWait(directResult))
                     {
                         if (telemetryResource is not null) await RecordSyncSlice(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, cancellationToken);
                         return directResult;
@@ -299,6 +304,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static bool IsConnectionTestJob(string jobType) =>
         jobType is MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest or MarketplaceJobTypes.PttAvmConnectionTest;
 
+    // A marketplace that has not settled yet (an approval, a batch) is a wait, not a failed run: counted as one, the
+    // PRODUCT_APPROVAL cursor showed 8 failures in a row for a Pazarama card that was only pending (audit 2026-11-06 Y2).
+    internal static bool IsRemoteWait(JobExecutionResult result) => JobWaitingPolicy.IsWaiting(result);
+
     internal static bool IsConnectionAuthenticationFailure(string jobType, JobExecutionResult result) =>
         !IsConnectionTestJob(jobType)
         && result.Kind == JobCompletionKind.Blocked
@@ -347,12 +356,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var cursor = await Cursor(tenantId, connectionId, resourceType, cancellationToken);
         ApplySliceTelemetry(cursor, timeProvider.GetUtcNow(), duration);
+        var counts = CurrentCursorCounts();
         cursor.LastRequestCount = telemetryRequestCount;
-        cursor.LastReceivedCount = telemetryReceivedCount;
-        cursor.LastChangedCount = telemetryChangedCount;
+        cursor.LastReceivedCount = counts.Received;
+        cursor.LastChangedCount = counts.Changed;
         cursor.LastInsertedCount = telemetryInsertedCount;
         cursor.LastUpdatedCount = telemetryUpdatedCount;
-        cursor.LastSkippedCount = telemetrySkippedCount;
+        cursor.LastSkippedCount = counts.Skipped;
         cursor.LastRetryCount = telemetryRetryCount;
         cursor.LastRateLimitCount = telemetryRateLimitCount;
         cursor.Version++;
@@ -369,6 +379,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         if (!succeeded) db.ChangeTracker.Clear();
         var cursor = await Cursor(tenantId, connectionId, resourceType, cancellationToken);
+        var counts = CurrentCursorCounts();
         cursor.LastDurationMs = Math.Max(0, (long)duration.TotalMilliseconds);
         if (succeeded)
         {
@@ -376,21 +387,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.LastError = null;
             cursor.LastErrorAt = null;
             cursor.ConsecutiveFailureCount = 0;
-            cursor.LastFailedCount = telemetryFailedCount;
+            cursor.LastFailedCount = counts.Failed;
         }
         else
         {
             cursor.LastError = Short(error, 1024);
             cursor.LastErrorAt = timeProvider.GetUtcNow();
             cursor.ConsecutiveFailureCount++;
-            cursor.LastFailedCount = Math.Max(1, telemetryFailedCount);
+            cursor.LastFailedCount = Math.Max(1, counts.Failed);
         }
         cursor.LastRequestCount = telemetryRequestCount;
-        cursor.LastReceivedCount = telemetryReceivedCount;
-        cursor.LastChangedCount = telemetryChangedCount;
+        cursor.LastReceivedCount = counts.Received;
+        cursor.LastChangedCount = counts.Changed;
         cursor.LastInsertedCount = telemetryInsertedCount;
         cursor.LastUpdatedCount = telemetryUpdatedCount;
-        cursor.LastSkippedCount = telemetrySkippedCount;
+        cursor.LastSkippedCount = counts.Skipped;
         cursor.LastRetryCount = telemetryRetryCount + (succeeded ? 0 : 1);
         cursor.LastRateLimitCount = telemetryRateLimitCount;
         cursor.Version++;
@@ -411,7 +422,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         telemetryImportProcessedCount = 0;
         telemetryImportSkippedCount = 0;
         telemetryImportFailedCount = 0;
+        productImportTelemetry = false;
+        telemetryImportReceivedCount = 0;
     }
+
+    internal readonly record struct CursorCounts(int Received, int Changed, int Skipped, int Failed);
+
+    // The counts a run leaves on its cursor. A product import counts what the import did over the whole run (the job's
+    // own Alınan / İşlenen / Atlanan / Hatalı); any other read counts its records as it read them.
+    internal static CursorCounts CursorImportCounts(bool productImport, CursorCounts run, CursorCounts import) =>
+        productImport ? import : run;
+
+    private CursorCounts CurrentCursorCounts() => CursorImportCounts(
+        productImportTelemetry,
+        new(telemetryReceivedCount, telemetryChangedCount, telemetrySkippedCount, telemetryFailedCount),
+        new(telemetryImportReceivedCount, telemetryImportProcessedCount, telemetryImportSkippedCount, telemetryImportFailedCount));
 
     // Order and return reads write what they brought on the job (received, new, updated), so the list tells a read that
     // came back empty from one that brought records. The counts are the run's own telemetry.
@@ -1941,7 +1966,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // Replaces the job's per-variant answer with this run's listing outcome; the caller's SaveChanges stores it. With a
     // publication hash, a listing another publication left (a live variant not sent again) is not this job's.
-    private async Task RecordJobVariantResults(Guid tenantId, Guid jobId, string jobType, IEnumerable<ChannelListingVariant> listings, IReadOnlyDictionary<Guid, string?>? reasons, CancellationToken cancellationToken, string? payloadHash = null, IReadOnlyDictionary<Guid, MarketplaceListingState>? states = null)
+    private async Task RecordJobVariantResults(Guid tenantId, Guid jobId, string jobType, IEnumerable<ChannelListingVariant> listings, IReadOnlyDictionary<Guid, string?>? reasons, CancellationToken cancellationToken, string? payloadHash = null, IReadOnlyDictionary<Guid, MarketplaceListingState>? states = null, IReadOnlyDictionary<Guid, string>? notSent = null)
     {
         await db.JobVariantResults.Where(x => x.TenantId == tenantId && x.JobId == jobId).ExecuteDeleteAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -1952,8 +1977,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 && !string.Equals(state.PayloadHash, payloadHash, StringComparison.Ordinal)) continue;
             var barcode = (listing.ExternalBarcode ?? listing.ExternalSku)?.Trim();
             if (string.IsNullOrWhiteSpace(barcode) || !seen.Add(barcode)) continue;
-            var status = JobVariantResultPolicy.StatusFor(jobType, listing.ActualStatus);
-            var reason = status is JobVariantResultPolicy.Rejected or JobVariantResultPolicy.Pending
+            var notSentReason = notSent?.GetValueOrDefault(listing.VariantId);
+            var status = notSentReason is not null ? JobVariantResultPolicy.NotSent : JobVariantResultPolicy.StatusFor(jobType, listing.ActualStatus);
+            var reason = notSentReason is not null ? notSentReason
+                : status is JobVariantResultPolicy.Rejected or JobVariantResultPolicy.Pending
                 ? JobVariantResultPolicy.Reason([reasons?.GetValueOrDefault(listing.VariantId) ?? listing.RejectionCode])
                 : null;
             db.JobVariantResults.Add(new JobVariantResult
@@ -2007,9 +2034,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (phase == "SUBMIT_CONTENT" && string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
                 && TrendyolContentGroups.NeedsResolution(payload.ApprovedContentPayloadJson))
             {
-                var (resolvedContent, stop) = await ResolveTrendyolContentGroupsAsync(tenantId, connectionId, job, profile, payload.ApprovedContentPayloadJson, correlationId, cancellationToken);
+                var (resolvedContent, contentNotFound, stop) = await ResolveTrendyolContentGroupsAsync(tenantId, connectionId, job, profile, payload.ApprovedContentPayloadJson, correlationId, cancellationToken);
                 if (stop is not null) return stop;
-                payload = payload with { ApprovedContentPayloadJson = resolvedContent! };
+                // A barcode with no approved content is left out of the content request: the job's variant results say so
+                // (D7) instead of counting it as sent.
+                payload = payload with { ApprovedContentPayloadJson = resolvedContent!, ContentNotFoundBarcodes = contentNotFound.Count > 0 ? contentNotFound : null };
                 job.PayloadJson = JsonSerializer.Serialize(payload); job.PayloadHash = Hash(job.PayloadJson);
                 await db.SaveChangesAsync(cancellationToken);
             }
@@ -2170,7 +2199,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var approvalOperationId = payload.ProductOperationId
             ?? (payload.ExternalOperationId?.StartsWith(Adapters.Hepsiburada.HepsiburadaHttpClient.ShippingInfoUploadPrefix, StringComparison.Ordinal) == true ? null : payload.ExternalOperationId);
         if (rejected < listings.Count) await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, approvalOperationId);
-        await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductUpdate, listings, null, cancellationToken);
+        var notSentBarcodes = JobVariantResultPolicy.NotSentBarcodes(payload.ContentNotFoundBarcodes,
+            TrendyolContentGroups.Barcodes(payload.UnapprovedPayloadJson).Concat(TrendyolContentGroups.Barcodes(payload.ApprovedVariantPayloadJson)).Concat(TrendyolContentGroups.Barcodes(payload.ApprovedDeliveryPayloadJson)));
+        var notSent = listings.Where(x => x.ExternalBarcode is { } barcode && notSentBarcodes.Contains(barcode.Trim()))
+            .DistinctBy(x => x.VariantId)
+            .ToDictionary(x => x.VariantId, _ => JobVariantResultPolicy.ApprovedContentNotFoundReason);
+        await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductUpdate, listings, null, cancellationToken, notSent: notSent.Count > 0 ? notSent : null);
         await db.SaveChangesAsync(cancellationToken);
         var platformName = ProductUpdatePlatformName(isHepsiburada, string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase));
         return rejected == 0 ? JobExecutionResult.Success() : rejected == listings.Count ? JobExecutionResult.Blocked("PRODUCT_UPDATE_REJECTED", $"{platformName} ürün güncellemesindeki tüm varyantlar reddedildi.") : JobExecutionResult.Blocked("PRODUCT_UPDATE_PARTIAL_FAILURE", $"{platformName} ürün güncellemesi bazı varyantlar için reddedildi.");
@@ -6175,6 +6209,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         telemetryImportSkippedCount = previousProgress?.ProgressSkipped ?? 0;
         telemetryImportFailedCount = previousProgress?.ProgressFailed ?? 0;
         var receivedProducts = importSession.ReceivedProducts;
+        productImportTelemetry = true;
+        telemetryImportReceivedCount = receivedProducts;
         int? totalProducts = importSession.TotalProducts;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         var scanRequired = importSession.Phase == "SCANNING";
@@ -6255,8 +6291,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 productFilter,
                 cancellationToken);
             if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
-            foreach (var _ in result.Value!.Items) TrackReceived();
+            // A product read is not a product changed: the cursor's changed count is what the import processed
+            // (CursorImportCounts), not every product the page brought.
+            telemetryReceivedCount += result.Value!.Items.Count;
             receivedProducts += result.Value.Items.Count;
+            telemetryImportReceivedCount = receivedProducts;
             totalProducts ??= result.Value.TotalCount;
             var pageSnapshots = result.Value.Items
                 .Where(snapshot => includeDrafts || !snapshot.IsDraft)
@@ -6358,6 +6397,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         var stagedSession = await db.ProductImportSessions.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
         receivedProducts = stagedSession.ReceivedProducts;
+        telemetryImportReceivedCount = receivedProducts;
         totalProducts = stagedSession.TotalProducts;
         pageNumber = stagedSession.PageNumber;
 
