@@ -439,7 +439,10 @@ public sealed record AdapterContext(
     bool IsOneTimeInvoiceDeliveryAuthorized = false,
     string? OneTimeInvoiceDeliveryOrderNumber = null,
     bool IsAutomaticInvoiceMarketplaceDelivery = false,
-    bool IsExplicitManualInvoiceDelivery = false);
+    bool IsExplicitManualInvoiceDelivery = false,
+    // Owner decision (6 Nov 2026, ExchangeInvoiceResendPolicy): the same, already delivered invoice link is sent again after a
+    // Hepsiburada exchange, so the package is expected to hold an invoice already.
+    bool IsExchangeInvoiceResend = false);
 public sealed record AdapterError(AdapterErrorClass Class, string Code, string SafeMessage, int? HttpStatus, TimeSpan? RetryAfter, string? RemoteRequestId);
 public sealed record RateLimitMetadata(int? Remaining, DateTimeOffset? ResetAt, TimeSpan? RetryAfter, int? Limit = null);
 public sealed record AdapterResult<T>(bool IsSuccess, T? Value, AdapterError? Error, RateLimitMetadata? RateLimit)
@@ -815,7 +818,8 @@ public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrde
 public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
 // ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.
 // CustomerRequest: what the customer asked for (ReturnCustomerRequestPolicy: REFUND or CHANGE); only Hepsiburada says it, null = unknown.
-public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null);
+// ResolvedWith: how an approved claim was closed (REFUND or CHANGE, Hepsiburada finalizedWith); null = unknown.
+public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null, string? ResolvedWith = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 // ReturnShipment: the seller's shipment of the product back to the buyer that a denial names (n11 ClaimReturnDeny CUSTOM).
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null, ReturnShipmentCommand? ReturnShipment = null);
