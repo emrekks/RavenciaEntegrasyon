@@ -24,6 +24,10 @@ Code: `Adapters/Shopify/` — `ShopifyHttpClient.cs` (+ `.Webhooks.cs`), `Shopif
 ## Windows and paging
 - Cursor paging, `first` ≤ 250 (setting 100), filter `updated_at:>='…Z'` in UTC.
 - One query pages through at most 25,000 results — the code restarts after 200 pages.
+- Returns: `SyncShopifyReturns` exists but no RETURNS policy is scheduled for Shopify
+  (`ScheduledJobProducer.IsShopifyReadPolicy`); live has no Shopify RETURN_SYNC job and no return claims (6 Nov 2026).
+- Nested lists are not paged: `lineItems(first:250)`, `fulfillmentLineItems(first:250)`, `events(first:50)`,
+  `refunds(first:100)` (`ShopifyHttpClient.cs`).
 - First read 3 months, daily baseline re-read, watermark − 10 min. Without `read_all_orders` only the last 60 days
   are visible.
 

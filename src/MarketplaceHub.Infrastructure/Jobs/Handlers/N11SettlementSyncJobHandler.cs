@@ -8,7 +8,8 @@ namespace MarketplaceHub.Infrastructure.Jobs.Handlers;
 
 // Reads a production n11 store's settlements (hakediş) into the finance table, read only: the settlement days of the
 // last LookbackDays and the coming AheadDays, then each day's order item lines. A day is read again while it is recent
-// (its lines and status still change) or until it was read once; DaysPerRun days a slice, the rest continue.
+// (its lines and status still change) or until it was read once; DaysPerRun older days a slice, the rest continue
+// (PlanDays).
 public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementPort settlements, TimeProvider timeProvider, IConfiguration configuration) : IJobHandler
 {
     internal const string Source = "N11_SETTLEMENT";
@@ -52,10 +53,9 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
                 .ToListAsync(cancellationToken))
             .Select(id => id[(id.LastIndexOf(':') + 1)..]).ToHashSet(StringComparer.Ordinal);
         var recent = today.AddDays(-Setting("RereadDays", 7, 0, 30));
-        var due = days.Where(x => x.SettlementDate is { } day && (day >= recent || !read.Contains(Key(day))))
-            .Select(x => x.SettlementDate!.Value).Distinct().OrderByDescending(x => x).ToList();
-        var perRun = Setting("DaysPerRun", 10, 1, 60);
-        foreach (var day in due.Take(perRun))
+        var plan = PlanDays(days, read, recent, Setting("DaysPerRun", 10, 1, 60));
+        var olderStored = 0;
+        foreach (var day in plan.Recent.Concat(plan.Older))
         {
             var lines = new List<RemoteSettlementItem>();
             var skipped = new List<RemoteSkippedFinanceRecord>();
@@ -72,6 +72,7 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
                 if (detail.Value.Items.Count + detail.Value.Skipped.Count == 0 || page + 1 >= detail.Value.PageCount) break;
             }
             received += lines.Count + skipped.Count;
+            if (day < recent && lines.Count > 0) olderStored++;
             var ids = lines.Select(x => ExternalId(x.OrderItemId, day)).ToList();
             await FinanceRecordIssues.RecordAsync(db, request.TenantId, request.ConnectionId, "n11", skipped, ids, now, cancellationToken);
             var stored = await db.MarketplaceFinanceTransactions
@@ -119,7 +120,9 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
             await db.SaveChangesAsync(cancellationToken);
         }
         var telemetry = new JobTelemetry(requests, received, inserted, updated, inserted + updated, 0);
-        if (due.Count > perRun)
+        // Only unread older days carry a run on, and only while a slice stores one of them: a day that answers without
+        // lines stays unread, and continuing on it would read the same days forever.
+        if (plan.MoreOlder && olderStored > 0)
             return new(JobExecutionResult.Continue("N11 hakediş günleri okunuyor; sonraki günler birkaç saniye içinde okunacak."), telemetry);
         await ResolveIssueAsync(request.TenantId, FailureKey(request.ConnectionId), now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -136,6 +139,19 @@ public sealed class N11SettlementSyncJobHandler(AppDbContext db, IN11SettlementP
         if ((rate ?? legacyAmount) is not { } percent) return null;
         var amount = Math.Round(Math.Abs(paymentAmount) * Math.Abs(percent) / 100m, 2, MidpointRounding.AwayFromZero);
         return category == MarketplaceFinanceCategories.Return ? -amount : amount;
+    }
+
+    internal sealed record SettlementDayPlan(IReadOnlyList<DateOnly> Recent, IReadOnlyList<DateOnly> Older, bool MoreOlder);
+
+    // Recent and coming days (lines and status still change) are read on every run, all of them; older days only until
+    // they were read once, perRun of them a slice, newest first. Before 6 Nov 2026 both shared one perRun list sorted
+    // newest first, so ten or more recent and coming days filled every slice, the run continued on the same days
+    // forever and no older day was ever read.
+    internal static SettlementDayPlan PlanDays(IEnumerable<RemoteSettlementDay> days, IReadOnlySet<string> read, DateOnly recent, int perRun)
+    {
+        var listed = days.Where(x => x.SettlementDate is not null).Select(x => x.SettlementDate!.Value).Distinct().OrderByDescending(x => x).ToList();
+        var older = listed.Where(day => day < recent && !read.Contains(Key(day))).ToList();
+        return new(listed.Where(day => day >= recent).ToList(), older.Take(perRun).ToList(), older.Count > perRun);
     }
 
     internal static string ExternalId(string orderItemId, DateOnly day) => $"{Short(orderItemId, 100)}:{Key(day)}";

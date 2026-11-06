@@ -102,7 +102,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         }
         await using (syncLock)
         {
-            var telemetryResource = TelemetryResource(jobType);
+            var telemetryResource = TelemetryResource(jobType, payloadJson);
             var stopwatch = Stopwatch.StartNew();
             ResetTelemetry();
             if (telemetryResource is not null) await RecordSyncAttempt(tenantId, connectionId.Value, telemetryResource, cancellationToken);
@@ -219,6 +219,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         MarketplaceJobTypes.OrderSync or MarketplaceJobTypes.ShopifyOrderSync or MarketplaceJobTypes.HepsiburadaOrderSync or MarketplaceJobTypes.N11OrderSync or MarketplaceJobTypes.PazaramaOrderSync or MarketplaceJobTypes.PttAvmOrderSync
         or MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest
         or MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.ReturnAction or MarketplaceJobTypes.ExternalEffectReconcile;
+
+    // The cursor a job's run telemetry is written to. Two jobs that may run at once (different lock groups) must not
+    // share one: the cursor's Version is a concurrency token, so the second to finish failed its telemetry write and
+    // an ingest that had already saved its data ran again. Webhook deliveries that lock with the return reads
+    // (MarketplaceSyncExecutionLock.WebhookIngestGroup) therefore keep a cursor of their own (audit 2026-10-24 Q3).
+    internal const string WebhookIngestReturnsResource = "WEBHOOK_INGEST_RETURNS";
+
+    internal static string? TelemetryResource(string jobType, string? payloadJson) =>
+        jobType is MarketplaceJobTypes.WebhookIngest or MarketplaceJobTypes.ShopifyWebhookIngest or MarketplaceJobTypes.HepsiburadaWebhookIngest
+            && MarketplaceSyncExecutionLock.WebhookIngestGroup(MarketplaceSyncExecutionLock.WebhookResourceType(payloadJson)) is not null
+            ? WebhookIngestReturnsResource
+            : TelemetryResource(jobType);
 
     private static string? TelemetryResource(string jobType) => jobType switch
     {
@@ -5885,54 +5897,68 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var issueKey = $"order-invoice-reconciliation:{connectionId}:{issueKeySuffix}";
         var missingInvoicePackageKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var missingInvoiceOrderNumbers = new List<(string OrderNumber, string? PackageNumber)>();
-        var cursor = "0";
         var completeFeed = false;
-
-        for (var pageIndex = 0; pageIndex < maxPages; pageIndex++)
+        // The list is read by offset and shrinks while it is read (an invoice uploaded between two pages moves every
+        // later package one place up, so one is never seen), and a package missing from it counts as invoiced. It is
+        // therefore read twice, every page of a pass must give the pass's first total, and a package counts as listed
+        // when either pass saw it (before 6 Nov 2026: one pass, totals not compared).
+        for (var pass = 0; pass < HepsiburadaMissingInvoiceStatusPolicy.Passes; pass++)
         {
-            TrackRequest();
-            var result = await hepsiburadaInvoiceStatus.ListMissingInvoicePackagesAsync(
-                Context(tenantId, connectionId, correlationId, $"hepsiburada-missing-invoices:{cursor}"),
-                new AdapterPageRequest(cursor, pageSize),
-                cancellationToken);
-            if (!result.IsSuccess)
+            var cursor = "0";
+            int? firstTotal = null;
+            completeFeed = false;
+            for (var pageIndex = 0; pageIndex < maxPages; pageIndex++)
             {
-                TrackResultFailure(result.Error);
-                var error = result.Error!;
-                var status = error.HttpStatus is { } httpStatus ? $" (HTTP {(int)httpStatus})" : string.Empty;
-                await RecordIssue(tenantId, issueKey, error.Code,
-                    $"Hepsiburada faturasız sipariş listesi okunamadı{status}: {error.SafeMessage} Eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
-                return;
+                TrackRequest();
+                var result = await hepsiburadaInvoiceStatus.ListMissingInvoicePackagesAsync(
+                    Context(tenantId, connectionId, correlationId, $"hepsiburada-missing-invoices:{cursor}"),
+                    new AdapterPageRequest(cursor, pageSize),
+                    cancellationToken);
+                if (!result.IsSuccess)
+                {
+                    TrackResultFailure(result.Error);
+                    var error = result.Error!;
+                    var status = error.HttpStatus is { } httpStatus ? $" (HTTP {(int)httpStatus})" : string.Empty;
+                    await RecordIssue(tenantId, issueKey, error.Code,
+                        $"Hepsiburada faturasız sipariş listesi okunamadı{status}: {error.SafeMessage} Eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
+                    return;
+                }
+
+                TrackReceived();
+                var page = result.Value!;
+                foreach (var item in page.Items)
+                {
+                    if (missingInvoicePackageKeys.Add(HepsiburadaMissingInvoiceStatusPolicy.Key(item.OrderNumber, item.PackageNumber)))
+                        missingInvoiceOrderNumbers.Add((item.OrderNumber, item.PackageNumber));
+                }
+                if (!HepsiburadaMissingInvoiceStatusPolicy.SameTotal(ref firstTotal, page.TotalCount, pageIndex))
+                {
+                    await RecordIssue(tenantId, issueKey, "HEPSIBURADA_MISSING_INVOICE_FEED_MOVED",
+                        "Hepsiburada faturasız sipariş listesi okunurken değişti (sayfaların toplamı farklı); eksik alanlı siparişlerin durumu değiştirilmedi, sonraki turda yeniden okunacak.", cancellationToken);
+                    return;
+                }
+
+                if (!page.HasMore)
+                {
+                    completeFeed = true;
+                    break;
+                }
+
+                if (string.IsNullOrWhiteSpace(page.NextCursor) || string.Equals(cursor, page.NextCursor, StringComparison.Ordinal))
+                {
+                    await RecordIssue(tenantId, issueKey, "HEPSIBURADA_MISSING_INVOICE_FEED_INCOMPLETE",
+                        "Hepsiburada faturasız sipariş listesinin sayfaları tamamlanamadı; eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
+                    return;
+                }
+                cursor = page.NextCursor;
             }
 
-            TrackReceived();
-            var page = result.Value!;
-            foreach (var item in page.Items)
-            {
-                missingInvoicePackageKeys.Add(HepsiburadaMissingInvoiceStatusPolicy.Key(item.OrderNumber, item.PackageNumber));
-                missingInvoiceOrderNumbers.Add((item.OrderNumber, item.PackageNumber));
-            }
-
-            if (!page.HasMore)
-            {
-                completeFeed = true;
-                break;
-            }
-
-            if (string.IsNullOrWhiteSpace(page.NextCursor) || string.Equals(cursor, page.NextCursor, StringComparison.Ordinal))
+            if (!completeFeed)
             {
                 await RecordIssue(tenantId, issueKey, "HEPSIBURADA_MISSING_INVOICE_FEED_INCOMPLETE",
-                    "Hepsiburada faturasız sipariş listesinin sayfaları tamamlanamadı; eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
+                    "Hepsiburada faturasız sipariş listesi güvenli sayfa sınırına kadar tamamlanmadı; eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
                 return;
             }
-            cursor = page.NextCursor;
-        }
-
-        if (!completeFeed)
-        {
-            await RecordIssue(tenantId, issueKey, "HEPSIBURADA_MISSING_INVOICE_FEED_INCOMPLETE",
-                "Hepsiburada faturasız sipariş listesi güvenli sayfa sınırına kadar tamamlanmadı; eksik alanlı siparişlerin durumu değiştirilmedi.", cancellationToken);
-            return;
         }
 
         // Orders Hepsiburada lists without an invoice but the panel does not have (packaged before
@@ -6481,9 +6507,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         {
             var completedCursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
             completedCursor.OpaqueCursor = null;
-            // Approved-products supports a modified-date filter. Keep a short
-            // overlap so a variant changed while a page was being read is not lost.
-            completedCursor.LastModifiedWatermark = timeProvider.GetUtcNow().AddSeconds(-60);
+            completedCursor.LastModifiedWatermark = ProductImportScanPolicy.CompletedWatermark(importSession.CreatedAt, completedCursor.LastModifiedWatermark,
+                scoped: newOnly || existingOnly || mappingOnly || optionsOnly);
             completedCursor.Version++;
         }
         await db.SaveChangesAsync(cancellationToken);
@@ -9461,12 +9486,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             try
             {
                 using var document = JsonDocument.Parse(raw);
+                // Order and claim events end through the same inbox close as every other notice (audit 2026-10-24 Q4:
+                // returning early left their inbox rows unprocessed after a successful run).
                 if (string.Equals(resourceType, "ORDER_EVENT", StringComparison.Ordinal))
-                    return await ReadHepsiburadaOrderEvent(tenantId, connectionId, document.RootElement, externalMessageId, OrderEventPath(externalMessageId), correlationId, cancellationToken);
+                {
+                    if (!await ReadHepsiburadaOrderEvent(tenantId, connectionId, document.RootElement, externalMessageId, OrderEventPath(externalMessageId), correlationId, cancellationToken)) return false;
+                }
                 // A claim notice the mapper cannot read whole: the recent claims are read again.
-                if (string.Equals(resourceType, "CLAIM_EVENT", StringComparison.Ordinal))
-                    return await SyncReturns(tenantId, connectionId, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken);
-                if (string.Equals(resourceType, "CLAIM_PACKAGE", StringComparison.Ordinal))
+                else if (string.Equals(resourceType, "CLAIM_EVENT", StringComparison.Ordinal))
+                {
+                    if (!await SyncReturns(tenantId, connectionId, JsonSerializer.Serialize(new { connectionId }), correlationId, cancellationToken)) return false;
+                }
+                else if (string.Equals(resourceType, "CLAIM_PACKAGE", StringComparison.Ordinal))
                 {
                     var order = HepsiburadaJsonMapper.ClaimPackageOrder(document.RootElement);
                     TrackReceived();
@@ -12394,22 +12425,33 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         return page.Concat(wrapped).Select(item => (item.Item1, item.Item2)).ToArray();
     }
 
+    // The page a return reconciliation reads next: the adapter's own cursor when it gives one (Trendyol's per-bucket
+    // "s:Accepted=2", which asks only the buckets that still have claims), else the next page number. Before 6 Nov 2026
+    // a cursor that was not a number became "page + 1" for every bucket, so finished buckets were asked for pages past
+    // their end, seven needless requests a page and a contract error when such a page came back without its list.
+    internal static string NextReconcilePage(string current, string? next) =>
+        !string.IsNullOrWhiteSpace(next) ? next
+        : int.TryParse(current, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var number) ? (number + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)
+        : "1";
+
     private async Task<bool> ReconcileReturns(Guid tenantId, Guid connectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
         var lookbackDays = ReadBoundedInt(payloadJson, "lookbackDays", 3, 1, 90);
         var end = timeProvider.GetUtcNow();
         foreach (var storefront in TrendyolReadStorefronts.ReturnCodes)
         {
-            var page = 0;
+            var page = "0";
+            var step = 0;
             do
             {
                 TrackRequest();
-                var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-reconcile:{lookbackDays}:{storefront}:{page}"), new(end.AddDays(-lookbackDays), end, storefront), new(page.ToString(), 200), cancellationToken);
+                var result = await returns.PollAsync(Context(tenantId, connectionId, correlationId, $"return-reconcile:{lookbackDays}:{storefront}:{step}"), new(end.AddDays(-lookbackDays), end, storefront), new(page, 200), cancellationToken);
                 if (!result.IsSuccess) { TrackResultFailure(result.Error); throw JobProcessingException.FromAdapter(result.Error!); }
                 foreach (var _ in result.Value!.Items) TrackReceived();
                 foreach (var claim in result.Value!.Items) await UpsertReturn(tenantId, connectionId, claim, cancellationToken);
                 if (!result.Value.HasMore) break;
-                page = int.TryParse(result.Value.NextCursor, out var parsed) ? parsed : page + 1;
+                page = NextReconcilePage(page, result.Value.NextCursor);
+                step++;
             } while (!cancellationToken.IsCancellationRequested);
         }
         return true;

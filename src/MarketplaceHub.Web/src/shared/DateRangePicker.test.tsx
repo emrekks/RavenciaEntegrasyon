@@ -2,11 +2,19 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DateRangePicker } from './DateRangePicker'
+import { istanbulDateKey } from './format-date'
+
+vi.mock('./format-date', async importOriginal => {
+  const actual = await importOriginal<typeof import('./format-date')>()
+  return { ...actual, istanbulDateKey: vi.fn(actual.istanbulDateKey) }
+})
 
 let container: HTMLDivElement
 let root: Root
 
-beforeEach(() => {
+beforeEach(async () => {
+  const actual = await vi.importActual<typeof import('./format-date')>('./format-date')
+  vi.mocked(istanbulDateKey).mockImplementation(actual.istanbulDateKey)
   vi.useFakeTimers()
   vi.setSystemTime(new Date(2026, 9, 11, 12))
   container = document.createElement('div')
@@ -45,6 +53,26 @@ describe('DateRangePicker presets', () => {
 
     act(() => yearPreset.click())
     expect(onChange).toHaveBeenCalledWith({ from: '2026-01-01', to: '2026-10-11' })
+  })
+
+  it('takes today and the ready ranges from the Istanbul calendar on a device in another time zone', () => {
+    // The device clock still says 31 Oct 18:30 (New York) while Istanbul is already at 1 Nov 01:30. The worker threads
+    // cannot switch their own time zone, so the Istanbul day is set on istanbulDateKey instead.
+    vi.setSystemTime(new Date(2026, 9, 31, 18, 30))
+    vi.mocked(istanbulDateKey).mockReturnValue('2026-11-01')
+    const onChange = vi.fn()
+    act(() => root.render(<DateRangePicker from="" to="" onChange={onChange} />))
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+    const preset = (label: string) => Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-presets button')).find(button => button.textContent === label)!
+
+    act(() => preset('Bugün').click())
+    expect(onChange).toHaveBeenLastCalledWith({ from: '2026-11-01', to: '2026-11-01' })
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+    act(() => preset('Bu Ay').click())
+    expect(onChange).toHaveBeenLastCalledWith({ from: '2026-11-01', to: '2026-11-01' })
+    act(() => container.querySelector<HTMLButtonElement>('.date-range-picker-trigger')!.click())
+    act(() => preset('Geçen Ay').click())
+    expect(onChange).toHaveBeenLastCalledWith({ from: '2026-10-01', to: '2026-10-31' })
   })
 
   it('disables days after today and stops forward month navigation', () => {

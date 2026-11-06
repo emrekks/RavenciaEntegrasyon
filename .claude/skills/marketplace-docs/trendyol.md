@@ -52,6 +52,13 @@ Code: `Adapters/Trendyol/` — `TrendyolHttpClient.cs` (+ `.Webhooks.cs`), `Tren
   sale packages (10.99 on AZ payouts), international fee ≈ 5.1–5.9 % of its sales abroad, withholding tax ≈ 0.7–0.9 %
   of its sales less returns. The report splits them over the payout's orders (`ReportFeeAllocation`). Source: live
   `sales.marketplace_finance_transactions`, 5 Nov 2026.
+- Return reconciliation (RETURN_RECONCILIATION, 3/90 days) follows the per-bucket cursor `s:Accepted=2` like
+  RETURN_SYNC; before 6 Nov 2026 it asked all eight buckets page + 1, finished ones too (live Accepted had 188 claims
+  in 90 days, page size 200) (`MarketplaceJobProcessor.NextReconcilePage`).
+- Products: the PRODUCTS watermark is the moment a full catalog read began, less 60 s (the next read starts 2 min
+  before it). Before 6 Nov 2026 it was the job's end (a scan took 11 min on 31 Oct, its own changes were lost) and a
+  scoped read (newOnly, existingOnly, mappingOnly, optionsOnly) moved it too, so products it skipped were missed by
+  the next incremental read (`ProductImportScanPolicy.CompletedWatermark`; shared by every marketplace).
 - Questions: default from now − 7 days; ≤ 14 days per request, page ≤ 50, older ranges silently trimmed.
 
 ## Time

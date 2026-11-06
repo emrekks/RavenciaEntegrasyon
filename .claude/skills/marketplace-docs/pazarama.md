@@ -25,7 +25,17 @@ Code: `Adapters/Pazarama/` — `PazaramaHttpClient.cs`, `PazaramaOrders.cs`, `Pa
 - `POST order/getOrdersForApi {pageSize, pageNumber, startDate, endDate, orderNumber}` filters by **order date** only.
   Max 1 month per request (code 28 days), end day exclusive; by order number it looks back 6 months. Page 100
   (docs sample uses 500). First read 3 months; incremental re-reads 2 days.
+- End day excluded and 1 month at most: `pazarama-api-son.md:2294-2296`; the code sends tomorrow as the end day.
+- An order can appear in the list a day after its order date: live 500506964, ordered 29 Oct 14:48Z, first read
+  30 Oct 14:51Z after 214 clean reads. The 2-day re-read covers that; a longer delay is only caught by a full read.
 - Status changes of older orders: open orders re-read by number every 3 min until closed or 45 days old.
+- `success:false` with "İşleminiz şu anda gerçekleştirilemiyor. Lütfen daha sonra tekrar deneyiniz." is a busy
+  answer (live on getOrdersForApi 28 Oct 23:25 and 5/6 Nov 00:07-00:11 Istanbul time; the next run passed): since
+  6 Nov 2026 it is PAZARAMA_REMOTE_BUSY (Remote5xx, 60 s), no longer a refusal (`PazaramaHttpClient.SaysTryLater`).
+- Finance (`PAZARAMA_FINANCE_SYNC`): one call per order of the last 60 days, 100 a run; unread orders first, then the
+  one refreshed longest ago (before 6 Nov 2026 the newest, so older orders past 100 never got their refunds or
+  `transferredDate`). A refusal of one order (not found, refused, unreadable) opens an issue for that order and the
+  run goes on; a quota, network, server or sign-in failure stops it (`PazaramaFinanceSyncJobHandler.Due/OrderOnly`).
 - Page sizes: refunds 100, approved products 100 (cursor), brands 500, price/stock batch result 1000.
 
 - Finance `order/paymentAgreement` line: `trxCode`, `trxId`, `orderId`, `amount`, `commissionAmount` (negative on a

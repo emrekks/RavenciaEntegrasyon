@@ -127,3 +127,41 @@ export function buildVariantGenerationDefaults({ modelCode, sequence, automaticB
 
   return { sku: '', barcode: buildSequentialVariantCode(modelCode, safeSequence), salePrice: 0, listPrice: 0 }
 }
+
+type MergeableVariantRow = { optionSignature: string; sku: string; barcode: string; salePrice: number; listPrice: number }
+
+// "Ürünleri Ekle": the rows of the combinations the form does not hold yet join the current rows; a row already there
+// (same options, by `key`) is never added twice. On a saved product (`keepExisting`) the rows already there keep their
+// codes and prices, and a new row's automatic barcode takes the next number no row holds (live 2026-11-06, MZ028IH: with
+// the nine colours of the family pre-selected, adding Zümrüt must add only the Zümrüt rows). On a new product automatic
+// barcodes number every row again in the sorted order.
+export function mergeGeneratedVariantRows<T extends MergeableVariantRow>(current: readonly T[], generated: readonly T[], options: {
+  key: (signature: string) => string
+  sort: (rows: T[]) => T[]
+  keepExisting: boolean
+  automaticBarcodes: boolean
+  modelCode: string
+  fallbackSalePrice: number
+  fallbackListPrice: number
+}): T[] {
+  const { key, sort, keepExisting, automaticBarcodes, modelCode, fallbackSalePrice, fallbackListPrice } = options
+  const held = new Set(current.map(row => key(row.optionSignature)))
+  const knownBarcodes = new Set(current.map(row => row.barcode.trim()).filter(Boolean))
+  let nextSequence = current.length + 1
+  const additions: T[] = []
+  for (const row of generated) {
+    const rowKey = key(row.optionSignature)
+    if (held.has(rowKey)) continue
+    held.add(rowKey)
+    if (automaticBarcodes && keepExisting) {
+      let defaults = buildVariantGenerationDefaults({ modelCode, sequence: nextSequence++, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
+      while (knownBarcodes.has(defaults.barcode)) defaults = buildVariantGenerationDefaults({ modelCode, sequence: nextSequence++, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
+      knownBarcodes.add(defaults.barcode)
+      additions.push({ ...row, ...defaults })
+    } else additions.push(row)
+  }
+  const rows = sort([...current, ...additions])
+  return automaticBarcodes && !keepExisting
+    ? rows.map((row, index) => ({ ...row, ...buildVariantGenerationDefaults({ modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) }))
+    : rows
+}
