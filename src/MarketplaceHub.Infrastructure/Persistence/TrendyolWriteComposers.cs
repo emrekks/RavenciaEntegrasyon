@@ -34,7 +34,8 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
 
-    // sections: the requests of an approved Trendyol product that go (content, variant, delivery); null is all of them.
+    // sections: the requests of an approved Trendyol product that go (content with only its picked fields, variant,
+    // delivery); null is all of them.
     // A product Trendyol has not approved yet takes one full update whatever was picked; a Hepsiburada product takes its
     // whole product package when one of its fields was picked, and the dispatch time apart when DELIVERY was.
     public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, ProductUpdateSections? sections = null)
@@ -90,17 +91,24 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
         if (mode == "APPROVED")
         {
+            var parts = sections.ContentFields;
             foreach (var item in sourceItems.EnumerateArray())
             {
                 // A request whose fields were not picked goes empty; the job skips an empty phase without a call.
-                if (sections.Content) contentItems.Add(new Dictionary<string, object?>
+                // The content request carries only the picked content fields: content-bulk-update takes a partial update
+                // (only contentId is required), so a field left out stays as Trendyol has it. The attributes go as the
+                // whole list (colour, size and Menşei included) whenever they go: Trendyol takes no part of them. A
+                // field not picked is left out of the item, never written as null (the serializer writes a dictionary's
+                // null values).
+                if (parts.Any)
                 {
-                    ["barcode"] = Text(item, "barcode"),
-                    ["title"] = Clone(item, "title"),
-                    ["description"] = Clone(item, "description"),
-                    ["images"] = Clone(item, "images"),
-                    ["attributes"] = Clone(item, "attributes")
-                });
+                    var content = new Dictionary<string, object?> { ["barcode"] = Text(item, "barcode") };
+                    if (parts.Title) AddPresent(content, item, "title");
+                    if (parts.Description) AddPresent(content, item, "description");
+                    if (parts.Images) AddPresent(content, item, "images");
+                    if (parts.Attributes) AddPresent(content, item, "attributes");
+                    if (content.Count > 1) contentItems.Add(content);
+                }
                 if (sections.Variants) variantItems.Add(new Dictionary<string, object?>
                 {
                     ["barcode"] = Text(item, "barcode"),
@@ -132,6 +140,10 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
     }
 
     private static object? Clone(JsonElement source, string name) => source.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) ? value.Clone() : null;
+    private static void AddPresent(Dictionary<string, object?> target, JsonElement source, string name)
+    {
+        if (Clone(source, name) is { } value) target[name] = value;
+    }
     private static string Text(JsonElement source, string name) => source.TryGetProperty(name, out var value) ? value.ToString() : "";
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }

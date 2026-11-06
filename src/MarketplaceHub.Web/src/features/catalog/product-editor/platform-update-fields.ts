@@ -56,8 +56,9 @@ type PlatformUpdateRequest = { fields: PlatformUpdateField[]; sends: string[]; e
 type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string; wholeCard?: boolean }
 
 // From the adapters (TrendyolWriteComposers, HepsiburadaProductUpdateComposer, PriceInventoryComposer):
-// - Trendyol, approved product: content-bulk-update (title, description, images, attributes with colour, size and
-//   Menşei), variant-bulk-update per barcode (desi, VAT rate; the stock code and the listing's origin ride along),
+// - Trendyol, approved product: content-bulk-update carries only the picked content fields (title, description,
+//   images, attributes: Trendyol takes a partial update there, the attributes always as the whole list with colour,
+//   size and Menşei), variant-bulk-update per barcode (desi, VAT rate; the stock code and the listing's origin ride along),
 //   delivery-info-bulk-update (the product card's Teslimat Süresi); price-and-inventory takes the price (list and sale
 //   together) and the stock apart. Trendyol takes no warranty.
 // - Hepsiburada: one product update per hbSku with name, description, barcode, attributes, VAT, warranty, desi and
@@ -78,7 +79,11 @@ type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string;
 const profiles: Record<string, PlatformUpdateProfile> = {
   TRENDYOL: {
     requests: [
-      { fields: ['TITLE', 'DESCRIPTION', 'IMAGES', 'ATTRIBUTES'], sends: ['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri'], extra: ['Renk / Beden', 'Menşei'] },
+      // One content-bulk-update, but with only the picked fields in it: each content field is a pick of its own.
+      { fields: ['TITLE'], sends: ['Ürün Adı'] },
+      { fields: ['DESCRIPTION'], sends: ['Açıklama'] },
+      { fields: ['IMAGES'], sends: ['Görseller'] },
+      { fields: ['ATTRIBUTES'], sends: ['Kategori Özellikleri'], extra: ['Renk / Beden', 'Menşei'] },
       { fields: ['DESI', 'VAT_RATE'], sends: ['Desi', 'KDV Oranı'], extra: ['Menşei', 'Stok Kodu'] },
       { fields: ['DELIVERY'], sends: ['Teslimat Süresi'] },
       { fields: ['PRICE'], sends: ['Liste Fiyatı', 'Satış Fiyatı'] },

@@ -98,10 +98,11 @@ describe('PlatformUpdateDialog', () => {
 
   it('lists on each card exactly what goes, including what rides along', () => {
     render(['ty', 'hb'], ['TITLE', 'PRICE'])
-    expect(chipsOf('TRENDYOL Mağaza')).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Liste Fiyatı', 'Satış Fiyatı', 'Renk / Beden', 'Menşei'])
-    expect(extraChipsOf('TRENDYOL Mağaza')).toEqual(['Renk / Beden', 'Menşei'])
-    expect(card('TRENDYOL Mağaza')?.querySelector('.platform-update-sends dd')?.getAttribute('title')).toBe('Ürün Adı, Açıklama, Görseller, Kategori Özellikleri, Liste Fiyatı, Satış Fiyatı, Renk / Beden, Menşei')
-    expect(sendsOf('TRENDYOL Mağaza')).toContain('aynı istekte birlikte gider: Açıklama, Görseller, Kategori Özellikleri')
+    // Trendyol's approved content request carries only the picked content fields.
+    expect(chipsOf('TRENDYOL Mağaza')).toEqual(['Ürün Adı', 'Liste Fiyatı', 'Satış Fiyatı'])
+    expect(extraChipsOf('TRENDYOL Mağaza')).toEqual([])
+    expect(card('TRENDYOL Mağaza')?.querySelector('.platform-update-sends dd')?.getAttribute('title')).toBe('Ürün Adı, Liste Fiyatı, Satış Fiyatı')
+    expect(sendsOf('TRENDYOL Mağaza')).not.toContain('aynı istekte birlikte gider')
     expect(chipsOf('HEPSIBURADA Mağaza')).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Garanti Süresi', 'Desi', 'KDV Oranı', 'Satış Fiyatı', 'Renk / Beden', 'Menşei', 'Barkod'])
     expect(chipsOf('SHOPIFY Mağaza')).toEqual([])
     expect(sendsOf('SHOPIFY Mağaza')).toContain('—')

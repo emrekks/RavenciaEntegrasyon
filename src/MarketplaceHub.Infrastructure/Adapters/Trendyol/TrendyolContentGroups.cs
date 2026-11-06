@@ -101,6 +101,7 @@ internal static class TrendyolContentGroups
             if (differing is not null)
                 return ServiceResult<string>.Fail("PRODUCT_CONTENT_GROUP_MISMATCH", $"Trendyol içeriği {content.ContentId} içindeki '{first["barcode"]}' ve '{differing["barcode"]}' varyantlarının panelde başlığı, açıklaması veya görselleri farklı; yanlış ilana yazmamak için içerik güncellemesi gönderilmedi.", 409);
             var resolved = new JsonObject { ["contentId"] = contentId };
+            // Only the fields the item carries go (the picked ones; content-bulk-update keeps a field left out).
             foreach (var name in new[] { "title", "description", "images", "attributes" })
                 if (first[name] is { } value) resolved[name] = value.DeepClone();
             output.Add(resolved);

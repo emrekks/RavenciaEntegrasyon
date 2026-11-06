@@ -475,17 +475,31 @@ public sealed record ProductUpdatePublication(Guid ProductId, string Mode, strin
 // The product information "Platformlarda Güncelle" sends, as the requests a marketplace takes it in. Trendyol updates an
 // approved product in three separate calls: content (title, description, images, attributes), variant (desi, VAT rate;
 // the listing's origin rides along) and delivery (the product card's Teslimat Süresi); each goes only when one of its
-// fields was picked, and always whole. A product Trendyol has not approved yet, and every Hepsiburada product, takes one
-// full update carrying all of it.
+// fields was picked. The variant and delivery requests go whole; the content request carries only the picked content
+// fields (ContentParts): content-bulk-update takes a partial update (only contentId is required) except for the
+// attributes, which go as the whole list when any of them goes (Trendyol doc, updateContentBulk). A product Trendyol
+// has not approved yet, and every Hepsiburada product, takes one full update carrying all of it.
 // Hepsiburada: whether a field its single update carries was picked (it alone takes the warranty); its delivery time
 // goes apart, as Delivery, in a listing shipping-info upload.
-public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true)
+// ContentParts: the picked content fields; null is all of them (a send with no field list).
+public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true, ProductContentParts? ContentParts = null)
 {
     public static readonly ProductUpdateSections All = new(true, true, true);
     // Whether a Trendyol request has a picked field: a pick Trendyol does not carry (the warranty alone) sends nothing
     // there, not the whole card.
     public bool Trendyol => Content || Variants || Delivery;
     public bool Any => Trendyol || Hepsiburada;
+    // The fields the approved Trendyol content request carries: none when no content field was picked.
+    public ProductContentParts ContentFields => Content ? ContentParts ?? ProductContentParts.All : ProductContentParts.None;
+}
+
+// The fields of Trendyol's approved content request (content-bulk-update) that go. Attributes is the whole attribute
+// list (colour, size and Menşei included), never a part of it.
+public sealed record ProductContentParts(bool Title, bool Description, bool Images, bool Attributes)
+{
+    public static readonly ProductContentParts All = new(true, true, true, true);
+    public static readonly ProductContentParts None = new(false, false, false, false);
+    public bool Any => Title || Description || Images || Attributes;
 }
 
 public static class ProductUpdateFields
@@ -509,7 +523,8 @@ public static class ProductUpdateFields
     public static readonly IReadOnlySet<string> Known = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery, Warranty], StringComparer.Ordinal);
 
     // The fields each marketplace's product update can take (the same table the editor's "Platformlarda Güncelle" shows;
-    // platform-update-fields.ts). Trendyol: content, variant and delivery requests (no warranty). Hepsiburada: one
+    // platform-update-fields.ts). Trendyol: content (only the picked content fields), variant and delivery requests (no
+    // warranty). Hepsiburada: one
     // product update with the warranty, and the dispatch time (DispatchTime) in a listing shipping-info upload of its own.
     // Shopify: the whole card in one productSet (price and stock ride along, so the picked fields do not narrow it).
     // Pazarama: the VAT rate alone (product/vatRate/bulk); it has no content update API. n11: one product-update task
@@ -540,7 +555,8 @@ public static class ProductUpdateFields
         var codes = fields.Select(field => field?.Trim().ToUpperInvariant() ?? "").Where(code => code != RetiredOrigin).ToHashSet(StringComparer.Ordinal);
         var unknown = codes.Where(code => !Known.Contains(code)).ToList();
         if (unknown.Count > 0) return ServiceResult<ProductUpdateSections>.Fail("PRODUCT_UPDATE_FIELD_UNKNOWN", $"Tanınmayan ürün bilgisi alanı: {string.Join(", ", unknown.Take(5))}.", 422);
-        var sections = new ProductUpdateSections(ContentFields.Any(codes.Contains), VariantFields.Any(codes.Contains), codes.Contains(Delivery), HepsiburadaFields.Any(codes.Contains));
+        var parts = new ProductContentParts(codes.Contains(Title), codes.Contains(Description), codes.Contains(Images), codes.Contains(Attributes));
+        var sections = new ProductUpdateSections(parts.Any, VariantFields.Any(codes.Contains), codes.Contains(Delivery), HepsiburadaFields.Any(codes.Contains), parts.Any ? parts : null);
         return sections.Any ? ServiceResult<ProductUpdateSections>.Ok(sections) : ServiceResult<ProductUpdateSections>.Fail("PRODUCT_UPDATE_FIELDS_REQUIRED", "Gönderilecek en az bir ürün bilgisi alanı seçin.", 422);
     }
 }
