@@ -132,6 +132,21 @@ export function buildVariantGenerationDefaults({ modelCode, sequence, automaticB
 
 type MergeableVariantRow = { optionSignature: string; sku: string; barcode: string; salePrice: number; listPrice: number }
 
+// "Tek Ürün": the option-less row a card holds when it was saved (e.g. as a draft) before its variants were generated.
+export function isOptionlessPlaceholderRow(row: { optionSignature: string; options?: Record<string, string> }) {
+  const signature = row.optionSignature.trim().toLocaleLowerCase('tr-TR')
+  const hasOptions = Object.values(row.options ?? {}).some(value => value.trim())
+  return !hasOptions && (signature === '' || signature === '-' || signature === 'tek ürün')
+}
+
+// Owner, 6 Nov 2026: generating several option rows on a card whose only row is the "Tek Ürün" placeholder replaces the
+// placeholder instead of keeping it beside the real variants. Its stock, codes and prices are not spread over the new
+// rows (they start from the card defaults like any generated row); a single generated row still takes the placeholder's
+// place with its details (the branch in generateVariants).
+export function generatedRowsReplacePlaceholder(current: readonly { optionSignature: string; options?: Record<string, string> }[], generated: readonly { optionSignature: string; options?: Record<string, string> }[]) {
+  return current.length === 1 && isOptionlessPlaceholderRow(current[0]) && generated.length > 1 && generated.every(row => !isOptionlessPlaceholderRow(row))
+}
+
 // "Ürünleri Ekle": the rows of the combinations the form does not hold yet join the current rows; a row already there
 // (same options, by `key`) is never added twice. On a saved product (`keepExisting`) the rows already there keep their
 // codes and prices, and a new row's automatic barcode takes the next number no row holds (live 2026-11-06, MZ028IH: with
