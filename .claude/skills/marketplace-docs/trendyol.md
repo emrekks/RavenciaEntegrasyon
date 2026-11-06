@@ -88,6 +88,12 @@ purpose (`TurkeyTime.cs`).
 - Live (import staging 2026-10-07, 3,605 variants): `onSale=false` on every variant with stock 0 and on none with
   stock, so most closures are stock-outs. Code: `TrendyolJsonMapper.SaleState/SaleStateReason` (STOCK_ZERO when the same
   answer has quantity 0). The unapproved list has no sale state.
+- Trendyol names no reason field for `onSale=false`. STOCK_ZERO is our own inference: `onSale=false` + `quantity` 0 +
+  none of `locked` / `blacklisted` / `archived` set (those give LOCKED / BLACKLISTED / ARCHIVED instead). The October
+  live staging never showed `onSale=false` with stock > 0, so a closure with stock and no flag (reason null, plain
+  "Satışa Kapalı") has not been seen yet. Source: live staging 2026-10-07 above; `TrendyolJsonMapper.SaleStateReason`.
+- Display rule (owner, 6 Nov 2026, all marketplaces): a STOCK_ZERO closure is no closure in the products list, the
+  publish card or the Satışa Kapalı filter (`ListingSaleState.ClosedBeyondStock`, server `OffSaleReasonCounts`).
 
 ## Statuses
 - Packages: shared mapping. The order uses the top-level package `status`, not `shipmentPackageStatus`.

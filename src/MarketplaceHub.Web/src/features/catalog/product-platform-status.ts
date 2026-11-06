@@ -1,8 +1,9 @@
-import type { OffSaleSummary } from './sale-state'
+import { offSaleSummary } from './sale-state'
 
 // missing: every variant once matched or published there is one the marketplace no longer knows (server NOT_FOUND).
-// closed: listed there, but the marketplace says every matched variant is closed to sale (Satışa Kapalı).
-export type ProductPlatformDisplayState = 'active' | 'linked' | 'partial' | 'processing' | 'error' | 'missing' | 'inactive' | 'closed'
+// closed: listed there, but archived or every matched variant is closed to sale beyond a stock of 0 (Satışa Kapalı).
+// blocked: some or all matched variants are blacklisted or locked there (red).
+export type ProductPlatformDisplayState = 'active' | 'linked' | 'partial' | 'processing' | 'error' | 'missing' | 'inactive' | 'closed' | 'blocked'
 
 // A record with nothing there (no match, no publication) says nothing about the others: a family whose published cards
 // are all gone and whose other cards were never sent reads "Bulunamadı", not "kısmen".
@@ -51,13 +52,19 @@ function normalizedStatuses(statuses: readonly string[]) {
 export function productPlatformDisplayState(
   statuses: readonly string[],
   isChecking: boolean,
-  matchedVariantCount = 0
+  matchedVariantCount = 0,
+  variantCount = 0
 ): ProductPlatformDisplayState {
   const normalized = normalizedStatuses(statuses)
   if (isChecking || normalized.some(status => inProgressStatuses.has(status))) return 'processing'
   const present = normalized.filter(status => !absentStatuses.has(status))
   if (present.length > 0 && present.every(status => status === 'NOT_FOUND')) return 'missing'
+  // A listing archived on the marketplace is there but not sold: never green.
+  if (present.length > 0 && present.every(status => status === 'ARCHIVED')) return 'closed'
   if (normalized.length > 0 && normalized.every(status => status === 'LIVE')) return 'active'
+  // Colour cards published from the panel (LIVE) beside ones imported and matched (LINKED), every variant there: the
+  // product is live, not partly (live 2026-11-06: MZ028IH on Trendyol, 1 LIVE + 9 LINKED, 10/10).
+  if (variantCount > 0 && matchedVariantCount >= variantCount && normalized.includes('LIVE') && normalized.every(status => status === 'LIVE' || status === 'LINKED')) return 'active'
   // Some variants approved and live, the rest still waiting for the marketplace's approval (live 2026-10-30:
   // MZ054YNC on Pazarama, 12 of 24 LIVE) is partly live, not "being processed".
   if (normalized.some(status => status === 'LIVE' || status === 'PARTIAL_LIVE' || status === 'APPROVAL_PARTIAL_PENDING')) return 'partial'
@@ -82,37 +89,60 @@ export function productPlatformDisplayLabel(
 ) {
   const normalized = normalizedStatuses(statuses)
   const coverage = matchedVariantCount > 0 && variantCount > 0 ? ` (${matchedVariantCount}/${variantCount})` : ''
-  const linkedCoverage = matchedVariantCount > 0 && variantCount > 0 ? ` (${matchedVariantCount}/${variantCount} varyant)` : ''
+  const linkedCoverage = matchedVariantCount > 0 && variantCount > 0 ? ` (${matchedVariantCount}/${variantCount} Varyant)` : ''
 
-  if (state === 'processing') return `${platform} yayın durumu güncelleniyor`
-  if (state === 'error') return `${platform} yayın işlemi başarısız veya incelemede`
+  if (state === 'processing') return `${platform}: Yayın Durumu Güncelleniyor`
+  if (state === 'error') return `${platform}: Yayın İşlemi Başarısız veya İncelemede`
   if (state === 'missing') return `${platform}: Pazaryerinde Bulunamadı`
-  if (state === 'active') return `${platform} üzerinde tüm varyantlar yayında${coverage}`
+  if (state === 'closed') return `${platform}: Satışa Kapalı · Arşivde`
+  if (state === 'active') return `${platform}: Ürün Yayında${coverage}`
   if (state === 'partial' && normalized.includes('APPROVAL_PARTIAL_PENDING')) return `${platform}: Kısmen Yayında · Kısmi Onay Bekliyor${coverage}`
-  if (state === 'partial') return `${platform} üzerinde ürün kısmen yayında${coverage}`
-  if (normalized.includes('ARCHIVED')) return `${platform} ilanı arşivlenmiş${coverage}`
-  if (state === 'linked') return `${platform} bağlantısı var${linkedCoverage}`
+  if (state === 'partial') return `${platform}: Kısmen Yayında${coverage}`
+  if (state === 'linked') return `${platform} Bağlantısı Var${linkedCoverage}`
 
   if (matchedVariantCount > 0) {
     const publicationNote = normalized.includes('UNKNOWN')
-      ? 'henüz yayınlanmadı'
-      : 'yayın durumu doğrulanmadı'
-    return `${matchedVariantCount}/${variantCount} varyant eşleşmesi var; ${publicationNote}`
+      ? 'Henüz Yayınlanmadı'
+      : 'Yayın Durumu Doğrulanmadı'
+    return `${platform}: ${matchedVariantCount}/${variantCount} Varyant Eşleşmesi Var · ${publicationNote}`
   }
 
-  return `${platform} ürün eşleşmesi bulunamadı`
+  return `${platform}: Ürün Eşleşmesi Bulunamadı`
 }
 
-// The sale state over the publication state: a listing that is there (live, matched or partly) but that the
-// marketplace closed to sale is not "yayında". Every matched variant closed reads "Satışa Kapalı"; some closed keep
-// the state and name how many. A card being processed, failed or gone keeps its own words.
+// What the server counted for one marketplace's matched variants (ProductPlatformStatusView).
+export type ProductPlatformSaleCounts = {
+  matched: number
+  variantCount: number
+  onSale: number
+  offSale: number
+  offSaleStockZero: number
+  reasons?: Readonly<Record<string, number>> | null
+}
+
+// The sale state over the publication state (owner, 6 Nov 2026, every marketplace). A stock of 0 is never a closure:
+// those variants read as on sale. Every matched variant closed for another reason reads "Satışa Kapalı · {reason}"
+// (orange); some closed read "Kısmen Satışta · x/n Varyant Satışa Kapalı ({reason})" (yellow); any blacklisted or
+// locked one makes it red. An imported (LINKED) card whose every variant is matched and has a known sale state is
+// "Ürün Yayında"; with any unknown it keeps "Bağlantısı Var". An unknown sale state adds no sale words. A card being
+// processed, failed or gone keeps its own words.
 export function withProductPlatformSaleState(
   platform: string,
   state: ProductPlatformDisplayState,
   label: string,
-  sale: OffSaleSummary | null
+  counts: ProductPlatformSaleCounts | null
 ): { state: ProductPlatformDisplayState; label: string } {
-  if (!sale || !['active', 'linked', 'partial'].includes(state)) return { state, label }
-  if (sale.allClosed) return { state: 'closed', label: `${platform}: ${sale.label} (${sale.closed}/${sale.matched} varyant)` }
-  return { state, label: `${label}; ${sale.label}` }
+  if (!counts || !['active', 'linked', 'partial'].includes(state)) return { state, label }
+  const { matched, variantCount } = counts
+  const coverage = matched > 0 && variantCount > 0 ? ` (${matched}/${variantCount})` : ''
+  const allKnown = matched > 0 && counts.onSale + counts.offSale >= matched
+  if (state === 'linked' && variantCount > 0 && matched >= variantCount && allKnown) {
+    state = 'active'
+    label = `${platform}: Ürün Yayında${coverage}`
+  }
+  const sale = offSaleSummary(matched, counts.offSale, counts.offSaleStockZero, counts.reasons)
+  if (!sale) return { state, label }
+  if (sale.allClosed) return { state: sale.blocking ? 'blocked' : 'closed', label: `${platform}: ${sale.label}` }
+  const partialLabel = state === 'active' ? `${platform}: Kısmen Satışta · ${sale.label}` : `${label} · ${sale.label}`
+  return { state: sale.blocking ? 'blocked' : 'partial', label: partialLabel }
 }

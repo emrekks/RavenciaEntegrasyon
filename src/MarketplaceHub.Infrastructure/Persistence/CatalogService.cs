@@ -2566,7 +2566,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                     return new ProductPlatformStatusView(connection.DisplayName, status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus), connection.PlatformCode, missingVariantCount,
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OnSale),
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale),
-                        saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale && x.SaleStateReason == ListingSaleState.StockZero));
+                        saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale && x.SaleStateReason == ListingSaleState.StockZero),
+                        ListingSaleState.ClosedBeyondStockReasonCounts(saleLinks.Select(x => (x.SaleState, x.SaleStateReason))));
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();

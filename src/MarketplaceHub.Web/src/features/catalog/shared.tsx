@@ -34,7 +34,7 @@ export type Variant = Versioned & {
 // missingVariantCount: variants the marketplace no longer knows (link NOT_FOUND or REJECTED), not in matchedVariantCount.
 // onSale/offSale…VariantCount: matched variants the marketplace says are on sale / closed to sale (the rest unknown);
 // offSaleStockZeroVariantCount: the closed ones whose only named reason is a stock of 0 (sale-state.ts).
-export type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean; missingVariantCount?: number; onSaleVariantCount?: number; offSaleVariantCount?: number; offSaleStockZeroVariantCount?: number }
+export type ProductPlatformStatus = { platform: string; platformCode?: string; status: string; matchedVariantCount?: number; variantCount?: number; isChecking?: boolean; missingVariantCount?: number; onSaleVariantCount?: number; offSaleVariantCount?: number; offSaleStockZeroVariantCount?: number; offSaleReasonCounts?: Record<string, number> | null }
 export type VariantPlatformStatus = {
   platform: string; platformCode: string; isLinked: boolean; status?: string
   // Present at the marketplace (a variant link or a LIVE listing); isLinked also counts a variant only queued for

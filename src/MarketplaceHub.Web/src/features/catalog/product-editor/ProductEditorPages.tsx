@@ -807,7 +807,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   familyProductIds?: string[] | null
   lookupKeys?: { modelCode: string; barcode: string; sku: string }
   // How many of the family's variants are present on this marketplace (matched or live), and how many it no longer knows.
-  variantLinks?: { linked: number; total: number; missing?: number; offSale?: number; offSaleStockZero?: number }
+  variantLinks?: { linked: number; total: number; missing?: number; offSale?: number; offSaleStockZero?: number; offSaleReasons?: Record<string, number> }
   card: { code: string; name: string; initial: string; tone: string; connection: MarketplaceConnection; mode: 'PUBLISH' | 'READ_ONLY' }
   selected: boolean
   /** The product (its variants and colour family) is still loading: the card's state is not known yet. */
@@ -935,10 +935,14 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const linkedCount = variantLinks?.linked ?? 0
   const missingCount = variantLinks?.missing ?? 0
   const { allLinked, someLinked, noneFound } = publishCardVariantPresence(variantLinks)
-  // The sale state beside the publication: a card whose every variant is there but closed to sale reads "Satışa
-  // Kapalı", not "Yayında"; some closed are named in the popover's top line. It never changes what Yayınla sends.
-  const saleSummary = allLinked || someLinked ? offSaleSummary(linkedCount, variantLinks?.offSale ?? 0, variantLinks?.offSaleStockZero ?? 0) : null
+  // The sale state beside the publication, by the products list's rule (owner, 6 Nov 2026): a stock of 0 is never a
+  // closure. A card whose every variant is there but closed for another reason reads "Satışa Kapalı · {reason}", one
+  // with only some closed "Kısmen Satışta"; a blacklisted or locked variant is red. It never changes what Yayınla sends.
+  const saleSummary = allLinked || someLinked ? offSaleSummary(linkedCount, variantLinks?.offSale ?? 0, variantLinks?.offSaleStockZero ?? 0, variantLinks?.offSaleReasons) : null
   const saleClosed = allLinked && Boolean(saleSummary?.allClosed)
+  const salePartlyClosed = allLinked && Boolean(saleSummary) && !saleSummary?.allClosed
+  const saleLabel = saleClosed && saleSummary ? saleSummary.label : salePartlyClosed ? 'Kısmen Satışta' : null
+  const saleTone = saleSummary?.blocking ? 'danger' : 'warning'
   const familyPartial = !noneFound && (someLinked || (!allLinked && ownLive && otherFamilyIds.length > 0 && familyLiveCount < familyTotal && familyStatuses.every(status => !status.isPending)))
   const alreadyPublished = missingCount === 0 && (allLinked || (ownLive && !familyPartial))
   const selectionStatus = noneFound || familyPartial ? null : allLinked ? 'LIVE' : publication.data?.actualStatus
@@ -1077,9 +1081,9 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   const issueBadgeHeading = blockedIssues.length === 1 ? 'Yayın için 1 eksik var' : `Yayın için ${blockedIssues.length} eksik var`
   const issueBadgeMore = blockedIssues.length > 8 ? `Ve ${blockedIssues.length - 8} eksik daha.` : undefined
   // A product that is not saved yet has no platform record: it shows what keeps it from publishing, or that it is not out yet.
-  const displayedPublicationLabel = partialBlocked ? partialLabel : hasRequiredPublicationBlock ? 'Zorunlu Eksik' : noneFound ? 'Bulunamadı' : familyPartial ? partialLabel : saleClosed && saleSummary ? saleSummary.label : allLinked ? 'Yayında' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? pttAvmRetryLabel : productId ? publicationLabel : 'Henüz yayınlanmadı'
+  const displayedPublicationLabel = partialBlocked ? partialLabel : hasRequiredPublicationBlock ? 'Zorunlu Eksik' : noneFound ? 'Bulunamadı' : familyPartial ? partialLabel : saleLabel ? saleLabel : allLinked ? 'Yayında' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? pttAvmRetryLabel : productId ? publicationLabel : 'Henüz yayınlanmadı'
   const missingVariantsTitle = noneFound ? 'Pazaryerinde Bulunamadı' : missingCount > 0 ? `${missingCount} varyant pazaryerinde bulunamadı` : undefined
-  const displayedPublicationTone = partialBlocked ? 'info' : hasRequiredPublicationBlock ? 'danger' : noneFound ? 'danger' : familyPartial ? 'info' : allLinked ? 'success' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? 'warning' : productId ? publicationTone : 'neutral'
+  const displayedPublicationTone = partialBlocked ? 'info' : hasRequiredPublicationBlock ? 'danger' : noneFound ? 'danger' : familyPartial ? 'info' : saleLabel ? saleTone : allLinked ? 'success' : pttAvmRetry && !isPttAvmChecking(card.connection.platformCode, publication.data?.actualStatus) ? 'warning' : productId ? publicationTone : 'neutral'
   // The status as four steps (Hazırlık → Gönderim → Onay → Yayında) with the counts beside them, in one pill: hover or
   // focus shows the gaps popover, a press pins it; its top line says the state and why (the job's reason, a refusal
   // code), its foot holds the card's actions (stop, İş Ayrıntısı); the refresh sits in the header.
@@ -1094,7 +1098,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     requiredGaps: hasRequiredPublicationBlock ? blockedIssues.length : 0,
     optionalWarnings: optionalMappingWarnings.length,
     live: alreadyPublished,
-    saleClosedLabel: saleClosed && saleSummary ? saleSummary.label : null,
+    saleClosedLabel: saleLabel,
     partial: familyPartial ? someLinked ? { live: linkedCount, total: linkedTotal, unit: 'varyant' } : { live: familyLiveCount, total: familyTotal, unit: 'renk' } : null,
     notFound: noneFound,
     missingVariants: missingCount,
@@ -1110,8 +1114,8 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     jobView.state !== 'hidden' ? { key: 'job', text: jobView.message, tone: jobView.state === 'running' ? 'info' : jobView.tone } : null,
     publicationNote ? { key: 'note', text: publicationNote, tone: 'danger' } : null,
     missingVariantsTitle && !noneFound ? { key: 'missing', text: missingVariantsTitle, tone: 'danger' } : null,
-    saleSummary && !saleClosed ? { key: 'sale', text: saleSummary.allClosed ? `Yayındaki ${saleSummary.matched} varyantın tümü satışa kapalı${saleSummary.stockOnly ? ' (stok 0)' : ''}` : saleSummary.label, tone: 'warning' } : null,
-    saleClosed && saleSummary ? { key: 'sale', text: saleSummary.stockOnly ? 'Pazaryeri tüm varyantları stok 0 olduğu için satışta göstermiyor' : 'Pazaryeri bu ürünü satışa kapalı gösteriyor', tone: 'warning' } : null,
+    saleSummary && !saleClosed ? { key: 'sale', text: saleSummary.allClosed ? `Yayındaki ${saleSummary.matched} varyantın tümü satışa kapalı${saleSummary.reasonLabel ? ` (${saleSummary.reasonLabel})` : ''}` : saleSummary.label, tone: saleTone } : null,
+    saleClosed && saleSummary ? { key: 'sale', text: `Pazaryeri bu ürünü satışa kapalı gösteriyor${saleSummary.reasonLabel ? ` (${saleSummary.reasonLabel})` : ''}`, tone: saleTone } : null,
     partialReady ? { key: 'rest', text: `Kalan ${partialRest} ${partialUnit} yayına hazır`, tone: 'success' } : null,
     partialBlocked && partialRest > 0 ? { key: 'rest', text: `Kalan ${partialRest} ${partialUnit}${partialUnit === 'renk' ? 'te' : 'ta'} ${blockedIssues.length} eksik`, tone: 'danger' } : null
   ].filter((reason): reason is { key: string; text: string; tone: string } => Boolean(reason))

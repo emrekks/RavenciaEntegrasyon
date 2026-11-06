@@ -667,7 +667,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var variantStatus = Assert.Single(closedView.Variants.Single(x => x.Id == closedVariants[0].Id).PlatformStatuses!);
         Assert.Equal(("LIVE", ListingSaleState.OffSale, ListingSaleState.BySeller), (variantStatus.Status, variantStatus.SaleState, variantStatus.SaleStateReason));
         var stockOutStatus = StatusOf(await View(stockOut));
+        // The by-seller closure is counted by its reason; the unnamed one is the rest (2 - 0 - 1).
+        Assert.Equal(new Dictionary<string, int> { [ListingSaleState.BySeller] = 1 }, closedStatus.OffSaleReasonCounts);
         Assert.Equal(("LIVE", 1, 1), (stockOutStatus.Status, stockOutStatus.OffSaleVariantCount, stockOutStatus.OffSaleStockZeroVariantCount));
+        Assert.Empty(stockOutStatus.OffSaleReasonCounts!);
         var openStatus = StatusOf(await View(open));
         Assert.Equal(("LIVE", 1, 0), (openStatus.Status, openStatus.OnSaleVariantCount, openStatus.OffSaleVariantCount));
 

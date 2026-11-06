@@ -95,9 +95,13 @@ public sealed record ProductPlatformStatusView(
     int MissingVariantCount = 0,
     // Matched variants the marketplace says are on sale / closed to sale; the rest of the matched ones are unknown.
     // OffSaleStockZeroVariantCount: those of the closed ones whose only named reason is a stock of 0.
+    // OffSaleReasonCounts: the closed ones beyond a stock of 0 (ListingSaleState.ClosedBeyondStock) by the reason the
+    // marketplace named; those closed without a named reason are OffSale - OffSaleStockZero - the sum of these. The
+    // products list, the publish card and the Satışa Kapalı filter read the closures through this one rule.
     int OnSaleVariantCount = 0,
     int OffSaleVariantCount = 0,
-    int OffSaleStockZeroVariantCount = 0);
+    int OffSaleStockZeroVariantCount = 0,
+    IReadOnlyDictionary<string, int>? OffSaleReasonCounts = null);
 public sealed record ProductView(
     Guid Id,
     string Title,

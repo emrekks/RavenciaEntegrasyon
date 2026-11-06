@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { VariantPlatformStatus } from '../shared'
+import { offSaleSummary } from '../sale-state'
 import { publishCardPlan, publishCardVariantLinks, publishCardVariantPresence } from './publish-card-variants'
 
 const status = (connectionId: string, extra: Partial<VariantPlatformStatus> = {}): VariantPlatformStatus => ({ platform: 'PTT AVM', platformCode: 'PTTAVM', isLinked: false, connectionId, ...extra })
@@ -13,8 +14,8 @@ describe('publish card variant presence', () => {
       row(status('c1')),
       row()
     ]
-    expect(publishCardVariantLinks(rows, 'c1')).toEqual({ total: 4, linked: 1, missing: 1, offSale: 0, offSaleStockZero: 0 })
-    expect(publishCardVariantLinks(rows, 'c2')).toEqual({ total: 4, linked: 0, missing: 1, offSale: 0, offSaleStockZero: 0 })
+    expect(publishCardVariantLinks(rows, 'c1')).toEqual({ total: 4, linked: 1, missing: 1, offSale: 0, offSaleStockZero: 0, offSaleReasons: {} })
+    expect(publishCardVariantLinks(rows, 'c2')).toEqual({ total: 4, linked: 0, missing: 1, offSale: 0, offSaleStockZero: 0, offSaleReasons: {} })
   })
 
   it('counts the present variants the marketplace closed to sale, never a missing one or an unknown state', () => {
@@ -25,7 +26,30 @@ describe('publish card variant presence', () => {
       row(status('c1', { isLinked: true, isMatched: true, saleState: null })),
       row(status('c1', { isMissing: true, saleState: 'OFF_SALE' }))
     ]
-    expect(publishCardVariantLinks(rows, 'c1')).toEqual({ total: 5, linked: 4, missing: 1, offSale: 2, offSaleStockZero: 1 })
+    expect(publishCardVariantLinks(rows, 'c1')).toEqual({ total: 5, linked: 4, missing: 1, offSale: 2, offSaleStockZero: 1, offSaleReasons: { BY_SELLER: 1 } })
+  })
+
+  // The card reads its sale state by the products list's rule (owner, 6 Nov 2026): a stock of 0 is no closure.
+  it('gives the card no sale words when its closed variants are closed only for a stock of 0', () => {
+    const rows = [
+      row(status('c1', { isLinked: true, isMatched: true, saleState: 'OFF_SALE', saleStateReason: 'STOCK_ZERO' })),
+      row(status('c1', { isLinked: true, isMatched: true, saleState: 'OFF_SALE', saleStateReason: 'STOCK_ZERO' })),
+      row(status('c1', { isLinked: true, isMatched: true, saleState: 'ON_SALE' }))
+    ]
+    const links = publishCardVariantLinks(rows, 'c1')
+    expect(offSaleSummary(links.linked, links.offSale, links.offSaleStockZero, links.offSaleReasons)).toBeNull()
+  })
+
+  it('names the card closure reason and marks a blacklisted one as blocking', () => {
+    const closedRow = (reason: string | null) => row(status('c1', { isLinked: true, isMatched: true, saleState: 'OFF_SALE', saleStateReason: reason }))
+    const all = publishCardVariantLinks([closedRow('BLACKLISTED'), closedRow('BLACKLISTED')], 'c1')
+    expect(offSaleSummary(all.linked, all.offSale, all.offSaleStockZero, all.offSaleReasons)).toMatchObject({ allClosed: true, blocking: true, label: 'Satışa Kapalı · Kara Listede' })
+    const some = publishCardVariantLinks([closedRow('ARCHIVED'), closedRow('STOCK_ZERO'), row(status('c1', { isLinked: true, isMatched: true, saleState: 'ON_SALE' }))], 'c1')
+    expect(offSaleSummary(some.linked, some.offSale, some.offSaleStockZero, some.offSaleReasons)).toMatchObject({ allClosed: false, blocking: false, label: '1/3 Varyant Satışa Kapalı (Arşivde)' })
+    const priceZero = publishCardVariantLinks([closedRow('PRICE_ZERO')], 'c1')
+    expect(offSaleSummary(priceZero.linked, priceZero.offSale, priceZero.offSaleStockZero, priceZero.offSaleReasons)?.label).toBe('Satışa Kapalı · Fiyat 0')
+    const unnamed = publishCardVariantLinks([closedRow(null)], 'c1')
+    expect(offSaleSummary(unnamed.linked, unnamed.offSale, unnamed.offSaleStockZero, unnamed.offSaleReasons)?.label).toBe('Satışa Kapalı')
   })
 
   it('reads a card with every variant present as live, even without links (a family send)', () => {
