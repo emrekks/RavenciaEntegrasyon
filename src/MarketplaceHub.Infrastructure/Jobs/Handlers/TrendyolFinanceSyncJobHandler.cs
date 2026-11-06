@@ -230,6 +230,10 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
         public List<RemoteSkippedFinanceRecord> Skipped { get; init; } = [];
     }
 
+    private Task<bool> HasRecordsOfTypeAsync(JobRequest request, string type, CancellationToken cancellationToken) =>
+        db.MarketplaceFinanceTransactions.AsNoTracking()
+            .AnyAsync(x => x.TenantId == request.TenantId && x.ConnectionId == request.ConnectionId && x.PlatformCode == "TRENDYOL" && x.RequestedType == type, cancellationToken);
+
     private async Task<WindowRead> ReadWindowAsync(JobRequest request, AdapterContext context, DateTimeOffset start, DateTimeOffset end, Counter telemetry,
         SortedSet<string> rejected, CancellationToken cancellationToken)
     {
@@ -248,7 +252,11 @@ public sealed class TrendyolFinanceSyncJobHandler(AppDbContext db, ITrendyolFina
                 {
                     // A type (or the service-fee filter) Trendyol does not take is skipped and reported; it cannot get
                     // better by retrying. Any other failure leaves the whole window unread.
-                    if (page == 0 && result.Error!.Class == AdapterErrorClass.Validation && result.Error.HttpStatus == 400)
+                    // A type the connection already has records of was taken before: its 400 is this window's failure,
+                    // not a refusal of the type (before 6 Nov 2026 the window was written as read without that type,
+                    // and the next run started three days before its end, so the type's records there were never read).
+                    if (page == 0 && result.Error!.Class == AdapterErrorClass.Validation && result.Error.HttpStatus == 400
+                        && !(query.SubType is null && await HasRecordsOfTypeAsync(request, query.Type, cancellationToken)))
                     {
                         rejected.Add(query.SubType is null ? query.Type : $"{query.Type}/{query.SubType}");
                         break;

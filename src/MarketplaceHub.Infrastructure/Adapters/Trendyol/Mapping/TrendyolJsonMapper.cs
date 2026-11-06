@@ -985,7 +985,21 @@ public static class TrendyolJsonMapper
     }
 
     private static RemoteReferenceItem Reference(string type, JsonElement item, string idName, string nameName, string? parent, int depth, bool leaf) { var name = Text(item, nameName); return new(type, Text(item, idName), parent, name, name, depth, leaf, true, item.GetRawText()); }
-    private static IEnumerable<JsonElement> Content(JsonElement root) => root.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.Array ? content.EnumerateArray() : [];
+    // Product and reference pages: the content list, or none when the page sends no list. A page that sends no list but
+    // counts elements (totalElements > 0), or sends a content that is not a list, contradicts itself: before 6 Nov 2026
+    // it read as an empty page, the catalog scan ended there and its watermark moved past products it never saw.
+    private static IEnumerable<JsonElement> Content(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return [];
+        if (root.TryGetProperty("content", out var content))
+        {
+            if (content.ValueKind == JsonValueKind.Array) return content.EnumerateArray();
+            if (content.ValueKind != JsonValueKind.Null) throw new JsonException($"Trendyol page content is {content.ValueKind}, not a list.");
+        }
+        return NullableLong(root, "totalElements", "totalCount", "totalResults") is > 0
+            ? throw new JsonException("Trendyol page counts elements but has no content list.")
+            : [];
+    }
 
     // An order or claim page always carries its content list (empty when the window holds nothing). A successful answer
     // without it is a broken contract, never "no orders": the callers turn the JsonException into a contract error, so

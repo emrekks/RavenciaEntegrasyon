@@ -4289,7 +4289,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var now = timeProvider.GetUtcNow();
         var hasSnapshots = await db.Orders.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         var baseline = allowBaseline && (full || !hasSnapshots);
-        var startDay = PazaramaOrderHistoryPolicy.StartDay(baseline, cursor.LastModifiedWatermark ?? (allowBaseline ? null : now.AddDays(-1)), now);
+        var startDay = PazaramaOrderHistoryPolicy.StartDay(baseline, cursor.LastModifiedWatermark ?? (allowBaseline ? null : now.AddDays(-1)), now,
+            PazaramaOrderHistoryPolicy.LookbackDays(cursorResourceType));
         foreach (var (windowStart, windowEnd) in PazaramaOrderHistoryPolicy.Windows(startDay, now))
         {
             string? page = null;

@@ -48,20 +48,27 @@ public static class PazaramaOrderHistoryPolicy
 {
     public const int InitialLookbackMonths = 3;
     public const int IncrementalLookbackDays = 2;
+    // The recovery read (every 15 minutes) looks a week back. Pazarama lists an order only once it is created on its
+    // side, which can be a day after its orderDate: live 500506964, orderDate 29 Oct 17:48, created (status 3) 30 Oct
+    // 17:48:55 Istanbul time, read three minutes later. A two-day re-read keeps one day of margin; the week keeps more.
+    public const int RecoveryLookbackDays = 7;
     public const int PageSize = 100;
     // Pazarama refuses ranges above one month; 28 days keeps a safe margin.
     public static readonly TimeSpan MaxWindow = TimeSpan.FromDays(28);
     public static readonly TimeSpan TurkeyOffset = TimeSpan.FromHours(3);
 
     // First day (Turkey time) the run reads.
-    public static DateTime StartDay(bool full, DateTimeOffset? watermark, DateTimeOffset now)
+    public static DateTime StartDay(bool full, DateTimeOffset? watermark, DateTimeOffset now, int lookbackDays = IncrementalLookbackDays)
     {
         var today = now.ToOffset(TurkeyOffset).Date;
         if (full || watermark is null) return today.AddMonths(-InitialLookbackMonths);
-        var fromWatermark = watermark.Value.ToOffset(TurkeyOffset).Date.AddDays(-IncrementalLookbackDays);
-        var floor = today.AddDays(-IncrementalLookbackDays);
+        var fromWatermark = watermark.Value.ToOffset(TurkeyOffset).Date.AddDays(-lookbackDays);
+        var floor = today.AddDays(-lookbackDays);
         return fromWatermark < floor ? fromWatermark : floor;
     }
+
+    public static int LookbackDays(string cursorResourceType) =>
+        cursorResourceType == "ORDERS_RECOVERY" ? RecoveryLookbackDays : IncrementalLookbackDays;
 
     // Consecutive [start, end) day windows up to tomorrow (the end day is excluded by Pazarama).
     public static IReadOnlyList<(DateTime Start, DateTime End)> Windows(DateTime startDay, DateTimeOffset now)
@@ -715,7 +722,12 @@ public static class PriceInventoryOutboxPolicy
     }
 }
 
-public sealed record TrendyolStorefrontActivity(DateTimeOffset? LastOrderAt, DateTimeOffset? LastProbedAt, DateTimeOffset? PausedUntil = null);
+// LastProbedAt is the last read that succeeded (the next read starts there); LastRejectedAt the last 400/404, which only
+// spaces the next try.
+public sealed record TrendyolStorefrontActivity(DateTimeOffset? LastOrderAt, DateTimeOffset? LastProbedAt, DateTimeOffset? PausedUntil = null, DateTimeOffset? LastRejectedAt = null)
+{
+    public DateTimeOffset? LastTriedAt => LastRejectedAt is { } rejected && (LastProbedAt is not { } probed || rejected > probed) ? rejected : LastProbedAt;
+}
 
 // Trendyol serves international orders under separate storefront headers, and every stream
 // request is spaced five seconds apart. Order reads therefore visit Türkiye and the storefronts
@@ -769,8 +781,8 @@ public static class TrendyolStorefrontPolicy
         return Active(codes, activity, now)
             .Where(code => !hot.Contains(code, StringComparer.OrdinalIgnoreCase))
             .Select(code => (Code: code, Seen: activity.GetValueOrDefault(code)))
-            .Where(item => item.Seen?.LastProbedAt is not { } read || now - read >= QuietReadInterval)
-            .OrderBy(item => item.Seen?.LastProbedAt ?? DateTimeOffset.MinValue)
+            .Where(item => item.Seen?.LastTriedAt is not { } read || now - read >= QuietReadInterval)
+            .OrderBy(item => item.Seen?.LastTriedAt ?? DateTimeOffset.MinValue)
             .Select(item => item.Code)
             .Take(QuietReadsPerRun)
             .ToArray();
@@ -790,9 +802,9 @@ public static class TrendyolStorefrontPolicy
             .Where(code => !active.Contains(code, StringComparer.OrdinalIgnoreCase))
             .Select(code => (Code: code, Seen: activity.GetValueOrDefault(code)))
             .Where(item => !(item.Seen?.PausedUntil > now)
-                && (item.Seen?.LastProbedAt is not { } probed
+                && (item.Seen?.LastTriedAt is not { } probed
                     || now - probed >= (IsListed(item.Code) ? ListedProbeInterval : UnlistedProbeInterval)))
-            .OrderBy(item => item.Seen?.LastProbedAt ?? DateTimeOffset.MinValue)
+            .OrderBy(item => item.Seen?.LastTriedAt ?? DateTimeOffset.MinValue)
             .Select(item => item.Code)
             .FirstOrDefault();
     }
@@ -808,10 +820,12 @@ public static class TrendyolStorefrontPolicy
     public static TrendyolStorefrontActivity Read(TrendyolStorefrontActivity? seen, DateTimeOffset now, bool receivedOrders) =>
         new(receivedOrders ? now : seen?.LastOrderAt, now, null);
 
-    // A storefront the seller does not have answers 400/404. Listed ones are simply probed again
-    // later; unlisted ones are left alone for 30 days.
+    // A storefront the seller does not have answers 400/404. Listed ones are simply tried again later; unlisted ones are
+    // left alone for 30 days. The last successful read stays: a 400/404 that passes is
+    // followed by a read from that read on, so the time between is not skipped. Before 6 Nov 2026 the rejection moved
+    // LastProbedAt to now and the next read of a quiet storefront started there.
     public static TrendyolStorefrontActivity Rejected(string code, TrendyolStorefrontActivity? seen, DateTimeOffset now) =>
-        new(seen?.LastOrderAt, now, IsListed(code) ? null : now + UnlistedRejectionPause);
+        new(seen?.LastOrderAt, seen?.LastProbedAt, IsListed(code) ? null : now + UnlistedRejectionPause, now);
 }
 
 // Where a targeted Trendyol read looks. Order V2 keeps one month of packages and takes at most

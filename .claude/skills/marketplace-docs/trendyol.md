@@ -101,6 +101,8 @@ purpose (`TurkeyTime.cs`).
   CZ; QA/OM/BH/AZ only when the connection already has orders there). Listed ones probed every 6 h, others 24 h; a
   400/404 pauses one for 30 days. SA, AZ, BG, RO, GR, AE orders ship to the Istanbul export depot but count in their
   storefront's country.
+  A 400/404 no longer moves the storefront's last read: the next read starts from the last good one, and the
+  rejection only spaces the next try (`TrendyolStorefrontActivity.LastRejectedAt`, 6 Nov 2026).
 - Invoice references count only when invoice number AND link are present; a missing field is not "not invoiced", and
   an older observation never rolls a final state back. `invoiceLink` fills only once Invoiced; 409 = already has an
   invoice or the link is used elsewhere.
@@ -131,6 +133,12 @@ purpose (`TurkeyTime.cs`).
   (BRAND_MAPPING_MISSING issue, `GET /reference-data/brands/unmapped`, Marka Eşleme card 2). The import no longer
   syncs the brand list itself. It does not change the panel product's or variant's status either; the listing's sale
   state stays on its link (`SaleState`) and offer. Source: `MarketplaceJobProcessor.MappedImportBrandId`.
+- Product and reference pages: no `content` is empty only while the page counts nothing; a page that counts elements
+  (totalElements > 0) without the list, or a `content` that is not a list, is a contract error (before 6 Nov 2026 it
+  ended the catalog scan). Finance pages the same (`TrendyolJsonMapper.Content`, `TrendyolFinanceMapper.Page`).
+- Finance: a 400 on the first page of a type is a refusal of the type only if the connection has no record of that
+  type yet; for a type read before it fails the window, which is read again (before 6 Nov 2026 the window was
+  written as read without it). Live, 6 Nov 2026: all twelve types read so far have records, RejectedTypes empty.
 - Order and claim pages always carry `content` (an empty list when nothing matches); a 200 without it is a contract
   error, never "no orders" (`TrendyolJsonMapper.RequiredContent`, report item 15, 5 Nov 2026).
 - Exception, claims: since 5 Nov 2026 22:43 (live, main store) an empty `claimItemStatus` bucket of getClaims can answer

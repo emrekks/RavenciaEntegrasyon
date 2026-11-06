@@ -103,6 +103,62 @@ public sealed class SyncWindowAuditTests
         Assert.Equal(expected, MarketplaceJobProcessor.NextReconcilePage(current, next));
 
     [Fact]
+    public void A_rejected_quiet_storefront_is_read_from_its_last_good_read_but_not_tried_again_at_once()
+    {
+        var now = new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero);
+        var codes = new[] { "TR", "AE" };
+        var lastGood = now.AddHours(-2);
+        // AE sold 10 days ago (active, quiet) and was last read two hours ago; this read was answered 400.
+        var rejected = TrendyolStorefrontPolicy.Rejected("AE", new(now.AddDays(-10), lastGood), now);
+        var activity = new Dictionary<string, TrendyolStorefrontActivity> { ["AE"] = rejected };
+
+        Assert.Equal(lastGood, rejected.LastProbedAt);
+        Assert.Null(rejected.PausedUntil);
+        Assert.Empty(TrendyolStorefrontPolicy.DueQuiet(codes, activity, now.AddMinutes(5)));
+        Assert.Equal(["AE"], TrendyolStorefrontPolicy.DueQuiet(codes, activity, now.AddMinutes(31)));
+        Assert.Equal(lastGood - TimeSpan.FromMinutes(2), TrendyolStorefrontPolicy.ProbeStart(rejected, now.AddMinutes(31), TimeSpan.FromMinutes(2)));
+        // A good read afterwards clears the rejection.
+        Assert.Null(TrendyolStorefrontPolicy.Read(rejected, now.AddMinutes(31), receivedOrders: false).LastRejectedAt);
+    }
+
+    [Fact]
+    public void A_never_read_listed_storefront_that_refuses_waits_its_probe_interval()
+    {
+        var now = new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero);
+        var activity = new Dictionary<string, TrendyolStorefrontActivity> { ["DE"] = TrendyolStorefrontPolicy.Rejected("DE", null, now) };
+
+        Assert.Null(TrendyolStorefrontPolicy.NextProbe(["TR", "DE"], activity, now.AddHours(1)));
+        Assert.Equal("DE", TrendyolStorefrontPolicy.NextProbe(["TR", "DE"], activity, now.AddHours(7)));
+    }
+
+    [Fact]
+    public void A_Trendyol_product_page_that_counts_products_but_sends_no_list_is_a_broken_contract()
+    {
+        Assert.Throws<JsonException>(() => MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.CatalogProducts("""{"totalElements":120,"totalPages":2,"page":1,"size":100}"""));
+        Assert.Throws<JsonException>(() => MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.CatalogProducts("""{"content":{},"totalElements":0}"""));
+        Assert.Empty(MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.CatalogProducts("""{"totalElements":0,"totalPages":0,"page":0,"size":100}""").Items);
+        Assert.Empty(MarketplaceHub.Infrastructure.Adapters.Trendyol.Mapping.TrendyolJsonMapper.CatalogProducts("""{"content":null,"page":0,"size":100}""").Items);
+    }
+
+    [Fact]
+    public void A_Trendyol_finance_page_that_counts_records_but_sends_no_list_is_a_broken_contract()
+    {
+        Assert.Throws<JsonException>(() => MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolFinanceMapper.Page("""{"page":0,"totalPages":1,"totalElements":3}""", "SETTLEMENTS", "Sale", null));
+        Assert.Empty(MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolFinanceMapper.Page("""{"page":0,"totalPages":0,"totalElements":0}""", "SETTLEMENTS", "Sale", null).Items);
+        Assert.Empty(MarketplaceHub.Infrastructure.Adapters.Trendyol.TrendyolFinanceMapper.Page("""{"content":null}""", "SETTLEMENTS", "Sale", null).Items);
+    }
+
+    [Fact]
+    public void Pazarama_recovery_reads_a_week_back_and_the_hot_read_two_days()
+    {
+        var now = new DateTimeOffset(2026, 11, 6, 9, 0, 0, TimeSpan.Zero);
+        var watermark = now.AddMinutes(-15);
+
+        Assert.Equal(new DateTime(2026, 10, 30), PazaramaOrderHistoryPolicy.StartDay(false, watermark, now, PazaramaOrderHistoryPolicy.LookbackDays("ORDERS_RECOVERY")));
+        Assert.Equal(new DateTime(2026, 11, 4), PazaramaOrderHistoryPolicy.StartDay(false, watermark, now, PazaramaOrderHistoryPolicy.LookbackDays("ORDERS_HOT")));
+    }
+
+    [Fact]
     public void Hepsiburada_missing_invoice_pass_stops_when_the_list_moves_between_pages()
     {
         int? total = null;

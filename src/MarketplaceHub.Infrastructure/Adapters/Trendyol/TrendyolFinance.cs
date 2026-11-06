@@ -130,6 +130,10 @@ internal static class TrendyolFinanceMapper
             }
         else if (root.TryGetProperty("content", out var other) && other.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined))
             throw new JsonException("Finance page content is not a list.");
+        // No list on a page that counts records contradicts itself; before 6 Nov 2026 it read as "no records" and the
+        // window was written as read. A page without the list that counts none (or sends no count) stays empty.
+        else if (Number(root, "totalElements") is > 0)
+            throw new JsonException("Finance page counts records but has no content list.");
         return new(items, Int(root, "page") ?? 0, Int(root, "totalPages") ?? 0, (long)(Number(root, "totalElements") ?? items.Count + skipped.Count), skipped);
     }
 
