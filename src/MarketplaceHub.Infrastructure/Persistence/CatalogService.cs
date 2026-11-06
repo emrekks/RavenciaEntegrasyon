@@ -629,7 +629,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             product.UpdatedAt = now;
             product.Version++;
         }
-        foreach (var variant in variants.Where(variant => ProductStatusCascade.Moves(variant, status))) ProductStatusCascade.Apply(variant, status, now);
+        foreach (var variant in variants) { variant.Status = status; variant.UpdatedAt = now; variant.Version++; }
         await CatalogLocalEdits.MarkLinksDirtyAsync(db, tenantId, changedProductIds, CatalogLocalEdits.ProductField, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         return ServiceResult<int>.Ok(products.Count);
@@ -991,7 +991,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (command.Variants.Any(variant => variant.CostPrice is < 0)) return Invalid<ProductView>("variants", "Maliyet negatif olamaz.");
         var variants = command.Variants.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = product.Id, SortOrder = index, Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = productStatus, Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = PositiveOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
         db.Products.Add(product);
-        db.ProductVariants.AddRange(variants); ProductStatusCascade.MarkCreated(variants);
+        db.ProductVariants.AddRange(variants);
         db.ProductAttributeAssignments.AddRange(globalAssignments.Select(x => Assignment(tenantId, product.Id, null, x)));
         for (var index = 0; index < variants.Count; index++) db.ProductAttributeAssignments.AddRange((command.Variants[index].Attributes ?? []).Select(x => Assignment(tenantId, product.Id, variants[index].Id, x)));
         await PersistVariantOptionsAsync(tenantId, product.Id, variants, command.Variants, cancellationToken);
@@ -1424,7 +1424,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             ProductStatus StatusOnCard(Guid productId) => productId == id || !siblingStatuses.TryGetValue(productId, out var siblingStatus) || siblingStatus == product.Status ? newVariantStatus : siblingStatus;
             if (newColorCards.Count > 0) await AddNewColorCardsAsync(tenantId, product, command, existingVariants.Where(variant => variant.ProductId == id).ToList(), globalAssignments, newColorCards, newVariantStatus, now, cancellationToken);
             var newVariants = variantsToCreate.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = newVariantProductIds[index], SortOrder = Math.Max(0, variant.SortOrder), Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = StatusOnCard(newVariantProductIds[index]), Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = PositiveOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
-            db.ProductVariants.AddRange(newVariants); ProductStatusCascade.MarkCreated(newVariants);
+            db.ProductVariants.AddRange(newVariants);
             for (var index = 0; index < newVariants.Count; index++) db.ProductAttributeAssignments.AddRange((variantsToCreate[index].Attributes ?? []).Select(x => Assignment(tenantId, newVariants[index].ProductId, newVariants[index].Id, x)));
             // Options are kept per card: each card's new rows go into that card's option values.
             foreach (var card in newVariants.Select((variant, index) => (variant, command: variantsToCreate[index])).GroupBy(row => row.variant.ProductId))
@@ -1552,8 +1552,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (command.Status != null)
         {
             product.Status = productStatus;
-            foreach (var variant in existingVariants.Where(variant => statusChanged && ProductStatusCascade.Moves(variant, productStatus) && (variant.ProductId == id || familyStatusProductIds.Contains(variant.ProductId))))
-                ProductStatusCascade.Apply(variant, productStatus, product.UpdatedAt);
+            foreach (var variant in existingVariants.Where(variant => statusChanged && variant.Status != productStatus && (variant.ProductId == id || familyStatusProductIds.Contains(variant.ProductId))))
+            { variant.Status = productStatus; variant.UpdatedAt = product.UpdatedAt; variant.Version++; }
         }
         if (command.Attributes is not null)
         {
