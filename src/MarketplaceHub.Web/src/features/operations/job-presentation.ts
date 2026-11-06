@@ -78,7 +78,7 @@ const catalogue: Record<string, JobPresentation> = {
 // A type the catalogue does not know yet is named from its words, so it still reads as a sentence.
 function unknownJob(jobType: string): JobPresentation {
   const type = jobType.toUpperCase()
-  const words = jobType.replaceAll('_', ' ').toLocaleLowerCase('tr-TR').replace(/(^|\s)\S/g, value => value.toLocaleUpperCase('tr-TR'))
+  const words = jobType.replaceAll('_', ' ').toLocaleLowerCase('en-US').replace(/(^|\s)\S/g, value => value.toLocaleUpperCase('en-US'))
   if (/INVOICE|EFATURAM|BILLING/.test(type)) return job('Fatura', 'invoice', PANEL, words, 'Faturayla ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')
   if (/RETURN|CLAIM/.test(type)) return job('İade', 'return', PANEL, words, 'İadeyle ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')
   if (/PRICE|INVENTORY|STOCK/.test(type)) return job('Fiyat ve Stok', 'price', PANEL, words, 'Fiyat veya stokla ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')

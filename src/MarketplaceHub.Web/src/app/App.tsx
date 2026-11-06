@@ -490,7 +490,7 @@ function MfaChallenge() {
   const choosingTenant = tenantOptions.length > 0
   async function backToLogin() {
     setLeaving(true)
-    try { await api('/logout', { method: 'POST' }) } finally { clearPersonalStorage(); clearQuerySnapshot(); window.location.replace(`/?signedOut=${Date.now()}`) }
+    try { await api('/logout', { method: 'POST' }) } catch { /* the redirect below leaves anyway */ } finally { clearPersonalStorage(); clearQuerySnapshot(); window.location.replace(`/?signedOut=${Date.now()}`) }
   }
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

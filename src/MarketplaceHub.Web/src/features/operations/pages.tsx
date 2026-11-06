@@ -422,6 +422,8 @@ export function JobsPage({ me }: { me: Me }) {
   // the loaded list is counted instead.
   const serverCounts = useQuery({
     queryKey: ['jobs', 'counts', timeRange, platform],
+    // Not read while the Loglar or API Sağlık tab is shown (the list itself is off then too).
+    enabled: !listHidden,
     queryFn: () => hubPoll<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`),
     refetchInterval: jobListPollMs
   })
@@ -615,7 +617,7 @@ export function JobsPage({ me }: { me: Me }) {
             const presentation = jobPresentation(job.jobType)
             const time = formatJobTime(job.createdAt)
             const typeDescriptionId = `job-type-description-${job.id}`
-            return <tr className="jobs-reference-row" key={job.id} aria-describedby={typeDescriptionId} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }}>
+            return <tr className="jobs-reference-row" key={job.id} aria-describedby={typeDescriptionId} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setSelectedId(job.id) } }}>
               <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{jobTitle(job.jobType, job.marketplace)}</strong><small>{jobSubtitle(job.jobType)}{job.externalId ? ` · ${job.externalId}` : ''}{job.batchCount > 1 ? ` · ${job.batchCount} kayıt birlikte` : ''}</small><span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
               <td><span className={`jobs-reference-status ${jobStateTone(job)}`}><JobStateGlyph tone={jobStateTone(job)} />{jobStateLabel(job)}</span></td>
               <td className="jobs-reference-attempt">{jobAttemptsText(job)}</td>
@@ -623,13 +625,13 @@ export function JobsPage({ me }: { me: Me }) {
               <td><span className="jobs-reference-correlation">{job.correlationId}</span></td>
             </tr>
           })}
-          {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>{moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.'}</td></tr>}
+          {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={5}>{moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.'}</td></tr>}
         </tbody></table></div>
         {(filtered.length > 0 || moreOnServer) && <div className="jobs-reference-pagination"><strong>{moreOnServer ? `${filtered.length.toLocaleString('tr-TR')} kayıt yüklendi, daha eskileri var` : `Toplam ${filtered.length.toLocaleString('tr-TR')} kayıt`}</strong><div className="jobs-reference-pagination-actions">{moreOnServer && <Button variant="secondary" className="jobs-reference-load-more" loading={list.isFetchingNextPage} onClick={() => void loadMoreJobs()}>Daha Fazla Yükle</Button>}<Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} hasNext={currentPage < totalPages || moreOnServer} disabled={list.isFetchingNextPage} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={goToNextPage} /></div></div>}
       </>}
       </>}
     </div>
-     {selectedId && <JobDetailDrawer selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}
+     {selectedId && <JobDetailDrawer key={selectedId} selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}
      {feedback && <NoticeToast key={`${feedback.tone}:${feedback.message}`} kind={feedback.tone === 'danger' ? 'error' : feedback.tone} title={feedback.context?.title} message={feedback.message} onClose={() => setFeedback(null)} durationMs={5500} />}
   </section>
 }

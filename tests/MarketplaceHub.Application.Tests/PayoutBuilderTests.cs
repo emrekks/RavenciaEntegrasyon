@@ -138,6 +138,27 @@ public sealed class PayoutBuilderTests
     }
 
     [Fact]
+    public void A_pazarama_row_with_no_state_word_is_expected_until_its_day_has_passed()
+    {
+        var row = new PayoutRow
+        {
+            ConnectionId = Store,
+            PlatformCode = "PAZARAMA",
+            Source = PazaramaFinanceSyncJobHandler.Source,
+            ExternalId = "p2",
+            RequestedType = PazaramaFinanceSyncJobHandler.RequestedType,
+            TransactionType = "Satış",
+            Category = MarketplaceFinanceCategories.Sale,
+            Credit = 100m,
+            PaymentDate = Due(Today)
+        };
+        Assert.Equal(PayoutBuilder.Expected, PayoutBuilder.Status(row, Today));
+        Assert.Equal(PayoutBuilder.Expected, PayoutBuilder.Status(row with { TransactionType = "İade", PaymentDate = Due(Today.AddDays(3)) }, Today));
+        Assert.Equal(PayoutBuilder.Unknown, PayoutBuilder.Status(row with { PaymentDate = Due(Today.AddDays(-1)) }, Today));
+        Assert.Equal(PayoutBuilder.Unknown, PayoutBuilder.Status(row with { PaymentDate = null }, Today));
+    }
+
+    [Fact]
     public void A_due_day_is_the_istanbul_calendar_day()
     {
         Assert.Equal(new DateTimeOffset(2026, 11, 3, 21, 0, 0, TimeSpan.Zero), PayoutBuilder.DayStart(Today));

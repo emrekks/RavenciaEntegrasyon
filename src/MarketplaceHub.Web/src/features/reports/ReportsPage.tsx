@@ -1736,7 +1736,7 @@ function statementRows(costs: ReportCosts): CostLine[] {
 // Fatura: the packages by invoice state as one bar beside each platform's counts.
 function Invoices({ data }: { data: ReportSales }) {
   const total = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
-  const tone = (key: string) => key === 'INVOICED' ? 'left' : key === 'NOT_INVOICED' ? 'returned' : 'fees'
+  const tone = (key: string) => key === 'INVOICED' ? 'left' : key === 'NOT_INVOICED' ? 'returned' : key === 'RETURNED' ? 'cargo' : 'fees'
   const parts: Part[] = data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, tone: tone(bucket.key) }))
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="Faturanın göstergeleri" items={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, format: formatCount,
@@ -1749,11 +1749,12 @@ Toplam tutarları ${formatTl(bucket.amount)}.`, tone: bucket.key === 'NOT_INVOIC
       </> : <p className="reports-empty">Bu dönemde paket yok.</p>}
     </RevealPanel>
     <div><DataTable title="Platformlara Göre Fatura Durumu" csvName="rapor-fatura" rows={data.invoices.platforms} rowKey={row => row.platformCode} initialSort="invoiced"
-      footer={data.invoices.platforms.length > 1 && <tr><td>Toplam</td>{(['invoiced', 'notInvoiced', 'unknown'] as const).map(key => <td key={key} className="is-num">{formatCount(data.invoices.platforms.reduce((sum, row) => sum + row[key], 0))}</td>)}</tr>}
+      footer={data.invoices.platforms.length > 1 && <tr><td>Toplam</td>{(['invoiced', 'notInvoiced', 'returned', 'unknown'] as const).map(key => <td key={key} className="is-num">{formatCount(data.invoices.platforms.reduce((sum, row) => sum + row[key], 0))}</td>)}</tr>}
       columns={[
       { key: 'platform', header: 'Platform', value: row => platformName(row.platformCode) },
       { key: 'invoiced', header: 'Faturalı', value: row => row.invoiced, render: row => formatCount(row.invoiced), numeric: true },
       { key: 'notInvoiced', header: 'Faturasız', value: row => row.notInvoiced, render: row => formatCount(row.notInvoiced), numeric: true },
+      { key: 'returned', header: 'İade – Fatura Gerekmez', value: row => row.returned, render: row => formatCount(row.returned), numeric: true },
       { key: 'unknown', header: unknownLabel, value: row => row.unknown, render: row => formatCount(row.unknown), numeric: true }
     ]} empty="Bu dönemde paket yok." /></div>
   </div>

@@ -701,17 +701,30 @@ internal static class ReportBuilder
                 : "UNKNOWN"
         };
 
+    internal const string ReturnedInvoiceLabel = "İade – Fatura Gerekmez";
+
+    // A package not invoiced whose package came back (Returned) or whose order came back in full needs no invoice (the
+    // invoice page's "İade edildi, fatura kesilmez", InvoiceSaleReturnPolicy): its own bucket, not "Faturasız". A
+    // partly returned order is still invoiced for its kept units; an invoice already issued stays Faturalı.
+    internal static string ReportedInvoiceBucket(ReportPackageRow package, OrderFact order)
+    {
+        var bucket = InvoiceBucket(package);
+        if (bucket != "NOT_INVOICED") return bucket;
+        var fullyReturned = order.Lines.Any(x => x.Active > 0) && order.Lines.Where(x => x.Active > 0).All(x => x.Back >= x.Active);
+        return package.Status == ShipmentPackageStatus.Returned || fullyReturned ? "RETURNED" : bucket;
+    }
+
     private static ReportInvoiceView Invoices(IReadOnlyList<OrderFact> orders, IReadOnlyList<ReportPackageRow> packages)
     {
         var byOrder = orders.ToDictionary(x => x.Order.Id);
         var rows = packages.Where(x => x.Status != ShipmentPackageStatus.Cancelled && byOrder.ContainsKey(x.OrderId))
-            .Select(x => (Package: x, Order: byOrder[x.OrderId], Bucket: InvoiceBucket(x))).ToList();
-        var labels = new[] { ("INVOICED", "Faturalı"), ("NOT_INVOICED", "Faturasız"), ("UNKNOWN", Unknown) };
+            .Select(x => (Package: x, Order: byOrder[x.OrderId], Bucket: ReportedInvoiceBucket(x, byOrder[x.OrderId]))).ToList();
+        var labels = new[] { ("INVOICED", "Faturalı"), ("NOT_INVOICED", "Faturasız"), ("RETURNED", ReturnedInvoiceLabel), ("UNKNOWN", Unknown) };
         var buckets = labels.Select(item => new ReportInvoiceBucketView(item.Item1, item.Item2, rows.Count(x => x.Bucket == item.Item1),
             Math.Round(rows.Where(x => x.Bucket == item.Item1 && x.Order.Currency == Try).Sum(x => x.Package.Amount), 2))).ToList();
         var platforms = rows.GroupBy(x => x.Order.PlatformCode, StringComparer.Ordinal)
-            .Select(group => new ReportInvoicePlatformView(group.Key, group.Count(x => x.Bucket == "INVOICED"), group.Count(x => x.Bucket == "NOT_INVOICED"), group.Count(x => x.Bucket == "UNKNOWN")))
-            .OrderByDescending(x => x.Invoiced + x.NotInvoiced + x.Unknown).ToList();
+            .Select(group => new ReportInvoicePlatformView(group.Key, group.Count(x => x.Bucket == "INVOICED"), group.Count(x => x.Bucket == "NOT_INVOICED"), group.Count(x => x.Bucket == "UNKNOWN"), group.Count(x => x.Bucket == "RETURNED")))
+            .OrderByDescending(x => x.Invoiced + x.NotInvoiced + x.Unknown + x.Returned).ToList();
         return new(buckets, platforms);
     }
 
