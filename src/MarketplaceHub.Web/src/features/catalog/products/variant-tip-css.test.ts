@@ -4,6 +4,15 @@ import { describe, expect, it } from 'vitest'
 const fs = (globalThis as unknown as { process: { getBuiltinModule(name: string): unknown } }).process.getBuiltinModule('node:fs') as { readFileSync(path: URL, encoding: 'utf8'): string }
 const read = (path: string) => fs.readFileSync(new URL(path, import.meta.url), 'utf8')
 
+describe('variant tip stacking', () => {
+  it('is shown in the top layer, so no sticky card, tab bar or sidebar can cover or clip it', () => {
+    expect(read('../products-sade.css')).toContain('.rr-vhover > .rr-vtip:popover-open { display: grid; }')
+    const page = read('./ProductsPage.tsx')
+    expect(page).toContain("tip.setAttribute('popover', 'manual')")
+    expect(page).toContain('tip.showPopover()')
+  })
+})
+
 describe('variant tip on the product list', () => {
   it('is not scaled by the press motion, which would move its fixed tooltip while held', () => {
     const rule = read('../../../styles/motion.css').split('\n').find(line => line.includes('[role="button"]') && line.includes(':active'))
