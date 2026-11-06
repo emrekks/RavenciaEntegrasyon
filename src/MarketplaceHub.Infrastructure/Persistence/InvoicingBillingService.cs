@@ -348,7 +348,7 @@ public sealed partial class InvoicingBillingService(
                     else
                     {
                         if (IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))) selectedUninvoiced++;
-                        else selectedInvoiced++;
+                        else if (!candidate.FullyReturnedWithoutInvoice) selectedInvoiced++;
                         if (candidate.IsDueSoon) selectedDueSoon++;
                     }
                 }
@@ -531,6 +531,9 @@ public sealed partial class InvoicingBillingService(
         var invoicesByOrder = invoices.Where(invoice => !invoice.PackageId.HasValue)
             .GroupBy(invoice => invoice.OrderId)
             .ToDictionary(group => group.Key, group => group.First());
+        // Owner's rule of 6 Nov 2026: an order whose every unit came back gets no sale invoice and leaves the lists of
+        // work; a partly returned one stays, invoiced for its kept units (InvoiceSaleReturns).
+        var returnStates = await InvoiceSaleReturns.StatesAsync(db, tenantId, orderIds, cancellationToken);
 
         return sourceRows.Select(source =>
         {
@@ -546,7 +549,8 @@ public sealed partial class InvoicingBillingService(
                 HasConfirmedHistoricalAttempt = packageDeliveryAttempts.Any(attempt => attempt.InvoiceId == selectedInvoice.Id
                     && attempt.PackageId == package.Id && attempt.Status == "CONFIRMED")
             };
-            var invoiceStatus = WorkspaceInvoiceStatus(package, order, invoice, connection);
+            var returnState = returnStates.GetValueOrDefault(order.Id);
+            var invoiceStatus = WorkspaceInvoiceStatus(package, order, invoice, connection, returnState?.Scope == InvoiceSaleReturnScope.Full);
             var deliveredAt = package.Status == ShipmentPackageStatus.Delivered ? package.StatusOccurredAt : (DateTimeOffset?)null;
             var dueSoon = MarketplaceSalesService.IsAwaitingInvoiceLabel(invoiceStatus) && deliveredAt is not null
                 && now >= deliveredAt.Value.AddDays(DashboardMetricPolicy.InvoiceReminderStartDays);
@@ -562,9 +566,13 @@ public sealed partial class InvoicingBillingService(
                 deliveredAt?.AddDays(DashboardMetricPolicy.InvoiceDueDays),
                 0m,
                 includeCustomerName ? InvoiceWorkspaceCustomerName(order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, order.ShipmentAddressSnapshotJson) : string.Empty,
-                connection.InvoiceCreationEnabled);
+                connection.InvoiceCreationEnabled,
+                returnState);
         }).ToList();
     }
+
+    // The label of a package whose order came back in full and holds no invoice: no sale invoice is due for it.
+    internal const string FullyReturnedNoInvoiceLabel = "IADE_EDILDI_FATURA_KESILMEZ";
 
     private async Task<IReadOnlyDictionary<Guid, WorkspaceConnectionProjection>> ReadWorkspaceConnectionsAsync(
         Guid tenantId,
@@ -592,7 +600,9 @@ public sealed partial class InvoicingBillingService(
         {
             "ALL" => !isHidden,
             "HIDDEN" => isHidden,
-            "INVOICED" => !isHidden && !IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate)),
+            // An order returned in full holds no invoice and needs none: it is in neither list of work, only under All.
+            "INVOICED" => !isHidden && !candidate.FullyReturnedWithoutInvoice
+                && !IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate)),
             "DUE_SOON" => !isHidden && candidate.IsDueSoon,
             _ => !isHidden && IsWorkspaceInvoiceUninvoiced(candidate.InvoiceStatus, candidate.CanCreateInvoice, HasMarketplaceInvoiceObservation(candidate))
         };
@@ -751,6 +761,7 @@ public sealed partial class InvoicingBillingService(
             var orderLines = (linesByOrder.GetValueOrDefault(candidate.Order.Id) ?? [])
                 .Where(line => OrderLinePresentationPolicy.HasActiveQuantity(line.OrderedQuantity, line.CancelledQuantity))
                 .ToList();
+            var returnedByLine = candidate.ReturnState?.ReturnedByLine;
             var workspaceLines = orderLines.Select(line => new InvoiceWorkspaceLineView(
                 line.Sku,
                 line.Barcode,
@@ -758,7 +769,9 @@ public sealed partial class InvoicingBillingService(
                 OrderLinePresentationPolicy.ActiveQuantity(line.OrderedQuantity, line.CancelledQuantity),
                 line.UnitPrice,
                 line.VatRate,
-                WorkspaceLineImage(catalog, line))).ToList();
+                WorkspaceLineImage(catalog, line),
+                returnedByLine?.GetValueOrDefault(line.Id) ?? 0m)).ToList();
+            var (saleReturnScope, saleReturnNote) = WorkspaceSaleReturn(candidate, workspaceLines);
             var primaryImage = workspaceLines.Select(line => line.ImageUrl).FirstOrDefault(url => !string.IsNullOrWhiteSpace(url));
             var deliveryState = candidate.Invoice is null ? null : deliveryStates
                 .Where(state => state.InvoiceId == candidate.Invoice.Id && state.PackageId == candidate.Package.Id).OrderByDescending(state => state.UpdatedAt).FirstOrDefault();
@@ -849,8 +862,25 @@ public sealed partial class InvoicingBillingService(
                 orderSnapshotsForItem?.ExternalOrderId,
                 packageDetailsForItem?.ExternalPackageId ?? candidate.Package.ExternalPackageId,
                 candidate.Invoice is null ? null : deliveryRetries.GetValueOrDefault(candidate.Invoice.Id)?.View,
-                candidate.Invoice is null ? null : returnDocumentNotes.GetValueOrDefault(candidate.Invoice.Id));
+                candidate.Invoice is null ? null : returnDocumentNotes.GetValueOrDefault(candidate.Invoice.Id),
+                saleReturnScope,
+                saleReturnNote);
         }).ToList();
+    }
+
+    // What the returns mean for an order no invoice was issued for yet (owner's rule of 6 Nov 2026): every unit back,
+    // no sale invoice; some back, the invoice leaves them out. An issued invoice, or one the marketplace already holds,
+    // is not touched by it (its returns get the "İade Belgesi Gerekli" note instead).
+    private static (string? Scope, string? Note) WorkspaceSaleReturn(WorkspaceCandidate candidate, IReadOnlyList<InvoiceWorkspaceLineView> lines)
+    {
+        if (candidate.ReturnState is not { } state || state.Scope == InvoiceSaleReturnScope.None) return (null, null);
+        var issued = candidate.Invoice is { } invoice && (!string.IsNullOrWhiteSpace(invoice.ExternalReference) || !string.IsNullOrWhiteSpace(invoice.InvoiceNumber));
+        if (issued || HasMarketplaceInvoiceObservation(candidate)) return (null, null);
+        if (state.Scope == InvoiceSaleReturnScope.Full) return ("FULL", InvoiceSaleReturnPolicy.FullyReturnedMessage);
+        var returned = lines.Where(line => line.ReturnedQuantity > 0)
+            .Select(line => string.Create(CultureInfo.GetCultureInfo("tr-TR"), $"{line.Description} ({line.ReturnedQuantity:0.##} adet)"))
+            .ToList();
+        return ("PARTIAL", $"İade edilen ürünler faturaya girmez: {string.Join(", ", returned)}.");
     }
 
     private static InvoiceWorkspacePageView EmptyWorkspacePage(int pageNumber, int pageSize) =>
@@ -871,12 +901,17 @@ public sealed partial class InvoicingBillingService(
         WorkspacePackageProjection package,
         WorkspaceOrderProjection order,
         WorkspaceInvoiceProjection? invoice,
-        WorkspaceConnectionProjection connection)
+        WorkspaceConnectionProjection connection,
+        bool fullyReturned = false)
     {
         if (MarketplaceSalesService.ManualInvoiceLabel(package.ManualInvoiceStatus) is { } manual) return manual;
 
         if (invoice is null)
         {
+            // Every unit came back and nothing was invoiced: no sale invoice is due (owner's rule of 6 Nov 2026). An
+            // invoice the marketplace already holds keeps its own label.
+            if (fullyReturned && package.MarketplaceInvoiceStatus is not (MarketplaceInvoiceStatus.Invoiced or MarketplaceInvoiceStatus.Received))
+                return FullyReturnedNoInvoiceLabel;
             switch (package.MarketplaceInvoiceStatus)
             {
                 case MarketplaceInvoiceStatus.Invoiced: return "FATURA_KONTROLDE";
@@ -976,9 +1011,10 @@ public sealed partial class InvoicingBillingService(
     private sealed record WorkspaceCandidate(
         WorkspacePackageProjection Package, WorkspaceOrderProjection Order, WorkspaceConnectionProjection Connection,
         WorkspaceInvoiceProjection? Invoice, string InvoiceStatus, bool CanCreateInvoice, bool IsDueSoon, DateTimeOffset? DeliveredAt,
-        DateTimeOffset? InvoiceDueAt, decimal Amount, string CustomerName, bool InvoiceCreationEnabled)
+        DateTimeOffset? InvoiceDueAt, decimal Amount, string CustomerName, bool InvoiceCreationEnabled, InvoiceSaleReturnState? ReturnState = null)
     {
         public string? InvoiceNumber => ResolveInvoiceNumber(Invoice?.InvoiceNumber, Package.MarketplaceInvoiceNumber);
+        public bool FullyReturnedWithoutInvoice => InvoiceStatus == FullyReturnedNoInvoiceLabel;
     }
 
     // The order line's photo, found as on the order screens (OrderLineCatalog): the panel's own photo first, it does not
@@ -1048,7 +1084,7 @@ public sealed partial class InvoicingBillingService(
         return AddressName(shipmentAddress.RootElement) ?? "—";
     }
 
-    private const string SaleInvoiceStatusBlockedMessage = "İade edilmiş, teslim edilememiş veya ödemesi beklenen sipariş/paket için satış faturası oluşturulmaz. Sipariş durumunu pazaryerinde kontrol edin.";
+    private const string SaleInvoiceStatusBlockedMessage = "Teslim edilememiş veya ödemesi beklenen sipariş/paket için satış faturası oluşturulmaz. Sipariş durumunu pazaryerinde kontrol edin.";
 
     public async Task<ServiceResult<InvoiceDetailView>> CreateDraftAsync(Guid tenantId, CreateInvoiceCommand command, string idempotencyKey, CancellationToken cancellationToken)
     {
@@ -1170,9 +1206,20 @@ public sealed partial class InvoicingBillingService(
             if (!TryResolveWholeOrderInvoiceLines(orderLines, allocations, activePackagesForOrder.Select(item => item.Id).ToArray(), out orderLines, out var allocationError))
                 return ServiceResult<InvoiceDetailView>.Fail("INVOICE_PACKAGE_LINE_ALLOCATION_INVALID", allocationError!, 422);
         }
+        // Owner's rule of 6 Nov 2026: returned units never go on a sale invoice. An order whose every unit came back gets
+        // none; a partly returned one is invoiced for the units kept (InvoiceSaleReturns).
+        IReadOnlyDictionary<Guid, decimal> returnedUnits = new Dictionary<Guid, decimal>();
+        if (command.OriginalInvoiceId is null)
+        {
+            returnedUnits = await InvoiceSaleReturns.ReturnedUnitsAsync(db, tenantId, order.Id, cancellationToken);
+            if (InvoiceSaleReturnPolicy.Classify(InvoiceSaleReturns.Units(orderLines, returnedUnits)) == InvoiceSaleReturnScope.Full)
+                return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.OrderFullyReturned);
+        }
+        var invoicedLines = orderLines.Where(line => line.OrderedQuantity - line.CancelledQuantity - returnedUnits.GetValueOrDefault(line.Id) > 0
+            || packageQuantities is not null).ToList();
         // A line the marketplace reported no VAT rate for takes its product card's rate; with neither, nothing is issued.
-        var lineVatRates = await InvoiceLineVatRates.ResolveAsync(db, tenantId, orderPlatform, order.ConnectionId, orderLines, cancellationToken);
-        if (!InvoiceLineVatRates.TryApply(orderLines, lineVatRates, out var vatRates))
+        var lineVatRates = await InvoiceLineVatRates.ResolveAsync(db, tenantId, orderPlatform, order.ConnectionId, invoicedLines, cancellationToken);
+        if (!InvoiceLineVatRates.TryApply(invoicedLines, lineVatRates, out var vatRates))
             return Refuse<InvoiceDetailView>(InvoiceIssuePolicy.LineVatRateUnknownFor(orderPlatform));
         var now = timeProvider.GetUtcNow(); var invoice = new Invoice
         {
@@ -1219,13 +1266,18 @@ public sealed partial class InvoicingBillingService(
         {
             return Invalid<InvoiceDetailView>("orderId", "Sipariş toplamı ve paket toplamları doğrulanamadı; mali fatura kesilmeden önce siparişi yeniden eşitleyin.");
         }
-        var sourceLines = orderLines.Select(line => new InvoicePackageLineSource(
-            line.Id,
-            line.TitleSnapshot,
-            line.Sku,
-            packageQuantities?.GetValueOrDefault(line.Id) ?? line.OrderedQuantity - line.CancelledQuantity,
-            line.UnitPrice,
-            vatRates[line.Id])).ToArray();
+        IReadOnlyList<InvoicePackageLineSource> sourceLines;
+        if (packageQuantities is null)
+        {
+            var plan = InvoiceSaleReturns.Plan(orderLines, returnedUnits, line => vatRates[line.Id], new(packageGrossAmount, packageDiscountAmount, remotePayable));
+            sourceLines = plan.Lines;
+            (packageGrossAmount, packageDiscountAmount, remotePayable) = (plan.Totals.GrossAmount, plan.Totals.DiscountAmount, plan.Totals.PayableAmount);
+        }
+        else
+        {
+            sourceLines = orderLines.Select(line => new InvoicePackageLineSource(line.Id, line.TitleSnapshot, line.Sku,
+                packageQuantities.GetValueOrDefault(line.Id), line.UnitPrice, vatRates[line.Id])).ToArray();
+        }
         if (!InvoiceAmounts.TryCalculatePackage(sourceLines, packageGrossAmount, packageDiscountAmount, remotePayable, out var amounts, out var calculationError))
             return Invalid<InvoiceDetailView>("orderId", calculationError ?? "Fatura kalemleri paket tutarıyla uyuşmuyor.");
         var lines = amounts!.Lines.Select((line, index) => new InvoiceLine
@@ -1964,6 +2016,12 @@ public sealed partial class InvoicingBillingService(
         return true;
     }
 
+    // The latest allocation event of each package line (the one with the highest event sequence).
+    internal static PackageLineAllocation[] LatestAllocations(IEnumerable<PackageLineAllocation> allocationEvents) => allocationEvents
+        .GroupBy(item => new { item.PackageId, item.OrderLineId })
+        .Select(group => group.OrderByDescending(item => EventSequence(item.SourceEventId))
+            .ThenByDescending(item => item.SourceEventId, StringComparer.Ordinal).First()).ToArray();
+
     internal static bool TryResolveWholeOrderInvoiceLines(
         IReadOnlyList<OrderLine> sourceLines,
         IReadOnlyList<PackageLineAllocation> allocationEvents,
@@ -1981,10 +2039,7 @@ public sealed partial class InvoicingBillingService(
         }
 
         var activeIds = activePackageIds.ToHashSet();
-        var latest = allocationEvents.Where(item => activeIds.Contains(item.PackageId))
-            .GroupBy(item => new { item.PackageId, item.OrderLineId })
-            .Select(group => group.OrderByDescending(item => EventSequence(item.SourceEventId))
-                .ThenByDescending(item => item.SourceEventId, StringComparer.Ordinal).First()).ToArray();
+        var latest = LatestAllocations(allocationEvents.Where(item => activeIds.Contains(item.PackageId)));
         if (latest.Any(item => !remainingByLine.ContainsKey(item.OrderLineId)
             || item.AllocatedQuantity < 0 || item.AllocatedQuantity > remainingByLine.GetValueOrDefault(item.OrderLineId)))
         {
@@ -2031,6 +2086,9 @@ public sealed partial class InvoicingBillingService(
             .Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
         if (await InvoicePreIssueCheck.HasUnreadableLinesAsync(db, tenantId, invoice.OrderId, cancellationToken))
             return InvoiceIssuePolicy.OrderLineUnreadableFor(platformCode);
+        if (invoice.SequencePurpose == "SALE" && invoice.OriginalInvoiceId is null
+            && await InvoicePreIssueCheck.IsFullyReturnedAsync(db, tenantId, invoice.OrderId, cancellationToken))
+            return InvoiceIssuePolicy.OrderFullyReturned;
         var recipient = await EInvoiceRecipientResolver.ResolveAsync(invoiceProvider,
             new AdapterContext(tenantId, invoice.ProviderConnectionId, "invoice-submit-gate", $"invoice-submit-gate:{invoice.Id:N}", timeProvider.GetUtcNow().AddMinutes(1)),
             platformCode, order.CustomerSnapshotJson, order.InvoiceAddressSnapshotJson, fresh: false, cancellationToken);

@@ -465,7 +465,12 @@ public sealed record InvoiceWorkspacePreviewItem(
     string? TaxpayerTitle = null,
     string? TargetAlias = null,
     // Why the E-Arşiv internet sale info cannot be added yet (report item 18); the option is then off. Null when it can.
-    string? InternetSalesInfoBlockedReason = null);
+    string? InternetSalesInfoBlockedReason = null,
+    // The returned units the invoice leaves out (owner's rule of 6 Nov 2026): a line returned in part is invoiced for
+    // its kept units, one returned in full is not on the invoice. Empty when nothing was returned.
+    IReadOnlyList<InvoiceWorkspacePreviewReturnedLine>? ReturnedLines = null);
+// A line of the order whose returned units the sale invoice leaves out: Quantity units ordered, ReturnedQuantity back.
+public sealed record InvoiceWorkspacePreviewReturnedLine(string Description, string? Sku, decimal Quantity, decimal ReturnedQuantity);
 public sealed record InvoiceWorkspaceConfirmResult(IReadOnlyList<InvoiceWorkspaceConfirmItemResult> Items);
 public sealed record InvoiceWorkspaceConfirmItemResult(Guid PackageId, Guid? InvoiceId, Guid? JobId, string Status, string Action, string Message);
 public sealed record InvoiceListView(Guid Id, string OrderNumber, string InvoiceType, string Status, string Currency, decimal PayableTotal, string? InvoiceNumber, DateTimeOffset? DueAt, DateTimeOffset CreatedAt, long Version);
@@ -524,7 +529,12 @@ public sealed record InvoiceWorkspaceItemView(
     InvoiceDeliveryRetryView? DeliveryRetry = null,
     // "İade Belgesi Gerekli": lines of the issued invoice were returned (a partial return); the invoice is still
     // delivered, the returned lines need a return document. Null when nothing is due (InvoiceAdjustmentTracking).
-    string? ReturnDocumentNote = null);
+    string? ReturnDocumentNote = null,
+    // How much of the order came back before it was invoiced (owner's rule of 6 Nov 2026): FULL (no sale invoice is
+    // issued, SaleReturnNote says why), PARTIAL (the invoice leaves the returned units out, see Lines' ReturnedQuantity);
+    // null when nothing came back.
+    string? SaleReturnScope = null,
+    string? SaleReturnNote = null);
 
 public sealed record MarketplaceInvoiceReferenceHistoryView(
     string? InvoiceNumber,
@@ -570,7 +580,8 @@ public static class InvoiceWorkspaceActionPolicy
     }
 }
 
-public sealed record InvoiceWorkspaceLineView(string Sku, string? Barcode, string Description, decimal Quantity, decimal UnitPrice, decimal VatRate, string? ImageUrl);
+// ReturnedQuantity: the line's units that came back (InvoiceSaleReturns); a sale invoice not issued yet leaves them out.
+public sealed record InvoiceWorkspaceLineView(string Sku, string? Barcode, string Description, decimal Quantity, decimal UnitPrice, decimal VatRate, string? ImageUrl, decimal ReturnedQuantity = 0m);
 public sealed record InvoiceWorkspaceSummaryView(int DueSoonCount, int UninvoicedCount = 0);
 public sealed record InvoiceWorkspacePageQuery(
     int PageNumber = 1,

@@ -122,6 +122,9 @@ function normalizedStatus(value: string) {
 
 export type InvoiceStatusTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger'
 
+// The workspace label of a package whose order came back in full before it was invoiced (InvoicingBillingService.FullyReturnedNoInvoiceLabel).
+export const fullyReturnedNoInvoiceStatus = 'IADE_EDILDI_FATURA_KESILMEZ'
+
 export function invoiceStatusLabel(value: string | null | undefined) {
   const normalized = value?.trim().toUpperCase() ?? ''
   // An n11 / PTT AVM / Pazarama state the marketplace cannot verify waits for an invoice like any not-invoiced one.
@@ -138,6 +141,8 @@ export function invoiceStatusLabel(value: string | null | undefined) {
   // Issued at E-Faturam and stopped for review (the marketplace may already show an invoice): not a refusal.
   if (normalized === 'FATURA_INCELEME_GEREKLI') return 'İnceleme Gerekli'
   if (['ADJUSTMENT_REQUIRED', 'FATURA_DUZELTME_GEREKLI'].includes(normalized)) return 'Fatura Düzeltme Gerekli'
+  // Every unit came back before an invoice was issued: no sale invoice is due (owner's rule of 6 Nov 2026).
+  if (normalized === fullyReturnedNoInvoiceStatus) return 'İade Edildi, Fatura Kesilmez'
   if (['FATURA_REDDEDILDI', 'REJECTED', 'VALIDATION_FAILED', 'MANUAL_REVIEW'].includes(normalized)) return 'Fatura Oluşturulamadı'
   if (['FATURA_IPTAL', 'CANCELLED', 'CANCELLED_LOCAL'].includes(normalized)) return 'Fatura İptal'
   return 'Fatura durumu bilinmiyor'

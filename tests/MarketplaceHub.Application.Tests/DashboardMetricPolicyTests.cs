@@ -79,28 +79,29 @@ public sealed class DashboardMetricPolicyTests
 
     [Theory]
     [InlineData("CANCELLED")]
-    [InlineData("returned")]
     [InlineData(" UNDELIVERED ")]
     [InlineData("PAYMENT_PENDING")]
-    public void ReturnedUndeliveredAndUnpaidOrdersGetNoNewSaleInvoice(string status) => Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedOrder(status));
+    public void CancelledUndeliveredAndUnpaidOrdersGetNoNewSaleInvoice(string status) => Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedOrder(status));
 
     [Theory]
     [InlineData("NEW")]
     [InlineData("SHIPPED")]
     [InlineData("DELIVERED")]
+    // A returned order is no status gate since 6 Nov 2026: its returned units decide (InvoiceSaleReturnPolicy).
+    [InlineData("returned")]
     [InlineData(null)]
     public void LiveOrdersCanGetASaleInvoice(string? status) => Assert.False(DashboardMetricPolicy.IsSaleInvoiceBlockedOrder(status));
 
     [Theory]
     [InlineData(ShipmentPackageStatus.Cancelled)]
-    [InlineData(ShipmentPackageStatus.Returned)]
     [InlineData(ShipmentPackageStatus.Undelivered)]
     [InlineData(ShipmentPackageStatus.PaymentPending)]
-    public void ReturnedUndeliveredAndUnpaidPackagesGetNoNewSaleInvoice(ShipmentPackageStatus status) => Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(status));
+    public void CancelledUndeliveredAndUnpaidPackagesGetNoNewSaleInvoice(ShipmentPackageStatus status) => Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(status));
 
     [Theory]
     [InlineData(ShipmentPackageStatus.New)]
     [InlineData(ShipmentPackageStatus.Shipped)]
     [InlineData(ShipmentPackageStatus.Delivered)]
+    [InlineData(ShipmentPackageStatus.Returned)]
     public void LivePackagesCanGetASaleInvoice(ShipmentPackageStatus status) => Assert.False(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(status));
 }

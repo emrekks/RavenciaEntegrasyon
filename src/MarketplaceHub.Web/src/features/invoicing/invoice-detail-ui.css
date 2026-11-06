@@ -32,3 +32,9 @@
 .app-shell main .invoice-delivery-retry > button { flex: none; height: 36px; min-height: 0; padding: 0 12px; border-radius: 7px; }
 .invoice-reference-status > .invoice-delivery-retry-note { display: block; color: var(--rv-color-muted); font-size: 12px; line-height: 1.35; }
 .invoice-reference-status > .invoice-return-document-note { display: block; color: var(--rv-color-ink); font-size: 12px; font-weight: 600; line-height: 1.35; }
+/* Returns before the order was invoiced (6 Nov 2026): the returned units of a line, and the preview's list of what the
+   invoice leaves out. */
+.invoice-line-returned { display: block; color: var(--rv-color-warning); font-weight: 600; }
+.invoice-workspace-preview-returned { margin: 0; padding: 10px 12px; color: var(--rv-color-muted); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; line-height: 1.5; }
+.invoice-workspace-preview-returned strong { color: var(--rv-color-ink); font-weight: 600; }
+.invoice-workspace-preview-returned ul { margin: 4px 0 0; padding-left: 18px; }

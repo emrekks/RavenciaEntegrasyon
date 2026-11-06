@@ -88,15 +88,7 @@ internal static class InvoiceAdjustmentTracking
     // cancelled or still waiting line does not.
     private static async Task<(InvoiceReturnScope Scope, IReadOnlyList<string> Titles)> ReturnScopeAsync(AppDbContext db, Guid tenantId, Guid invoiceId, Guid orderId, CancellationToken cancellationToken)
     {
-        var returnLines = await (from line in db.ReturnLines.AsNoTracking()
-                                 join claim in db.ReturnClaims.AsNoTracking() on new { line.TenantId, Id = line.ClaimId } equals new { claim.TenantId, claim.Id }
-                                 where claim.TenantId == tenantId && claim.OrderId == orderId && claim.Status != ReturnClaimStatus.Cancelled
-                                 select new { line.OrderLineId, line.Quantity, line.RawStatus, ClaimStatus = claim.Status })
-            .ToListAsync(cancellationToken);
-        var returned = returnLines
-            .Where(line => ReturnDecisionLinePolicy.StockDispositionAllowed(line.ClaimStatus, line.RawStatus))
-            .GroupBy(line => line.OrderLineId)
-            .ToDictionary(group => group.Key, group => group.Sum(line => line.Quantity));
+        var returned = await InvoiceSaleReturns.ApprovedClaimQuantitiesAsync(db, tenantId, [orderId], cancellationToken);
         if (returned.Count == 0) return (InvoiceReturnScope.None, []);
         var invoiceLines = await db.InvoiceLines.AsNoTracking()
             .Where(line => line.TenantId == tenantId && line.InvoiceId == invoiceId)

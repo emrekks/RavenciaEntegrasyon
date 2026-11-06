@@ -699,7 +699,9 @@ public sealed class PttAvmAdapterTests
 
         Assert.Equal(TrendyolShipmentPackageStatusPolicy.FromRemote("UnDeliveredAndReturned"), ptt);
         Assert.Equal(ShipmentPackageStatus.Returned, ptt);
-        Assert.True(DashboardMetricPolicy.IsSaleInvoiceBlockedPackage(ptt));
+        // Its only package back with the sender returned every unit: no sale invoice (InvoiceSaleReturnPolicy, 6 Nov 2026).
+        Assert.Equal(InvoiceSaleReturnScope.Full, InvoiceSaleReturnPolicy.Classify(
+            [new InvoiceLineUnits(Guid.NewGuid(), 100m, 1m, OrderLineReturnPolicy.ReturnedUnits(1m, orderReturned: ptt == ShipmentPackageStatus.Returned))]));
         var ordered = new DateTimeOffset(2026, 10, 21, 9, 0, 0, TimeSpan.Zero);
         Assert.True(PttAvmOrderMapper.StatusObservedAt(ordered, "UndeliveredAndReturned") > PttAvmOrderMapper.StatusObservedAt(ordered, "Undelivered"));
     }

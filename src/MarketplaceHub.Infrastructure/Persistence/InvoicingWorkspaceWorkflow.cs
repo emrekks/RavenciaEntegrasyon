@@ -273,7 +273,12 @@ public sealed partial class InvoicingBillingService
             .Where(x => x.TenantId == tenantId && activePackageIds.Contains(x.PackageId)).ToListAsync(cancellationToken);
         if (!TryResolveWholeOrderInvoiceLines(sourceLines, allocations, activePackageIds, out var activeLines, out var allocationError))
             return ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_PACKAGE_LINE_ALLOCATION_INVALID", allocationError!, 422);
-        var remainingByLine = sourceLines.ToDictionary(line => line.Id, line => line.OrderedQuantity - line.CancelledQuantity);
+        // Owner's rule of 6 Nov 2026: returned units never go on a sale invoice; an order returned in full gets none.
+        var returnedUnits = await InvoiceSaleReturns.ReturnedUnitsAsync(db, tenantId, order.Id, cancellationToken);
+        var lineUnits = InvoiceSaleReturns.Units(activeLines, returnedUnits);
+        if (InvoiceSaleReturnPolicy.Classify(lineUnits) == InvoiceSaleReturnScope.Full)
+            return ServiceResult<InvoiceWorkspacePreviewItem>.Fail(InvoiceIssuePolicy.OrderFullyReturned.Code, InvoiceIssuePolicy.OrderFullyReturned.Message, 422);
+        var keptLines = activeLines.Zip(lineUnits).Where(pair => pair.Second.KeptQuantity > 0).Select(pair => pair.First).ToList();
 
         var orderInvoices = await db.Invoices.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.OrderId == order.Id && x.OriginalInvoiceId == null && x.SequencePurpose == "SALE")
@@ -287,20 +292,18 @@ public sealed partial class InvoicingBillingService
             order.GrossAmount,
             order.DiscountAmount,
             activePackages.Select(item => new InvoicePackageTotalSource(item.NetAmount, item.GrossAmount, item.DiscountAmount)).ToArray());
-        var packageTotal = orderTotals.PayableAmount;
-        var orderGross = orderTotals.GrossAmount;
-        var orderDiscount = orderTotals.DiscountAmount;
         // A line the marketplace reported no VAT rate for takes its product card's rate (InvoiceLineVatRates); with
-        // neither, the preview still shows the line but cannot be confirmed ("KDV Oranı Bilinmiyor").
-        var lineVatRates = await InvoiceLineVatRates.ResolveAsync(db, tenantId, marketplace.PlatformCode, order.ConnectionId, activeLines, cancellationToken);
-        var vatRateKnown = InvoiceLineVatRates.TryApply(activeLines, lineVatRates, out _);
+        // neither, the preview still shows the line but cannot be confirmed ("KDV Oranı Bilinmiyor"). A line returned
+        // in full is not on the invoice, so its rate does not matter.
+        var lineVatRates = await InvoiceLineVatRates.ResolveAsync(db, tenantId, marketplace.PlatformCode, order.ConnectionId, keptLines, cancellationToken);
+        var vatRateKnown = InvoiceLineVatRates.TryApply(keptLines, lineVatRates, out _);
+        // A partly returned order is invoiced for its kept units, at their share of the order total (InvoiceSaleReturns.Plan).
+        var plan = InvoiceSaleReturns.Plan(activeLines, returnedUnits, line => lineVatRates.GetValueOrDefault(line.Id) ?? line.VatRate, orderTotals);
+        var packageTotal = plan.Totals.PayableAmount;
         // A package holding a product line that could not be read: the preview shows what is known but cannot be
         // confirmed ("Okunamayan Ürün Satırı"); when the known lines do not even add up to the order, that is the reason.
         var unreadableLine = activePackages.Any(item => item.UnreadableLineCount > 0);
-        if (!InvoiceAmounts.TryCalculatePackage(
-            activeLines.Select(line => new InvoicePackageLineSource(line.Id, line.TitleSnapshot, line.Sku,
-                remainingByLine[line.Id], line.UnitPrice, lineVatRates.GetValueOrDefault(line.Id) ?? line.VatRate)).ToArray(),
-            orderGross, orderDiscount, packageTotal, out var calculated, out var calculationError))
+        if (!InvoiceAmounts.TryCalculatePackage(plan.Lines, plan.Totals.GrossAmount, plan.Totals.DiscountAmount, packageTotal, out var calculated, out var calculationError))
             return unreadableLine
                 ? ServiceResult<InvoiceWorkspacePreviewItem>.Fail(InvoiceIssuePolicy.OrderLineUnreadableCode, InvoiceIssuePolicy.OrderLineUnreadableFor(marketplace.PlatformCode).Message, 422)
                 : ServiceResult<InvoiceWorkspacePreviewItem>.Fail("INVOICE_TOTAL_MISMATCH", calculationError ?? "Sipariş ürün toplamı ile sipariş/paket toplamı eşleşmiyor.", 422);
@@ -443,7 +446,7 @@ public sealed partial class InvoicingBillingService
             Marketplace = new { marketplace.PlatformCode, marketplace.Environment, marketplace.SettingsJson },
             Provider = new { provider.PlatformCode, provider.Environment },
             Allocations = allocations.OrderBy(item => item.PackageId).ThenBy(item => item.OrderLineId).ThenBy(item => item.SourceEventId).Select(item => new { item.PackageId, item.OrderLineId, item.AllocatedQuantity, item.SourceEventId }),
-            SourceLines = sourceLines.Select(line => new { line.Id, line.TitleSnapshot, line.Sku, line.OrderedQuantity, line.CancelledQuantity, line.UnitPrice, line.VatRate, InvoicedVatRate = lineVatRates.GetValueOrDefault(line.Id) }),
+            SourceLines = sourceLines.Select(line => new { line.Id, line.TitleSnapshot, line.Sku, line.OrderedQuantity, line.CancelledQuantity, line.UnitPrice, line.VatRate, InvoicedVatRate = lineVatRates.GetValueOrDefault(line.Id), Returned = returnedUnits.GetValueOrDefault(line.Id) }),
             Existing = orderInvoices.Select(item => new { item.Id, item.PackageId, item.Status, item.Version, item.InvoiceNumber, item.ExternalReference, item.LastErrorCode, item.OrderFiscalGuarded }),
             ManualDocument = manualDocument,
             includeInternetSalesInfo,
@@ -474,7 +477,8 @@ public sealed partial class InvoicingBillingService
                 EInvoiceTaxpayerState.Unknown => "UNKNOWN",
                 _ => null
             },
-            recipient.TaxpayerTitle, recipient.TargetAlias, internetSalesInfoBlockedReason);
+            recipient.TaxpayerTitle, recipient.TargetAlias, internetSalesInfoBlockedReason,
+            plan.ReturnedLines.Select(line => new InvoiceWorkspacePreviewReturnedLine(line.Description, line.Sku, line.ActiveQuantity, line.ReturnedQuantity)).ToArray());
         return ServiceResult<InvoiceWorkspacePreviewItem>.Ok(view);
     }
 
