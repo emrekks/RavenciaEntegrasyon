@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, click, render, type } from '../../../test/render'
-import { groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations } from './value-drafts'
+import { groupSavedSelections, rebaseSelections, runInBatches, selectionsDiffer, valueDraftOperations, webColorDraftSelections, webColorSelectionsFromDraft } from './value-drafts'
 import { ValuePicker, pickerOptions, rankPickerMatches } from './ValuePicker'
 
 afterEach(cleanup)
@@ -81,5 +81,16 @@ describe('value picker', () => {
     click(document.querySelector<HTMLButtonElement>('.vp-trigger')!)
     expect(document.querySelectorAll('.vp-list [role="option"]').length).toBe(200)
     expect(document.querySelector('.vp-clear')?.textContent).toBe('Seçimi Kaldır')
+  })
+})
+
+describe('Web Color choices as the window draft', () => {
+  it('turns the editor pairs into the draft and back, so the window Kaydet saves them', () => {
+    const editor = { fume: '6999', gri: '6999', ekru: '7014', bos: '' }
+    const draft = webColorDraftSelections(editor)
+    expect(draft).toEqual({ 6999: ['fume', 'gri'], 7014: ['ekru'] })
+    expect(webColorSelectionsFromDraft(draft)).toEqual({ fume: '6999', gri: '6999', ekru: '7014' })
+    const operations = valueDraftOperations({ valueScope: '598/348', fieldName: 'Web Color', selections: draft, saved: [{ localId: 'fume', externalId: '7009', version: 3, snapshotId: 's1' }], snapshotId: 's1', knownExternalIds: ['6999', '7014', '7009'] })
+    expect(operations.map(item => `${item.kind}:${item.localId}:${item.externalId}`)).toEqual(['DELETE:fume:7009', 'PUT:fume:6999', 'PUT:gri:6999', 'PUT:ekru:7014'])
   })
 })

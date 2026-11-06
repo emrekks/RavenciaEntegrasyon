@@ -73,3 +73,14 @@ export async function runInBatches<T>(items: readonly T[], size: number, run: (i
   }
   return { saved, failures }
 }
+
+// Web Color pairs one panel colour with one Web Color: the editor's {localId: externalId} and the draft's
+// {externalId: [localId…]}, so its choices ride the window's draft and its Kaydet like every other field's.
+export function webColorSelectionsFromDraft(grouped: Readonly<Record<string, readonly string[]>> | undefined): Record<string, string> {
+  return Object.fromEntries(Object.entries(grouped ?? {}).flatMap(([externalId, localIds]) => localIds.map(localId => [localId, externalId])))
+}
+export function webColorDraftSelections(selections: Readonly<Record<string, string>>): Record<string, string[]> {
+  const grouped: Record<string, string[]> = {}
+  for (const [localId, externalId] of Object.entries(selections)) if (externalId) grouped[externalId] = [...(grouped[externalId] ?? []), localId]
+  return grouped
+}
