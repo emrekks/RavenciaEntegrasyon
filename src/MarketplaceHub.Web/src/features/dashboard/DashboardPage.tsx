@@ -8,6 +8,7 @@ import { NoticeToast } from '../../shared/components/NoticeToast'
 import { CardBackgroundIcon, type CardIconName } from '../../shared/components/CardBackgroundIcon'
 import { UiIcon } from '../../shared/components/UiIcon'
 import { dashboardOperationalLinks, dayCancellationsLink } from '../../shared/dashboard-operational-links'
+import { pendingOrdersQuery } from '../../shared/order-navigation-count'
 import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
@@ -198,6 +199,9 @@ export function DashboardPage() {
   const [metric, setMetric] = useState<0 | 1 | 2>(0)
   const [noticeClosed, setNoticeClosed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  // Bekleyen Siparişler reads the menu badge's own query (the Siparişler page's Bekleyen tab), not the worker's snapshot:
+  // the badge and the card are one answer and refresh together on every order change.
+  const pendingSummary = useQuery(pendingOrdersQuery)
   const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap', poll), ...refresh })
   const invoiceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', poll), ...refresh })
   const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary', poll), ...refresh })
@@ -262,7 +266,7 @@ export function DashboardPage() {
     return { row, auth, webhook, attention }
   })
   const attention = health.filter(item => item.attention).length
-  const errors = [bootstrap.error, invoiceSummary.error, cancellations.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
+  const errors = [bootstrap.error, pendingSummary.error, invoiceSummary.error, cancellations.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
   const loadingValue = (busy: boolean, value: number | undefined) => { const known = knownCount(busy, value); return known === null ? '—' : count(known) }
   // The bar places the latest finished day (or hour) between the weakest and strongest ones. The day still running
   // is left out: just after midnight it is near zero, which pinned the low end to 0 and the dot to the left.
@@ -272,11 +276,12 @@ export function DashboardPage() {
   const basketStats = dailyStats(finished.filter(point => point.orderCount > 0).map(point => point.amount / point.orderCount), value => money(value, currency), basket)
   const products = productSummary.data
   // The products of the pending orders (ordered less cancelled), from the same orders the Bekleyen Siparişler card counts.
-  const pendingUnits = metrics?.pendingUnitsByConnection
+  const pending = pendingSummary.data
+  const pendingUnits = pending?.pendingUnitsByConnection ?? undefined
   const pendingUnitTotal = pendingUnits ? Object.values(pendingUnits).reduce((sum, value) => sum + value, 0) : undefined
   // Per store "N paket · M adet": the orders and their products; what is not known is left out, never shown as 0.
-  const pendingRows: BreakdownRow[] = [...new Set([...Object.keys(metrics?.pendingByConnection ?? {}), ...Object.keys(pendingUnits ?? {})])]
-    .map(key => ({ key, orders: metrics?.pendingByConnection?.[key], units: pendingUnits?.[key] }))
+  const pendingRows: BreakdownRow[] = [...new Set([...Object.keys(pending?.pendingByConnection ?? {}), ...Object.keys(pendingUnits ?? {})])]
+    .map(key => ({ key, orders: pending?.pendingByConnection?.[key], units: pendingUnits?.[key] }))
     .filter(item => (item.orders ?? 0) > 0 || (item.units ?? 0) > 0)
     .sort((left, right) => (right.orders ?? 0) - (left.orders ?? 0) || (right.units ?? 0) - (left.units ?? 0))
     .map(item => { const shop = channels.get(item.key); return { key: item.key, code: shop?.platformCode ?? '', name: shop?.displayName ?? 'Kaldırılmış mağaza', value: [item.orders === undefined ? '' : `${count(item.orders)} paket`, item.units === undefined ? '' : `${count(item.units)} adet`].filter(Boolean).join(' · ') } })
@@ -300,7 +305,7 @@ export function DashboardPage() {
   const dueSoon = knownCount(invoiceSummary.isLoading, invoiceSummary.data?.dueSoonCount)
   const ops: Array<[CardIconName, string, number | null, 'warn' | 'bad' | '', string, Record<string, number> | BreakdownRow[] | undefined, ReactNode?]> = [
     // "N Paket | M Adet Ürün": the units are left out while they are not known (an older API), never shown as 0.
-    ['orders', 'Bekleyen Siparişler', knownCount(bootstrap.isLoading, metrics?.pendingOrders), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} Adet Ürün</>}</>],
+    ['orders', 'Bekleyen Siparişler', knownCount(pendingSummary.isPending, pendingSummary.isError ? undefined : pending?.pending), 'warn', dashboardOperationalLinks.pendingOrders, pendingRows, <>Paket{pendingUnitTotal !== undefined && <>{' '}<span className="rr-op-sep" aria-hidden="true">|</span>{' '}{count(pendingUnitTotal)} Adet Ürün</>}</>],
     ['clock', 'Geciken Siparişler', knownCount(bootstrap.isLoading, metrics?.lateOrders), 'bad', dashboardOperationalLinks.lateOrders, metrics?.lateByConnection],
     ['returns', 'Bekleyen İadeler', knownCount(bootstrap.isLoading, metrics?.pendingReturns), 'warn', dashboardOperationalLinks.pendingReturns, metrics?.pendingReturnsByConnection],
     // "N Bekleyen | M Yaklaşan": M is the former Yaklaşan Faturalar count (delivered 5+ days ago, still awaiting an invoice),

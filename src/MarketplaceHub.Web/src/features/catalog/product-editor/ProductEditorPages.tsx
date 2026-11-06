@@ -23,8 +23,9 @@ import { OptionValueAddButton } from './OptionValueAddButton'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaStripOwnPosition, mediaStripRefs, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, uniqueMediaUrls } from '../product-media-editor'
 import { applyVariantBulkModes, variantBulkEditIssue, variantBulkModeLabels, type VariantBulkEditField, type VariantBulkInputs, type VariantBulkMode } from '../variant-bulk-edit'
 import { VariantCodeMenu, type VariantCodeMenuProps } from './VariantCodeMenu'
-import { applyVariantCodesByKey, buildSequentialVariantCodes, mergeGeneratedVariantRows, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
-import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
+import { applyVariantCodesByKey, buildSequentialVariantCodes, generatedRowsReplacePlaceholder, mergeGeneratedVariantRows, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
+import { isVariantDeleteRefusal, restoreRemovedVariantRows, VARIANT_DELETE_REFUSED_HINT, variantRemovalConfirmText, type RemovedVariantRow } from '../variant-row-removal'
+import { filterVariantsByOptions,selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature, variantOptionSetKey } from '../variant-option-matching'
 import { autoWebColorIssues, connectionCapabilitiesQueryKey, isOptionRequirement, loadConnectionCapabilities, loadPublicationAttributeIssues, shopifyCapabilityIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
 import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
@@ -81,6 +82,8 @@ const ProductCategoryFieldsDialog = lazy(() => import('../../marketplace/mapping
 
 // The save's slot in the toast column: "Ürün Kaydediliyor" turns into its result in place instead of stacking.
 const productSaveToastKey = 'product-editor-save'
+// The server keeps a replaced "Tek Ürün" variant that anything is tied to (owner, 6 Nov 2026).
+const PLACEHOLDER_KEPT_MESSAGE = '“Tek Ürün” varyantı silinmedi: pazaryeri bağlantısı ya da teklifi, siparişi veya stok hareketi bulunduğu için geçmişi korunarak üründe bırakıldı.'
 // Channel prices are separate rows per variant and store; this many are written at once.
 const channelOfferWriteConcurrency = 6
 
@@ -1314,6 +1317,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
   const pointerDragIdRef = useRef<number | null>(null)
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([])
+  // The saved rows taken off the table, where they stood: a refused delete puts them back.
+  const [removedVariantRows, setRemovedVariantRows] = useState<RemovedVariantRow<VariantDraft>[]>([])
+  const [variantDeleteConfirmation, setVariantDeleteConfirmation] = useState<VariantDraft | null>(null)
+  // A saved "Tek Ürün" placeholder replaced by generated variants: the server removes it on save only when nothing
+  // (options, marketplace links or offers, orders, stock movements) is tied to it, and keeps it otherwise.
+  const [replacedPlaceholderIds, setReplacedPlaceholderIds] = useState<string[]>([])
   // Unsaved-edit tracking (W6): the snapshot taken right after the form was filled; a differing current snapshot means
   // the form holds edits a reseed would destroy.
   const [snapshotRequest, setSnapshotRequest] = useState(0)
@@ -1517,7 +1526,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
-    setRemovedVariantIds([])
+    setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
     setFieldErrors({})
     setSnapshotRequest(value => value + 1)
   })
@@ -1701,7 +1710,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         const message = 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.'; setNotice(message); showFeedback('Varyant Özelliği Seçilmedi', message, 'error')
         return false
       }
+      const replacesPlaceholder = generatedRowsReplacePlaceholder(variantRows, generated)
+      const persistedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+      const replacedSavedPlaceholderIds = replacesPlaceholder ? variantRows.filter(row => persistedIds.has(row.key)).map(row => row.key) : []
+      if (replacedSavedPlaceholderIds.length) setReplacedPlaceholderIds(current => [...new Set([...current, ...replacedSavedPlaceholderIds])])
       setVariantRows(current => {
+        // The option-less "Tek Ürün" row gives way to the generated rows instead of staying beside them.
+        if (generatedRowsReplacePlaceholder(current, generated)) return mergeGeneratedVariantRows([], generated, { key: variantSignatureKey, sort: sortVariantsAlphabetically, keepExisting: false, automaticBarcodes: automaticBarcodeGeneration, modelCode: form.modelCode, fallbackSalePrice, fallbackListPrice })
         if (current.length === 1 && current[0].optionSignature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' && generated.length === 1) {
           const existing = current[0]
           const [next] = generated
@@ -1712,7 +1727,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       })
       const heldKeys = new Set(variantRows.map(row => variantSignatureKey(row.optionSignature)))
       const addedCount = editProductId ? new Set(generated.map(row => variantSignatureKey(row.optionSignature)).filter(key => !heldKeys.has(key))).size : generated.length
-      const message = editProductId ? `${addedCount} yeni varyant satırı eklendi; kayıtlı satırlar değişmedi.` : `${generated.length} varyant satırı hazırlandı.`; setNotice(message); showFeedback('Varyantlar Hazırlandı', message, 'success')
+      const message = replacesPlaceholder
+        ? `${generated.length} varyant satırı hazırlandı; “Tek Ürün” satırı bu varyantlarla değiştirildi.${replacedSavedPlaceholderIds.length ? ' Kayıtlı “Tek Ürün” varyantı Kaydet ile kaldırılır.' : ''}`
+        : editProductId ? `${addedCount} yeni varyant satırı eklendi; kayıtlı satırlar değişmedi.` : `${generated.length} varyant satırı hazırlandı.`
+      setNotice(message); showFeedback('Varyantlar Hazırlandı', message, 'success')
       return true
     } catch (reason) { const message = reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.'; setNotice(message); showFeedback('Varyantlar Oluşturulamadı', message, 'error'); return false }
   }
@@ -1720,11 +1738,32 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const persistedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
     const clearedSavedIds = variantRows.filter(row => persistedIds.has(row.key)).map(row => row.key)
     setRemovedVariantIds(current => [...new Set([...current, ...clearedSavedIds])])
+    setRemovedVariantRows(current => [...current, ...variantRows.flatMap((row, index) => persistedIds.has(row.key) ? [{ row, index }] : [])])
     setVariantRows([])
     const message = clearedSavedIds.length
       ? `Varyant satırları temizlendi. Kaydedince ${clearedSavedIds.length} kayıtlı varyant panelden silinir; pazaryerlerindeki ilanlara dokunulmaz.`
       : 'Oluşan varyant satırları temizlendi.'
     setNotice(message); showFeedback('Varyantlar Temizlendi', message, 'success')
+  }
+  // The row's trash button: a row the form made itself just leaves the table; a saved variant asks first and is deleted
+  // on the server by the next Kaydet (variantIdsToDelete).
+  function requestVariantRowRemoval(row: VariantDraft) {
+    const persistedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+    if (!persistedIds.has(row.key)) { setVariantRows(rows => rows.filter(item => item.key !== row.key)); return }
+    setVariantDeleteConfirmation(row)
+  }
+  function confirmVariantRowRemoval() {
+    const row = variantDeleteConfirmation
+    setVariantDeleteConfirmation(null)
+    if (!row) return
+    const index = variantRows.findIndex(item => item.key === row.key)
+    if (index < 0) return
+    setRemovedVariantRows(current => [...current.filter(item => item.row.key !== row.key), { row: variantRows[index], index }])
+    setRemovedVariantIds(current => [...new Set([...current, row.key])])
+    setVariantRows(rows => rows.filter(item => item.key !== row.key))
+    const label = displayVariantOptionSignature(row.optionSignature, row.options)
+    const message = `${label} varyantı Kaydet’te silinecek.`
+    setNotice(message); showFeedback('Varyant Silinecek', message, 'info')
   }
   function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'costPrice' ? (value.trim() === '' ? null : Number(value)) : field === 'stock' || field === 'salePrice' || field === 'listPrice' ? Number(value || 0) : value })) }
   function updateVariantMedia(keyValue: string, values: string[]) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, mediaRefs: values })) }
@@ -2723,6 +2762,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const safeDescription = sanitizeRichText(form.description)
       const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, options: row.options, attributes: variantAttributesForPayload(row), onHand: editorOpeningStock(row.stock) })
       const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+      const placeholderIdsToDelete = replacedPlaceholderIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id) && !removedVariantIds.includes(id))
       const modelCodeForRow = (variantId: string) => modelCodeForExistingVariant(
         form.modelCode,
         initialEditModelCode.current,
@@ -2747,6 +2787,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : '00000000-0000-0000-0000-000000000000',
           ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}),
           variantIdsToDelete: removedVariantIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id)),
+          placeholderVariantIdsToDelete: placeholderIdsToDelete,
           variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload),
           variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({
             id: row.key,
@@ -2794,6 +2835,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: savedTitle, status: savedStatus, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, deliveryDays: productDeliveryDays(form.deliveryDays), vatRate: savedVatRate, vatInclusion: savedVatInclusion, trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
       productCreated = product; const completed: string[] = []; const warnings: string[] = []
+      if (placeholderIdsToDelete.some(id => product.variants.some(variant => variant.id === id))) warnings.push(PLACEHOLDER_KEPT_MESSAGE)
       const publications: MarketplacePublishOutcome[] = []
       const publicationErrors: Array<{ platformName: string; message: string }> = []
       const updates: MarketplaceUpdateOutcome[] = []
@@ -3034,7 +3076,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             updates: platformUpdate ? updates : undefined
           })
       const message = result.lines.join(' ')
-      setRemovedVariantIds([])
+      setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
       if (editProductId) setVariantRows(current => rekeySavedVariantRows(current, product.variants))
       setVariantCodeConflicts({})
       mediaFilesKeptOnReseed.current = null
@@ -3069,7 +3111,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         navigate(`/products/${productCreated.id}`, { replace: true, state: createOnly || saveDraft ? null : { wizardStep: 2 } })
       }
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
+      // The server refused a variant delete (order or stock history, a pending job): the whole save was refused, so the
+      // removed rows go back into the table and nothing waits to be deleted.
+      const variantDeleteRefused = !productCreated && isVariantDeleteRefusal(reason)
+      if (variantDeleteRefused) {
+        const refusedRows = removedVariantRows
+        setVariantRows(current => restoreRemovedVariantRows(current, refusedRows))
+        setRemovedVariantIds([]); setRemovedVariantRows([])
+      }
+      const reasonMessage = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
+      const message = variantDeleteRefused ? `${reasonMessage} ${VARIANT_DELETE_REFUSED_HINT}` : reasonMessage
       const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
       setError(reason); setNotice(feedbackMessage)
       setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
@@ -3549,7 +3600,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                     {rowPlatforms.length ? (() => { const linkedCount = rowPlatforms.filter(item => item.isLinked).length; const isPartial = linkedCount > 0 && linkedCount < rowPlatforms.length; const summaryClass = linkedCount === rowPlatforms.length ? 'is-linked' : isPartial ? 'is-partial' : 'is-unlinked'; return <button type="button" className={`variant-platform-status variant-platform-status-summary variant-row-action ${summaryClass}`} onClick={() => openVariantPlatformPricing(row, rowPlatforms[0])} title={`${rowPlatforms.length} platform fiyatını düzenle`} aria-label={`${row.optionSignature} platform fiyatlarını düzenle`}><UiIcon name="platforms" /></button> })() : <span className="variant-platform-empty">—</span>}
                     {editProductId && <button type="button" className="variant-row-action variant-row-action-codes" onClick={() => setMarketplaceCodesVariant(row.key)} aria-label={`${row.optionSignature} pazaryeri kodlarını göster`} title="Pazaryeri kodları (Shopify, Hepsiburada)"><UiIcon name="link" /></button>}
                     <button type="button" className={`variant-media-button variant-row-action ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button>
-                    <button type="button" className="variant-row-action variant-row-action-delete" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))} aria-label={`${row.optionSignature} varyantını sil`} title="Varyantı sil"><UiIcon name="trash" /></button>
+                    <button type="button" className="variant-row-action variant-row-action-delete" onClick={() => requestVariantRowRemoval(row)} aria-label={`${row.optionSignature} varyantını sil`} title="Varyantı sil"><UiIcon name="trash" /></button>
                   </div>
                 </div>
               }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}
@@ -3603,6 +3654,27 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         onGenerate={scope => void requestVariantCodeChange('sku', scope)} onPaste={scope => void pasteBarcodesFromClipboard(scope, 'sku')} onClear={() => void requestVariantCodeChange('sku', 'clear')}
         fromBarcode={{ missingCount: emptySkuBarcodeRowCount, allCount: barcodeRowCount, onApply: applyBarcodeToSku }} />
     </VariantHeaderActionMenu>}
+    {variantDeleteConfirmation && createPortal(
+      <div className="workspace-modal-backdrop media-removal-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setVariantDeleteConfirmation(null) }}>
+        <DialogSurface as="section" onClose={() => { setVariantDeleteConfirmation(null) }} className="workspace-modal media-removal-confirm-modal variant-delete-confirm-modal" role="alertdialog" aria-labelledby="variant-delete-confirm-title" aria-describedby="variant-delete-confirm-description" onMouseDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setVariantDeleteConfirmation(null) }}>
+          <header>
+            <div>
+              <p className="eyebrow">Varyantlar</p>
+              <h2 id="variant-delete-confirm-title">{displayVariantOptionSignature(variantDeleteConfirmation.optionSignature, variantDeleteConfirmation.options)} Varyantını Sil</h2>
+            </div>
+            <button type="button" className="modal-close" onClick={() => setVariantDeleteConfirmation(null)} aria-label="Varyant silme onayını kapat"><UiIcon name="close" /></button>
+          </header>
+          <div className="media-removal-confirm-body">
+            <p id="variant-delete-confirm-description">{variantRemovalConfirmText(variantDeleteConfirmation)}</p>
+          </div>
+          <footer>
+            <button type="button" className="secondary" data-autofocus={touchScreen ? undefined : true} onClick={() => setVariantDeleteConfirmation(null)}>Vazgeç</button>
+            <button type="button" className="destructive" onClick={confirmVariantRowRemoval}>Varyantı Sil</button>
+          </footer>
+        </DialogSurface>
+      </div>,
+      document.querySelector('main') ?? document.body
+    )}
     {mediaRemovalConfirmation && createPortal(
       <div className="workspace-modal-backdrop media-removal-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMediaRemovalConfirmation(null) }}>
         <DialogSurface as="section" onClose={() => { setMediaRemovalConfirmation(null) }} className="workspace-modal media-removal-confirm-modal" role="alertdialog" aria-labelledby="media-removal-confirm-title" aria-describedby="media-removal-confirm-description" onMouseDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setMediaRemovalConfirmation(null) }}>

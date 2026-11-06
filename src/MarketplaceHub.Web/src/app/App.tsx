@@ -1,4 +1,6 @@
 import { Suspense, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react'
+import { BrandSymbol } from '../shared/components/BrandSymbol'
+import { BrandWordmark } from '../shared/components/BrandWordmark'
 import { createPortal } from 'react-dom'
 import { closeAllDismissables, useDismissable } from '../shared/hooks/useDismissable'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router'
@@ -14,7 +16,7 @@ import { useMediaQuery } from '../shared/hooks/useMediaQuery'
 import { appearanceColorCssVariable, appearanceColorTokenOptions, appearanceFontFamilyCss, appearanceFontScale, useAppearanceSettings } from '../features/settings/appearance-settings'
 import { readNotificationHistory, registerNotificationConnectionResolver, subscribeNotificationHistory, type AppNotification } from '../shared/notifications'
 import { connectionIdentityFromCache } from '../shared/notification-connections'
-import { orderNavigationCount, type OrderNavigationSummary } from '../shared/order-navigation-count'
+import { orderNavigationCount, pendingOrdersQuery } from '../shared/order-navigation-count'
 import { clearPersonalStorage, setStorageScope } from '../shared/storage-scope'
 import { clearQuerySnapshot, confirmQuerySnapshotScope, forgetPreviousSession } from '../shared/query-snapshot'
 import { questionWaitingSummaryPath } from './questionNavigationSummary'
@@ -79,7 +81,8 @@ function Shell({ me }: { me: Me }) {
   const invoiceWorkspaceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary'), staleTime: 30_000, refetchOnWindowFocus: true })
   // The menu counts poll only while the tab is on screen, and say they are automatic (hubPoll) so the server does not count
   // them as the person using the panel (otherwise an open tab would never reach the idle sign-out).
-  const orderSummary = useQuery({ queryKey: ['orders', 'summary', []], queryFn: () => hubPoll<OrderNavigationSummary>('/orders/summary?tabs=PENDING'), staleTime: 30_000, refetchOnMount: 'always', refetchOnWindowFocus: true, refetchInterval: 15_000 })
+  // The same query as the overview's Bekleyen Siparişler card: the badge and the card always say the same number.
+  const orderSummary = useQuery(pendingOrdersQuery)
   const questionWaitingSummary = useQuery({ queryKey: ['questions', 'navigation-waiting'], queryFn: () => hubPoll<{ totalCount: number }>(questionWaitingSummaryPath), staleTime: 30_000, refetchInterval: 60_000, refetchOnWindowFocus: true })
   const [sidebarPinned, setSidebarPinned] = useState(() => readStoredItem('ravencia.sidebarPinned') !== 'false')
   const [sidebarHoverExpanded, setSidebarHoverExpanded] = useState(false)
@@ -198,7 +201,7 @@ function Shell({ me }: { me: Me }) {
   ]
   return <div className={`app-shell stitch-shell ${menuCollapsed ? 'sidebar-collapsed' : ''} ${sidebarHovering ? 'sidebar-hover-expanded' : ''} ${sidebarPinned ? 'sidebar-pinned' : ''}`}>
     <aside aria-label="Ravencia ana menüsü" onMouseEnter={handleSidebarMouseEnter} onMouseLeave={handleSidebarMouseLeave}>
-      <div className="sidebar-brand-row"><Link className="sidebar-brand-home" to="/dashboard" aria-label="Genel bakışa git"><span className="stitch-brand-mark" aria-hidden="true"><img src="/pack/brand/ravencia-symbol-128.webp" alt="" /></span><span className="brand wordmark"><strong>Ravencia</strong></span></Link><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
+      <div className="sidebar-brand-row"><Link className="sidebar-brand-home" to="/dashboard" aria-label="Genel bakışa git"><span className="stitch-brand-mark" aria-hidden="true"><BrandSymbol /></span><span className="brand wordmark"><strong>Ravencia</strong></span></Link><button type="button" className={`sidebar-pin-toggle ${sidebarPinned ? 'is-pinned' : ''}`} aria-label={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} aria-pressed={sidebarPinned} title={sidebarPinned ? 'Menüyü daralt' : 'Menüyü sabitle'} onClick={toggleSidebarPinned}><UiIcon name="pin" size={18} /></button></div>
       <nav aria-label="Ana menü">{navigation}</nav>
       <div className="sidebar-side-bottom"><div className="settings-nav">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="logout-link" aria-label="Oturumu Kapat" title="Oturumu Kapat" onClick={() => void logout()}>{icon('logout')}<span className="logout-label">Oturumu Kapat</span></button></div><div className="sidebar-profile"><span className="sidebar-avatar">{initials}</span><span className="sidebar-profile-copy"><strong>{displayName}</strong></span></div></div>
     </aside>
@@ -206,7 +209,7 @@ function Shell({ me }: { me: Me }) {
       <header className={`rv-topbar${topbarHidden ? ' is-hidden' : ''}`}><div className="rv-topbar-leading"><button className="rv-mobile-menu-toggle rv-icon-button" type="button" aria-label="Ana menüyü aç" aria-expanded={mobileMenuOpen} onClick={() => setMobileMenuOpen(true)}><UiIcon name="menu" size={22} /></button><div className="rv-breadcrumb"><UiIcon name="layers" size={16} /><span>Operasyon Merkezi</span><UiIcon name="chevronRight" size={14} /><strong>{pageName}</strong></div></div><div className="rv-topbar-actions"><div ref={notificationRef} className="rv-topbar-notifications"><button type="button" className="rv-topbar-notification-trigger" aria-label="Bildirim geçmişini aç" aria-expanded={notificationsOpen} aria-controls="rv-notification-history" onPointerEnter={() => void loadNotificationPanel()} onFocus={() => void loadNotificationPanel()} onClick={() => setNotificationsOpen(value => !value)}><UiIcon name="bell" size={18} />{unreadNotificationCount > 0 && <span className="rv-topbar-notification-count" aria-label={`${unreadNotificationCount} okunmamış bildirim`}>{unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}</span>}</button></div><button type="button" className="rv-topbar-theme" aria-label={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} title={visualTheme === 'light' ? 'Koyu temaya geç' : 'Açık temaya geç'} aria-pressed={visualTheme === 'dark'} onClick={() => switchVisualThemeSmoothly(visualTheme === 'light' ? 'dark' : 'light')}><UiIcon name={visualTheme === 'light' ? 'moon' : 'sun'} size={18} /><span>{visualTheme === 'light' ? 'Koyu Tema' : 'Açık Tema'}</span></button><button className="rv-topbar-search rv-topbar-search-icon" type="button" aria-label="Hızlı aramayı aç" aria-keyshortcuts="Control+k Meta+k" onClick={() => setQuickSearchOpen(true)}><UiIcon name="search" size={20} /></button></div></header>
       {notificationsOpen && createPortal(<div ref={notificationHistoryRef} id="rv-notification-history" className="rv-notification-history" role="dialog" aria-label="Bildirim geçmişi" style={notificationHistoryPosition}>{(() => { const Panel = loadedNotificationPanel ?? NotificationPanel; return <Suspense fallback={null}><Panel notifications={notifications} onNavigate={href => { setNotificationsOpen(false); navigate(href) }} onCleared={() => setNotifications([])} /></Suspense> })()}</div>, document.body)}
       <Modal open={quickSearchOpen} title="Hızlı Arama" onClose={() => setQuickSearchOpen(false)}><div className="rv-command-list" role="listbox" aria-label="Hızlı arama sonuçları">{quickSearchItems.map(itemOption => <Link key={itemOption.to} className="rv-command-item" to={itemOption.to} onClick={() => setQuickSearchOpen(false)}><UiIcon name={itemOption.icon} size={20} /><span><strong>{itemOption.label}</strong><small>{itemOption.description}</small></span><UiIcon name="chevronRight" size={16} /></Link>)}</div></Modal>
-      <Drawer open={mobileMenuOpen} className="rv-mobile-drawer" title={<img className="rv-drawer-logo" src="/pack/brand/ravencia-wordmark.webp" alt="Ravencia" />} description={null} onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}<div className="rv-mobile-nav-foot">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="rv-mobile-logout" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Oturumu Kapat</span></button></div></nav></Drawer>
+      <Drawer open={mobileMenuOpen} className="rv-mobile-drawer" title={<BrandWordmark className="rv-drawer-logo" />} description={null} onClose={() => setMobileMenuOpen(false)}><nav className="rv-mobile-navigation" aria-label="Mobil ana menü">{navigation}<div className="rv-mobile-nav-foot">{item('/settings', 'settings', 'Sistem Ayarları', true)}<button type="button" className="rv-mobile-logout" onClick={() => void logout()}>{icon('logout')}<span className="nav-label">Oturumu Kapat</span></button></div></nav></Drawer>
       <ToastStackProvider><ErrorBoundary resetKey={location.pathname}><Suspense fallback={<DelayedStatus title="Ekran Hazırlanıyor" />}><Routes><Route path="/dashboard" element={<Dashboard />} /><Route path="/products" element={<ProductsPage />} /><Route path="/products/new" element={<NewProductPage />} /><Route path="/products/:id" element={<ProductDetailPage />} /><Route path="/catalog/categories" element={<CategoriesPage />} /><Route path="/catalog/brands" element={<BrandsPage />} /><Route path="/catalog/attributes" element={<AttributesPage />} /><Route path="/imports" element={<ImportsPage />} /><Route path="/imports/:id" element={<ImportDetailPage />} /><Route path="/integrations" element={<IntegrationsPage />} /><Route path="/integrations/:id" element={<IntegrationDetailPage />} /><Route path="/mappings/categories" element={<MappingPage />} /><Route path="/mappings/attributes" element={<Navigate to={{ pathname: '/mappings/categories', search: location.search }} replace />} /><Route path="/mappings/product-matches" element={<Navigate to="/mappings/categories" replace />} /><Route path="/questions" element={<QuestionsPage />} /><Route path="/orders" element={<OrdersPage />} /><Route path="/orders/:id" element={<Navigate to="/orders" replace />} /><Route path="/returns" element={<ReturnsPage />} /><Route path="/returns/:id" element={<ReturnDetailPage />} /><Route path="/shipments" element={<ShipmentsPage />} /><Route path="/shipments/:id" element={<ShipmentDetailPage />} /><Route path="/invoices" element={<InvoicesPage />} /><Route path="/reports" element={<ReportsPage />} /><Route path="/promotions" element={<PromotionsPage />} /><Route path="/invoices/:id" element={<InvoiceDetailPage />} /><Route path="/jobs" element={<JobsPage me={me} />} /><Route path="/settings/security" element={<Navigate to="/settings?tab=auth" replace />} /><Route path="/settings/appearance" element={<Navigate to="/settings?tab=read" replace />} /><Route path="/settings" element={<SystemSettingsPage />} /><Route path="*" element={<Navigate to="/dashboard" replace />} /></Routes></Suspense></ErrorBoundary></ToastStackProvider>
     </main>
     </div>
@@ -335,8 +338,8 @@ function AuthPageFrame({ ariaLabel, accessLabel, accessMeta, cardTitle, cardDesc
     <section className="rv-auth-stage" aria-label={ariaLabel}>
       <div className="auth-focus-column">
         <div className="rv-auth-hero-brand">
-          <img className="rv-auth-hero-symbol" src="/pack/brand/ravencia-symbol-256.webp" alt="" />
-          <img className="rv-auth-hero-wordmark" src="/pack/brand/ravencia-wordmark.webp" alt="Ravencia" />
+          <BrandSymbol size={256} className="rv-auth-hero-symbol" />
+          <BrandWordmark className="rv-auth-hero-wordmark" />
         </div>
         <div className="rv-auth-login-shell">
           <div className="rv-auth-login-top"><span><i /> {accessLabel}</span><span>{accessMeta}</span></div>
@@ -535,7 +538,7 @@ function LockedSession() {
 function SessionLoadError({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   return <div className="rv-splash-screen">
     <div className="rv-splash-card">
-      <div className="rv-splash-brand" aria-label="Ravencia"><img className="rv-splash-symbol" src="/pack/brand/ravencia-symbol-128.webp" alt="" /><img className="rv-splash-wordmark" src="/pack/brand/ravencia-wordmark.webp" alt="Ravencia MarketplaceHub" /></div>
+      <div className="rv-splash-brand" aria-label="Ravencia"><BrandSymbol className="rv-splash-symbol" /><BrandWordmark className="rv-splash-wordmark" alt="Ravencia MarketplaceHub" /></div>
       <ErrorBox error={error} onRetry={onRetry} />
     </div>
   </div>
@@ -545,7 +548,7 @@ function Status({ title, detail, action }: { title: string; detail?: string; act
   return (
     <div className="rv-splash-screen" role="status" aria-live="polite">
       <div className="rv-splash-card">
-        <div className="rv-splash-brand" aria-label="Ravencia"><img className="rv-splash-symbol" src="/pack/brand/ravencia-symbol-128.webp" alt="" /><img className="rv-splash-wordmark" src="/pack/brand/ravencia-wordmark.webp" alt="Ravencia MarketplaceHub" /></div>
+        <div className="rv-splash-brand" aria-label="Ravencia"><BrandSymbol className="rv-splash-symbol" /><BrandWordmark className="rv-splash-wordmark" alt="Ravencia MarketplaceHub" /></div>
         <div className="rv-splash-copy"><span className="rv-splash-kicker">OPERASYON MERKEZİ</span><h1>{title}</h1><p>{detail ?? 'Çalışma alanınız hazırlanıyor.'}</p></div>
         <div className="rv-splash-loading-bar" aria-hidden="true"><span className="rv-splash-loading-progress" /></div>
         <div className="rv-splash-skeleton" aria-hidden="true">

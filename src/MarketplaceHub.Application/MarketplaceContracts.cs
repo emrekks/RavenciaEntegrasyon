@@ -1377,7 +1377,12 @@ public sealed record OrderSummaryView(
     IReadOnlyList<OrderCargoCountView>? ProcessingByCargo = null,
     // The New and İşleme Alınanlar tabs' orders per store id (the cards' "N paket · M adet" rows); null when not counted.
     IReadOnlyDictionary<string, int>? NewByConnection = null,
-    IReadOnlyDictionary<string, int>? ProcessingByConnection = null);
+    IReadOnlyDictionary<string, int>? ProcessingByConnection = null,
+    // The Bekleyen tab's orders per store id and their products (each line's ordered quantity less what was cancelled of
+    // it); null when that tab was not counted. The menu badge and the overview's Bekleyen Siparişler card both read them
+    // from one request, so the badge, the card and the tab always say the same number.
+    IReadOnlyDictionary<string, int>? PendingByConnection = null,
+    IReadOnlyDictionary<string, decimal>? PendingUnitsByConnection = null);
 public sealed record OrderCargoCountView(string Cargo, int Orders, decimal Units);
 public sealed record OrderLineView(
     Guid Id,
