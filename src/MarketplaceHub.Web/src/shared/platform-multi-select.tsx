@@ -30,14 +30,17 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
         : `${selectedOptions.length} Platform Seçili`
 
   function updateCompactMenuPosition() {
-    if (!compact || !menu.current || !trigger.current) return
+    if (!menu.current || !trigger.current) return
     const triggerRect = trigger.current.getBoundingClientRect()
     // Layout size: the menu grows in from .92 as it opens (styles/motion.css).
     const menuRect = { width: menu.current.offsetWidth, height: menu.current.offsetHeight }
     const top = triggerRect.bottom + menuRect.height + 8 <= window.innerHeight - 12
       ? triggerRect.bottom + 8
       : Math.max(12, triggerRect.top - menuRect.height - 8)
-    const left = Math.max(12, Math.min(triggerRect.left, window.innerWidth - menuRect.width - 12))
+    // A compact (icon) trigger opens from its left edge, a field trigger from its right edge; either way the menu is
+    // clamped into the window. It is portalled to the body, so no ancestor's overflow or stacking can cut or cover it.
+    const wanted = compact ? triggerRect.left : triggerRect.right - menuRect.width
+    const left = Math.max(12, Math.min(wanted, window.innerWidth - menuRect.width - 12))
     setCompactMenuPosition(current => current?.top === top && current.left === left ? current : { top, left })
   }
 
@@ -45,7 +48,7 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
 
   const repositionCompactMenu = useEffectEvent(() => updateCompactMenuPosition())
   useEffect(() => {
-    if (!open || !compact) return
+    if (!open) return
     const repositionOnViewportChange = () => repositionCompactMenu()
     window.addEventListener('scroll', repositionOnViewportChange, { passive: true, capture: true })
     window.addEventListener('resize', repositionOnViewportChange)
@@ -56,17 +59,8 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
   }, [open, compact])
 
   useLayoutEffect(() => {
-    if (open && compact) repositionCompactMenu()
+    if (open) repositionCompactMenu()
   }, [open, compact, selectedCodes])
-
-  // The menu opens under the trigger's right edge; when that would run it off the left of the screen (a narrow trigger
-  // near the sidebar) it opens from the trigger's left edge instead.
-  const [alignStart, setAlignStart] = useState(false)
-  useLayoutEffect(() => {
-    if (!open || compact || !menu.current || !trigger.current) return
-    const width = menu.current.offsetWidth
-    setAlignStart(trigger.current.getBoundingClientRect().right - width < 12)
-  }, [open, compact])
 
   function toggleOption(value: string, checked: boolean) {
     const current = selectedCodes ?? []
@@ -79,15 +73,15 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
       setOpen(false)
       return
     }
-    if (compact && trigger.current) {
+    if (trigger.current) {
       const rect = trigger.current.getBoundingClientRect()
       const width = Math.min(300, window.innerWidth - 24)
-      setCompactMenuPosition({ top: rect.bottom + 8, left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)) })
+      setCompactMenuPosition({ top: rect.bottom + 8, left: Math.max(12, Math.min(compact ? rect.left : rect.right - width, window.innerWidth - width - 12)) })
     }
     setOpen(true)
   }
 
-  const menuContent = open && <div ref={menu} className={`platform-multi-select-menu${compact ? ' is-compact' : alignStart ? ' is-start' : ''}`} id={`${id}-menu`} role="group" aria-labelledby={`${id}-label`} style={compact ? { position: 'fixed', ...(compactMenuPosition ?? {}) } : undefined}>
+  const menuContent = open && <div ref={menu} className={`platform-multi-select-menu is-compact`} id={`${id}-menu`} role="group" aria-labelledby={`${id}-label`} style={{ position: 'fixed', ...(compactMenuPosition ?? {}) }}>
     <div className="platform-multi-select-menu-header"><strong>Platformlar</strong><button type="button" onClick={() => onChange(selectedOptions.length ? [] : options.map(option => option.value))}>{selectedOptions.length ? 'Tümünü Kaldır' : 'Tümünü Seç'}</button></div>
     {options.map(option => <label className="platform-multi-select-option" key={option.value}>
       <input type="checkbox" checked={Boolean(selectedCodes?.includes(option.value))} onChange={event => toggleOption(option.value, event.target.checked)} />
@@ -101,8 +95,7 @@ export function PlatformMultiSelect({ label, options, selectedCodes, onChange, c
       <button ref={trigger} type="button" className={`platform-multi-select-trigger${compact ? ' is-compact' : ''}${open ? ' is-open' : ''}${hasSelection ? ' has-selection' : ''}`} aria-label={compact ? `${label}: ${triggerLabel}` : undefined} aria-labelledby={!compact ? `${id}-label ${id}-value` : undefined} title={compact ? `${label}: ${triggerLabel}` : undefined} aria-expanded={open} aria-controls={open ? `${id}-menu` : undefined} onClick={toggleMenu} disabled={!options.length}>
         {compact ? <><svg className="order-filter-funnel" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16l-6 7.2V18l-4 1v-6.8L4 5z" /></svg>{hasSelection && <span className="platform-multi-select-selection-count" aria-hidden="true">{selectedCodes?.length ?? 0}</span>}</> : <><span id={`${id}-value`}>{triggerLabel}</span><UiIcon name="chevronDown" /></>}
       </button>
-      {!compact && menuContent}
     </div>
-    {compact && menuContent && createPortal(menuContent, document.body)}
+    {menuContent && createPortal(menuContent, document.body)}
   </div>
 }

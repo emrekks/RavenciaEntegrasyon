@@ -681,7 +681,7 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   // Phones select a card only through its round checkbox; a hold or a tap elsewhere on the card no longer selects it.
   return <tr className={selected ? 'rr-sel' : undefined}>
     <td className="rr-wide"><div className="rr-prodcell"><input type="checkbox" className="rr-cb" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} /><RrThumb src={product.primaryImageUrl} alt={product.title} onOpen={product.primaryImageUrl ? () => onImageClick(product.primaryImageUrl!, product.title) : undefined} /><div><b title={product.title}>{product.title}</b><small><span>Model Kodu:</span> <b className="rr-num">{modelCode}</b>{modelCode !== '—' && <ModelCodeCopy value={modelCode} />}</small></div></div></td>
-    <td className="rr-mid" data-l="Varyant"><span className={variantDisplayGroups.length > 0 ? 'rr-vhover' : 'rr-vhover rr-vhover-none'} tabIndex={0} onFocus={event => placeVariantTip(event.currentTarget)} role="button" aria-label={`${product.title}: varyantları aç`} onPointerDown={event => { event.currentTarget.dataset.wasOpen = document.activeElement === event.currentTarget ? '1' : '' }} onClick={event => { if (variantDisplayGroups.length > 0 && window.matchMedia('(max-width: 760px), (hover: none)').matches) { if (event.currentTarget.dataset.wasOpen) event.currentTarget.blur(); return } onQuickEdit('both') }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onQuickEdit('both') } }}><span className="rr-varcell" onMouseEnter={event => { if (event.currentTarget.parentElement) placeVariantTip(event.currentTarget.parentElement) }}><b>{group.products.length} seçenek</b><small>{group.variants.length} varyant</small></span>{variantDisplayGroups.length > 0 && <span className="rr-tip rr-vtip" role="tooltip"><table className="rr-vtab"><thead><tr><th />{variantSizes.map(size => <th key={size}>{size}</th>)}</tr></thead><tbody>{variantDisplayGroups.map(item => <tr key={item.label}><th title={item.label}>{item.label}</th>{variantSizes.map(size => { const value = item.values.find(entry => entry.label === size); return <td key={size} className={value == null ? 'rr-none' : value.quantity === 0 ? 'rr-empty' : value.quantity < 5 ? 'rr-low' : undefined}>{value == null ? '—' : value.quantity}</td> })}</tr>)}</tbody></table></span>}</span></td>
+    <td className="rr-mid" data-l="Varyant"><span className={variantDisplayGroups.length > 0 ? 'rr-vhover' : 'rr-vhover rr-vhover-none'} tabIndex={0} onFocus={event => placeVariantTip(event.currentTarget)} onBlur={event => hideVariantTip(event.currentTarget)} role="button" aria-label={`${product.title}: varyantları aç`} onPointerDown={event => { event.currentTarget.dataset.wasOpen = document.activeElement === event.currentTarget ? '1' : '' }} onClick={event => { if (variantDisplayGroups.length > 0 && window.matchMedia('(max-width: 760px), (hover: none)').matches) { if (event.currentTarget.dataset.wasOpen) event.currentTarget.blur(); return } onQuickEdit('both') }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onQuickEdit('both') } }}><span className="rr-varcell" onMouseEnter={event => { if (event.currentTarget.parentElement) placeVariantTip(event.currentTarget.parentElement) }} onMouseLeave={event => { if (event.currentTarget.parentElement) hideVariantTip(event.currentTarget.parentElement) }}><b>{group.products.length} seçenek</b><small>{group.variants.length} varyant</small></span>{variantDisplayGroups.length > 0 && <span className="rr-tip rr-vtip" role="tooltip"><table className="rr-vtab"><thead><tr><th />{variantSizes.map(size => <th key={size}>{size}</th>)}</tr></thead><tbody>{variantDisplayGroups.map(item => <tr key={item.label}><th title={item.label}>{item.label}</th>{variantSizes.map(size => { const value = item.values.find(entry => entry.label === size); return <td key={size} className={value == null ? 'rr-none' : value.quantity === 0 ? 'rr-empty' : value.quantity < 5 ? 'rr-low' : undefined}>{value == null ? '—' : value.quantity}</td> })}</tr>)}</tbody></table></span>}</span></td>
     <td className="rr-mid" data-l="Fiyat"><button type="button" className="rr-qbtn" title="Fiyatı hızlı düzenle" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('price')}><b className="rr-num">{formatMoney(startingPrice ?? 0, product.currency)}</b>{listPrice != null && <small className="rr-num">{formatMoney(listPrice, product.currency)}</small>}</button></td>
     <td className="rr-mid" data-l="Stok"><button type="button" className={`rr-qbtn${totalStock === 0 ? ' rr-zero' : ''}`} title="Stoğu hızlı düzenle" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('stock')}><b className="rr-num">{totalStock}</b><small>{totalStock === 0 ? 'Stoksuz' : 'adet'}</small></button></td>
     {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can read the platform state */}
@@ -759,19 +759,33 @@ function selectionChips(variants: Array<Pick<Variant, 'optionSignature' | 'sku'>
 // (products-responsive.css, tablet-catalog.css), under its trigger, and fitTip only moves it above the trigger when the
 // window has no room below, never past the window or under the sticky top bar. A fixed position written here on a
 // wider screen is taken off, or it would pull the table out of the card.
+// The tip leaves the top layer when the pointer leaves "N seçenek" (unless the keyboard focus keeps it open) or focus goes.
+function closeVariantTip(tip: HTMLElement) {
+  if (typeof tip.hidePopover === 'function' && tip.matches(':popover-open')) tip.hidePopover()
+}
+function hideVariantTip(anchor: HTMLElement) {
+  const tip = anchor.querySelector<HTMLElement>('.rr-vtip')
+  if (tip && !anchor.matches(':focus-visible')) closeVariantTip(tip)
+}
 function placeVariantTip(anchor: HTMLElement) {
   const tip = anchor.querySelector<HTMLElement>('.rr-vtip')
   if (!tip) return
   if (window.matchMedia('(max-width: 1024px)').matches) {
-    for (const property of ['position', 'transform', 'top', 'left', 'right', 'bottom', 'max-height']) tip.style.removeProperty(property)
+    closeVariantTip(tip)
+    for (const property of ['position', 'transform', 'top', 'left', 'right', 'bottom', 'max-height', 'margin']) tip.style.removeProperty(property)
     anchor.removeAttribute('data-up')
     fitTip(anchor, tip)
     return
   }
   unfitTip(tip)
+  // In the browser's top layer the tip sits above every sticky bar, card and sidebar and no ancestor can clip it.
+  if (typeof tip.showPopover === 'function') {
+    tip.setAttribute('popover', 'manual')
+    if (!tip.matches(':popover-open')) tip.showPopover()
+  }
   const edge = 8, offset = 6
   const own = anchor.getBoundingClientRect()
-  Object.assign(tip.style, { position: 'fixed', transform: 'none', right: 'auto', bottom: 'auto', maxHeight: 'none' })
+  Object.assign(tip.style, { position: 'fixed', transform: 'none', right: 'auto', bottom: 'auto', maxHeight: 'none', margin: '0' })
   const needed = tip.scrollHeight || 260
   const below = window.innerHeight - own.bottom - offset - edge
   const above = own.top - offset - edge

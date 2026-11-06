@@ -418,7 +418,7 @@
   .platform-multi-select-trigger.is-open > .ui-icon { transform: rotate(180deg); }
   .platform-multi-select-trigger:disabled { cursor: not-allowed; opacity: .65; }
   .platform-multi-select-menu { position: absolute; top: calc(100% + var(--rv-space-2)); right: 0; z-index: var(--rv-z-dropdown); display: grid; width: min(300px, calc(100vw - 32px)); max-height: min(360px, calc(100dvh - 112px)); gap: var(--rv-space-1); overflow: auto; padding: var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }
-  .platform-multi-select-menu.is-compact { position: fixed; top: 0; right: auto; }
+  .platform-multi-select-menu.is-compact { position: fixed; top: 0; right: auto; z-index: calc(var(--rv-z-dropdown) + 20); }
   .platform-multi-select-menu.is-start { right: auto; left: 0; }
   .platform-multi-select-menu-header { display: flex; align-items: center; justify-content: space-between; gap: var(--rv-space-2); padding: 0 var(--rv-space-1) var(--rv-space-2); border-bottom: 1px solid var(--rv-color-border); }
   .platform-multi-select-menu-header strong { font-size: var(--rv-font-size-sm); }

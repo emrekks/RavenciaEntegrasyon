@@ -219,6 +219,8 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn b { font-weight: 600 !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn small { font-weight: 400 !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { display: none; }
+/* Opened in the top layer by placeVariantTip: above the filter card, tabs and sidebar. */
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip:popover-open { display: grid; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:has(> .rr-varcell:hover) > .rr-vtip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:focus-visible > .rr-vtip { display: grid; }
 /* Opened above its row when the list's scroll box has no room below (placeVariantTip in ProductsPage.tsx). */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover[data-up] > .rr-vtip { top: auto; bottom: calc(100% + 6px); }
