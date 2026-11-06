@@ -16,6 +16,24 @@ export async function loadProductsByIds<P extends { id: string }>(ids: readonly 
   return results.filter((product): product is P => Boolean(product))
 }
 
+// The quick edit rows: each variant once, beside its own colour card. A product read by id (GET /products/{id}) lists
+// every card of its model family (variant.productId names the card a row belongs to), so ten cards of one family read
+// one by one would put each variant on screen ten times, nine of them beside another card. A card keeps only its own
+// variants; a variant of a card not in the window is left out, and a variant id seen twice keeps its first row, so a
+// save never goes out twice for one variant or takes another card's price as its fallback.
+export function quickEditVariantItems<P extends { id: string; variants: ReadonlyArray<{ id: string; productId?: string | null }> }>(products: readonly P[]): Array<{ product: P; variant: P['variants'][number] }> {
+  const seen = new Set<string>()
+  const items: Array<{ product: P; variant: P['variants'][number] }> = []
+  for (const product of products) {
+    for (const variant of product.variants) {
+      if ((variant.productId ?? product.id) !== product.id || seen.has(variant.id)) continue
+      seen.add(variant.id)
+      items.push({ product, variant })
+    }
+  }
+  return items
+}
+
 // A stock cell after its own save: it keeps showing the saved value until the product read again carries a new
 // stock. Until then the variant still holds the stock from before the save, and showing (and saving against) that
 // one would undo the change on screen and make the next save fail as stale.

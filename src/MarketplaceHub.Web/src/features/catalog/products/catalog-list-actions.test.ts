@@ -1,13 +1,23 @@
 import { describe, expect, it } from 'vitest'
 import { settleTrackedProductSyncJobs, trackProductSyncJobs } from '../product-sync-tracking'
 import { productDeleteListing, productDeleteMoreText } from './product-delete-text'
-import { loadProductsByIds, quickStockCellValue } from './quick-edit-products'
+import { loadProductsByIds, quickEditVariantItems, quickStockCellValue } from './quick-edit-products'
 
 describe('quick edit products', () => {
   it('reads every product by id and keeps the page copy of one that cannot be read', async () => {
     const page = { a: { id: 'a', version: 1 }, b: { id: 'b', version: 1 } } as Record<string, { id: string; version: number }>
     const read = async (id: string) => { if (id === 'b') throw new Error('404'); return { id, version: 5 } }
     expect(await loadProductsByIds(['a', 'b', 'c'], read, id => page[id])).toEqual([{ id: 'a', version: 5 }, { id: 'b', version: 1 }, { id: 'c', version: 5 }])
+  })
+
+  it('lists each family variant once, beside its own card, and leaves out cards not in the window', () => {
+    // GET /products/{id} lists the whole family's variants on every card it returns.
+    const family = [{ id: 'v1', productId: 'c1' }, { id: 'v2', productId: 'c2' }, { id: 'v3', productId: 'c3' }]
+    const cards = ['c1', 'c2'].map(id => ({ id, variants: family }))
+    expect(quickEditVariantItems(cards).map(item => `${item.product.id}:${item.variant.id}`)).toEqual(['c1:v1', 'c2:v2'])
+    // A variant without a card id (an older answer) belongs to the card it came with; a repeated id keeps its first row.
+    const legacy = [{ id: 'a', variants: [{ id: 'x' }, { id: 'x' }] }, { id: 'b', variants: [{ id: 'x' }] }]
+    expect(quickEditVariantItems(legacy).map(item => `${item.product.id}:${item.variant.id}`)).toEqual(['a:x'])
   })
 
   it('holds a saved stock until the product read again carries a new one', () => {
