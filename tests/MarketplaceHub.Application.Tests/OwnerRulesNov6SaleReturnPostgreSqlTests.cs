@@ -151,6 +151,38 @@ public sealed class OwnerRulesNov6SaleReturnPostgreSqlTests(PostgreSqlTenantIsol
         }
     }
 
+    // Owner, 6 Nov 2026: an exchange the customer asked for but Hepsiburada closed with a refund (raw status Refunded)
+    // is a return: the refunded unit leaves the sale invoice. Decided by how the claim closed, not by the request.
+    [PostgreSqlFact]
+    public async Task AnExchangeClaimClosedWithARefundIsAReturnForTheInvoice()
+    {
+        var seed = NewSeed("nov6-exchange-refunded", gross: 300m, discount: 0m);
+        var line = NewLine(seed, "İadeye dönen değişim", 3m, 100m);
+        var claim = NewClaim(seed, ReturnClaimStatus.Completed, "Refunded");
+        claim.CustomerRequest = ReturnCustomerRequestPolicy.Change;
+        await SeedAsync(seed, db =>
+        {
+            db.OrderLines.Add(line);
+            db.ReturnClaims.Add(claim);
+            db.ReturnLines.Add(NewReturnLine(seed, claim, line, 1m, "Refunded"));
+        });
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var previewed = await NewBillingService(db).PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+            Assert.True(previewed.Succeeded, previewed.Error?.Message);
+            var preview = Assert.Single(previewed.Value!);
+            Assert.Equal(200m, preview.PayableTotal);
+            Assert.Single(preview.ReturnedLines!);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     // Owner, 6 Nov 2026: "Değişimde bir şey değişmiyor, satış devam etmiş oluyor." An approved exchange claim keeps its
     // units on the sale invoice, and an issued invoice gets no return-document note for it; a refund claim does.
     [PostgreSqlFact]

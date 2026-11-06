@@ -35,10 +35,41 @@ public static class SizeChartPlacement
         : lastIsSizeChart && limit > 0 ? urls.Take(limit - 1).Append(urls[^1]).ToArray()
         : urls.Take(limit).ToArray();
 
+    // Ş2: the chart is told by its url (CatalogImageIdentity.Key), not by the media rows: the url list is what gets
+    // trimmed, after blank urls were dropped and duplicates merged, so only its own last element can be the chart.
+    public static IReadOnlyList<string> TakeKeepingChart(IReadOnlyList<string> urls, int limit, string? chartUrl)
+    {
+        var ordered = Last(urls, chartUrl);
+        return TakeKeepingLast(ordered, limit, EndsWith(ordered, chartUrl));
+    }
+
+    // O6: a model family's pictures with every card's chart moved to the end once (each card has its own), the
+    // charts kept when the list is longer than `limit`.
+    public static IReadOnlyList<string> TakeKeepingCharts(IReadOnlyList<string> urls, int limit, IReadOnlyCollection<string> chartUrls)
+    {
+        var chartKeys = chartUrls.Where(url => !string.IsNullOrWhiteSpace(url)).Select(CatalogImageIdentity.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (chartKeys.Count == 0) return urls.Take(limit).ToList();
+        var charts = urls.Where(url => chartKeys.Contains(CatalogImageIdentity.Key(url)))
+            .DistinctBy(CatalogImageIdentity.Key, StringComparer.OrdinalIgnoreCase).Take(limit).ToList();
+        var others = urls.Where(url => !chartKeys.Contains(CatalogImageIdentity.Key(url))).Take(limit - charts.Count);
+        return others.Concat(charts).ToList();
+    }
+
+    private static bool EndsWith(IReadOnlyList<string> urls, string? chartUrl) =>
+        !string.IsNullOrWhiteSpace(chartUrl) && urls.Count > 0
+        && string.Equals(CatalogImageIdentity.Key(urls[^1]), CatalogImageIdentity.Key(chartUrl), StringComparison.OrdinalIgnoreCase);
+
     // The asset of the card's size chart, null when it has none.
     public static Task<Guid?> AssetIdAsync(AppDbContext db, Guid tenantId, Guid productId, CancellationToken cancellationToken) =>
         db.ProductSizeCharts.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.FileAssetId != null)
             .Select(x => x.FileAssetId)
             .FirstOrDefaultAsync(cancellationToken);
+
+    // The size chart assets of several cards (a model family), each card's own.
+    public static Task<List<Guid>> AssetIdsAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid> productIds, CancellationToken cancellationToken) =>
+        db.ProductSizeCharts.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.FileAssetId != null)
+            .Select(x => x.FileAssetId!.Value)
+            .ToListAsync(cancellationToken);
 }

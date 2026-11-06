@@ -39,10 +39,12 @@ public sealed class ApiRequestGuardsTests
         Assert.Equal(served, FetchMetadata.IsFromServerNetwork(context));
     }
 
+    // D9: without If-Match only the first save writes; a stored setting is never written blind (428).
     [Fact]
-    public void SettingsSave_WithoutIfMatch_StillWrites()
+    public void SettingsSave_WithoutIfMatch_WritesOnlyTheFirstVersion()
     {
-        Assert.Null(SettingsEndpoints.Precondition(new DefaultHttpContext(), Setting(3)));
+        Assert.Null(SettingsEndpoints.Precondition(new DefaultHttpContext(), null));
+        Assert.Equal(428, Assert.IsAssignableFrom<IStatusCodeHttpResult>(SettingsEndpoints.Precondition(new DefaultHttpContext(), Setting(3))).StatusCode);
     }
 
     [Fact]

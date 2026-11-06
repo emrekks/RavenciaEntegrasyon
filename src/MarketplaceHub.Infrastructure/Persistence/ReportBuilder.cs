@@ -111,6 +111,8 @@ internal sealed class ReportLineExtra
     public string? CommissionRate { get; init; }
     public string? Komisyon { get; init; }
     public string? CancelReason { get; init; }
+    // The line's list price per unit when the marketplace sent it (Trendyol lineGrossAmount), else null.
+    public decimal? ListUnitPrice { get; init; }
 }
 
 internal sealed class ReportClaimRow
@@ -453,7 +455,7 @@ internal static class ReportBuilder
                 var commission = isTry && extra is not null
                     ? ReportBuckets.EstimatedCommission(platform, extra.CommissionType, extra.Commission, extra.CommissionRate, extra.Komisyon, paidUnit * keptUnits, keptUnits)
                     : null;
-                lines.Add(new(line, active, lineBack, paidUnit, commission, extra?.CancelReason));
+                lines.Add(new(line, active, lineBack, paidUnit, commission, extra?.CancelReason, extra?.ListUnitPrice ?? 0m));
             }
             // The real commission of a Hepsiburada, n11 or Pazarama order whose own finance records were read
             // (ReportMarketplaceCommissions), net of what was given back, replaces the estimate on its lines, shared over
@@ -636,8 +638,9 @@ internal static class ReportBuilder
             .ToList();
         var reasons = Reasons(cancelled.Select(x => Label(x.Reason, null))
             .Concat(orders.SelectMany(x => x.Lines).Where(x => x.Row.CancelledQuantity > 0).Select(x => Label(x.CancelReason, null))));
-        // A partly cancelled line of a TRY order at its list price.
-        var partlyAmount = orders.Where(x => x.Currency == Try).SelectMany(x => x.Lines).Sum(x => x.Row.UnitPrice * Math.Max(0m, x.Row.CancelledQuantity));
+        // A partly cancelled line of a TRY order at its list price per unit, as a fully cancelled order is counted (the
+        // line's own list price: Trendyol's lineGrossAmount, else the paid price plus the marketplace's discount).
+        var partlyAmount = orders.Where(x => x.Currency == Try).SelectMany(x => x.Lines).Sum(x => PartlyListUnitPrice(x) * Math.Max(0m, x.Row.CancelledQuantity));
         var cancelledUnits = cancelled.Sum(x => x.Quantity) + PartlyCancelled(orders);
         return new(cancelled.Count, cancelledUnits, Rate(cancelledUnits, orders.SelectMany(x => x.Lines).Sum(x => x.Active) + cancelledUnits), CancelWarningRate, platforms, reasons,
             Math.Round(cancelled.Sum(x => x.Amount) + partlyAmount, 2));
@@ -700,6 +703,8 @@ internal static class ReportBuilder
                 : package.MarketplaceInvoiceStatus is MarketplaceInvoiceStatus.NotInvoiced or MarketplaceInvoiceStatus.Rejected ? "NOT_INVOICED"
                 : "UNKNOWN"
         };
+
+    internal static decimal PartlyListUnitPrice(LineFact line) => line.ListUnitPrice > 0m ? line.ListUnitPrice : line.Row.UnitPrice + line.Row.PlatformDiscount;
 
     internal const string ReturnedInvoiceLabel = "İade – Fatura Gerekmez";
 
@@ -844,7 +849,7 @@ internal static class ReportBuilder
     private static decimal Back(IEnumerable<OrderFact> rows) => rows.Sum(x => x.Lines.Sum(line => line.Back));
     private static decimal? Rate(decimal part, decimal whole) => whole > 0 ? Math.Round(part / whole, 4) : null;
 
-    internal sealed record LineFact(ReportLineRow Row, decimal Active, decimal Back, decimal PaidUnitPrice, decimal? Commission, string? CancelReason)
+    internal sealed record LineFact(ReportLineRow Row, decimal Active, decimal Back, decimal PaidUnitPrice, decimal? Commission, string? CancelReason, decimal ListUnitPrice = 0m)
     {
         public decimal KeptUnits => Active - Back;
         public decimal KeptAmount => PaidUnitPrice * KeptUnits;

@@ -59,8 +59,11 @@ export function platformCodeIssues(platformCodes: readonly string[], barcode: st
 // A red code field's hover text: "Barkod eksik" / "Stok kodu eksik" when it is empty and needed, otherwise the rules
 // it breaks. A stock code is needed on every variant; a barcode only where some active platform requires one.
 // A code a refused save named as held by another card says so first: "MZ021Y-CD-01 · 'Kadın … Bluz' ürününde kullanılıyor".
+// One the save gave to several of its own rows (SAME_SAVE_CODE_HOLDER) says "MZ071-M iki varyantta kullanılıyor".
+export const SAME_SAVE_CODE_HOLDER = '\u0000same-save'
 export function variantCodeFieldIssueText(issues: readonly PlatformCodeIssue[], field: PlatformCodeField, value: string, heldBy?: string) {
   const ruleText = describePlatformCodeIssues(issues, field)
+  if (value.trim() && heldBy === SAME_SAVE_CODE_HOLDER) return `${value.trim()} iki varyantta kullanılıyor`
   if (value.trim() && heldBy) return `${value.trim()} · '${heldBy}' ürününde kullanılıyor`
   if (value.trim()) return ruleText
   if (field === 'sku') return 'Stok kodu eksik'

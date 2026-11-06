@@ -1968,6 +1968,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     updateField('mediaUrls', '')
     setFamilyMediaOrder([])
     setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: [] })))
+    // D5: with its picture gone the card has no size chart; Kaydet clears the mark.
+    setSizeChartUrl(null)
     setDraggedMedia(null)
     setDragOverMedia(null)
     showFeedback('Görseller Temizlendi', duplicateProductId && !editProductId ? 'Görseller kopyadan kaldırıldı. Kaynak ürünün görselleri değişmez.' : clearAllMediaFeedbackText(ownCount, plan.removable.length, plan.keptCount), plan.keptCount ? 'error' : 'info')
@@ -1978,8 +1980,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const isPersisted = Boolean(editProductId && productToEdit.data && savedMediaUrls.some(item => mediaImageKey(item) === targetKey))
     const nextDraftMediaUrls = mediaUrls.filter(item => mediaImageKey(item) !== targetKey)
     const removeVariantReference = (reference: string) => !reference.startsWith('url|') || mediaImageKey(reference.slice(4)) !== targetKey
+    // D5: the size chart's tile taken away takes the mark with it (Kaydet clears it on the server; a saved picture's
+    // delete clears it there at once).
+    const removesSizeChart = Boolean(chartKey) && chartKey === targetKey
 
     if (!isPersisted || !editProductId || !productToEdit.data) {
+      if (removesSizeChart) setSizeChartUrl(null)
       updateField('mediaUrls', nextDraftMediaUrls.join('\n'))
       setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
       if (duplicateProductId && !editProductId) {
@@ -2005,6 +2011,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       updateField('mediaUrls', nextDraftMediaUrls.join('\n'))
       setVariantRows(rows => rows.map(row => ({ ...row, mediaRefs: row.mediaRefs.filter(removeVariantReference) })))
       setFamilyMediaOrder(current => current.filter(item => mediaImageKey(item) !== targetKey))
+      if (removesSizeChart) {
+        initialSizeChartUrl.current = null
+        setSizeChartUrl(null)
+      }
       // The deletion is saved already: a form that had no other edits stays "clean" afterwards.
       if (!editorDirty) setSnapshotRequest(value => value + 1)
 
@@ -2554,7 +2564,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const saveVariantMediaAssignments = useEffectEvent(async () => {
     const product = productToEdit.data
     if (!mediaAutoSaveTick || !editProductId || !product) return
-    const requests = variantMediaReconcileRequests(variantRows, initialEditVariantMediaRefs.current)
+    // D5: the size chart stays every variant's last picture here too, as on Kaydet.
+    const requests = variantMediaReconcileRequests(variantRows.map(row => ({ ...row, mediaRefs: pinSizeChartLast(row.mediaRefs, chartKey) })), initialEditVariantMediaRefs.current)
     if (requests === null || submitting) {
       showFeedback('Görsel Ataması Eklendi', 'Görsel ataması forma eklendi; ürünü kaydettiğinizde kaydedilir.', 'info')
       return
@@ -2749,7 +2760,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           ? ['Ürün Yayınlanıyor', productChangedAtSubmit ? `Ürün kaydediliyor ve ${storeCount} gönderiliyor…` : `Ürün ${storeCount} gönderiliyor…`]
           : ['Ürün Oluşturuluyor', `Ürün oluşturuluyor ve ${storeCount} gönderiliyor…`]
         : editProductId ? ['Ürün Kaydediliyor', 'Ürün değişiklikleri kaydediliyor…'] : ['Ürün Oluşturuluyor', 'Ürün oluşturuluyor…']
-    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); editorSaveInFlight.current = true; setProductAtSave(productToEdit.data ?? null); let productCreated: Product | undefined; let familyMediaChanged = false
+    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); editorSaveInFlight.current = true; setProductAtSave(productToEdit.data ?? null); let productCreated: Product | undefined; let familyMediaChanged = false; let mediaStep = false
     const uploadedMediaFileIds = new Set<string>()
     // What a create that stops after the product exists hands to the product's page (pending-create-media.ts).
     const storedUrlByFileId = new Map<string, string>()
@@ -2890,6 +2901,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const productMediaChanged = editProductId
         ? !mediaRefsEqual(mediaUrls, initialProductMediaUrls) && !(familyMediaOrderDirty && mediaRefsSameSet(mediaUrls, initialProductMediaUrls))
         : mediaUrls.length > 0
+      // O8: from here the card is saved; a picture step that fails says so, the card's data stays saved.
+      mediaStep = true
       if (productMediaChanged) await hubApi('/files/product-media-reconcile', { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ productId: product.id, variantId: null, items: mediaUrls.map((url, sortOrder) => ({ url, sortOrder })), altText: form.title }) })
       // Uploads and media writes on one product stay one at a time: each raises the product's version, which the
       // server checks. Each new file is uploaded once, here; the variants below reference its stored copy.
@@ -2954,6 +2967,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         initialSizeChartUrl.current = marked?.sizeChartUrl ?? sizeChartUrl
         completed.push(sizeChartUrl ? 'beden tablosu' : 'beden tablosu işareti kaldırıldı')
       }
+      mediaStep = false
       if (editProductId ? productMediaChanged || mediaFiles.length > 0 : mediaUrls.length || mediaFiles.length) completed.push('görseller')
       if (removedFamilyMediaCount) completed.push(`diğer renklerden kaldırılan ${removedFamilyMediaCount} görsel`)
       if (familyMediaChanged) completed.push('diğer renklerin görsel sırası')
@@ -3172,7 +3186,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       }
       const reasonMessage = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
       const message = variantDeleteRefused ? `${reasonMessage} ${VARIANT_DELETE_REFUSED_HINT}` : reasonMessage
-      const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
+      const feedbackMessage = productCreated ? mediaStep ? `Ürün bilgileri kaydedildi ancak görseller kaydedilemedi: ${message} Görselleri kontrol edip Kaydet'e yeniden basın.` : `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
       setError(reason); setNotice(feedbackMessage)
       setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
       if (!productCreated) { setFieldErrors(editorFieldErrors(reason)); setVariantCodeConflicts(variantCodeConflictsFrom(reason)) }

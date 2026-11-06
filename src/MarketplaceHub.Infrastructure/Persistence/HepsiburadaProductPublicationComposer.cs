@@ -145,9 +145,10 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             if (relevantMedia.Any(item => item.Classification == "PRODUCT_MEDIA" && !string.Equals(item.MimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase) && !string.Equals(item.MimeType, "image/png", StringComparison.OrdinalIgnoreCase))) return Fail("PRODUCT_MEDIA_MIME_INVALID", $"'{variant.Sku}' ürün görselleri JPEG veya PNG olmalıdır.");
             var directUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (directUrls.Any(url => !ProductPublicationComposer.IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
-            var imageUrls = relevantMedia.Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
-                .Where(url => !string.IsNullOrWhiteSpace(url)).Select(url => url!).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            imageUrls = [.. SizeCharts.SizeChartPlacement.TakeKeepingLast(imageUrls, 5, PublicationVariantMedia.EndsWithSizeChart(relevantMedia, x => x.Id, sizeChartAssetId))];
+            var pictureUrls = relevantMedia
+                .Select(item => (item.Id, Url: item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id)))
+                .ToList();
+            string[] imageUrls = [.. ProductPublicationComposer.SelectPublicationImageUrls(pictureUrls.Select(item => item.Url), PublicationVariantMedia.SizeChartUrl(pictureUrls, sizeChartAssetId), limit: 5)];
             if (imageUrls.Length == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir herkese açık HTTPS ürün görseli gerekir.");
 
             var importAttributes = new Dictionary<string, object?>(StringComparer.Ordinal)

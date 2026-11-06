@@ -147,6 +147,32 @@ public sealed class SizeChartPlacementTests
         Assert.Equal(["1", "2", "3", "4", "5"], SizeChartPlacement.TakeKeepingLast(urls, 5, lastIsSizeChart: false));
         Assert.Equal(["1", "chart"], SizeChartPlacement.TakeKeepingLast(["1", "chart"], 5, lastIsSizeChart: true));
     }
+
+    // Ş2: the chart is found by its url in the list that is trimmed, after blanks and duplicates are gone.
+    [Fact]
+    public void The_chart_is_told_by_its_url_after_blanks_and_duplicates_are_dropped()
+    {
+        const string chart = "https://cdn.example.com/chart.png";
+        // The chart's own row could not be built (null): the last url is a product picture and must not take its place.
+        string?[] withoutChartUrl = ["https://a/1.jpg", "https://a/2.jpg", "https://a/3.jpg", "https://a/4.jpg", "https://a/5.jpg", "https://a/6.jpg", null];
+        Assert.Equal(["https://a/1.jpg", "https://a/2.jpg", "https://a/3.jpg", "https://a/4.jpg", "https://a/5.jpg"],
+            ProductPublicationComposer.SelectPublicationImageUrls(withoutChartUrl, null, limit: 5));
+        // The chart repeated earlier in the list (a duplicate the Distinct keeps first) still goes last and stays.
+        string?[] chartTwice = ["https://a/1.jpg", chart, "https://a/2.jpg", "https://a/3.jpg", "https://a/4.jpg", "https://a/5.jpg", "", chart];
+        Assert.Equal(["https://a/1.jpg", "https://a/2.jpg", "https://a/3.jpg", "https://a/4.jpg", chart],
+            ProductPublicationComposer.SelectPublicationImageUrls(chartTwice, chart, limit: 5));
+        // A chart url missing from the list changes nothing.
+        Assert.Equal(["https://a/1.jpg", "https://a/2.jpg"], ProductPublicationComposer.SelectPublicationImageUrls(["https://a/1.jpg", "https://a/2.jpg"], chart, limit: 5));
+    }
+
+    [Fact]
+    public void A_family_keeps_every_cards_chart_last_once_when_trimmed()
+    {
+        string[] urls = ["a1", "chartA", "a2", "b1", "chartB", "b2"];
+        Assert.Equal(["a1", "a2", "chartA", "chartB"], SizeChartPlacement.TakeKeepingCharts(urls, 4, ["chartA", "chartB"]));
+        Assert.Equal(["a1", "a2", "b1", "b2", "chartA", "chartB"], SizeChartPlacement.TakeKeepingCharts(urls, 250, ["chartA", "chartB"]));
+        Assert.Equal(["a1", "chartA", "a2"], SizeChartPlacement.TakeKeepingCharts(urls, 3, []));
+    }
 }
 
 // Ayarlar › Yapay Zekâ: only the owner and administrators reach it; the size chart is product work.
@@ -279,6 +305,34 @@ public sealed class ClaudeClientTests
         Assert.Equal("AI_KEY_INVALID", failure.Code);
         Assert.DoesNotContain(Key, failure.Message, StringComparison.Ordinal);
         Assert.Single(handler.Requests);
+    }
+
+    // D4: the message is billed before the file lookups; a failed lookup keeps its usage for the cost log.
+    [Fact]
+    public async Task A_failed_file_lookup_after_the_billed_message_keeps_the_usage()
+    {
+        var handler = new FakeHandler(request => request.RequestUri!.AbsolutePath == "/v1/messages"
+            ? Json(SkillResponse)
+            : Json("""{"type":"error","error":{"type":"api_error","message":"boom"}}""", HttpStatusCode.InternalServerError));
+        var client = new ClaudeClient(new Factory(handler));
+
+        var failure = await Assert.ThrowsAsync<ClaudeException>(() => client.RunSkillAsync(new ClaudeSkillRequest(Key, "claude-sonnet-5-5", "skill_1", "v1", "system", "prompt", "low", 8000, TimeSpan.FromSeconds(30)), CancellationToken.None));
+
+        Assert.Equal("AI_UNAVAILABLE", failure.Code);
+        Assert.Equal((1500L, 400L), (failure.Usage?.InputTokens, failure.Usage?.OutputTokens));
+    }
+
+    [Fact]
+    public async Task A_call_the_user_abandoned_is_cancelled_not_a_timeout()
+    {
+        var handler = new FakeHandler(_ => Json(SkillResponse));
+        var client = new ClaudeClient(new Factory(handler));
+        using var abandoned = new CancellationTokenSource();
+        await abandoned.CancelAsync();
+
+        var failure = await Assert.ThrowsAsync<ClaudeException>(() => client.TestAsync(Key, "claude-sonnet-5-5", abandoned.Token));
+
+        Assert.Equal(ClaudeClient.CancelledCode, failure.Code);
     }
 
     [Fact]

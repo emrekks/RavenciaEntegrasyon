@@ -144,14 +144,18 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
             .ToListAsync(cancellationToken);
         if (mediaRows.Where(media => media.Classification == "PRODUCT_MEDIA_URL").Any(media => !ProductPublicationComposer.IsPublicHttpsUrl(media.RelativePath.Trim())))
             return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", "Shopify görsellerinin tamamı güvenli ve herkese açık HTTPS adresi olmalıdır.", field: "images");
+        var mediaUrls = mediaRows.Select(media => (media.Id, Row: new ShopifyMediaRow(media.ProductId, media.VariantId, media.SortOrder, media.Classification == "PRODUCT_MEDIA_URL"
+                ? media.RelativePath.Trim()
+                : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], media.Id) ?? "")))
+            .Where(media => !string.IsNullOrWhiteSpace(media.Row.Url))
+            .ToList();
+        // O6: every card's size chart goes last, once, like on the other marketplaces.
+        var sizeChartAssetIds = (await SizeCharts.SizeChartPlacement.AssetIdsAsync(db, tenantId, memberIds, cancellationToken)).ToHashSet();
         var mediaPlan = PlanMedia(
-            mediaRows.Select(media => new ShopifyMediaRow(media.ProductId, media.VariantId, media.SortOrder, media.Classification == "PRODUCT_MEDIA_URL"
-                    ? media.RelativePath.Trim()
-                    : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], media.Id) ?? ""))
-                .Where(media => !string.IsNullOrWhiteSpace(media.Url))
-                .ToList(),
+            mediaUrls.Select(media => media.Row).ToList(),
             memberIds,
-            variants.Select(variant => (variant.Id, variant.ProductId)).ToList());
+            variants.Select(variant => (variant.Id, variant.ProductId)).ToList(),
+            mediaUrls.Where(media => sizeChartAssetIds.Contains(media.Id)).Select(media => media.Row.Url).ToList());
         var imageUrls = mediaPlan.ProductUrls;
         if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", "Shopify yayını için en az bir HTTPS ürün görseli gerekir. Yerel görseller için Marketplace:PublicBaseUrl ayarını yapılandırın.", field: "images");
         var files = imageUrls.Select(url => FileInput(url, title)).ToArray();
@@ -326,7 +330,9 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
     // inside each colour, so ordering them with the gallery jumbled the order (live 2026-11-01: RYP006/RYP007 went with
     // 8 of their 18 pictures, out of order, and no variant picture). A variant shows the first of its own pictures; one
     // without its own shows its card's first picture when the family has several cards, as before.
-    internal static ShopifyMediaPlan PlanMedia(IReadOnlyList<ShopifyMediaRow> rows, IReadOnlyList<Guid> memberIds, IReadOnlyList<(Guid VariantId, Guid ProductId)> variants)
+    // sizeChartUrls: the cards' size charts, which go after every other picture, once each, and stay when the list is
+    // longer than Shopify takes (O6).
+    internal static ShopifyMediaPlan PlanMedia(IReadOnlyList<ShopifyMediaRow> rows, IReadOnlyList<Guid> memberIds, IReadOnlyList<(Guid VariantId, Guid ProductId)> variants, IReadOnlyCollection<string>? sizeChartUrls = null)
     {
         var variantIndex = variants.Select((variant, index) => (variant.VariantId, index)).ToDictionary(x => x.VariantId, x => x.index);
         var imagesByMember = memberIds.ToDictionary(memberId => memberId, memberId => rows
@@ -338,7 +344,8 @@ internal sealed class ShopifyProductPublicationComposer(AppDbContext db, IConfig
             .Select(row => row.Url)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList());
-        var productUrls = memberIds.SelectMany(memberId => imagesByMember[memberId]).Distinct(StringComparer.OrdinalIgnoreCase).Take(MaximumFileCount).ToList();
+        var productUrls = SizeCharts.SizeChartPlacement.TakeKeepingCharts(
+            memberIds.SelectMany(memberId => imagesByMember[memberId]).Distinct(StringComparer.OrdinalIgnoreCase).ToList(), MaximumFileCount, sizeChartUrls ?? []);
         var sent = productUrls.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var variantUrls = new Dictionary<Guid, string>();
         foreach (var (variantId, productId) in variants)

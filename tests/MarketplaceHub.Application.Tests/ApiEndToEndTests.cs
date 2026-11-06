@@ -308,6 +308,10 @@ public sealed class ApiEndToEndTests(ApiEndToEndFixture fixture) : IClassFixture
             stale.Headers.TryAddWithoutValidation("If-Match", "\"v999999\"");
             using var staleResponse = await client.SendAsync(stale);
             Assert.Equal(HttpStatusCode.PreconditionFailed, staleResponse.StatusCode);
+
+            // D9: the stored setting is not written blind: a save without If-Match is refused (428).
+            using var blind = await client.SendAsync(Keyed(HttpMethod.Put, "/api/v1/settings/shipping-label", csrf, Guid.NewGuid().ToString(), settings));
+            Assert.Equal((HttpStatusCode)428, blind.StatusCode);
         }
     }
 

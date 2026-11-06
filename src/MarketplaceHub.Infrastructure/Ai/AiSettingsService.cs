@@ -60,7 +60,15 @@ public sealed class AiSettingsService(AppDbContext db, IDataProtectionProvider d
         var changes = new List<string>();
         if (key.Length > 0)
         {
-            changes.Add(stored.ApiKeyProtected is null ? "API anahtarı kaydedildi" : "API anahtarı değişti");
+            var previousKey = SavedKey(tenantId, stored);
+            changes.Add(stored.ApiKeyProtected is null ? "API anahtarı kaydedildi" : previousKey == key ? "API anahtarı aynı" : "API anahtarı değişti");
+            // O9: uploaded skills live in the old key's workspace; another key cannot use them, so they are forgotten
+            // and show "Yüklenmedi" until "Beceriyi Yükle" uploads them with the new key.
+            if (previousKey != key && stored.Skills is { Count: > 0 })
+            {
+                changes.Add($"yüklü beceriler ({string.Join(", ", stored.Skills.Keys.Order(StringComparer.Ordinal))}) yeni anahtar için yeniden yüklenmeli");
+                stored.Skills = null;
+            }
             stored.ApiKeyProtected = BoundSecret.Protect(protector, TenantScope(tenantId), key);
         }
         if (!string.Equals(stored.DefaultModel ?? DefaultModel, model, StringComparison.Ordinal)) changes.Add($"varsayılan model {model}");
@@ -102,6 +110,14 @@ public sealed class AiSettingsService(AppDbContext db, IDataProtectionProvider d
     }
 
     private static string TenantScope(Guid tenantId) => $"tenant:{tenantId:N}/ai";
+
+    // The saved key, null when none is saved or it cannot be read (then any new key counts as another one).
+    private string? SavedKey(Guid tenantId, Stored stored)
+    {
+        if (string.IsNullOrEmpty(stored.ApiKeyProtected)) return null;
+        try { return BoundSecret.Unprotect(protector, TenantScope(tenantId), stored.ApiKeyProtected); }
+        catch (System.Security.Cryptography.CryptographicException) { return null; }
+    }
 
     private void Write(Guid tenantId, ref TenantSetting? setting, Stored stored)
     {

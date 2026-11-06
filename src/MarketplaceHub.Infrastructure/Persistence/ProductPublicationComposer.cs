@@ -182,12 +182,12 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
             var relevantUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (relevantUrls.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
-            var imageUrls = SelectPublicationImageUrls(relevantMedia
-                .Select(item => item.Classification == "PRODUCT_MEDIA_URL"
+            var pictureUrls = relevantMedia
+                .Select(item => (item.Id, Url: item.Classification == "PRODUCT_MEDIA_URL"
                     ? item.RelativePath.Trim()
-                    : BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
-                .Where(url => !string.IsNullOrWhiteSpace(url))
-                .Select(url => url!), PublicationVariantMedia.EndsWithSizeChart(relevantMedia, x => x.Id, sizeChartAssetId));
+                    : BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id)))
+                .ToList();
+            var imageUrls = SelectPublicationImageUrls(pictureUrls.Select(item => item.Url), PublicationVariantMedia.SizeChartUrl(pictureUrls, sizeChartAssetId));
             if (imageUrls.Count == 0 && relevantMedia.Count > 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için yerel görseller HTTPS üzerinden sunulamıyor. Marketplace:PublicBaseUrl ayarını yapılandırın.");
             if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir geçerli HTTPS görsel adresi gerekir.");
 
@@ -510,13 +510,14 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         return url.Length <= 512 ? url : null;
     }
 
-    // lastIsSizeChart: the list ends with the card's size chart, which stays the last picture sent even when the list
-    // is longer than the marketplace takes.
-    internal static IReadOnlyList<string> SelectPublicationImageUrls(IEnumerable<string> imageUrls, bool lastIsSizeChart = false) =>
-        SizeCharts.SizeChartPlacement.TakeKeepingLast(imageUrls
+    // sizeChartUrl: the card's size chart, which goes last and stays the last picture sent even when the list is
+    // longer than the marketplace takes. It is told by its url after the blanks and duplicates are gone (Ş2).
+    internal static IReadOnlyList<string> SelectPublicationImageUrls(IEnumerable<string?> imageUrls, string? sizeChartUrl = null, int limit = MaximumPublicationImageCount) =>
+        SizeCharts.SizeChartPlacement.TakeKeepingChart(imageUrls
             .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Select(url => url!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray(), MaximumPublicationImageCount, lastIsSizeChart);
+            .ToArray(), limit, sizeChartUrl);
 
     private static bool IsPublicHost(string host)
     {

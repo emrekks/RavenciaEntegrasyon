@@ -109,8 +109,20 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         }
         catch (ClaudeException exception)
         {
-            await claude.MarkFailedAsync(run.LogId, exception.Message, CancellationToken.None);
+            await claude.MarkFailedAsync(run.LogId, exception.Message, CancellationToken.None, exception.Code == ClaudeClient.CancelledCode ? ClaudeService.CancelledStatus : "FAILED");
             throw new SizeChartException(exception.Code, exception.Message, exception.Status);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // D4: the billed call stays on its row, marked as abandoned by the user.
+            await claude.MarkFailedAsync(run.LogId, "İstek iptal edildi; görsel eklenmedi.", CancellationToken.None, ClaudeService.CancelledStatus);
+            throw;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // D4: storing the image or the row failed after the billed call: the usage row says so.
+            await claude.MarkFailedAsync(run.LogId, $"Görsel kaydedilemedi: {exception.Message}", CancellationToken.None);
+            throw;
         }
     }
 
@@ -127,7 +139,7 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
             assetId = await ResolveAssetAsync(tenantId, url, cancellationToken)
                 ?? throw new SizeChartException("PRODUCT_MEDIA_NOT_FOUND", "Beden tablosu olarak işaretlenen görsel bulunamadı.", 404);
             var onProduct = await db.ProductMedia.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.FileAssetId == assetId && x.Status == "ACTIVE", cancellationToken);
-            if (!onProduct && chart.LastGeneratedAssetId != assetId)
+            if (!onProduct && !(await GeneratedForProductAsync(db, tenantId, productId, [assetId.Value], cancellationToken)).Contains(assetId.Value))
                 throw new SizeChartException("SIZE_CHART_NOT_ON_PRODUCT", "Beden tablosu olarak işaretlenen görsel bu ürünün görsellerinde değil.", 422);
         }
         if (chart.FileAssetId != assetId)
@@ -141,9 +153,24 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         return assetId is Guid id ? await UrlAsync(tenantId, id, cancellationToken) : null;
     }
 
-    // An image generated for any card of the tenant may be attached by the editor's picture save before it has rows.
-    public static Task<bool> IsGeneratedAssetAsync(AppDbContext db, Guid tenantId, Guid assetId, CancellationToken cancellationToken) =>
-        db.ProductSizeCharts.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.LastGeneratedAssetId == assetId, cancellationToken);
+    // O8: which of the given assets are size charts generated for this card, any of its tries and not only the newest
+    // (Kullan, then Yeniden Oluştur without using it, then Kaydet keeps the used one). A generated file is named after
+    // its card (StoreAsync); the newest is also remembered on the chart row (a file shared by an identical image keeps
+    // its first name).
+    public static async Task<HashSet<Guid>> GeneratedForProductAsync(AppDbContext db, Guid tenantId, Guid productId, IReadOnlyCollection<Guid> assetIds, CancellationToken cancellationToken)
+    {
+        if (assetIds.Count == 0) return [];
+        var fileName = GeneratedFileName(productId);
+        var named = await db.FileAssets.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && assetIds.Contains(x.Id) && x.Classification == "PRODUCT_MEDIA" && x.OriginalNameSafe == fileName)
+            .Select(x => x.Id).ToListAsync(cancellationToken);
+        var newest = await db.ProductSizeCharts.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.LastGeneratedAssetId != null && assetIds.Contains(x.LastGeneratedAssetId.Value))
+            .Select(x => x.LastGeneratedAssetId!.Value).ToListAsync(cancellationToken);
+        return [.. named, .. newest];
+    }
+
+    internal static string GeneratedFileName(Guid productId) => $"beden-tablosu-{productId:N}.jpg";
 
     internal const string SystemPrompt =
         "You make product size chart images for the Ravencia seller panel with the beden-tablosu skill. "
@@ -246,7 +273,7 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         var id = Guid.CreateVersion7();
         using var content = new MemoryStream(bytes);
         var stored = await storage.SaveAsync(tenantId, $"{id:N}.jpg", "image/jpeg", content, MaxImageBytes, cancellationToken);
-        var asset = new FileAsset { Id = id, TenantId = tenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = $"beden-tablosu-{productId:N}.jpg", MimeType = "image/jpeg", SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
+        var asset = new FileAsset { Id = id, TenantId = tenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = GeneratedFileName(productId), MimeType = "image/jpeg", SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
         db.FileAssets.Add(asset);
         await db.SaveChangesAsync(cancellationToken);
         return asset;

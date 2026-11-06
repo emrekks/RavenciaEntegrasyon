@@ -30,8 +30,9 @@ internal static class PublicationVariantMedia
         return media.Where(item => variantOf(item) is not null && seen.Add(assetOf(item))).ToList();
     }
 
-    public static bool EndsWithSizeChart<T>(IReadOnlyList<T> pictures, Func<T, Guid> assetOf, Guid? sizeChartAssetId) =>
-        sizeChartAssetId is Guid chartId && pictures.Count > 0 && assetOf(pictures[^1]) == chartId;
+    // The url the card's size chart goes out with (null when it has none or its url could not be built).
+    public static string? SizeChartUrl(IEnumerable<(Guid Id, string? Url)> pictures, Guid? sizeChartAssetId) =>
+        sizeChartAssetId is Guid chartId ? pictures.FirstOrDefault(item => item.Id == chartId).Url : null;
 
     // A variant's pictures in the order of the card's strip (given in its order); a picture the strip lacks keeps its
     // place after them. The sort is stable, so equal ranks stay as they came.
