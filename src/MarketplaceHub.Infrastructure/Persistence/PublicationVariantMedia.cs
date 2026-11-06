@@ -12,7 +12,15 @@ namespace MarketplaceHub.Infrastructure.Persistence;
 // one the strip lacks goes after, in the variant's own order. Callers pass the media ordered by SortOrder.
 internal static class PublicationVariantMedia
 {
-    public static List<T> For<T>(IReadOnlyCollection<T> media, Guid variantId, Func<T, Guid?> variantOf, Func<T, Guid> assetOf)
+    // sizeChartAssetId: the card's size chart, always the last picture of every variant (added when the variant's own
+    // pictures lack it).
+    public static List<T> For<T>(IReadOnlyCollection<T> media, Guid variantId, Func<T, Guid?> variantOf, Func<T, Guid> assetOf, Guid? sizeChartAssetId = null)
+    {
+        var pictures = Pictures(media, variantId, variantOf, assetOf);
+        return sizeChartAssetId is Guid chartId ? SizeCharts.SizeChartPlacement.Last(pictures, media, item => assetOf(item) == chartId) : pictures;
+    }
+
+    private static List<T> Pictures<T>(IReadOnlyCollection<T> media, Guid variantId, Func<T, Guid?> variantOf, Func<T, Guid> assetOf)
     {
         var general = media.Where(item => variantOf(item) is null).ToList();
         var own = media.Where(item => variantOf(item) == variantId).ToList();
@@ -21,6 +29,9 @@ internal static class PublicationVariantMedia
         var seen = new HashSet<Guid>();
         return media.Where(item => variantOf(item) is not null && seen.Add(assetOf(item))).ToList();
     }
+
+    public static bool EndsWithSizeChart<T>(IReadOnlyList<T> pictures, Func<T, Guid> assetOf, Guid? sizeChartAssetId) =>
+        sizeChartAssetId is Guid chartId && pictures.Count > 0 && assetOf(pictures[^1]) == chartId;
 
     // A variant's pictures in the order of the card's strip (given in its order); a picture the strip lacks keeps its
     // place after them. The sort is stable, so equal ranks stay as they came.

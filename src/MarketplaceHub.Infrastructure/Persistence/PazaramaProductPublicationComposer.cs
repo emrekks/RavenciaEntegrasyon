@@ -128,6 +128,7 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Pazarama fiyat teklifi gerekir.");
         if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
 
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
@@ -153,13 +154,13 @@ internal sealed class PazaramaProductPublicationComposer(AppDbContext db, IConfi
             if (variant.Desi is not > 0) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için Pazarama'nın zorunlu desi değeri girilmemiş.");
             var desi = (int)Math.Ceiling(variant.Desi.Value);
 
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
             if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
                 return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
             var imageUrls = ProductPublicationComposer.SelectPublicationImageUrls(relevantMedia
                 .Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
                 .Where(url => !string.IsNullOrWhiteSpace(url))
-                .Select(url => url!));
+                .Select(url => url!), PublicationVariantMedia.EndsWithSizeChart(relevantMedia, x => x.Id, sizeChartAssetId));
             if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir herkese açık HTTPS ürün görseli gerekir.");
             if (imageUrls.Any(url => url.Length > 500)) return Fail("PRODUCT_MEDIA_URL_TOO_LONG", $"'{variant.Sku}' için görsel adresleri en fazla 500 karakter olabilir.");
 

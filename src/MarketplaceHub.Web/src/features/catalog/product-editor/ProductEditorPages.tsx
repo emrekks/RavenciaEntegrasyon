@@ -50,6 +50,9 @@ import { offSaleSummary } from '../sale-state'
 import { VariantOptionEditDialog, type VariantOptionEditChange } from './VariantOptionEditDialog'
 import { VariantMediaBulkSelect } from './VariantMediaBulkSelect'
 import { PriceSuggestionLink } from './PriceSuggestionDialog'
+import { SizeChartButton } from './SizeChartDialog'
+import { isSizeChartRef, pinSizeChartLast, replaceSizeChart, sizeChartKey } from './size-chart-order'
+import { isSizeOptionLabel } from './size-chart-measurements'
 import { describePlatformCodeIssues, platformCodeIssues, summarizeVariantCodeIssues, variantCodeFieldIssueText } from '../platform-code-rules'
 import { productMediaUrlIssue } from '../product-media-url'
 import { barcodeClipboardIssue, parseBarcodeClipboardValues } from '../product-barcode-paste'
@@ -1295,6 +1298,19 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [draggedMedia, setDraggedMedia] = useState<number | null>(null); const [dragOverMedia, setDragOverMedia] = useState<number | null>(null)
   // The strip as the user last arranged it (mediaStripRefs): where the new files stand among the saved pictures.
   const [mediaStripOrder, setMediaStripOrder] = useState<string[]>([])
+  // The picture marked as the card's size chart (Beden Tablosu): always the last picture of the strip and of every
+  // variant; written with Kaydet (PUT /products/{id}/size-chart) when it differs from the loaded one.
+  const [sizeChartUrl, setSizeChartUrl] = useState<string | null>(null)
+  const initialSizeChartUrl = useRef<string | null>(null)
+  const [sizeChartMenuKey, setSizeChartMenuKey] = useState<string | null>(null)
+  const chartKey = sizeChartKey(sizeChartUrl)
+  // A tile's menu closes on a press anywhere outside it.
+  useEffect(() => {
+    if (!sizeChartMenuKey) return
+    const close = (event: PointerEvent) => { if (!(event.target instanceof Element) || !event.target.closest('.size-chart-menu, .size-chart-menu-btn')) setSizeChartMenuKey(null) }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [sizeChartMenuKey])
   const [pointerDraggedVariantKey, setPointerDraggedVariantKey] = useState<string | null>(null)
   // Touch screens have no drag and drop: holding a picture for a moment picks it up, sliding moves it and lifting the
   // finger drops it on the picture underneath. Moving before the hold completes scrolls the page as usual; while a
@@ -1361,7 +1377,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const frame = requestAnimationFrame(() => { lastFieldReveal.current = Date.now(); revealFieldError(document.getElementById('product-creation-form')) })
     return () => cancelAnimationFrame(frame)
   }, [fieldErrors])
-  const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds, pendingFamilyMediaRemovalUrls: pendingFamilyMediaRemovals.map(item => item.url), channelPricing, variantChannelPricing, webColor: { autoEnabled: webColorAutoEnabled, manualValueId: manualWebColorValueId } }), [attributeSelections, attributeTextValues, channelPricing, familyMediaOrder, form, manualWebColorValueId, mediaFiles.length, pendingFamilyMediaRemovals, removedVariantIds, variantChannelPricing, variantRows, webColorAutoEnabled])
+  const currentEditorSnapshot = useMemo(() => editorSnapshot({ form, variantRows, attributeSelections, attributeTextValues, familyMediaOrder, pendingMediaFileCount: mediaFiles.length, removedVariantIds, pendingFamilyMediaRemovalUrls: pendingFamilyMediaRemovals.map(item => item.url), channelPricing, variantChannelPricing, webColor: { autoEnabled: webColorAutoEnabled, manualValueId: manualWebColorValueId }, sizeChartUrl }), [attributeSelections, attributeTextValues, channelPricing, familyMediaOrder, form, manualWebColorValueId, mediaFiles.length, pendingFamilyMediaRemovals, removedVariantIds, sizeChartUrl, variantChannelPricing, variantRows, webColorAutoEnabled])
   // A new product compares with the empty form it opened with; a copy and an edit with the form right after seeding.
   const editorDirty = seedSnapshot !== null && seedSnapshot !== currentEditorSnapshot
   // Media a create left behind (pending-create-media.ts): put back right after the snapshot is taken, so they are
@@ -1445,7 +1461,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const fallbackListPrice = Number(form.listPrice || 0); const fallbackSalePrice = Number(form.salePrice || 0); const fallbackCostPrice = form.costPrice.trim() === '' ? null : Number(form.costPrice); const initialStock = Number(form.initialStock || 0)
   const variantStockTotal = variantRows.reduce((total, row) => total + Number(row.stock || 0), 0)
   const desi = useMemo(() => { const width = Number(form.width); const length = Number(form.length); const height = Number(form.height); return width > 0 && length > 0 && height > 0 ? width * length * height / 3000 : 0 }, [form.width, form.length, form.height])
-  const mediaUrls = useMemo(() => form.mediaUrls.split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean), [form.mediaUrls])
+  // The size chart stays the card's last picture whatever order the draft holds (size-chart-order.ts).
+  const mediaUrls = useMemo(() => pinSizeChartLast(form.mediaUrls.split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean), chartKey), [form.mediaUrls, chartKey])
 
   const allRequirements = useMemo(() => (requirements.data ?? []).slice().sort((a, b) => a.displayOrder - b.displayOrder), [requirements.data])
   // A category requirement is usable in the product editor when its mapped
@@ -1505,6 +1522,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     }
     if (!editProductId && duplicateProductId) setChannelPricing(copiedChannelPricing(primary?.platformStatuses ?? [], initialListPrice, initialSalePrice))
     initialEditMediaUrl.current = savedMediaUrls.join('\n')
+    // A copy starts without a size chart; an edit opens with the one the card has.
+    const seededSizeChartUrl = editProductId ? product.sizeChartUrl ?? null : null
+    initialSizeChartUrl.current = seededSizeChartUrl
+    setSizeChartUrl(seededSizeChartUrl)
+    setSizeChartMenuKey(null)
     setFamilyMediaOrder(withoutCopyRemovedMedia(uniqueMediaUrls(product.familyOrderedMediaUrls?.length
       ? product.familyOrderedMediaUrls
       : [...savedMediaUrls, ...savedFamilyMediaUrls]), removedMediaKeys))
@@ -1825,10 +1847,32 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     setDraggedVariantKey(keyValue)
     setDragOverVariantKey(null)
   }
+  // "Kullan" in the size chart window: the new chart replaces the previous one as the card's last picture and as the last
+  // picture of every variant that has pictures of its own (a variant without any shows the card's, chart included).
+  // Nothing goes to a marketplace here; Kaydet writes it.
+  function applySizeChart(url: string) {
+    const previousKey = chartKey
+    const nextKey = sizeChartKey(url)
+    updateField('mediaUrls', replaceSizeChart(form.mediaUrls.split(/\r?\n|[;|]/).map(item => item.trim()).filter(Boolean), previousKey, url, false).join('\n'))
+    setVariantRows(rows => rows.map(row => row.mediaRefs.length === 0 ? row : { ...row, mediaRefs: replaceSizeChart(row.mediaRefs, previousKey, url, true) }))
+    if (previousKey && previousKey !== nextKey) setFamilyMediaOrder(current => current.filter(item => mediaImageKey(item) !== previousKey))
+    setSizeChartUrl(url)
+    showFeedback('Beden Tablosu Eklendi', 'Beden tablosu son görsel olarak eklendi. Kalıcı olması ve pazaryerlerine gitmesi için kaydedin.', 'info')
+  }
+  // "Beden Tablosu Olarak İşaretle" on one of the card's own pictures (an older chart uploaded by hand): it becomes the
+  // last picture everywhere. Marking another one moves the mark; nothing is ever recognised on its own.
+  function markSizeChart(url: string | null) {
+    setSizeChartMenuKey(null)
+    if (url) setVariantRows(rows => rows.map(row => row.mediaRefs.length === 0 ? row : { ...row, mediaRefs: replaceSizeChart(row.mediaRefs, null, url, true, false) }))
+    setSizeChartUrl(url)
+    showFeedback(url ? 'Beden Tablosu İşaretlendi' : 'Beden Tablosu İşareti Kaldırıldı', url ? 'Görsel her varyantta son sıraya alındı. Kalıcı olması için kaydedin.' : 'Görsel artık sona sabitlenmiyor. Kalıcı olması için kaydedin.', 'info')
+  }
   // The strip is one list: a new file moves among the saved pictures (and the family's) like any other tile.
   function reorderMedia(sourceIndex: number, targetIndex: number) {
-    const next = reorderItems(mediaStrip, sourceIndex, targetIndex)
+    // The size chart cannot leave the end, and nothing can go after it.
+    const next = pinSizeChartLast(reorderItems(mediaStrip, sourceIndex, targetIndex), chartKey)
     setDraggedMedia(null); setDragOverMedia(null)
+    if (mediaRefsEqual(next, mediaStrip)) return
     if (next === mediaStrip) return
     setMediaStripOrder(next)
     const nextUrls = next.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4))
@@ -2870,8 +2914,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         const row = rowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))
         if (!row) return []
         const originalMediaRefs = initialEditVariantMediaRefs.current[variant.id]
-        if (editProductId && originalMediaRefs && mediaRefsEqual(row.mediaRefs, originalMediaRefs)) return []
-        return [{ variant, row }]
+        if (editProductId && originalMediaRefs && mediaRefsEqual(pinSizeChartLast(row.mediaRefs, chartKey), originalMediaRefs)) return []
+        return [{ variant, row: { ...row, mediaRefs: pinSizeChartLast(row.mediaRefs, chartKey) } }]
       })
       for (const [writeIndex, { variant, row }] of variantMediaWrites.entries()) {
         if (mediaFiles.length) showProgress(mediaSaveProgressMessage('variants', writeIndex, variantMediaWrites.length))
@@ -2902,6 +2946,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         })
         familyMediaChanged = result.changedProductCount > 0
         setFamilyMediaOrderDirty(false)
+      }
+      // Which picture is the size chart, once the pictures are written (the chart must be one of the card's own).
+      if (editProductId && sizeChartUrl !== initialSizeChartUrl.current) {
+        const marked = await hubApi<{ sizeChartUrl: string | null }>(`/products/${product.id}/size-chart`, { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ url: sizeChartUrl }) })
+        initialSizeChartUrl.current = marked?.sizeChartUrl ?? sizeChartUrl
+        completed.push(sizeChartUrl ? 'beden tablosu' : 'beden tablosu işareti kaldırıldı')
       }
       if (editProductId ? productMediaChanged || mediaFiles.length > 0 : mediaUrls.length || mediaFiles.length) completed.push('görseller')
       if (removedFamilyMediaCount) completed.push(`diğer renklerden kaldırılan ${removedFamilyMediaCount} görsel`)
@@ -3225,15 +3275,21 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   // The card's own saved pictures the draft no longer holds ("Tümünü Temizle", a removed tile) go on the next save; the
   // family list still carries them until then, so they leave the gallery now instead of after Kaydet.
   const draftMediaKeys = new Set(mediaUrls.map(mediaImageKey))
+  // The Beden values in the panel's order (the card's option values), then any a variant row holds besides.
+  const rowSizes = [...new Set(variantRows.flatMap(row => Object.entries(row.options).filter(([name, value]) => isSizeOptionLabel(name) && value.trim()).map(([, value]) => value.trim())))]
+  const panelSizes = (stripProduct?.options ?? []).find(option => isSizeOptionLabel(option.label))?.values.map(value => value.label.trim()) ?? []
+  const sizeChartSizes = [...panelSizes.filter(size => rowSizes.includes(size)), ...rowSizes.filter(size => !panelSizes.includes(size))]
+  const sizeChartDisabledReason = !editProductId ? 'Önce ürünü kaydedin.' : !sizeChartSizes.length ? 'Ürünün Beden seçeneği yok.' : null
   const pendingRemovalMediaKeys = new Set(editProductId ? [...(stripProduct?.mediaUrls ?? []).map(mediaImageKey).filter(key => !draftMediaKeys.has(key)), ...pendingFamilyMediaRemovals.map(item => mediaImageKey(item.url))] : [])
   // The default strip is each colour's product-level pictures (familyMediaUrls); the items cover every family picture
   // a custom order can show, variant pictures included.
   const defaultFamilyOrder = stripProduct?.familyOrderedMediaUrls?.length
     ? stripProduct.familyOrderedMediaUrls
     : [...mediaUrls, ...(stripProduct?.familyMediaUrls ?? familyMediaItems.map(item => item.url))]
-  const visibleMediaUrls = mediaUrlsInPreferredOrder(uniqueMediaUrls(defaultFamilyOrder), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
-    .filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url)))
-  const mediaStrip = mediaStripRefs(visibleMediaUrls, mediaFiles.map(item => item.id), mediaStripOrder)
+  // A picture the draft added by link (a size chart put in with "Kullan") shows even before the family lists know it.
+  const visibleMediaUrls = pinSizeChartLast(mediaUrlsInPreferredOrder(uniqueMediaUrls([...defaultFamilyOrder, ...mediaUrls]), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
+    .filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url))), chartKey)
+  const mediaStrip = pinSizeChartLast(mediaStripRefs(visibleMediaUrls, mediaFiles.map(item => item.id), mediaStripOrder), chartKey)
   const familyOnlyMediaItems = familyItemsShownInStrip(visibleMediaUrls, familyMediaItems, draftMediaKeys)
   const hasMediaTiles = mediaUrls.length > 0 || mediaFiles.length > 0 || familyOnlyMediaItems.length > 0
   const mediaUploadHint = "Adet sınırı yok · JPEG, PNG veya WebP · WebP ve 6 MB üstü JPEG'e çevrilir"
@@ -3381,7 +3437,8 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               updateField('salePrice', prices.salePrice); updateField('listPrice', prices.listPrice)
               const sale = Number(prices.salePrice)
               if (variantRows.length && Number.isFinite(sale)) setVariantRows(rows => rows.map(row => ({ ...row, salePrice: sale, listPrice: row.listPrice >= sale ? row.listPrice : sale })))
-            }} /></div></div>
+            }} />
+            <SizeChartButton productId={editProductId ?? null} sizes={sizeChartSizes} disabledReason={sizeChartDisabledReason} onUse={applySizeChart} /></div></div>
           <div className="product-step-grid">
             {/* Like Stok Kodu and Barkod: a card with variants prices each variant, so these stay grey and empty. */}
             <label title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined}>Liste Fiyatı<input value={variantRows.length > 1 ? '' : form.listPrice} disabled={variantRows.length > 1} title={variantRows.length > 1 ? 'Varyantlı üründe fiyat varyant tablosundan girilir.' : undefined} onChange={event => updateField('listPrice', event.target.value)} type="number" min="0" step="0.01" /></label>
@@ -3467,8 +3524,19 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             const familyItem = familyMediaItems.find(item => mediaImageKey(item.url) === mediaImageKey(url))
             const isProductMedia = ownedUrl !== undefined
             const deletingProductMedia = deletingProductMediaKey === mediaImageKey(url)
-            return <figure key={`family-${mediaImageKey(url)}`} data-media-kind="url" data-media-index={index} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMedia === index ? 'is-media-drag-over' : ''}`} draggable={!touchPointer && !submitting && !deletingProductMediaKey} {...mediaDrag}>
+            const isSizeChart = isSizeChartRef(ref, chartKey)
+            const menuOpen = sizeChartMenuKey === mediaImageKey(url)
+            return <figure key={`family-${mediaImageKey(url)}`} data-media-kind="url" data-media-index={index} data-size-chart={isSizeChart || undefined} className={`image-preview-card media-sortable${isProductMedia ? '' : ' family-media-preview'} ${dragOverMedia === index ? 'is-media-drag-over' : ''}`} draggable={!touchPointer && !submitting && !deletingProductMediaKey && !isSizeChart} {...mediaDrag}>
               <img src={url} alt={`${form.title || 'Ürün'} ${index + 1}`} className="media-tile-image" draggable={false} />
+              {isSizeChart && <span className="size-chart-badge">Beden Tablosu</span>}
+              {isProductMedia && editProductId && <>
+                <button type="button" className="size-chart-menu-btn" aria-label="Görsel seçenekleri" title="Görsel seçenekleri" aria-haspopup="menu" aria-expanded={menuOpen} disabled={submitting} onClick={event => { event.stopPropagation(); setSizeChartMenuKey(menuOpen ? null : mediaImageKey(url)) }}><UiIcon name="moreVertical" size={14} /></button>
+                {menuOpen && <div className="size-chart-menu" role="menu" tabIndex={-1} onKeyDown={event => { if (event.key === 'Escape') setSizeChartMenuKey(null) }}>
+                  {isSizeChart
+                    ? <button type="button" role="menuitem" onClick={event => { event.stopPropagation(); markSizeChart(null) }}>Beden Tablosu İşaretini Kaldır</button>
+                    : <button type="button" role="menuitem" onClick={event => { event.stopPropagation(); markSizeChart(ownedUrl ?? url) }}>Beden Tablosu Olarak İşaretle</button>}
+                </div>}
+              </>}
               <MediaZoomButton onZoom={() => setLightboxImage({ url, title: isProductMedia ? form.title || 'Ürün Görseli' : `${form.title || 'Ürün'} · Renk Ailesi` })} />
               {isProductMedia
                 ? <button type="button" className="image-remove-btn" disabled={deletingProductMedia || submitting} title="Görseli üründen hemen kaldır" aria-label="Görseli üründen hemen kaldır" onClick={event => { event.stopPropagation(); if (ownedUrl) void removeProductMedia(ownedUrl) }}><UiIcon name={deletingProductMedia ? 'loader' : 'close'} /></button>

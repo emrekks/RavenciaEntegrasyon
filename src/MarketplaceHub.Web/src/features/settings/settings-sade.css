@@ -503,6 +503,19 @@
 .ss-page .ss-alert-row > .ss-in { flex: 1 1 220px; min-width: 0; }
 .ss-page .ss-alert-row > .ss-help { display: inline-flex; align-items: center; gap: 6px; }
 .ss-page .ss-alert-row > .ss-help:empty { display: none; }
+/* Yapay Zekâ: the skills the server uploads and the log of every AI run. */
+.ss-page .ss-ai-skills { display: grid; gap: 8px; }
+.ss-page .ss-ai-skill { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 12px; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.ss-page .ss-ai-skill-copy { display: grid; gap: 4px; justify-items: start; min-width: 0; }
+.ss-page .ss-ai-skill-copy small { color: var(--rv-color-muted); font-size: 13px; }
+.ss-page .ss-ai-skill-result { flex-basis: 100%; display: inline-flex; align-items: center; gap: 6px; }
+.ss-page .ss-ai-usage-wrap { overflow-x: auto; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.ss-page .ss-ai-usage { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ss-page .ss-ai-usage th, .ss-page .ss-ai-usage td { padding: 8px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rv-color-border); white-space: nowrap; }
+.ss-page .ss-ai-usage thead th { color: var(--rv-color-muted); font-weight: 600; background: var(--rv-color-surface-soft); }
+.ss-page .ss-ai-usage tbody tr:last-child td { border-bottom: 0; }
+.ss-page .ss-ai-usage .is-num { font-variant-numeric: tabular-nums; }
+.ss-page .ss-ai-usage-error { display: block; max-width: 280px; margin-top: 4px; color: var(--rv-color-danger); font-size: 12px; white-space: normal; }
 /* A saved app password reads as a filled, read-only field: masked dots, a Kayıtlı mark and Değiştir inside the same 36px box. */
 .app-shell.stitch-shell main .ss-page .ss-in.ss-secret { display: flex; align-items: center; gap: 10px; padding: 0 4px 0 12px; background: var(--rv-color-surface-muted, var(--rv-color-surface)); }
 .ss-page .ss-secret-dots { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--rv-color-muted); letter-spacing: 2px; white-space: nowrap; }

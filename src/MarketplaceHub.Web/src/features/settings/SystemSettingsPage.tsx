@@ -25,7 +25,7 @@ type SessionConfirmation = { action: 'revoke' | 'revoke-others' | 'delete' | 'de
 
 // System settings as a section list (docs/tasarim-onerileri/sistem-ayarlari.html, option 2): the four former tabs are
 // split into ten small sections; the list on the left shows each section's state, the pane on the right shows one.
-type SettingsSectionKey = 'auth' | 'sessions' | 'alerts' | 'database' | 'sender' | 'dims' | 'designer' | 'read' | 'palette' | 'themes' | 'notify'
+type SettingsSectionKey = 'auth' | 'sessions' | 'alerts' | 'ai' | 'database' | 'sender' | 'dims' | 'designer' | 'read' | 'palette' | 'themes' | 'notify'
 type ShippingSection = 'sender' | 'dims' | 'designer'
 type AppearanceSection = 'read' | 'palette' | 'themes' | 'notify'
 type SettingsIconName = 'shield' | 'truck' | 'device' | 'phone' | 'db' | 'user' | 'ruler' | 'layout' | 'type' | 'palette' | 'save' | 'bell' | 'lock' | 'info' | 'alert' | 'logout' | 'trash' | 'reset' | 'plus' | 'barcode' | 'sparkle' | 'copy' | 'back' | 'chev' | 'tag'
@@ -34,6 +34,7 @@ type SettingsGlyphState = 'done' | 'pending' | 'none' | 'bad'
 const settingsSectionGroups: Array<{ label: string; icon: SettingsIconName; items: Array<{ key: SettingsSectionKey; label: string; short?: string; icon: SettingsIconName }> }> = [
   { label: 'Güvenlik ve Oturumlar', icon: 'shield', items: [{ key: 'auth', label: 'Authenticator', icon: 'shield' }, { key: 'sessions', label: 'Oturumlar', icon: 'device' }, { key: 'alerts', label: 'Alarm Bildirimleri', short: 'Alarmlar', icon: 'bell' }] },
   { label: 'Veri', icon: 'db', items: [{ key: 'database', label: 'Veritabanı Temizliği', icon: 'db' }] },
+  { label: 'Yapay Zekâ', icon: 'sparkle', items: [{ key: 'ai', label: 'Yapay Zekâ', icon: 'sparkle' }] },
   { label: 'Kargo Ayarları', icon: 'truck', items: [{ key: 'sender', label: 'Gönderici ve Yazdırma', short: 'Gönderici', icon: 'user' }, { key: 'dims', label: 'Etiket Ölçüleri', short: 'Ölçüler', icon: 'ruler' }, { key: 'designer', label: 'Etiket Tasarımı', short: 'Tasarım', icon: 'layout' }] },
   { label: 'Görünüm', icon: 'palette', items: [{ key: 'read', label: 'Okunabilirlik ve Tema', short: 'Tema', icon: 'type' }, { key: 'palette', label: 'Renk Paleti', short: 'Renkler', icon: 'palette' }, { key: 'themes', label: 'Kayıtlı Temalar', short: 'Temalar', icon: 'save' }, { key: 'notify', label: 'Bildirimler', icon: 'bell' }] }
 ]
@@ -451,6 +452,7 @@ export function SystemSettingsPage() {
           </div>}</div>
         </>}
         {section === 'alerts' && <AlertEmailSettingsSection />}
+        {section === 'ai' && <AiSettingsSection />}
         {section === 'database' && <SettingsDataReset groups={resetScopeGroups} counts={resetCounts.data ? Object.fromEntries(resetCounts.data.items.map(entry => [entry.scope, entry.count])) : undefined} countsFailed={resetCounts.isError} picked={resetScopes} onToggle={toggleResetScopes} confirmation={resetConfirmation} onConfirmation={setResetConfirmation} busy={resetBusy} onConfirm={() => void resetOperationalData()} />}
         <ShippingLabelSettingsPanel section={isShipping ? section as ShippingSection : null} settings={labelSettings} saved={savedLabelSettings} dirty={shippingDirty} saving={labelSaving} loadFailed={shippingSettings.isError} loading={shippingSettings.isPending} format={labelFormat} setFormat={setLabelFormat} onChange={shippingSettings.setSettings} onSave={() => void saveLabelSettings()} />
         <AppearanceSettingsSection section={isAppearance ? section as AppearanceSection : null} onStatus={setAppearanceStatus} />
@@ -1198,6 +1200,134 @@ function AlertEmailSettingsSection() {
           <button type="button" className="ss-btn" disabled={!configured || dirty || busy !== null} onClick={() => void sendTest()}><SettingsIcon name="bell" />{busy === 'test' ? 'Gönderiliyor…' : 'Test E-postası Gönder'}</button>
           {testResult ? <span role="status" className="ss-help"><SettingsGlyph state={testResult.kind} />{testResult.message}</span>
             : <span className="ss-help">{dirty ? 'Test için önce değişiklikleri kaydedin.' : configured ? '' : 'Test için önce gönderen adresi, alıcıları ve uygulama şifresini kaydedin.'}</span>}
+        </div>
+      </>}
+    </div>
+    {saved && !forbidden ? bar : null}
+  </>
+}
+
+type AiSkillView = { key: string; title: string; description: string; bundleHash: string; uploaded: { skillId: string; version: string; uploadedAt: string; bundleHash: string } | null; upToDate: boolean }
+type AiSettings = { apiKeySaved: boolean; defaultModel: string; updatedAt: string | null; version: number; skills: AiSkillView[] }
+type AiUsageEntry = { id: string; createdAt: string; feature: string; featureLabel: string; userName: string | null; subjectLabel: string | null; model: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null; status: 'SUCCEEDED' | 'FAILED'; error: string | null; durationMs: number }
+const defaultAiModel = 'claude-sonnet-5-5'
+
+function aiCost(value: number | null) {
+  return value == null ? '—' : `$${value.toFixed(4)}`
+}
+
+function aiTokens(entry: AiUsageEntry) {
+  return entry.inputTokens == null && entry.outputTokens == null ? '—' : `${(entry.inputTokens ?? 0).toLocaleString('tr-TR')} / ${(entry.outputTokens ?? 0).toLocaleString('tr-TR')}`
+}
+
+// Settings → Yapay Zekâ: the Claude API key every AI feature of the panel uses (the size chart is the first), the default
+// model, the Agent Skills the server uploads, and the log of every run. Owner and administrators only. The key is
+// write-only like the alert app password: the server never returns it, the form shows "Kayıtlı" and "Değiştir".
+function AiSettingsSection() {
+  const client = useQueryClient()
+  const query = useQuery({ queryKey: ['ai-settings'], queryFn: () => hubApi<AiSettings>('/settings/ai'), retry: false })
+  const forbidden = query.error instanceof ApiRequestError && query.error.status === 403
+  const usage = useQuery({ queryKey: ['ai-usage'], queryFn: () => hubApi<{ items: AiUsageEntry[] }>('/settings/ai/usage?limit=50'), retry: false, enabled: query.isSuccess })
+  const saved = query.data
+  const [apiKey, setApiKey] = useState('')
+  const [changingKey, setChangingKey] = useState(false)
+  const [model, setModel] = useState(defaultAiModel)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
+  const [testResult, setTestResult] = useState<{ kind: 'done' | 'bad'; message: string } | null>(null)
+  const [skillResult, setSkillResult] = useState<{ key: string; kind: 'done' | 'bad'; message: string } | null>(null)
+  const [loadedVersion, setLoadedVersion] = useState<number | null>(null)
+  // The form starts from the saved settings, and again after a save (a new version); the key field always starts empty.
+  if (saved && loadedVersion !== saved.version) {
+    setLoadedVersion(saved.version)
+    setApiKey('')
+    setChangingKey(!saved.apiKeySaved)
+    setModel(saved.defaultModel || defaultAiModel)
+  }
+
+  const dirty = !!saved && (model.trim() !== (saved.defaultModel || defaultAiModel) || apiKey.trim().length > 0)
+  const configured = !!saved?.apiKeySaved
+
+  async function save() {
+    if (!saved) return
+    setBusy('save'); setNotice(null); setTestResult(null)
+    try {
+      const next = await hubApi<AiSettings>('/settings/ai', { method: 'PUT', headers: settingsIfMatch(saved.version), body: JSON.stringify({ apiKey: changingKey && apiKey.trim() ? apiKey.trim() : null, defaultModel: model.trim() }) })
+      setApiKey('')
+      client.setQueryData(['ai-settings'], next)
+      setNotice({ kind: 'success', message: 'Yapay zekâ ayarları kaydedildi.' })
+    } catch (reason) {
+      setNotice({ kind: 'error', message: reason instanceof Error ? reason.message : 'Yapay zekâ ayarları kaydedilemedi.' })
+    } finally { setBusy(null) }
+  }
+  async function testConnection() {
+    setBusy('test'); setTestResult(null)
+    try {
+      const result = await hubApi<{ ok: boolean; model: string; message: string }>('/settings/ai/test', { method: 'POST' })
+      setTestResult({ kind: 'done', message: result.message || `Bağlantı çalışıyor (${result.model}).` })
+    } catch (reason) {
+      setTestResult({ kind: 'bad', message: reason instanceof Error ? reason.message : 'Bağlantı sınanamadı.' })
+    } finally {
+      setBusy(null)
+      void client.invalidateQueries({ queryKey: ['ai-usage'] })
+    }
+  }
+  async function uploadSkill(skill: AiSkillView) {
+    setBusy(`skill:${skill.key}`); setSkillResult(null)
+    try {
+      const next = await hubApi<AiSettings>(`/settings/ai/skills/${encodeURIComponent(skill.key)}/upload`, { method: 'POST' })
+      client.setQueryData(['ai-settings'], next)
+      const uploaded = next.skills.find(item => item.key === skill.key)?.uploaded
+      setSkillResult({ key: skill.key, kind: 'done', message: uploaded ? `Beceri yüklendi · Sürüm ${uploaded.version}.` : 'Beceri yüklendi.' })
+    } catch (reason) {
+      setSkillResult({ key: skill.key, kind: 'bad', message: reason instanceof Error ? reason.message : 'Beceri yüklenemedi.' })
+    } finally { setBusy(null) }
+  }
+
+  const bar = <SettingsBar title="Yapay Zekâ" dirty={dirty} copy={dirty ? 'Kaydedilmemiş değişiklikler var' : saved?.updatedAt ? `Son kayıt ${formatSettingsDate(saved.updatedAt)}` : 'Henüz kaydedilmedi'}>
+    <button type="button" className="ss-btn is-primary" disabled={!dirty || busy !== null || !model.trim()} onClick={() => void save()}><SettingsIcon name="save" />{busy === 'save' ? 'Kaydediliyor…' : 'Ayarları Kaydet'}</button>
+  </SettingsBar>
+
+  return <>
+    {notice && <SettingsNotice {...notice} />}
+    <SettingsPaneHead section="ai" description="Claude API anahtarı ve beceriler; panelin yapay zekâ özellikleri (ilk olarak beden tablosu) bunları kullanır." />
+    <div className="ss-body">
+      {query.isPending ? <LoadingState>Yapay zekâ ayarları yükleniyor…</LoadingState> : forbidden ? <div className="ss-callout" role="alert"><SettingsIcon name="lock" /><span>Yapay zekâ ayarlarını yalnız hesap sahibi ve yöneticiler görür ve değiştirir.</span></div> : query.isError || !saved ? <div className="ss-callout is-danger" role="alert"><SettingsIcon name="alert" /><span>Yapay zekâ ayarları alınamadı.</span></div> : <>
+        <div className="ss-pair">
+          <div className="ss-fld"><small>Claude API Anahtarı<FieldHelp label="Claude API Anahtarı">Anahtarı Claude Console’da (platform.claude.com) oluşturup buraya yapıştırın. Sunucuda şifreli saklanır; ekrana ve kayıtlara yazılmaz.</FieldHelp></small>{saved.apiKeySaved && !changingKey
+            ? <div className="ss-in ss-secret"><span className="ss-secret-dots" aria-hidden="true">••••••••••••••••</span><span className="ss-secret-state"><SettingsGlyph state="done" />Kayıtlı</span><button type="button" className="ss-btn is-xs" onClick={() => setChangingKey(true)}>Değiştir</button></div>
+            : <div className="ss-alert-row ss-secret-edit"><input className="ss-in" type="password" autoComplete="new-password" spellCheck={false} aria-label="Claude API Anahtarı" value={apiKey} maxLength={300} placeholder="sk-ant-…" onChange={event => setApiKey(event.target.value)} />{saved.apiKeySaved && <button type="button" className="ss-btn is-xs" onClick={() => { setApiKey(''); setChangingKey(false) }}>Vazgeç</button>}</div>}
+          </div>
+          <label className="ss-fld"><small>Varsayılan Model</small><input className="ss-in" autoComplete="off" spellCheck={false} value={model} maxLength={80} placeholder={defaultAiModel} onChange={event => setModel(event.target.value)} /></label>
+        </div>
+        <div className="ss-alert-row">
+          <button type="button" className="ss-btn" disabled={!configured || dirty || busy !== null} onClick={() => void testConnection()}><SettingsIcon name="sparkle" />{busy === 'test' ? 'Sınanıyor…' : 'Bağlantıyı Sına'}</button>
+          {testResult ? <span role="status" className="ss-help"><SettingsGlyph state={testResult.kind} />{testResult.message}</span>
+            : <span className="ss-help">{dirty ? 'Sınamak için önce değişiklikleri kaydedin.' : configured ? '' : 'Sınamak için önce API anahtarını kaydedin.'}</span>}
+        </div>
+        <div className="ss-fld" role="group" aria-label="Beceriler"><small>Beceriler</small>
+          <div className="ss-ai-skills">{saved.skills.map(skill => {
+            const state = !skill.uploaded ? 'Yüklenmedi' : !skill.upToDate ? `Güncel Değil · Sürüm ${skill.uploaded.version}` : `Yüklendi · Sürüm ${skill.uploaded.version} · ${formatSettingsDate(skill.uploaded.uploadedAt)}`
+            return <div key={skill.key} className="ss-ai-skill">
+              <span className="ss-ai-skill-copy"><b>{skill.title}</b><small>{skill.description}</small><span className="ss-tag"><SettingsGlyph state={!skill.uploaded ? 'none' : skill.upToDate ? 'done' : 'pending'} />{state}</span></span>
+              <button type="button" className="ss-btn" disabled={!configured || dirty || busy !== null} onClick={() => void uploadSkill(skill)}><SettingsIcon name="plus" />{busy === `skill:${skill.key}` ? 'Yükleniyor…' : skill.uploaded ? 'Beceriyi Güncelle' : 'Beceriyi Yükle'}</button>
+              {skillResult?.key === skill.key && <span role="status" className="ss-help ss-ai-skill-result"><SettingsGlyph state={skillResult.kind} />{skillResult.message}</span>}
+            </div>
+          })}{saved.skills.length === 0 && <span className="ss-help">Yüklenecek beceri yok.</span>}</div>
+        </div>
+        <div className="ss-fld" role="group" aria-label="Kullanım Kaydı"><small>Kullanım Kaydı</small>
+          {usage.isPending ? <LoadingState>Kullanım kaydı yükleniyor…</LoadingState> : usage.isError ? <span className="ss-help">Kullanım kaydı alınamadı.</span> : !usage.data?.items.length ? <span className="ss-help">Henüz yapay zekâ kullanımı yok.</span> : <div className="ss-ai-usage-wrap"><table className="ss-ai-usage">
+            <thead><tr><th scope="col">Tarih</th><th scope="col">Özellik</th><th scope="col">Kişi</th><th scope="col">Konu</th><th scope="col">Token (Girdi / Çıktı)</th><th scope="col">Maliyet</th><th scope="col">Durum</th></tr></thead>
+            <tbody>{usage.data.items.map(entry => <tr key={entry.id}>
+              <td>{formatSettingsDate(entry.createdAt)}</td>
+              <td>{entry.featureLabel || entry.feature}</td>
+              <td>{entry.userName ?? '—'}</td>
+              <td>{entry.subjectLabel ?? '—'}</td>
+              <td className="is-num">{aiTokens(entry)}</td>
+              <td className="is-num">{aiCost(entry.costUsd)}</td>
+              <td title={entry.error ?? undefined}><span className="ss-tag"><SettingsGlyph state={entry.status === 'SUCCEEDED' ? 'done' : 'bad'} />{entry.status === 'SUCCEEDED' ? 'Başarılı' : 'Başarısız'}</span>{entry.error ? <small className="ss-ai-usage-error">{entry.error}</small> : null}</td>
+            </tr>)}</tbody>
+          </table></div>}
         </div>
       </>}
     </div>

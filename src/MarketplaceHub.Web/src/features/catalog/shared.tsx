@@ -69,6 +69,8 @@ export type Product = Versioned & {
   attributes?: ProductAttributeAssignment[]
   options?: Array<{ id: string; label: string; values: Array<{ id: string; label: string }> }>
   mediaUrls?: string[]
+  // The picture marked as the card's size chart (Beden Tablosu); the server already lists it last everywhere.
+  sizeChartUrl?: string | null
 }
 export function variantColorKey(variant: Variant) {
   const color = preferredColorOption(variantOptionEntries(variant))

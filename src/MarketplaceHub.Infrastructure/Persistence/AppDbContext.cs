@@ -49,6 +49,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ProductOptionValue> ProductOptionValues => Set<ProductOptionValue>();
     public DbSet<VariantOptionValue> VariantOptionValues => Set<VariantOptionValue>();
     public DbSet<ProductMedia> ProductMedia => Set<ProductMedia>();
+    public DbSet<ProductSizeChart> ProductSizeCharts => Set<ProductSizeChart>();
+    public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
     public DbSet<PlatformConnection> PlatformConnections => Set<PlatformConnection>();
     public DbSet<ReferenceSnapshot> ReferenceSnapshots => Set<ReferenceSnapshot>();
     public DbSet<ReferenceItem> ReferenceItems => Set<ReferenceItem>();

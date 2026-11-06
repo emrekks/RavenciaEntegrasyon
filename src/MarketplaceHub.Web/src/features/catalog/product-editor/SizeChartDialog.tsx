@@ -1,0 +1,134 @@
+// "Beden Tablosu Oluştur" (Fiyat, Stok ve Vergi): the measurements per Beden value, drawn into a 1200×1800 JPEG by the
+// server through Claude (Settings › Yapay Zekâ). "Kullan" only puts the picture into the editor's images as the last
+// one; it reaches the marketplaces with the normal Kaydet / Platformlarda Güncelle. A failed or cancelled run adds nothing.
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useQuery } from '@tanstack/react-query'
+import { ApiRequestError, hubApi } from '../../../shared/api'
+import { newIdempotencyKey } from '../../../shared/idempotency'
+import { Modal, UiIcon } from '../../../shared/components'
+import { addSizeChartColumn, initialSizeChartDraft, maximumSizeChartColumns, newColumnIssue, presetSizeChartColumns, removeSizeChartColumn, setSizeChartCell, sizeChartCellKey, sizeChartColumnLabel, validateSizeChartDraft, type SizeChartDraft, type SizeChartMeasurements } from './size-chart-measurements'
+import './size-chart.css'
+
+export type SizeChartInfo = { sizes: string[]; sizeOptionLabel: string | null; measurements: SizeChartMeasurements | null; sizeChartUrl: string | null; aiReady: boolean; aiIssue: string | null }
+export type SizeChartResult = { url: string; fileAssetId: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null }
+
+export function SizeChartButton({ productId, sizes, disabledReason, onUse }: { productId: string | null; sizes: string[]; disabledReason: string | null; onUse: (url: string) => void }) {
+  const [open, setOpen] = useState(false)
+  return <span className="size-chart-trigger">
+    <button type="button" className="price-suggestion-link size-chart-link" disabled={Boolean(disabledReason)} title={disabledReason ?? 'Ölçüleri girip Ravencia tasarımında beden tablosu görseli oluşturun.'} aria-describedby={disabledReason ? 'size-chart-disabled-reason' : undefined} onClick={() => setOpen(true)}>Beden Tablosu Oluştur</button>
+    {disabledReason && <small id="size-chart-disabled-reason" className="size-chart-disabled-reason">{disabledReason}</small>}
+    {open && productId && createPortal(<SizeChartDialog productId={productId} sizes={sizes} onClose={() => setOpen(false)} onUse={url => { onUse(url); setOpen(false) }} />, document.body)}
+  </span>
+}
+
+function formatCost(result: SizeChartResult) {
+  const parts: string[] = []
+  if (result.inputTokens != null || result.outputTokens != null) parts.push(`${(result.inputTokens ?? 0).toLocaleString('tr-TR')} / ${(result.outputTokens ?? 0).toLocaleString('tr-TR')} token`)
+  if (result.costUsd != null) parts.push(`$${result.costUsd.toFixed(4)}`)
+  return parts.join(' · ')
+}
+
+export function SizeChartDialog({ productId, sizes, onClose, onUse }: { productId: string; sizes: string[]; onClose: () => void; onUse: (url: string) => void }) {
+  const info = useQuery({ queryKey: ['size-chart', productId], queryFn: () => hubApi<SizeChartInfo>(`/products/${productId}/size-chart`), staleTime: 0, retry: false })
+  const [draft, setDraft] = useState<SizeChartDraft | null>(null)
+  const [showErrors, setShowErrors] = useState(false)
+  const [columnName, setColumnName] = useState('')
+  const [columnMenuOpen, setColumnMenuOpen] = useState(false)
+  const [running, setRunning] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<SizeChartResult | null>(null)
+  const abort = useRef<AbortController | null>(null)
+
+  // The panel's Beden order wins; the server's list covers a size the editor does not show.
+  const rowSizes = sizes.length ? sizes : info.data?.sizes ?? []
+  if (info.data && draft === null) setDraft(initialSizeChartDraft(rowSizes, info.data.measurements))
+
+  useEffect(() => {
+    if (!running) return
+    const started = Date.now()
+    const timer = window.setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000)
+    return () => window.clearInterval(timer)
+  }, [running])
+  useEffect(() => () => abort.current?.abort(), [])
+
+  const validation = draft ? validateSizeChartDraft(draft) : null
+  const cellErrors = showErrors && validation && !validation.ok ? validation.cellErrors : {}
+  const columnErrors = showErrors && validation && !validation.ok ? validation.columnErrors : {}
+  const aiReady = info.data?.aiReady ?? false
+
+  async function generate() {
+    if (!draft) return
+    setShowErrors(true)
+    const checked = validateSizeChartDraft(draft)
+    if (!checked.ok) { setError(checked.message); return }
+    const controller = new AbortController()
+    abort.current = controller
+    setRunning(true); setElapsed(0); setError(null); setResult(null)
+    try {
+      const generated = await hubApi<SizeChartResult>(`/products/${productId}/size-chart/generate`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey('size-chart') }, body: JSON.stringify(checked.payload), signal: controller.signal })
+      if (controller.signal.aborted) return
+      setResult(generated)
+    } catch (reason) {
+      if (controller.signal.aborted) return
+      setError(reason instanceof ApiRequestError || reason instanceof Error ? reason.message : 'Beden tablosu oluşturulamadı.')
+    } finally {
+      if (abort.current === controller) { abort.current = null; setRunning(false) }
+    }
+  }
+
+  function close() {
+    abort.current?.abort()
+    onClose()
+  }
+
+  function addColumn(name: string) {
+    if (!draft || newColumnIssue(name, draft.columns)) return
+    setDraft(addSizeChartColumn(draft, name)); setColumnName(''); setColumnMenuOpen(false)
+  }
+
+  const columnIssue = draft && columnName.trim() ? newColumnIssue(columnName, draft.columns) : null
+  const footer = <>
+    <button type="button" className="secondary" onClick={close}>{running ? 'Vazgeç' : 'Kapat'}</button>
+    {result
+      ? <><button type="button" className="secondary" disabled={running} onClick={() => void generate()}>Yeniden Oluştur</button><button type="button" disabled={running} onClick={() => onUse(result.url)}>Kullan</button></>
+      : <button type="button" disabled={!draft || !aiReady || running} onClick={() => void generate()}>{running ? 'Oluşturuluyor…' : 'Oluştur'}</button>}
+  </>
+
+  return <Modal open title="Beden Tablosu Oluştur" className="size-chart-modal" onClose={close} description="Ölçüler cm cinsindendir. Tablo yalnız girdiğiniz sayılarla çizilir; Kullan görseli ürünün son görseli olarak ekler, pazaryerine Kaydet ile gider." footer={footer}>
+    {info.isPending ? <p className="size-chart-note" role="status"><UiIcon name="loader" /> Ölçüler yükleniyor…</p>
+      : info.isError ? <p className="size-chart-error" role="alert">{info.error instanceof Error ? info.error.message : 'Beden tablosu bilgisi alınamadı.'}</p>
+      : !draft || !draft.rows.length ? <p className="size-chart-error" role="alert">Bu ürünün Beden değeri yok.</p>
+      : <>
+        {!aiReady && <p className="size-chart-error" role="alert">{info.data?.aiIssue ?? 'Yapay zekâ ayarları hazır değil.'}</p>}
+        <div className="size-chart-table-wrap">
+          <table className="size-chart-table">
+            <thead><tr><th scope="col">Beden</th>{draft.columns.map((column, columnIndex) => <th scope="col" key={`${column}-${columnIndex}`}>
+              <span className="size-chart-column-head"><span title={columnErrors[columnIndex]} className={columnErrors[columnIndex] ? 'is-invalid' : undefined}>{sizeChartColumnLabel(column)}</span>
+                {draft.columns.length > 1 && <button type="button" className="size-chart-icon-button" disabled={running} aria-label={`${column} kolonunu kaldır`} title="Kolonu kaldır" onClick={() => setDraft(removeSizeChartColumn(draft, columnIndex))}><UiIcon name="close" size={14} /></button>}</span>
+            </th>)}</tr></thead>
+            <tbody>{draft.rows.map((row, rowIndex) => <tr key={row.size}><th scope="row">{row.size}</th>{draft.columns.map((column, columnIndex) => {
+              const message = cellErrors[sizeChartCellKey(rowIndex, columnIndex)]
+              return <td key={`${column}-${columnIndex}`}><input inputMode="decimal" autoComplete="off" aria-label={`${row.size} ${sizeChartColumnLabel(column)}`} aria-invalid={message ? true : undefined} title={message} disabled={running} value={row.values[columnIndex] ?? ''} onChange={event => setDraft(setSizeChartCell(draft, rowIndex, columnIndex, event.target.value))} />{message && <small className="size-chart-cell-error">{message}</small>}</td>
+            })}</tr>)}</tbody>
+          </table>
+        </div>
+        <div className="size-chart-columns">
+          <button type="button" className="secondary size-chart-add" disabled={running || draft.columns.length >= maximumSizeChartColumns} aria-expanded={columnMenuOpen} onClick={() => setColumnMenuOpen(value => !value)}><UiIcon name="plus" size={14} />Kolon Ekle</button>
+          {columnMenuOpen && <div className="size-chart-column-menu" role="group" aria-label="Kolon ekle">
+            {presetSizeChartColumns.filter(name => !newColumnIssue(name, draft.columns)).map(name => <button type="button" key={name} className="secondary" onClick={() => addColumn(name)}>{name}</button>)}
+            <input value={columnName} maxLength={24} placeholder="Başka bir ölçü" aria-label="Yeni kolon adı" onChange={event => setColumnName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addColumn(columnName) } }} />
+            <button type="button" className="secondary" disabled={!columnName.trim() || Boolean(columnIssue)} onClick={() => addColumn(columnName)}>Ekle</button>
+            {columnIssue && <small className="size-chart-cell-error">{columnIssue}</small>}
+          </div>}
+        </div>
+        {running && <p className="size-chart-note" role="status"><UiIcon name="loader" /> Beden tablosu oluşturuluyor… {elapsed} sn. Bu işlem 1-3 dakika sürebilir; pencereyi kapatırsanız görsel eklenmez.</p>}
+        {error && !running && <p className="size-chart-error" role="alert">{error}</p>}
+        {result && !running && <figure className="size-chart-preview">
+          <img src={result.url} alt="Oluşturulan beden tablosu önizlemesi" />
+          {formatCost(result) && <figcaption>{formatCost(result)}</figcaption>}
+        </figure>}
+      </>}
+  </Modal>
+}

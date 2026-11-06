@@ -1218,9 +1218,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             TotalStock = allVariants.Sum(x => x.OnHand),
             StartingPrice = CatalogPricePolicy.MinimumPositivePrice(familyViews.SelectMany(view => view.Variants.Select(variant => CatalogPricePolicy.EffectiveSalePrice(variant.SalePrice, variant.DefaultSalePrice, view.DefaultSalePrice)))),
             Options = allOptions,
-            FamilyMediaUrls = familyMediaUrls,
+            // The opened card's size chart closes its strip, after the family's other pictures too.
+            FamilyMediaUrls = SizeCharts.SizeChartPlacement.Last(familyMediaUrls, primaryView.SizeChartUrl),
             FamilyMediaItems = familyMediaItems,
-            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? familyOrderedMediaUrls : null,
+            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? SizeCharts.SizeChartPlacement.Last(familyOrderedMediaUrls, primaryView.SizeChartUrl) : null,
             FamilyProductIds = familyViews.Select(view => view.Id).ToList()
         });
     }
@@ -2487,9 +2488,17 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                            where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby item.SortOrder, item.VariantId, item.Id
                            select new { item.ProductId, item.VariantId, item.MediaRole, item.SortOrder, MediaId = item.Id, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        // Each card's size chart (one of its active pictures), always its last picture everywhere it is listed.
+        var sizeChartAssetByProduct = await db.ProductSizeCharts.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.FileAssetId != null)
+            .ToDictionaryAsync(x => x.ProductId, x => x.FileAssetId!.Value, cancellationToken);
+        var sizeChartUrlByProduct = media
+            .Where(item => sizeChartAssetByProduct.TryGetValue(item.ProductId, out var chartAssetId) && item.Id == chartAssetId)
+            .GroupBy(item => item.ProductId)
+            .ToDictionary(group => group.Key, group => CatalogMediaDisplay.Url(group.First().Id, group.First().Classification, group.First().Url));
         var mediaUrlsByVariant = media.Where(x => x.VariantId is not null)
             .GroupBy(x => x.VariantId!.Value)
-            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
+            .ToDictionary(group => group.Key, group => SizeCharts.SizeChartPlacement.Last(CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))), sizeChartUrlByProduct.GetValueOrDefault(group.First().ProductId)));
         // The card's pictures (mediaUrls) in its strip's order (CatalogFamilyMedia.StripUrls), the same rule the editor,
         // the family strip and the marketplace payloads read.
         var mediaRowsByProduct = media
@@ -2615,7 +2624,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var activePlatforms = platformStatuses.Select(x => x.Platform).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            var image = media.Where(x => x.ProductId == product.Id && x.VariantId == null).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault() ?? media.Where(x => x.ProductId == product.Id).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault();
+            // The card's front picture is never its size chart while it has another picture.
+            var chartAssetId = sizeChartAssetByProduct.TryGetValue(product.Id, out var chartAsset) ? chartAsset : (Guid?)null;
+            var image = media.Where(x => x.ProductId == product.Id && x.VariantId == null && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
+                ?? media.Where(x => x.ProductId == product.Id && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
+                ?? media.Where(x => x.ProductId == product.Id).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault();
+            var sizeChartUrl = sizeChartUrlByProduct.GetValueOrDefault(product.Id);
             var prices = variantViews.Select(variant => CatalogPricePolicy.EffectiveSalePrice(variant.SalePrice, variant.DefaultSalePrice, product.DefaultSalePrice));
             var currency = variantViews.Select(x => x.Currency).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "TRY";
             var modelCode = variantViews.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
@@ -2626,7 +2640,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
             var hasCustomMediaOrder = customMediaOrderProductIds.Contains(product.Id);
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, CatalogFamilyMedia.StripUrls(mediaRowsByProduct.GetValueOrDefault(product.Id) ?? [], hasCustomMediaOrder, variantViews.Select(variant => variant.Id).ToList()), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion, product.DeliveryDays);
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, SizeCharts.SizeChartPlacement.Last(CatalogFamilyMedia.StripUrls(mediaRowsByProduct.GetValueOrDefault(product.Id) ?? [], hasCustomMediaOrder, variantViews.Select(variant => variant.Id).ToList()), sizeChartUrl), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion, product.DeliveryDays) { SizeChartUrl = sizeChartUrl };
         }).ToList();
     }
 

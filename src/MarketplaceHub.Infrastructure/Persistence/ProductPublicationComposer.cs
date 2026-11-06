@@ -150,6 +150,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Trendyol fiyat teklifi gerekir.");
         if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
 
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
@@ -178,7 +179,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             // Explicit variant media replaces the product gallery for that
             // variant. This keeps marketplace colors from receiving every
             // product image while preserving the old product-level fallback.
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
             var relevantUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (relevantUrls.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
             var imageUrls = SelectPublicationImageUrls(relevantMedia
@@ -186,7 +187,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                     ? item.RelativePath.Trim()
                     : BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
                 .Where(url => !string.IsNullOrWhiteSpace(url))
-                .Select(url => url!));
+                .Select(url => url!), PublicationVariantMedia.EndsWithSizeChart(relevantMedia, x => x.Id, sizeChartAssetId));
             if (imageUrls.Count == 0 && relevantMedia.Count > 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için yerel görseller HTTPS üzerinden sunulamıyor. Marketplace:PublicBaseUrl ayarını yapılandırın.");
             if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir geçerli HTTPS görsel adresi gerekir.");
 
@@ -509,11 +510,13 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         return url.Length <= 512 ? url : null;
     }
 
-    internal static IReadOnlyList<string> SelectPublicationImageUrls(IEnumerable<string> imageUrls) => imageUrls
-        .Where(url => !string.IsNullOrWhiteSpace(url))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .Take(MaximumPublicationImageCount)
-        .ToArray();
+    // lastIsSizeChart: the list ends with the card's size chart, which stays the last picture sent even when the list
+    // is longer than the marketplace takes.
+    internal static IReadOnlyList<string> SelectPublicationImageUrls(IEnumerable<string> imageUrls, bool lastIsSizeChart = false) =>
+        SizeCharts.SizeChartPlacement.TakeKeepingLast(imageUrls
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray(), MaximumPublicationImageCount, lastIsSizeChart);
 
     private static bool IsPublicHost(string host)
     {

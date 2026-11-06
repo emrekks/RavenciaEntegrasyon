@@ -153,6 +153,11 @@
           "Microsoft.EntityFrameworkCore": "10.0.10"
         }
       },
+      "Microsoft.Extensions.AI.Abstractions": {
+        "type": "Transitive",
+        "resolved": "10.5.1",
+        "contentHash": "nB0l3IlsVbNeUxsE7nZNb9GY8rP1OSeqpj0pseORPejt474HNKEauTWTLdSJPkSvPlRMxowZNMo6nyp7APAiSg=="
+      },
       "Microsoft.Extensions.DependencyModel": {
         "type": "Transitive",
         "resolved": "10.0.10",
@@ -301,12 +306,22 @@
       "marketplacehub.infrastructure": {
         "type": "Project",
         "dependencies": {
+          "Anthropic": "[13.5.0, )",
           "HtmlSanitizer": "[9.2.1039, )",
           "MarketplaceHub.Application": "[1.0.0, )",
           "MarketplaceHub.Domain": "[1.0.0, )",
           "Microsoft.AspNetCore.Identity.EntityFrameworkCore": "[10.0.10, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.3, )",
           "QRCoder": "[1.8.1, )"
+        }
+      },
+      "Anthropic": {
+        "type": "CentralTransitive",
+        "requested": "[13.5.0, )",
+        "resolved": "13.5.0",
+        "contentHash": "Chj4tZ3tYFNjJ0A1n8zboAJ7sxhd70HvYG6Ob438PwQztv4bq23CIXBjMcAp0yGJ15j2ES2GM+KWk6ZudFhl/w==",
+        "dependencies": {
+          "Microsoft.Extensions.AI.Abstractions": "10.5.1"
         }
       },
       "HtmlSanitizer": {

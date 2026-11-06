@@ -10,5 +10,10 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="QRCoder" />
     <PackageReference Include="HtmlSanitizer" />
+    <PackageReference Include="Anthropic" />
+  </ItemGroup>
+  <!-- Agent Skills the panel uploads to the Claude API (Ayarlar › Yapay Zekâ › Beceriyi Yükle); read by AiSkillCatalog. -->
+  <ItemGroup>
+    <EmbeddedResource Include="../../skills/**/*" LogicalName="skills/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

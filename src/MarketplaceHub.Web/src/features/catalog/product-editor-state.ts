@@ -45,6 +45,8 @@ export function editorSnapshot(state: {
   channelPricing?: Record<string, { listPrice: string; salePrice: string }>
   variantChannelPricing?: Record<string, { listPrice: string; salePrice: string }>
   webColor?: EditorWebColor
+  // The picture marked as the size chart (Beden Tablosu); marking or unmarking one is an unsaved change.
+  sizeChartUrl?: string | null
 }) {
   return JSON.stringify({
     form: state.form,
@@ -57,7 +59,8 @@ export function editorSnapshot(state: {
     pendingFamilyMediaRemovalUrls: state.pendingFamilyMediaRemovalUrls ?? [],
     channelPricing: sortedPricing(state.channelPricing),
     variantChannelPricing: sortedPricing(state.variantChannelPricing),
-    webColor: state.webColor ? [state.webColor.autoEnabled, state.webColor.manualValueId] : null
+    webColor: state.webColor ? [state.webColor.autoEnabled, state.webColor.manualValueId] : null,
+    ...(state.sizeChartUrl !== undefined ? { sizeChartUrl: state.sizeChartUrl } : {})
   })
 }
 

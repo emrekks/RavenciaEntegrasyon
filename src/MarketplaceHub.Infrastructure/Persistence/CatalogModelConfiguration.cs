@@ -102,6 +102,25 @@ internal static class CatalogModelConfiguration
             entity.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.TenantId, x.VariantId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<ProductOptionValue>().WithMany().HasForeignKey(x => new { x.TenantId, x.OptionValueId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         });
+        builder.Entity<ProductSizeChart>(entity =>
+        {
+            entity.ToTable("product_size_charts", "catalog"); entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TenantId, x.ProductId }).IsUnique();
+            entity.Property(x => x.MeasurementsJson).HasColumnType("jsonb");
+            entity.HasOne<Product>().WithMany().HasForeignKey(x => new { x.TenantId, x.ProductId }).HasPrincipalKey(x => new { x.TenantId, x.Id }).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => x.FileAssetId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne<FileAsset>().WithMany().HasForeignKey(x => x.LastGeneratedAssetId).OnDelete(DeleteBehavior.SetNull);
+        });
+        builder.Entity<AiUsageLog>(entity =>
+        {
+            entity.ToTable("ai_usage_logs", "ops"); entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.TenantId, x.CreatedAt });
+            entity.Property(x => x.Feature).HasMaxLength(48); entity.Property(x => x.SubjectType).HasMaxLength(48);
+            entity.Property(x => x.SubjectLabel).HasMaxLength(200); entity.Property(x => x.Model).HasMaxLength(80);
+            entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Error).HasMaxLength(500);
+            entity.Property(x => x.CostUsd).HasPrecision(12, 6);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
         builder.Entity<ProductMedia>(entity =>
         {
             entity.ToTable("product_media", "catalog"); entity.HasKey(x => x.Id); entity.Property(x => x.MediaRole).HasMaxLength(32); entity.Property(x => x.Status).HasMaxLength(24);

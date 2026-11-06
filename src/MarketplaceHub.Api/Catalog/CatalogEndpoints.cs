@@ -420,6 +420,12 @@ public static class CatalogEndpoints
                 .Select(media => media.FileAssetId)
                 .Distinct()
                 .ToListAsync(http.RequestAborted)).ToHashSet();
+        // A size chart just generated for a card ("Kullan") has no picture row yet; its save attaches it.
+        if (storedAssetIds.Count > 0)
+            activeTenantMediaAssetIds.UnionWith(await db.ProductSizeCharts.AsNoTracking()
+                .Where(chart => chart.TenantId == tenant.TenantId && chart.LastGeneratedAssetId != null && storedAssetIds.Contains(chart.LastGeneratedAssetId.Value))
+                .Select(chart => chart.LastGeneratedAssetId!.Value)
+                .ToListAsync(http.RequestAborted));
         var assetsById = assets.ToDictionary(asset => asset.Id);
         var assetsByUrl = assets.Where(asset => externalUrls.Contains(asset.RelativePath)).ToDictionary(asset => asset.RelativePath, StringComparer.Ordinal);
         var desiredAssets = new List<FileAsset>(references.Count);
