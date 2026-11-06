@@ -125,7 +125,9 @@ export function buildVariantGenerationDefaults({ modelCode, sequence, automaticB
     }
   }
 
-  return { sku: '', barcode: buildSequentialVariantCode(modelCode, safeSequence), salePrice: 0, listPrice: 0 }
+  // The stock code is the barcode too (owner, 6 Nov 2026: "stokları da üretsin, barkod ile aynı olsun").
+  const code = buildSequentialVariantCode(modelCode, safeSequence)
+  return { sku: code, barcode: code, salePrice: 0, listPrice: 0 }
 }
 
 type MergeableVariantRow = { optionSignature: string; sku: string; barcode: string; salePrice: number; listPrice: number }
