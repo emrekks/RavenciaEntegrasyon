@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Adapters.Trendyol;
@@ -111,27 +112,59 @@ public sealed class JobsHealthFixesTests
     }
 
     [Fact]
-    public void AContentGoesWhenOnlyItsVarianterDiffersAndIsRefusedWhenAnotherAttributeDoes()
+    public void AContentsAttributeListLeavesOutTheVarianterAndNeedsEveryOtherAttributeEqual()
     {
-        static string Item(string barcode, int size, int material) =>
-            $$"""{"barcode":"{{barcode}}","title":"T","attributes":[{"attributeId":338,"attributeName":"Beden","attributeValueId":{{size}}},{"attributeId":14,"attributeName":"Materyal","attributeValueId":{{material}}}]}""";
+        static string Item(string barcode, int size, int material, string colour = "Siyah") =>
+            $$"""{"barcode":"{{barcode}}","title":"T","attributes":[{"attributeId":338,"attributeName":"Beden","attributeValueId":{{size}}},{"attributeId":47,"attributeName":"Renk","customAttributeValue":"{{colour}}"},{"attributeId":14,"attributeName":"Materyal","attributeValueId":{{material}}}]}""";
         var content = new TrendyolContentObservation("100", ["A1", "B2", "C3"]);
         var lookup = new Dictionary<string, TrendyolContentObservation> { ["A1"] = content, ["B2"] = content, ["C3"] = content };
+        // The category attribute list as Trendyol returns it: 338 Beden varianter, 47 Renk slicer.
+        var roles = TrendyolAttributeRoles.FromCategoryAttributes([
+            """{"attribute":{"id":338,"name":"Beden"},"varianter":true,"slicer":false}""",
+            """{"attribute":{"id":47,"name":"Renk"},"varianter":false,"slicer":true}""",
+            """{"attribute":{"id":14,"name":"Materyal"},"varianter":false,"slicer":false}"""]);
+        Assert.True(roles.IsVarianter("338"));
+        Assert.False(roles.IsVarianter("47"));
+        static JsonArray AttributesOf(string json) => (JsonArray)JsonNode.Parse(json)!["items"]![0]!["attributes"]!;
 
-        // Live RYP007: only the size (338 Beden) differs per variant; Trendyol took the content.
+        // Identical attributes: one content with the shared list, the varianter left out.
+        var identical = $$"""{"items":[{{Item("A1", 1, 7)}},{{Item("B2", 1, 7)}},{{Item("C3", 1, 7)}}]}""";
+        var one = TrendyolContentGroups.Resolve(identical, lookup, roles);
+        Assert.True(one.Succeeded);
+        Assert.Equal([47, 14], AttributesOf(one.Value!).Select(x => x!["attributeId"]!.GetValue<int>()));
+
+        // Live RYP007: only the size differs per variant. The content goes without any variant's size (Trendyol: a
+        // varianter value of an approved product cannot be updated), not with the first variant's.
         var sizesOnly = $$"""{"items":[{{Item("A1", 1, 7)}},{{Item("B2", 2, 7)}},{{Item("C3", 3, 7)}}]}""";
-        Assert.True(TrendyolContentGroups.Resolve(sizesOnly, lookup).Succeeded);
+        var sized = TrendyolContentGroups.Resolve(sizesOnly, lookup, roles);
+        Assert.True(sized.Succeeded);
+        var sent = AttributesOf(sized.Value!);
+        Assert.DoesNotContain(sent, x => x!["attributeId"]!.GetValue<int>() == 338);
+        Assert.Equal(2, sent.Count);
 
-        // The material differs between variants of the same content: not sent, named in the reason.
+        // The material differs between variants of the same content: stopped, named in the reason.
         var materialDiffers = $$"""{"items":[{{Item("A1", 1, 7)}},{{Item("B2", 2, 7)}},{{Item("C3", 3, 8)}}]}""";
-        var refused = TrendyolContentGroups.Resolve(materialDiffers, lookup);
+        var refused = TrendyolContentGroups.Resolve(materialDiffers, lookup, roles);
         Assert.False(refused.Succeeded);
         Assert.Equal("PRODUCT_CONTENT_GROUP_MISMATCH", refused.Error!.Code);
         Assert.Contains("özellikleri farklı: Materyal", refused.Error.Message);
+        // A slicer that differs inside one content is two contents' data: stopped too.
+        var colourDiffers = $$"""{"items":[{{Item("A1", 1, 7)}},{{Item("B2", 2, 7, "Haki")}},{{Item("C3", 3, 7)}}]}""";
+        Assert.Contains("Renk", TrendyolContentGroups.Resolve(colourDiffers, lookup, roles).Error!.Message);
+
+        // Without the category's flags the panel does not guess the varianter: a differing size stops the content.
+        var unknown = TrendyolContentGroups.Resolve(sizesOnly, lookup, null);
+        Assert.False(unknown.Succeeded);
+        Assert.Contains("Beden", unknown.Error!.Message);
 
         // An attribute one variant lacks is a difference too.
         var missing = """{"items":[{"barcode":"A1","title":"T","attributes":[{"attributeId":14,"attributeValueId":7}]},{"barcode":"B2","title":"T","attributes":[]},{"barcode":"C3","title":"T","attributes":[{"attributeId":14,"attributeValueId":7}]}]}""";
-        Assert.Equal(["özellik 14"], TrendyolContentGroups.DifferingAttributes(((System.Text.Json.Nodes.JsonArray)System.Text.Json.Nodes.JsonNode.Parse(missing)!["items"]!).Select(x => x!.AsObject()).ToList()));
+        Assert.Contains("özellik 14", TrendyolContentGroups.Resolve(missing, lookup, roles).Error!.Message);
+
+        // A content update that picked no attributes sends none.
+        var imagesOnly = """{"items":[{"barcode":"A1","images":[{"url":"u"}]},{"barcode":"B2","images":[{"url":"u"}]},{"barcode":"C3","images":[{"url":"u"}]}]}""";
+        Assert.False(TrendyolContentGroups.CarriesAttributes(imagesOnly));
+        Assert.False(JsonNode.Parse(TrendyolContentGroups.Resolve(imagesOnly, lookup).Value!)!["items"]![0]!.AsObject().ContainsKey("attributes"));
     }
 
     [Fact]
