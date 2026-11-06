@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
 import { newIdempotencyKey } from '../../shared/idempotency'
+import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/useCanSendInvoices'
 import { formatPackageLabel } from '../../shared/package-label'
 import { Badge, Button, useConfirmDialog } from '../../shared/components'
 import { linkRevocationActionLabel, linkRevocationConfirmCopy, linkRevocationNote, linkRevocationStatusLabel, linkRevocationSuccessMessage, linkRevocationTone, type InvoiceLinkRevocation } from './invoice-link-revocation'
@@ -17,6 +18,7 @@ type Props = {
 // panel's dialog (no password: being signed in with the role is enough); nothing here runs on its own.
 export function InvoiceLinkRevocationPanel({ invoiceId, invoiceNumber, items, onNotice }: Props) {
   const client = useQueryClient()
+  const allowed = useCanSendInvoices()
   const [confirm, confirmDialog] = useConfirmDialog()
   const revoke = useMutation({
     mutationFn: (item: InvoiceLinkRevocation) => hubApi<InvoiceLinkRevocation>(`/invoices/${invoiceId}/marketplace-link-revocations/${item.deliveryStateId}`, {
@@ -53,11 +55,12 @@ export function InvoiceLinkRevocationPanel({ invoiceId, invoiceNumber, items, on
           {item.status !== 'LINK_REMOVED' && <small>{item.instructions}</small>}
           {note && <small>{note}</small>}
           {item.errorCode && item.status !== 'LINK_REMOVED' && <small>Son hata: <code className="technical-text">{item.errorCode}</code></small>}
-          {action && !item.canAct && item.blockedReason && <small className="invoice-link-revocation-blocked">{item.blockedReason}</small>}
+          {action && !allowed && <small className="invoice-link-revocation-blocked">{invoiceSendDeniedReason}</small>}
+          {action && allowed && !item.canAct && item.blockedReason && <small className="invoice-link-revocation-blocked">{item.blockedReason}</small>}
         </span>
         <span className="invoice-link-revocation-actions">
           <Badge tone={linkRevocationTone(item.status)}>{linkRevocationStatusLabel(item.status)}</Badge>
-          {action && <Button variant={item.mode === 'AUTOMATIC' ? 'danger' : 'secondary'} size="md" loading={running} disabled={!item.canAct || revoke.isPending} onClick={() => void start(item)}>{action}</Button>}
+          {action && <Button variant={item.mode === 'AUTOMATIC' ? 'danger' : 'secondary'} size="md" loading={running} disabled={!allowed || !item.canAct || revoke.isPending} title={allowed ? undefined : invoiceSendDeniedReason} onClick={() => void start(item)}>{action}</Button>}
         </span>
       </div>
     })}</div>

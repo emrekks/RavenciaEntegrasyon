@@ -79,6 +79,7 @@ beforeEach(async () => {
   container = document.createElement('div')
   document.body.append(container)
   client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false }, mutations: { retry: false } } })
+  client.setQueryData(['me'], { id: 'user-1', email: 'u@example.invalid', displayName: 'U', role: 'ADMINISTRATOR', state: 'ACTIVE', tenantId: 'tenant-1' })
   root = createRoot(container)
   await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/invoices?tab=DUE_SOON']}><InvoicesPage /></MemoryRouter></QueryClientProvider>) })
   // the page waits for the connections (its key carries the provider credential), so it lands one round later
@@ -279,6 +280,19 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     act(() => send!.click())
     await settle()
     expect(container.textContent).toContain('1 paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı.')
+  })
+
+  it('keeps sending a manual invoice to the marketplace closed for operations, with the reason', async () => {
+    client.setQueryData(['me'], { id: 'user-2', email: 'o@example.invalid', displayName: 'O', role: 'OPERATIONS', state: 'ACTIVE', tenantId: 'tenant-1' })
+    await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/invoices?tab=DUE_SOON']}><InvoicesPage /></MemoryRouter></QueryClientProvider>) })
+    await settle()
+    const row = Array.from(container.querySelectorAll<HTMLElement>('.invoice-reference-row'))
+      .find(item => item.textContent?.includes('SH-1002'))!
+    act(() => row.querySelector<HTMLButtonElement>('.invoice-reference-actions-trigger')!.click())
+    await settle()
+    const send = Array.from(document.body.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')).find(item => item.textContent?.includes('Manuel Faturayı Pazaryerine Gönder'))!
+    expect(send.disabled).toBe(true)
+    expect(send.title).toContain('yalnız sahip ve yöneticiler içindir')
   })
 
   it('copies the raw invoice order number using the copy control', async () => {

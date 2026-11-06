@@ -6,6 +6,7 @@ import { formatDate } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { formatPackageLabel } from '../../shared/package-label'
 import { newIdempotencyKey } from '../../shared/idempotency'
+import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/useCanSendInvoices'
 import { notificationError, notificationLinks, type NotificationContext } from '../../shared/notifications'
 import { invoiceEnvironmentLabel, invoiceTypeLabel, taxpayerStatusLabel } from './invoice-copy'
 
@@ -64,6 +65,7 @@ function actionLabel(action: string | null) {
 }
 
 export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onNotice }: { targets: InvoicePreviewTarget[]; onClose: () => void; onComplete: () => void; onNotice: (message: string, kind: 'success' | 'error' | 'info' | 'pending', context?: NotificationContext) => void }) {
+  const allowed = useCanSendInvoices()
   const [previews, setPreviews] = useState<PreviewItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<unknown>(null)
@@ -146,7 +148,7 @@ export function InvoiceWorkspacePreviewModal({ targets, onClose, onComplete, onN
           })}
         </>}
       </div>
-      <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoBlockedReason ?? (internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.')}><input type="checkbox" checked={includeInternetSalesInfo && !internetSalesInfoBlockedReason} disabled={loading || internetSalesInfoLocked || Boolean(internetSalesInfoBlockedReason)} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label><button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled={loading || eligibleCount === 0} onClick={confirm}>{eligibleCount > 1 ? `Onayla ve Faturayı Kes (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma İletimi Başlat' : 'Onayla ve Faturayı Kes'}</button></footer>
+      <footer className="invoice-detail-footer"><label className="invoice-workspace-internet-sales-toggle" title={internetSalesInfoBlockedReason ?? (internetSalesInfoLocked ? 'Bu kayıtta mali fatura daha önce oluşturulmuş; seçenek mevcut faturayı değiştirmez.' : 'Kapalıysa e-Arşiv faturasına web sitesi, ödeme ve aracı hizmet bilgileri eklenmez. Kargo bilgisi bundan etkilenmez.')}><input type="checkbox" checked={includeInternetSalesInfo && !internetSalesInfoBlockedReason} disabled={loading || internetSalesInfoLocked || Boolean(internetSalesInfoBlockedReason)} onChange={event => setIncludeInternetSalesInfo(event.target.checked)} /><span>İnternet Satış Bilgilerini Doldur</span></label>{!allowed && <small className="invoice-detail-muted">{invoiceSendDeniedReason}</small>}<button type="button" className="secondary" onClick={onClose}>Vazgeç</button><button type="button" disabled={!allowed || loading || eligibleCount === 0} title={allowed ? undefined : invoiceSendDeniedReason} onClick={confirm}>{eligibleCount > 1 ? `Onayla ve Faturayı Kes (${eligibleCount})` : previews[0]?.nextAction === 'DELIVERY_ONLY' ? 'Platforma İletimi Başlat' : 'Onayla ve Faturayı Kes'}</button></footer>
     </DialogSurface>
   </div>
 }
