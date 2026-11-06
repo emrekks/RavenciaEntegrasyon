@@ -1630,9 +1630,17 @@ internal static class HepsiburadaJsonMapper
         // product's own barcode is "productBarcode".
         var productBarcode = Text(line, "productBarcode", "ProductBarcode");
         var barcode = string.IsNullOrWhiteSpace(productBarcode) ? Text(line, "barcode", "Barcode") : productBarcode;
-        mapped = new(lineId, sku, barcode, Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate"), status, snapshot, cancelled);
+        mapped = new(lineId, sku, barcode, Text(line, "name", "Name", "productName", "ProductName") ?? sku, quantity, unitPrice, Decimal(line, "vatRate", "VatRate"), status, snapshot, cancelled,
+            PlatformDiscount: PlatformDiscount(line));
         return true;
     }
+
+    // Hepsiburada's own campaign discount a unit ("hbDiscount": {"unitPrice": {"amount": 194.85}}), which Hepsiburada pays
+    // the seller: live, every CampaignDiscount record of Sep-Nov 2026 credited the line's hbDiscount, grossed up from the
+    // product's VAT to 20 % (4091991027: 194.85 at 10 % VAT, 212.57 credited). Part of the seller's revenue, as Trendyol's
+    // own discount is (DashboardRevenuePolicy); none when the line carries none.
+    internal static decimal? PlatformDiscount(JsonElement line) =>
+        TryFind(line, out var discount, "hbDiscount", "HbDiscount") && Money(discount, "unitPrice", "UnitPrice") is { } amount && amount > 0m ? amount : null;
 
     // The order detail's readable line items with their lines, in order (LineAliases pairs them by position), and how
     // many could not be read.

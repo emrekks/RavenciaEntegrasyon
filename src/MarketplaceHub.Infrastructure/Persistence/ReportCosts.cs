@@ -81,12 +81,29 @@ internal static class ReportCosts
     public const string EstimateSource = "estimate";
     private const int ProductCount = 50;
     // Trendyol charges these per order but writes them to the statement only when it settles the order, so for an order
-    // without a settlement record they are estimated: the platform service fee (10.99 TL + 20 % VAT), the international
-    // service fee of a micro-export order (6 % of its sale; 24 Oct 2026: 34.22 TL on a 570.34 TL Greek order) and the
-    // e-commerce withholding tax (Law 7524: 1 % of the VAT-free domestic sale).
+    // without a settlement record they are estimated: the platform service fee (10.99 TL + 20 % VAT; 10.99 TL without VAT
+    // on the Azerbaijan storefront, billed by Trendyol's AZ company), the international service fee of a micro-export
+    // order (6 % of its sale; 24 Oct 2026: 34.22 TL on a 570.34 TL Greek order) and the e-commerce withholding tax (Law
+    // 7524: 1 % of the sale without its VAT). Trendyol withholds the tax on the micro-export storefronts too: live, every
+    // Avrupa and Türkiye-Körfez payout of Oct-Nov 2026 carried 0.855-0.886 % of all its sales, Bulgarian, Greek, Romanian
+    // and Gulf ones included; the Azerbaijan payouts carried none.
     internal const decimal PlatformServiceFeePerOrder = 13.19m;
+    internal const decimal AzerbaijanServiceFeePerOrder = 10.99m;
     internal const decimal InternationalServiceFeeRate = 0.06m;
     internal const decimal StoppageRate = 0.01m;
+    internal const string Azerbaijan = "AZ";
+
+    // A Trendyol order's estimated platform service fee, the part of it that carries VAT, and the base of its withholding
+    // tax (its kept sale without VAT; none on the Azerbaijan storefront).
+    internal static decimal TrendyolServiceFee(ReportBuilder.OrderFact order) =>
+        (order.Country == Azerbaijan ? AzerbaijanServiceFeePerOrder : PlatformServiceFeePerOrder)
+        + (ReportBuckets.Abroad(order.Country) ? order.Kept * InternationalServiceFeeRate : 0m);
+    internal static decimal TrendyolVatFee(ReportBuilder.OrderFact order) => order.Country == Azerbaijan ? 0m : PlatformServiceFeePerOrder;
+    internal static decimal TrendyolStoppageBase(ReportBuilder.OrderFact order) => order.Country == Azerbaijan ? 0m : order.Lines.Sum(VatFree);
+
+    // A service fee record that carries Turkish VAT: not the international fee, not one of Trendyol's Azerbaijan company.
+    internal static bool CarriesVat(ReportFinanceRow row) =>
+        !IsInternationalFee(row) && !TrendyolFinanceCategorizer.Fold(row.TransactionType).StartsWith("az-", StringComparison.Ordinal);
     // The VAT inside Trendyol's invoices (commission, cargo, service fee, advertising).
     internal const decimal ExpenseVatRate = 20m;
 
@@ -206,7 +223,7 @@ internal static class ReportCosts
                 // A cargo invoice read as a whole that names the order bills its shipment.
                 if (category == MarketplaceFinanceCategories.Cargo) billed.Add(order);
             }
-            if (row.Category == MarketplaceFinanceCategories.ServiceFee && !IsInternationalFee(row)) linkedDomesticFees += amount;
+            if (row.Category == MarketplaceFinanceCategories.ServiceFee && CarriesVat(row)) linkedDomesticFees += amount;
 
             // By product: a record whose barcode is on a line of its order.
             if (!string.IsNullOrWhiteSpace(row.Barcode) && linesByOrder.TryGetValue(order, out var orderLines)
@@ -304,8 +321,8 @@ internal static class ReportCosts
             var feeOrders = store.Where(order => !linkedFees.Contains((order.Order.Id, MarketplaceFinanceCategories.ServiceFee))).ToList();
             var taxOrders = store.Where(order => !linkedFees.Contains((order.Order.Id, MarketplaceFinanceCategories.Stoppage))).ToList();
             if (feeOrders.Count == 0 && taxOrders.Count == 0) continue;
-            var serviceFee = Round(feeOrders.Count * PlatformServiceFeePerOrder + feeOrders.Where(order => ReportBuckets.Abroad(order.Country)).Sum(order => order.Kept) * InternationalServiceFeeRate);
-            var stoppage = Round(taxOrders.Where(order => order.Country == ReportBuckets.Turkey).SelectMany(order => order.Lines).Sum(VatFree) * StoppageRate);
+            var serviceFee = Round(feeOrders.Sum(TrendyolServiceFee));
+            var stoppage = Round(taxOrders.Sum(TrendyolStoppageBase) * StoppageRate);
             Line(MarketplaceFinanceCategories.ServiceFee).Estimate(serviceFee);
             Line(MarketplaceFinanceCategories.Stoppage).Estimate(stoppage);
             channelCosts[(store.Key, MarketplaceFinanceCategories.ServiceFee)] = channelCosts.GetValueOrDefault((store.Key, MarketplaceFinanceCategories.ServiceFee)) + serviceFee;
@@ -364,7 +381,7 @@ internal static class ReportCosts
         // Trendyol's VAT-inclusive charges (the international service fee and the withholding tax carry none) on the
         // period's orders; a record tied to no order of the period (Unlinked) carries no VAT of theirs.
         var trendyolCommission = trendyolReal + Round(financeOrders.Where(order => !settled.Contains(order.Order.Id)).Sum(Estimated));
-        var trendyolFees = linkedDomesticFees + financeOrders.Count(order => !linkedFees.Contains((order.Order.Id, MarketplaceFinanceCategories.ServiceFee))) * PlatformServiceFeePerOrder;
+        var trendyolFees = linkedDomesticFees + financeOrders.Where(order => !linkedFees.Contains((order.Order.Id, MarketplaceFinanceCategories.ServiceFee))).Sum(TrendyolVatFee);
         var advertising = lines.TryGetValue(MarketplaceFinanceCategories.Advertising, out var adLine) ? adLine.Amount : 0m;
         var vatOrders = financeOrders.Concat(platformOrders).ToList();
         var platformCommission = Round(platformOrders.Sum(Estimated));

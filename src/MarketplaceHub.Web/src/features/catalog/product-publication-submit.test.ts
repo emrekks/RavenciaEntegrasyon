@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  chosenGapSkipped,
   marketplacePublishLines,
   productPublicationTargets,
   productSaveFeedback,
@@ -217,5 +218,26 @@ describe('product publication submit targets', () => {
 
   it('keeps selected marketplace targets for an explicit publish/update action', () => {
     expect(productPublicationTargets(false, ['trendyol-connection'])).toEqual(['trendyol-connection'])
+  })
+})
+
+// Owner 2026-11-06: a Trendyol-only publish listed Hepsiburada, n11, Pazarama and PTT AVM as "gönderilmedi", called it
+// "Yayın Kısmen Başlatıldı" and stayed on screen.
+describe('a publish to the chosen marketplaces only', () => {
+  const connections = [{ id: 'ty', name: 'Trendyol' }, { id: 'hb', name: 'Hepsiburada' }, { id: 'n11', name: 'n11' }, { id: 'pz', name: 'Pazarama' }]
+  const gaps = { hb: 1, n11: 1, pz: 2 }
+
+  it('names a gap only for a marketplace the user chose', () => {
+    expect(chosenGapSkipped(connections, ['ty'], gaps, connection => connection.name)).toEqual([])
+    expect(chosenGapSkipped(connections, ['ty', 'pz'], gaps, connection => connection.name)).toEqual([{ platformName: 'Pazarama', requiredGaps: 2 }])
+  })
+
+  it('reads a Trendyol-only publish as a success that closes by itself', () => {
+    const feedback = productSaveFeedback(save({
+      productChanged: false,
+      publications: [publish({ enqueuedCards: 1, enqueuedVariants: 18 })],
+      gapSkipped: chosenGapSkipped(connections, ['ty'], gaps, connection => connection.name)
+    }))
+    expect(feedback).toEqual({ title: 'Yayın Başlatıldı', lines: ['Trendyol: ürün (18 varyant) gönderim kuyruğuna alındı.'], kind: 'success', persistent: false, durationMs: 3500 })
   })
 })

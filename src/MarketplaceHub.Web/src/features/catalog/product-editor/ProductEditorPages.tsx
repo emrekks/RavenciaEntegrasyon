@@ -64,7 +64,7 @@ import { publicationJobPollInterval } from '../publication-job-poll'
 import { isRefreshJobRunning, publicationJobInline } from '../publication-job-inline'
 import { statusLabel } from '../../../shared/status-labels'
 import { familyCardsInPanelOrder } from '../family-card-order'
-import { productPublicationTargets, productSaveFeedback,publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback } from '../product-publication-submit'
+import { chosenGapSkipped, productPublicationTargets, productSaveFeedback, publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback } from '../product-publication-submit'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, variantOwnerProductId, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { ModelCodeHolderNotice, useModelCodeHolder } from '../model-code-holder'
@@ -3027,7 +3027,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             publishRequested: !saveAndStay && !createOnly,
             publications,
             publicationErrors,
-            gapSkipped: (connections.data?.items ?? []).filter(connection => (gapCards[connection.id] ?? 0) > 0).map(connection => ({ platformName: connectionPlatformName(connection.id), requiredGaps: gapCards[connection.id] })),
+            gapSkipped: chosenGapSkipped(connections.data?.items ?? [], selectedChannelIds, gapCards, connection => connectionPlatformName(connection.id)),
             updates: platformUpdate ? updates : undefined
           })
       const message = result.lines.join(' ')

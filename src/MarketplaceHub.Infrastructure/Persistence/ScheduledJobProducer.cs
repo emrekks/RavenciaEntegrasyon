@@ -825,6 +825,8 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
             or MarketplaceJobTypes.ShopifyOrderInvoiceReconciliation
             or MarketplaceJobTypes.HepsiburadaOrderInvoiceReconciliation;
 
+    // RETURNS reads the store's returns (read_returns) at the common return cadence (ReturnCadencePolicy); approving
+    // or declining stays behind RETURN_WRITE. It was missing until 6 Nov 2026, so no Shopify return was ever read.
     internal static bool IsShopifyReadPolicy(string resourceType) => resourceType is
         "ORDERS"
         or "ORDER_RECOVERY"
@@ -833,6 +835,7 @@ public sealed class ScheduledJobProducer(AppDbContext db, TimeProvider timeProvi
         or "ORDER_RECONCILE_MEDIUM"
         or "ORDER_RECONCILE_DAILY"
         or "ORDER_INVOICE_RECONCILIATION"
+        or "RETURNS"
         or ListingVerificationPolicy.ResourceType;
 
     internal static bool SupportsShopifyPolicy(string resourceType) =>

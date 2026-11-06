@@ -691,9 +691,10 @@ public sealed class TrendyolFinanceTests
         // B has no commission: it is taken at the store's rate over A and C (21.5 %).
         Assert.Equal(215m + 122.62m + 107.5m, costs.Commission!.Combined);
         Assert.Equal(295.02m, costs.Cargo!.Combined);
-        // 3 × 13.19 + 6 % of the Greek sale; 1 % of the VAT-free domestic sales.
+        // 3 × 13.19 + 6 % of the Greek sale; 1 % of the VAT-free sales, the Greek one too (13.64 + 5.18): Trendyol withholds
+        // the tax on its European storefronts as well.
         Amount(costs, MarketplaceFinanceCategories.ServiceFee, 73.79m);
-        Amount(costs, MarketplaceFinanceCategories.Stoppage, 13.64m);
+        Amount(costs, MarketplaceFinanceCategories.Stoppage, 18.82m);
         Assert.Equal(73.79m, costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee).Estimated);
         // VAT in the domestic sales (1,500 at 10 %), less the VAT in A's cost (400) and in commission, cargo and the
         // platform fee (20 %; the international fee carries none).

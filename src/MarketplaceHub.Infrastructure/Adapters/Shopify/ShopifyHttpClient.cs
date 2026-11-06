@@ -860,7 +860,7 @@ public sealed partial class ShopifyHttpClient(
     // so it is asked through an inline fragment (C1). returnReason is deprecated: returnReasonDefinition replaces it (C26).
     internal const string ReturnLineFields = "nodes{id quantity returnReasonNote returnReasonDefinition{handle name} ... on ReturnLineItem{fulfillmentLineItem{id lineItem{id}}}} pageInfo{hasNextPage endCursor}";
     internal const string ReturnFields = "id status createdAt returnLineItems(first:50){" + ReturnLineFields + "}";
-    internal const string ReturnPageQuery = "query($first:Int!,$after:String,$query:String){orders(first:$first,after:$after,query:$query,sortKey:UPDATED_AT,reverse:false){edges{node{id name createdAt returns(first:20){nodes{" + ReturnFields + "} pageInfo{hasNextPage endCursor}}}} pageInfo{hasNextPage endCursor}}}";
+    internal const string ReturnPageQuery = "query($first:Int!,$after:String,$query:String){orders(first:$first,after:$after,query:$query,sortKey:UPDATED_AT,reverse:false){edges{node{id name createdAt updatedAt returns(first:20){nodes{" + ReturnFields + "} pageInfo{hasNextPage endCursor}}}} pageInfo{hasNextPage endCursor}}}";
     internal const string OrderReturnsContinuationQuery = "query($id:ID!,$after:String){order(id:$id){id name createdAt returns(first:20,after:$after){nodes{" + ReturnFields + "} pageInfo{hasNextPage endCursor}}}}";
     internal const string ReturnLinesContinuationQuery = "query($id:ID!,$after:String){return(id:$id){id returnLineItems(first:100,after:$after){" + ReturnLineFields + "}}}";
     internal const string SingleReturnQuery = "query($id:ID!){return(id:$id){id status createdAt order{id name createdAt} returnLineItems(first:100){" + ReturnLineFields + "}}}";
@@ -884,9 +884,13 @@ public sealed partial class ShopifyHttpClient(
             var orders = result.Value!.RootElement.GetProperty("orders");
             var items = new List<RemoteReturnClaim>();
             var rateLimit = result.RateLimit;
+            DateTimeOffset? lastModifiedSeen = null;
             foreach (var edge in orders.GetProperty("edges").EnumerateArray())
             {
                 var order = edge.GetProperty("node");
+                // Every order of the page counts, with or without a return: the read restarts its query from the latest one.
+                if (order.TryGetProperty("updatedAt", out var updated) && updated.ValueKind == JsonValueKind.String && updated.TryGetDateTimeOffset(out var updatedAt)
+                    && (lastModifiedSeen is null || updatedAt > lastModifiedSeen)) lastModifiedSeen = updatedAt;
                 var returns = order.GetProperty("returns");
                 var returnNodes = returns.GetProperty("nodes").EnumerateArray().ToList();
                 // G32: an order with more than 20 returns is read on with the order's own returns cursor.
@@ -902,7 +906,7 @@ public sealed partial class ShopifyHttpClient(
             }
             var info = orders.GetProperty("pageInfo");
             var hasMore = info.GetProperty("hasNextPage").GetBoolean();
-            return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(items, hasMore ? info.GetProperty("endCursor").GetString() : null, hasMore, items.Count), rateLimit);
+            return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(new(items, hasMore ? info.GetProperty("endCursor").GetString() : null, hasMore, items.Count, LastModifiedSeen: lastModifiedSeen), rateLimit);
         }
         catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException or JsonException)
         {

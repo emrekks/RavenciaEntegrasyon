@@ -288,7 +288,9 @@ public static class ReportBuckets
     // The commission of a line's kept units, estimated from what the marketplace sent on the line, or null when it
     // sent nothing usable. A rate (Trendyol "commission", n11 "commissionRate", PTT AVM "Komisyon") is taken of the
     // kept units' paid amount; Hepsiburada's "commission" amount is per unit (live: a 2 x 273 TL line at rate 18 carries
-    // 49.14, 18% of one unit), so it counts once for every kept unit.
+    // 49.14, 18% of one unit), so it counts once for every kept unit. Hepsiburada's amount and rate are without VAT: its
+    // commission records charge 20 % VAT on top (live, all 107 Commission records of Sep-Nov 2026: exactly 1.20 x the
+    // line's amount, 232.02 on the line, 278.42 charged), as Trendyol's, n11's and PTT AVM's rates already include it.
     public static decimal? EstimatedCommission(string platformCode, string? commissionType, string? commission, string? commissionRate, string? komisyon,
         decimal keptAmount, decimal keptUnits)
     {
@@ -299,8 +301,8 @@ public static class ReportBuckets
                 return Rate(commission) is { } trendyolRate ? Math.Round(keptAmount * trendyolRate / 100m, 2) : null;
             case "HEPSIBURADA":
                 if (commissionType == "object" && Number(commission) is { } amount && amount >= 0)
-                    return Math.Round(amount * keptUnits, 2);
-                return Rate(commissionRate) is { } hepsiburadaRate ? Math.Round(keptAmount * hepsiburadaRate / 100m, 2) : null;
+                    return Math.Round(amount * keptUnits * HepsiburadaCommissionVat, 2);
+                return Rate(commissionRate) is { } hepsiburadaRate ? Math.Round(keptAmount * hepsiburadaRate / 100m * HepsiburadaCommissionVat, 2) : null;
             case "N11":
                 return Rate(commissionRate) is { } n11Rate ? Math.Round(keptAmount * n11Rate / 100m, 2) : null;
             case "PTTAVM":
@@ -309,6 +311,8 @@ public static class ReportBuckets
                 return null;
         }
     }
+
+    private const decimal HepsiburadaCommissionVat = 1.20m;
 
     private static decimal? Rate(string? value) => Number(value) is { } rate && rate > 0 && rate <= 100 ? rate : null;
 
@@ -813,7 +817,8 @@ internal static class ReportBuilder
             notes.Add(cost.CostedQuantity <= 0
                 ? "Satılan ürünlerin hiçbirinde maliyet girilmemiş; kâr hesaplanamaz."
                 : $"Maliyet yalnız {cost.CostedQuantity.ToString("N0", tr)} / {cost.KeptQuantity.ToString("N0", tr)} adetlik satışta girilmiş ({Percent(cost.Coverage)}); kâr yalnız bu satışlar üzerinden hesaplanır.");
-        notes.Add("Maliyet, ürün kartındaki güncel maliyettir (satış anındaki değil); kâra kargo ve KDV dahil değildir.");
+        // The cost a line kept at the sale (OrderLineCostSnapshot); a line that kept none follows the variant's cost now.
+        notes.Add("Maliyet, satış anında ürün kartında girili olan maliyettir (o an girili değilse kartın güncel maliyeti); bu kâra kargo ve KDV dahil değildir.");
         notes.Add("Kargo süreleri pazaryerinin bildirdiği durum zamanlarından hesaplanır (yaklaşık); zamanı olmayan paketler süre ortalamasına girmez.");
         notes.Add("Müşteri sayısı mağazanın müşteri numarası, e-posta ya da telefondan üretilen tek yönlü bir anahtarla sayılır; aynı kişi iki pazaryerinde iki müşteri sayılabilir.");
         if (cancelled.Count > 0)

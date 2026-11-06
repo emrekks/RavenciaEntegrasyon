@@ -5,6 +5,21 @@ const base: PublishStepsInput = { requiredGaps: 0, optionalWarnings: 0, live: fa
 const steps = (input: Partial<PublishStepsInput>) => publishStatusSteps({ ...base, ...input })
 
 describe('publishStatusSteps', () => {
+  // Owner 2026-11-06: while the send runs the plane step reads Gönderiliyor, also over what an earlier send left.
+  it('shows a running send as Gönderiliyor over an earlier refusal, failure or retry, and settles when it ends', () => {
+    const sending = { running: true, failed: false, step: 'send' as const }
+    for (const input of [{ actualStatus: 'REJECTED' }, { actualStatus: 'BLOCKED' }, { lastJobStatus: 'FAILED' }, { retry: true }, { actualStatus: 'DRAFT' }]) {
+      const result = steps({ ...input, job: sending })
+      expect(result.steps).toEqual(['done', 'now', 'idle', 'idle'])
+      expect(result.label).toBe('Gönderiliyor')
+    }
+    expect(steps({ actualStatus: 'REJECTED', job: { ...sending, running: false } }).label).toBe('Reddedildi')
+    expect(steps({ actualStatus: 'APPROVAL_PENDING', job: sending }).steps).toEqual(['done', 'done', 'now', 'idle'])
+    expect(steps({ actualStatus: 'REJECTED', job: { running: true, failed: false, step: 'approval' } }).steps).toEqual(['done', 'done', 'now', 'idle'])
+    expect(steps({ actualStatus: 'REJECTED', job: { running: true, failed: false, step: null } }).label).toBe('Reddedildi')
+    expect(steps({ live: true, job: sending }).label).toBe('Yayında')
+  })
+
   it('reads a never sent card that is ready as Hazırlık done, Gönderim next', () => {
     const result = steps({ actualStatus: 'UNKNOWN' })
     expect(result.steps).toEqual(['done', 'next', 'idle', 'idle'])

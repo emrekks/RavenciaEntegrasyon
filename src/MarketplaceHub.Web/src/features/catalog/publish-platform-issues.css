@@ -246,3 +246,17 @@ body:has(.publish-issue-tooltip.is-open) .publish-issue-tooltip:not(.is-open) { 
 }
 /* If the column is still too narrow, the badge keeps its dot and counts and drops the words. */
 @container (max-width: 178px) { .publish-issue-trigger .publish-issue-label { display: none; } }
+/* Gönderiliyor (owner, 6 Nov 2026): while the send job runs the plane does not glide in place like a ready card's, it
+   flies off to the upper right and comes in again from the lower left, until the job ends and the step settles. With
+   reduced motion it stays in place and only pulses, slowly, so the running send still reads apart from a ready one. */
+.publish-steps-item:nth-child(2) .publish-step.is-now > svg { overflow: hidden; }
+.publish-steps-item:nth-child(2) .publish-step.is-now > svg > * { animation: rv-publish-step-fly 1.1s cubic-bezier(.5, 0, .5, 1) infinite; }
+@keyframes rv-publish-step-fly {
+  0% { transform: translate(-14px, 14px); opacity: 0; }
+  20% { opacity: 1; }
+  50% { transform: translate(0, 0); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translate(14px, -14px); opacity: 0; }
+}
+@keyframes rv-publish-step-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .publish-steps-item:nth-child(2) .publish-step.is-now > svg > * { animation: rv-publish-step-pulse 2.4s ease-in-out infinite !important; transform: none; } }
