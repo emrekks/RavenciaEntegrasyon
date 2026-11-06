@@ -402,7 +402,7 @@ Canlı veride son 60 günün sipariş satırlarında hangi alanların dolu oldu�
 | Pazaryeri | Sipariş satırında | Satır sayısı | Panele girilen tarife | KDV | Tipik aralık | Oranların yayımlandığı yer |
 |---|---|---|---|---|---|---|
 | Trendyol | `commission`: **oran** (ör. 13) | 2.494 / 2.538 satır | 1 tarife, 633 satır (haftalık .xlsx) | **KDV dahil**, üstüne KDV yok (R) | %5–27 | Herkese açık değil; partner panelinde "Ürün Komisyon Tarifeleri" |
-| Hepsiburada | `commission.amount`: birim başına **tutar**, ayrıca `commissionRate` (ör. 18) | 226 / 226 satır | yok | Tutar KDV dahil birim fiyatın oranı (2 × 273 TL'de %18 = 49,14). Üstüne KDV eklenip eklenmediği komisyon faturasıyla doğrulanmalı. | %5–25 | Yalnızca satıcı panelinde |
+| Hepsiburada | `commission.amount`: birim başına **tutar**, ayrıca `commissionRate` (ör. 18) | 226 / 226 satır | yok | Tutar KDV dahil birim fiyatın oranı (2 × 273 TL'de %18 = 49,14); **üstüne %20 KDV eklenir** (R: 6 Kasım 2026, 107 Commission kaydının hepsi satırdaki tutarın tam 1,20 katı) | %5–25 | Yalnızca satıcı panelinde |
 | N11 | `commissionRate`: **oran**; kampanyada `sellerCampaignCommissionRate` düşülür | 27 / 27 satır | yok | **KDV dahil** (R) | %5,5–21 | magazadestek.n11.com/s/komisyon-oranlari |
 | PTT AVM | `Komisyon`: **oran** (ör. 20) | 4 / 4 satır | yok | 2022 PDF'ine göre KDV dahil (D) | %5–15 | pttavm.com/lp/magaza-komisyonu |
 | Pazarama | **Yok.** Komisyon sipariş servisinde değil, finans servisinde (`order/paymentAgreement` → `commissionAmount`) | 0 / 6 satır | yok | **KDV hariç, %20 KDV eklenir** (R) | %0–19 | isortagim.pazarama.com/static-pages/pazarama-comission-rate-list |

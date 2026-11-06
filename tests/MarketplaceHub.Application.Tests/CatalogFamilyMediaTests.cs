@@ -45,4 +45,26 @@ public sealed class CatalogFamilyMediaTests
         Assert.Equal(["https://cdn.dsmcdn.com/own-2.jpg"], defaultUrls);
         Assert.Single(items);
     }
+
+    // Live 6 Nov 2026: after a bulk variant picture assignment the strip regrouped as every colour's 1st picture, then
+    // every 2nd: the assignment renumbered each variant's rows 0, 1… and the custom order read those numbers.
+    [Fact]
+    public void OrderedUrls_KeepsTheProductLevelOrder_WhateverTheVariantRowsAreNumbered()
+    {
+        var ordered = CatalogFamilyMedia.OrderedUrls([
+            new(Guid.NewGuid(), Own, null, 0, "https://cdn.dsmcdn.com/siyah-1.jpg"),
+            new(Guid.NewGuid(), Own, null, 3, "https://cdn.dsmcdn.com/siyah-2.jpg"),
+            new(Guid.NewGuid(), Bordo, null, 6, "https://cdn.dsmcdn.com/bordo-1.jpg"),
+            new(Guid.NewGuid(), Bordo, null, 9, "https://cdn.dsmcdn.com/bordo-2.jpg"),
+            // The variant rows after the assignment: each variant's own 0, 1, 2.
+            new(Guid.NewGuid(), Own, Guid.NewGuid(), 0, "https://cdn.dsmcdn.com/siyah-1.jpg"),
+            new(Guid.NewGuid(), Own, Guid.NewGuid(), 1, "https://cdn.dsmcdn.com/siyah-2.jpg"),
+            new(Guid.NewGuid(), Bordo, BordoVariant, 0, "https://cdn.dsmcdn.com/bordo-1.jpg"),
+            new(Guid.NewGuid(), Bordo, BordoVariant, 1, "https://cdn.dsmcdn.com/bordo-2.jpg"),
+            new(Guid.NewGuid(), Bordo, BordoVariant, 2, "https://cdn.dsmcdn.com/bordo-variant.jpg"),
+        ]);
+
+        Assert.Equal(["https://cdn.dsmcdn.com/siyah-1.jpg", "https://cdn.dsmcdn.com/siyah-2.jpg", "https://cdn.dsmcdn.com/bordo-1.jpg",
+            "https://cdn.dsmcdn.com/bordo-2.jpg", "https://cdn.dsmcdn.com/bordo-variant.jpg"], ordered);
+    }
 }

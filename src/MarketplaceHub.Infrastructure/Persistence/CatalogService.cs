@@ -1167,11 +1167,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                                      orderby item.SortOrder, item.ProductId, item.Id
                                      select new { MediaId = item.Id, item.ProductId, item.VariantId, item.SortOrder, AssetId = asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var familyProductTitles = familyProducts.ToDictionary(item => item.Id, item => item.Title);
-        var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(
-            familyMediaRows.Select(item => new CatalogFamilyMedia.Row(item.MediaId, item.ProductId, item.VariantId, item.SortOrder, CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url))).ToList(),
-            familyProductTitles);
-        var familyOrderedMediaUrls = CatalogImageIdentity.DistinctDisplayUrls(familyMediaRows
-            .Select(item => CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url)));
+        var familyRows = familyMediaRows.Select(item => new CatalogFamilyMedia.Row(item.MediaId, item.ProductId, item.VariantId, item.SortOrder, CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url))).ToList();
+        var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles);
+        var familyOrderedMediaUrls = CatalogFamilyMedia.OrderedUrls(familyRows);
         return ServiceResult<ProductView>.Ok(primaryView with
         {
             Variants = allVariants,

@@ -100,6 +100,11 @@ export function publishStatusSteps(input: PublishStepsInput): PublishSteps {
     return build(['done', 'next', 'idle', 'half'], 'Kısmen Yayında')
   }
 
+  // A publication job running now leads over what the last one left (a refusal, a failed send, "Tekrar Deneyin"): the
+  // plane flies while the send runs (owner, 6 Nov 2026) and the clock turns while the approval check runs; a status
+  // check (step null) changes nothing it shows.
+  if (jobRunning && input.job?.step === 'send' && !approvalStatuses.has(status)) return build(['done', 'now', 'idle', 'idle'], 'Gönderiliyor')
+  if (jobRunning && input.job?.step === 'approval') return build(['done', 'done', 'now', 'idle'], input.checking ? 'Kontrol Ediliyor' : 'Onay Bekliyor')
   if (input.retry) return build(['done', 'next', 'idle', 'idle'], 'Tekrar Deneyin')
   if (approvalStatuses.has(status)) return build(['done', 'done', 'now', 'idle'], input.checking ? 'Kontrol Ediliyor' : 'Onay Bekliyor')
   if (sendingStatuses.has(status) || (jobRunning && (!status || status === 'UNKNOWN'))) return build(['done', 'now', 'idle', 'idle'], 'Gönderiliyor')
