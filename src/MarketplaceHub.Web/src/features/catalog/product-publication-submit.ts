@@ -54,8 +54,8 @@ export type ProductSaveOutcome = {
   publications: readonly MarketplacePublishOutcome[]
   /** Marketplaces whose whole publication step failed before any card (name and message). */
   publicationErrors: readonly { platformName: string; message: string }[]
-  /** Marketplaces whose card showed a required gap: not sent, whether picked or not (live 2026-11-02: RYP006 went to
-   * Trendyol, the toast said only that, and the n11, Pazarama and PTT AVM cards beside it read "Yayın için zorunlu eksik"). */
+  /** Marketplaces the user chose whose card showed a required gap, so they were not sent (chosenGapSkipped). A card the
+   * user did not choose is left out: a Trendyol-only publish speaks of Trendyol only (owner, 6 Nov 2026). */
   gapSkipped?: readonly { platformName: string; requiredGaps: number }[]
   updates?: readonly MarketplaceUpdateOutcome[]
 }
@@ -196,4 +196,12 @@ export function publicationCancelMessage(platformName: string, jobStatus: string
   if (status === 'CANCELLED') return `${platformName}: yayın işi durduruldu. Pazaryerine önceden gönderilmiş bir istek geri alınamamış olabilir.`
   if (status === 'SUCCEEDED') return `${platformName}: yayın işi durdurulmadan önce tamamlandı.`
   return `${platformName}: yayın işinin durdurulması istendi; çalışan adım bitince durur.`
+}
+
+/** The marketplaces Yayınla names as left out for a required gap: only those the user chose (owner, 6 Nov 2026: a
+ *  Trendyol-only publish listed Hepsiburada, n11, Pazarama and PTT AVM as "gönderilmedi"). A card not chosen says nothing. */
+export function chosenGapSkipped<T extends { id: string }>(connections: readonly T[], chosenIds: readonly string[], gapCards: Readonly<Record<string, number>>, platformName: (connection: T) => string) {
+  return connections
+    .filter(connection => chosenIds.includes(connection.id) && (gapCards[connection.id] ?? 0) > 0)
+    .map(connection => ({ platformName: platformName(connection), requiredGaps: gapCards[connection.id] }))
 }
