@@ -1336,6 +1336,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const allowReseedUntil = useRef(0)
   // True while the editor's own save runs: a refetch landing then does not refill the form or flag a newer version.
   const editorSaveInFlight = useRef(false)
+  // The product as it was when Kaydet was pressed: the "Görseller" strip reads it until the save is done. Each upload
+  // raises a realtime refetch, and a product with colour variants lists only its first product-level picture until the
+  // variants get theirs, so the strip took every other stored copy for a family picture and showed it beside its own
+  // local preview, one more per upload (live 2026-11-06, 19 pictures: they "copied themselves").
+  const [productAtSave, setProductAtSave] = useState<Product | null>(null)
   // Codes a refused save named as held by another card, keyed by field and code, with that card's title.
   const [variantCodeConflicts, setVariantCodeConflicts] = useState<Record<string, string>>({})
   // New files a half-finished save did not upload: the refill after it keeps them queued instead of dropping them.
@@ -2668,7 +2673,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           ? ['Ürün Yayınlanıyor', productChangedAtSubmit ? `Ürün kaydediliyor ve ${storeCount} gönderiliyor…` : `Ürün ${storeCount} gönderiliyor…`]
           : ['Ürün Oluşturuluyor', `Ürün oluşturuluyor ve ${storeCount} gönderiliyor…`]
         : editProductId ? ['Ürün Kaydediliyor', 'Ürün değişiklikleri kaydediliyor…'] : ['Ürün Oluşturuluyor', 'Ürün oluşturuluyor…']
-    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); editorSaveInFlight.current = true; let productCreated: Product | undefined; let familyMediaChanged = false
+    setError(undefined); setFieldErrors({}); setNotice(''); showFeedback(pendingTitle, pendingMessage, 'info', { persistent: true, key: productSaveToastKey }); setSubmitting(true); editorSaveInFlight.current = true; setProductAtSave(productToEdit.data ?? null); let productCreated: Product | undefined; let familyMediaChanged = false
     const uploadedMediaFileIds = new Set<string>()
     // What a create that stops after the product exists hands to the product's page (pending-create-media.ts).
     const storedUrlByFileId = new Map<string, string>()
@@ -3040,10 +3045,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       setRemovedVariantIds([])
       if (editProductId) setVariantRows(current => rekeySavedVariantRows(current, product.variants))
       setVariantCodeConflicts({})
-      // The uploaded files are on the product now: they leave the queue here, not only when the refetch below refills
-      // the form, so the strip never shows a stored copy beside its local preview and the next Kaydet does not send it again.
       mediaFilesKeptOnReseed.current = null
-      setMediaFiles(current => mediaFilesLeftAfterFailedSave(current, uploadedMediaFileIds))
       setNotice(createOnly ? 'Ürün oluşturuldu. Ürün sayfası açılıyor.' : message)
       // The saved form is the new clean state; the refetch below may refill it from the server.
       allowReseedUntil.current = Date.now() + 10_000
@@ -3053,8 +3055,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         await client.invalidateQueries({ queryKey: ['product', editProductId] })
         await productToEdit.refetch()
         editorSaveInFlight.current = false
+        // The uploaded files leave the queue in the same render as the refill that shows their stored copies (and the
+        // strip goes back to the latest product then): dropped before the refetch, the strip stood half empty
+        // meanwhile. Gone from the queue, the next Kaydet does not send them again even if the refill is held back.
+        setMediaFiles(current => mediaFilesLeftAfterFailedSave(current, uploadedMediaFileIds))
+        setProductAtSave(null)
         setReseedRequest(value => value + 1)
       }
+      // A new product's files stay on "Yeni Ürün Ekle" until it moves to the product's own page (a new editor that
+      // shows the stored copies), so its strip never stands empty meanwhile.
       // One line per marketplace; a refused marketplace stays on screen until it is closed, so it is not lost among
       // later toasts.
       if (createOnly) operationToasts.dismiss(productSaveToastKey)
@@ -3077,12 +3086,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       // new version is read again and the form may refill from it, so the next try does not take its own save for
       // another operation's change. Only the files this try uploaded leave the queue.
       if (productCreated && editProductId) {
-        mediaFilesKeptOnReseed.current = mediaFilesLeftAfterFailedSave(mediaFiles, uploadedMediaFileIds)
-        setMediaFiles(mediaFilesKeptOnReseed.current)
+        const keptFiles = mediaFilesLeftAfterFailedSave(mediaFiles, uploadedMediaFileIds)
+        mediaFilesKeptOnReseed.current = keptFiles
         allowReseedUntil.current = Date.now() + 10_000
         await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['product', editProductId] })]).catch(() => undefined)
         await productToEdit.refetch().catch(() => undefined)
         editorSaveInFlight.current = false
+        setMediaFiles(keptFiles)
+        setProductAtSave(null)
         setReseedRequest(value => value + 1)
       }
       if (productCreated && !editProductId) {
@@ -3102,7 +3113,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         leavingAfterSave.current = true
         navigate(`/products/${productCreated.id}`)
       }
-    } finally { editorSaveInFlight.current = false; setSubmitting(false) }
+    } finally { editorSaveInFlight.current = false; setProductAtSave(null); setSubmitting(false) }
   }
 
   // Taslak Olarak Kaydet shows on a new card and on a draft; a draft has no store to update yet.
@@ -3165,17 +3176,18 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     capabilities: productUpdateCapabilities(connection.platformCode)
   }))
   const assignedMediaUrls = [...new Set(variantRows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4))))]
-  const familyMediaUrls = productToEdit.data?.familyMediaUrls ?? []
-  const familyMediaItems = productToEdit.data?.familyMediaItems ?? familyMediaUrls.map(url => ({ url, mediaIds: [], sourceProductTitles: [] }))
+  const stripProduct = productAtSave ?? productToEdit.data
+  const familyMediaUrls = stripProduct?.familyMediaUrls ?? []
+  const familyMediaItems = stripProduct?.familyMediaItems ?? familyMediaUrls.map(url => ({ url, mediaIds: [], sourceProductTitles: [] }))
   // The card's own saved pictures the draft no longer holds ("Tümünü Temizle", a removed tile) go on the next save; the
   // family list still carries them until then, so they leave the gallery now instead of after Kaydet.
   const draftMediaKeys = new Set(mediaUrls.map(mediaImageKey))
-  const pendingRemovalMediaKeys = new Set(editProductId ? [...(productToEdit.data?.mediaUrls ?? []).map(mediaImageKey).filter(key => !draftMediaKeys.has(key)), ...pendingFamilyMediaRemovals.map(item => mediaImageKey(item.url))] : [])
+  const pendingRemovalMediaKeys = new Set(editProductId ? [...(stripProduct?.mediaUrls ?? []).map(mediaImageKey).filter(key => !draftMediaKeys.has(key)), ...pendingFamilyMediaRemovals.map(item => mediaImageKey(item.url))] : [])
   // The default strip is each colour's product-level pictures (familyMediaUrls); the items cover every family picture
   // a custom order can show, variant pictures included.
-  const defaultFamilyOrder = productToEdit.data?.familyOrderedMediaUrls?.length
-    ? productToEdit.data.familyOrderedMediaUrls
-    : [...mediaUrls, ...(productToEdit.data?.familyMediaUrls ?? familyMediaItems.map(item => item.url))]
+  const defaultFamilyOrder = stripProduct?.familyOrderedMediaUrls?.length
+    ? stripProduct.familyOrderedMediaUrls
+    : [...mediaUrls, ...(stripProduct?.familyMediaUrls ?? familyMediaItems.map(item => item.url))]
   const visibleMediaUrls = mediaUrlsInPreferredOrder(uniqueMediaUrls(defaultFamilyOrder), familyMediaOrder.length ? familyMediaOrder : defaultFamilyOrder)
     .filter(url => !pendingRemovalMediaKeys.has(mediaImageKey(url)))
   const mediaStrip = mediaStripRefs(visibleMediaUrls, mediaFiles.map(item => item.id), mediaStripOrder)
