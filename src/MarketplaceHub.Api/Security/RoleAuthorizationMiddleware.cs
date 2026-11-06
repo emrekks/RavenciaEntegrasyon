@@ -14,24 +14,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext context)
     {
-        // Rules compare whole segments of the path with empty segments dropped, so a trailing or doubled
-        // slash ("/credential/", "//deep-delete") meets the same rule as the route that serves it.
-        var segments = (context.Request.Path.Value ?? string.Empty).Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length < 2
-            || !segments[0].Equals("api", StringComparison.OrdinalIgnoreCase)
-            || !segments[1].Equals("v1", StringComparison.OrdinalIgnoreCase)
-            || segments.Length > 2 && (segments[2].Equals("auth", StringComparison.OrdinalIgnoreCase) || segments[2].Equals("hooks", StringComparison.OrdinalIgnoreCase))
-            // Public document links are read without a session; anything else sent there meets the rules below.
-            || segments.Length > 2 && segments[2].Equals("public", StringComparison.OrdinalIgnoreCase) && (HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method)))
-        {
-            await next(context);
-            return;
-        }
-
-        // Reads are open to every signed-in role, except documents (invoice PDFs, labels, error files) and
-        // reads that call a marketplace live and spend its quota.
-        var reading = HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method);
-        var required = reading ? ReadRoles(segments) : RequiredRoles(segments);
+        var required = RolesFor(context.Request.Method, context.Request.Path.Value);
         if (required is null)
         {
             await next(context);
@@ -47,6 +30,27 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
         }
 
         await ApiProblems.WriteAsync(context, "PERMISSION_DENIED", "Bu işlem için yeterli yetkiniz yok.", StatusCodes.Status403Forbidden);
+    }
+
+    // The roles a request needs, or null when this gate lets it through: sign-in, webhooks, public document reads,
+    // and reads open to every signed-in role (their endpoints refuse a caller without a tenant). The route guard
+    // (ApiRouteAuthorizationMatrixTests) checks every mapped route against it.
+    internal static IReadOnlySet<string>? RolesFor(string method, string? path)
+    {
+        // Rules compare whole segments of the path with empty segments dropped, so a trailing or doubled
+        // slash ("/credential/", "//deep-delete") meets the same rule as the route that serves it.
+        var segments = (path ?? string.Empty).Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 2
+            || !segments[0].Equals("api", StringComparison.OrdinalIgnoreCase)
+            || !segments[1].Equals("v1", StringComparison.OrdinalIgnoreCase)
+            || segments.Length > 2 && (segments[2].Equals("auth", StringComparison.OrdinalIgnoreCase) || segments[2].Equals("hooks", StringComparison.OrdinalIgnoreCase))
+            // Public document links are read without a session; anything else sent there meets the rules below.
+            || segments.Length > 2 && segments[2].Equals("public", StringComparison.OrdinalIgnoreCase) && (HttpMethods.IsGet(method) || HttpMethods.IsHead(method)))
+            return null;
+
+        // Reads are open to every signed-in role, except documents (invoice PDFs, labels, error files) and
+        // reads that call a marketplace live and spend its quota.
+        return HttpMethods.IsGet(method) || HttpMethods.IsHead(method) ? ReadRoles(segments) : RequiredRoles(segments);
     }
 
     // Null: any signed-in role may read it.
@@ -65,7 +69,7 @@ public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
             "connections" when last is "n11-shipment-templates" or "instant-notifications" => WorkingRoles,
             "orders" when last is "finance" or "product-image" => WorkingRoles,
             "shipments" when last == "changeable-cargo-companies" => WorkingRoles,
-            "returns" when last is "rejection-reasons" or "audits" => WorkingRoles,
+            "returns" when last is "rejection-reasons" or "audits" or "return-shipment-companies" => WorkingRoles,
             // Who gets the operator alerts, and from which account, is for the owner and administrators.
             "settings" when last == "alert-email" => ElevatedRoles,
             _ => null
