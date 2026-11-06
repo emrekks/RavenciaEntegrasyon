@@ -1857,6 +1857,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "Sha256", "Classification");
 
+                    b.HasIndex(new[] { "TenantId", "Sha256" }, "UX_file_assets_active_product_media_sha256")
+                        .IsUnique()
+                        .HasFilter("\"Classification\" = 'PRODUCT_MEDIA' AND \"ArchivedAt\" IS NULL");
+
                     b.ToTable("file_assets", "ops");
                 });
 

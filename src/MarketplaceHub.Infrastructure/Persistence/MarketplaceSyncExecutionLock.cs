@@ -174,7 +174,7 @@ internal sealed class MarketplaceSyncExecutionLock : IAsyncDisposable
     // same group is stored on the job (MarketplaceWebhookService) for the lease query.
     internal static string? WebhookIngestGroup(string? resourceType) => resourceType is "RETURNS" or "CLAIM_EVENT" ? "returns" : null;
 
-    private static string? WebhookResourceType(string? payloadJson)
+    internal static string? WebhookResourceType(string? payloadJson)
     {
         if (string.IsNullOrWhiteSpace(payloadJson)) return null;
         try

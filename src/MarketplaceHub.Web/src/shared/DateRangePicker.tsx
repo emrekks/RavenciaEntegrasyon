@@ -2,12 +2,13 @@ import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'rea
 import { createPortal } from 'react-dom'
 import { UiIcon } from './components'
 import { useDismissable } from './hooks/useDismissable'
-import { formatDateRange, selectDateRangeDay, type DateRange } from './date-range'
+import { dateRangePresets, formatDateRange, selectDateRangeDay, type DateRange } from './date-range'
+import { istanbulDateKey } from './format-date'
 
 function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}` }
 function monthStart(value: string) { const date = value ? new Date(`${value}T12:00:00`) : new Date(); return new Date(date.getFullYear(), date.getMonth(), 1) }
 // The two calendars end at this month at the latest, so the second one is never a month that is all in the future.
-function firstShownMonth(value: string, future = false) { const start = monthStart(value); if (future) return start; const now = new Date(); const latest = new Date(now.getFullYear(), now.getMonth() - 1, 1); return start > latest ? latest : start }
+function firstShownMonth(value: string, future = false) { const start = monthStart(value); if (future) return start; const now = monthStart(istanbulDateKey()); const latest = new Date(now.getFullYear(), now.getMonth() - 1, 1); return start > latest ? latest : start }
 
 // placeholder, icon and chevron let a page draw the trigger in its own style (the returns page uses the proposal's icons).
 // future: the days to come can be picked too (a tariff's validity), the calendars start at the chosen month and the
@@ -18,16 +19,9 @@ export function DateRangePicker({ from, to, onChange, label = 'Tarih Aralığı'
   const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number; maxHeight: number } | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const popover = useRef<HTMLElement>(null)
-  const today = dateKey(new Date())
-  const dateOffset = (days: number) => { const date = new Date(); date.setDate(date.getDate() + days); return dateKey(date) }
-  const presetRanges: Array<{ label: string; range: DateRange }> = [
-    { label: 'Bugün', range: { from: today, to: today } },
-    { label: 'Dün', range: { from: dateOffset(-1), to: dateOffset(-1) } },
-    { label: 'Geçen Hafta', range: (() => { const end = new Date(); const weekday = (end.getDay() + 6) % 7; end.setDate(end.getDate() - weekday - 1); const start = new Date(end); start.setDate(start.getDate() - 6); return { from: dateKey(start), to: dateKey(end) } })() },
-    { label: 'Geçen Ay', range: (() => { const start = new Date(); start.setDate(1); start.setMonth(start.getMonth() - 1); const end = new Date(start.getFullYear(), start.getMonth() + 1, 0); return { from: dateKey(start), to: dateKey(end) } })() },
-    { label: 'Bu Ay', range: (() => { const now = new Date(); return { from: dateKey(new Date(now.getFullYear(), now.getMonth(), 1)), to: today } })() },
-    { label: 'Bu Sene', range: { from: `${new Date().getFullYear()}-01-01`, to: today } },
-  ]
+  // Today is Istanbul's: the filters read their days as Istanbul days, whatever time zone the device is set to.
+  const today = istanbulDateKey()
+  const presetRanges = dateRangePresets(today)
   function computePosition() {
     const bounds = root.current?.getBoundingClientRect()
     if (!bounds) return null

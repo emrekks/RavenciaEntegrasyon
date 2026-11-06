@@ -674,16 +674,28 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 var basePrice = priced.Min(x => x.Line.SalePrice);
                 var anyPriceChanged = priced.Any(x => x.PriceChanged);
                 var variants = new List<PttAvmPriceInventoryRules.VariantItem>();
+                string Sku(PriceInventoryPushLine line) => group.First(row => row.Offer.Id == line.OfferId).Variant.Sku;
                 foreach (var entry in priced.Where(x => anyPriceChanged || x.Changed))
                 {
                     var attributes = PttAvmVariantAttributes(entry.OptionSignature);
-                    if (attributes.Count == 0) continue;
+                    // PTT AVM names a variant only by its colour and size: one without either cannot go, and says so
+                    // instead of staying unsent without a word on every dispatch.
+                    if (attributes.Count == 0)
+                    {
+                        if (Refuse(automatic, invalid, entry.Line.VariantId, Sku(entry.Line), "CHANNEL_OFFER_INVALID", $"'{Sku(entry.Line)}' PTT AVM'de {productCode} ürününün varyantı; PTT AVM varyantı renk ve beden değeriyle tanır, bu varyantta renk veya beden seçeneği yok. Fiyat ve stok gönderilmedi.") is { } refused) return refused;
+                        continue;
+                    }
                     variants.Add(new(attributes, (int)entry.Line.Quantity, entry.Line.SalePrice - basePrice));
                     lines.Add(entry.Line with { ExternalVariantId = productCode });
                 }
                 if (variants.Count == 0) continue;
                 if (variants.Count > PttAvmPriceInventoryRules.MaxVariantsPerProduct || variants.Sum(x => x.Quantity) > PttAvmPriceInventoryRules.MaxQuantity)
                 {
+                    var reason = variants.Count > PttAvmPriceInventoryRules.MaxVariantsPerProduct
+                        ? $"PTT AVM bir üründe en fazla {PttAvmPriceInventoryRules.MaxVariantsPerProduct} varyant tutar; {productCode} ürününde {variants.Count} varyant gönderilecekti."
+                        : $"PTT AVM bir ürünün stoğunu varyantlarının toplamı olarak tutar ve en fazla {PttAvmPriceInventoryRules.MaxQuantity} kabul eder; {productCode} ürününün varyant stokları toplamı {variants.Sum(x => x.Quantity)}.";
+                    foreach (var line in lines.Where(line => line.ExternalVariantId == productCode).ToList())
+                        if (Refuse(automatic, invalid, line.VariantId, Sku(line), "CHANNEL_OFFER_INVALID", $"'{Sku(line)}': {reason} Fiyat ve stok gönderilmedi.") is { } refused) return refused;
                     lines.RemoveAll(line => line.ExternalVariantId == productCode);
                     continue;
                 }

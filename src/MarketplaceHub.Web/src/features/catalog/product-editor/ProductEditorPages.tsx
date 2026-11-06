@@ -18,12 +18,13 @@ import { platformLogoClass, platformLogoSource } from '../../../shared/platform-
 import { appendNotification, notificationError, productNotificationSubject } from '../../../shared/notifications'
 import { toggleProductAttributeValue } from '../attribute-selection'
 import { buildVariantAttributeAssignments } from '../variant-attribute-assignments'
-import { filterAttributeOptionValues } from '../attribute-value-search'
+import { filterAttributeOptionValues, optionValueToAdd } from '../attribute-value-search'
+import { OptionValueAddButton } from './OptionValueAddButton'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaStripOwnPosition, mediaStripRefs, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, uniqueMediaUrls } from '../product-media-editor'
 import { applyVariantBulkModes, variantBulkEditIssue, variantBulkModeLabels, type VariantBulkEditField, type VariantBulkInputs, type VariantBulkMode } from '../variant-bulk-edit'
-import { applyVariantCodesByKey, buildSequentialVariantCodes, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
+import { applyVariantCodesByKey, buildSequentialVariantCodes, mergeGeneratedVariantRows, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
 import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
-import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature } from '../variant-option-matching'
+import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature, variantOptionSetKey } from '../variant-option-matching'
 import { autoWebColorIssues, connectionCapabilitiesQueryKey, isOptionRequirement, loadConnectionCapabilities, loadPublicationAttributeIssues, shopifyCapabilityIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
 import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
 import { MissingValueMappingDialog } from '../MissingValueMappingDialog'
@@ -175,12 +176,8 @@ function sortOptionValues<T extends { id: string; value: string }>(attributeName
       || left.index - right.index)
     .map(item => item.value)
 }
-function variantSignatureKey(signature: string) {
-  return parseVariantOptionSignature(signature)
-    .map(option => `${option.name.replace(/\s+/g, '').toLocaleLowerCase('tr-TR')}:${cleanOptionValue(option.value).toLocaleLowerCase('tr-TR')}`)
-    .sort()
-    .join('|')
-}
+// A saved row and a generated combination of the same options are one row (variantOptionSetKey), whatever their spelling.
+const variantSignatureKey = variantOptionSetKey
 function VariantImageIcon() {
   return <svg className="variant-media-icon" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3 3 2-2 6 6" /></svg>
 }
@@ -1259,7 +1256,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const [error, setError] = useState<unknown>(); const [, setNotice] = useState(''); const operationToasts = useOperationFeedbackToasts()
   // Every notice of the editor names the product it is about (and the marketplace, when a card adds it).
   const setFeedback = (feedback: OperationFeedback) => operationToasts.show({ ...feedback, context: { subject: productNotificationSubject({ id: editProductId, name: form.title, modelCode: form.modelCode }), ...feedback.context } }); const [submitting, setSubmitting] = useState(false); const [mediaAutoSaveTick, setMediaAutoSaveTick] = useState(0);const [calculateDesi, setCalculateDesi] = useState(false); const [desiCalculatorOpen, setDesiCalculatorOpen] = useState(false)
-  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', deliveryDays: '1', listPrice: '0', salePrice: '0', costPrice: '0', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
+  const [form, setForm] = useState({ title: '', description: '', brandId: '', categoryId: '', baseSku: '', barcode: '', modelCode: '', weight: '', width: '', length: '', height: '', desi: '1', warrantyMonths: '0', deliveryDays: '1', listPrice: '0', salePrice: '0', costPrice: '', currency: 'TRY', vatRate: '10', vatIncluded: 'INCLUDED', initialStock: '0', safetyStock: '0', mediaUrls: '', status: 'ACTIVE' })
   const [attributeSelections, setAttributeSelections] = useState<Record<string, string[]>>({}); const [attributeTextValues, setAttributeTextValues] = useState<Record<string, string>>({}); const [variantAttributeIds, setVariantAttributeIds] = useState<string[]>([]); const [variantRows, setVariantRows] = useState<VariantDraft[]>([]); const [draggedVariantKey, setDraggedVariantKey] = useState<string | null>(null); const [dragOverVariantKey, setDragOverVariantKey] = useState<string | null>(null); const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]); const [blockedPublishCards, setBlockedPublishCards] = useState<Record<string, number>>({}); const [channelPricing, setChannelPricing] = useState<Record<string, ChannelPricingDraft>>({}); const [variantChannelPricing, setVariantChannelPricing] = useState<Record<string, ChannelPricingDraft>>({})
   const [automaticBarcodeGeneration, setAutomaticBarcodeGeneration] = useState(false)
   const [marketplaceCodesOpen, setMarketplaceCodesOpen] = useState(false)
@@ -1612,6 +1609,28 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     })
   }
 
+  // "… Değerini Ekle" under an option group's search box: the typed value joins the panel attribute (Renk, Beden) and is
+  // selected here; the category's other forms see it on their next load. No marketplace value is mapped to it.
+  const [addingOptionValueFor, setAddingOptionValueFor] = useState<string | null>(null)
+  async function addOptionValue(requirement: CategoryRequirement, value: string) {
+    if (addingOptionValueFor) return
+    setAddingOptionValueFor(requirement.attributeId)
+    try {
+      const attribute = await hubApi<{ values: Array<{ id: string; value: string; sortOrder: number; isActive: boolean }> }>(`/catalog/attributes/${requirement.attributeId}/values`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify([{ value, sortOrder: requirement.attribute.values.length }]) })
+      const activeValues = attribute.values.filter(item => item.isActive).sort((left, right) => left.sortOrder - right.sortOrder)
+      const created = activeValues.find(item => normalizeVariantOptionValue(item.value) === normalizeVariantOptionValue(value))
+      client.setQueryData<CategoryRequirement[]>(['category-requirements', form.categoryId], current => current?.map(item => item.attributeId !== requirement.attributeId ? item : { ...item, attribute: { ...item.attribute, values: activeValues.map(({ id, value: label }) => ({ id, value: label })) } }))
+      void client.invalidateQueries({ queryKey: ['category-requirements'], refetchType: 'none' })
+      setAttributeValueQueries(current => ({ ...current, [requirement.attributeId]: '' }))
+      if (created && !(attributeSelections[requirement.attributeId] ?? []).includes(created.id)) toggleAttributeValue(requirement.attributeId, created.id)
+      showFeedback('Değer Eklendi', `“${value}” ${requirement.attribute.name} seçeneklerine eklendi ve seçildi. Pazaryeri eşleştirmesini Seçenek Eşitleme ekranından yapabilirsiniz.`, 'success')
+    } catch (reason) {
+      showFeedback('Değer Eklenemedi', reason instanceof Error ? reason.message : 'Değer eklenemedi.', 'error')
+    } finally {
+      setAddingOptionValueFor(null)
+    }
+  }
+
   function rowOptionEntries(row: VariantDraft) {
     const saved = Object.entries(row.options).filter(([, value]) => value.trim()).map(([name, value]) => ({ name, value }))
     return saved.length ? saved : parseVariantOptionSignature(row.optionSignature)
@@ -1685,30 +1704,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           const [next] = generated
           return [{ ...next, key: existing.key, ...(automaticBarcodeGeneration && !preserveExistingDetails ? {} : { barcode: existing.barcode || next.barcode, sku: existing.sku || next.sku, salePrice: existing.salePrice, listPrice: existing.listPrice }), stock: existing.stock, loadedStock: existing.loadedStock, loadedVersion: existing.loadedVersion, costPrice: existing.costPrice, loadedCostPrice: existing.loadedCostPrice, mediaRefs: existing.mediaRefs }]
         }
-        const existingMap = new Map(current.map(row => [variantSignatureKey(row.optionSignature), row]))
-        const knownBarcodes = new Set(current.map(row => row.barcode.trim()).filter(Boolean))
-        let nextBarcodeSequence = current.length + 1
-        const merged = generated.map(gen => {
-          const signatureKey = variantSignatureKey(gen.optionSignature)
-          const match = existingMap.get(signatureKey)
-          if (match) {
-            existingMap.delete(signatureKey)
-            return automaticBarcodeGeneration && !preserveExistingDetails ? { ...match, sku: gen.sku, barcode: gen.barcode, salePrice: gen.salePrice, listPrice: gen.listPrice } : match
-          }
-          if (automaticBarcodeGeneration && preserveExistingDetails) {
-            let defaults = buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: nextBarcodeSequence++, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
-            while (knownBarcodes.has(defaults.barcode)) defaults = buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: nextBarcodeSequence++, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
-            knownBarcodes.add(defaults.barcode)
-            return { ...gen, ...defaults }
-          }
-          return gen
-        })
-        const sortedRows = sortVariantsAlphabetically([...merged, ...Array.from(existingMap.values())])
-        return automaticBarcodeGeneration && !preserveExistingDetails
-          ? sortedRows.map((row, index) => ({ ...row, ...buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice }) }))
-          : sortedRows
+        // A saved product keeps its rows as they are: only the combinations it lacks are added (mergeGeneratedVariantRows).
+        return mergeGeneratedVariantRows(current, generated, { key: variantSignatureKey, sort: sortVariantsAlphabetically, keepExisting: preserveExistingDetails || Boolean(editProductId), automaticBarcodes: automaticBarcodeGeneration, modelCode: form.modelCode, fallbackSalePrice, fallbackListPrice })
       })
-      const message = `${generated.length} varyant satırı hazırlandı.`; setNotice(message); showFeedback('Varyantlar Hazırlandı', message, 'success')
+      const heldKeys = new Set(variantRows.map(row => variantSignatureKey(row.optionSignature)))
+      const addedCount = editProductId ? new Set(generated.map(row => variantSignatureKey(row.optionSignature)).filter(key => !heldKeys.has(key))).size : generated.length
+      const message = editProductId ? `${addedCount} yeni varyant satırı eklendi; kayıtlı satırlar değişmedi.` : `${generated.length} varyant satırı hazırlandı.`; setNotice(message); showFeedback('Varyantlar Hazırlandı', message, 'success')
       return true
     } catch (reason) { const message = reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.'; setNotice(message); showFeedback('Varyantlar Oluşturulamadı', message, 'error'); return false }
   }
@@ -3267,13 +3268,14 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const generated = buildVariantMatrix(mappedRequirements, variantAttributeIds, attributeSelections, fallbackListPrice, fallbackSalePrice, fallbackCostPrice, initialStock, automaticBarcodeGeneration, form.modelCode)
       const existing = new Map(variantRows.map(row => [variantSignatureKey(row.optionSignature), row]))
       const missingCombinations = generated.some(row => !existing.has(variantSignatureKey(row.optionSignature)))
-      const automaticDefaultsOutOfDate = automaticBarcodeGeneration && sortVariantsAlphabetically(variantRows).some((row, index) => {
+      // Saved rows keep their codes, so on a saved product only a missing combination makes "Ürünleri Ekle" do something.
+      const automaticDefaultsOutOfDate = automaticBarcodeGeneration && !editProductId && sortVariantsAlphabetically(variantRows).some((row, index) => {
         const expected = buildVariantGenerationDefaults({ modelCode: form.modelCode, sequence: index + 1, automaticBarcodes: true, fallbackSalePrice, fallbackListPrice })
         return row.sku !== expected.sku || row.barcode !== expected.barcode || row.salePrice !== expected.salePrice || row.listPrice !== expected.listPrice
       })
       return missingCombinations || automaticDefaultsOutOfDate
     } catch { return false }
-  }, [attributeSelections, automaticBarcodeGeneration, fallbackCostPrice, fallbackListPrice, fallbackSalePrice, form.modelCode, initialStock, mappedRequirements, variantAttributeIds, variantRows])
+  }, [attributeSelections, automaticBarcodeGeneration, editProductId, fallbackCostPrice, fallbackListPrice, fallbackSalePrice, form.modelCode, initialStock, mappedRequirements, variantAttributeIds, variantRows])
   const selectedVariantPlatformRow = variantPlatformPricing ? variantRows.find(row => row.key === variantPlatformPricing.rowKey) : undefined
   const showVariantStockTotal = Boolean(editProductId || (duplicateProductId && variantRows.length))
 
@@ -3444,7 +3446,15 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                     placeholder={`${item.attribute.name} değerlerinde ara…`}
                     value={valueQuery}
                     onChange={event => setAttributeValueQueries(current => ({ ...current, [item.attributeId]: event.target.value }))}
+                    onKeyDown={event => {
+                      if (event.key !== 'Enter') return
+                      // Enter adds the typed value when the group lacks it, and never submits the product form.
+                      event.preventDefault()
+                      const newValue = optionValueToAdd(item.attribute.name, item.attribute.values, valueQuery)
+                      if (newValue) void addOptionValue(item, newValue)
+                    }}
                   />
+                  <OptionValueAddButton attributeName={item.attribute.name} values={item.attribute.values} query={valueQuery} adding={addingOptionValueFor === item.attributeId} onAdd={newValue => void addOptionValue(item, newValue)} />
                   <div className="option-chip-list">
                     {filteredValues.map(value => {
                       const isSelected = (attributeSelections[item.attributeId] ?? []).includes(value.id)
@@ -3465,7 +3475,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                       )
                     })}
                   </div>
-                  {filteredValues.length === 0 && <p className="attribute-builder-no-values">Eşleşen değer bulunamadı.</p>}
+                  {filteredValues.length === 0 && !optionValueToAdd(item.attribute.name, item.attribute.values, valueQuery) && <p className="attribute-builder-no-values">Eşleşen değer bulunamadı.</p>}
                   </>
                 ) : item.attribute.dataType === 'BOOLEAN' ? (
                   <label>Değer<select value={attributeTextValues[item.attributeId] ?? ''} onChange={event => setAttributeTextValues(current => ({ ...current, [item.attributeId]: event.target.value }))}><option value="">Seçin</option><option value="evet">Evet</option><option value="hayır">Hayır</option></select></label>

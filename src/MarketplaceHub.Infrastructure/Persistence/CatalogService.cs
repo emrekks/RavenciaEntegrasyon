@@ -1343,20 +1343,41 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 foreach (var update in attributeUpdates) db.ProductAttributeAssignments.AddRange((update.Attributes ?? []).Select(attribute => Assignment(tenantId, existingVariants.Single(variant => variant.Id == update.Id).ProductId, update.Id, attribute)));
             }
         }
-        // A new row goes to the family card of its own colour, not to the opened card (ProductFamilyVariantPlacement).
+        // A new row goes to the family card of its own colour, not to the opened card (ProductFamilyVariantPlacement); a
+        // colour no card of the family holds yet gets its own new card in this save (ProductFamilyNewColorCard).
         var newVariantProductIds = new List<Guid>();
+        var newColorCards = new List<(Guid Id, string Color)>();
         if (variantsToCreate.Count > 0)
         {
             if (existingVariants.Count + variantsToCreate.Count > 1000) return Invalid<ProductView>("variantsToCreate", "Tek ürün kaydında en fazla 1000 varyant oluşturulabilir.");
+            // A new row repeating the options of a row the family keeps (or of another new row) would be a second
+            // variant of the same colour and size; the editor adds only the combinations that are missing.
+            var keptOptionKeys = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => ProductFamilyVariantPlacement.OptionKey(variant.OptionSignature)).OfType<string>().ToHashSet(StringComparer.Ordinal);
+            var duplicateRows = new List<string>();
+            foreach (var variant in variantsToCreate)
+            {
+                if (ProductFamilyVariantPlacement.OptionKey(variant.Options) is not string optionKey) continue;
+                if (!keptOptionKeys.Add(optionKey)) duplicateRows.Add(Signature(variant.Options));
+            }
+            if (duplicateRows.Count > 0)
+            {
+                var duplicateMessage = ProductFamilyVariantPlacement.DuplicateRowMessage([.. duplicateRows.Distinct().Take(5)]);
+                return ServiceResult<ProductView>.Fail("VARIANT_OPTIONS_DUPLICATE", duplicateMessage, 422, new Dictionary<string, string[]> { ["variantsToCreate"] = [duplicateMessage] });
+            }
             var placement = ProductFamilyVariantPlacement.Place(id, familyVariantProductIds,
                 existingVariants.Select(variant => new ProductFamilyVariantPlacement.ExistingRow(variant.ProductId, variant.OptionSignature, variantIdsToDelete.Contains(variant.Id))),
                 [.. variantsToCreate.Select(variant => variant.Options)]);
             if (placement.ColorsWithoutCard.Count > 0)
             {
-                var missingCardMessage = ProductFamilyVariantPlacement.MissingCardMessage(placement.ColorsWithoutCard);
-                return ServiceResult<ProductView>.Fail("VARIANT_COLOR_CARD_MISSING", missingCardMessage, 422, new Dictionary<string, string[]> { ["variantsToCreate"] = [missingCardMessage] });
+                // The new card joins the family by its model code (the family is the brand's cards sharing it), so its
+                // rows must carry the code the opened card's family is read by.
+                var familyModelCode = existingVariants.Where(variant => variant.ProductId == id && !string.IsNullOrWhiteSpace(variant.ModelCode)).OrderBy(variant => variant.SortOrder).ThenBy(variant => variant.Id).Select(variant => variant.ModelCode).FirstOrDefault()
+                    ?? existingVariants.Select(variant => variant.ModelCode).FirstOrDefault(code => !string.IsNullOrWhiteSpace(code));
+                if (string.IsNullOrWhiteSpace(familyModelCode) || variantsToCreate.Where((_, index) => placement.RowColorsWithoutCard[index] is not null).Any(variant => !CatalogKeyNormalizer.SameKey(variant.ModelCode, familyModelCode)))
+                    return Invalid<ProductView>("variantsToCreate", ProductFamilyVariantPlacement.NewCardModelCodeMessage(familyModelCode));
+                newColorCards = [.. placement.ColorsWithoutCard.Select(color => (Guid.CreateVersion7(), color))];
             }
-            newVariantProductIds = [.. placement.ProductIds];
+            newVariantProductIds = [.. placement.ProductIds.Select((productId, index) => placement.RowColorsWithoutCard[index] is string color ? newColorCards.First(card => card.Color == color).Id : productId)];
             foreach (var variant in variantsToCreate)
             {
                 var variantAttributeValidation = await ValidateAttributeValuesAsync(tenantId, variant.Attributes ?? [], cancellationToken);
@@ -1399,6 +1420,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 ? []
                 : await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && siblingTargetIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Status, cancellationToken);
             ProductStatus StatusOnCard(Guid productId) => productId == id || !siblingStatuses.TryGetValue(productId, out var siblingStatus) || siblingStatus == product.Status ? newVariantStatus : siblingStatus;
+            if (newColorCards.Count > 0) await AddNewColorCardsAsync(tenantId, product, command, existingVariants.Where(variant => variant.ProductId == id).ToList(), globalAssignments, newColorCards, newVariantStatus, now, cancellationToken);
             var newVariants = variantsToCreate.Select((variant, index) => new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = newVariantProductIds[index], SortOrder = Math.Max(0, variant.SortOrder), Sku = variant.Sku.Trim(), SkuNormalized = Normalize(variant.Sku), Barcode = NullTrim(variant.Barcode), BarcodeNormalized = NormalizeBarcode(variant.Barcode), ModelCode = NullTrim(variant.ModelCode), OptionSignature = Signature(variant.Options), Status = StatusOnCard(newVariantProductIds[index]), Weight = PositiveOrNull(variant.Weight), Width = PositiveOrNull(variant.Width), Height = PositiveOrNull(variant.Height), Length = PositiveOrNull(variant.Length), Desi = PositiveOrNull(variant.Desi), CostPrice = NonNegativeOrNull(variant.CostPrice), DefaultListPrice = variant.DefaultListPrice, DefaultSalePrice = variant.DefaultSalePrice, CreatedAt = now, UpdatedAt = now }).ToList();
             db.ProductVariants.AddRange(newVariants);
             for (var index = 0; index < newVariants.Count; index++) db.ProductAttributeAssignments.AddRange((variantsToCreate[index].Attributes ?? []).Select(x => Assignment(tenantId, newVariants[index].ProductId, newVariants[index].Id, x)));
@@ -1423,7 +1445,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             .Select(variant => variant.ProductId)
             .ToHashSet();
         // A colour card that gets new rows from this save is a local edit too.
-        familyProductIdsToProtect.UnionWith(newVariantProductIds.Where(productId => productId != id));
+        familyProductIdsToProtect.UnionWith(newVariantProductIds.Where(productId => productId != id && newColorCards.All(card => card.Id != productId)));
         // A sibling whose every row is deleted keeps no empty ACTIVE product card behind: it is archived (unless this
         // save gave it new rows of its colour).
         var emptiedFamilyProductIds = existingVariants
@@ -2747,6 +2769,60 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 if (variantOption is null)
                     db.VariantOptionValues.Add(new VariantOptionValue { Id = Guid.CreateVersion7(), TenantId = tenantId, VariantId = variant.Id, OptionId = option.Id, OptionValueId = optionValue.Id });
                 else variantOption.OptionValueId = optionValue.Id;
+            }
+        }
+    }
+
+    // The new colour cards of a family save (ProductFamilyNewColorCard): each takes the opened card's product fields as this
+    // save leaves them and its card attributes, a colour attribute (Renk on the card) with the new colour's own value, or
+    // left out when that attribute has no such value. They are added to the same SaveChanges as their variants.
+    private async Task AddNewColorCardsAsync(Guid tenantId, Product opened, UpdateProductCommand command, IReadOnlyList<ProductVariant> openedRows, IReadOnlyList<ProductAttributeCommand> openedAttributes, IReadOnlyList<(Guid Id, string Color)> cards, ProductStatus status, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var openedColors = openedRows.Select(row => ProductFamilyColorOrder.ColorOf(row.OptionSignature)).OfType<string>().DistinctBy(color => CatalogKeyNormalizer.Key(color, 120)).ToList();
+        var openedColor = openedColors.Count == 1 ? openedColors[0] : null;
+        var attributeIds = openedAttributes.Select(attribute => attribute.AttributeId).Distinct().ToArray();
+        var attributeNames = attributeIds.Length == 0 ? [] : await db.AttributeDefinitions.AsNoTracking().Where(x => x.TenantId == tenantId && attributeIds.Contains(x.Id)).Select(x => new { x.Id, x.Name }).ToListAsync(cancellationToken);
+        var colorAttributeIds = attributeNames.Where(x => VariantOptionSignature.IsColorName(x.Name) || VariantOptionSignature.IsWebColorName(x.Name)).Select(x => x.Id).ToHashSet();
+        var colorValues = colorAttributeIds.Count == 0 ? [] : await db.AttributeValues.AsNoTracking().Where(x => x.TenantId == tenantId && colorAttributeIds.Contains(x.AttributeId) && x.IsActive).Select(x => new { x.Id, x.AttributeId, x.Value, x.SortOrder }).ToListAsync(cancellationToken);
+        foreach (var (cardId, color) in cards)
+        {
+            db.Products.Add(new Product
+            {
+                Id = cardId,
+                TenantId = tenantId,
+                Title = ProductFamilyNewColorCard.Title(command.Title, openedColor, color),
+                Description = command.Description.Trim(),
+                BrandId = command.BrandId,
+                CategoryId = command.CategoryId,
+                DefaultListPrice = command.DefaultListPrice ?? opened.DefaultListPrice,
+                DefaultSalePrice = command.DefaultSalePrice ?? opened.DefaultSalePrice,
+                WarrantyMonths = command.WarrantyMonths is int warranty ? (warranty > 0 ? warranty : null) : opened.WarrantyMonths,
+                DeliveryDays = command.DeliveryDays ?? opened.DeliveryDays ?? ProductDeliveryDays.Default,
+                TrendyolWebColorValueId = null,
+                VatRate = command.VatRate ?? opened.VatRate,
+                VatInclusion = command.VatRate is not null ? NormalizeVatInclusion(command.VatInclusion ?? opened.VatInclusion) : opened.VatInclusion,
+                Status = status,
+                ArchivedAt = status == ProductStatus.Archived ? now : null,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+            var colorAttributesDone = new HashSet<Guid>();
+            foreach (var attribute in openedAttributes)
+            {
+                if (!colorAttributeIds.Contains(attribute.AttributeId))
+                {
+                    db.ProductAttributeAssignments.Add(Assignment(tenantId, cardId, null, attribute));
+                    continue;
+                }
+                // A colour attribute holds the new card's one colour, however many values the opened card had in it.
+                if (!colorAttributesDone.Add(attribute.AttributeId)) continue;
+                if (attribute.ValueId is null && !string.IsNullOrWhiteSpace(attribute.TextValue))
+                {
+                    db.ProductAttributeAssignments.Add(Assignment(tenantId, cardId, null, attribute with { TextValue = color }));
+                    continue;
+                }
+                var value = colorValues.Where(x => x.AttributeId == attribute.AttributeId && CatalogKeyNormalizer.SameKey(x.Value, color, 320)).OrderBy(x => x.SortOrder).ThenBy(x => x.Id).FirstOrDefault();
+                if (value is not null) db.ProductAttributeAssignments.Add(Assignment(tenantId, cardId, null, attribute with { ValueId = value.Id, TextValue = null }));
             }
         }
     }

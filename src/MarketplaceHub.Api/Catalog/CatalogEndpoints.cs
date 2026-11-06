@@ -356,9 +356,9 @@ public static class CatalogEndpoints
             try { await db.SaveChangesAsync(http.RequestAborted); }
             catch (DbUpdateException)
             {
-                // K11: a parallel upload of the same image may have stored it first; reuse that asset. This
-                // only triggers once a unique index on active PRODUCT_MEDIA hashes exists (it needs a migration
-                // that first merges the duplicates already stored). The file written here stays unreferenced.
+                // K11: a parallel upload of the same image may have stored it first (the partial unique index
+                // UX_file_assets_active_product_media_sha256 refuses the second); reuse that asset. The file
+                // written here stays unreferenced.
                 db.ChangeTracker.Clear();
                 asset = await FindUploadedAssetAsync(db, tenant.TenantId, hash, http.RequestAborted);
                 if (asset is null) throw;
@@ -955,8 +955,8 @@ public static class CatalogEndpoints
         return Results.Ok(new { deletedCount = media.Count, version, productVersions = affectedProducts.ToDictionary(item => item.Id.ToString("D"), item => item.Version) });
     }
 
-    // Oldest active upload with this content; FirstOrDefault because the same hash may be stored more than once
-    // (parallel uploads, no unique index yet), which made SingleOrDefault throw (K11).
+    // Oldest active upload with this content. The unique index keeps it to one (K11); FirstOrDefault stays so a
+    // database restored from before the index cannot make the lookup throw.
     private static Task<FileAsset?> FindUploadedAssetAsync(AppDbContext db, Guid tenantId, string hash, CancellationToken cancellationToken) =>
         db.FileAssets.Where(x => x.TenantId == tenantId && x.Classification == "PRODUCT_MEDIA" && x.Sha256 == hash && x.ArchivedAt == null)
             .OrderBy(x => x.CreatedAt).ThenBy(x => x.Id)
