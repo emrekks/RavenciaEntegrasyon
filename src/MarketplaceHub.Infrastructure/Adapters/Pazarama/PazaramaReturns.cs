@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text.Json;
 using MarketplaceHub.Application;
+using Microsoft.Extensions.Logging;
 
 namespace MarketplaceHub.Infrastructure.Adapters.Pazarama;
 
@@ -24,6 +25,12 @@ public sealed partial class PazaramaHttpClient : IReturnPort
         var result = await SendAsync(account, HttpMethod.Post, Refunds, cancellationToken, Json(RefundBody(start, end, pageNumber, Math.Clamp(page.Limit, 1, RefundPageSize))));
         if (!result.IsSuccess) return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Failure(result.Error!, result.RateLimit);
         using var document = result.Value!;
+        // What a refund row carries beyond the documented fields, read by read: on 6 Nov 2026 the only refund
+        // (674544454) stayed refundStatus 1 with the same return cargo code from the request until after the parcel
+        // reached the seller, and the raw row is not stored. These lines show whether Pazarama sends anything that
+        // tells "requested", "on its way" and "arrived" apart (no customer data: names, phones, addresses left out).
+        if (PazaramaReturnMapper.RowShapes(document.RootElement) is { Length: > 0 } shapes)
+            logger.LogInformation("Pazarama refund rows. ConnectionId: {ConnectionId}, Rows: {Rows}", account.Connection.Id, shapes);
         try { return AdapterResult<AdapterPageResult<RemoteReturnClaim>>.Success(PazaramaReturnMapper.Page(document.RootElement, pageNumber, timeProvider.GetUtcNow()), result.RateLimit); }
         catch (JsonException)
         {
@@ -191,6 +198,50 @@ public static class PazaramaReturnMapper
         null => "Unknown",
         var other => $"Unknown_{other}"
     };
+
+    // One line per refund row for the log: its number, every field name it carries, and the values of the fields that
+    // could tell the return's progress (status, date, cargo, shipment, delivery, tracking). Customer fields and free
+    // text are never written; the return cargo code shows only as present. Empty when the page has no rows.
+    public static string RowShapes(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("refundList", out var rows) || rows.ValueKind != JsonValueKind.Array)
+            return string.Empty;
+        var lines = new List<string>();
+        foreach (var row in rows.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object) continue;
+            var names = row.EnumerateObject().Select(property => property.Name).ToList();
+            var facts = row.EnumerateObject()
+                .Where(property => ProgressField(property.Name))
+                .Select(property => property.Name.Equals("shipmentCode", StringComparison.OrdinalIgnoreCase)
+                    ? $"{property.Name}={(property.Value.ValueKind is JsonValueKind.Null || (property.Value.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(property.Value.GetString())) ? "none" : "set")}"
+                    : $"{property.Name}={ShortValue(property.Value)}");
+            lines.Add($"#{Text(row, "refundNumber") ?? "?"} [{string.Join(",", names)}] {string.Join(" ", facts)}");
+        }
+        return string.Join(" | ", lines);
+    }
+
+    private static bool ProgressField(string name)
+    {
+        var key = name.ToLowerInvariant();
+        if (key.StartsWith("customer", StringComparison.Ordinal) || key.Contains("description", StringComparison.Ordinal) || key.Contains("address", StringComparison.Ordinal)) return false;
+        return key.Contains("status", StringComparison.Ordinal) || key.Contains("date", StringComparison.Ordinal) || key.Contains("cargo", StringComparison.Ordinal)
+            || key.Contains("shipment", StringComparison.Ordinal) || key.Contains("deliver", StringComparison.Ordinal) || key.Contains("track", StringComparison.Ordinal)
+            || key.Contains("receiv", StringComparison.Ordinal) || key.Contains("arriv", StringComparison.Ordinal);
+    }
+
+    private static string ShortValue(JsonElement value)
+    {
+        var text = value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString() ?? "",
+            JsonValueKind.Null => "null",
+            JsonValueKind.Object or JsonValueKind.Array => $"{{{string.Join(",", value.ValueKind == JsonValueKind.Object ? value.EnumerateObject().Select(x => x.Name) : ["list"])}}}",
+            _ => value.GetRawText()
+        };
+        return text.Length > 60 ? text[..60] : text;
+    }
 
     // The refund amount (refundAmount.value, or a plain number), null when it is missing.
     public static decimal? RefundAmount(JsonElement row)

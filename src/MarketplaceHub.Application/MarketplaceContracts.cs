@@ -1486,7 +1486,9 @@ public sealed record ReturnLineView(
     // Stock can be decided on this line: the line, or the claim when the line has no status of its own, is approved.
     bool StockDispositionAvailable = false,
     // "Stoğa Ekle" was chosen with an approval whose outcome is not settled yet; the stock is added once it is.
-    bool StockPending = false);
+    bool StockPending = false,
+    // The catalog's photo when ImageUrl is the marketplace's own address; shown if that one fails to load.
+    string? FallbackImageUrl = null);
 // A return's amounts as the marketplace wrote them: sale (before discount), discount, invoiced, and the refund itself
 // where the marketplace states one (Hepsiburada). A null figure is unknown, never calculated from the order.
 public sealed record ReturnAmountsView(decimal? SaleAmount, decimal? DiscountAmount, decimal? InvoicedAmount, decimal? RefundAmount);

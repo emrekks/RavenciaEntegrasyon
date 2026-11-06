@@ -15,7 +15,7 @@ const claim = (id: string, extra: Record<string, unknown> = {}) => ({
 const trendyolAmounts = { saleAmount: 1598, discountAmount: 80.98, invoicedAmount: 1517.02, refundAmount: null }
 const returnedLine = {
   id: 'l1', sku: 'MZ035DYD25', barcode: 'MZ035DYD25', title: 'Penye Bluz', quantity: 2, orderedQuantity: 2, cancelledQuantity: 0, shippedQuantity: 2, deliveredQuantity: 2, returnedQuantity: 2,
-  unitPrice: 758.51, vatRate: 10, rawStatus: 'Delivered', variantId: null, modelCode: null, optionSignature: null, imageUrl: null, returnAmounts: trendyolAmounts
+  unitPrice: 758.51, vatRate: 10, rawStatus: 'Delivered', variantId: null, modelCode: null, optionSignature: null, imageUrl: 'https://img.pzrmcdn.com/asset/a.jpg', fallbackImageUrl: '/api/v1/files/product-media/1/content', returnAmounts: trendyolAmounts
 }
 const summary = {
   tabCounts: { ALL: 41, REQUESTED: 3, SHIPPING: 5, ACTION_REQUIRED: 7, APPROVED: 22, REJECTED: 4, REVIEW: 0, DISPUTED: 0, SUSPENDED: 0 },
@@ -108,6 +108,19 @@ describe('returns page', () => {
     expect(second.textContent).toContain('İade Tutarı')
     expect(second.textContent).toContain('—')
     expect(second.querySelector('[title="Pazaryeri iade tutarını bildirmedi."]')).not.toBeNull()
+  })
+
+  // Live 6 Nov 2026: Pazarama return 674544454's img.pzrmcdn.com photo answered 403 and the row showed "Görsel yok";
+  // the catalog's photo of the line now stands behind the marketplace's.
+  it('falls back to the catalog photo when the marketplace photo of a returned line does not load', async () => {
+    const { host } = renderPage()
+    await waitFor(() => host.querySelector('.rr-pline img') !== null)
+    const image = host.querySelector<HTMLImageElement>('.rr-pline img')!
+    const row = image.closest('.rr-pline')!
+    expect(image.getAttribute('src')).toBe('https://img.pzrmcdn.com/asset/a.jpg')
+    act(() => { image.dispatchEvent(new Event('error')) })
+    expect(row.querySelector('img')!.getAttribute('src')).toBe('/api/v1/files/product-media/1/content')
+    expect(row.querySelector('.rr-thumb-none')).toBeNull()
   })
 
   it('continues with the cursor and jumps to a page by number', async () => {

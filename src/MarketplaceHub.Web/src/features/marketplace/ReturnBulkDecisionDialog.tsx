@@ -17,6 +17,7 @@ export type BulkDecisionLine = {
   id: string
   title: string
   imageUrl: string | null
+  fallbackImageUrl?: string | null
   quantity: number
   sku: string
   barcode: string | null
@@ -238,7 +239,7 @@ export function ReturnBulkDecisionDialog({ mode, items: selectedItems, onClose, 
             // The line's own reason when it has one, else the claim's; nothing when the marketplace gave none.
             const reason = line.reason ? { label: line.reason, note: null, sellerFault: false } : item.reason
             return <div className="rr-bcard-p" key={group?.key ?? line.id}>
-              <RrThumb src={line.imageUrl} quantity={units} large alt={line.title} />
+              <RrThumb src={line.imageUrl} fallbackSrc={line.fallbackImageUrl} quantity={units} large alt={line.title} />
               <span className="rr-ptext"><b>{line.title}</b>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}{reason && <small className="rr-preason">İade Sebebi: <b className={reason.sellerFault ? 'rr-fault' : undefined} title={reason.sellerFault ? 'Satıcı kaynaklı iade: iade masrafları satıcıya yansıtılır.' : undefined}>{reason.label}</b></small>}{reason?.note && <small className="rr-preason">{reason.note[0]}: {reason.note[1]}</small>}</span>
               {approving && <div className="rr-stockctl">
                 <button type="button" role="switch" aria-checked={stockOn} disabled={stockLocked || !group || !group.mapped} className={`rr-switch${stockOn ? ' rr-on' : ''}`} onClick={() => group && toggleStock(group.key)} title={loadingDetail ? 'İade ayrıntıları yükleniyor…' : group && !group.mapped ? 'Bu ürün yerel stok kaydıyla eşleşmiyor.' : undefined}><i aria-hidden="true" /><span>Stoğa Ekle</span></button>
