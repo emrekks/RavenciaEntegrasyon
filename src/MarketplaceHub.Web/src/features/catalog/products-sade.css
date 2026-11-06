@@ -29,7 +29,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-prodcell small { white-space: normal; overflow-wrap: anywhere; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-thumb { width: 48px; height: 72px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover { position: relative; display: inline-block; outline: none; cursor: pointer; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell { display: grid; justify-items: center; gap: 1px; cursor: default; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell { display: grid; justify-items: center; gap: 1px; cursor: default; user-select: none; -webkit-user-select: none; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell b { font-weight: 500; text-decoration: underline dotted; text-underline-offset: 3px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-varcell small { color: var(--rr-subtle); font-size: 12px; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vtip { left: 50%; width: 280px; transform: translateX(-50%); }
@@ -219,7 +219,7 @@
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn b { font-weight: 600 !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-qbtn small { font-weight: 400 !important; }
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover > .rr-vtip { display: none; }
-:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:has(> .rr-varcell:hover) > .rr-vtip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:focus-within > .rr-vtip { display: grid; }
+:is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:has(> .rr-varcell:hover) > .rr-vtip, :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover:focus-visible > .rr-vtip { display: grid; }
 /* Opened above its row when the list's scroll box has no room below (placeVariantTip in ProductsPage.tsx). */
 :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-vhover[data-up] > .rr-vtip { top: auto; bottom: calc(100% + 6px); }
 /* compact variant stock table: colours down, sizes across */

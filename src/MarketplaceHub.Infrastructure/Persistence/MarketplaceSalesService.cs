@@ -742,7 +742,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             !includeMicro && requested.Contains("NEW") ? await TabByCargoAsync(tenantId, options, "NEW", cancellationToken) : null,
             !includeMicro && requested.Contains("PROCESSING") ? await TabByCargoAsync(tenantId, options, "PROCESSING", cancellationToken) : null,
             !includeMicro && requested.Contains("NEW") ? await TabOrdersByConnectionAsync(tenantId, options, "NEW", cancellationToken) : null,
-            !includeMicro && requested.Contains("PROCESSING") ? await TabOrdersByConnectionAsync(tenantId, options, "PROCESSING", cancellationToken) : null);
+            !includeMicro && requested.Contains("PROCESSING") ? await TabOrdersByConnectionAsync(tenantId, options, "PROCESSING", cancellationToken) : null,
+            !includeMicro && requested.Contains("PENDING") ? await TabOrdersByConnectionAsync(tenantId, options, "PENDING", cancellationToken) : null,
+            !includeMicro && requested.Contains("PENDING") ? await TabUnitsByConnectionAsync(tenantId, options, "PENDING", cancellationToken) : null);
     }
 
 
@@ -772,7 +774,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             .GroupBy(order => order.ConnectionId).Select(group => new { ConnectionId = group.Key, Count = group.Count() })
             .ToDictionaryAsync(row => row.ConnectionId.ToString("D"), row => row.Count, cancellationToken);
 
-    // The products of the orders a tab (Yeni, İşleme Alınanlar) lists under the same filters, per store: each line's
+    // The products of the orders a tab (Yeni, İşleme Alınanlar, Bekleyen) lists under the same filters, per store: each line's
     // ordered quantity less what was cancelled of it (the rule of the overview's Bekleyen Ürün Adedi).
     private async Task<IReadOnlyDictionary<string, decimal>> TabUnitsByConnectionAsync(Guid tenantId, OrderListQuery options, string tab, CancellationToken cancellationToken)
     {
