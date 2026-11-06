@@ -22,8 +22,10 @@ import { filterAttributeOptionValues, optionValueToAdd } from '../attribute-valu
 import { OptionValueAddButton } from './OptionValueAddButton'
 import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSet, mediaStripOwnPosition, mediaStripRefs, mediaUrlsInPreferredOrder, modelCodeForExistingVariant, publicProductMediaUrls, reorderItems, uniqueMediaUrls } from '../product-media-editor'
 import { applyVariantBulkModes, variantBulkEditIssue, variantBulkModeLabels, type VariantBulkEditField, type VariantBulkInputs, type VariantBulkMode } from '../variant-bulk-edit'
-import { applyVariantCodesByKey, buildSequentialVariantCodes, mergeGeneratedVariantRows, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
-import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
+import { VariantCodeMenu, type VariantCodeMenuProps } from './VariantCodeMenu'
+import { applyVariantCodesByKey, buildSequentialVariantCodes, generatedRowsReplacePlaceholder, mergeGeneratedVariantRows, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
+import { isVariantDeleteRefusal, restoreRemovedVariantRows, VARIANT_DELETE_REFUSED_HINT, variantRemovalConfirmText, type RemovedVariantRow } from '../variant-row-removal'
+import { filterVariantsByOptions,selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature, variantOptionSetKey } from '../variant-option-matching'
 import { autoWebColorIssues, connectionCapabilitiesQueryKey, isOptionRequirement, loadConnectionCapabilities, loadPublicationAttributeIssues, shopifyCapabilityIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
 import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
@@ -71,7 +73,8 @@ import { useOperationFeedbackToasts, type OperationFeedback } from '../operation
 import { ModelCodeHolderNotice, useModelCodeHolder } from '../model-code-holder'
 import { focusOnMount } from '../../../shared/focus'
 import { channelOfferPostKey, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, rowsWithSavedOffer, type ChannelPricingDraft, type SavedChannelOffer } from './marketplace-channel-pricing'
-import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
+import { OptionValueChips, sortOptionValues } from './OptionValueChips'
+import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
 // The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
@@ -79,6 +82,8 @@ const ProductCategoryFieldsDialog = lazy(() => import('../../marketplace/mapping
 
 // The save's slot in the toast column: "Ürün Kaydediliyor" turns into its result in place instead of stacking.
 const productSaveToastKey = 'product-editor-save'
+// The server keeps a replaced "Tek Ürün" variant that anything is tied to (owner, 6 Nov 2026).
+const PLACEHOLDER_KEPT_MESSAGE = '“Tek Ürün” varyantı silinmedi: pazaryeri bağlantısı ya da teklifi, siparişi veya stok hareketi bulunduğu için geçmişi korunarak üründe bırakıldı.'
 // Channel prices are separate rows per variant and store; this many are written at once.
 const channelOfferWriteConcurrency = 6
 
@@ -126,7 +131,7 @@ const productUpdateCapabilities = (platformCode: string) => {
   if (code === 'PTTAVM') return { writable: true, content: true, categoryAttributes: false, detail: 'Seçilen ürün bilgileri tek istekte gider; PTT AVM’deki tüm varyantlar olduğu gibi eklenir. Fiyat ve stok birlikte gider.' }
   return { writable: false, content: false, categoryAttributes: false, detail: 'Bu platform için ürün güncelleme desteği bulunmuyor.' }
 }
-function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current: HTMLDivElement | null }; children: ReactNode }) {
+function VariantHeaderActionMenu({ anchorRef, label, children }: { anchorRef: { current: HTMLDivElement | null }; label: string; children: ReactNode }) {
   const menuRef = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ top: number; left: number; visibility: 'hidden' | 'visible' }>({ top: 0, left: 0, visibility: 'hidden' })
   useLayoutEffect(() => {
@@ -150,7 +155,7 @@ function VariantHeaderActionMenu({ anchorRef, children }: { anchorRef: { current
       window.removeEventListener('scroll', place, true)
     }
   }, [anchorRef])
-  return createPortal(<div ref={menuRef} className="variant-header-action-menu variant-header-action-menu-portal" role="menu" data-variant-header-popover="true" style={position}>{children}</div>, document.body)
+  return createPortal(<div ref={menuRef} className="variant-header-action-menu variant-header-action-menu-portal" role="dialog" aria-label={label} data-variant-header-popover="true" style={position}>{children}</div>, document.body)
 }
 type ProductMediaOption = { value: string; label: string; url?: string; file?: File }
 type ProductFamilyMediaItem = NonNullable<Product['familyMediaItems']>[number]
@@ -166,16 +171,6 @@ function displayVariantOptionSignature(signature: string, savedOptions: Record<s
   const options = displayVariantOptionEntriesFromSignature(signature, savedOptions)
   if (!options.length) return signature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' ? signature : '—'
   return joinVariantOptionLabels(options.map(({ name, value }) => `${formatCatalogOptionLabel(name)}: ${isSizeOptionName(name) ? value.toLocaleUpperCase('tr-TR') : formatCatalogOptionLabel(value)}`))
-}
-function sortOptionValues<T extends { id: string; value: string }>(attributeName: string, values: T[]) {
-  return values
-    .map((value, index) => ({ value, index, rank: optionValueSortRank(attributeName, value.value) }))
-    .sort((left, right) => left.rank.bucket - right.rank.bucket
-      || left.rank.primary - right.rank.primary
-      || left.rank.secondary - right.rank.secondary
-      || left.rank.text.localeCompare(right.rank.text, 'tr', { numeric: true, sensitivity: 'base' })
-      || left.index - right.index)
-    .map(item => item.value)
 }
 // A saved row and a generated combination of the same options are one row (variantOptionSetKey), whatever their spelling.
 const variantSignatureKey = variantOptionSetKey
@@ -1322,6 +1317,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
   const pointerDragIdRef = useRef<number | null>(null)
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([])
+  // The saved rows taken off the table, where they stood: a refused delete puts them back.
+  const [removedVariantRows, setRemovedVariantRows] = useState<RemovedVariantRow<VariantDraft>[]>([])
+  const [variantDeleteConfirmation, setVariantDeleteConfirmation] = useState<VariantDraft | null>(null)
+  // A saved "Tek Ürün" placeholder replaced by generated variants: the server removes it on save only when nothing
+  // (options, marketplace links or offers, orders, stock movements) is tied to it, and keeps it otherwise.
+  const [replacedPlaceholderIds, setReplacedPlaceholderIds] = useState<string[]>([])
   // Unsaved-edit tracking (W6): the snapshot taken right after the form was filled; a differing current snapshot means
   // the form holds edits a reseed would destroy.
   const [snapshotRequest, setSnapshotRequest] = useState(0)
@@ -1525,7 +1526,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
-    setRemovedVariantIds([])
+    setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
     setFieldErrors({})
     setSnapshotRequest(value => value + 1)
   })
@@ -1709,7 +1710,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         const message = 'Önce varyant olacak özellikleri ve bu özelliklerin değerlerini seçin.'; setNotice(message); showFeedback('Varyant Özelliği Seçilmedi', message, 'error')
         return false
       }
+      const replacesPlaceholder = generatedRowsReplacePlaceholder(variantRows, generated)
+      const persistedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+      const replacedSavedPlaceholderIds = replacesPlaceholder ? variantRows.filter(row => persistedIds.has(row.key)).map(row => row.key) : []
+      if (replacedSavedPlaceholderIds.length) setReplacedPlaceholderIds(current => [...new Set([...current, ...replacedSavedPlaceholderIds])])
       setVariantRows(current => {
+        // The option-less "Tek Ürün" row gives way to the generated rows instead of staying beside them.
+        if (generatedRowsReplacePlaceholder(current, generated)) return mergeGeneratedVariantRows([], generated, { key: variantSignatureKey, sort: sortVariantsAlphabetically, keepExisting: false, automaticBarcodes: automaticBarcodeGeneration, modelCode: form.modelCode, fallbackSalePrice, fallbackListPrice })
         if (current.length === 1 && current[0].optionSignature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' && generated.length === 1) {
           const existing = current[0]
           const [next] = generated
@@ -1720,7 +1727,10 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       })
       const heldKeys = new Set(variantRows.map(row => variantSignatureKey(row.optionSignature)))
       const addedCount = editProductId ? new Set(generated.map(row => variantSignatureKey(row.optionSignature)).filter(key => !heldKeys.has(key))).size : generated.length
-      const message = editProductId ? `${addedCount} yeni varyant satırı eklendi; kayıtlı satırlar değişmedi.` : `${generated.length} varyant satırı hazırlandı.`; setNotice(message); showFeedback('Varyantlar Hazırlandı', message, 'success')
+      const message = replacesPlaceholder
+        ? `${generated.length} varyant satırı hazırlandı; “Tek Ürün” satırı bu varyantlarla değiştirildi.${replacedSavedPlaceholderIds.length ? ' Kayıtlı “Tek Ürün” varyantı Kaydet ile kaldırılır.' : ''}`
+        : editProductId ? `${addedCount} yeni varyant satırı eklendi; kayıtlı satırlar değişmedi.` : `${generated.length} varyant satırı hazırlandı.`
+      setNotice(message); showFeedback('Varyantlar Hazırlandı', message, 'success')
       return true
     } catch (reason) { const message = reason instanceof Error ? reason.message : 'Varyantlar oluşturulamadı.'; setNotice(message); showFeedback('Varyantlar Oluşturulamadı', message, 'error'); return false }
   }
@@ -1728,11 +1738,32 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const persistedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
     const clearedSavedIds = variantRows.filter(row => persistedIds.has(row.key)).map(row => row.key)
     setRemovedVariantIds(current => [...new Set([...current, ...clearedSavedIds])])
+    setRemovedVariantRows(current => [...current, ...variantRows.flatMap((row, index) => persistedIds.has(row.key) ? [{ row, index }] : [])])
     setVariantRows([])
     const message = clearedSavedIds.length
       ? `Varyant satırları temizlendi. Kaydedince ${clearedSavedIds.length} kayıtlı varyant panelden silinir; pazaryerlerindeki ilanlara dokunulmaz.`
       : 'Oluşan varyant satırları temizlendi.'
     setNotice(message); showFeedback('Varyantlar Temizlendi', message, 'success')
+  }
+  // The row's trash button: a row the form made itself just leaves the table; a saved variant asks first and is deleted
+  // on the server by the next Kaydet (variantIdsToDelete).
+  function requestVariantRowRemoval(row: VariantDraft) {
+    const persistedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+    if (!persistedIds.has(row.key)) { setVariantRows(rows => rows.filter(item => item.key !== row.key)); return }
+    setVariantDeleteConfirmation(row)
+  }
+  function confirmVariantRowRemoval() {
+    const row = variantDeleteConfirmation
+    setVariantDeleteConfirmation(null)
+    if (!row) return
+    const index = variantRows.findIndex(item => item.key === row.key)
+    if (index < 0) return
+    setRemovedVariantRows(current => [...current.filter(item => item.row.key !== row.key), { row: variantRows[index], index }])
+    setRemovedVariantIds(current => [...new Set([...current, row.key])])
+    setVariantRows(rows => rows.filter(item => item.key !== row.key))
+    const label = displayVariantOptionSignature(row.optionSignature, row.options)
+    const message = `${label} varyantı Kaydet’te silinecek.`
+    setNotice(message); showFeedback('Varyant Silinecek', message, 'info')
   }
   function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'costPrice' ? (value.trim() === '' ? null : Number(value)) : field === 'stock' || field === 'salePrice' || field === 'listPrice' ? Number(value || 0) : value })) }
   function updateVariantMedia(keyValue: string, values: string[]) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, mediaRefs: values })) }
@@ -2731,6 +2762,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       const safeDescription = sanitizeRichText(form.description)
       const variantPayload = (row: VariantDraft, index: number) => ({ sku: row.sku, barcode: row.barcode || null, modelCode: form.modelCode.trim() || null, sortOrder: index, weight: calculateDesi ? Number(form.weight) || null : null, width: calculateDesi ? Number(form.width) || null : null, height: calculateDesi ? Number(form.height) || null : null, length: calculateDesi ? Number(form.length) || null : null, desi: calculateDesi ? desi || 1 : Number(form.desi) || 1, costPrice: row.costPrice, defaultListPrice: row.listPrice, defaultSalePrice: row.salePrice, options: row.options, attributes: variantAttributesForPayload(row), onHand: editorOpeningStock(row.stock) })
       const existingVariantIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+      const placeholderIdsToDelete = replacedPlaceholderIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id) && !removedVariantIds.includes(id))
       const modelCodeForRow = (variantId: string) => modelCodeForExistingVariant(
         form.modelCode,
         initialEditModelCode.current,
@@ -2755,6 +2787,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : '00000000-0000-0000-0000-000000000000',
           ...(shouldPersistAttributes ? { attributes: globalAttributes } : {}),
           variantIdsToDelete: removedVariantIds.filter(id => existingVariantIds.has(id) && !rows.some(row => row.key === id)),
+          placeholderVariantIdsToDelete: placeholderIdsToDelete,
           variantsToCreate: rows.filter(row => !existingVariantIds.has(row.key)).map(variantPayload),
           variantUpdates: rows.filter(row => existingVariantIds.has(row.key)).map(row => ({
             id: row.key,
@@ -2802,6 +2835,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         product = await sendWithVersionedIdempotencyKey(productCreateKey, key => hubApi<Product>('/products', { method: 'POST', headers: { 'Idempotency-Key': key }, body: JSON.stringify({ title: savedTitle, status: savedStatus, description: safeDescription, brandId: form.brandId || null, categoryId: form.categoryId || null, defaultListPrice: Number(form.listPrice || 0), defaultSalePrice: Number(form.salePrice || 0), warrantyMonths: Number(form.warrantyMonths || 0) || null, deliveryDays: productDeliveryDays(form.deliveryDays), vatRate: savedVatRate, vatInclusion: savedVatInclusion, trendyolWebColorValueId: !webColorAutoEnabled && manualWebColorValueId ? manualWebColorValueId : null, attributes: globalAttributes, variants: rows.map(variantPayload) }) }))
       }
       productCreated = product; const completed: string[] = []; const warnings: string[] = []
+      if (placeholderIdsToDelete.some(id => product.variants.some(variant => variant.id === id))) warnings.push(PLACEHOLDER_KEPT_MESSAGE)
       const publications: MarketplacePublishOutcome[] = []
       const publicationErrors: Array<{ platformName: string; message: string }> = []
       const updates: MarketplaceUpdateOutcome[] = []
@@ -3042,7 +3076,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             updates: platformUpdate ? updates : undefined
           })
       const message = result.lines.join(' ')
-      setRemovedVariantIds([])
+      setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
       if (editProductId) setVariantRows(current => rekeySavedVariantRows(current, product.variants))
       setVariantCodeConflicts({})
       mediaFilesKeptOnReseed.current = null
@@ -3077,7 +3111,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         navigate(`/products/${productCreated.id}`, { replace: true, state: createOnly || saveDraft ? null : { wizardStep: 2 } })
       }
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
+      // The server refused a variant delete (order or stock history, a pending job): the whole save was refused, so the
+      // removed rows go back into the table and nothing waits to be deleted.
+      const variantDeleteRefused = !productCreated && isVariantDeleteRefusal(reason)
+      if (variantDeleteRefused) {
+        const refusedRows = removedVariantRows
+        setVariantRows(current => restoreRemovedVariantRows(current, refusedRows))
+        setRemovedVariantIds([]); setRemovedVariantRows([])
+      }
+      const reasonMessage = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
+      const message = variantDeleteRefused ? `${reasonMessage} ${VARIANT_DELETE_REFUSED_HINT}` : reasonMessage
       const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
       setError(reason); setNotice(feedbackMessage)
       setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
@@ -3267,7 +3310,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const skuRowCount = variantRows.filter(row => row.sku.trim()).length
   const emptySkuRowCount = variantRows.length - skuRowCount
   const pendingVariantCodeConfirm = pendingVariantCodeGeneration ? variantCodeChangeConfirmText(pendingVariantCodeGeneration) : null
-  const generatedCodePreview = buildSequentialVariantCodes(form.modelCode, 1)[0] ?? 'MODEL-01'
+  const variantCodeGenerationPreview = (target: VariantCodeTarget): VariantCodeMenuProps['generatePreview'] => {
+    const codes = buildSequentialVariantCodes(form.modelCode, variantRows.length)
+    const ends = (list: string[]): [string, string] | null => list.length ? [list[0], list[list.length - 1]] : null
+    return { all: ends(codes), missing: ends(codes.filter((_, index) => !variantRows[index]?.[target].trim())) }
+  }
   const selectedBulkMediaGroup = variantMediaModal?.mode === 'bulk' ? bulkMediaGroups.find(group => group.id === variantMediaModal.groupId) : undefined
   const selectedBulkMediaValueId = variantMediaModal?.mode === 'bulk' ? variantMediaModal.valueId : undefined
   const selectedBulkMediaValue = selectedBulkMediaGroup?.values.find(value => value.id === selectedBulkMediaValueId)
@@ -3453,12 +3500,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               const expandable = item.attribute.values.length > 0
               const expanded = !expandable || (expandedOptionGroupIds[item.attributeId] ?? false)
               const valueQuery = attributeValueQueries[item.attributeId] ?? ''
-              const filteredValues = filterAttributeOptionValues(sortOptionValues(item.attribute.name, item.attribute.values), valueQuery)
+              const sortedValues = sortOptionValues(item.attribute.name, item.attribute.values)
+              const filteredValues = filterAttributeOptionValues(sortedValues, valueQuery)
               return (
               <article className={`attribute-builder-card ${expanded ? 'is-open' : ''}`} key={item.attributeId}>
                 <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={expanded ? `option-values-${item.attributeId}` : undefined} disabled={!expandable} title={expanded ? 'Bütün seçenek gruplarını kapat' : 'Bütün seçenek gruplarını birlikte aç'} onClick={() => { if (window.matchMedia('(max-width: 760px)').matches) { setExpandedOptionGroupIds(current => ({ ...current, [item.attributeId]: !expanded })); return } setExpandedOptionGroupIds(Object.fromEntries(visibleOptionRequirements.map(other => [other.attributeId, !expanded]))) }}>
-                  <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong><small>{item.attribute.values.length} değer</small></span>
-                  <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{(attributeSelections[item.attributeId]?.length ?? 0) > 0 ? `${attributeSelections[item.attributeId].length} değer seçildi` : 'Değer seçin'}</small>{expandable && <UiIcon name="chevronDown" />}</span>
+                  <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong></span>
+                  <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{`${attributeSelections[item.attributeId]?.length ?? 0} / ${item.attribute.values.length} Seçili`}</small>{expandable && <UiIcon name="chevronDown" />}</span>
                 </button>
                 {expanded && <div id={`option-values-${item.attributeId}`} className="attribute-builder-values">
                 {item.attribute.values.length ? (
@@ -3479,26 +3527,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                     }}
                   />
                   <OptionValueAddButton attributeName={item.attribute.name} values={item.attribute.values} query={valueQuery} adding={addingOptionValueFor === item.attributeId} onAdd={newValue => void addOptionValue(item, newValue)} />
-                  <div className="option-chip-list">
-                    {filteredValues.map(value => {
-                      const isSelected = (attributeSelections[item.attributeId] ?? []).includes(value.id)
-                      // Chips share one size; a longer value (Standart, Kahverengi) takes two or three cells of the grid.
-                      const length = cleanOptionValue(value.value).length
-                      const span = length > 10 ? ' is-wider' : length > 5 ? ' is-wide' : ''
-                      return (
-                        <button
-                          type="button"
-                          key={value.id}
-                          title={cleanOptionValue(value.value)}
-                          aria-pressed={isSelected}
-                          className={`option-chip${span}${isSelected ? ' active' : ''}`}
-                          onClick={() => toggleAttributeValue(item.attributeId, value.id)}
-                        >
-                          {cleanOptionValue(value.value)}
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <OptionValueChips groupName={item.attribute.name} values={sortedValues} selectedIds={attributeSelections[item.attributeId] ?? []} filter={rest => filterAttributeOptionValues(rest, valueQuery)} onToggle={valueId => toggleAttributeValue(item.attributeId, valueId)} />
                   {filteredValues.length === 0 && !optionValueToAdd(item.attribute.name, item.attribute.values, valueQuery) && <p className="attribute-builder-no-values">Eşleşen değer bulunamadı.</p>}
                   </>
                 ) : item.attribute.dataType === 'BOOLEAN' ? (
@@ -3571,7 +3600,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                     {rowPlatforms.length ? (() => { const linkedCount = rowPlatforms.filter(item => item.isLinked).length; const isPartial = linkedCount > 0 && linkedCount < rowPlatforms.length; const summaryClass = linkedCount === rowPlatforms.length ? 'is-linked' : isPartial ? 'is-partial' : 'is-unlinked'; return <button type="button" className={`variant-platform-status variant-platform-status-summary variant-row-action ${summaryClass}`} onClick={() => openVariantPlatformPricing(row, rowPlatforms[0])} title={`${rowPlatforms.length} platform fiyatını düzenle`} aria-label={`${row.optionSignature} platform fiyatlarını düzenle`}><UiIcon name="platforms" /></button> })() : <span className="variant-platform-empty">—</span>}
                     {editProductId && <button type="button" className="variant-row-action variant-row-action-codes" onClick={() => setMarketplaceCodesVariant(row.key)} aria-label={`${row.optionSignature} pazaryeri kodlarını göster`} title="Pazaryeri kodları (Shopify, Hepsiburada)"><UiIcon name="link" /></button>}
                     <button type="button" className={`variant-media-button variant-row-action ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button>
-                    <button type="button" className="variant-row-action variant-row-action-delete" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))} aria-label={`${row.optionSignature} varyantını sil`} title="Varyantı sil"><UiIcon name="trash" /></button>
+                    <button type="button" className="variant-row-action variant-row-action-delete" onClick={() => requestVariantRowRemoval(row)} aria-label={`${row.optionSignature} varyantını sil`} title="Varyantı sil"><UiIcon name="trash" /></button>
                   </div>
                 </div>
               }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}
@@ -3616,41 +3645,36 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     <StickyActionBar label="Ürün kaydetme" className="product-submit-sticky"><div><strong>{editingDraftProduct ? 'Taslak ürün · Kaydet ile satışa açılır' : editProductId ? 'Ürün düzenlemeye hazır' : 'Ürün bilgileri hazır'}</strong><p>{variantRows.length || 1} satış satırı · {selectedChannelIds.length} seçili kanal</p>{codeRuleSaveBlock && <button type="button" className="product-submit-code-block" onClick={goToFirstVariantCodeIssue}><UiIcon name="alert" size={14} /><span>{codeRuleSaveBlock}</span></button>}{pendingFamilyMediaRemovals.length > 0 && <p className="product-submit-family-media-note" role="status"><span>{pendingFamilyMediaRemovals.length} renk ailesi görseli Kaydet’te diğer renklerden de kaldırılacak</span><button type="button" className="product-submit-undo-button" onClick={undoPendingFamilyMediaRemovals} disabled={submitting}>Geri Al</button></p>}</div><div className={`product-submit-actions${codeRuleSaveBlock ? ' is-code-blocked' : ''}`}>{draftSaveAvailable && <button type="submit" name="intent" value="draft" className="secondary product-submit-draft" data-submit-intent="draft" formNoValidate form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} title={modelCodeCreateBlock || "Zorunlu alanlar eksik olsa da kaydeder; taslak pazaryerlerine gönderilmez ve stok sayımlarına girmez"}><span className="submit-label-long">Taslak Olarak Kaydet</span><span className="submit-label-short">Taslak</span></button>}{editProductId ? <button type="submit" name="intent" value="save" className="secondary" data-submit-intent="save" form="product-creation-form" disabled={submitting} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Kaydediliyor…' : 'Kaydet'}</button> : <button type="submit" name="intent" value="create" className="secondary" data-submit-intent="create" form="product-creation-form" disabled={submitting || Boolean(modelCodeCreateBlock)} aria-disabled={codeRuleSaveBlock ? true : undefined} title={modelCodeCreateBlock || codeRuleSaveBlock || undefined} onClick={event => { if (codeRuleSaveBlock) { event.preventDefault(); blockedByVariantCodeRules() } }}>{submitting ? 'Oluşturuluyor…' : 'Ürünü Oluştur'}</button>}{editProductId && !editingDraftProduct && <div className="platform-update-split" role="group" aria-label="Platform güncelleme"><button type="button" className="platform-update-quick" onClick={() => { if (!blockedByVariantCodeRules()) startQuickPlatformUpdate() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} title={codeRuleSaveBlock || 'Seçili aktif platformlarda yalnız fiyat ve stoku güncelle'}><span>Hızlı Güncelle</span><UiIcon name="refresh" /></button><button type="button" className="platform-update-settings" onClick={() => { if (!blockedByVariantCodeRules()) openPlatformUpdateDialog() }} disabled={submitting || connections.isLoading} aria-disabled={codeRuleSaveBlock ? true : undefined} aria-label="Platform güncelleme ayarları" title={codeRuleSaveBlock || 'Platform güncelleme ayarları'} aria-haspopup="dialog"><UiIcon name="arrowUp" /></button></div>}<button type="button" onClick={() => { if (!blockedByVariantCodeRules()) setWizardStep(2) }} aria-disabled={codeRuleSaveBlock ? true : undefined} className="product-submit-publish" aria-label="Yayınlamaya Devam Et" title={codeRuleSaveBlock || "Yayınlamaya Devam Et"}><span className="submit-label-long">Yayınlamaya Devam Et</span><span className="submit-label-short">Yayınla</span> <UiIcon name="arrowRight" /></button></div></StickyActionBar>
     {/* A save or validation error is already a feedback toast in the column; this one is only for what failed to load. */}
     {!error && <ErrorToast title="Ürün Bilgileri Yüklenemedi" error={categories.error ?? brands.error ?? connections.error} />}
-    {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef}>
-      <section className="variant-header-action-menu-group" role="group" aria-label="Barkod üret">
-        <p className="variant-header-action-menu-title">Model Kodundan Barkod Üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} aria-disabled={!variantRows.length || !form.modelCode.trim() || undefined} onClick={() => void requestVariantCodeChange('barcode', 'all')}><span><strong>Tüm Varyantlara Üret</strong><small className="variant-code-generation-preview"><span>Barkod: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
-        <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount || !form.modelCode.trim()} aria-disabled={!emptyBarcodeRowCount || !form.modelCode.trim() || undefined} onClick={() => void requestVariantCodeChange('barcode', 'missing')}><span><strong>Yalnız Eksik Olanlara Üret</strong><small className="variant-code-generation-preview"><span>Dolu barkodlar korunur</span><span>{emptyBarcodeRowCount.toLocaleString('tr-TR')} eksik varyant</span></small></span><UiIcon name="arrowRight" /></button>
-      </section>
-      <section className="variant-header-action-menu-group" role="group" aria-label="Panodan barkod yapıştır">
-        <p className="variant-header-action-menu-title">Panodan Barkod Yapıştır</p>
-        <button type="button" role="menuitem" disabled={!emptyBarcodeRowCount} aria-disabled={!emptyBarcodeRowCount || undefined} onClick={() => void pasteBarcodesFromClipboard('missing')}><span><strong>Eksik Barkodları Doldur</strong><small>{emptyBarcodeRowCount.toLocaleString('tr-TR')} eksik varyant</small></span><UiIcon name="arrowRight" /></button>
-        <button type="button" role="menuitem" disabled={!variantRows.length} aria-disabled={!variantRows.length || undefined} onClick={() => void pasteBarcodesFromClipboard('all')}><span><strong>Tüm Barkodları Değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
-      </section>
-      <section className="variant-header-action-menu-group" role="group" aria-label="Barkodları temizle">
-        <button type="button" role="menuitem" disabled={!barcodeRowCount} aria-disabled={!barcodeRowCount || undefined} onClick={() => void requestVariantCodeChange('barcode', 'clear')}><span><strong>Tüm Barkodları Temizle</strong><small>{barcodeRowCount.toLocaleString('tr-TR')} dolu barkod boşaltılır</small></span><UiIcon name="trash" /></button>
-      </section>
+    {barcodePasteMenuOpen && <VariantHeaderActionMenu anchorRef={barcodePasteActionRef} label="Barkod işlemleri">
+      <VariantCodeMenu noun="Barkod" rowCount={variantRows.length} emptyCount={emptyBarcodeRowCount} filledCount={barcodeRowCount} canGenerate={Boolean(form.modelCode.trim())} generatePreview={variantCodeGenerationPreview('barcode')}
+        onGenerate={scope => void requestVariantCodeChange('barcode', scope)} onPaste={scope => void pasteBarcodesFromClipboard(scope)} onClear={() => void requestVariantCodeChange('barcode', 'clear')} />
     </VariantHeaderActionMenu>}
-    {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef}>
-      <section className="variant-header-action-menu-group" role="group" aria-label="Model kodundan stok kodu üret">
-        <p className="variant-header-action-menu-title">Model Kodundan Stok Kodu Üret</p>
-        <button type="button" role="menuitem" disabled={!variantRows.length || !form.modelCode.trim()} aria-disabled={!variantRows.length || !form.modelCode.trim() || undefined} onClick={() => void requestVariantCodeChange('sku', 'all')}><span><strong>Tüm Varyantlara Üret</strong><small className="variant-code-generation-preview"><span>Stok Kodu: {generatedCodePreview}</span><span>{variantRows.length.toLocaleString('tr-TR')} varyant</span></small></span><UiIcon name="refresh" /></button>
-        <button type="button" role="menuitem" disabled={!emptySkuRowCount || !form.modelCode.trim()} aria-disabled={!emptySkuRowCount || !form.modelCode.trim() || undefined} onClick={() => void requestVariantCodeChange('sku', 'missing')}><span><strong>Yalnız Eksik Olanlara Üret</strong><small className="variant-code-generation-preview"><span>Dolu stok kodları korunur</span><span>{emptySkuRowCount.toLocaleString('tr-TR')} eksik varyant</span></small></span><UiIcon name="arrowRight" /></button>
-      </section>
-      <section className="variant-header-action-menu-group" role="group" aria-label="Panodan stok kodu yapıştır">
-        <p className="variant-header-action-menu-title">Panodan Stok Kodu Yapıştır</p>
-        <button type="button" role="menuitem" disabled={!emptySkuRowCount} aria-disabled={!emptySkuRowCount || undefined} onClick={() => void pasteBarcodesFromClipboard('missing', 'sku')}><span><strong>Eksik Stok Kodlarını Doldur</strong><small>{emptySkuRowCount.toLocaleString('tr-TR')} eksik varyant</small></span><UiIcon name="arrowRight" /></button>
-        <button type="button" role="menuitem" disabled={!variantRows.length} aria-disabled={!variantRows.length || undefined} onClick={() => void pasteBarcodesFromClipboard('all', 'sku')}><span><strong>Tüm Stok Kodlarını Değiştir</strong><small>{variantRows.length.toLocaleString('tr-TR')} varyant sırası</small></span><UiIcon name="alert" /></button>
-      </section>
-      <section className="variant-header-action-menu-group" role="group" aria-label="Stok kodlarını barkodlardan düzenle">
-        <p className="variant-header-action-menu-title">Stok Kodlarını Barkodlardan Düzenle</p>
-        <button type="button" role="menuitem" disabled={!emptySkuBarcodeRowCount} onClick={() => applyBarcodeToSku('missing')}><span><strong>Eksik Stok Kodlarını Doldur</strong><small>Sadece boş satırlar · {emptySkuBarcodeRowCount.toLocaleString('tr-TR')} satır</small></span><UiIcon name="arrowRight" /></button>
-        <button type="button" role="menuitem" disabled={!barcodeRowCount} onClick={() => applyBarcodeToSku('all')}><span><strong>Barkodları Stok Koduna Uygula</strong><small>Stok kodu sütunu · {barcodeRowCount.toLocaleString('tr-TR')} barkodlu satır</small></span><UiIcon name="alert" /></button>
-      </section>
-      <section className="variant-header-action-menu-group" role="group" aria-label="Stok kodlarını temizle">
-        <button type="button" role="menuitem" disabled={!skuRowCount} aria-disabled={!skuRowCount || undefined} onClick={() => void requestVariantCodeChange('sku', 'clear')}><span><strong>Tüm Stok Kodlarını Temizle</strong><small>{skuRowCount.toLocaleString('tr-TR')} dolu stok kodu boşaltılır</small></span><UiIcon name="trash" /></button>
-      </section>
+    {barcodeSkuMenuOpen && <VariantHeaderActionMenu anchorRef={barcodeSkuActionRef} label="Stok kodu işlemleri">
+      <VariantCodeMenu noun="Stok Kodu" rowCount={variantRows.length} emptyCount={emptySkuRowCount} filledCount={skuRowCount} canGenerate={Boolean(form.modelCode.trim())} generatePreview={variantCodeGenerationPreview('sku')}
+        onGenerate={scope => void requestVariantCodeChange('sku', scope)} onPaste={scope => void pasteBarcodesFromClipboard(scope, 'sku')} onClear={() => void requestVariantCodeChange('sku', 'clear')}
+        fromBarcode={{ missingCount: emptySkuBarcodeRowCount, allCount: barcodeRowCount, onApply: applyBarcodeToSku }} />
     </VariantHeaderActionMenu>}
+    {variantDeleteConfirmation && createPortal(
+      <div className="workspace-modal-backdrop media-removal-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setVariantDeleteConfirmation(null) }}>
+        <DialogSurface as="section" onClose={() => { setVariantDeleteConfirmation(null) }} className="workspace-modal media-removal-confirm-modal variant-delete-confirm-modal" role="alertdialog" aria-labelledby="variant-delete-confirm-title" aria-describedby="variant-delete-confirm-description" onMouseDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setVariantDeleteConfirmation(null) }}>
+          <header>
+            <div>
+              <p className="eyebrow">Varyantlar</p>
+              <h2 id="variant-delete-confirm-title">{displayVariantOptionSignature(variantDeleteConfirmation.optionSignature, variantDeleteConfirmation.options)} Varyantını Sil</h2>
+            </div>
+            <button type="button" className="modal-close" onClick={() => setVariantDeleteConfirmation(null)} aria-label="Varyant silme onayını kapat"><UiIcon name="close" /></button>
+          </header>
+          <div className="media-removal-confirm-body">
+            <p id="variant-delete-confirm-description">{variantRemovalConfirmText(variantDeleteConfirmation)}</p>
+          </div>
+          <footer>
+            <button type="button" className="secondary" data-autofocus={touchScreen ? undefined : true} onClick={() => setVariantDeleteConfirmation(null)}>Vazgeç</button>
+            <button type="button" className="destructive" onClick={confirmVariantRowRemoval}>Varyantı Sil</button>
+          </footer>
+        </DialogSurface>
+      </div>,
+      document.querySelector('main') ?? document.body
+    )}
     {mediaRemovalConfirmation && createPortal(
       <div className="workspace-modal-backdrop media-removal-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMediaRemovalConfirmation(null) }}>
         <DialogSurface as="section" onClose={() => { setMediaRemovalConfirmation(null) }} className="workspace-modal media-removal-confirm-modal" role="alertdialog" aria-labelledby="media-removal-confirm-title" aria-describedby="media-removal-confirm-description" onMouseDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setMediaRemovalConfirmation(null) }}>
