@@ -158,6 +158,38 @@ public sealed class SyncWindowAuditTests
         Assert.Equal(new DateTime(2026, 11, 4), PazaramaOrderHistoryPolicy.StartDay(false, watermark, now, PazaramaOrderHistoryPolicy.LookbackDays("ORDERS_HOT")));
     }
 
+    private static AdapterPageResult<RemoteOrder> PaidPage(int? total, string? next) => new([], next, next is not null, total);
+
+    [Fact]
+    public void Hepsiburada_paid_order_window_is_read_again_when_its_list_moves_between_pages()
+    {
+        var start = new MarketplaceJobProcessor.HepsiburadaOrderSyncState("v", DateTimeOffset.UnixEpoch.AddDays(2), DateTimeOffset.UnixEpoch, 0, 0);
+
+        // 101 lines: page one, then one line is packaged and page two (offset 100) counts 100.
+        var second = MarketplaceJobProcessor.NextHepsiburadaOrderPage(start, PaidPage(101, "100"));
+        Assert.Equal((100, 101), (second.Offset, second.PageTotal));
+        var reread = MarketplaceJobProcessor.NextHepsiburadaOrderPage(second, PaidPage(100, null));
+        Assert.Equal((0, 0, 1, false), (reread.WindowIndex, reread.Offset, reread.Rereads, reread.Moved));
+
+        // A steady list closes the window at once.
+        var steady = MarketplaceJobProcessor.NextHepsiburadaOrderPage(MarketplaceJobProcessor.NextHepsiburadaOrderPage(start, PaidPage(101, "100")), PaidPage(101, null));
+        Assert.Equal((1, 0, 0), (steady.WindowIndex, steady.Offset, steady.Rereads));
+
+        // After two re-reads the window closes even if the list keeps moving.
+        var tired = start with { Offset = 100, PageTotal = 101, Rereads = MarketplaceJobProcessor.HepsiburadaOrderWindowRereads };
+        Assert.Equal(1, MarketplaceJobProcessor.NextHepsiburadaOrderPage(tired, PaidPage(99, null)).WindowIndex);
+    }
+
+    [Fact]
+    public void Hepsiburada_open_package_list_that_ignores_the_offset_is_told_apart()
+    {
+        Assert.False(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(0, null, "P1,P2"));
+        Assert.True(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(10, "P1,P2", "P1,P2"));
+        Assert.False(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(10, "P1,P2", "P3,P4"));
+        Assert.False(MarketplaceJobProcessor.HepsiburadaPackageOffsetIgnored(10, "P1,P2", null));
+        Assert.Null(MarketplaceJobProcessor.HepsiburadaPackagePageKey([]));
+    }
+
     [Fact]
     public void Hepsiburada_missing_invoice_pass_stops_when_the_list_moves_between_pages()
     {

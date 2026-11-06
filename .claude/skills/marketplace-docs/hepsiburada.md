@@ -47,8 +47,20 @@ Code: `Adapters/Hepsiburada/` — `HepsiburadaHttpClient.cs`, `HepsiburadaPackag
   offset and shrinks as invoices are uploaded, so since 6 Nov 2026 it is read twice, a pass whose pages give different
   totals changes nothing (HEPSIBURADA_MISSING_INVOICE_FEED_MOVED), and a package listed in either pass stays
   NOT_INVOICED (`HepsiburadaMissingInvoiceStatusPolicy`).
-- Open packages: the docs spell the paging parameter `Offset`, the code sends `offset` (**unverified** whether the
-  service reads both; live never had ≥ 10 open packages in one window).
+- Open packages: the docs spell the paging parameter `Offset` (`hepsiburada-api-son.md:15232`, also `status/unpacked`
+  :16584), every other OMS list the code calls takes `offset` (orders :14893, cancelled :14979, delivered :15390,
+  missing-invoice :15464, shipped :16504, undelivered :16685, claims :27757); the code sends `offset`. Whether the
+  service reads both is **unverified** (live never had ≥ 10 open packages in one window; query strings are not
+  logged). Since 6 Nov 2026 a next page with the same packages closes the window with HEPSIBURADA_PACKAGE_OFFSET_IGNORED
+  instead of looping. To settle it: on SIT with ≥ 11 open packages compare `offset=10` and `Offset=10`.
+- Paid-order list: the live queue of lines waiting to be packaged (:8391-8399), `begindate`/`enddate` filter the day the
+  line was added (:14880-14888), `totalCount` is the count at that moment (:18089); an unpacked package puts its lines
+  back (:9222). Read by offset, so since 6 Nov 2026 a 24 h window whose pages give different totals is read again from
+  its start, at most twice (`NextHepsiburadaOrderPage`). Live 6 Nov 2026: 37 orders, at most 2 a day; every late
+  order matched a worker outage, none a page shift.
+- Questions: `minModifiedAt`/`maxModifiedAt` are `date-time` with no zone in the docs (:23240-23273); the code sends
+  UTC ISO with offset and the service honours it: live, a question asked 19 Oct 07:22:07Z came back on a read whose
+  upper end was UTC now (a 3 h shift would have left it out).
 - Claims `GET claims/merchantId/{m}/status/{Status}`: limit ≤ 100; `beginDate`, `endDate`, `statusBeginDate`,
   `statusEndDate`. Status must be PascalCase ("Wrong Claim Status" otherwise). First read 30 days; incremental passes
   look back ≥ 2 days because the status filter misses claims; first pass each hour is full.
