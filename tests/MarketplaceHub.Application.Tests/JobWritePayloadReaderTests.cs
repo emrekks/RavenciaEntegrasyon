@@ -30,6 +30,7 @@ public sealed class JobWritePayloadReaderTests
         Assert.Equal(["contentId", "title", "description", "images", "attributes"], content.Fields);
         Assert.Equal(["338", "47"], content.Attributes.Select(x => x.Id));
         Assert.Empty(content.Barcodes);
+        Assert.Empty(content.ClearedFields!);
         Assert.Equal(0, write.Parts[1].ItemCount);
         Assert.Equal([new JobWriteRequestView("PRODUCT", "batch-1")], write.Requests);
     }
@@ -52,6 +53,8 @@ public sealed class JobWritePayloadReaderTests
         Assert.Equal("UNAPPROVED", part.Key);
         Assert.Equal(["A-1", "A-2"], part.Barcodes);
         Assert.Equal(["barcode", "title", "salePrice", "quantity"], part.Fields);
+        // Audit D1: a field sent as null deletes it on Trendyol, so it is listed apart instead of hidden.
+        Assert.Equal(["origin"], part.ClearedFields);
         Assert.Equal([new JobWriteRequestView("POLL_UNAPPROVED", "batch-2")], write.Requests);
 
         var create = JsonSerializer.Serialize(new { Phase = "POLL", ExternalOperationId = "batch-3", PayloadJson = """{"items":[{"barcode":"B-1","title":"X"}]}""" });

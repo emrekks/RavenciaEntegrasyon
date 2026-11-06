@@ -79,10 +79,17 @@ describe('platform update fields', () => {
     const attributes = platformUpdatePlan('TRENDYOL', ['ATTRIBUTES'])
     expect(attributes.sends).toEqual(['Kategori Özellikleri'])
     expect(attributes.extras).toEqual(['Renk / Beden', 'Menşei'])
+    // Audit Y1: the variant request is partial (barcode + the picked field); no stock code or origin rides along.
     const desi = platformUpdatePlan('TRENDYOL', ['DESI'])
-    expect(desi.sends).toEqual(['Desi', 'KDV Oranı'])
-    expect(desi.extras).toEqual(['Menşei', 'Stok Kodu'])
-    expect(desi.bundled).toEqual(['VAT_RATE'])
+    expect(desi.sends).toEqual(['Desi'])
+    expect(desi.extras).toEqual([])
+    expect(desi.bundled).toEqual([])
+    expect(platformUpdateSummary(desi)).toBe('Desi')
+    const vat = platformUpdatePlan('TRENDYOL', ['VAT_RATE'])
+    expect(vat.sends).toEqual(['KDV Oranı'])
+    expect(vat.extras).toEqual([])
+    expect(vat.bundled).toEqual([])
+    expect(vat.productFields).toEqual(['VAT_RATE'])
   })
 
   it('sends nothing to Trendyol for the warranty alone', () => {

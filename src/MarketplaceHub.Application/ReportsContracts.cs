@@ -213,7 +213,7 @@ public sealed record ReportCustomerView(int IdentifiedOrders, int UnidentifiedOr
 
 public sealed record ReportInvoiceBucketView(string Key, string Label, int Packages, decimal Amount);
 
-public sealed record ReportInvoicePlatformView(string PlatformCode, int Invoiced, int NotInvoiced, int Unknown);
+public sealed record ReportInvoicePlatformView(string PlatformCode, int Invoiced, int NotInvoiced, int Unknown, int Returned = 0);
 
 // Packages of the period by invoice evidence: a panel invoice that was issued, a status set by hand, or the
 // marketplace's own word; none of them is "Bilinmiyor".

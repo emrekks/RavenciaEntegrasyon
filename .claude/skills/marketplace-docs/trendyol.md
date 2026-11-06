@@ -117,6 +117,18 @@ purpose (`TurkeyTime.cs`).
   request. A product not yet approved still goes whole via `unapproved-bulk-update`. Source: offline
   `trendyol-api-son.md`, `updateContentBulk` / `ContentBulkUpdateRequest` / `ContentUpdateItem` (~line 31769); bug
   6.11.2026, RYP007 images-only job 01a1b1c8-6fe7-78d3-bc90-702736436c38 had sent title, description and 18 attributes.
+- Approved-product variant update (`variant-bulk-update`) is partial too, and a null DELETES: the guide says a partial
+  request is taken when you send the `barcode` plus the field to change, and that sending a field as null (e.g.
+  `vatRate: null`) removes that field's current value from the product entirely. So the variant request carries
+  `barcode` + only the picked field (VAT_RATE → `vatRate`, DESI → `dimensionalWeight`), never `stockCode` or `origin`
+  (no pick for them; all 14 live Trendyol profiles had an empty Origin on 6.11.2026, so the old request would have
+  wiped Menşei), and never a null: a value the card lacks is left out, an item left with its barcode alone is dropped
+  and an empty phase makes no call. The delivery request likewise carries only `barcode` + `deliveryOptions` (an
+  object). Treat the same null-deletes rule as applying to every Trendyol update body. The older API reference
+  sentence "Partial update desteklenmez" is contradicted by this guide; the guide (newer) wins. Source:
+  https://developers.trendyol.com/docs/%C3%BCr%C3%BCn-g%C3%BCncelleme-onayl%C4%B1-%C3%BCr%C3%BCn-v2 (Varyant
+  Güncelleme tab, checked 6.11.2026); audit Y1/D1. The job drawer lists a field a stored payload sent as null as
+  "(silinir)" (`JobWritePayloadReader.ClearedFields`).
 - Cross-border storefronts: orders are read per `storeFrontCode` (TR, AE, SA, GR, DE, BG, QA, KW, OM, BH, AZ, SK, RO,
   CZ; QA/OM/BH/AZ only when the connection already has orders there). Listed ones probed every 6 h, others 24 h; a
   400/404 pauses one for 30 days. SA, AZ, BG, RO, GR, AE orders ship to the Istanbul export depot but count in their

@@ -109,14 +109,20 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
                     if (parts.Attributes) AddPresent(content, item, "attributes");
                     if (content.Count > 1) contentItems.Add(content);
                 }
-                if (sections.Variants) variantItems.Add(new Dictionary<string, object?>
+                // The variant request carries the barcode and only the picked variant fields: Trendyol's guide takes a
+                // partial update there (the barcode and the field to change) and deletes a field sent as null (Ürün
+                // Güncelleme Onaylı Ürün v2, Varyant Güncelleme, checked 6.11.2026). No stock code or origin: nothing
+                // picks them, and an empty origin would wipe Menşei. A value the card lacks is left out, never sent as
+                // null; an item left with its barcode alone does not go.
+                var variantParts = sections.VariantFields;
+                if (variantParts.Any)
                 {
-                    ["barcode"] = Text(item, "barcode"),
-                    ["stockCode"] = Text(item, "stockCode"),
-                    ["dimensionalWeight"] = Clone(item, "dimensionalWeight"),
-                    ["origin"] = Clone(item, "origin"),
-                    ["vatRate"] = Clone(item, "vatRate"),
-                });
+                    var variant = new Dictionary<string, object?> { ["barcode"] = Text(item, "barcode") };
+                    if (variantParts.VatRate) AddPresent(variant, item, "vatRate");
+                    if (variantParts.Desi) AddPresent(variant, item, "dimensionalWeight");
+                    if (variant.Count > 1) variantItems.Add(variant);
+                }
+                // The delivery item goes only with its delivery options object, so it never carries a null.
                 if (sections.Delivery && item.TryGetProperty("deliveryOption", out var delivery) && delivery.ValueKind == JsonValueKind.Object)
                 {
                     deliveryItems.Add(new Dictionary<string, object?>

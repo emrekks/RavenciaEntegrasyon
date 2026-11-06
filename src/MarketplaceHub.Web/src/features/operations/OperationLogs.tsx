@@ -1,9 +1,10 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useRef } from 'react'
 import { useSearchParams } from 'react-router'
 import { Busy } from '../../shared/components/AsyncState'
 import { TabSlidePanel } from '../../shared/tab-slide'
 import { jobsLogView, withJobsLogView, type JobsLogView } from './jobs-url-state'
-import ProductActivityLog from './ProductActivityLog'
+import ProductActivityLog, { type KeptActivityView } from './ProductActivityLog'
+import type { KeptSendLogView } from './PriceStockSendLog'
 
 // The send log loads with its own chunk the first time its view opens.
 const PriceStockSendLog = lazy(() => import('./PriceStockSendLog'))
@@ -20,6 +21,9 @@ const viewOrder = views.map(item => item.value)
 export function OperationLogs({ platformOptions, onOpenJob, headingSlot }: { platformOptions: string[]; onOpenJob: (jobId: string) => void; headingSlot?: HTMLElement | null }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const view = jobsLogView(searchParams)
+  // The filters of each view survive a switch to the other one.
+  const keptActivity = useRef<KeptActivityView | null>(null)
+  const keptSends = useRef<KeptSendLogView | null>(null)
   const select = (next: JobsLogView) => setSearchParams(current => withJobsLogView(current, next), { replace: true })
   return <>
     <div className="jobs-category-segment pal-view-segment" role="tablist" aria-label="Log görünümü">
@@ -36,8 +40,8 @@ export function OperationLogs({ platformOptions, onOpenJob, headingSlot }: { pla
       </button>)}
     </div>
     <TabSlidePanel active={view} order={viewOrder} className="rv-tab-slide-grid" role="tabpanel">{view === 'sends'
-      ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog key="sends" platformOptions={platformOptions} onOpenJob={onOpenJob} headingSlot={headingSlot} /></Suspense>
-      : <ProductActivityLog key="activity" platformOptions={platformOptions} headingSlot={headingSlot} />}</TabSlidePanel>
+      ? <Suspense fallback={<Busy text="Gönderim kayıtları yükleniyor…" />}><PriceStockSendLog key="sends" kept={keptSends} platformOptions={platformOptions} onOpenJob={onOpenJob} headingSlot={headingSlot} /></Suspense>
+      : <ProductActivityLog key="activity" kept={keptActivity} platformOptions={platformOptions} headingSlot={headingSlot} />}</TabSlidePanel>
   </>
 }
 

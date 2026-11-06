@@ -94,11 +94,15 @@ function SendLogHeadingControls({ filters, platformGroups, onChange, onClear, cl
   </>
 }
 
-export function PriceStockSendLog({ platformOptions, onOpenJob, headingSlot }: { platformOptions: string[]; onOpenJob: (jobId: string) => void; headingSlot?: HTMLElement | null }) {
-  const [filters, setFilters] = useState<SendLogFilters>(emptySendLogFilters)
-  const [searchText, setSearchText] = useState('')
+export type KeptSendLogView = { filters: SendLogFilters; searchText: string; oldestFirst: boolean }
+
+// kept holds the filters while another log view is shown, so switching views and back keeps them.
+export function PriceStockSendLog({ platformOptions, onOpenJob, headingSlot, kept }: { platformOptions: string[]; onOpenJob: (jobId: string) => void; headingSlot?: HTMLElement | null; kept?: { current: KeptSendLogView | null } }) {
+  const [filters, setFilters] = useState<SendLogFilters>(() => kept?.current?.filters ?? emptySendLogFilters)
+  const [searchText, setSearchText] = useState(() => kept?.current?.searchText ?? '')
   // Zaman is the one order the server pages by: newest first, or oldest first.
-  const [oldestFirst, setOldestFirst] = useState(false)
+  const [oldestFirst, setOldestFirst] = useState(() => kept?.current?.oldestFirst ?? false)
+  useEffect(() => { if (kept) kept.current = { filters, searchText, oldestFirst } }, [kept, filters, searchText, oldestFirst])
   // The search goes to the server once typing pauses, not on every key.
   useEffect(() => {
     const timeout = window.setTimeout(() => setFilters(current => current.search === searchText ? current : { ...current, search: searchText }), searchDelayMs)
