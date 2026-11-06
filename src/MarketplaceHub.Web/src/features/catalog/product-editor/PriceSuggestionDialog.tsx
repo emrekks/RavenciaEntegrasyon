@@ -84,9 +84,9 @@ export function PriceSuggestionDialog({ fields, onClose, onApply }: { fields: Pr
     <div className="price-suggestion-basis" role="group" aria-label="Hedef kâr nasıl girilsin">
       {([['rate', 'Oran (%)'], ['amount', 'Tutar (₺)']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={targetKind === value} onClick={() => setTargetKind(value)}>{label}</button>)}
     </div>
-    {targetKind === 'rate' && <div className="price-suggestion-basis" role="group" aria-label="Kâr oranı neye göre">
+    <div className="price-suggestion-basis" role="group" aria-label="Kâr oranı neye göre">
       {([['cost', 'Maliyete Göre'], ['sale', 'Satışa Göre']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={basis === value} onClick={() => setBasis(value)}>{label}</button>)}
-    </div>}
+    </div>
     <div className="price-suggestion-fields">
       <label>Maliyet (₺)<input value={cost} onChange={event => setCost(event.target.value)} type="number" min="0" step="0.01" inputMode="decimal" /></label>
       {targetKind === 'rate'
