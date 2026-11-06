@@ -5318,6 +5318,9 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool?>("ArchivedWithProduct")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Barcode")
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");

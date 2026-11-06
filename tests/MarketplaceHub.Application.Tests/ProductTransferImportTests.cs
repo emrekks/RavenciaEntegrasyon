@@ -53,8 +53,6 @@ public sealed class ProductTransferImportTests
     [InlineData("1234", "1234")]
     [InlineData("₺ 99,90", "99.90")]
     [InlineData("99,90 TL", "99.90")]
-    [InlineData("0", "0")]
-    [InlineData("0,004", "0")]
     [InlineData("12,345", "12.35")]
     [InlineData("10000000", "10000000")]
     public void ACostIsReadInTurkishOrPlainForm(string text, string expected)
@@ -63,6 +61,16 @@ public sealed class ProductTransferImportTests
         Assert.Equal(ProductTransferValueKind.Set, value.Kind);
         Assert.Equal(decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture), value.Amount);
     }
+
+    // K3 (owner decision 2026-11-06): a cost of 0 means "not entered", so a 0 in the file removes the stored cost like
+    // "-" does and is never stored; the reports and the missing-cost template treat 0 as missing anyway.
+    [Theory]
+    [InlineData("0")]
+    [InlineData("0,00")]
+    [InlineData("0,004")]
+    [InlineData("₺ 0")]
+    public void AZeroCostClearsTheStoredCost(string text) =>
+        Assert.Equal(ProductTransferValueKind.Clear, ProductTransferFileParser.ParseCost(text, fromCsv: true).Kind);
 
     [Theory]
     [InlineData("-")]

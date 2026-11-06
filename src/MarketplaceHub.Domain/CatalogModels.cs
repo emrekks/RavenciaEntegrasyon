@@ -131,6 +131,9 @@ public sealed class ProductVariant
     public string? ModelCode { get; set; }
     public required string OptionSignature { get; set; }
     public ProductStatus Status { get; set; } = ProductStatus.Active;
+    // K5: why an archived variant is archived. True: together with its product (a product-level archive), so activating
+    // the product reopens it. False or null: on its own (the marketplace removed it, or unknown), so it stays archived.
+    public bool? ArchivedWithProduct { get; set; }
     public decimal? Weight { get; set; }
     public decimal? Width { get; set; }
     public decimal? Height { get; set; }
