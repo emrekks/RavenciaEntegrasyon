@@ -75,6 +75,12 @@ Turkey time without offset; finance dates sent in Turkey time with milliseconds.
 - Approved list `productStatus`: 1 open, 10 closed, the values `product/external-status` writes (offline doc
   `## Kataloglu Ürünleri Satışa Kapatıp-Açma`). That the read field uses the same enum is **unverified** (the doc
   sample shows 0); 0 or another value stays unknown. Code: `PazaramaProductMapper.SaleState`.
+- Read side checked 6 Nov 2026: the approved list (`pazarama-api-son.md:1139-1290`, "onaylanmış ve satışta olan
+  ürünler") and `getProductDetail` (`:1296-1345`, `state` 3 = approval "Onaylandı") document no sale-state field
+  besides `productStatus`, whose sample is 0; the external-status write (`:1831-1912`) has no read counterpart. Live,
+  none of the 142 links ever got 1 or 10, so the sale state stays unknown; being on the approved list is not read as
+  on sale. LISTING_VERIFY logs the productStatus values per approved page ("Pazarama approved page productStatus
+  values") to show what the store sends.
 
 ## Statuses
 - Item codes: 3 Created; 12 Picking; 18 CancelRequested (OnHold); 6/13 Cancelled; 5/16/19 Shipped; 11/7/9 Delivered;
