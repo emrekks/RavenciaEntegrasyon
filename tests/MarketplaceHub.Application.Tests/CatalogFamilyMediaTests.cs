@@ -67,4 +67,85 @@ public sealed class CatalogFamilyMediaTests
         Assert.Equal(["https://cdn.dsmcdn.com/siyah-1.jpg", "https://cdn.dsmcdn.com/siyah-2.jpg", "https://cdn.dsmcdn.com/bordo-1.jpg",
             "https://cdn.dsmcdn.com/bordo-2.jpg", "https://cdn.dsmcdn.com/bordo-variant.jpg"], ordered);
     }
+
+    // RYP007 (owner, 6 Nov 2026): one card, 6 colours × 3 sizes, 3 pictures per colour, then a size chart uploaded last
+    // and assigned to every variant. The card's strip came back green ×3, chart, brown ×3… because its list was built
+    // colour by colour from the variant pictures. The strip is the product-level order, with or without a custom order.
+    private static readonly string[] Colours = ["haki", "kahverengi", "kiremit", "lacivert", "siyah", "vizon"];
+    private const string Chart = "https://cdn.dsmcdn.com/beden-tablosu.jpg";
+
+    private static (List<CatalogFamilyMedia.Row> Rows, List<Guid> Variants, List<string> Expected) Ryp007(Func<int, int> productSortOrder, bool variantRowsRenumbered)
+    {
+        var rows = new List<CatalogFamilyMedia.Row>();
+        var variants = new List<Guid>();
+        var expected = new List<string>();
+        for (var colour = 0; colour < Colours.Length; colour++)
+            for (var picture = 0; picture < 3; picture++)
+            {
+                var url = $"https://cdn.dsmcdn.com/{Colours[colour]}-{picture + 1}.jpg";
+                expected.Add(url);
+                rows.Add(new(Guid.NewGuid(), Own, null, productSortOrder(colour * 3 + picture), url));
+            }
+        expected.Add(Chart);
+        rows.Add(new(Guid.NewGuid(), Own, null, productSortOrder(18), Chart));
+        for (var colour = 0; colour < Colours.Length; colour++)
+            for (var size = 0; size < 3; size++)
+            {
+                var variant = Guid.NewGuid();
+                variants.Add(variant);
+                for (var picture = 0; picture < 3; picture++)
+                    rows.Add(new(Guid.NewGuid(), Own, variant, variantRowsRenumbered ? picture : productSortOrder(colour * 3 + picture), $"https://cdn.dsmcdn.com/{Colours[colour]}-{picture + 1}.jpg"));
+                rows.Add(new(Guid.NewGuid(), Own, variant, variantRowsRenumbered ? 3 : productSortOrder(18), Chart));
+            }
+        return (rows, variants, expected);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void StripUrls_KeepsASizeChartUploadedLastAndAssignedToEveryColourLast(bool customOrder, bool variantRowsRenumbered)
+    {
+        // A family reorder numbers rows rank × stride (live RYP007: 0, 92, 184… 1656); a plain card numbers them 0, 1, 2…
+        var (rows, variants, expected) = Ryp007(customOrder ? index => index * 92 : index => index, variantRowsRenumbered);
+
+        Assert.Equal(expected, CatalogFamilyMedia.StripUrls(rows, customOrder, variants));
+        if (customOrder) Assert.Equal(expected, CatalogFamilyMedia.OrderedUrls(rows));
+        var (defaultUrls, _) = CatalogFamilyMedia.Build(rows, Titles, [Own]);
+        Assert.Equal(expected, defaultUrls);
+    }
+
+    // A card whose pictures sit only on its variants (imported cards): variant by variant, each in its own order,
+    // never every colour's first picture, then every second.
+    [Fact]
+    public void StripUrls_WithoutProductLevelRows_GoesVariantByVariant()
+    {
+        var green = Guid.NewGuid();
+        var brown = Guid.NewGuid();
+        var rows = new List<CatalogFamilyMedia.Row>
+        {
+            new(Guid.NewGuid(), Own, brown, 0, "https://cdn.dsmcdn.com/brown-1.jpg"),
+            new(Guid.NewGuid(), Own, green, 1, "https://cdn.dsmcdn.com/green-2.jpg"),
+            new(Guid.NewGuid(), Own, green, 0, "https://cdn.dsmcdn.com/green-1.jpg"),
+            new(Guid.NewGuid(), Own, brown, 1, "https://cdn.dsmcdn.com/brown-2.jpg"),
+        };
+
+        Assert.Equal(["https://cdn.dsmcdn.com/green-1.jpg", "https://cdn.dsmcdn.com/green-2.jpg", "https://cdn.dsmcdn.com/brown-1.jpg", "https://cdn.dsmcdn.com/brown-2.jpg"],
+            CatalogFamilyMedia.StripUrls(rows, customOrder: false, [green, brown]));
+    }
+
+    // The default family strip goes card by card in the family's order: each card numbers its own rows from 0.
+    [Fact]
+    public void Build_DefaultUrls_GoCardByCard()
+    {
+        var (defaultUrls, _) = CatalogFamilyMedia.Build([
+            new(Guid.NewGuid(), Bordo, null, 0, "https://cdn.dsmcdn.com/bordo-1.jpg"),
+            new(Guid.NewGuid(), Own, null, 0, "https://cdn.dsmcdn.com/own-1.jpg"),
+            new(Guid.NewGuid(), Bordo, null, 1, "https://cdn.dsmcdn.com/bordo-2.jpg"),
+            new(Guid.NewGuid(), Own, null, 1, "https://cdn.dsmcdn.com/own-2.jpg"),
+        ], Titles, [Own, Bordo]);
+
+        Assert.Equal(["https://cdn.dsmcdn.com/own-1.jpg", "https://cdn.dsmcdn.com/own-2.jpg", "https://cdn.dsmcdn.com/bordo-1.jpg", "https://cdn.dsmcdn.com/bordo-2.jpg"], defaultUrls);
+    }
 }

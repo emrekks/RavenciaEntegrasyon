@@ -24,7 +24,8 @@ import { isStoredProductMediaUrl, mediaImageKey, mediaRefsEqual, mediaRefsSameSe
 import { applyVariantBulkModes, variantBulkEditIssue, variantBulkModeLabels, type VariantBulkEditField, type VariantBulkInputs, type VariantBulkMode } from '../variant-bulk-edit'
 import { VariantCodeMenu, type VariantCodeMenuProps } from './VariantCodeMenu'
 import { applyVariantCodesByKey, buildSequentialVariantCodes, generatedRowsReplacePlaceholder, mergeGeneratedVariantRows, planVariantCodes, variantCodeCandidates, buildVariantGenerationDefaults, variantCodeChangeConfirmText, type VariantCodeChange, type VariantCodeTarget } from '../variant-generation'
-import { filterVariantsByOptions, selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
+import { isVariantDeleteRefusal, restoreRemovedVariantRows, VARIANT_DELETE_REFUSED_HINT, variantRemovalConfirmText, type RemovedVariantRow } from '../variant-row-removal'
+import { filterVariantsByOptions,selectVariantDraftsByKeys, type VariantOptionFilterSelections } from '../variant-filtering'
 import { displayVariantOptionEntriesFromSignature, formatColorOptionValue, joinVariantOptionLabels, matchingVariantOptionValues, mergeVariantOptionValues, normalizeVariantOptionValue, parseVariantOptionSignature, variantOptionSetKey } from '../variant-option-matching'
 import { autoWebColorIssues, connectionCapabilitiesQueryKey, isOptionRequirement, loadConnectionCapabilities, loadPublicationAttributeIssues, shopifyCapabilityIssues, missingPublicationChecks, optionSignatureFromOptions, orderMediaUrlsByVariants, publicationAttributeSelectionsFor, publicationBlockingIssues, publicationProductChecks, publicationReadinessQueryKey, publicationRequirementSets, rowOptionValue, type CategoryRequirement, type PublicationReadinessDraft } from './publication-readiness'
 import { fixableValueMappings, type PublicationAttributeSelection } from '../publication-attribute-readiness'
@@ -72,7 +73,8 @@ import { useOperationFeedbackToasts, type OperationFeedback } from '../operation
 import { ModelCodeHolderNotice, useModelCodeHolder } from '../model-code-holder'
 import { focusOnMount } from '../../../shared/focus'
 import { channelOfferPostKey, channelPricingInputs, copiedChannelPricing, emptyChannelPricingDraft, rowsWithSavedOffer, type ChannelPricingDraft, type SavedChannelOffer } from './marketplace-channel-pricing'
-import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, optionValueSortRank, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
+import { OptionValueChips, sortOptionValues } from './OptionValueChips'
+import { AcceptedJob, Brand, Category, ImageLightboxModal, MarketplaceConnection, Page, Product, ProductAttributeAssignment, Variant, VariantPlatformStatus, cleanOptionValue, compareLabelsAlphabetically, compareVariantOptionSignatures, formatCatalogOptionLabel, isColorOptionName, isProductPublicationConnection, isWebColorOptionName, normalizeVariantOptionName, preferredColorOption, productPublicationMode, variantColorKey, variantOptionEntries } from '../shared'
 import { insideSelector, useDismissable } from '../../../shared/hooks/useDismissable'
 
 // The Eşleştirmeler page's "Kategori Alanları ve Değerleri" window, loaded with that page's code when a gap opens it.
@@ -169,16 +171,6 @@ function displayVariantOptionSignature(signature: string, savedOptions: Record<s
   const options = displayVariantOptionEntriesFromSignature(signature, savedOptions)
   if (!options.length) return signature.trim().toLocaleLowerCase('tr-TR') === 'tek ürün' ? signature : '—'
   return joinVariantOptionLabels(options.map(({ name, value }) => `${formatCatalogOptionLabel(name)}: ${isSizeOptionName(name) ? value.toLocaleUpperCase('tr-TR') : formatCatalogOptionLabel(value)}`))
-}
-function sortOptionValues<T extends { id: string; value: string }>(attributeName: string, values: T[]) {
-  return values
-    .map((value, index) => ({ value, index, rank: optionValueSortRank(attributeName, value.value) }))
-    .sort((left, right) => left.rank.bucket - right.rank.bucket
-      || left.rank.primary - right.rank.primary
-      || left.rank.secondary - right.rank.secondary
-      || left.rank.text.localeCompare(right.rank.text, 'tr', { numeric: true, sensitivity: 'base' })
-      || left.index - right.index)
-    .map(item => item.value)
 }
 // A saved row and a generated combination of the same options are one row (variantOptionSetKey), whatever their spelling.
 const variantSignatureKey = variantOptionSetKey
@@ -1325,6 +1317,9 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
   const pointerDragSourceRef = useRef<HTMLDivElement | null>(null)
   const pointerDragIdRef = useRef<number | null>(null)
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([])
+  // The saved rows taken off the table, where they stood: a refused delete puts them back.
+  const [removedVariantRows, setRemovedVariantRows] = useState<RemovedVariantRow<VariantDraft>[]>([])
+  const [variantDeleteConfirmation, setVariantDeleteConfirmation] = useState<VariantDraft | null>(null)
   // A saved "Tek Ürün" placeholder replaced by generated variants: the server removes it on save only when nothing
   // (options, marketplace links or offers, orders, stock movements) is tied to it, and keeps it otherwise.
   const [replacedPlaceholderIds, setReplacedPlaceholderIds] = useState<string[]>([])
@@ -1531,7 +1526,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const selected: Record<string, string[]> = {}; const typed: Record<string, string> = {}
     for (const attribute of product.attributes ?? []) { if (attribute.valueId) selected[attribute.attributeId] = [...(selected[attribute.attributeId] ?? []), attribute.valueId]; else if (attribute.textValue != null) typed[attribute.attributeId] = attribute.textValue; else if (attribute.numberValue != null) typed[attribute.attributeId] = String(attribute.numberValue); else if (attribute.booleanValue != null) typed[attribute.attributeId] = attribute.booleanValue ? 'evet' : 'hayır' }
     setAttributeSelections(selected); setAttributeTextValues(typed); setVariantAttributeIds([])
-    setRemovedVariantIds([]); setReplacedPlaceholderIds([])
+    setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
     setFieldErrors({})
     setSnapshotRequest(value => value + 1)
   })
@@ -1743,11 +1738,32 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     const persistedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
     const clearedSavedIds = variantRows.filter(row => persistedIds.has(row.key)).map(row => row.key)
     setRemovedVariantIds(current => [...new Set([...current, ...clearedSavedIds])])
+    setRemovedVariantRows(current => [...current, ...variantRows.flatMap((row, index) => persistedIds.has(row.key) ? [{ row, index }] : [])])
     setVariantRows([])
     const message = clearedSavedIds.length
       ? `Varyant satırları temizlendi. Kaydedince ${clearedSavedIds.length} kayıtlı varyant panelden silinir; pazaryerlerindeki ilanlara dokunulmaz.`
       : 'Oluşan varyant satırları temizlendi.'
     setNotice(message); showFeedback('Varyantlar Temizlendi', message, 'success')
+  }
+  // The row's trash button: a row the form made itself just leaves the table; a saved variant asks first and is deleted
+  // on the server by the next Kaydet (variantIdsToDelete).
+  function requestVariantRowRemoval(row: VariantDraft) {
+    const persistedIds = new Set(productToEdit.data?.variants.map(variant => variant.id) ?? [])
+    if (!persistedIds.has(row.key)) { setVariantRows(rows => rows.filter(item => item.key !== row.key)); return }
+    setVariantDeleteConfirmation(row)
+  }
+  function confirmVariantRowRemoval() {
+    const row = variantDeleteConfirmation
+    setVariantDeleteConfirmation(null)
+    if (!row) return
+    const index = variantRows.findIndex(item => item.key === row.key)
+    if (index < 0) return
+    setRemovedVariantRows(current => [...current.filter(item => item.row.key !== row.key), { row: variantRows[index], index }])
+    setRemovedVariantIds(current => [...new Set([...current, row.key])])
+    setVariantRows(rows => rows.filter(item => item.key !== row.key))
+    const label = displayVariantOptionSignature(row.optionSignature, row.options)
+    const message = `${label} varyantı Kaydet’te silinecek.`
+    setNotice(message); showFeedback('Varyant Silinecek', message, 'info')
   }
   function updateVariantRow(keyValue: string, field: keyof VariantDraft, value: string) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, [field]: field === 'costPrice' ? (value.trim() === '' ? null : Number(value)) : field === 'stock' || field === 'salePrice' || field === 'listPrice' ? Number(value || 0) : value })) }
   function updateVariantMedia(keyValue: string, values: string[]) { setVariantRows(rows => rows.map(row => row.key !== keyValue ? row : { ...row, mediaRefs: values })) }
@@ -3060,7 +3076,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
             updates: platformUpdate ? updates : undefined
           })
       const message = result.lines.join(' ')
-      setRemovedVariantIds([]); setReplacedPlaceholderIds([])
+      setRemovedVariantIds([]); setRemovedVariantRows([]); setReplacedPlaceholderIds([])
       if (editProductId) setVariantRows(current => rekeySavedVariantRows(current, product.variants))
       setVariantCodeConflicts({})
       mediaFilesKeptOnReseed.current = null
@@ -3095,7 +3111,16 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         navigate(`/products/${productCreated.id}`, { replace: true, state: createOnly || saveDraft ? null : { wizardStep: 2 } })
       }
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
+      // The server refused a variant delete (order or stock history, a pending job): the whole save was refused, so the
+      // removed rows go back into the table and nothing waits to be deleted.
+      const variantDeleteRefused = !productCreated && isVariantDeleteRefusal(reason)
+      if (variantDeleteRefused) {
+        const refusedRows = removedVariantRows
+        setVariantRows(current => restoreRemovedVariantRows(current, refusedRows))
+        setRemovedVariantIds([]); setRemovedVariantRows([])
+      }
+      const reasonMessage = reason instanceof Error ? reason.message : 'Kayıt tamamlanamadı.'
+      const message = variantDeleteRefused ? `${reasonMessage} ${VARIANT_DELETE_REFUSED_HINT}` : reasonMessage
       const feedbackMessage = productCreated ? `Ürün kaydedildi ancak sonraki işlem tamamlanamadı: ${message}` : message
       setError(reason); setNotice(feedbackMessage)
       setFeedback({ message: feedbackMessage, kind: 'error', persistent: true, title: productCreated ? 'İşlem Yarım Kaldı' : editProductId ? 'Ürün Kaydedilemedi' : 'Ürün Oluşturulamadı', key: productSaveToastKey, context: productCreated ? { subject: productNotificationSubject({ id: productCreated.id, name: form.title, modelCode: form.modelCode }) } : undefined })
@@ -3475,12 +3500,13 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               const expandable = item.attribute.values.length > 0
               const expanded = !expandable || (expandedOptionGroupIds[item.attributeId] ?? false)
               const valueQuery = attributeValueQueries[item.attributeId] ?? ''
-              const filteredValues = filterAttributeOptionValues(sortOptionValues(item.attribute.name, item.attribute.values), valueQuery)
+              const sortedValues = sortOptionValues(item.attribute.name, item.attribute.values)
+              const filteredValues = filterAttributeOptionValues(sortedValues, valueQuery)
               return (
               <article className={`attribute-builder-card ${expanded ? 'is-open' : ''}`} key={item.attributeId}>
                 <button type="button" className="attribute-builder-disclosure" aria-expanded={expanded} aria-controls={expanded ? `option-values-${item.attributeId}` : undefined} disabled={!expandable} title={expanded ? 'Bütün seçenek gruplarını kapat' : 'Bütün seçenek gruplarını birlikte aç'} onClick={() => { if (window.matchMedia('(max-width: 760px)').matches) { setExpandedOptionGroupIds(current => ({ ...current, [item.attributeId]: !expanded })); return } setExpandedOptionGroupIds(Object.fromEntries(visibleOptionRequirements.map(other => [other.attributeId, !expanded]))) }}>
-                  <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong><small>{item.attribute.values.length} değer</small></span>
-                  <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{(attributeSelections[item.attributeId]?.length ?? 0) > 0 ? `${attributeSelections[item.attributeId].length} değer seçildi` : 'Değer seçin'}</small>{expandable && <UiIcon name="chevronDown" />}</span>
+                  <span className="attribute-builder-disclosure-copy"><strong>{item.attribute.name}</strong></span>
+                  <span className="attribute-builder-disclosure-meta"><small className={variantAttributeIds.includes(item.attributeId) ? 'attribute-builder-selected' : ''}>{`${attributeSelections[item.attributeId]?.length ?? 0} / ${item.attribute.values.length} Seçili`}</small>{expandable && <UiIcon name="chevronDown" />}</span>
                 </button>
                 {expanded && <div id={`option-values-${item.attributeId}`} className="attribute-builder-values">
                 {item.attribute.values.length ? (
@@ -3501,26 +3527,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                     }}
                   />
                   <OptionValueAddButton attributeName={item.attribute.name} values={item.attribute.values} query={valueQuery} adding={addingOptionValueFor === item.attributeId} onAdd={newValue => void addOptionValue(item, newValue)} />
-                  <div className="option-chip-list">
-                    {filteredValues.map(value => {
-                      const isSelected = (attributeSelections[item.attributeId] ?? []).includes(value.id)
-                      // Chips share one size; a longer value (Standart, Kahverengi) takes two or three cells of the grid.
-                      const length = cleanOptionValue(value.value).length
-                      const span = length > 10 ? ' is-wider' : length > 5 ? ' is-wide' : ''
-                      return (
-                        <button
-                          type="button"
-                          key={value.id}
-                          title={cleanOptionValue(value.value)}
-                          aria-pressed={isSelected}
-                          className={`option-chip${span}${isSelected ? ' active' : ''}`}
-                          onClick={() => toggleAttributeValue(item.attributeId, value.id)}
-                        >
-                          {cleanOptionValue(value.value)}
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <OptionValueChips groupName={item.attribute.name} values={sortedValues} selectedIds={attributeSelections[item.attributeId] ?? []} filter={rest => filterAttributeOptionValues(rest, valueQuery)} onToggle={valueId => toggleAttributeValue(item.attributeId, valueId)} />
                   {filteredValues.length === 0 && !optionValueToAdd(item.attribute.name, item.attribute.values, valueQuery) && <p className="attribute-builder-no-values">Eşleşen değer bulunamadı.</p>}
                   </>
                 ) : item.attribute.dataType === 'BOOLEAN' ? (
@@ -3593,7 +3600,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
                     {rowPlatforms.length ? (() => { const linkedCount = rowPlatforms.filter(item => item.isLinked).length; const isPartial = linkedCount > 0 && linkedCount < rowPlatforms.length; const summaryClass = linkedCount === rowPlatforms.length ? 'is-linked' : isPartial ? 'is-partial' : 'is-unlinked'; return <button type="button" className={`variant-platform-status variant-platform-status-summary variant-row-action ${summaryClass}`} onClick={() => openVariantPlatformPricing(row, rowPlatforms[0])} title={`${rowPlatforms.length} platform fiyatını düzenle`} aria-label={`${row.optionSignature} platform fiyatlarını düzenle`}><UiIcon name="platforms" /></button> })() : <span className="variant-platform-empty">—</span>}
                     {editProductId && <button type="button" className="variant-row-action variant-row-action-codes" onClick={() => setMarketplaceCodesVariant(row.key)} aria-label={`${row.optionSignature} pazaryeri kodlarını göster`} title="Pazaryeri kodları (Shopify, Hepsiburada)"><UiIcon name="link" /></button>}
                     <button type="button" className={`variant-media-button variant-row-action ${row.mediaRefs.length ? 'has-media' : ''}`} onClick={() => openVariantMediaPicker(row.key)} aria-label={`${row.optionSignature} görsellerini seç`} title="Varyant görsellerini seç"><VariantImageIcon />{row.mediaRefs.length > 0 && <i aria-hidden="true">{row.mediaRefs.length}</i>}</button>
-                    <button type="button" className="variant-row-action variant-row-action-delete" onClick={() => setVariantRows(rows => rows.filter(item => item.key !== row.key))} aria-label={`${row.optionSignature} varyantını sil`} title="Varyantı sil"><UiIcon name="trash" /></button>
+                    <button type="button" className="variant-row-action variant-row-action-delete" onClick={() => requestVariantRowRemoval(row)} aria-label={`${row.optionSignature} varyantını sil`} title="Varyantı sil"><UiIcon name="trash" /></button>
                   </div>
                 </div>
               }) : <div className="empty small"><strong>Henüz varyant yok</strong><p>Özellik değerlerini seçip “Ürünleri ekle” dediğinizde varyant satırları burada oluşur.</p></div>}
@@ -3647,6 +3654,27 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
         onGenerate={scope => void requestVariantCodeChange('sku', scope)} onPaste={scope => void pasteBarcodesFromClipboard(scope, 'sku')} onClear={() => void requestVariantCodeChange('sku', 'clear')}
         fromBarcode={{ missingCount: emptySkuBarcodeRowCount, allCount: barcodeRowCount, onApply: applyBarcodeToSku }} />
     </VariantHeaderActionMenu>}
+    {variantDeleteConfirmation && createPortal(
+      <div className="workspace-modal-backdrop media-removal-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setVariantDeleteConfirmation(null) }}>
+        <DialogSurface as="section" onClose={() => { setVariantDeleteConfirmation(null) }} className="workspace-modal media-removal-confirm-modal variant-delete-confirm-modal" role="alertdialog" aria-labelledby="variant-delete-confirm-title" aria-describedby="variant-delete-confirm-description" onMouseDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setVariantDeleteConfirmation(null) }}>
+          <header>
+            <div>
+              <p className="eyebrow">Varyantlar</p>
+              <h2 id="variant-delete-confirm-title">{displayVariantOptionSignature(variantDeleteConfirmation.optionSignature, variantDeleteConfirmation.options)} Varyantını Sil</h2>
+            </div>
+            <button type="button" className="modal-close" onClick={() => setVariantDeleteConfirmation(null)} aria-label="Varyant silme onayını kapat"><UiIcon name="close" /></button>
+          </header>
+          <div className="media-removal-confirm-body">
+            <p id="variant-delete-confirm-description">{variantRemovalConfirmText(variantDeleteConfirmation)}</p>
+          </div>
+          <footer>
+            <button type="button" className="secondary" data-autofocus={touchScreen ? undefined : true} onClick={() => setVariantDeleteConfirmation(null)}>Vazgeç</button>
+            <button type="button" className="destructive" onClick={confirmVariantRowRemoval}>Varyantı Sil</button>
+          </footer>
+        </DialogSurface>
+      </div>,
+      document.querySelector('main') ?? document.body
+    )}
     {mediaRemovalConfirmation && createPortal(
       <div className="workspace-modal-backdrop media-removal-confirm-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setMediaRemovalConfirmation(null) }}>
         <DialogSurface as="section" onClose={() => { setMediaRemovalConfirmation(null) }} className="workspace-modal media-removal-confirm-modal" role="alertdialog" aria-labelledby="media-removal-confirm-title" aria-describedby="media-removal-confirm-description" onMouseDown={event => event.stopPropagation()} onKeyDown={event => { if (event.key === 'Escape') setMediaRemovalConfirmation(null) }}>

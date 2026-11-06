@@ -1210,7 +1210,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                                      select new { MediaId = item.Id, item.ProductId, item.VariantId, item.SortOrder, AssetId = asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var familyProductTitles = familyProducts.ToDictionary(item => item.Id, item => item.Title);
         var familyRows = familyMediaRows.Select(item => new CatalogFamilyMedia.Row(item.MediaId, item.ProductId, item.VariantId, item.SortOrder, CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url))).ToList();
-        var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles);
+        var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles, familyProducts.Select(item => item.Id).ToList());
         var familyOrderedMediaUrls = CatalogFamilyMedia.OrderedUrls(familyRows);
         return ServiceResult<ProductView>.Ok(primaryView with
         {
@@ -2490,19 +2490,17 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var mediaUrlsByVariant = media.Where(x => x.VariantId is not null)
             .GroupBy(x => x.VariantId!.Value)
             .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
-        var globalMediaUrlsByProduct = media.Where(x => x.VariantId is null)
-            .GroupBy(x => x.ProductId)
-            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
+        // The card's pictures (mediaUrls) in its strip's order (CatalogFamilyMedia.StripUrls), the same rule the editor,
+        // the family strip and the marketplace payloads read.
+        var mediaRowsByProduct = media
+            .GroupBy(item => item.ProductId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<CatalogFamilyMedia.Row>)group
+                .Select(item => new CatalogFamilyMedia.Row(item.MediaId, item.ProductId, item.VariantId, item.SortOrder, CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)))
+                .ToList());
         var customMediaOrderProductIds = media
             .Where(item => item.MediaRole.StartsWith("ORDERED_", StringComparison.Ordinal))
             .Select(item => item.ProductId)
             .ToHashSet();
-        var customMediaUrlsByProduct = media
-            .Where(item => customMediaOrderProductIds.Contains(item.ProductId))
-            .GroupBy(item => item.ProductId)
-            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(
-                group.OrderBy(item => item.SortOrder).ThenBy(item => item.VariantId).ThenBy(item => item.MediaId)
-                    .Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
         var categoryIds = products.Select(x => x.CategoryId).OfType<Guid>().Distinct().ToArray();
         var categoryPathById = categoryIds.Length == 0
             ? new Dictionary<Guid, string>()
@@ -2628,47 +2626,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
             var hasCustomMediaOrder = customMediaOrderProductIds.Contains(product.Id);
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id), hasCustomMediaOrder, customMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion, product.DeliveryDays);
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, CatalogFamilyMedia.StripUrls(mediaRowsByProduct.GetValueOrDefault(product.Id) ?? [], hasCustomMediaOrder, variantViews.Select(variant => variant.Id).ToList()), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion, product.DeliveryDays);
         }).ToList();
-    }
-
-    private static IReadOnlyList<string> ProductMediaForView(IReadOnlyList<ProductVariantView> variants, IReadOnlyList<string>? globalMedia, bool hasCustomMediaOrder, IReadOnlyList<string>? customOrderedMedia)
-    {
-        var fallback = globalMedia ?? [];
-        if (hasCustomMediaOrder) return customOrderedMedia ?? fallback;
-        var hasColor = variants.Any(variant => ColorOptionValue(variant.OptionSignature) is not null);
-        if (!hasColor) return fallback;
-
-        var selected = new List<string>();
-        var seenColors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenImages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var variant in variants)
-        {
-            var color = ColorOptionValue(variant.OptionSignature);
-            if (color is null || !seenColors.Add(color)) continue;
-            foreach (var image in variant.MediaUrls ?? [])
-                if (!string.IsNullOrWhiteSpace(image) && seenImages.Add(CatalogImageIdentity.Key(image))) selected.Add(image);
-        }
-
-        return selected.Count > 0 ? selected : fallback.Take(1).ToList();
-    }
-
-    private static string? ColorOptionValue(string optionSignature)
-    {
-        foreach (var part in optionSignature.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-        {
-            var separator = part.IndexOf(':');
-            if (separator < 0) separator = part.IndexOf('=');
-            if (separator < 0) continue;
-            var key = part[..separator].Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
-            if (key is "RENK" or "WEBCOLOR" or "COLOR" or "COLOUR")
-            {
-                var value = part[(separator + 1)..].Trim();
-                return string.IsNullOrWhiteSpace(value) ? null : value.ToUpperInvariant();
-            }
-        }
-
-        return null;
     }
 
     private static decimal? PositiveOrNull(decimal? value) => value is > 0 ? value : null;
