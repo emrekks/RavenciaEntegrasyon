@@ -3,7 +3,7 @@ import './questions-design-system.css'
 import { useRememberedHeight } from '../../shared/remembered-height'
 import { unknownCount, useRememberedTabCounts } from '../../shared/tab-counts'
 import { Link } from 'react-router'
-import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll, loadAllPages } from '../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../shared/idempotency'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
@@ -175,7 +175,12 @@ export function QuestionsPage() {
   useEffect(() => { const timer = window.setTimeout(() => setSearch(searchInput), 300); return () => window.clearTimeout(timer) }, [searchInput])
   const [sort, setSort] = useState('NEWEST')
   const [deletingTemplate, setDeletingTemplate] = useState<Template | null>(null)
-  const [page, setPage] = useState(1)
+  // The page belongs to the filters it was chosen under: other filters read page 1 in the same render, so no request
+  // ever carries new filters with an old page.
+  const filterKey = JSON.stringify([tab, status, platform, connectionId, dateFrom, dateTo, search, sort])
+  const [pageState, setPageState] = useState({ key: filterKey, page: 1 })
+  const page = pageState.key === filterKey ? pageState.page : 1
+  const setPage = (value: number | ((current: number) => number)) => setPageState({ key: filterKey, page: typeof value === 'function' ? value(page) : value })
   const [answerDrafts, setAnswerDrafts] = useState<Record<string, string>>({})
   // N11 and Pazarama answers cannot be taken back once sent; the panel's own dialog says why before sending.
   const [confirmAnswer, setConfirmAnswer] = useState<{ id: string; version: number; text: string; title: string; message: string } | null>(null)
@@ -198,7 +203,7 @@ export function QuestionsPage() {
   filters.set('page', String(page)); filters.set('limit', '50')
   // Questions arrive from the marketplaces every few minutes, so the inbox and its counts read the local copy every two
   // minutes (sync states every minute) instead of keeping the server busy.
-  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`), refetchInterval: 120_000, staleTime: 10_000 })
+  const questions = useQuery({ queryKey: ['questions', kind, status, platform, connectionId, dateFrom, dateTo, search, sort, page], queryFn: () => hubPoll<QuestionListPage>(`/questions?${filters.toString()}`), placeholderData: keepPreviousData, refetchInterval: 120_000, staleTime: 10_000 })
   // A count is keyed by the exact request it makes, so the tab's waiting count and the unfiltered status count (the same
   // request when no filter is set) share one cache entry and one request instead of two.
   const countPath = (countKind: string, countStatus: QuestionStatus, scoped: boolean) => {
@@ -253,7 +258,6 @@ export function QuestionsPage() {
   })
 
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(timer) }, [])
-  useEffect(() => { setPage(1) }, [tab, status, platform, connectionId, dateFrom, dateTo, search, sort])
   // Opening the page asks for fresh questions only when a store has not been read for a while.
   useEffect(() => {
     if (tab === 'TEMPLATES' || requestedSync.current || !connections.isSuccess || !syncStates.isSuccess) return
@@ -270,7 +274,7 @@ export function QuestionsPage() {
   // The open question stays open while the list refreshes: the first one is taken once, and a question that leaves
   // the current filter or page (answered, moved down by a new one) is read on its own instead of silently giving its
   // place to another question.
-  if (selectedId === null && rows[0]) setSelectedId(rows[0].id)
+  if (selectedId === null && rows[0] && !questions.isPlaceholderData) setSelectedId(rows[0].id)
   const listedSelection = rows.find(item => item.id === selectedId)
   const pinned = useQuery({ queryKey: ['questions', 'detail', selectedId], queryFn: () => hubApi<MarketplaceQuestion>(`/questions/${selectedId}`), enabled: Boolean(selectedId) && !listedSelection && questions.isSuccess, staleTime: 10_000 })
   const selected = listedSelection ?? (selectedId && pinned.data?.id === selectedId ? pinned.data : undefined) ?? (selectedId ? undefined : rows[0])

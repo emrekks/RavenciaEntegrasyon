@@ -108,9 +108,13 @@ function ActivityHeadingControls({ filters, platformGroups, onChange, onClear, c
   </>
 }
 
-export function ProductActivityLog({ platformOptions, headingSlot }: { platformOptions: string[]; headingSlot?: HTMLElement | null }) {
-  const [filters, setFilters] = useState<ActivityFilters>(emptyActivityFilters)
-  const [searchText, setSearchText] = useState('')
+export type KeptActivityView = { filters: ActivityFilters; searchText: string }
+
+// kept holds the filters while another log view is shown, so switching views and back keeps them.
+export function ProductActivityLog({ platformOptions, headingSlot, kept }: { platformOptions: string[]; headingSlot?: HTMLElement | null; kept?: { current: KeptActivityView | null } }) {
+  const [filters, setFilters] = useState<ActivityFilters>(() => kept?.current?.filters ?? emptyActivityFilters)
+  const [searchText, setSearchText] = useState(() => kept?.current?.searchText ?? '')
+  useEffect(() => { if (kept) kept.current = { filters, searchText } }, [kept, filters, searchText])
   useEffect(() => {
     const timeout = window.setTimeout(() => setFilters(current => current.search === searchText ? current : { ...current, search: searchText }), searchDelayMs)
     return () => window.clearTimeout(timeout)

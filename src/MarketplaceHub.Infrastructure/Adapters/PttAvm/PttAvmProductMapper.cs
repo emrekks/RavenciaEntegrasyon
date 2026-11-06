@@ -86,7 +86,7 @@ public static class PttAvmProductMapper
     internal static decimal? SalePrice(XElement row, decimal? vatRate)
     {
         if (Number(row, "KDVli") is { } withVat && withVat > 0) return withVat;
-        if (Number(row, "KDVsiz") is { } withoutVat && withoutVat > 0) return decimal.Round(withoutVat * (1 + (vatRate ?? 0) / 100m), 2);
+        if (Number(row, "KDVsiz") is { } withoutVat && withoutVat > 0 && vatRate is { } rate) return decimal.Round(withoutVat * (1 + rate / 100m), 2); // no VAT rate: the VAT-exclusive price is no sale price, it stays unknown
         return null;
     }
 

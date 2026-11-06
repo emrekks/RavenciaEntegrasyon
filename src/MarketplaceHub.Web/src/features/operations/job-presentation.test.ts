@@ -44,4 +44,9 @@ describe('jobTypesForDirection', () => {
     expect(read.some(type => write.includes(type))).toBe(false)
     expect(write.every(type => jobPresentation(type).direction === 'Yazma')).toBe(true)
   })
+
+  it('names an unknown job type from its words with English casing, never the Turkish dotted and dotless i', () => {
+    expect(jobPresentation('SOME_NEW_INVOICE_SYNC').action).toBe('Some New Invoice Sync')
+    expect(jobPresentation('INDEX_ISSUE_CHECK').action).toBe('Index Issue Check')
+  })
 })
