@@ -18,6 +18,7 @@ internal sealed record TrendyolContentObservation(string ContentId, IReadOnlyCol
 //    shares it);
 //  - a content whose card variants disagree on title, description or images is refused (the panel holds two contents'
 //    data for it);
+//  - a content whose card variants disagree on an attribute other than the varianter is refused (DifferingAttributes);
 //  - a barcode Trendyol does not list as approved is left out (there is no content of it to update).
 internal static class TrendyolContentGroups
 {
@@ -68,6 +69,13 @@ internal static class TrendyolContentGroups
         return ServiceResult<TrendyolContentObservation?>.Ok(new(holders[0].Key, barcodes));
     }
 
+    // The card's barcodes no approved content holds: Resolve leaves them out, so the content request does not carry them.
+    public static IReadOnlyList<string> Unresolved(string contentPayloadJson, IReadOnlyDictionary<string, TrendyolContentObservation> contentByBarcode)
+    {
+        var lookup = new Dictionary<string, TrendyolContentObservation>(contentByBarcode, StringComparer.OrdinalIgnoreCase);
+        return Barcodes(contentPayloadJson).Where(barcode => !lookup.ContainsKey(barcode)).ToList();
+    }
+
     // The content request with one item per Trendyol content, each from its own variants' data.
     public static ServiceResult<string> Resolve(string contentPayloadJson, IReadOnlyDictionary<string, TrendyolContentObservation> contentByBarcode)
     {
@@ -100,6 +108,9 @@ internal static class TrendyolContentGroups
             var differing = groupItems.Skip(1).FirstOrDefault(item => !SameContent(first, item));
             if (differing is not null)
                 return ServiceResult<string>.Fail("PRODUCT_CONTENT_GROUP_MISMATCH", $"Trendyol içeriği {content.ContentId} içindeki '{first["barcode"]}' ve '{differing["barcode"]}' varyantlarının panelde başlığı, açıklaması veya görselleri farklı; yanlış ilana yazmamak için içerik güncellemesi gönderilmedi.", 409);
+            var differingAttributes = DifferingAttributes(groupItems);
+            if (differingAttributes.Count > 0)
+                return ServiceResult<string>.Fail("PRODUCT_CONTENT_GROUP_MISMATCH", $"Trendyol içeriği {content.ContentId}: aynı içerikteki varyantların özellikleri farklı: {string.Join(", ", differingAttributes.Take(5))}; yanlış ilana yazmamak için içerik güncellemesi gönderilmedi.", 409);
             var resolved = new JsonObject { ["contentId"] = contentId };
             // Only the fields the item carries go (the picked ones; content-bulk-update keeps a field left out).
             foreach (var name in new[] { "title", "description", "images", "attributes" })
@@ -111,6 +122,55 @@ internal static class TrendyolContentGroups
 
     private static bool SameContent(JsonObject left, JsonObject right) =>
         new[] { "title", "description", "images" }.All(name => JsonNode.DeepEquals(left[name], right[name]));
+
+    // The attributes of one content's variants that do not agree, so the content (which takes one attribute list, the
+    // first variant's) would be written with another variant's value. One attribute may differ: the varianter (the size,
+    // live RYP007: only 338 Beden differed and Trendyol took the content), recognised as the single attribute whose value
+    // is different on every variant. Any other difference (some variants agree and some not, an attribute some variants
+    // lack, or a second attribute differing on every variant) is a mismatch. Named by attributeName when the item has
+    // one, else by its id.
+    internal static IReadOnlyList<string> DifferingAttributes(IReadOnlyList<JsonObject> groupItems)
+    {
+        if (groupItems.Count < 2) return [];
+        var perItem = groupItems.Select(AttributeValues).ToList();
+        var ids = perItem.SelectMany(values => values.Keys).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        var allDistinct = new List<string>();
+        var mismatched = new List<string>();
+        foreach (var id in ids)
+        {
+            var values = perItem.Select(values => values.TryGetValue(id, out var value) ? value : null).ToList();
+            if (values.Any(value => value is null)) { mismatched.Add(id); continue; }
+            var distinct = values.Distinct(StringComparer.Ordinal).Count();
+            if (distinct == 1) continue;
+            if (distinct == values.Count) allDistinct.Add(id);
+            else mismatched.Add(id);
+        }
+        // The one attribute differing on every variant is the varianter; a second such attribute is not.
+        if (allDistinct.Count > 1) mismatched.AddRange(allDistinct);
+        return mismatched.Select(id => AttributeLabel(groupItems, id)).ToList();
+    }
+
+    private static Dictionary<string, string> AttributeValues(JsonObject item)
+    {
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (item["attributes"] is not JsonArray attributes) return values;
+        foreach (var node in attributes.OfType<JsonObject>())
+        {
+            var id = node["attributeId"]?.ToJsonString().Trim('"');
+            if (string.IsNullOrWhiteSpace(id)) continue;
+            var value = node.DeepClone().AsObject();
+            value.Remove("attributeId");
+            value.Remove("attributeName");
+            values[id] = value.ToJsonString();
+        }
+        return values;
+    }
+
+    private static string AttributeLabel(IReadOnlyList<JsonObject> groupItems, string id) =>
+        groupItems.SelectMany(item => (item["attributes"] as JsonArray)?.OfType<JsonObject>() ?? [])
+            .Where(node => node["attributeId"]?.ToJsonString().Trim('"') == id)
+            .Select(node => node["attributeName"] is JsonValue name && name.TryGetValue<string>(out var text) && !string.IsNullOrWhiteSpace(text) ? text.Trim() : null)
+            .FirstOrDefault(label => label is not null) ?? $"özellik {id}";
 
     private static JsonArray? Items(string payloadJson)
     {

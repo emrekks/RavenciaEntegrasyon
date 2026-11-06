@@ -64,7 +64,7 @@ import { sameProductSnapshotIgnoringVersion } from '../product-save-version'
 import { channelTakesListPrice, editorChannelOfferPrices, editorCustomChannelPrices, editorOfferUnchanged, panelFollowChoiceVariantIds, panelPrices, typedOfferPriceChoice } from '../quick-price-edit'
 import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorSnapshotWithWebColor, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, TURKISH_VAT_RATES, variantCodeConflictsFrom, variantCodeKey, type EditorFieldErrors, type EditorWebColor } from '../product-editor-state'
 import { applyVariantStockSets, setVariantOnHand } from '../variant-stock-set'
-import { isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
+import { isApprovalDeadlineExpired, isPttAvmChecking, isPttAvmFamilyRetryable, isPublicationLive, isPublicationSelectionDisabled, isPublicationStatusJobRunning, isSkippedByPublish, publicationStatusLabel, publicationStatusNote, publicationStatusTone, pttAvmRetryLabel, shouldCheckPublicationAttributes } from '../publication-status'
 import { quickPlatformUpdateTargets } from '../platform-update-targets'
 import { publicationJobPollInterval } from '../publication-job-poll'
 import { isRefreshJobRunning, publicationJobInline } from '../publication-job-inline'
@@ -887,8 +887,8 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     ? 'Yayın Durumu Yükleniyor…'
     : publication.isError
       ? 'Yayın Durumu Alınamadı'
-      : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus, card.connection.platformCode)
-  const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus)
+      : publicationStatusLabel(publication.data?.actualStatus, publication.data?.lastJobStatus, card.connection.platformCode, publication.data?.lastRejectionCode)
+  const publicationTone = publicationStatusTone(publication.data?.actualStatus, publication.data?.lastJobStatus, publication.data?.lastRejectionCode)
   const familyStatuses = useQueries({
     queries: otherFamilyIds.map(id => ({
       queryKey: ['publication-status', id, card.connection.id],
@@ -970,7 +970,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   useEffect(() => {
     if (!statusSettling && alreadyPublished && selected) onDeselect()
   }, [alreadyPublished, onDeselect, selected, statusSettling])
-  const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode)
+  const publicationNote = publicationStatusNote(publication.data?.lastRejectionCode, card.connection.platformCode)
   const { view: jobView, cancel: cancelJob, jobType: lastJobType } = usePublicationJobInline(publication.data?.lastJobId, productId, card.connection.id, {
     onCancelled: status => onFeedback({ title: status?.trim().toUpperCase() === 'CANCELLED' ? 'Yayın İşi Durduruldu' : 'Durdurma İstendi', message: publicationCancelMessage(platformName, status), kind: 'info' }),
     onCancelFailed: message => onFeedback({ title: 'Yayın İşi Durdurulamadı', message: `${platformName}: yayın işi durdurulamadı — ${message}`, kind: 'error', persistent: true })
@@ -1093,6 +1093,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
     statusUnavailable: publicationCheckUnavailable,
     actualStatus: productId ? publication.data?.actualStatus : null,
     lastJobStatus: productId ? publication.data?.lastJobStatus : null,
+    rejectionCode: productId ? publication.data?.lastRejectionCode : null,
     requiredGaps: hasRequiredPublicationBlock ? blockedIssues.length : 0,
     optionalWarnings: optionalMappingWarnings.length,
     live: alreadyPublished,
@@ -1110,7 +1111,7 @@ export function PublishPlatformCard({ card, selected, settling: pageSettling = f
   // rest of a partly live card would meet).
   const leadReasons = [
     jobView.state !== 'hidden' ? { key: 'job', text: jobView.message, tone: jobView.state === 'running' ? 'info' : jobView.tone } : null,
-    publicationNote ? { key: 'note', text: publicationNote, tone: 'danger' } : null,
+    publicationNote ? { key: 'note', text: publicationNote, tone: isApprovalDeadlineExpired(publication.data?.actualStatus, publication.data?.lastRejectionCode) ? 'warning' : 'danger' } : null,
     missingVariantsTitle && !noneFound ? { key: 'missing', text: missingVariantsTitle, tone: 'danger' } : null,
     saleSummary && !saleClosed ? { key: 'sale', text: saleSummary.allClosed ? `Yayındaki ${saleSummary.matched} varyantın tümü satışa kapalı${saleSummary.reasonLabel ? ` (${saleSummary.reasonLabel})` : ''}` : saleSummary.label, tone: saleTone } : null,
     saleClosed && saleSummary ? { key: 'sale', text: `Pazaryeri bu ürünü satışa kapalı gösteriyor${saleSummary.reasonLabel ? ` (${saleSummary.reasonLabel})` : ''}`, tone: saleTone } : null,
