@@ -37,7 +37,7 @@ button.price-suggestion-link:focus-visible { outline: 2px solid var(--rv-color-p
 /* One line with the title: Hesapla at the row's right end, centred on the title (owner, 5 Nov 2026: "hizala"). */
 .editor-section-title > .price-suggestion-title { flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; column-gap: 8px; }
 .editor-section-title > .price-suggestion-title > h2 { white-space: nowrap; }
-.editor-section-title > .price-suggestion-title > button.price-suggestion-link.price-suggestion-link { flex: none; width: auto; height: 24px; min-height: 0; margin: 0 0 0 auto; padding: 2px 0; white-space: nowrap; }
+.editor-section-title > .price-suggestion-title > button.price-suggestion-link.price-suggestion-link { flex: none; width: auto; height: 20px; min-height: 0; margin: 0 0 0 auto; padding: 0; font-size: 12px; line-height: 18px; white-space: nowrap; }
 /* Tighter vertically (owner, 5 Nov 2026: "fazla gapı azalt dikeyde"): a shorter header and footer, smaller gaps. */
 .rv-modal.price-suggestion-modal > header { padding-block: 14px; }
 .rv-modal.price-suggestion-modal > .rv-modal-body { gap: 10px; padding-block: 14px; }
