@@ -333,7 +333,11 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                    : (order.GrossAmount > 0 ? order.GrossAmount : order.NetAmount)
                let platformDiscount = lines.Where(line => line.OrderId == order.Id && line.PlatformDiscount != null)
                    .Sum(line => line.PlatformDiscount!.Value * (line.OrderedQuantity - line.CancelledQuantity))
-               let ceiling = listAmount > paid ? listAmount : paid
+               // The lines at the same base as the amount: the price paid plus the marketplace's own discount.
+               let lineValue = lines.Where(line => line.OrderId == order.Id)
+                   .Sum(line => (line.UnitPrice + (line.PlatformDiscount ?? 0m)) * (line.OrderedQuantity - line.CancelledQuantity))
+               // Hepsiburada's list is the price paid, so its own discount is bounded by the lines' value at that base.
+               let ceiling = listAmount > paid ? (listAmount > lineValue ? listAmount : lineValue) : (paid > lineValue ? paid : lineValue)
                let amount = paid + platformDiscount > ceiling ? ceiling : paid + platformDiscount
                let returnBooked = !unbookedReturns.Contains(order.Id)
                let packagesBack = priced && returnBooked
@@ -346,9 +350,6 @@ public sealed class DashboardReadService(AppDbContext db, TimeProvider timeProvi
                         where line.PlatformDiscount != null
                         select line.PlatformDiscount!.Value * allocation.AllocatedQuantity).Sum()
                    : 0m
-               // The lines at the same base as the amount: the price paid plus the marketplace's own discount.
-               let lineValue = lines.Where(line => line.OrderId == order.Id)
-                   .Sum(line => (line.UnitPrice + (line.PlatformDiscount ?? 0m)) * (line.OrderedQuantity - line.CancelledQuantity))
                let lineBack = lines.Where(line => line.OrderId == order.Id)
                    .Select(line => new
                    {

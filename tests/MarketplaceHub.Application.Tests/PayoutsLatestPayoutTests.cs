@@ -78,6 +78,31 @@ public sealed class PayoutsLatestPayoutTests
     }
 
     [Fact]
+    public void A_payout_whose_records_are_not_read_yet_has_no_records_total()
+    {
+        // Live 5-6 Nov 2026: the 25,118.00 TL payout of 5 Nov had 14 deductions carrying its id before its sales were read;
+        // their −13,454.74 TL was shown as the records' total, 38,572.74 TL "off" the payout.
+        var deduction = TySale("d1", 0m, null) with
+        {
+            Source = TrendyolFinanceRequestContract.OtherFinancials,
+            RequestedType = "DeductionInvoices",
+            Category = MarketplaceFinanceCategories.Cargo,
+            Credit = 0m,
+            Debt = 13454.74m,
+            SellerRevenue = null,
+            PaymentOrderId = "78619772"
+        };
+        var paidAt = new DateTimeOffset(2026, 11, 5, 1, 35, 55, TimeSpan.Zero);
+        var today = new DateOnly(2026, 11, 6);
+
+        var unread = PayoutBuilder.Build([deduction], [new(Ty, "78619772", 25118m, paidAt, "TR", "Türkiye, Körfez", LinesRead: false)], Stores, today, 90, []);
+        var read = PayoutBuilder.Build([deduction], [new(Ty, "78619772", 25118m, paidAt, "TR", "Türkiye, Körfez")], Stores, today, 90, []);
+
+        Assert.Equal((25118m, (decimal?)null, 0), (unread.LastPaid!.Amount, unread.LastPaid.LinesAmount, unread.LastPaid.Records));
+        Assert.Equal(-13454.74m, read.LastPaid!.LinesAmount);
+    }
+
+    [Fact]
     public void Two_payouts_on_one_day_show_the_same_one_in_any_read_order()
     {
         // Live 5 Nov 2026: Trendyol AZ 399.63 and TR 25,118.00 on the same day; the query has no order.

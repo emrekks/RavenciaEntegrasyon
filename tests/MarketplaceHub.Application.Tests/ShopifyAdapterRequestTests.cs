@@ -121,6 +121,22 @@ public sealed class ShopifyAdapterRequestTests
     }
 
     [Fact]
+    public async Task AReturnPageReportsTheLatestOrderChangeItWalkedEvenWithoutReturns()
+    {
+        var handler = new Capturing(
+            """{"data":{"orders":{"edges":[{"node":{"id":"gid://shopify/Order/1","name":"#1001","createdAt":"2026-10-01T10:00:00Z","updatedAt":"2026-10-05T08:00:00Z","returns":{"nodes":[{"id":"gid://shopify/Return/7","status":"REQUESTED","createdAt":"2026-10-04T10:00:00Z","returnLineItems":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}},{"node":{"id":"gid://shopify/Order/2","name":"#1002","createdAt":"2026-10-02T10:00:00Z","updatedAt":"2026-10-06T09:30:00Z","returns":{"nodes":[],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}],"pageInfo":{"hasNextPage":true,"endCursor":"O2"}}}}""");
+        var client = Client(handler);
+
+        var result = await client.PollReturnsAsync(Shop(), new ReturnPollWindow(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero), null), new(null, 100), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.Error?.Code);
+        Assert.Contains("edges{node{id name createdAt updatedAt returns(first:20)", ShopifyHttpClient.ReturnPageQuery, StringComparison.Ordinal);
+        Assert.Equal(new DateTimeOffset(2026, 10, 6, 9, 30, 0, TimeSpan.Zero), result.Value!.LastModifiedSeen);
+        Assert.Equal("O2", result.Value.NextCursor);
+        Assert.Equal("7", Assert.Single(result.Value.Items).ExternalClaimId);
+    }
+
+    [Fact]
     public async Task AReturnContinuationThatNeverEndsFailsInsteadOfCuttingTheReturn()
     {
         var handler = new Capturing(

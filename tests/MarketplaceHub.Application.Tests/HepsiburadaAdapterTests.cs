@@ -1954,7 +1954,9 @@ public sealed class HepsiburadaAdapterTests
             Assert.True(trendyolReturns.RootElement.GetProperty("forceFull").GetBoolean());
 
         var shopify = MarketplaceConnectionService.CreateInitialDataSyncPlan("SHOPIFY", connectionId, includeHepsiburadaCatalog: true);
-        Assert.Equal([MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.ShopifyOrderRecoverySync], shopify.Select(item => item.JobType));
+        Assert.Equal([MarketplaceJobTypes.ReferenceSync, MarketplaceJobTypes.ShopifyOrderRecoverySync, MarketplaceJobTypes.ReturnSync], shopify.Select(item => item.JobType));
+        using (var shopifyReturns = JsonDocument.Parse(shopify.Single(item => item.KeySuffix == "returns").PayloadJson))
+            Assert.True(shopifyReturns.RootElement.GetProperty("forceFull").GetBoolean());
         using (var shopifyCategories = JsonDocument.Parse(shopify.Single(item => item.KeySuffix == "categories").PayloadJson))
             Assert.Equal("CATEGORIES", shopifyCategories.RootElement.GetProperty("resourceType").GetString());
         using (var shopifyOrders = JsonDocument.Parse(shopify.Single(item => item.KeySuffix == "orders").PayloadJson))
