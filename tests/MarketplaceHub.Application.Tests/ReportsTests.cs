@@ -91,21 +91,29 @@ public sealed class ReportsTests
 
     [Theory]
     [InlineData("TRENDYOL", "number", "21.5", null, null, 43)]
-    [InlineData("HEPSIBURADA", "object", "15", "15", null, 30)]
-    [InlineData("HEPSIBURADA", null, null, "15", null, 30)]
+    [InlineData("HEPSIBURADA", "object", "15", "15", null, 36)]
+    [InlineData("HEPSIBURADA", null, null, "15", null, 36)]
     [InlineData("N11", null, null, "20,5", null, 41)]
     [InlineData("PTTAVM", null, null, null, "20", 40)]
     public void The_commission_of_kept_units_is_estimated_from_what_the_line_carries(string platform, string? type, string? commission, string? rate, string? komisyon, double expected) =>
-        // 2 units kept out of 4 sold, paid 200 for the kept ones (Hepsiburada's amount is per unit: 15% of 100).
+        // 2 units kept out of 4 sold, paid 200 for the kept ones (Hepsiburada's amount is per unit: 15% of 100, plus its 20 % VAT).
         Assert.Equal((decimal)expected, ReportBuckets.EstimatedCommission(platform, type, commission, rate, komisyon, 200m, 2m));
 
     [Theory]
-    [InlineData(2, 546, 98.28)]
-    [InlineData(1, 273, 49.14)]
+    [InlineData(2, 546, 117.94)]
+    [InlineData(1, 273, 58.97)]
     [InlineData(0, 0, 0)]
     public void A_hepsiburada_commission_amount_counts_once_per_kept_unit(int keptUnits, double keptAmount, double expected) =>
         // The live line: 2 x 273 TL at rate 18 carries {"amount": 49.14}, 18% of one unit; with one unit back one stays charged.
+        // Hepsiburada charges 20 % VAT on top: 49.14 x 1.20 = 58.97 a unit.
         Assert.Equal((decimal)expected, ReportBuckets.EstimatedCommission("HEPSIBURADA", "object", "49.14", "18", null, (decimal)keptAmount, keptUnits));
+
+    // Live order 4091991027: the line carries {"amount": 232.02} and Hepsiburada's Commission record charged 278.42.
+    [Fact]
+    public void A_hepsiburada_estimate_matches_the_commission_record_hepsiburada_charges()
+    {
+        Assert.Equal(278.42m, ReportBuckets.EstimatedCommission("HEPSIBURADA", "object", "232.02", "18", null, 1094.15m, 1m));
+    }
 
     [Theory]
     [InlineData("PAZARAMA", "number", "10")]

@@ -136,7 +136,8 @@ public sealed class ReportPlatformCostsTests
         Assert.Equal(2, cargo.PlatformOrders);
         Assert.Equal(98.39m + 120m, cargo.PlatformEstimated);
         Assert.Equal(98.39m + 120m, cargo.Combined);
-        Assert.Equal(108m, costs.Commission!.Combined);
+        // 108 on the line, plus the 20 % VAT Hepsiburada charges on it.
+        Assert.Equal(129.60m, costs.Commission!.Combined);
         Assert.Equal(13.19m, costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.ServiceFee).Amount);
         Assert.Equal(63.15m, costs.Lines.Single(line => line.Category == MarketplaceFinanceCategories.PaymentFee).Amount);
         // 1 % of Hepsiburada's VAT-free sale (500); none on Shopify.

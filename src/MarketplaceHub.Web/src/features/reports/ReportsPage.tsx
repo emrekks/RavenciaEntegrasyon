@@ -735,7 +735,7 @@ function ProfitBridge({ data, money, onMore }: { data: ReportSales; money: Money
     { key: 'cargo', label: 'Kargo', value: cargo?.value ?? 0, note: explain('cargo', cargo?.note ?? '') },
     { key: 'marketplace', label: 'Pazaryeri Masrafları', value: (commission?.value ?? 0) + otherFees.reduce((sum, fee) => sum + fee.value, 0),
       note: explain('marketplace', [commission ? `${commission.label} ${formatTl(commission.value)}` : null, ...otherFees.map(fee => `${fee.label} ${formatTl(fee.value)}`)].filter(Boolean).join(', ') + '.') },
-    { key: 'stoppage', label: 'Stopaj', value: stoppage?.value ?? 0, note: explain('stoppage', 'KDV hariç yurt içi satıştan kesilir; hesap kesimi henüz olmayan siparişlerde tahmini.') },
+    { key: 'stoppage', label: 'Stopaj', value: stoppage?.value ?? 0, note: explain('stoppage', 'KDV hariç satışın %1\'i; Trendyol yurt dışı vitrin satışlarından da keser (Azerbaycan hariç). Hesap kesimi henüz olmayan siparişlerde tahmini.') },
     { key: 'vat', label: 'Net KDV', value: money.tax ?? 0, note: explain('vat', money.tax !== null && money.tax < 0 ? 'Masraflardaki KDV satışların KDV\'sinden fazla; fark devreden KDV\'dir ve kârı artırır.' : 'Satışların KDV\'sinden ürün maliyetindeki ve masraflardaki KDV düşülür. Tahminidir.') },
     { key: 'cost', label: 'Ürün Maliyeti', value: money.cost ?? 0, note: explain('cost', costCoverageText(money.costCoverage)) },
     { key: 'unlinked', label: 'Siparişe Bağlı Olmayan Kesintiler', value: money.unlinked, note: unlinkedNote }
@@ -935,7 +935,7 @@ function returnMetrics(data: ReportSales): Metric[] {
     { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
     { key: 'units', label: 'İade Edilen Adet', value: `${formatNumber(now.returnedQuantity)} adet`, detail: 'returns', note: 'İade edilen ürün adedi.' },
     { key: 'returned', label: 'İade Liste Tutarı', value: formatTl(returnedAtList(now)), detail: 'returns', note: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nMasraf Kalemleri ve Kâr Köprüsü\'ndeki İade Edilen Tutar müşterinin ödediğidir; satıştan o düşülür.' },
-    { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nİade kargosu kargo faturasında ayrı okunamadığı için gösterilemiyor.' },
+    { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nKârlılık\'taki Kargo kalemine dahildir (Trendyol\'da İade Kargo Bedeli satırı, faturası gelmeyen iadede mağaza tarifesi); ayrı tutar olarak henüz gösterilmiyor.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil); uyarı eşiği ${formatPercent(warning)}.` },
     { key: 'cancelled', label: 'İptal Edilen Sipariş', value: `${formatCount(now.cancelledOrders)} sipariş · ${formatNumber(data.cancellations.cancelledQuantity)} adet`, detail: 'cancellations', note: 'İptal edilen sipariş ve ürün adedi.' },
