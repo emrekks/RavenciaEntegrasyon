@@ -2,7 +2,8 @@
 // payload): the product, one part per marketplace request with the fields and attributes its items carried, and the
 // marketplace request ids the job kept.
 export type JobWriteAttribute = { id: string; name: string | null }
-export type JobWritePart = { key: string; itemCount: number; fields: string[]; barcodes: string[]; contentCount: number; attributes: JobWriteAttribute[] }
+// clearedFields: fields an item sent as null; the marketplace deletes them on the product (Trendyol), so they are shown.
+export type JobWritePart = { key: string; itemCount: number; fields: string[]; barcodes: string[]; contentCount: number; attributes: JobWriteAttribute[]; clearedFields?: string[] | null }
 export type JobWriteRequest = { key: string; id: string }
 export type JobWriteSummary = { productTitle: string | null; modelCodes: string[]; mode: string | null; phase: string | null; parts: JobWritePart[]; requests: JobWriteRequest[] }
 
@@ -59,14 +60,17 @@ const fieldLabels: Record<string, string> = {
   currencyType: 'Para Birimi'
 }
 
-// The fields a part's items carried, in Turkish, identifiers left out and repeats merged ("Teslim Süresi" once).
-export function writeFieldLabels(fields: readonly string[]) {
+// The fields a part's items carried, in Turkish, identifiers left out and repeats merged ("Teslim Süresi" once). A field
+// sent as null is listed as "(silinir)": the marketplace deletes its value, so the drawer never hides it.
+export function writeFieldLabels(fields: readonly string[], clearedFields: readonly string[] = []) {
   const labels: string[] = []
-  for (const field of fields) {
-    if (identifierFields.has(field)) continue
-    const label = fieldLabels[field] ?? field
+  const add = (field: string, suffix: string) => {
+    if (identifierFields.has(field)) return
+    const label = `${fieldLabels[field] ?? field}${suffix}`
     if (!labels.includes(label)) labels.push(label)
   }
+  for (const field of fields) add(field, '')
+  for (const field of clearedFields) add(field, ' (silinir)')
   return labels
 }
 

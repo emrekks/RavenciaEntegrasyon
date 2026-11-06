@@ -58,8 +58,8 @@ type PlatformUpdateProfile = { requests: PlatformUpdateRequest[]; note?: string;
 // From the adapters (TrendyolWriteComposers, HepsiburadaProductUpdateComposer, PriceInventoryComposer):
 // - Trendyol, approved product: content-bulk-update carries only the picked content fields (title, description,
 //   images, attributes: Trendyol takes a partial update there, the attributes always as the whole list with colour,
-//   size and Menşei), variant-bulk-update per barcode (desi, VAT rate; the stock code and the listing's origin ride along),
-//   delivery-info-bulk-update (the product card's Teslimat Süresi); price-and-inventory takes the price (list and sale
+//   size and Menşei), variant-bulk-update per barcode with only the picked desi or VAT rate (a
+//   partial update; no stock code or origin, a null would delete the field), delivery-info-bulk-update (the product card's Teslimat Süresi); price-and-inventory takes the price (list and sale
 //   together) and the stock apart. Trendyol takes no warranty.
 // - Hepsiburada: one product update per hbSku with name, description, barcode, attributes, VAT, warranty, desi and
 //   images; the listing shipping-info upload takes the dispatch time (DispatchTime, the card's Teslimat Süresi) alone;
@@ -84,7 +84,10 @@ const profiles: Record<string, PlatformUpdateProfile> = {
       { fields: ['DESCRIPTION'], sends: ['Açıklama'] },
       { fields: ['IMAGES'], sends: ['Görseller'] },
       { fields: ['ATTRIBUTES'], sends: ['Kategori Özellikleri'], extra: ['Renk / Beden', 'Menşei'] },
-      { fields: ['DESI', 'VAT_RATE'], sends: ['Desi', 'KDV Oranı'], extra: ['Menşei', 'Stok Kodu'] },
+      // One variant-bulk-update with the barcode and only the picked field (Trendyol takes a partial update there and
+      // deletes a field sent as null), so desi and VAT rate are picks of their own.
+      { fields: ['DESI'], sends: ['Desi'] },
+      { fields: ['VAT_RATE'], sends: ['KDV Oranı'] },
       { fields: ['DELIVERY'], sends: ['Teslimat Süresi'] },
       { fields: ['PRICE'], sends: ['Liste Fiyatı', 'Satış Fiyatı'] },
       { fields: ['STOCK'], sends: ['Stok'] }
