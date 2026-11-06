@@ -1283,6 +1283,25 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
         if (placeholderIdsToDelete.Count > 0)
             variantIdsToDelete.AddRange(await RemovablePlaceholderVariantIdsAsync(tenantId, existingVariants, placeholderIdsToDelete, variantIdsToDelete, variantsToCreate.Count, variantUpdates.Select(update => update.Id).ToHashSet(), cancellationToken));
+        // O7/D6: the family as this save leaves it (kept rows with their updated codes, then the new rows) may not hold
+        // one stock code or barcode twice; the unique index would refuse it as a 500 after half the checks. A deleted
+        // variant's code may go to another row (D6). Nothing is saved; the editor marks every row holding the code.
+        if (variantsToCreate.Count > 0 || variantUpdates.Count > 0)
+        {
+            var finalUpdates = variantUpdates.GroupBy(update => update.Id).ToDictionary(group => group.Key, group => group.First());
+            var finalRows = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id))
+                .Select(variant => finalUpdates.TryGetValue(variant.Id, out var update)
+                    ? new VariantCodeAvailability.SaveRow($"variant:{variant.Id:D}", update.Sku, update.Barcode)
+                    : new VariantCodeAvailability.SaveRow($"variant:{variant.Id:D}", variant.Sku, variant.Barcode))
+                .Concat(variantsToCreate.Select((variant, index) => new VariantCodeAvailability.SaveRow($"new:{index}", variant.Sku, variant.Barcode)))
+                .ToList();
+            var duplicatesInSave = VariantCodeAvailability.DuplicatesInSave(finalRows);
+            if (duplicatesInSave.Count > 0)
+            {
+                var (duplicateMessage, duplicateFields) = VariantCodeAvailability.DescribeDuplicates(duplicatesInSave);
+                return ServiceResult<ProductView>.Fail("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", duplicateMessage, 409, duplicateFields);
+            }
+        }
         var changedVariantIds = new HashSet<Guid>();
         foreach (var update in variantUpdates)
         {
@@ -1315,12 +1334,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
             }
             var updatesById = variantUpdates.ToDictionary(x => x.Id);
-            var proposedSkus = existingVariants.Select(variant => Normalize(updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku)).ToArray();
+            var proposedSkus = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => Normalize(updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku)).ToArray();
             if (proposedSkus.Any(string.IsNullOrWhiteSpace) || proposedSkus.Distinct().Count() != proposedSkus.Length) return Invalid<ProductView>("variantUpdates", "Stok kodları boş veya tekrarlı olamaz.");
-            var proposedBarcodes = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? NormalizeBarcode(update.Barcode) : NormalizeBarcode(variant.Barcode)).OfType<string>().ToArray();
+            var proposedBarcodes = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? NormalizeBarcode(update.Barcode) : NormalizeBarcode(variant.Barcode)).OfType<string>().ToArray();
             if (proposedBarcodes.Distinct().Count() != proposedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
-            var proposedSkuValues = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku).ToArray();
-            var proposedBarcodeValues = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Barcode : variant.Barcode).OfType<string>().Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
+            var proposedSkuValues = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku).ToArray();
+            var proposedBarcodeValues = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Barcode : variant.Barcode).OfType<string>().Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
             var updateClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId)), proposedSkuValues, proposedBarcodeValues, cancellationToken);
             if (updateClashes.Count > 0) return CodeConflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir üründe kullanılıyor", updateClashes);
             var updatedAt = timeProvider.GetUtcNow();
@@ -1433,11 +1452,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
             var normalizedSkus = variantsToCreate.Select(x => Normalize(x.Sku)).ToArray();
             if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variantsToCreate", "SKU boş veya tekrarlı olamaz.");
-            var newSkuClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !variantIdsToDelete.Contains(x.Id)), [.. variantsToCreate.Select(x => x.Sku)], [], cancellationToken);
+            var newSkuClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId)), [.. variantsToCreate.Select(x => x.Sku)], [], cancellationToken);
             if (newSkuClashes.Count > 0) return CodeConflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "Stok kodu başka bir varyantta kullanılıyor", newSkuClashes);
             var normalizedBarcodes = variantsToCreate.Select(x => NormalizeBarcode(x.Barcode)).OfType<string>().ToArray();
             if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
-            var newBarcodeClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !variantIdsToDelete.Contains(x.Id)), [], [.. variantsToCreate.Select(x => x.Barcode).OfType<string>().Where(x => !string.IsNullOrWhiteSpace(x))], cancellationToken);
+            var newBarcodeClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId)), [], [.. variantsToCreate.Select(x => x.Barcode).OfType<string>().Where(x => !string.IsNullOrWhiteSpace(x))], cancellationToken);
             if (newBarcodeClashes.Count > 0) return CodeConflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantta kullanılıyor", newBarcodeClashes);
 
             var globalAssignments = command.Attributes ?? await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).Select(x => new ProductAttributeCommand(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToListAsync(cancellationToken);
