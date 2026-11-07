@@ -645,7 +645,8 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list { padding-right: 0; scrollbar-width: none; scrollbar-gutter: auto; -ms-overflow-style: none; }
   .app-shell.stitch-shell main .mapping-local-category-builder .category-library-list::-webkit-scrollbar { display: none; width: 0; height: 0; }
-  .app-shell.stitch-shell main section.mapping-page .mapping-local-manager-dialog-standalone .category-library-tools { grid-template-columns: minmax(0, 1fr) 72px auto; gap: 6px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-local-manager-dialog-standalone .category-library-tools { grid-template-columns: minmax(0, 1fr) 88px auto; gap: 6px; }
+  .app-shell.stitch-shell main section.mapping-page .mapping-local-manager-dialog-standalone .category-library-tools > .category-library-sort { width: 100% !important; min-width: 0; }
   .app-shell.stitch-shell main section.mapping-page .mapping-local-manager-dialog-standalone .category-library-tools > select { min-width: 0; padding-inline: 8px 22px; }
   .app-shell.stitch-shell main section.mapping-page .mapping-local-manager-dialog-standalone .category-library-tools > span { min-width: 0; white-space: nowrap; }
 }

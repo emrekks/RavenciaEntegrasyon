@@ -8,7 +8,12 @@
 
 .size-chart-modal { width: min(720px, calc(100vw - 32px)); }
 .size-chart-modal .rv-modal-body { display: grid; align-content: start; gap: 14px; }
-.rv-modal.size-chart-modal > header { padding-block: 14px; }
+.rv-modal.size-chart-modal > header { align-items: flex-start; padding-block: 14px; }
+/* The window lives on the body, outside the page's modal styles: the standard shell is drawn here (title 18/600,
+   description 13 px muted, a 32 px close at the top right). */
+.rv-modal.size-chart-modal > header h2 { color: var(--rv-color-ink); font-size: 18px; font-weight: 600; line-height: 1.35; letter-spacing: 0; text-transform: none; }
+.rv-modal.size-chart-modal > header p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 400; line-height: 1.5; }
+.rv-modal.size-chart-modal > header > .rv-icon-button { flex: none; width: 32px; min-width: 32px; height: 32px; min-height: 0; margin: -2px -6px 0 0; padding: 0; }
 .rv-modal.size-chart-modal > .rv-modal-body { padding-block: 14px; }
 .rv-modal.size-chart-modal > footer { padding-block: 12px; }
 .size-chart-modal button.rv-button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
