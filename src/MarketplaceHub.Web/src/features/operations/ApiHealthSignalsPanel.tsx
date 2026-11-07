@@ -11,7 +11,7 @@ export function ApiHealthSignalsPanel() {
   const signals = useQuery({ queryKey: ['api-health-signals'], queryFn: () => hubPoll<ApiHealthSignals>('/api-health-signals'), refetchInterval: 60_000, refetchIntervalInBackground: false })
   const rows = signals.data?.connections ?? []
   return <section className="rr-panel" aria-label="API Sağlığı"><div className="rr-panel-h"><div><h2>API Sağlığı</h2><p>Pazaryeri bağlantılarının anahtar, gecikme, hata ve kuyruk sinyalleri; yalnız kayıtlı verilerden</p></div></div>
-    <div className="rr-mxwrap"><table className="rr-mxt rr-sigt"><thead><tr><th>Pazar Yeri</th>{COLUMNS.map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>
+    <div className="rr-mxwrap"><table className="rr-mxt rr-mxt-x rr-sigt"><thead><tr><th>Pazar Yeri</th>{COLUMNS.map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>
       {!rows.length && <tr><td colSpan={COLUMNS.length + 1}><span className="rr-lead">{signals.isLoading ? 'Sinyaller yükleniyor…' : signals.isError ? 'Sinyaller okunamadı.' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
       {rows.map(row => {
         const cells = signalCells(row)

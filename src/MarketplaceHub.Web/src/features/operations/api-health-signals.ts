@@ -82,7 +82,7 @@ export function queueCell(queue: SignalQueue | null): SignalCell {
 }
 
 export function webhookCell(webhook: SignalWebhook, now = Date.now()): SignalCell {
-  if (!webhook.used) return { text: 'Kullanılmıyor', tone: 'off', title: 'Bu bağlantıda bildirim (webhook) yok; siparişler zamanlanmış okumayla gelir.' }
+  if (!webhook.used) return { text: 'Yok', tone: 'off', title: 'Bu bağlantıda bildirim (webhook) yok; siparişler zamanlanmış okumayla gelir.' }
   const read = `Son sipariş okuması: ${exact(webhook.lastOrderReadAt)}${webhook.fallbackReadSeconds ? ` (yedek okuma ${everyText(webhook.fallbackReadSeconds)})` : ''}.`
   const base = `Bildirim durumu zamanlayıcının kuralıyla ${webhook.healthy ? 'sağlıklı' : 'sağlıksız'}. ${read} Beklenen bildirim sıklığı Ölçülmüyor (pazaryeri sıklık bildirmiyor).`
   const text = relativeAgeText(webhook.lastReceivedAt, now) ?? 'Bildirim yok'

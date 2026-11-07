@@ -46,7 +46,7 @@ describe('API Sağlığı signal cells', () => {
     expect(cell.title).toContain('yedek okuma 15 dk\'da bir')
     expect(cell.title).toContain('Ölçülmüyor')
     expect(webhookCell({ used: true, lastReceivedAt: null, healthy: false, lastOrderReadAt: null, fallbackReadSeconds: null }, now)).toMatchObject({ text: 'Bildirim yok', tone: 'warn' })
-    expect(webhookCell({ used: false, lastReceivedAt: null, healthy: false, lastOrderReadAt: null, fallbackReadSeconds: null }, now).text).toBe('Kullanılmıyor')
+    expect(webhookCell({ used: false, lastReceivedAt: null, healthy: false, lastOrderReadAt: null, fallbackReadSeconds: null }, now).text).toBe('Yok')
   })
 
   it('formats durations', () => {

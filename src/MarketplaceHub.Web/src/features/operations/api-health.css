@@ -7,3 +7,14 @@
    outranks the overview's 900–1024 px three-column rule (tablet-ops), which left the fourth card alone on a row. */
 html body main .rr.rr-dashboard.api-health-rr .rr-opgrid.rr-opgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 1024px) { html body main .rr.rr-dashboard.api-health-rr .rr-opgrid.rr-opgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* The two tables of this page fit their panel at 1280 px and wider without scrolling: tighter cell padding and a shorter
+   store line. On a phone the three-column cards give each value a few more pixels so none is cut ("Desteklenmiyor"). */
+html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x th, html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x td { padding-left: 5px; padding-right: 5px; }
+html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x th:first-child, html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x td:first-child { padding-left: 14px; }
+html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x td.rr-mx-act { padding-right: 12px; }
+html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x .rr-mx-nm small { max-width: 130px; }
+@media (max-width: 480px) {
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x tr { column-gap: 4px; padding-left: 10px; padding-right: 10px; }
+  html body main .rr.rr-dashboard .rr-mxt.rr-mxt-x .rr-mx { gap: 4px; }
+}
