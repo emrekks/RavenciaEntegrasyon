@@ -381,6 +381,8 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 
 /* Ürün tablosu: the picture beside the name. */
 .app-shell.stitch-shell main .reports-page .reports-product { display: flex; align-items: center; gap: 12px; min-width: 220px; max-width: 360px; }
+.app-shell.stitch-shell main .reports-page .reports-product:not(:has(> .reports-product-image)) { display: grid; align-items: start; gap: 2px; }
+.app-shell.stitch-shell main .reports-page .reports-product > small { white-space: nowrap; }
 .app-shell.stitch-shell main .reports-page .reports-product-image { display: grid; flex: none; place-items: center; width: 40px; height: 60px; color: var(--rv-color-muted); font-size: 14px; font-style: normal; font-weight: 600; object-fit: cover; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 7px; }
 
 /* Satış Haritası: the title, the scope tabs and the switches on one centre line. */
@@ -490,6 +492,11 @@ html body .app-shell.stitch-shell main .reports-page .reports-card-actions .repo
 /* The platform filter is the panel's one (shared/PlatformFilter.tsx); its label is read only by assistive technology. */
 .app-shell.stitch-shell main .reports-page .reports-period-platforms .pf-field .rr-fld { gap: 0; }
 .app-shell.stitch-shell main .reports-page .reports-period-platforms .pf-trigger { min-width: 180px; }
+/* Wrapped under the presets (a narrow window), the platform filter goes to the right end under the date, not alone at the left. */
+.app-shell.stitch-shell main .reports-page .reports-filters { container-type: inline-size; }
+@container (max-width: 820px) {
+  .app-shell.stitch-shell main .reports-page .reports-period-row > .reports-period-platforms { margin-left: auto; }
+}
 html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-trigger, .date-range-picker-trigger, select) { box-sizing: border-box; height: 36px; min-height: 36px; }
 .app-shell.stitch-shell main .reports-page .reports-filters select { min-width: 140px; }
 /* The refresh mark: over the top right of the filters, level with the Dönem label, out of the grid so it moves nothing;

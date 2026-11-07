@@ -43,6 +43,8 @@ html body .rv-view-tabs-menu > button.is-active {
   color: var(--rv-color-ink) !important;
   background: var(--rv-color-primary-soft) !important;
 }
+/* A row with a count chip (Operasyon) stays as tall as its neighbours. */
+html body .rv-view-tabs-menu > button { max-height: 34px; }
 /* ---------- action menus: 36px, 13px/500 ---------- */
 html body .app-shell.stitch-shell :is(.reference-menu-popover > :is(a, button), .row-menu > div button) {
   box-sizing: border-box;

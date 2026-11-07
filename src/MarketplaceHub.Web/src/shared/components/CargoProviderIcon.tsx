@@ -33,6 +33,17 @@ export function cargoLabel(value: string | null | undefined) {
   return cargoCarrier(value)?.label ?? cargoFallbackLabel(value)
 }
 
+/** Filter choices for raw carrier names. Two raw names can share a label (Aras Kargo / Aras Kargo Marketplace); those show the raw name too, so no two rows read the same. */
+export function cargoFilterOptions(values: readonly string[]): Array<{ value: string; label: string }> {
+  const labelCounts = new Map<string, number>()
+  for (const value of values) labelCounts.set(cargoLabel(value), (labelCounts.get(cargoLabel(value)) ?? 0) + 1)
+  return values.map(value => {
+    const label = cargoLabel(value)
+    const raw = value.trim()
+    return { value, label: (labelCounts.get(label) ?? 0) > 1 && raw && raw !== label ? `${label} (${raw})` : label }
+  })
+}
+
 export function cargoMatches(value: string | null | undefined, carrier: CargoCarrier) {
   return cargoCarrier(value)?.code === carrier.code
 }
