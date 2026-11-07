@@ -169,10 +169,15 @@ describe('ReportsPage', () => {
     expect(figures[0]).toContain('Net Ciro')
     // Money in a strip is shown in whole liras, the previous period's too.
     expect(figures[0]).toContain('Net Ciro₺250')
-    // The previous period's figure shows under the change chip on a tap.
-    expect(figures[0]).not.toContain('Önceki dönem')
-    await act(async () => { (page.querySelector('.reports-kpis > div .reports-kpi-delta-toggle') as HTMLButtonElement).click() })
-    expect(texts(page, '.reports-kpis > div')[0]).toContain('Önceki dönem ₺200Satış tutarından')
+    // Every figure has a short note of real figures under it (owner, 7 Nov 2026); the previous period's figure is in the
+    // explanation, so no change chip opens it.
+    expect(page.querySelectorAll('.reports-kpis .reports-kpi-note')).toHaveLength(6)
+    expect(page.querySelector('.reports-kpis .reports-kpi-delta-toggle')).toBeNull()
+    expect(figures[0]).toContain('Satış ₺350 · iade ₺100')
+    expect(figures[0]).toContain('Önceki dönem ₺200')
+    expect(figures[1]).toContain('Sipariş başına ₺42')
+    expect(figures[3]).toContain('Ürün maliyeti ₺80')
+    expect(figures[4]).toContain('1 iptal · sepet ₺117')
     // O5: the overview's Ciro has the returns in it, Net Ciro not; the margin says which amount it is over.
     expect(figures[0]).toContain('iadeler düşülmüş ciro')
     expect(figures[0]).toContain('Genel Bakış\'taki Ciro iadeler dahildir')
@@ -192,10 +197,9 @@ describe('ReportsPage', () => {
     // Every figure against the previous period: the profit against its 160, the margin against 45,7 % (a rate's change
     // written in per cent, not points); every change on its own line, so the notes under them start level.
     expect(figures[1]).toContain('−%20,6')
-    const peek = async (index: number) => { await act(async () => { (page.querySelectorAll('.reports-kpis > div')[index].querySelector('.reports-kpi-delta-toggle') as HTMLButtonElement).click() }); return texts(page, '.reports-kpis > div')[index] }
-    expect(await peek(1)).toContain('Önceki dönem ₺160')
+    expect(figures[1]).toContain('Önceki dönem ₺160')
     expect(figures[2]).toContain('−%9,4')
-    expect(await peek(2)).toContain('Önceki dönem %45,7')
+    expect(figures[2]).toContain('Önceki dönem %45,7')
     expect(page.querySelectorAll('.reports-kpis > div > .reports-kpi-change')).toHaveLength(6)
     expect(page.querySelector('.reports-kpis')?.textContent).not.toContain('puan')
     // Masraf Kalemleri: the account's deductions and the product cost, largest first, 223 in all (63,7 % of the sales);
@@ -234,15 +238,15 @@ describe('ReportsPage', () => {
     expect(hero(page, 'sales')).toBe('5 adet · 2 farklı varyant')
     expect(heroCard(page, 'sales').querySelector('.reports-hero-head .reports-delta')).not.toBeNull()
     expect(heroCard(page, 'sales').querySelector('.reports-hero-top > .reports-hover-tip')?.textContent).toContain('5 satılan adetten 1 iade düşülür, 4 adet kalır')
-    expect(heroTiles(page, 'sales')).toEqual(['Adet başına satış ₺70,00', 'KDV hariç net satış ₺227,27', 'Satıcı indirimi %7,9'])
+    expect(heroTiles(page, 'sales')).toEqual(['Net satılan adet 4', 'Adet başına satış ₺70,00', 'KDV hariç net satış ₺227,27', 'Satıcı indirimi %7,9'])
     expect(tipOf(page, 'sales', 'Satıcı indirimi')).toContain('yalnız Trendyol ve Hepsiburada')
     expect(hero(page, 'orders')).toBe('₺116,67 · sepet ortalaması')
-    expect(heroTiles(page, 'orders')).toEqual(['Sipariş başına adet 1,25', 'Tekrar alan müşteri %50,0', 'Sipariş başına kâr ₺42,33'])
+    expect(heroTiles(page, 'orders')).toEqual(['Sipariş başına adet 1,25', 'Tekrar gelen müşteri %50,0', 'Sipariş başına kâr ₺42,33'])
     expect(hero(page, 'profit')).toBe('— · reklam öncesi marj')
     expect(heroTiles(page, 'profit')).toEqual(['Adet başına kâr ₺31,75', 'Sipariş başına kâr ₺42,33', 'Adet başına maliyet ₺40,00'])
     expect(hero(page, 'fees')).toBe('₺14,33 · sipariş başına')
     // Without Trendyol's statement the cargo and the return cargo are unknown, never ₺0.
-    expect(heroTiles(page, 'fees')).toEqual(['Komisyon oranı %21,5', 'Sipariş başına kargo —', 'İade kargo zararı —'])
+    expect(heroTiles(page, 'fees')).toEqual(['Komisyon oranı %21,5', 'Sipariş başına kargo —', 'Adet başına kargo —'])
     expect(hero(page, 'ads')).toBe('— · reklam harcaması')
     expect(heroTiles(page, 'ads')).toEqual(['Sipariş başına reklam —', 'Reklam raporu Yüklenmedi'])
     expect(page.querySelector('.reports-hero-card.is-ads')?.textContent).not.toContain('Reklam Cirosu ve ROAS')
@@ -258,7 +262,7 @@ describe('ReportsPage', () => {
     // the change names the previous rate.
     expect(hero(page, 'returns')).toMatch(/^%20,0 · önceki dönem %/u)
     expect(page.querySelector('.reports-hero-card.is-returns .reports-delta')?.getAttribute('title')).toMatch(/^Önceki dönem /)
-    expect(heroTiles(page, 'returns')).toEqual(['İade edilen adet 1', 'İade talebi 1', 'İade edilen tutar ₺100', 'En sık neden Beden uymadı (%100,0)'])
+    expect(heroTiles(page, 'returns')).toEqual(['İade edilen adet 1', 'İade talebi 1', 'İade edilen tutar ₺100', 'İade kargo bedeli —', 'Yurt dışı operasyon iade bedeli —', 'Toplam iade maliyeti —', 'En sık neden Beden uymadı (%100,0)'])
     expect(hero(page, 'cancels')).toBe('%20,0 · 1 sipariş iptal')
     expect(page.querySelector('.reports-hero-card.is-cancels .reports-hero-value strong.is-warn')).not.toBeNull()
     expect(heroTiles(page, 'cancels')).toEqual(['İptal edilen adet 1', 'İptal edilen tutar ₺120'])
@@ -268,7 +272,7 @@ describe('ReportsPage', () => {
     expect(page.querySelector('.reports-hero-card.is-todo.is-alert')).not.toBeNull()
     expect(heroTiles(page, 'todo')).toEqual(['Stok riski 0 ürün', 'Soru yanıt süresi —'])
     // Every figure explains itself under the pointer.
-    expect(page.querySelectorAll('.reports-hero-card .reports-hover-tip')).toHaveLength(9 + 25)
+    expect(page.querySelectorAll('.reports-hero-card .reports-hover-tip')).toHaveLength(9 + 29)
     // The old cards are gone, and no card repeats another.
     expect(page.querySelector('.reports-journey, .reports-card-summary, .reports-operations, .reports-card-revenue')).toBeNull()
     // One tab per area, each with its headline figure.
@@ -339,7 +343,6 @@ describe('ReportsPage', () => {
     expect(loss.textContent).toContain('Tahmini Zarar')
     expect(loss.textContent).toContain('− ₺6.639')
     // The previous period read no statement, so its profit is not set against this one.
-    await act(async () => { (loss.querySelector('.reports-kpi-delta-toggle') as HTMLButtonElement).click() })
     expect(loss.textContent).toContain('Önceki dönemde veri yok')
     // The advertising spend is told from the deductions tied to no order.
     expect(hero(page, 'ads')).toBe('₺5.000 · sınır %5')
@@ -351,9 +354,13 @@ describe('ReportsPage', () => {
     expect(hero(page, 'profit')).toMatch(/^−?%-?[\d.,]+ · reklam öncesi marj$/u)
     // The commission (41,50) and the service fee and withholding tax (1.092,04 + 449,01) over 3 orders, as on the bridge.
     expect(hero(page, 'fees')).toBe('₺527,52 · sipariş başına')
-    // The billed return cargo (20) and the return operation fee (5), Trendyol's only.
-    expect(heroTiles(page, 'fees')[2]).toBe('İade kargo zararı ₺25,00')
-    expect(tipOf(page, 'fees', 'İade kargo zararı')).toContain('yalnız Trendyol')
+    // The billed return cargo (20) and the return operation fee (5), Trendyol's only, apart and in all on the İade card;
+    // Kesintiler no longer repeats them and shows the cargo per kept unit beside the cargo per order.
+    expect(heroTiles(page, 'returns').slice(3, 6)).toEqual(['İade kargo bedeli ₺20,00', 'Yurt dışı operasyon iade bedeli ₺5,00', 'Toplam iade maliyeti ₺25,00'])
+    expect(tipOf(page, 'returns', 'Toplam iade maliyeti')).toContain('yalnız Trendyol')
+    expect(heroTiles(page, 'fees').join(' ')).not.toContain('İade')
+    expect(heroTiles(page, 'fees')[2]).toMatch(/^Adet başına kargo ₺/u)
+    expect(tipOf(page, 'fees', 'Adet başına kargo')).toContain('Adet Başına Kâr ile aynı payda')
     // No separate card for them on the overview, and no "siparişe bağlı olmayan" anywhere on it.
     expect(page.querySelector('.reports-card-unlinked')).toBeNull()
     expect(page.querySelector('.reports-overview')?.textContent?.toLocaleLowerCase('tr')).not.toContain('siparişe bağlı olmayan')
@@ -420,7 +427,6 @@ describe('ReportsPage', () => {
       previousAccount: { commission: withFinance.commission, cost: withFinance.cost, costs: { ...costs, unlinked: costs.unlinked!.map(line => ({ ...line, amount: line.amount * 10 })), unlinkedTotal: 65275.5 } } })
     const loss = page.querySelectorAll('.reports-kpis > div')[1]
     expect(loss.textContent).toContain('− ₺6.639')
-    await act(async () => { (loss.querySelector('.reports-kpi-delta-toggle') as HTMLButtonElement).click() })
     expect(loss.textContent).toContain('Önceki dönem − ₺65.387')
   })
 
@@ -636,7 +642,7 @@ describe('ReportsPage', () => {
 
   it.each([
     ['products', 'Ürünler', 'En Çok Satan 20 Ürün'], ['brands', 'Ürünler', 'Markalar'], ['returns', 'Operasyon', 'İade Nedenleri'], ['cancellations', 'Operasyon', 'Platformlara Göre İptaller'],
-    ['cargo', 'Operasyon', 'Kargo Firmaları'], ['time', 'Müşteriler', 'Gün ve Saate Göre Siparişler'], ['customers', 'Müşteriler', 'Tekil Müşteri'],
+    ['cargo', 'Operasyon', 'Kargo Firmaları'], ['time', 'Müşteriler', 'Gün ve Saate Göre Siparişler'], ['customers', 'Müşteriler', 'Tekrar Gelen Müşteri'],
     ['stock', 'Operasyon', 'En Çok Satanların Stoğu'], ['cost', 'Kârlılık', 'Maliyeti Olan Ciro'], ['invoices', 'Operasyon', 'Platformlara Göre Fatura Durumu']
   ])('opens the %s breakdown on its tab', async (key, tab, heading) => {
     const page = await open(`?detail=${key}`)
@@ -884,8 +890,10 @@ describe('ReportsPage', () => {
     expect(figures[2]).toMatch(/^Tahmini Kâr₺1\.905₺1\.905Stok, .*Son 3 ay ort\. maliyete göre %158,8\..*\p{Lu}\p{Ll}+ %158,8 · \p{Lu}\p{Ll}+ %158,8 · \p{Lu}\p{Ll}+ %158,8\.$/u)
     expect(requests.filter(path => /^\/reports\/sales\?from=\d{4}-\d{2}-01&to=/.test(path)).length).toBeGreaterThanOrEqual(3)
     expect(figures[4]).toContain('60 gün')
-    expect(figures[5]).toContain('1 varyant, 2 adet')
-    expect(figures[9]).toContain('Maliyeti Eksik1')
+    // Ölü Stok is a table of the tab only, no box of the strip (owner, 7 Nov 2026): five boxes, as the second row.
+    expect(page.querySelector('.reports-kpis')?.children).toHaveLength(5)
+    expect(figures.slice(0, 5).join(' ')).not.toContain('Ölü Stok')
+    expect(figures[8]).toContain('Maliyeti Eksik1')
     expect(page.querySelector('.reports-stock-scope')).toBeNull()
     expect(body(page)).toContain('Kategori Bazlı Stok')
     expect(body(page)).not.toContain('Fiyat Kaynağı')
