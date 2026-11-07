@@ -47,10 +47,10 @@ window.__reportsAudit = { done: false, findings: [] };
       }
     }
     // A figure must never be cut: a value or its second line wider than its box, or running past its row's right edge.
-    for (const element of body.querySelectorAll('.reports-metric-value, .reports-metric-main, .reports-metric-value strong, .reports-metric-sub, .reports-kpis strong, .reports-hero > strong, .reports-hero-tile, .reports-hero-tile strong')) {
-      const row = element.closest('.reports-metric, .reports-kpis > div, .reports-hero-tile, .reports-hero-card')
+    for (const element of body.querySelectorAll('.reports-metric-value, .reports-metric-main, .reports-metric-value strong, .reports-metric-sub, .reports-kpis strong, .reports-hero-value strong, .reports-hero-row strong:not(.is-text), .reports-period-facts strong')) {
+      const row = element.closest('.reports-metric, .reports-kpis > div, .reports-hero-row, .reports-hero, .reports-period-facts > div')
       const clipped = element.scrollWidth > element.clientWidth + 1 || (row && element.getBoundingClientRect().right > row.getBoundingClientRect().right + 1)
-      if (clipped) findings.push(`CLIP ${where} ${row?.querySelector('.reports-metric-name, .reports-kpi-label, .reports-hero-tile-label, .reports-hero-label')?.textContent ?? element.className}: "${element.textContent}"`)
+      if (clipped) findings.push(`CLIP ${where} ${row?.querySelector('.reports-metric-name, .reports-kpi-label, .reports-hero-row-label, .reports-hero-aside, dt')?.textContent ?? element.className}: "${element.textContent}"`)
     }
     frame.remove()
   }

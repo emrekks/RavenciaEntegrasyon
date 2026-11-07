@@ -369,28 +369,34 @@ function PeriodCard({ data }: { data: ReportSales }) {
   const unit = names.unit.toLocaleLowerCase('tr-TR')
   const tip = useId()
   const hasBest = !noAmount && best !== null && best.value > 0
-  // The best day with its weekday; a week or a month by its own name.
-  const bestWhen = (point: ColumnPoint) => data.granularity === 'day' ? `${point.title}, ${weekdays[(new Date(`${point.key}T12:00:00`).getDay() + 6) % 7]}` : point.title
+  // The best day as "5 Kasım, Perşembe"; a week or a month by its own name.
+  const bestWhen = (point: ColumnPoint) => {
+    if (data.granularity !== 'day') return point.title
+    const day = new Date(`${point.key}T12:00:00`)
+    return `${day.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}, ${weekdays[(day.getDay() + 6) % 7]}`
+  }
+  // Money in whole liras on the facts, as in the strip; a count as it is.
+  const short = money ? formatTlWhole : format
   return <Card title={names.title} className="reports-card-period"
     actions={<select aria-label="Grafik ölçüsü" value={measure} onChange={event => setMeasure(event.target.value as Measure)}>{(Object.keys(measures) as Measure[]).map(key => <option key={key} value={key}>{measures[key]}</option>)}</select>}>
     {shown => <>
       {noAmount ? <p className="reports-empty">Bu dönemde tutarı olan sipariş yok.</p>
         : <Columns points={points} format={format} axisFormat={money ? formatTlShort : formatNumber} shown={shown} label={`${measures[measure]} dönem içinde`} />}
-      {/* Three tiles: the best bucket's figure and its date, the average against the previous period's, and how many
-          buckets beat the same bucket of the previous period, drawn as a share of the period. */}
+      {/* One row of three columns divided by hairlines, no boxes (owner, 7 Nov 2026): the best bucket's figure and its
+          date, the average with its change and the previous one, and how many buckets beat the same bucket of the
+          previous period, drawn as a share of it. Money in whole liras here, to the kuruş in the explanation. */}
       <dl className="reports-period-facts">
-        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-best`}>En İyi {names.unit}<TipMark /></button></dt>
-          <dd><strong>{hasBest && best ? format(best.value) : '—'}</strong><small>{hasBest && best ? bestWhen(best) : 'Bu dönemde veri yok'}</small></dd>
-          <span role="tooltip" id={`${tip}-best`} className="reports-hover-tip"><TipText text={`Dönemin ${measureOf[measure]} en yüksek ${names.its}.\nGrafikte mor sütunla gösterilir.`} /></span></div>
-        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-average`}>{names.every} Ortalama<TipMark /></button></dt>
-          <dd><strong>{noAmount || average === null ? '—' : format(average)}{!noAmount && average !== null && <Delta delta={change(average, previousAverage)} />}</strong>
-            <small>{previousAverage === null ? 'Önceki dönemde veri yok' : `Önceki dönem ${format(previousAverage)}`}</small></dd>
-          <span role="tooltip" id={`${tip}-average`} className="reports-hover-tip"><TipText text={`Bir ${names.of} ortalama ${measureOf[measure]}.\nDönem toplamı ÷ ${unit} sayısı; önceki dönemin ortalamasıyla karşılaştırılır.`} /></span></div>
-        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-ahead`}>Önceki Döneme Göre<TipMark /></button></dt>
-          <dd><strong>{noAmount || !compared.length ? '—' : `${ahead} ${unit} önde`}</strong>
-            {!noAmount && compared.length > 0 && <Progress value={ahead / compared.length} shown={shown} tone="good" />}
-            <small>{noAmount || !compared.length ? 'Önceki dönemde veri yok' : `${compared.length - ahead} ${unit} geride; toplam ${compared.length} ${unit}`}</small></dd>
-          <span role="tooltip" id={`${tip}-ahead`} className="reports-hover-tip"><TipText text={`Önceki dönemin aynı sıradaki ${names.from} yüksek geçen ${names.many}.\nDönemin ilk ${names.its} önceki dönemin ilk ${names.with}, ikincisi ikincisiyle karşılaştırılır.`} /></span></div>
+        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-best`}>En iyi {unit}</button></dt>
+          <dd><strong style={fitChars(hasBest && best ? short(best.value) : '—')}>{hasBest && best ? short(best.value) : '—'}</strong><small>{hasBest && best ? bestWhen(best) : 'Bu dönemde veri yok'}</small></dd>
+          <span role="tooltip" id={`${tip}-best`} className="reports-hover-tip"><TipText text={`Dönemin ${measureOf[measure]} en yüksek ${names.its}${hasBest && best ? `: ${format(best.value)}` : ''}.\nGrafikte mor sütunla gösterilir.`} /></span></div>
+        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-average`}>{names.every} ortalama</button></dt>
+          <dd><strong style={fitChars(noAmount || average === null ? '—' : short(average))}>{noAmount || average === null ? '—' : short(average)}</strong>
+            <small>{!noAmount && average !== null && <Delta delta={change(average, previousAverage)} />}{previousAverage === null ? 'önceki dönemde veri yok' : `önceki ${short(previousAverage)}`}</small></dd>
+          <span role="tooltip" id={`${tip}-average`} className="reports-hover-tip"><TipText text={`Bir ${names.of} ortalama ${measureOf[measure]}${noAmount || average === null ? '' : `: ${format(average)}`}.\nDönem toplamı ÷ ${unit} sayısı; önceki dönemin ortalamasıyla (${previousAverage === null ? 'veri yok' : format(previousAverage)}) karşılaştırılır.`} /></span></div>
+        <div className="reports-tip-host"><dt><button type="button" className="reports-tip-trigger" aria-describedby={`${tip}-ahead`}>Önceki döneme göre</button></dt>
+          <dd><strong className={!noAmount && compared.length > 0 && ahead > compared.length - ahead ? 'is-good' : undefined} style={fitChars(noAmount || !compared.length ? '—' : `${ahead} ${unit} önde`)}>{noAmount || !compared.length ? '—' : `${ahead} ${unit} önde`}</strong>
+            {!noAmount && compared.length > 0 ? <Progress value={ahead / compared.length} shown={shown} tone={ahead > compared.length - ahead ? 'good' : undefined} /> : <small>Önceki dönemde veri yok</small>}</dd>
+          <span role="tooltip" id={`${tip}-ahead`} className="reports-hover-tip"><TipText text={`Önceki dönemin aynı sıradaki ${names.from} yüksek geçen ${names.many}${noAmount || !compared.length ? '' : `: ${ahead} ${unit} önde, ${compared.length - ahead} ${unit} geride; toplam ${compared.length} ${unit}`}.\nDönemin ilk ${names.its} önceki dönemin ilk ${names.with}, ikincisi ikincisiyle karşılaştırılır.`} /></span></div>
       </dl>
     </>}
   </Card>
@@ -1047,16 +1053,22 @@ function operationMetrics(data: ReportSales): Metric[] {
 }
 
 
-// The overview's figure cards (owner's pick 7 Nov 2026, design A "Öne Çıkan Rakam"): nine cards of one large figure
-// each, a bar with its threshold where the figure is a rate, and two or three small tiles of the figures beside it. The
-// figures and their explanations are the metric rows' (productMetrics … operationMetrics), so nothing is worked out
-// twice; a card's tiles open its tab where it has one.
-type HeroTile = { key: string; label: string; value: string; note: string; tone?: 'warn' | 'bad' | 'good'; detail?: DetailKey; onOpen?: () => void }
+// The overview's figure cards (owner's pick 7 Nov 2026, "Başlıkta Rakam"): nine cards, each with its large figure at the
+// top (the name and the change or the threshold on the first line, the figure and a short note on the second, a bar with
+// its threshold under them where the figure is a rate) and, under a line, the figures beside it as rows of one height:
+// the name on the left, never wrapping, the value on the right. No boxes inside the card. The figures and their
+// explanations are the metric rows' (productMetrics … operationMetrics), so nothing is worked out twice; a row opens its
+// tab where it has one.
+type HeroRow = { key: string; label: string; value: string; note: string; tone?: 'warn' | 'bad' | 'good'; detail?: DetailKey; onOpen?: () => void
+  // A text (a reason) rather than a figure: it gives way with an ellipsis, the full text in the explanation.
+  text?: boolean }
 // value and threshold on a scale from 0 to `scale` (a rate); tone colours the filled part.
 type HeroBar = { value: number; scale: number; threshold?: number; tone: 'warn' | 'good' | 'plain' }
 type HeroCardDef = {
-  key: string; title: string; label: string; value: string; sub?: ReactNode; note: string; tone?: 'warn' | 'bad' | 'good'
-  delta?: Change | null; invert?: boolean; previous?: string; bar?: HeroBar; tiles: HeroTile[]; foot?: string; alert?: boolean
+  key: string; title: string; value: string; aside?: string; note: string; tone?: 'warn' | 'bad' | 'good'
+  // On the title's line: the change against the previous period, or a threshold or share note.
+  delta?: Change | null; invert?: boolean; previous?: string; badge?: string; badgeTone?: 'warn'
+  bar?: HeroBar; rows: HeroRow[]; alert?: boolean
 }
 
 // A figure's length for its font size: the CSS shrinks a long figure (₺1.638.267) to fit its box, never cutting it.
@@ -1068,44 +1080,52 @@ function HeroCard({ card, onMore }: { card: HeroCardDef; onMore: OpenDetail }) {
   const bar = card.bar
   const fill = bar ? Math.max(0, Math.min(1, bar.value / bar.scale)) : 0
   return <section ref={ref} className={`reports-card reports-hero-card is-${card.key}${card.alert ? ' is-alert' : ''}${shown ? ' is-shown' : ''}`} aria-label={card.title}>
-    <h2 className="reports-hero-title"><i aria-hidden="true" />{card.title}</h2>
-    <div className="reports-hero reports-tip-host">
-      <button type="button" className="reports-tip-trigger reports-hero-label" aria-describedby={`${tip}-hero`}>{card.label}<TipMark /></button>
-      <strong className={card.tone ? `is-${card.tone}` : undefined} style={fitChars(card.value)}>{card.value}</strong>
-      {(card.sub || card.delta !== undefined) && <span className="reports-hero-sub">{card.delta !== undefined && <Delta delta={card.delta} invert={card.invert} previous={card.previous} />}{card.sub}</span>}
+    <div className="reports-hero-top reports-tip-host">
+      <div className="reports-hero-head">
+        <h2 className="reports-hero-title"><i aria-hidden="true" />{card.title}</h2>
+        {card.delta !== undefined ? <Delta delta={card.delta} invert={card.invert} previous={card.previous} />
+          : card.badge && <span className={`reports-hero-badge${card.badgeTone ? ` is-${card.badgeTone}` : ''}`}>{card.badge}</span>}
+      </div>
+      <div className="reports-hero">
+        <button type="button" className="reports-tip-trigger reports-hero-value" aria-describedby={`${tip}-hero`}>
+          <strong className={card.tone ? `is-${card.tone}` : undefined} style={fitChars(card.value)}>{card.value}</strong>
+        </button>
+        {card.aside && <span className="reports-hero-aside">{card.aside}</span>}
+      </div>
+      {bar ? <span className={`reports-hero-bar is-${bar.tone}`} aria-hidden="true">
+        <i style={{ width: shown ? `${fill * 100}%` : '0%' }} />
+        {bar.threshold !== undefined && <b style={{ left: `${Math.min(1, bar.threshold / bar.scale) * 100}%` }} />}
+      </span> : <span className="reports-hero-bar is-empty" aria-hidden="true" />}
       <span role="tooltip" id={`${tip}-hero`} className="reports-hover-tip"><TipText text={card.note} /></span>
     </div>
-    {/* The card's note (the top reason) sits above the tiles, so the tiles of cards side by side line up. */}
-    {bar && <span className={`reports-hero-bar is-${bar.tone}`} aria-hidden="true">
-      <i style={{ width: shown ? `${fill * 100}%` : '0%' }} />
-      {bar.threshold !== undefined && <b style={{ left: `${Math.min(1, bar.threshold / bar.scale) * 100}%` }} />}
-    </span>}
-    {card.foot && <p className="reports-hero-foot">{card.foot}</p>}
-    <ul className={`reports-hero-tiles is-${card.tiles.length}`}>{card.tiles.map(tile => {
-      const open = tile.onOpen ?? (tile.detail ? () => onMore(tile.detail!) : undefined)
-      const body = <><span className="reports-hero-tile-label">{tile.label}</span><strong className={tile.tone ? `is-${tile.tone}` : undefined} style={fitChars(tile.value)}>{tile.value}</strong></>
-      return <li key={tile.key} className="reports-tip-host">
-        <button type="button" className={`reports-hero-tile${open ? '' : ' is-static'}`} onClick={open} aria-describedby={`${tip}-${tile.key}`} aria-haspopup={tile.onOpen ? 'dialog' : undefined}>{body}</button>
-        <span role="tooltip" id={`${tip}-${tile.key}`} className="reports-hover-tip"><TipText text={tile.note} /></span>
+    <ul className="reports-hero-rows">{card.rows.map(row => {
+      const open = row.onOpen ?? (row.detail ? () => onMore(row.detail!) : undefined)
+      return <li key={row.key} className="reports-tip-host">
+        <button type="button" className={`reports-hero-row${open ? '' : ' is-static'}`} onClick={open} aria-describedby={`${tip}-${row.key}`} aria-haspopup={row.onOpen ? 'dialog' : undefined}>
+          <span className="reports-hero-row-label">{row.label}</span>
+          <strong className={[row.tone ? `is-${row.tone}` : '', row.text ? 'is-text' : ''].filter(Boolean).join(' ') || undefined}>{row.value}</strong>
+        </button>
+        <span role="tooltip" id={`${tip}-${row.key}`} className="reports-hover-tip"><TipText text={row.note} /></span>
       </li>
     })}</ul>
   </section>
 }
 
-// A money figure of a tile in whole liras from a thousand up, so three tiles fit a card ("₺409.298"); a smaller one
-// keeps its kuruş.
+// A money figure of a row in whole liras from a thousand up ("₺409.298"); a smaller one keeps its kuruş.
 const tileTl = (value: string) => /₺[\d.]{5,},\d{2}/u.test(value) ? wholeLiras(value) : value
 
 // The healthy ceiling of TACoS the bar marks (Helium 10's rule of thumb, rapor-metrikleri §3).
 const tacosLine = 0.05
+// A threshold as it is said: %5, %4, %2 without a decimal; %2,5 with one.
+const limitText = (rate: number) => formatPercent(rate, Number.isInteger(Math.round(rate * 1000) / 10) ? 0 : 1)
 
 function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | undefined, adsFailed: boolean, openAds: () => void): HeroCardDef[] {
   const now = data.summary
   const before = data.previousSummary
-  const row = (rows: Metric[], key: string) => rows.find(item => item.key === key)!
-  const tile = (rows: Metric[], key: string, label?: string, value?: string): HeroTile => {
-    const item = row(rows, key)
-    return { key, label: label ?? item.label, value: tileTl(value ?? item.value), note: item.note, tone: item.tone, detail: item.detail, onOpen: item.onOpen }
+  const metric = (rows: Metric[], key: string) => rows.find(item => item.key === key)!
+  const line = (rows: Metric[], key: string, label: string, value?: string): HeroRow => {
+    const item = metric(rows, key)
+    return { key, label, value: tileTl(value ?? item.value), note: item.note, tone: item.tone, detail: item.detail, onOpen: item.onOpen }
   }
   const product = productMetrics(data, money)
   const order = orderMetrics(data, money)
@@ -1113,7 +1133,7 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
   const back = returnMetrics(data)
   const ops = operationMetrics(data)
 
-  // Satış: the products sold (the units sold lead the strip above, not repeated here).
+  // Satış: the seller's discount as a share of the list price.
   const list = now.listAmount ?? 0
   const discount = now.discountAmount ?? null
   const discountShare = now.ordersWithAmount > 0 && discount !== null && list > 0 ? formatPercent(discount / list) : '—'
@@ -1130,10 +1150,10 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
   const adTotals = combined(ads?.reports ?? [])
   const adOld = (ads?.reports ?? []).some(report => reportAge(report) > staleDays)
   const adRow = adReportRow(ads, adsFailed)
-  const adTiles: HeroTile[] = adTotals
-    ? [{ key: 'roas', label: 'ROAS (Kampanya)', value: adTotals.roas === null ? '—' : roasText(adTotals.roas), note: adRow.note, tone: adOld ? 'warn' : undefined, onOpen: openAds },
-      { key: 'adRevenue', label: 'Reklam Cirosu', value: formatTlWhole(adTotals.revenue), note: adRow.note, tone: adOld ? 'warn' : undefined, onOpen: openAds }]
-    : [{ key: 'adReport', label: 'Reklam Raporu', value: adRow.value, note: adRow.note, onOpen: openAds }]
+  const adRows: HeroRow[] = adTotals
+    ? [{ key: 'roas', label: 'ROAS (kampanya)', value: adTotals.roas === null ? '—' : roasText(adTotals.roas), note: adRow.note, tone: adOld ? 'warn' : undefined, onOpen: openAds },
+      { key: 'adRevenue', label: 'Reklam cirosu (kampanya)', value: formatTlWhole(adTotals.revenue), note: adRow.note, tone: adOld ? 'warn' : undefined, onOpen: openAds }]
+    : [{ key: 'adReport', label: 'Reklam raporu', value: adRow.value, note: adRow.note, onOpen: openAds }]
 
   // Kargo: the late share against its 4 % line, the bar to 10 %.
   const late = data.cargo.reduce((sum, item) => sum + item.lateShipments, 0)
@@ -1148,51 +1168,56 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
   const cancelled = data.cancellations.cancelledAmount
   const notInvoiced = data.invoices.buckets.find(bucket => bucket.key === 'NOT_INVOICED')?.packages ?? 0
   const packages = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
-  const rateTone = (value: number | null, line: number) => value !== null && value > line ? 'warn' as const : undefined
+  const over = (value: number | null, limit: number) => value !== null && value > limit
+  // The reason given most as a row: the reason and its share, cut with an ellipsis when long, whole in the explanation.
+  const reasonRow = (key: string, reason: ReportReason | undefined, total: number, what: string, detail: DetailKey): HeroRow[] => reason
+    ? [{ key, label: 'En sık neden', value: `${reason.reason} (${formatPercent(reason.count / total)})`, text: true, detail,
+      note: `${what} en sık verilen neden: ${reason.reason}.\nNedeni bilinen ${formatCount(total)} kaydın ${formatPercent(reason.count / total)} kadarı.` }]
+    : []
 
   return [
-    // Satış: the units sold (cancellations out, returns not taken off) with the variants behind them; the strip above
-    // leaves them to this card.
-    { key: 'sales', title: 'Satış', label: 'Satılan Adet', value: formatNumber(now.soldQuantity),
-      sub: `${now.soldVariants === undefined ? '' : `${formatCount(now.soldVariants)} farklı varyant · `}iadeler düşülmeden`,
+    // Satış: the units sold (cancellations out, returns not taken off) with the variants behind them.
+    { key: 'sales', title: 'Satış', value: `${formatNumber(now.soldQuantity)} adet`,
+      aside: now.soldVariants === undefined ? 'satılan adet' : `${formatCount(now.soldVariants)} farklı varyant`,
       delta: change(now.soldQuantity, before.soldQuantity), previous: formatNumber(before.soldQuantity),
       note: `${now.soldQuantity > 0 ? 'Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmeden.' : 'Bu dönemde satış yok.'}\nNet adet müşteride kalandır: ${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşülür, ${formatNumber(now.keptQuantity)} adet kalır. Farklı varyant: en az bir adedi satılan ürün; varyantı eşleşmeyen satır stok koduyla sayılır. ${previousText(formatNumber(before.soldQuantity))}.`,
-      tiles: [tile(product, 'price'), tile(product, 'vatFree', 'KDV Hariç Net'),
-        { ...tile(product, 'discount', 'Satıcı İndirimi'), value: discountShare }] },
-    { key: 'orders', title: 'Sipariş ve Müşteri', label: 'Sepet Ortalaması', value: row(order, 'basket').value, sub: 'sipariş başına satış tutarı', note: row(order, 'basket').note,
-      tiles: [tile(order, 'units'), tile(order, 'repeat', 'Tekrar Alan'), tile(order, 'profit')] },
-    { key: 'profit', title: 'Kârlılık', label: 'Reklam Öncesi Marj', value: row(cost, 'beforeAds').value, sub: 'reklam düşülmeden kâr ÷ satış', note: row(cost, 'beforeAds').note,
+      rows: [line(product, 'price', 'Adet başına satış'), line(product, 'vatFree', 'KDV hariç net satış'), line(product, 'discount', 'Satıcı indirimi', discountShare)] },
+    { key: 'orders', title: 'Sipariş ve Müşteri', value: metric(order, 'basket').value, aside: 'sepet ortalaması', note: metric(order, 'basket').note,
+      rows: [line(order, 'units', 'Sipariş başına adet'), line(order, 'repeat', 'Tekrar alan müşteri'), line(order, 'profit', 'Sipariş başına kâr')] },
+    { key: 'profit', title: 'Kârlılık', value: metric(cost, 'beforeAds').value, aside: 'reklam öncesi marj', note: metric(cost, 'beforeAds').note,
       tone: beforeAds === null ? undefined : beforeAds < 0 ? 'bad' : 'good', bar: beforeAds === null ? undefined : { value: Math.max(0, beforeAds), scale: 1, tone: 'good' },
-      tiles: [tile(product, 'profit'), tile(order, 'profit'),
-        { key: 'unitCost', label: 'Adet Başına Maliyet', value: unitCost === null ? '—' : formatTl(unitCost),
+      rows: [line(product, 'profit', 'Adet başına kâr'), line(order, 'profit', 'Sipariş başına kâr'),
+        { key: 'unitCost', label: 'Adet başına maliyet', value: unitCost === null ? '—' : formatTl(unitCost),
           note: `Maliyeti girili ürünlerin adet başına ortalama alış maliyeti.\nÜrün maliyeti ÷ maliyeti girili ${formatNumber(data.cost.costedQuantity)} adet.` }] },
-    { key: 'fees', title: 'Pazaryeri Kesintileri', label: 'Sipariş Başına Kesinti', value: row(order, 'fees').value, sub: 'komisyon · hizmet bedeli · stopaj', note: row(order, 'fees').note,
-      tiles: [tile(cost, 'commission'), tile(order, 'cargo'), tile(back, 'cargo')] },
-    { key: 'ads', title: 'Reklam · Trendyol', label: 'Reklam Harcaması', value: spend === null ? '—' : formatTlWhole(spend),
-      sub: tacos === null ? 'cari hesaptaki reklam bedeli' : `cirodan payı (TACoS) ${formatPercent(tacos, 2)} · sağlıklı sınır ${formatPercent(tacosLine)}`,
-      note: `${row(cost, 'spend').note}\n${row(cost, 'tacos').note.split('\n')[1] ?? ''} Uyarı rengi: TACoS ${formatPercent(tacosLine)} sınırının üstünde.`,
-      tone: rateTone(tacos, tacosLine), bar: tacos === null ? undefined : { value: tacos, scale: 0.1, threshold: tacosLine, tone: tacos > tacosLine ? 'warn' : 'plain' },
-      tiles: [tile(cost, 'perOrder', 'Sipariş Başına'), ...adTiles] },
-    { key: 'cargo', title: 'Kargo ve Teslimat', label: 'Geciken Kargo', value: row(ops, 'late').value, sub: lateRate === null ? 'ölçülemedi' : `${formatCount(late)} paket · eşik ${formatPercent(lateWarningRate)}`,
-      note: row(ops, 'late').note, tone: row(ops, 'late').tone,
-      bar: lateRate === null ? undefined : { value: lateRate, scale: 0.1, threshold: lateWarningRate, tone: lateRate > lateWarningRate ? 'warn' : 'plain' },
-      tiles: [tile(ops, 'ship', 'Kargoya Verme'), tile(ops, 'deliver'),
-        { key: 'measured', label: 'Ölçülen Paket', value: formatCount(measuredLate), detail: 'cargo', note: 'Kargoya verme süresi ve termini bilinen paketler.\nGeciken Kargo oranının paydası; PTT AVM termin göndermediği için orada ölçülmez.' }] },
-    { key: 'returns', title: 'İade', label: 'İade Oranı', value: formatPercent(now.returnRate), sub: `önceki dönem ${formatPercent(before.returnRate)}`, note: row(back, 'rate').note,
-      delta: row(back, 'rate').delta, invert: true, previous: formatPercent(before.returnRate),
-      tiles: [{ ...tile(back, 'returned', 'İade Edilen') },
-        { key: 'claims', label: 'Talep', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
-        { key: 'amount', label: 'Tutar', value: formatTlWhole(now.returnedAmount), detail: 'returns', note: `İade edilen ürünler için müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır. Liste fiyatıyla ${formatTl(returnedAtList(now))}.` }],
-      foot: topReturn ? `En sık neden: ${topReturn.reason} (${formatPercent(topReturn.count / returnTotal)})` : undefined },
-    { key: 'cancels', title: 'İptal', label: 'İptal Oranı', value: row(back, 'cancel').value, sub: `eşik ${formatPercent(warning)}`, note: row(back, 'cancel').note, tone: row(back, 'cancel').tone,
+    { key: 'fees', title: 'Pazaryeri Kesintileri', value: metric(order, 'fees').value, aside: 'sipariş başına', note: metric(order, 'fees').note,
+      rows: [line(cost, 'commission', 'Komisyon oranı'), line(order, 'cargo', 'Sipariş başına kargo'), line(back, 'cargo', 'İade kargo zararı')] },
+    { key: 'ads', title: 'Reklam · Trendyol', value: spend === null ? '—' : formatTlWhole(spend),
+      aside: tacos === null ? 'reklam harcaması' : `sınır ${limitText(tacosLine)}`,
+      badge: tacos === null ? undefined : `payı ${formatPercent(tacos, 2)}`, badgeTone: over(tacos, tacosLine) ? 'warn' : undefined,
+      note: `${metric(cost, 'spend').note}\n${metric(cost, 'tacos').note.split('\n')[1] ?? ''} Uyarı rengi: TACoS ${formatPercent(tacosLine)} sınırının üstünde.`,
+      tone: over(tacos, tacosLine) ? 'warn' : undefined, bar: tacos === null ? undefined : { value: tacos, scale: 0.1, threshold: tacosLine, tone: over(tacos, tacosLine) ? 'warn' : 'plain' },
+      rows: [line(cost, 'perOrder', 'Sipariş başına reklam'), ...adRows] },
+    { key: 'cargo', title: 'Kargo ve Teslimat', value: metric(ops, 'late').value, aside: lateRate === null ? 'ölçülemedi' : `${formatCount(late)} paket gecikti`,
+      badge: `eşik ${limitText(lateWarningRate)}`, badgeTone: over(lateRate, lateWarningRate) ? 'warn' : undefined,
+      note: metric(ops, 'late').note, tone: metric(ops, 'late').tone,
+      bar: lateRate === null ? undefined : { value: lateRate, scale: 0.1, threshold: lateWarningRate, tone: over(lateRate, lateWarningRate) ? 'warn' : 'plain' },
+      rows: [line(ops, 'ship', 'Kargoya verme süresi'), line(ops, 'deliver', 'Teslim süresi'),
+        { key: 'measured', label: 'Ölçülen paket', value: formatCount(measuredLate), detail: 'cargo', note: 'Kargoya verme süresi ve termini bilinen paketler.\nGeciken Kargo oranının paydası; PTT AVM termin göndermediği için orada ölçülmez.' }] },
+    { key: 'returns', title: 'İade', value: formatPercent(now.returnRate), aside: `önceki dönem ${formatPercent(before.returnRate)}`, note: metric(back, 'rate').note,
+      delta: metric(back, 'rate').delta, invert: true, previous: formatPercent(before.returnRate),
+      rows: [line(back, 'returned', 'İade edilen adet', formatNumber(now.returnedQuantity)),
+        { key: 'claims', label: 'İade talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
+        { key: 'amount', label: 'İade edilen tutar', value: formatTlWhole(now.returnedAmount), detail: 'returns', note: `İade edilen ürünler için müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır (${formatTl(now.returnedAmount)}). Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
+        ...reasonRow('returnReason', topReturn, returnTotal, 'İade taleplerinde', 'returns')] },
+    { key: 'cancels', title: 'İptal', value: metric(back, 'cancel').value, aside: `${formatCount(now.cancelledOrders)} sipariş iptal`, note: metric(back, 'cancel').note, tone: metric(back, 'cancel').tone,
+      badge: `eşik ${limitText(warning)}`, badgeTone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined,
       bar: { value: now.cancelRate ?? 0, scale: 0.1, threshold: warning, tone: (now.cancelRate ?? 0) > warning ? 'warn' : 'plain' },
-      tiles: [{ key: 'cancelOrders', label: 'Sipariş', value: formatCount(now.cancelledOrders), detail: 'cancellations', note: 'İptal edilen sipariş sayısı.' },
-        { key: 'cancelUnits', label: 'Adet', value: formatNumber(data.cancellations.cancelledQuantity), detail: 'cancellations', note: 'İptal edilen ürün adedi; kısmi iptaller dahil.' },
-        { key: 'cancelAmount', label: 'Tutar', value: cancelled === undefined ? '—' : formatTlWhole(cancelled), detail: 'cancellations', note: 'İptal edilen ürünlerin tutarı.\nListe fiyatıyla; satış tutarına girmez.' }],
-      foot: topCancel ? `En sık neden: ${topCancel.reason} (${formatPercent(topCancel.count / cancelTotal)})` : undefined },
-    { key: 'todo', title: 'Yapılacaklar', label: 'Faturasız Paket', value: row(ops, 'invoice').value, sub: `fatura kesilmeyi bekliyor · ${formatCount(packages)} paket içinde`, note: row(ops, 'invoice').note,
-      tone: row(ops, 'invoice').tone, alert: notInvoiced > 0,
-      tiles: [tile(ops, 'stock'), tile(ops, 'questions')] }
+      rows: [{ key: 'cancelUnits', label: 'İptal edilen adet', value: formatNumber(data.cancellations.cancelledQuantity), detail: 'cancellations', note: 'İptal edilen ürün adedi; kısmi iptaller dahil.' },
+        { key: 'cancelAmount', label: 'İptal edilen tutar', value: cancelled === undefined ? '—' : formatTlWhole(cancelled), detail: 'cancellations', note: `İptal edilen ürünlerin tutarı${cancelled === undefined ? '' : ` (${formatTl(cancelled)})`}.\nListe fiyatıyla; satış tutarına girmez.` },
+        ...reasonRow('cancelReason', topCancel, cancelTotal, 'İptallerde', 'cancellations')] },
+    { key: 'todo', title: 'Yapılacaklar', value: metric(ops, 'invoice').value, aside: 'faturasız paket', badge: `${formatCount(packages)} paket içinde`, note: metric(ops, 'invoice').note,
+      tone: metric(ops, 'invoice').tone, alert: notInvoiced > 0,
+      rows: [line(ops, 'stock', 'Stok riski'), line(ops, 'questions', 'Soru yanıt süresi')] }
   ]
 }
 
