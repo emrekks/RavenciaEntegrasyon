@@ -5,6 +5,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { extname, join, normalize, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { report } from './report-data.mjs'
+import { inventory, orderProfit, payouts } from './more-data.mjs'
 
 const root = resolve(process.argv[2] ?? '')
 const port = Number(process.argv[3] ?? 4319)
@@ -40,6 +41,10 @@ createServer(async (req, res) => {
     if (path === '/auth/csrf') return json({ token: 'csrf' })
     if (path === '/auth/me') return json(me)
     if (path.startsWith('/reports/sales')) return json(report)
+    if (path.startsWith('/reports/stock')) return json(inventory)
+    if (path.startsWith('/reports/payouts/lines')) return json({ items: [], totalCount: 0, page: 0, pageSize: 100, net: 0 })
+    if (path.startsWith('/reports/payouts')) return json(payouts)
+    if (path.startsWith('/reports/order-profitability')) return json(orderProfit)
     // A made-up Trendyol ad report (two campaigns, figures as large as a real store's), uploaded yesterday.
     if (path === '/reports/ad-report') return json({ stores: [{ connectionId: 'c-ty', storeName: 'Trendyol Mağaza' }], reports: [{ id: 'ad1', connectionId: 'c-ty', storeName: 'Trendyol Mağaza',
       fileName: 'Ürün Reklamları Raporum - 06.11.2026-09.00.xlsx', exportedAt: new Date(Date.now() - 86_400_000).toISOString(), exportedAtFromFileName: true, uploadedAt: new Date().toISOString(),

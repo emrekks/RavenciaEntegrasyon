@@ -854,6 +854,39 @@ describe('ReportsPage', () => {
     expect(page.querySelector('.reports-payout-coverage')?.textContent).toContain('Henüz okunmayanlar: PTT AVM')
   })
 
+  it('adds the marketplaces\' cards up: each click toggles one, the Pazaryeri filter follows and Temizle clears them', async () => {
+    const page = await open('?view=payouts')
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    const card = (name: string) => [...page.querySelectorAll<HTMLButtonElement>('.reports-payout-regions.is-platforms .reports-payout-region')].find(button => button.textContent?.includes(name))!
+    const field = () => [...page.querySelectorAll('.reports-payout-filters .rr-fld')].find(item => item.querySelector('small')?.textContent === 'Pazaryeri')?.querySelector('.rr-trigger')?.textContent
+    await act(async () => { card('Trendyol').click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    await act(async () => { card('Pazarama').click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(card('Trendyol').getAttribute('aria-pressed')).toBe('true')
+    expect(card('Pazarama').getAttribute('aria-pressed')).toBe('true')
+    expect(requests.at(-1)).toMatch(/^\/reports\/payouts\?.*TRENDYOL.*PAZARAMA/u)
+    expect(field()).toBe('Trendyol, Pazarama')
+    // A second click takes one out; the other stays.
+    await act(async () => { card('Trendyol').click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(card('Trendyol').getAttribute('aria-pressed')).toBe('false')
+    expect(card('Pazarama').getAttribute('aria-pressed')).toBe('true')
+    expect(field()).toBe('Pazarama')
+    // The region menu's button opens the menu and leaves the picked cards as they are.
+    const more = page.querySelector<HTMLButtonElement>('.reports-payout-region-more')
+    if (more) {
+      await act(async () => { more.click() })
+      expect(card('Pazarama').getAttribute('aria-pressed')).toBe('true')
+      await act(async () => { more.click() })
+    }
+    const clear = [...page.querySelectorAll<HTMLButtonElement>('.reports-payout-filters .rr-fbtns button')].find(button => button.textContent === 'Temizle')!
+    await act(async () => { clear.click() })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })
+    expect(card('Pazarama').getAttribute('aria-pressed')).toBe('false')
+    expect(field()).toBe('Tümü')
+  })
+
   it('follows the page\'s Platform filter on the payouts tab while it is open', async () => {
     const page = await open('?view=payouts')
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)) })

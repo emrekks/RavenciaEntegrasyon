@@ -7,6 +7,7 @@ import { formatIstanbul } from '../../shared/format-date'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { platformName } from './report-format'
+import { KpiStrip, type Kpi } from './ReportsPage'
 
 // Sipariş Kârlılık Analizi (ReportsContracts.cs, ReportOrderProfitView): each order of the period with what it leaves
 // after product cost, commission, cargo, the platform's fees, withholding tax and net VAT, and its items one by one.
@@ -29,6 +30,28 @@ const money = (value: number) => `${value < 0 ? '−' : ''}₺${Math.abs(value).
 const percent = (value: number | null) => value === null ? '—' : `%${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const tone = (value: number | null) => value === null ? 'is-unknown' : value < 0 ? 'is-loss' : 'is-gain'
 const count = (value: number) => value.toLocaleString('tr-TR')
+const orders = (value: number) => `${count(value)} sipariş`
+
+// The summary over the list in the KPI boxes of the other tabs (owner, 7 Nov 2026), the values as before: the orders'
+// own charges only, the deductions tied to no order are taken off Kârlılık's Net Kâr, not here.
+function summaryKpis(data: OrderProfitPage): Kpi[] {
+  const profitTone = data.profit === null ? undefined : data.profit < 0 ? 'bad' : 'good'
+  const missing = (key: string, label: string, value: number, tip: string): Kpi[] => value > 0
+    ? [{ key, label, value, format: orders, tone: 'warn', icon: 'alertTriangle', note: 'kârı hesaplanmaz', tip }] : []
+  return [
+    { key: 'orders', label: 'Sipariş', value: data.totalCount, format: count, icon: 'orders', note: `${count(data.profitOrders)} siparişin kârı bilinir`,
+      tip: 'Seçilen dönemde ve aramada listelenen siparişler.\nKârı bilinen siparişler, ürün maliyeti, komisyonu ve kargosu bilinenlerdir.' },
+    { key: 'amount', label: 'Sipariş Tutarı', value: data.amount, format: money, icon: 'lira', note: data.totalCount > 0 ? `sipariş başına ${money(data.amount / data.totalCount)}` : undefined,
+      tip: 'Listelenen siparişlerin toplam tutarı.\nSipariş başına: toplam tutar ÷ sipariş sayısı.' },
+    { key: 'profit', label: 'Siparişlerin Kârı', value: data.profit, format: money, icon: 'wallet', tone: profitTone, note: 'reklam ve cezalar hariç',
+      tip: 'Kârı bilinen siparişlerin toplam kârı.\nSiparişe bağlı olmayan kesintiler (reklam, ceza…) hariç; Kârlılık\'taki Net Kâr bunları da düşer.' },
+    { key: 'margin', label: 'Kâr Marjı', value: data.margin, format: value => percent(value), icon: 'percent', note: `${money(data.profitAmount)} tutar üzerinden`,
+      tip: 'Siparişlerin kârının tutarına oranı.\nSiparişlerin kârı ÷ kârı bilinen siparişlerin tutarı.' },
+    ...missing('cost', 'Maliyeti Eksik', data.missingCost, 'Ürün maliyeti girilmemiş siparişler.\nBu siparişlerin kârı hesaplanmaz; maliyeti ürün kartından girin.'),
+    ...missing('cargo', 'Kargosu Bilinmeyen', data.missingCargo, 'Kargo faturası gelmemiş ve tarifeyle tahmin edilemeyen siparişler.\nBu siparişlerin kârı hesaplanmaz.'),
+    ...missing('commission', 'Komisyonu Eksik', data.missingCommission ?? 0, 'Siparişte ve mağazanın bu dönemdeki satışlarında komisyon oranı yok.\nBu siparişlerin kârı hesaplanmaz.')
+  ]
+}
 export const stateText: Record<OrderProfit['state'], string | null> = { SOLD: null, PARTLY_RETURNED: 'Kısmi İade', RETURNED: 'İade' }
 
 // Why an order's profit is unknown: a line the panel could not read, a line without a product cost, a cargo that could
@@ -82,16 +105,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
         <button type="submit" className="secondary">Ara</button>
       </form>
     </header>
-    {data && <dl className="reports-order-summary">
-      <div><dt>Sipariş</dt><dd>{data.totalCount.toLocaleString('tr-TR')}</dd></div>
-      <div><dt>Sipariş Tutarı</dt><dd>{money(data.amount)}</dd></div>
-      {/* Only the orders' own charges: the deductions tied to no order are taken off Kârlılık's Net Kâr, not here. */}
-      <div title="Siparişe bağlı olmayan kesintiler (reklam, ceza…) hariç; Kârlılık'taki Net Kâr bunları da düşer."><dt>Siparişlerin Kârı</dt><dd className={tone(data.profit)}>{data.profit === null ? '—' : money(data.profit)}</dd></div>
-      <div><dt>Kâr Marjı</dt><dd>{percent(data.margin)}</dd></div>
-      {data.missingCost > 0 && <div className="is-warn"><dt>Maliyeti Eksik</dt><dd>{count(data.missingCost)} sipariş</dd></div>}
-      {data.missingCargo > 0 && <div className="is-warn"><dt>Kargosu Bilinmeyen</dt><dd>{count(data.missingCargo)} sipariş</dd></div>}
-      {(data.missingCommission ?? 0) > 0 && <div className="is-warn" title="Siparişte ve mağazanın bu dönemdeki satışlarında komisyon oranı yok; bu siparişlerin kârı hesaplanmaz."><dt>Komisyonu Eksik</dt><dd>{count(data.missingCommission ?? 0)} sipariş</dd></div>}
-    </dl>}
+    {data && <div className="reports-order-summary"><KpiStrip label="Siparişlerin özeti" items={summaryKpis(data)} long /></div>}
     {result.isLoading && <Busy />}
     {result.isError && <ErrorBox error={result.error} onRetry={() => void result.refetch()} />}
     {data && data.items.length === 0 && <p className="reports-empty">Bu dönemde sipariş yok.</p>}

@@ -477,7 +477,7 @@ function Figure({ value, format, shown }: { value: number; format: (value: numbe
 
 // A figure of a strip: its value (or a word, as a province's name), its change against the previous period with the
 // previous value under it, and how it is worked out, shown under the pointer.
-type Kpi = {
+export type Kpi = {
   key: string; label: string; value: number | null; format?: (value: number) => string; text?: string; empty?: string
   delta?: Change | null; invert?: boolean; note?: string; tip: string; tone?: 'good' | 'bad' | 'warn'; icon?: CardIconName
   // Rows the explanation lists under it (the figure per platform); the card then opens it on hover, not only its label.
@@ -500,7 +500,10 @@ const kpiIcon = (item: Kpi): CardIconName => item.icon ?? kpiIcons.find(([patter
 // and kept inside the strip's width; each cell keeps its explanation as text for screen readers too.
 // marks: each label carries the round question mark and the explanation opens from the label only (Hakediş).
 // aligned: the cells share their rows (subgrid), so a label that wraps to two lines keeps every figure level.
-function KpiStrip({ label, items, marks = true, aligned = false }: { label: string; items: Kpi[]; marks?: boolean; aligned?: boolean }) {
+// long: a strip whose labels need more room per box than the others' (Hakediş, Kârlılık, Stok, Sipariş Kârlılığı): it
+// goes to rows of three while its box would be too narrow for a label on one line, then two and one, as Genel Bakış's.
+// stack: one box a row on a phone only (a label too long for half a phone's width, Müşteriler).
+export function KpiStrip({ label, items, marks = true, aligned = false, long = false, stack = false }: { label: string; items: Kpi[]; marks?: boolean; aligned?: boolean; long?: boolean; stack?: boolean }) {
   const [ref, shown] = useReveal<HTMLDivElement>()
   const tip = useId()
   const [open, setOpen] = useState<{ key: string; left: number; top: number; width: number } | null>(null)
@@ -516,7 +519,7 @@ function KpiStrip({ label, items, marks = true, aligned = false }: { label: stri
   const hide = () => setOpen(null)
   const current = open ? items.find(item => item.key === open.key) : undefined
   return <div className="reports-kpis-wrap">
-    <div ref={ref} className={`reports-kpis is-${items.length}${aligned ? ' is-aligned' : ''}`} role="group" aria-label={label}>{items.map(item => {
+    <div ref={ref} className={`reports-kpis is-${items.length}${aligned ? ' is-aligned' : ''}${long ? ' is-long' : ''}${stack ? ' is-stack' : ''}`} role="group" aria-label={label}>{items.map(item => {
       const id = `${tip}-${item.key}`
       const empty = item.empty ?? '—'
       const missing = item.value === null && item.text === undefined
@@ -1343,7 +1346,7 @@ function ProfitView({ data }: { data: ReportSales }) {
       tip: `Ürüne harcanan her liranın ne kadar net kâr getirdiği.\nNet Kâr ÷ Ürün Maliyeti${money?.cost ? ` (${formatTl(money.cost)})` : ''}; Genel Bakış'taki Maliyete Göre Kâr.` }
   ]
   return <div className="reports-summary">
-    <KpiStrip label="Kârlılığın göstergeleri" items={items} aligned />
+    <KpiStrip label="Kârlılığın göstergeleri" items={items} long />
     <CostAndProfit data={data} />
     <UnlinkedDeductions data={data} panel />
     <Platforms data={data} />
@@ -1766,7 +1769,7 @@ function Returns({ data }: { data: ReportSales }) {
       note: previousText(then.ordersWithAmount > 0 ? formatTl(returnedAtList(then)) : null), tip: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nSatış tutarından ödenen tutarı düşülür.' }
   ]
   return <div className="reports-grid">
-    <div className="is-wide"><KpiStrip label="İadelerin göstergeleri" items={items} /></div>
+    <div className="is-wide"><KpiStrip label="İadelerin göstergeleri" items={items} long /></div>
     <ReasonsCard title="İade Nedenleri" description="Pazaryerinin bildirdiği nedene göre; neden yoksa Bilinmiyor." reasons={data.returnReasons} csvName="rapor-iade-nedenleri" empty="Bu dönemde iade talebi yok." />
     <Panel title="İade Gelen İller" description="İade adedine göre; yanında iade oranı." className="reports-list">
       <Bars label="İllere göre iade" format={formatNumber} items={topGroups(data.cities, group => group.returnedQuantity, group => formatPercent(group.returnRate))} />
@@ -1780,7 +1783,7 @@ function Cancellations({ data }: { data: ReportSales }) {
   const then = data.previousSummary
   const warn = (rate: number | null) => (rate ?? 0) > cancellations.warningRate
   return <div className="reports-grid">
-    <div className="is-wide"><KpiStrip label="İptallerin göstergeleri" items={[
+    <div className="is-wide"><KpiStrip label="İptallerin göstergeleri" long items={[
       { key: 'orders', label: 'İptal Edilen Sipariş', value: cancellations.cancelledOrders, format: formatCount, delta: change(cancellations.cancelledOrders, then.cancelledOrders), invert: true,
         note: previousText(formatCount(then.cancelledOrders)), tip: 'İptal edilen sipariş sayısı.\nTamamı iptal edilen siparişler sayılır.' },
       { key: 'rate', label: 'İptal Oranı', value: cancellations.cancelRate, format: percent, delta: change(cancellations.cancelRate, then.cancelRate, 'rate'), invert: true,
@@ -1813,7 +1816,7 @@ function Cargo({ data }: { data: ReportSales }) {
   const measured = (count: number) => count > 0 ? `${formatCount(count)} pakette ölçüldü` : 'Ölçülemedi'
   const carrier = [...data.cargo].filter(row => row.known).sort((a, b) => b.packages - a.packages)[0]
   return <div className="reports-grid">
-    <div className="is-wide"><KpiStrip label="Kargonun göstergeleri" items={[
+    <div className="is-wide"><KpiStrip label="Kargonun göstergeleri" long items={[
       { key: 'packages', label: 'Paket', value: packages, format: formatCount, note: `${formatCount(data.cargo.filter(row => row.known).length)} kargo firması`, tip: 'Kargoya verilen paket sayısı.\nDönemin siparişlerinin paketleri.' },
       { key: 'carrier', label: 'Kargo Firması', value: null, text: carrier?.label, note: carrier ? `Paketlerin ${formatPercent(carrier.share)} kadarı` : 'Okunamadı', tip: 'En çok paket taşıyan kargo firması.\nPaket sayısına göre.' },
       { key: 'ship', label: 'Kargo Teslim Alma', value: ship.hours, format: formatHours, note: measured(ship.measured), tip: 'Siparişin kargo firmasına teslim edilmesine kadar geçen ortalama süre.\nKargo firmasının paketi okuttuğu ana kadar; yaklaşık.' },
@@ -1892,7 +1895,7 @@ function TimeOfDay({ data }: { data: ReportSales }) {
 function Customers({ data }: { data: ReportSales }) {
   const customers = data.customers
   return <div className="reports-grid">
-    <div className="is-wide"><KpiStrip label="Müşterilerin göstergeleri" items={[
+    <div className="is-wide"><KpiStrip label="Müşterilerin göstergeleri" stack items={[
       { key: 'unique', label: 'Müşteri', value: customers.uniqueCustomers, format: formatCount, note: `${formatCount(customers.identifiedOrders)} siparişten`, tip: 'Dönemde sipariş veren farklı müşteri sayısı.\nMüşteri numarası, e-posta ya da telefondan tanınır.' },
       { key: 'repeat', label: 'Tekrar Gelen Müşteri', value: customers.repeatCustomers, format: formatCount, note: 'birden çok sipariş verdi', tip: 'Dönemde birden fazla sipariş veren müşteri sayısı.\nAynı müşterinin ikinci ve sonraki siparişleri.' },
       { key: 'rate', label: 'Tekrar Gelme Oranı', value: customers.repeatRate, format: percent, note: 'tekrar gelen ÷ müşteri', tip: 'Müşterilerin yüzde kaçının tekrar aldığı.\nTekrar alan müşteri ÷ tekil müşteri.' },
@@ -2161,9 +2164,9 @@ function StockReport({ from, to, platforms, sales }: { from: string; to: string;
     groups.slice(0, limit).map(group => ({ key: group.key, label: group.label, value: value(group), muted: !group.known }))
   const adet = (value: number) => `${formatNumber(value)} adet`
   return <div className="reports-summary">
-    <KpiStrip label="Stoğun parası" items={money} />
-    <KpiStrip label="Stoğun durumu" items={counts} />
-    <KpiStrip label="Çok satanların stoğu" items={bestSellerKpis(sales)} />
+    <KpiStrip label="Stoğun parası" items={money} long />
+    <KpiStrip label="Stoğun durumu" items={counts} long />
+    <KpiStrip label="Çok satanların stoğu" items={bestSellerKpis(sales)} long />
     <div className="reports-grid">
       <BestSellerTables data={sales} />
       <div className="is-wide"><DataTable title="Kategori Bazlı Stok" csvName="rapor-stok-kategori" rows={data.categories} rowKey={row => row.key} unknown={row => !row.known} initialSort="capital"
@@ -2191,7 +2194,7 @@ function StockReport({ from, to, platforms, sales }: { from: string; to: string;
 // The tab's shape while it loads, so nothing moves when the figures come in.
 function StockSkeleton() {
   return <div className="reports-summary reports-stock-skeleton" role="status" aria-label="Stok raporu hazırlanıyor">
-    {[5, 5, 3].map((cells, strip) => <div key={strip} className={`reports-kpis is-${cells}`}>{Array.from({ length: cells }, (_, index) => <div key={index}>
+    {[5, 5, 3].map((cells, strip) => <div key={strip} className={`reports-kpis is-${cells}${strip < 2 ? ' is-long' : ''}`}>{Array.from({ length: cells }, (_, index) => <div key={index}>
       <span className="reports-skeleton is-label" /><span className="reports-skeleton is-figure" />
     </div>)}</div>)}
     <div className="reports-grid">{[0, 1].map(index => <div key={index} className="reports-panel"><span className="reports-skeleton is-label" /><span className="reports-skeleton is-block" /></div>)}</div>
@@ -2297,7 +2300,12 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
     setOpen(null)
   }
   const pickRegion = (region: PayoutRegion | 'ALL') => apply({ ...draft, platforms, search, ...applied, region })
-  const pickPlatform = (code: string | null) => apply({ ...draft, ...applied, search, platforms: code === null || (platforms.length === 1 && platforms[0] === code) ? [] : [code] })
+  // A card adds its marketplace to the picked ones or takes it out (owner, 7 Nov 2026): several add up, none is all of
+  // them. The server answers for the picked set as a whole, so totals and days are each counted once.
+  const pickPlatform = (code: string) => {
+    const kept = platforms.filter(item => item !== RETURN_NO_PLATFORM)
+    apply({ ...draft, ...applied, search, platforms: kept.includes(code) ? kept.filter(item => item !== code) : [...kept, code] })
+  }
   // The marketplaces' cards stay all in view while one is picked: they come from the unfiltered answer then.
   const platformCards = none ? [] : (platforms.length ? everything.data?.platforms : result.data?.platforms) ?? []
   // A summary card in the metric card language: its mark and name, its balance, the next payout, its overdue part.
@@ -2407,7 +2415,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const dayState = (groups: PayoutGroup[]) => groups.every(group => group.status === 'PAID') ? ['Ödendi', 'is-paid'] as const
     : groups.some(group => group.status === 'PAID') ? ['Kısmen Ödendi', 'is-paid'] as const : ['Tahmini', 'is-expected'] as const
   return <div className="reports-summary reports-payouts">
-    <KpiStrip label="Hakediş özeti" items={items} marks />
+    <KpiStrip label="Hakediş özeti" items={items} marks long />
     <Panel title="Ödeme Özeti" description="Kartlar pazaryeri ve bölge filtresine göre; durum, tarih ve tutar filtreleri yalnız listeyi süzer." className="reports-payout-list">
       {/* Every marketplace's total (a card sets the platform filter; the totals add up to the balance). Trendyol's card
           holds its payout regions in a list that opens under it; a region sets the region filter. */}
@@ -2415,7 +2423,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
         <ul>{platformCards.map(item => {
           const withRegions = item.platformCode === 'TRENDYOL' && regions.length > 0
           return summaryCard(item.platformCode, platformName(item.platformCode), item.platformCode, 'wallet', item,
-            (platforms.length === 1 && platforms[0] === item.platformCode) || (withRegions && region !== 'ALL'), () => pickPlatform(item.platformCode),
+            platforms.includes(item.platformCode) || (withRegions && region !== 'ALL'), () => pickPlatform(item.platformCode),
             withRegions ? { tag: region !== 'ALL' ? regionLabels[region] : undefined, children: <>
               <button type="button" className="reports-payout-region-more" aria-expanded={regionsOpen} aria-controls="reports-payout-regionpop"
                 onClick={() => setRegionsOpen(!regionsOpen)}>{regions.length} Bölge<UiIcon name="chevronDown" size={13} /></button>

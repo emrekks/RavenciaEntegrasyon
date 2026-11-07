@@ -5,13 +5,14 @@
 //   GAP     a vertical gap between rows of a grid other than 20px;
 //   SCROLL  a page wider than the window (horizontal scroll);
 //   EMPTY   a tab that rendered no report body;
-//   CLIP    a metric value, its second line or a strip figure cut off (wider than its box or past its row's edge).
+//   CLIP    a metric value, its second line or a strip figure cut off (wider than its box or past its row's edge);
+//   KPIHEIGHT  KPI boxes of more than one height on a tab; LABEL  a KPI box's label on two lines or cut.
 // Pass widths as window.__reportsAuditWidths (e.g. [1000, 1100, 1200, 1280, 1366, 1440, 375]) to check others.
 // An empty findings list means the layout follows the spacing rules.
 window.__reportsAudit = { done: false, findings: [] };
 (async () => {
   const views = ['', '?view=geo', '?view=products', '?view=products&sub=brands', '?view=profit', '?view=ops&sub=returns', '?view=ops&sub=cancellations',
-    '?view=ops&sub=cargo', '?view=ops&sub=invoices', '?view=ops&sub=stock', '?view=customers', '?view=tariffs']
+    '?view=ops&sub=cargo', '?view=ops&sub=invoices', '?view=stock', '?view=payouts', '?view=orders', '?view=customers', '?view=tariffs']
   const widths = window.__reportsAuditWidths ?? [1000, 1280, 1800]
   const findings = window.__reportsAudit.findings
   const box = item => item.matches('.reports-panel, .reports-card, section, .reports-stack') ? item : item.querySelector('.reports-panel, .reports-card, section') ?? item
@@ -52,6 +53,12 @@ window.__reportsAudit = { done: false, findings: [] };
       const clipped = element.scrollWidth > element.clientWidth + 1 || (row && element.getBoundingClientRect().right > row.getBoundingClientRect().right + 1)
       if (clipped) findings.push(`CLIP ${where} ${row?.querySelector('.reports-metric-name, .reports-kpi-label, .reports-hero-row-label, .reports-hero-aside, dt')?.textContent ?? element.className}: "${element.textContent}"`)
     }
+    // Every KPI box one height on every tab (owner, 7 Nov 2026), its label on one line and never cut.
+    const kpiBoxes = [...body.querySelectorAll('.reports-kpis > div')]
+    const kpiHeights = [...new Set(kpiBoxes.map(item => Math.round(item.getBoundingClientRect().height)))]
+    if (kpiHeights.length > 1) findings.push(`KPIHEIGHT ${where}: ${kpiHeights.join(', ')}px`)
+    for (const label of body.querySelectorAll('.reports-kpis .reports-kpi-label'))
+      if (label.getBoundingClientRect().height > 24 || label.scrollWidth > label.clientWidth + 1) findings.push(`LABEL ${where}: "${label.textContent}" wraps or is cut`)
     frame.remove()
   }
   window.__reportsAudit.done = true
