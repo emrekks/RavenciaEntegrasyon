@@ -27,6 +27,11 @@
 
   /* Metric tiles */
   :root .app-shell.stitch-shell main :is(.rr-metrics > *, .invoice-reference-metrics > article) { padding: 10px var(--m-pad) !important; }
+  /* Every summary card is as tall as the Düşük Stoklu card (90px): label on top, figure under it, the optional note under
+     that, the block centred. Ürünler, Genel Bakış, Siparişler, İadeler and Faturalar share this one rule. */
+  :root .app-shell.stitch-shell main :is(.rr-metrics > *, .invoice-reference-metrics > article, .rr-opgrid > .rr-opcard) { box-sizing: border-box; min-height: 90px !important; align-content: center !important; }
+  :root .app-shell.stitch-shell main .invoice-reference-metrics > article { gap: 0 !important; }
+  :root .app-shell.stitch-shell main .invoice-reference-metrics > article > strong { line-height: 1.2 !important; }
 
   /* Card lists: orders, products, returns, invoices, jobs, categories */
   :root .app-shell.stitch-shell main .rr-tbl tbody > tr { margin-bottom: var(--m-gap) !important; }
