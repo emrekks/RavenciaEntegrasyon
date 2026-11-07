@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  activityActor, activityChange, activityCountsQueryString, activityFilterCount, activityKindCounts, activityLink, activityQueryString, activitySourceText,
+  activityActor, activityChange, activityCountsQueryString, activityFilterCount, activityKindCounts, activityLink, activityMovements, activityPanelFilterCount, activityProductLines, activityQueryString, activitySourceText,
   activityTypeLabel, activityVariantText, emptyActivityFilters, toggleActivityKind, type ProductActivityEntry
 } from './product-activity'
 
@@ -93,6 +93,43 @@ describe('product activity request', () => {
     expect(days.get('to')).toBe('2026-11-04T20:59:59.999Z')
     const range = new URLSearchParams(activityQueryString({ ...emptyActivityFilters, range: '24h' }, null, 50, now).slice(1))
     expect(range.get('from')).toBe('2026-11-03T12:00:00.000Z')
+  })
+})
+
+describe('product activity movement and first-price filters', () => {
+  it('sends the movement types and the first-price switch to the list and to the counts, and leaves them out when off', () => {
+    const off = new URLSearchParams(activityQueryString(emptyActivityFilters).slice(1))
+    expect(off.has('movements')).toBe(false)
+    expect(off.has('includeInitialPrices')).toBe(false)
+    expect(activityCountsQueryString(emptyActivityFilters)).toBe('')
+    const filters = { ...emptyActivityFilters, kinds: ['STOCK'], movements: ['SALE', 'SALE', 'MANUAL_STOCK'], initialPrices: true }
+    expect(Object.fromEntries(new URLSearchParams(activityQueryString(filters).slice(1)))).toEqual({ limit: '50', kinds: 'STOCK', movements: 'SALE,MANUAL_STOCK', includeInitialPrices: 'true' })
+    // The summary keeps the same movement and first-price filters, only the kind filter is left out.
+    expect(Object.fromEntries(new URLSearchParams(activityCountsQueryString(filters)))).toEqual({ movements: 'SALE,MANUAL_STOCK', includeInitialPrices: 'true' })
+  })
+
+  it('counts them as panel filters and offers every label the change column shows', () => {
+    expect(activityPanelFilterCount({ ...emptyActivityFilters, movements: ['SALE'] })).toBe(1)
+    expect(activityPanelFilterCount({ ...emptyActivityFilters, initialPrices: true })).toBe(1)
+    expect(activityFilterCount({ ...emptyActivityFilters, movements: ['SALE'], initialPrices: true })).toBe(2)
+    expect(activityMovements.map(item => item.label)).toEqual([
+      'Satış', 'Sipariş İptali / Değişikliği', 'Stok Yetersiz', 'Stok Düzenleme', 'Açılış Stoğu', 'Pazaryeri Stoğu', 'İade Stoğa Eklendi', 'İade Stoğa Eklenmedi', 'Mağaza Fiyatı', 'Panel Fiyatı', 'Satış Durumu'
+    ])
+    const labels = new Set([
+      activityTypeLabel(entry({ type: 'ORDER_RECEIVED', quantityDelta: -1 })), activityTypeLabel(entry({ type: 'ORDER_RECEIVED', quantityDelta: 1 })), activityTypeLabel(entry({ type: 'ORDER_STOCK_SHORTFALL' })),
+      activityTypeLabel(entry({ type: 'MANUAL_ADJUSTMENT' })), activityTypeLabel(entry({ type: 'IMPORT_OPENING' })), activityTypeLabel(entry({ type: 'MARKETPLACE_STOCK_IMPORT' })),
+      activityTypeLabel(entry({ type: 'RETURN_PASS' })), activityTypeLabel(entry({ type: 'RETURN_DAMAGED' })), activityTypeLabel(entry({ type: 'OFFER_PRICE' })), activityTypeLabel(entry({ type: 'DEFAULT_PRICE' })), activityTypeLabel(entry({ type: 'STATUS' }))
+    ])
+    expect(activityMovements.every(item => labels.has(item.label))).toBe(true)
+  })
+})
+
+describe('activityProductLines', () => {
+  it('names the model code and the barcode, and gives the variant its own line', () => {
+    expect(activityProductLines({ modelCode: 'MZ029YD', barcode: '8680000000012', sku: 'MZ029YD69-B', optionText: 'Renk: Mürdüm | Beden: 5XL' }))
+      .toEqual({ codes: 'Model: MZ029YD · Barkod: 8680000000012', variant: 'Varyant: Mürdüm / 5XL' })
+    expect(activityProductLines({ modelCode: null, barcode: null, sku: 'S-1', optionText: null })).toEqual({ codes: 'Stok Kodu: S-1', variant: null })
+    expect(activityProductLines({ modelCode: null, barcode: null, sku: null, optionText: null })).toEqual({ codes: null, variant: null })
   })
 })
 

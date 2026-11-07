@@ -14,7 +14,7 @@ import { relativeAgeText } from '../marketplace/integrations/integration-helpers
 import { jobTimeRanges } from './job-list-query'
 import { FilterMenu, type FilterMenuGroup } from './log-filter-menu'
 import {
-  activityActor, activityChange, activityVariantText, activityCountsQueryString, activityFilterCount, activityKindCounts, activityKinds, activityLink, activityPanelFilterCount,
+  activityActor, activityChange, activityMovements, activityProductLines, activityCountsQueryString, activityFilterCount, activityKindCounts, activityKinds, activityLink, activityPanelFilterCount,
   activityQueryString, activityRangeLabel, activitySourceText, activityTypeLabel, emptyActivityFilters, toggleActivityKind,
   type ActivityFilters, type ProductActivityEntry, type ProductActivityPage
 } from './product-activity'
@@ -30,14 +30,15 @@ const exactTime: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit'
 const dayOptions: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
 
 function ProductCell({ entry }: { entry: ProductActivityEntry }) {
-  const codes = [activityVariantText(entry.optionText), entry.barcode ?? entry.sku, entry.modelCode].filter(Boolean).join(' · ')
+  const { codes, variant } = activityProductLines(entry)
   return <div className="psl-product">
     <ProductThumb url={entry.imageUrl} title={entry.productTitle ?? 'Ürün'} />
     <span className="psl-product-text">
       {entry.productId && entry.productTitle
         ? <Link to={`/products/${encodeURIComponent(entry.productId)}`} className="pal-product-link" title={entry.productTitle}>{entry.productTitle}</Link>
         : <strong>{entry.productTitle ?? 'Silinmiş ürün'}</strong>}
-      {codes && <small title={codes}>{codes}</small>}
+      {codes && <small className="pal-product-codes" title={codes}>{codes}</small>}
+      {variant && <small className="pal-product-variant" title={variant}>{variant}</small>}
     </span>
   </div>
 }
@@ -72,6 +73,7 @@ function SourceCell({ entry }: { entry: ProductActivityEntry }) {
   </span>
 }
 
+const movementGroups: FilterMenuGroup[] = [{ options: activityMovements }]
 const kindGroups: FilterMenuGroup[] = [{ options: activityKinds.map(kind => ({ value: kind.key, label: kind.label })) }]
 
 // The page heading's controls for Ürün Hareketleri, drawn into İşlem Takibi's heading like the send log's: the range
@@ -101,6 +103,8 @@ function ActivityHeadingControls({ filters, platformGroups, onChange, onClear, c
       {panelOpen && <div className="jobs-reference-filter-panel psl-filter-panel" role="dialog" aria-label="Ürün hareketi filtreleri">
         <div className="psl-panel-field psl-panel-wide"><span>Platform</span><FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={filters.platforms} onChange={platforms => onChange({ platforms })} emptyText="Bağlı pazaryeri yok." /></div>
         <div className="psl-panel-field psl-panel-wide"><span>Tür</span><FilterMenu name="Tür" allLabel="Tüm Türler" unit="Tür" groups={kindGroups} selected={filters.kinds} onChange={kinds => onChange({ kinds })} /></div>
+        <div className="psl-panel-field psl-panel-wide"><span>Hareket Türü</span><FilterMenu name="Hareket Türü" allLabel="Tüm Hareketler" unit="Hareket Türü" groups={movementGroups} selected={filters.movements} onChange={movements => onChange({ movements })} /></div>
+        <label className="psl-panel-check psl-panel-wide"><input type="checkbox" checked={filters.initialPrices} onChange={event => onChange({ initialPrices: event.target.checked })} />İlk Fiyatları Göster</label>
         <DateRangePicker className="psl-dates psl-panel-wide" label="Hareket Tarihi" placeholder="Aralık Seçilmedi" from={filters.from} to={filters.to} onChange={range => onChange({ from: range.from, to: range.to })} />
         <button type="button" className="psl-control psl-clear psl-panel-wide" onClick={onClear} disabled={clearCount === 0}>Temizle{clearCount > 0 && <span className="psl-clear-count" aria-label={`${clearCount} filtre`}>{clearCount}</span>}</button>
       </div>}
