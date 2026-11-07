@@ -2,6 +2,8 @@ export type ShippingLabelBlockKind = 'trackingBarcode' | 'address' | 'orderInfo'
 export type ShippingLabelField = 'trackingNumber' | 'packageNumber' | 'orderNumber' | 'customerName' | 'address' | 'cargoProvider' | 'senderName' | 'senderAddress' | 'customerEmail'
 export type ShippingLabelAlignment = 'left' | 'center' | 'right'
 export type ShippingLabelBlockPosition = { x: number; y: number; width: number; height: number }
+// How a field shows its caption: above its value (the first labels), beside it ("Kargo Firması: Trendyol Express") or not at all.
+export type ShippingLabelCaptionStyle = 'above' | 'beside' | 'none'
 
 export type ShippingLabelBlock = {
   id: string
@@ -12,9 +14,24 @@ export type ShippingLabelBlock = {
   text: string
   fontSize?: number
   rotation?: number
-  // Each field on one line ("Paket Numarası: 4293901515") instead of its caption above its value.
+  // Each field on one line ("Paket Numarası: 4293901515") instead of its caption above its value. Kept for designs
+  // saved before captionStyle; captionStyle wins when both are set.
   inline?: boolean
+  captionStyle?: ShippingLabelCaptionStyle
+  // How many fields share one row; left out it is one, as on every label before.
+  fieldsPerRow?: 2 | 3
+  // A black frame around the block, and its text in capitals (Turkish casing), as on Trendyol Express' own sticker.
+  boxed?: boolean
+  uppercase?: boolean
   position?: ShippingLabelBlockPosition
+}
+
+export function shippingLabelCaptionStyle(block: Pick<ShippingLabelBlock, 'captionStyle' | 'inline'>): ShippingLabelCaptionStyle {
+  return block.captionStyle ?? (block.inline ? 'beside' : 'above')
+}
+
+export function shippingLabelFieldsPerRow(block: Pick<ShippingLabelBlock, 'fieldsPerRow'>): 1 | 2 | 3 {
+  return block.fieldsPerRow === 2 || block.fieldsPerRow === 3 ? block.fieldsPerRow : 1
 }
 
 export const shippingLabelBlockCatalog: Array<{ kind: ShippingLabelBlockKind; label: string; description: string; fields: ShippingLabelField[] }> = [
@@ -106,6 +123,20 @@ const defaultLayout: ShippingLabelBlock[] = [
   { id: 'sender', kind: 'sender', title: 'Gönderici ve Kargo Bilgileri', fields: ['cargoProvider', 'senderName', 'senderAddress'], align: 'left', text: '', position: { x: 51, y: 53, width: 45, height: 30 } }
 ]
 
+// The sticker default follows Trendyol Express' own 100 x 100 mm sticker, top to bottom: the tracking barcode across the
+// top, the delivery address in a frame in bold capitals, the recipient's name in a frame, then the order number, the
+// tracking number and the cargo company; a second tracking barcode, turned a quarter, runs down the right side.
+// Trendyol's sticker also prints a route code and a branch name; neither comes in the order or package data (they are
+// drawn only inside Trendyol's own ZPL common label), so this default leaves them out rather than print a stand-in.
+const trendyolExpressStickerLayout: ShippingLabelBlock[] = [
+  { id: 'trackingBarcode', kind: 'trackingBarcode', title: 'Takip Barkodu', fields: ['trackingNumber'], align: 'center', text: '', fontSize: 14, rotation: 0, position: { x: 3, y: 2, width: 94, height: 17 } },
+  { id: 'address', kind: 'address', title: 'Teslimat Adresi', fields: ['address'], align: 'left', text: '', fontSize: 14, rotation: 0, captionStyle: 'none', boxed: true, uppercase: true, position: { x: 3, y: 21, width: 72, height: 38 } },
+  { id: 'recipient', kind: 'address', title: 'Alıcı', fields: ['customerName'], align: 'left', text: '', fontSize: 14, rotation: 0, captionStyle: 'none', boxed: true, uppercase: true, position: { x: 3, y: 61, width: 72, height: 9 } },
+  { id: 'orderInfo', kind: 'orderInfo', title: 'Paket / Sipariş Bilgileri', fields: ['orderNumber', 'trackingNumber', 'cargoProvider'], align: 'left', text: '', fontSize: 14, rotation: 0, captionStyle: 'none', uppercase: true, position: { x: 3, y: 73, width: 94, height: 24 } },
+  // Turned 90 degrees: the block's own width runs down the label (49 mm beside the two frames), its height across (19 mm).
+  { id: 'trackingBarcodeSide', kind: 'trackingBarcode', title: 'Takip Barkodu', fields: ['trackingNumber'], align: 'center', text: '', fontSize: 14, rotation: 90, position: { x: 63, y: 36, width: 49, height: 19 } }
+]
+
 export type ShippingLabelSettings = {
   senderName: string
   senderAddress: string
@@ -121,6 +152,10 @@ export type ShippingLabelSettings = {
     a4: ShippingLabelBlock[]
     sticker: ShippingLabelBlock[]
   }
+}
+
+export function cloneShippingLabelLayout(layout: ShippingLabelBlock[]) {
+  return cloneLayout(layout)
 }
 
 function cloneLayout(layout: ShippingLabelBlock[]) {
@@ -147,12 +182,12 @@ export const defaultShippingLabelSettings: ShippingLabelSettings = {
   showStickerButton: true,
   a4LabelsPerPage: 1,
   stickerWidthMm: 100,
-  stickerHeightMm: 150,
+  stickerHeightMm: 100,
   showCustomerPhone: true,
   sectionGapMm: 4,
   layout: {
     a4: cloneLayout(defaultLayout),
-    sticker: cloneLayout(defaultLayout)
+    sticker: cloneLayout(trendyolExpressStickerLayout)
   }
 }
 
@@ -184,15 +219,32 @@ function safeBlock(raw: unknown, index: number): ShippingLabelBlock | null {
   const id = typeof value.id === 'string' && value.id.trim() ? value.id.trim().slice(0, 80) : `${kind}-${index + 1}`
   const rawPosition = value.position as Partial<ShippingLabelBlockPosition> | undefined
   const fallbackPosition = defaultShippingLabelBlockPosition(kind, index)
+  const rotation = normalizedRotation(value.rotation)
+  // A block turned a quarter is placed by its turned outline: its own box may reach past the paper's edge (a long
+  // barcode running down the side), so its box is not cut to the paper as an upright block's is.
+  const quarterTurn = rotation === 90 || rotation === 270
   const position = rawPosition && typeof rawPosition === 'object' ? {
-    x: boundedNumber(rawPosition.x, fallbackPosition.x, 0, 92),
-    y: boundedNumber(rawPosition.y, fallbackPosition.y, 0, 92),
+    x: boundedNumber(rawPosition.x, fallbackPosition.x, quarterTurn ? -50 : 0, 92),
+    y: boundedNumber(rawPosition.y, fallbackPosition.y, quarterTurn ? -50 : 0, 92),
     width: boundedNumber(rawPosition.width, fallbackPosition.width, 8, 100),
     height: boundedNumber(rawPosition.height, fallbackPosition.height, 5, 100)
   } : fallbackPosition
-  position.width = Math.min(position.width, 100 - position.x)
-  position.height = Math.min(position.height, 100 - position.y)
-  return { id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', fontSize: shippingLabelTextSize(boundedNumber(value.fontSize, 14, 8, 72)), rotation: normalizedRotation(value.rotation), ...(value.inline === true ? { inline: true } : {}), position }
+  if (!quarterTurn) {
+    position.width = Math.min(position.width, 100 - position.x)
+    position.height = Math.min(position.height, 100 - position.y)
+  }
+  // The layout options are stored only when set, so a design saved before them stays exactly as it was.
+  const captionStyle = value.captionStyle === 'above' || value.captionStyle === 'beside' || value.captionStyle === 'none' ? value.captionStyle : undefined
+  const fieldsPerRow = value.fieldsPerRow === 2 || value.fieldsPerRow === 3 ? value.fieldsPerRow : undefined
+  return {
+    id, kind, title: typeof value.title === 'string' && value.title.trim() ? value.title.trim().slice(0, 120) : catalog.label, fields, align, text: typeof value.text === 'string' ? value.text.slice(0, 500) : '', fontSize: shippingLabelTextSize(boundedNumber(value.fontSize, 14, 8, 72)), rotation,
+    ...(value.inline === true ? { inline: true } : {}),
+    ...(captionStyle ? { captionStyle } : {}),
+    ...(fieldsPerRow ? { fieldsPerRow } : {}),
+    ...(value.boxed === true ? { boxed: true } : {}),
+    ...(value.uppercase === true ? { uppercase: true } : {}),
+    position
+  }
 }
 
 function normalizeLayout(value: unknown, fallback: ShippingLabelBlock[]) {
@@ -222,7 +274,7 @@ export function normalizeShippingLabelSettings(raw: unknown): ShippingLabelSetti
     sectionGapMm: boundedNumber(value.sectionGapMm, defaultShippingLabelSettings.sectionGapMm, 0, 20),
     layout: {
       a4: normalizeLayout(value.layout?.a4, defaultLayout),
-      sticker: normalizeLayout(value.layout?.sticker, defaultLayout)
+      sticker: normalizeLayout(value.layout?.sticker, trendyolExpressStickerLayout)
     }
   }
 }

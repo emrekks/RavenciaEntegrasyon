@@ -219,27 +219,29 @@ describe('ReportsPage', () => {
     expect(days.querySelector('.reports-period-facts')?.textContent).toContain('1 gün önde0 gün geride; toplam 1 gün')
     // The metric cards: four rows on each of the first three, six on the two under them.
     expect(texts(page, '.reports-card-metrics h2')).toEqual(['Satış ve Ürün', 'Sipariş ve Müşteri', 'Maliyet ve Reklam', 'İade ve İptal', 'Operasyon'])
-    expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Satıcı İndirimi₺30,00 · %7,9', 'Satan Ürün2 varyant', 'KDV Hariç Net Satış₺227,27'])
+    expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Satıcı İndirimi₺30,00liste fiyatının %7,9 kadarı', 'Satan Ürün2 varyant', 'KDV Hariç Net Satış₺227,27'])
     expect(page.querySelector('.reports-card-metrics.is-product')?.textContent).toContain('yalnız Trendyol ve Hepsiburada')
     expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Kesinti₺14,33', 'Sipariş Başına Adet1,25', 'Tekrar Alan Müşteri%50,0'])
-    expect(metricRows(page, 'ads')).toEqual(['Ortalama Komisyon Oranı%21,5', 'Trendyol Reklamı—', 'Reklam Payı (TACoS)—', 'Sipariş Başına Reklam—', 'Reklam Öncesi Marj—'])
+    expect(metricRows(page, 'ads')).toEqual(['Komisyon Oranı%21,5', 'Trendyol Reklamı—', 'Reklam Payı (TACoS)—', 'Sipariş Başına Reklam—', 'Reklam Öncesi Marj—'])
     expect(page.querySelector('.reports-card-metrics.is-ads')?.textContent).not.toContain('ROAS')
     // Without Trendyol's statement there is nothing tied to no order to list.
     expect(page.querySelector('.reports-card-unlinked')).toBeNull()
-    // Returns and cancellations: eight rows, no explanation under the pointer; the change names the previous rate.
+    // Returns and cancellations: six rows, one value each with its counts on a small line under it; the change names
+    // the previous rate.
     // The amount returned is what the customers paid, the İade Edilen Tutar of the bridge (₺100), not the list price.
     expect(metricRows(page, 'returns')).toHaveLength(6)
-    expect(metricRows(page, 'returns')[1]).toBe('İade Edilen1 adet · 1 talep · ₺100,00')
+    expect(metricRows(page, 'returns')[1]).toBe('İade Edilen1 adet1 talep · ₺100,00')
     // Without Trendyol's statement the return cargo is unknown, never ₺0.
     expect(metricRows(page, 'returns')[2]).toBe('İade Kargo Zararı—')
-    expect(metricRows(page, 'returns')[3]).toBe('En Sık İade NedeniBeden uymadı · %100,0')
+    expect(metricRows(page, 'returns')[3]).toBe('En Sık İade NedeniBeden uymadıtaleplerin %100,0 kadarı')
     expect(metricRows(page, 'returns')[4]).toContain('İptal Oranı%20,0')
-    expect(metricRows(page, 'returns')[5]).toBe('İptal Edilen1 sipariş · 1 adet · ₺120,00')
-    expect(page.querySelectorAll('.reports-card-metrics.is-returns .reports-hover-tip')).toHaveLength(0)
+    expect(metricRows(page, 'returns')[5]).toBe('İptal Edilen1 sipariş1 adet · ₺120,00')
+    // Every row explains itself, as on the other cards (7 Nov 2026: the same layout on every card).
+    expect(page.querySelectorAll('.reports-card-metrics.is-returns .reports-hover-tip')).toHaveLength(6)
     expect(page.querySelector('.reports-card-metrics.is-returns .reports-delta')?.getAttribute('title')).toMatch(/^Önceki dönem /)
     expect(page.querySelector('.reports-card-metrics.is-returns li.is-warn')?.textContent).toContain('İptal Oranı')
     // The late packages as a share of those measured, with their count; the delivery time the server sends.
-    expect(metricRows(page, 'ops')).toEqual(['Kargoya Verme Süresi24 sa', 'Geciken Kargo%100,0 · 1 paket', `Teslim Süresi${formatHours(48)}`, 'Faturasız Paket1', 'Stok Riski0 ürün', 'Soru Yanıt Süresi—'])
+    expect(metricRows(page, 'ops')).toEqual(['Kargoya Verme Süresi24 sa', 'Geciken Kargo%100,01 paket', `Teslim Süresi${formatHours(48)}`, 'Faturasız Paket13 paket içinde', 'Stok Riski0 ürün', 'Soru Yanıt Süresi—'])
     // The old cards are gone, and no card repeats another.
     expect(page.querySelector('.reports-journey, .reports-card-summary, .reports-operations, .reports-card-revenue')).toBeNull()
     // One tab per area, each with its headline figure.
@@ -294,7 +296,7 @@ describe('ReportsPage', () => {
     // The commission (41,50) and the service fee and withholding tax (12,50 + 1) over 3 orders, as on the bridge.
     expect(metricRows(page, 'order')[3]).toBe('Sipariş Başına Kesinti₺18,33')
     // The billed return cargo (20) and the return operation fee (5), Trendyol's only.
-    expect(metricRows(page, 'returns')[2]).toBe('İade Kargo Zararı₺25,00 · Trendyol')
+    expect(metricRows(page, 'returns')[2]).toBe('İade Kargo Zararı₺25,00yalnız Trendyol')
     // Siparişe Bağlı Olmayan Kesintiler: each deduction with its records, largest first, and their total; the foreign
     // sale is no deduction. Its "i" and its total say Net Kâr takes them off.
     const unlinked = page.querySelector('.reports-card-unlinked')!

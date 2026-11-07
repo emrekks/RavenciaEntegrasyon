@@ -28,6 +28,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<IntegrationOutboxEvent> IntegrationOutboxEvents => Set<IntegrationOutboxEvent>();
     public DbSet<JobAttempt> JobAttempts => Set<JobAttempt>();
     public DbSet<JobVariantResult> JobVariantResults => Set<JobVariantResult>();
+    public DbSet<JobReadSummary> JobReadSummaries => Set<JobReadSummary>();
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     public DbSet<ExternalEffectRecord> ExternalEffectRecords => Set<ExternalEffectRecord>();
     public DbSet<PriceStockSendLog> PriceStockSendLogs => Set<PriceStockSendLog>();
@@ -393,6 +394,15 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
             entity.Property(x => x.Barcode).HasMaxLength(256); entity.Property(x => x.StockCode).HasMaxLength(256);
             entity.Property(x => x.Status).HasMaxLength(24); entity.Property(x => x.Reason).HasMaxLength(2000);
             entity.HasIndex(x => new { x.JobId, x.Barcode }).IsUnique();
+            entity.HasIndex(x => x.TenantId);
+            entity.HasOne<IntegrationJob>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<JobReadSummary>(entity =>
+        {
+            entity.ToTable("job_read_summaries", "integration"); entity.HasKey(x => x.Id);
+            entity.Property(x => x.Kind).HasMaxLength(32);
+            entity.HasIndex(x => x.JobId).IsUnique();
             entity.HasIndex(x => x.TenantId);
             entity.HasOne<IntegrationJob>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);

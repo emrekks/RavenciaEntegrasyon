@@ -171,7 +171,8 @@ public sealed record JobDetailView(
     JobInvoiceContextView? Invoice = null,
     Guid? ProductId = null,
     JobVariantResultsView? VariantResults = null,
-    JobWriteSummaryView? Write = null);
+    JobWriteSummaryView? Write = null,
+    JobReadSummaryView? Read = null);
 
 // A publication job's per-variant answer. Source: RECORDED (the job stored it), CARD_STATE (an older job whose card
 // still holds this publication's state) or NONE (nothing is known). A variant of the product the job did not carry is
@@ -185,8 +186,13 @@ public sealed record JobVariantResultView(string? Barcode, string? StockCode, st
 // instead of the whole history. After is the NextCursor of the previous page (paged list only):
 // the next page continues the same CreatedAt desc, Id desc order with the same filters.
 // Ids: only these jobs (at most MaximumIds), so a screen can follow the jobs it started with one read.
-public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null, string? After = null, IReadOnlyList<string>? Platforms = null, IReadOnlyList<Guid>? Ids = null)
+// Search: the jobs one identifier names, whatever their age: the job id, the correlation id or a marketplace id in the
+// payload (externalOrderId and the like), each matched whole (JobOperationsService.MatchingSearch).
+public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null, string? After = null, IReadOnlyList<string>? Platforms = null, IReadOnlyList<Guid>? Ids = null, string? Search = null)
 {
+    public const int MaximumSearchLength = 200;
+    // Shorter terms would match too many payload values; the job id and correlation id still match at any length.
+    public const int MinimumPayloadSearchLength = 4;
     public const int DefaultLimit = 200;
     public const int MaximumLimit = 1_000;
     public const int MaximumIds = 200;

@@ -58,11 +58,18 @@ public static class ShippingLabelSettingsSchema
         if (Number(raw, "rotation") is { } rotation) block["rotation"] = Clamp(rotation, -360, 360);
         // Tek Satır: kept only when switched on, as the panel stores it.
         if (raw.TryGetProperty("inline", out var inline) && inline.ValueKind == JsonValueKind.True) block["inline"] = true;
+        // The layout options, each kept only when set to something other than the first labels' layout.
+        if (Text(raw, "captionStyle") is "above" or "beside" or "none") block["captionStyle"] = Text(raw, "captionStyle");
+        if (Number(raw, "fieldsPerRow") is 2d or 3d) block["fieldsPerRow"] = (int)Number(raw, "fieldsPerRow")!.Value;
+        if (raw.TryGetProperty("boxed", out var boxed) && boxed.ValueKind == JsonValueKind.True) block["boxed"] = true;
+        if (raw.TryGetProperty("uppercase", out var uppercase) && uppercase.ValueKind == JsonValueKind.True) block["uppercase"] = true;
         if (raw.TryGetProperty("position", out var position) && position.ValueKind == JsonValueKind.Object)
         {
             var box = new JsonObject();
-            if (Number(position, "x") is { } x) box["x"] = Clamp(x, 0, 92);
-            if (Number(position, "y") is { } y) box["y"] = Clamp(y, 0, 92);
+            // A block turned a quarter is placed by its turned outline, so its own box may start left of or above the
+            // paper (a barcode running down the side); the panel keeps an upright block's box on the paper.
+            if (Number(position, "x") is { } x) box["x"] = Clamp(x, -50, 92);
+            if (Number(position, "y") is { } y) box["y"] = Clamp(y, -50, 92);
             if (Number(position, "width") is { } boxWidth) box["width"] = Clamp(boxWidth, 8, 100);
             if (Number(position, "height") is { } boxHeight) box["height"] = Clamp(boxHeight, 5, 100);
             block["position"] = box;

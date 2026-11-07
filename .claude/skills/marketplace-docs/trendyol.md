@@ -74,7 +74,7 @@ purpose (`TurkeyTime.cs`).
 | Batch status | GET `product/sellers/{id}/products/batch-requests/{batchId}` |
 | Price and stock | POST `inventory/sellers/{id}/products/price-and-inventory` |
 | Package status | PUT `order/sellers/{id}/shipment-packages/{pkg}`; sub-actions `/items/unsupplied`, `/tracking-details`, `/cargo-providers`, `/alternative-delivery`, `/manual-deliver`, `/manual-return` (PUT), `/split`, `/multi-split` (POST) |
-| Common label | POST/GET `sellers/{id}/common-label/{cargoTrackingNumber}` |
+| Common label | POST/GET `sellers/{id}/common-label/{cargoTrackingNumber}`. GET returns only `data[].label` (a ZPL string) and `format`; the TEX sticker's route/sort code ("1 - 20 - 346") and branch ("BÜYÜK ŞUBE") exist only drawn inside that ZPL, in no structured field of the package or order data (offline docs `trendyol-api-son.md` getCommonLabel / CommonLabelResponse; live `sales.*` snapshot keys checked 7 Nov 2026) |
 | Claims | GET `.../claims`, `.../claims/items/{itemId}/audit`; PUT `.../claims/{claimId}/items/approve`; POST `.../claims/{claimId}/issue` (multipart); GET `order/claim-issue-reasons` |
 | Invoice link | POST `sellers/{id}/seller-invoice-links`, `.../delete` (202 done, 404 none) |
 | Finance | GET `finance/che/sellers/{id}/settlements`, `/otherfinancials`, `/cargo-invoice/{serial}/items` |
