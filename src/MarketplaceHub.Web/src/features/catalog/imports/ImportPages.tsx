@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll, loadAllPages } from '../../../shared/api'
 import { newIdempotencyKey, sendWithVersionedIdempotencyKey, versionedIdempotencyKey } from '../../../shared/idempotency'
 import { CardBackgroundIcon, type CardIconName, type CardTone } from '../../../shared/components/CardBackgroundIcon'
+import { EmptyState } from '../../../shared/components/EmptyState'
 import { ErrorToast } from '../../../shared/components/NoticeToast'
 import { statusLabel } from '../../../shared/status-labels'
 import { Page, Tag, Versioned } from '../shared'
@@ -43,7 +44,7 @@ export function ImportsPage() {
   }
   return <Page title="İçe Aktarımlar" eyebrow="Katalog" className="catalog-list-page" action={<div className="actions"><button type="button" disabled={pending.isPending} onClick={() => create('CSV')}>CSV Başlat</button><button type="button" disabled={pending.isPending} onClick={() => create('XLSX')}>XLSX Başlat</button></div>}>
     <ErrorToast title="İçe Aktarım Hatası" error={error ?? query.error} />
-    {!query.data?.items.length ? <div className="empty">Henüz içe aktarım oturumu yok.</div> : <div className="table-wrap"><table><thead><tr><th>Kaynak</th><th>Durum</th><th>Satır</th><th></th></tr></thead><tbody>{query.data.items.map(item => <tr key={item.id}><td>{item.sourceType}</td><td><Tag>{statusLabel(item.status)}</Tag></td><td>{item.validRows}/{item.totalRows}</td><td><Link to={`/imports/${item.id}`}>İncele</Link></td></tr>)}</tbody></table></div>}
+    {!query.data?.items.length ? <EmptyState title="Henüz İçe Aktarım Yok">İçe aktarma başlattığınızda oturumlar burada listelenir.</EmptyState> : <div className="table-wrap"><table><thead><tr><th>Kaynak</th><th>Durum</th><th>Satır</th><th></th></tr></thead><tbody>{query.data.items.map(item => <tr key={item.id}><td>{item.sourceType}</td><td><Tag>{statusLabel(item.status)}</Tag></td><td>{item.validRows}/{item.totalRows}</td><td><Link to={`/imports/${item.id}`}>İncele</Link></td></tr>)}</tbody></table></div>}
   </Page>
 }
 

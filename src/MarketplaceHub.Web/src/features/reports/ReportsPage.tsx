@@ -2,7 +2,7 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperti
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
-import { Busy, CardBackgroundIcon, ErrorBox, Modal, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
+import { Busy, CardBackgroundIcon, EmptyState, ErrorBox, Modal, Pager, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { formatIstanbul } from '../../shared/format-date'
 import { PlatformMultiSelect } from '../../shared/platform-multi-select'
@@ -2526,7 +2526,7 @@ function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | 
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
   if (!data) return <Busy />
-  if (data.items.length === 0) return <p className="reports-empty">{search ? 'Bu numarayla kayıt bulunamadı.' : 'Kayıt yok.'}</p>
+  if (data.items.length === 0) return <EmptyState title="Kayıt Bulunamadı">{search ? 'Bu numarayla kayıt bulunamadı.' : 'Seçili dönemde kayıt yok.'}</EmptyState>
   const pages = Math.max(1, Math.ceil(data.totalCount / data.pageSize))
   // In a group every record shares its region and state, so those columns show for a search only; days are short.
   const searching = group === undefined
@@ -2550,10 +2550,6 @@ function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | 
       </tr>)}</tbody>
       <tfoot><tr><th scope="row" colSpan={searching ? 8 : 7}>{formatCount(data.totalCount)} kayıt</th><td className="is-num">{formatTl(data.net)}</td>{searching && <td />}</tr></tfoot>
     </table></div>
-    {pages > 1 && <div className="reports-order-pager">
-      <button type="button" className="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>Önceki</button>
-      <span>Sayfa {page + 1} / {pages}</span>
-      <button type="button" className="secondary" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>Sonraki</button>
-    </div>}
+    {pages > 1 && <div className="reports-order-pager"><Pager page={page + 1} totalPages={pages} onPageChange={next => setPage(next - 1)} ariaLabel="Sayfalama" /></div>}
   </>
 }

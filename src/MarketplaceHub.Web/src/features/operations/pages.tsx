@@ -6,7 +6,7 @@ import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
 import { RrLogo, RrPageSize } from '../marketplace/returns-ui'
 import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
-import { Button, Pagination, Tabs, TitleHint, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
+import { Button, EmptyState, Pagination, Tabs, TitleHint, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification, notificationError, notificationLinks, platformCodeFromName, type NotificationContext } from '../../shared/notifications'
@@ -637,7 +637,7 @@ export function JobsPage({ me }: { me: Me }) {
               <td><span className="jobs-reference-correlation">{job.correlationId}</span></td>
             </tr>
           })}
-          {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={5}>{moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.'}</td></tr>}
+          {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={5}><EmptyState title="Kayıt Bulunamadı">{moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.'}</EmptyState></td></tr>}
         </tbody></table></div>
         {(filtered.length > 0 || moreOnServer) && <div className="jobs-reference-pagination"><strong>{moreOnServer ? `${filtered.length.toLocaleString('tr-TR')} kayıt yüklendi, daha eskileri var` : `Toplam ${filtered.length.toLocaleString('tr-TR')} kayıt`}</strong><div className="jobs-reference-pagination-actions">{moreOnServer && <Button variant="secondary" className="jobs-reference-load-more" loading={list.isFetchingNextPage} onClick={() => void loadMoreJobs()}>Daha Fazla Yükle</Button>}<Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} hasNext={currentPage < totalPages || moreOnServer} disabled={list.isFetchingNextPage} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={goToNextPage} /></div></div>}
       </>}

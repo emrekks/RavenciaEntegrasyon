@@ -191,18 +191,6 @@ body .invoice-reference-actions-popover > button:disabled { opacity: .5; }
 
 /* Pager: numbers with arrows on the right, go-to-page field after a divider; every pager control is a 36px control. */
 .app-shell.stitch-shell main .reference-invoices-page .order-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-.reference-invoices-page .invoice-pager { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-left: auto; }
-.reference-invoices-page .invoice-pager-pages { display: flex; gap: 4px; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-pages > button { display: grid; place-items: center; min-width: 36px; height: 36px; min-height: 36px; padding: 0 8px; color: var(--rv-color-muted); background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 500 !important; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-pages > button:hover:not(:disabled):not(.is-on) { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-pages > button.is-on { color: var(--inv-violet); background: var(--rv-color-primary-soft); border-color: var(--inv-violet-line); }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-pages > button:disabled { opacity: .5; }
-.reference-invoices-page .invoice-pager-gap { display: grid; place-items: center; min-width: 20px; color: var(--rv-color-subtle); }
-.reference-invoices-page .invoice-pager-jump { display: flex; align-items: center; gap: 8px; padding-left: 12px; border-left: 1px solid var(--rv-color-border); }
-.reference-invoices-page .invoice-pager-jump label { display: inline-flex; align-items: center; gap: 8px; margin: 0; color: var(--rv-color-muted); font-size: 13px; white-space: nowrap; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-jump input { width: 64px; height: 36px; min-height: 36px; padding: 0 8px; text-align: center; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; -moz-appearance: textfield; }
-.reference-invoices-page .invoice-pager-jump input::-webkit-inner-spin-button, .reference-invoices-page .invoice-pager-jump input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.app-shell.stitch-shell main .reference-invoices-page .invoice-pager-jump button { height: 36px; min-height: 36px; padding: 0 12px; font-size: 13px; border-radius: 7px; }
 
 /* Filter card: the tab strip spans the card; the reset stays in place, quiet, disabled while nothing is filtered */
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { display: flex; width: auto; }

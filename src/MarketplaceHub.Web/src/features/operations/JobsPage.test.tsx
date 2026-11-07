@@ -486,7 +486,7 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(currentSearch).toBe('?sekme=loglar&kayit=gonderimler')
     expect(logRequests().at(-1)!.get('limit')).toBe('50')
     expect(pageRequests().length).toBe(jobReads)
-    expect(container.textContent).toContain('Henüz gönderim kaydı yok.')
+    expect(container.textContent).toContain('Henüz Gönderim Yok')
     // The empty log does not claim whether automatic writes are on: it cannot know, API Sağlık does.
     expect(container.textContent).not.toContain('şu an kapalı')
     expect(container.textContent).toContain('API Sağlık gösterir')

@@ -30,7 +30,7 @@ async function render(from: string, platforms: string[] | null = null) {
 }
 
 const lastPage = () => new URLSearchParams(apiState.paths.at(-1)!.split('?')[1]).get('page')
-const next = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent === 'Sonraki')!
+const next = () => Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => button.getAttribute('aria-label') === 'Sonraki')!
 
 beforeEach(() => {
   ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -78,6 +78,6 @@ describe('OrderProfitability paging', () => {
     await act(async () => { await client.invalidateQueries() })
     await settle()
     expect(lastPage()).toBe('1')
-    expect(container.textContent).toContain('Sayfa 2 / 2')
+    expect(container.querySelector('.rr-pages button[aria-current="page"]')?.textContent).toBe('2')
   })
 })
