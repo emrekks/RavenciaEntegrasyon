@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { keepPreviousData, useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
 import type { Product } from '../catalog/shared'
 import { DateRangePicker } from '../../shared/DateRangePicker'
@@ -9,35 +9,26 @@ import { CardBackgroundIcon, type CardIconName } from '../../shared/components/C
 import { UiIcon } from '../../shared/components/UiIcon'
 import { dashboardOperationalLinks, dayCancellationsLink } from '../../shared/dashboard-operational-links'
 import { pendingOrdersQuery } from '../../shared/order-navigation-count'
-import { InvoiceGlyph } from '../invoicing/invoice-state-glyph'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
 import { periodTrend as trend, channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
-import { webhookCell } from './integration-health'
-import type { Connection } from '../marketplace/shared'
-import { connectionAuthSummary } from '../marketplace/integrations/connection-auth-alert'
-import { instantNotificationsQueryKey, type InstantNotificationStatus } from '../marketplace/instant-notification-status'
+import { IntegrationStatusPanel, knownCount, useIntegrationHealth, type DashboardMetrics } from './IntegrationStatusPanel'
 
 // The overview page, as drawn in docs/tasarim-onerileri/genel-bakis-yeni.html.
 
-type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; pendingUnitsByConnection?: Record<string, number> | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
 type DashboardBootstrap = { metrics: DashboardMetrics; channels?: DashboardChannel[] }
 // GET /dashboard/cancellations: one store's cancellations of the day (DashboardCancellationRowView).
 type CancellationRow = { connectionId: string; cancelledOrders: number; partialOrders: number; cancelledUnits: number; unknownTimeOrders: number; unknownTimeUnits: number }
 type BreakdownRow = { key: string; code: string; name: string; value: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number }
-type MatrixCell = { state: 'ok' | 'warn' | 'bad' | 'off'; lastSuccessAt: string | null; lastProblemAt: string | null }
-type MatrixRow = { connectionId: string; platformCode: string; displayName: string; externalStoreId: string; status: string; cells: Record<string, MatrixCell>; issue: string | null }
 
 const PERIODS: Array<[Range, string]> = [['today', 'Bugün'], ['yesterday', 'Dün'], ['7', 'Son 7 Gün'], ['30', 'Son 30 Gün'], ['90', 'Son 90 Gün'], ['custom', 'Özel Tarih']]
 const periodLabel = (range: Range) => PERIODS.find(([value]) => value === range)?.[1] ?? ''
 const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#f5b301'], ['SHOPIFY', 'Shopify', '#5e8e3e'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8'], ['PTTAVM', 'PTT AVM', '#1f3a8a']]
 const platformColor = (code: string, index: number) => PLATFORMS.find(([value]) => value === code.toUpperCase())?.[2] ?? ['#9b7aff', '#59d6bd', '#79a4ff', '#f0b15a'][index % 4]
-const DATA_KEYS: Array<[string, string]> = [['orders', 'Sipariş'], ['products', 'Ürün'], ['stock', 'Stok'], ['price', 'Fiyat'], ['returns', 'İade'], ['invoices', 'Fatura']]
-const CELL_STATE = { ok: 'Güncel', warn: 'Gecikiyor', bad: 'Hata var', off: 'Son 7 günde işlem yok' }
 // Refreshed while the page is on screen only; the polls say they are automatic so they do not keep an idle session alive.
 const refresh = { refetchInterval: 60_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true, staleTime: 30_000 } as const
 const poll = { headers: backgroundPollHeaders }
@@ -50,33 +41,9 @@ const ICONS = {
 
 const money = (amount: number, currency = 'TRY') => formatMoney(amount, currency || 'TRY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 const count = (value: number) => value.toLocaleString('tr-TR', { maximumFractionDigits: 0 })
-function age(timestamp: string | null) {
-  if (!timestamp) return null
-  const minutes = Math.max(0, Math.floor((Date.now() - new Date(timestamp).getTime()) / 60_000))
-  if (minutes < 1) return 'Az önce'
-  if (minutes < 60) return `${minutes} dk önce`
-  const hours = Math.floor(minutes / 60)
-  return hours < 48 ? `${hours} sa önce` : `${Math.floor(hours / 24)} gün önce`
-}
-// What a matrix cell says: its own state first, the time of the last success after it.
-export function matrixCellText(cell: MatrixCell) {
-  const when = age(cell.lastSuccessAt)
-  if (cell.state === 'off') return 'İşlem Yok'
-  if (cell.state === 'bad') return 'Hata Var'
-  // A late flow shows only its time; the amber dot and the hover title say it is late ("Gecikiyor · 2 gün önce" did not fit a phone cell).
-  if (cell.state === 'warn') return when || 'Gecikiyor'
-  return when ?? 'Güncel'
-}
-// A count the page could not read (still loading, the request failed, the field is missing) is unknown and shows "—":
-// a wrong number on screen is worse than a missing one, so it never falls back to 0.
-export function knownCount(loading: boolean, value: number | null | undefined) {
-  return loading || value == null ? null : value
-}
-// The integration matrix covers the last 7 days of one store: its "İncele" opens İşlem Takibi's failed jobs over the
-// same 7 days on that store's platform (jobs-url-state.ts: durum, aralik; job-list-query.ts: platform).
-export function matrixJobsLink(platformCode: string) {
-  return `/jobs?${new URLSearchParams({ durum: 'hata', aralik: '7g', platform: platformCode.toLowerCase() })}`
-}
+// The integration matrix's helpers live with the shared panel; the overview's tests read them from here.
+export { matrixCellText, matrixJobsLink } from './IntegrationStatusPanel'
+export { knownCount }
 // Series days are Istanbul calendar days (YYYY-MM-DD) and read as such; noon keeps the name of the day in any clock.
 const dayLong = (day: string) => formatIstanbul(`${day}T12:00:00Z`, { day: 'numeric', month: 'long', year: 'numeric', weekday: 'long' })
 const dayShort = (day: string) => { const dayOfMonth = Number(day.slice(8, 10)); return dayOfMonth === 1 ? formatIstanbul(`${day}T12:00:00Z`, { day: 'numeric', month: 'short' }).replace(/\.$/, '') : String(dayOfMonth) }
@@ -205,7 +172,7 @@ export function DashboardPage() {
   const bootstrap = useQuery({ queryKey: ['dashboard-bootstrap'], queryFn: () => hubApi<DashboardBootstrap>('/dashboard/bootstrap', poll), ...refresh })
   const invoiceSummary = useQuery({ queryKey: ['invoice-workspace-summary'], queryFn: () => hubApi<{ dueSoonCount: number; uninvoicedCount?: number }>('/invoice-workspace/summary', poll), ...refresh })
   const productSummary = useQuery({ queryKey: ['products', 'summary'], queryFn: () => hubApi<ProductSummary>('/products/summary', poll), ...refresh })
-  const matrix = useQuery({ queryKey: ['dashboard', 'integration-matrix'], queryFn: () => hubApi<MatrixRow[]>('/dashboard/integration-matrix', poll), ...refresh, refetchInterval: 300_000, staleTime: 120_000 })
+  const integration = useIntegrationHealth()
   // A custom range picked only halfway asks for nothing until its end is picked too.
   const days = periodDays(range, custom, today)
   // Today's cancellations, each counted on the day the marketplace says it happened.
@@ -252,21 +219,7 @@ export function DashboardPage() {
     [point => point.orderCount, value => count(value), hourly ? 'Saatlik Sipariş' : 'Günlük Sipariş'],
     [point => point.orderCount ? point.amount / point.orderCount : 0, value => axisLabel(value, currency), hourly ? 'Saatlik Ortalama Sepet' : 'Günlük Ortalama Sepet'],
   ]
-  // Only marketplaces: invoicing providers are connections too, but they carry no orders, stock or prices.
-  const rows = (matrix.data ?? []).filter(row => PLATFORMS.some(([code]) => code === row.platformCode.toUpperCase()))
-  // The webhook and the credentials as the integration page shows them, read under its own query keys. The webhook
-  // status of a Trendyol or Shopify store asks the marketplace, so it is read again only every five minutes.
-  const connections = useQuery({ queryKey: ['connections'], queryFn: () => loadAllPages<Connection>('/connections'), staleTime: 120_000 })
-  const webhooks = useQueries({ queries: rows.map(row => ({ queryKey: instantNotificationsQueryKey(row.connectionId), queryFn: () => hubApi<InstantNotificationStatus>(`/connections/${row.connectionId}/instant-notifications`, poll), staleTime: 300_000, refetchInterval: 300_000, refetchIntervalInBackground: false })) })
-  const health = rows.map((row, index) => {
-    const connection = connections.data?.items.find(item => item.id === row.connectionId)
-    const auth = connection ? connectionAuthSummary(connection) : null
-    const webhook = webhookCell(webhooks[index]?.data, Boolean(webhooks[index]?.isError), age, row.platformCode)
-    const attention = Boolean(row.issue || auth || webhook.tone === 'bad' || webhook.tone === 'warn' || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn'))
-    return { row, auth, webhook, attention }
-  })
-  const attention = health.filter(item => item.attention).length
-  const errors = [bootstrap.error, pendingSummary.error, invoiceSummary.error, cancellations.error, productSummary.error, performance.error, matrix.error].filter(Boolean)
+  const errors = [bootstrap.error, pendingSummary.error, invoiceSummary.error, cancellations.error, productSummary.error, performance.error, integration.matrix.error].filter(Boolean)
   const loadingValue = (busy: boolean, value: number | undefined) => { const known = knownCount(busy, value); return known === null ? '—' : count(known) }
   // The bar places the latest finished day (or hour) between the weakest and strongest ones. The day still running
   // is left out: just after midnight it is near zero, which pinned the low end to 0 and the dot to the left.
@@ -329,7 +282,6 @@ export function DashboardPage() {
     window.setTimeout(() => URL.revokeObjectURL(url), 0)
     setToast(`${report.name} indirildi (${report.columns.join(', ')}).`)
   }
-  const storeLabel = (row: MatrixRow) => /^\d+$/.test(row.externalStoreId) ? `Mağaza ${row.externalStoreId}` : row.externalStoreId.length > 24 ? `Mağaza ${row.externalStoreId.slice(0, 8)}…` : row.externalStoreId
 
   return <section className="content f3 rr rr-dashboard" aria-label="Genel Bakış">
     <div className="rr-ph"><div><div className="rr-crumb">Operasyon Merkezi</div><h1>Genel Bakış</h1></div><div className="rr-acts">
@@ -381,16 +333,7 @@ export function DashboardPage() {
         </div>
       </div>
     </section>
-    <section className="rr-panel"><div className="rr-panel-h"><div><h2>Entegrasyon Durumu</h2><p>Pazaryerleriyle bağlantının son 7 günü</p></div>{matrix.isLoading ? <span className="rr-hpill">Kontrol ediliyor…</span> : <span className={`rr-hpill${attention ? ' rr-attn' : ''}`}><InvoiceGlyph kind={attention ? 'waiting' : 'done'} />{attention ? `${attention} konu dikkatinizi bekliyor` : 'Her şey yolunda'}</span>}</div>
-      <div className="rr-mxwrap"><table className="rr-mxt"><thead><tr><th>Pazar Yeri</th>{DATA_KEYS.map(([, label]) => <th key={label}>{label}</th>)}<th>Webhook</th><th /></tr></thead><tbody>
-        {!rows.length && <tr><td colSpan={DATA_KEYS.length + 3}><span className="rr-lead">{matrix.isLoading ? 'Bağlantılar yükleniyor…' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
-        {health.map(({ row, auth, webhook, attention: rowAttention }) => <tr key={row.connectionId} className={rowAttention ? 'rr-attn' : undefined}><td><span className="rr-mx-nm"><RrLogo code={row.platformCode} /><span><b>{row.displayName}</b><small className={auth || row.issue ? 'rr-attn' : undefined} title={auth?.action ?? row.issue ?? undefined}>{auth?.title ?? row.issue ?? storeLabel(row)}</small></span></span></td>
-          {DATA_KEYS.map(([key, label]) => { const cell = row.cells[key] ?? { state: 'off', lastSuccessAt: null, lastProblemAt: null }; return <td key={key} data-l={label}><span className={`rr-mx rr-${cell.state}`} title={`${label} · ${CELL_STATE[cell.state]}`}><i />{matrixCellText(cell)}</span></td> })}
-          <td data-l="Webhook"><span className={`rr-mx rr-${webhook.tone}`} title={webhook.title}><i />{webhook.text}</span></td>
-          <td className="rr-mx-act">{auth || (!row.issue && (webhook.tone === 'bad' || webhook.tone === 'warn')) ? <Link className="rr-btn rr-link" to={`/integrations/${row.connectionId}`}>İncele</Link> : row.issue && <Link className="rr-btn rr-link" to={matrixJobsLink(row.platformCode)}>İncele</Link>}</td></tr>)}
-      </tbody></table></div>
-      <div className="rr-mx-foot"><span>Son 24 saatte <b className="rr-num">{loadingValue(bootstrap.isLoading, metrics?.recentJobCount)}</b> istek · Açıkta kalan: <Link className="rr-mx-foot-link" to="/jobs?statu=DEAD&aralik=tum" title="Deneme hakkı dolan işler; İşlem Takibi’nde tüm zamanlarla açılır"><b className="rr-num">{loadingValue(bootstrap.isLoading, metrics?.deadJobCount)}</b> tamamlanamayan</Link> · <Link className="rr-mx-foot-link" to="/jobs?statu=MANUAL_REVIEW&aralik=tum" title="Kararınızı bekleyen işler; İşlem Takibi’nde tüm zamanlarla açılır"><b className="rr-num">{loadingValue(bootstrap.isLoading, metrics?.manualReviewJobCount)}</b> karar bekleyen iş</Link></span><span className="rr-legend"><span><i className="rr-mx-l rr-ok" />Güncel</span><span><i className="rr-mx-l rr-warn" />Gecikiyor</span><span><i className="rr-mx-l rr-bad" />Hata Var</span><span><i className="rr-mx-l rr-off" />İşlem Yok</span></span></div>
-    </section>
+    <IntegrationStatusPanel integration={integration} />
     {toast && <NoticeToast kind="success" title="Rapor İndirildi" message={toast} onClose={() => setToast(null)} durationMs={6000} />}
     {lowStockOpen && <Suspense fallback={null}><LowStockDetailsModal products={lowStock.data?.items ?? []} loading={lowStock.isLoading} error={lowStock.error}
       onClose={() => setLowStockOpen(false)} onImageClick={url => window.open(url, '_blank', 'noopener')} /></Suspense>}

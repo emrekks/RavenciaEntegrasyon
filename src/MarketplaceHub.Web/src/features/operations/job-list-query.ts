@@ -64,16 +64,17 @@ export function jobCountsQueryString(timeRange: JobListTimeRange, platform: stri
 // Platforms in the selector's order; E-Faturam is the invoicing provider, the rest are marketplaces.
 export const jobPlatformOrder = ['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY', 'TRENDYOL_EFATURAM'] as const
 
-// The URL value (?platform=trendyol) as a connection platform code, or null for every platform.
-export function jobPlatformFromSearch(value: string | null) {
-  const code = value?.trim().toUpperCase() ?? ''
-  return /^[A-Z0-9_]{2,40}$/.test(code) ? code : null
+// The URL value (?platform=trendyol or ?platform=trendyol,n11) as connection platform codes; none means every platform.
+// The server reads the same comma list (JobEndpoints.Platforms, at most 20 codes).
+export function jobPlatformsFromSearch(value: string | null): string[] {
+  const codes = (value ?? '').split(',').map(code => code.trim().toUpperCase()).filter(code => /^[A-Z0-9_]{2,40}$/.test(code))
+  return [...new Set(codes)].slice(0, 20)
 }
 
 // The platform choices: every platform the tenant has a connection on, plus the chosen one, in a fixed order.
-export function jobPlatformOptions(connectionPlatforms: readonly string[], selected: string | null) {
+export function jobPlatformOptions(connectionPlatforms: readonly string[], selected: readonly string[]) {
   const codes = new Set(connectionPlatforms.map(code => code.trim().toUpperCase()).filter(Boolean))
-  if (selected) codes.add(selected)
+  for (const code of selected) codes.add(code)
   const rank = (code: string) => { const index = (jobPlatformOrder as readonly string[]).indexOf(code); return index < 0 ? jobPlatformOrder.length : index }
   return [...codes].sort((left, right) => rank(left) - rank(right) || left.localeCompare(right))
 }
