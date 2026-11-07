@@ -129,7 +129,18 @@ main .rr.rr-dashboard > * { min-width: 0; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm .rr-ends span + span { text-align: right; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm .rr-ends small { color: var(--rr-subtle); font-size: 11.5px; white-space: nowrap; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-pcardm .rr-ends b { color: var(--rr-muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxwrap { border-top: 1px solid var(--rr-line); overflow-x: auto; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxwrap { border-top: 1px solid var(--rr-line); overflow-x: auto; overflow-y: hidden; }
+/* Between the card layout (1024 px and below) and 1280 px the table was wider than its panel (930 px in 743-798 px),
+   so the panel scrolled sideways under an invisible scrollbar: a click on the strip under the last row was a click on
+   that scrollbar and slid the table, and the page seemed to move by itself. The table now fits: tighter cell padding,
+   a shorter store line, and a value that does not fit goes onto a second line instead of widening its column. */
+@media (min-width: 1025px) and (max-width: 1279px) {
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt th, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt td { padding-left: 5px; padding-right: 5px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt th:first-child, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt td:first-child { padding-left: 14px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt td.rr-mx-act { padding-right: 12px; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt th, :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt .rr-mx { white-space: normal; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt .rr-mx-nm small { max-width: 130px; }
+}
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt th { padding: 9px 12px; color: var(--rr-muted); font-size: 12px; font-weight: 500; text-align: left; background: var(--rr-raised); border-bottom: 1px solid var(--rr-line); white-space: nowrap; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-mxt td { padding: 11px 12px; border-bottom: 1px solid var(--rr-line); vertical-align: middle; }
