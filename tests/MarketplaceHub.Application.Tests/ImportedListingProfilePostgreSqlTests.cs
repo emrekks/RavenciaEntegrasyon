@@ -1,3 +1,4 @@
+using MarketplaceHub.Application;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
@@ -44,8 +45,9 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
             Assert.All(new object?[] { profile.TitleOverride, profile.DescriptionOverride, profile.ExternalCategoryId, profile.ExternalBrandId, profile.DeliveryTimeDays, profile.Origin, profile.Warranty, profile.VatOverride, profile.CargoProfile }, Assert.Null);
             var listing = await db.ChannelListingVariants.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id && x.ProfileId == profile.Id);
             Assert.Equal((seeded.Variant.Id, "RYP003T20", "RYP003T20", "UNKNOWN"), (listing.VariantId, listing.ExternalBarcode, listing.ExternalSku, listing.ActualStatus));
-            // Nothing is assumed live: no listing state is written.
-            Assert.False(await db.MarketplaceListingStates.AnyAsync(x => x.TenantId == seeded.Tenant.Id));
+            // One listing state per listing, the update job needs it; nothing is assumed live: it starts UNKNOWN.
+            var state = await db.MarketplaceListingStates.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id);
+            Assert.Equal((seeded.Variant.Id, seeded.Connection.Id, "LIVE", "UNKNOWN", (string?)null), (state.VariantId, state.ConnectionId, state.DesiredStatus, state.ActualStatus, state.PayloadHash));
         }
         await using (var db = fixture.CreateContext())
         {
@@ -67,6 +69,7 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
         {
             Assert.Equal(0, await ImportedListingProfiles.EnsureAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [seeded.Product.Id], CancellationToken.None));
             Assert.Equal(2, await db.ChannelListingVariants.CountAsync(x => x.TenantId == seeded.Tenant.Id));
+            Assert.Equal(2, await db.MarketplaceListingStates.CountAsync(x => x.TenantId == seeded.Tenant.Id && x.ActualStatus == "UNKNOWN"));
         }
     }
 
@@ -198,6 +201,85 @@ public sealed class ImportedListingProfilePostgreSqlTests(PostgreSqlTenantIsolat
             Assert.True(build.Succeeded, build.Error?.Message);
             Assert.Equal(importedPayload, build.Value!.Publication.ApprovedContentPayloadJson);
         }
+    }
+
+    // Profiles made before the states were written with them (6 Nov 2026) get theirs on the next run; a state already
+    // there (a status read said LIVE) is left as it is, and a panel profile gets none.
+    [PostgreSqlFact]
+    public async Task ImportedProfileWithoutStates_IsRepaired_AndExistingStatesStay()
+    {
+        var seeded = await SeedAsync("imported-repair", "TRENDYOL", linkId: "1489791218", linkBarcode: "RYP003T20", linkSku: "RYP003T20");
+        await using (var db = fixture.CreateContext())
+        {
+            var profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ConnectionId = seeded.Connection.Id, ProductId = seeded.Product.Id, Enabled = true, DesiredStatus = "LIVE", ActualStatus = "MANUAL_REVIEW", Source = ChannelListingProfileSource.MarketplaceImport };
+            db.ChannelListingProfiles.Add(profile);
+            db.ChannelListingVariants.Add(new ChannelListingVariant { Id = Guid.CreateVersion7(), TenantId = seeded.Tenant.Id, ProfileId = profile.Id, VariantId = seeded.Variant.Id, ExternalBarcode = "RYP003T20", ExternalSku = "RYP003T20", DesiredStatus = "LIVE", ActualStatus = "UNKNOWN" });
+            await db.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+            Assert.Equal(0, await ImportedListingProfiles.EnsureAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [seeded.Product.Id], CancellationToken.None));
+        await using (var db = fixture.CreateContext())
+        {
+            var state = await db.MarketplaceListingStates.SingleAsync(x => x.TenantId == seeded.Tenant.Id);
+            Assert.Equal("UNKNOWN", state.ActualStatus);
+            state.ActualStatus = "LIVE"; state.Version++;
+            await db.SaveChangesAsync();
+        }
+        await using (var db = fixture.CreateContext())
+        {
+            await ImportedListingProfiles.EnsureAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [seeded.Product.Id], CancellationToken.None);
+            Assert.Equal("LIVE", (await db.MarketplaceListingStates.AsNoTracking().SingleAsync(x => x.TenantId == seeded.Tenant.Id)).ActualStatus);
+        }
+    }
+
+    // RYP003T, live 7 Nov 2026: the update of an imported product reached its job and stopped there as
+    // PRODUCT_UPDATE_STATE_INCOMPLETE. With the states the sync now writes, the job sends its request (a test port here,
+    // nothing goes to a marketplace) and waits for the result.
+    [PostgreSqlFact]
+    public async Task ImportedProductUpdate_RunsThroughItsJob()
+    {
+        var seeded = await SeedAsync("imported-update-job", "N11", linkId: "RYP003T20", linkBarcode: null, linkSku: "RYP003T20");
+        await using (var db = fixture.CreateContext())
+            await ImportedListingProfiles.EnsureAsync(db, seeded.Tenant.Id, seeded.Connection.Id, [seeded.Product.Id], CancellationToken.None);
+        Guid jobId;
+        await using (var db = fixture.CreateContext())
+        {
+            var queued = await NewCatalogService(db).EnqueueProductUpdateWithNoticesAsync(seeded.Tenant.Id, seeded.Product.Id, seeded.Connection.Id, $"k-{Guid.NewGuid():N}", "test", CancellationToken.None, ["DESCRIPTION"]);
+            Assert.True(queued.Succeeded, queued.Error?.Message);
+            jobId = queued.Value!.JobId;
+        }
+        var port = new RecordingProductPort();
+        await using (var db = fixture.CreateContext())
+        {
+            var job = await db.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == jobId);
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["FeatureFlags:ExternalWrites"] = "true" }).Build();
+            var processor = new MarketplaceJobProcessor(db, null!, null!, port, null!, null!, null!, null!, null!, null!, null!, configuration, fixture.TimeProvider);
+            var result = await processor.ProcessAsync(seeded.Tenant.Id, seeded.Connection.Id, MarketplaceJobTypes.ProductUpdate, job.PayloadJson, "imported-update-job", CancellationToken.None, jobId);
+            Assert.NotEqual("PRODUCT_UPDATE_STATE_INCOMPLETE", result.ErrorCode);
+            Assert.Equal((JobCompletionKind.Retry, "PRODUCT_UPDATE_BATCH_PENDING"), (result.Kind, result.ErrorCode));
+        }
+        Assert.Equal(1, port.ContentUpdates);
+    }
+
+    private sealed class RecordingProductPort : IProductPort
+    {
+        public int ContentUpdates { get; private set; }
+
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedContentAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken)
+        {
+            ContentUpdates++;
+            return Task.FromResult(AdapterResult<RemoteOperationRef>.Success(new RemoteOperationRef("task-1", "N11_PRODUCT_UPDATE", DateTimeOffset.UtcNow)));
+        }
+
+        public Task<AdapterResult<AdapterPageResult<RemoteProduct>>> ListAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<AdapterPageResult<RemoteCatalogProduct>>> ListCatalogAsync(AdapterContext context, AdapterPageRequest page, ProductReadFilter filter, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> CreateAsync(AdapterContext context, ProductPublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateUnapprovedAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedVariantsAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> UpdateApprovedDeliveryAsync(AdapterContext context, ProductUpdatePublication publication, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationStatus>> GetOperationAsync(AdapterContext context, string externalOperationId, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemotePublicationStatus>> GetPublicationStatusAsync(AdapterContext context, string barcode, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<AdapterResult<RemoteOperationRef>> ArchiveAsync(AdapterContext context, string payloadJson, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private CatalogService NewCatalogService(AppDbContext db) =>
