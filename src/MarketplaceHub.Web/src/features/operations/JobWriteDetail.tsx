@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import { PublicationJobVariants, type JobVariantResults } from '../catalog/product-editor/PublicationJobVariants'
-import { writeAttributeNames, writeFieldLabels, writeModeLabel, writePartCount, writePartLabel, writePhaseLabel, writeRequestLabel, type JobWriteSummary } from './job-write-summary'
+import { writeModeLabel, writePhaseLabel, writeRequestLabel, type JobWriteSummary } from './job-write-summary'
+import { JobWriteParts } from './JobSentDetail'
 import './job-write-detail.css'
 
 // A product job's detail: which product, what each marketplace request carried (fields and attributes), the request ids,
@@ -35,16 +36,7 @@ export function JobWriteDetail({ write, variantResults, approvalCheck, running, 
     {write && write.parts.length > 0 && <section className="jobs-write-parts" aria-labelledby="job-write-parts-title">
       <h3 id="job-write-parts-title">Gönderilen Bilgiler</h3>
       <p className="jobs-write-note">Her satır pazaryerine giden bir isteği gösterir; alanların güncel değerleri gönderilir.</p>
-      <ul>{write.parts.map(part => {
-        const fields = writeFieldLabels(part.fields, part.clearedFields ?? [])
-        const attributes = writeAttributeNames(part.attributes)
-        return <li key={part.key} className={part.itemCount === 0 ? 'is-empty' : undefined}>
-          <div className="jobs-write-part-head"><strong>{writePartLabel(part.key)}</strong><span>{writePartCount(part)}</span></div>
-          {fields.length > 0 && <p><small>Alanlar</small>{fields.join(', ')}</p>}
-          {attributes.length > 0 && <p><small>Özellikler ({attributes.length})</small>{attributes.join(', ')}</p>}
-          {showBarcodes && part.barcodes.length > 0 && <p><small>Barkodlar</small>{part.barcodes.join(', ')}</p>}
-        </li>
-      })}</ul>
+      <JobWriteParts parts={write.parts} showBarcodes={showBarcodes} />
     </section>}
     {variantResults
       ? <PublicationJobVariants results={variantResults} approvalCheck={approvalCheck} />

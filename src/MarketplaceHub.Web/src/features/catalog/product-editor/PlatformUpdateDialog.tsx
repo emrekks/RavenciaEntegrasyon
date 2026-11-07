@@ -18,7 +18,7 @@ type ShownGroup = Omit<PlatformUpdateGroup, 'fields'> & { fields: { key: Platfor
 // collapsible groups (Ürün Bilgileri, Kargo ve Teslimat, Satış Bilgileri). Only fields a selected store can take are
 // shown; each card lists what really goes there, including what its marketplace takes only together with a picked field.
 // The bar is the window's own footer, so the cards scroll above it instead of under it.
-export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, onClose, onConfirm }: {
+export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange, fields, onFieldsChange, openGroups, onOpenGroupsChange, submitting, familyReach, onClose, onConfirm }: {
   targets: PlatformUpdateTarget[]
   selectedIds: string[]
   onSelectedIdsChange: (connectionIds: string[]) => void
@@ -27,6 +27,8 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
   openGroups: PlatformUpdateGroupKey[]
   onOpenGroupsChange: (groups: PlatformUpdateGroupKey[]) => void
   submitting: boolean
+  // A model family: which colours (and variants) the product information update reaches on one store.
+  familyReach?: (connection: MarketplaceConnection) => string
   onClose: () => void
   // The picked fields that are shown (a field no selected store takes never goes).
   onConfirm: (fields: PlatformUpdateField[]) => void
@@ -84,7 +86,7 @@ export function PlatformUpdateDialog({ targets, selectedIds, onSelectedIdsChange
               </>}
             </PlatformUpdateSectionHead>
             {targets.length
-              ? <div className="publish-platform-grid" role="group" aria-label="Güncellenecek platformlar">{targets.map(target => <PlatformUpdateCard key={target.connection.id} target={target} selected={selectedIds.includes(target.connection.id)} fields={visibleFields} locked={submitting} onToggle={() => toggleStore(target.connection.id)} />)}</div>
+              ? <div className="publish-platform-grid" role="group" aria-label="Güncellenecek platformlar">{targets.map(target => <PlatformUpdateCard key={target.connection.id} target={target} selected={selectedIds.includes(target.connection.id)} fields={visibleFields} locked={submitting} familyReach={familyReach} onToggle={() => toggleStore(target.connection.id)} />)}</div>
               : <div className="publish-connections-empty"><strong>Güncellenebilir Bağlantı Yok</strong><p>Ürün güncellemek için Platformlar sayfasından yazma yetkisi olan aktif bir bağlantı ekleyin.</p></div>}
           </section>
         </div></div></section></div></div>
@@ -143,11 +145,12 @@ function PlatformUpdateFieldGroup({ group, picked, open, locked, onToggleOpen, o
   </section>
 }
 
-function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
+function PlatformUpdateCard({ target, selected, fields, locked, familyReach, onToggle }: {
   target: PlatformUpdateTarget
   selected: boolean
   fields: PlatformUpdateField[]
   locked: boolean
+  familyReach?: (connection: MarketplaceConnection) => string
   onToggle: () => void
 }) {
   const { connection, capabilities } = target
@@ -159,6 +162,9 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
   const subtitle = !capabilities.writable ? 'Salt okunur, güncellenemez' : !writable ? 'Bağlantı aktif değil' : on ? 'Güncelleme için seçildi' : 'Güncelleme için seçilmedi'
   const plan = platformUpdatePlan(connection.platformCode, fields)
   const sends = !writable ? '—' : platformUpdateSummary(plan)
+  // The product information goes for every colour of the model family on this store (family-update-plan.ts); said
+  // here before the send, with the colours the store does not hold.
+  const reach = writable && plan.productFields.length && familyReach ? familyReach(connection) : ''
   // What goes, as small chips: the dialog's fields first, then (dashed) what the requests also carry, last (struck
   // through) the picked fields this marketplace does not take.
   type Chip = { label: string; kind?: 'extra' | 'skipped' }
@@ -175,6 +181,7 @@ function PlatformUpdateCard({ target, selected, fields, locked, onToggle }: {
       <div className="platform-update-sends"><dt>Gönderilecek</dt><dd title={sends}>{chips.length ? <ul className="platform-update-chips">{chips.map(chip => <li key={`${chip.kind}-${chip.label}`} className={chip.kind ? `is-${chip.kind}` : undefined} title={chip.kind === 'extra' ? 'Seçim değil, aynı istekte birlikte gider' : undefined}>{chip.kind === 'skipped' ? <s>{chip.label}</s> : chip.label}</li>)}</ul> : writable ? sends : '—'}</dd>
         {writable && plan.bundled.length > 0 && <small>Seçilmedi ama aynı istekte birlikte gider: {plan.bundled.map(platformUpdateFieldLabel).join(', ')}.</small>}
       </div>
+      {reach && <div className="platform-update-sends platform-update-family-reach"><dt>Model Ailesi</dt><dd>{reach}</dd></div>}
     </dl>
   </article>
 }

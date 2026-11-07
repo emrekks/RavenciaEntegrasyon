@@ -72,7 +72,8 @@ import { publicationJobPollInterval } from '../publication-job-poll'
 import { isRefreshJobRunning, publicationJobInline } from '../publication-job-inline'
 import { statusLabel } from '../../../shared/status-labels'
 import { familyCardsInPanelOrder } from '../family-card-order'
-import { chosenGapSkipped, productPublicationTargets, productSaveFeedback, publicationCancelMessage, publicationRefreshMessage, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback } from '../product-publication-submit'
+import { chosenGapSkipped, productPublicationTargets, productSaveFeedback, publicationCancelMessage, publicationRefreshMessage, type MarketplaceFamilyUpdate, type MarketplacePublishOutcome, type MarketplaceUpdateOutcome, type ProductSaveFeedback } from '../product-publication-submit'
+import { familyCardName, familyUpdatePlan, familyUpdateReach } from './family-update-plan'
 import { readVariantMediaAssignmentDraft, updateVariantMediaAssignmentDraft, variantMediaAssignmentKey, variantMediaReconcileRequests, variantOwnerProductId, type VariantMediaAssignmentDrafts } from '../variant-media-assignments'
 import { useOperationFeedbackToasts, type OperationFeedback } from '../operation-feedback-toast'
 import { ModelCodeHolderNotice, useModelCodeHolder } from '../model-code-holder'
@@ -3064,12 +3065,33 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
           if (platformUpdate) {
             updates.push(update)
             // Only what this marketplace takes of the pick goes: the product fields it carries, and the price and/or stock.
-            const plan = platformUpdatePlan(connections.data?.items.find(item => item.id === connectionId)?.platformCode ?? '', platformUpdate.fields)
+            const updatePlatformCode = connections.data?.items.find(item => item.id === connectionId)?.platformCode
+            const plan = platformUpdatePlan(updatePlatformCode ?? '', platformUpdate.fields)
             if (plan.productFields.length) {
-              const accepted = await hubApi<ProductUpdateAccepted>(`/products/${product.id}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields }) })
-              recordProductUpdateNotices(accepted, { productId: product.id, productName: form.title, modelCode: form.modelCode, platformCode: connections.data?.items.find(item => item.id === connectionId)?.platformCode, connectionId })
-              if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: 'ürün bilgisi' })
-              update.queued.productInformation = true
+              // The editor shows the model family as one product, so the product information goes for every colour
+              // card of it that is on this marketplace (family-update-plan.ts); a card not there is named, and one
+              // card's refusal does not stop the others.
+              const familyPlan = familyUpdatePlan({ openedProductId: product.id, familyProductIds: productToEdit.data?.familyProductIds, variants: product.variants.map(variant => ({ ...variant, platformStatuses: linkRowsBySku.get(variant.sku.trim().toLocaleUpperCase('tr-TR'))?.platformStatuses ?? variant.platformStatuses })), connectionId, platformCode: updatePlatformCode })
+              const familyFailures = new Map<string, string[]>()
+              const family: MarketplaceFamilyUpdate = { cards: familyPlan.familyCards, queuedCards: 0, queuedVariants: 0, absent: familyPlan.absent.map(familyCardName), failures: familyFailures }
+              update.family = family
+              for (const card of familyPlan.send) {
+                const cardName = familyCardName(card)
+                try {
+                  const accepted = await hubApi<ProductUpdateAccepted>(`/products/${card.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields }) })
+                  recordProductUpdateNotices(accepted, { productId: card.productId, productName: form.title, modelCode: form.modelCode, platformCode: updatePlatformCode, connectionId })
+                  if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: familyPlan.send.length > 1 ? `${cardName} ürün bilgisi` : 'ürün bilgisi' })
+                  family.queuedCards++
+                  family.queuedVariants += card.variants
+                  update.queued.productInformation = true
+                  await client.invalidateQueries({ queryKey: ['publication-status', card.productId, connectionId] })
+                } catch (reason) {
+                  const failure = reason instanceof Error ? reason.message : 'Güncelleme işi oluşturulamadı.'
+                  familyFailures.set(failure, [...(familyFailures.get(failure) ?? []), cardName])
+                }
+              }
+              // A product without a family keeps its old line: its single refusal is the marketplace's error.
+              if (familyPlan.familyCards <= 1 && familyFailures.size) { update.family = undefined; throw new Error([...familyFailures.keys()][0]) }
             }
             if (plan.price || plan.stock) {
               const priceInventoryJob = await hubApi<AcceptedJob>(`/products/${product.id}/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ price: plan.price, stock: plan.stock }) })
@@ -3317,6 +3339,11 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
     connection,
     capabilities: productUpdateCapabilities(connection.platformCode)
   }))
+  // Which colours of the model family "Platformlarda Güncelle" reaches on each store, shown before it is sent.
+  const updateFamilyProduct = productToEdit.data
+  const platformUpdateFamilyReach = updateFamilyProduct
+    ? (connection: MarketplaceConnection) => familyUpdateReach(familyUpdatePlan({ openedProductId: updateFamilyProduct.id, familyProductIds: updateFamilyProduct.familyProductIds, variants: updateFamilyProduct.variants, connectionId: connection.id, platformCode: connection.platformCode }))
+    : undefined
   const assignedMediaUrls = [...new Set(variantRows.flatMap(row => row.mediaRefs.filter(ref => ref.startsWith('url|')).map(ref => ref.slice(4))))]
   const stripProduct = productAtSave ?? productToEdit.data
   const familyMediaUrls = stripProduct?.familyMediaUrls ?? []
@@ -3850,6 +3877,7 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
       openGroups={platformUpdatePreferences.openGroups}
       onOpenGroupsChange={openGroups => changePlatformUpdatePreferences({ ...platformUpdatePreferences, openGroups })}
       submitting={submitting}
+      familyReach={platformUpdateFamilyReach}
       onClose={() => setPlatformUpdateDialogOpen(false)}
       onConfirm={confirmPlatformUpdate} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
