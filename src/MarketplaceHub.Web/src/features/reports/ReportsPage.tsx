@@ -16,7 +16,7 @@ import { AdReportModal, adReportQuery, adReportRow } from './AdReport'
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
 import { transactionLabel } from './transaction-labels'
-import { byDay, emptyPayoutFilters, filterGroups, isRolledToPayoutDay, isWaitingPayout, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
+import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
 import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../shared/list-url-state'
 import { RrAnchor, RrFilterCard, RrIcon } from '../marketplace/returns-ui'
 import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../marketplace/shared'
@@ -2151,6 +2151,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
     const expanded = open === group.key
     const gap = payoutGap(group)
     const area = regionLabel(group)
+    const estimate = estimateNote(group)
     return <li key={group.key} className={expanded ? 'is-open' : undefined}>
       {/* Names on the left, the money on the right, in line with the day's total. */}
       <button type="button" className="reports-payout-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : group.key)}>
@@ -2158,13 +2159,14 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
           {area && <em className="reports-payout-chip is-region">{area}</em>}</span>
         <span className="reports-payout-state">{applied.sort === 'amount' && <small>{shortDay(group.day, false)}</small>}
           {payoutState(group) !== 'EXPECTED' && <em className={`reports-payout-chip is-${payoutState(group).toLowerCase()}`}>{payoutStateLabels[payoutState(group)]}</em>}</span>
-        <strong className="reports-payout-amount">{formatTl(group.amount)}</strong>
+        <strong className="reports-payout-amount" title={estimate ?? undefined}>{formatTl(group.amount)}</strong>
         <UiIcon name="chevronDown" size={16} />
       </button>
       {expanded && <div className="reports-payout-detail">
         {gap !== null && <p className="reports-payout-gap" role="note">Okunan kayıtların toplamı {formatTl(group.linesAmount)}; ödeme tutarından {formatTl(gap)} farklı (kesinti ya da başka ödemede listelenen kayıt).</p>}
         {group.kind === 'PAYOUT' && group.linesAmount === null && <p className="reports-payout-gap" role="note">Bu ödemenin kayıtları ödemeden bir gün sonra okunur; henüz okunmadı.</p>}
         {isRolledToPayoutDay(group) && <p className="reports-payout-gap" role="note">{rolledPayoutNote}</p>}
+        {estimate && <p className="reports-payout-gap" role="note">{estimate}</p>}
         <PayoutLinesTable platforms={platforms.length ? platforms : null} group={group} />
       </div>}
     </li>
