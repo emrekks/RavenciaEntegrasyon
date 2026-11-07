@@ -63,6 +63,9 @@ public static class ShippingLabelSettingsSchema
         if (Number(raw, "fieldsPerRow") is 2d or 3d) block["fieldsPerRow"] = (int)Number(raw, "fieldsPerRow")!.Value;
         if (raw.TryGetProperty("boxed", out var boxed) && boxed.ValueKind == JsonValueKind.True) block["boxed"] = true;
         if (raw.TryGetProperty("uppercase", out var uppercase) && uppercase.ValueKind == JsonValueKind.True) block["uppercase"] = true;
+        // Yazıyı Kutuya Sığdır and Barkod Numarası: their default depends on the block (framed, turned), so both values count.
+        if (raw.TryGetProperty("fitText", out var fitText) && fitText.ValueKind is JsonValueKind.True or JsonValueKind.False) block["fitText"] = fitText.ValueKind == JsonValueKind.True;
+        if (raw.TryGetProperty("barcodeText", out var barcodeText) && barcodeText.ValueKind is JsonValueKind.True or JsonValueKind.False) block["barcodeText"] = barcodeText.ValueKind == JsonValueKind.True;
         if (raw.TryGetProperty("position", out var position) && position.ValueKind == JsonValueKind.Object)
         {
             var box = new JsonObject();
