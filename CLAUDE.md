@@ -53,3 +53,13 @@ Reply to the user in Turkish: answers, summaries, closing reports and tool descr
 - Controls 36 px high; radii 7 / 12 / 14 px; labels in Title Case.
 - The global `button` rule sets `min-height: 44px`; reset it (`min-height: 0`) on compact controls.
 - Check UI in your own browser tab and close it afterwards; never type credentials or passwords into a form.
+- Owner's shared rules (8 Nov 2026), on every screen:
+  - One line when it fits: filter fields with Temizle/Filtrele, button groups and card sub-lines do not wrap while
+    there is room.
+  - A field dropdown opens exactly as wide as its bar, left edges aligned (at least 200 px).
+  - Checkboxes are round (16 px, purple with a white tick); radios are round dots.
+  - No dead gaps: cards take their content height; a page grid gives the leftover height to the list.
+  - Summary cards go six in a row only where every text fits on one line, else three by two.
+  - Windows are wide enough for their content; nothing inside wraps needlessly.
+- Dead CSS: remove only the dead selector from a list or `:not()`, never the whole rule, and compare computed styles on
+  live before and after the ship.
