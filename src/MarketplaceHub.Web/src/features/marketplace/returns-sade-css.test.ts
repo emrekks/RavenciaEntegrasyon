@@ -20,6 +20,15 @@ function unconditional() {
   return out
 }
 
+describe('card İşlemler menu', () => {
+  it('opens under the trigger on phones: the bottom-sheet rules skip a dropdown anchor', () => {
+    const sheet = css.slice(css.indexOf('every menu and popover opens as a sheet from the bottom'))
+    expect(sheet).toMatch(/\.rr-anchor:not\(\.rr-dropdown\) > :is\(\.rr-menu, \.rr-pop\):not\(\.rr-static\) \{ position: fixed !important/)
+    expect(sheet).not.toMatch(/\.rr-anchor > :is\(\.rr-menu, \.rr-pop\):not\(\.rr-static\) \{ position: fixed/)
+    expect(sheet).toMatch(/\.rr-anchor\.rr-dropdown > \.rr-anchor-scrim \{ background: transparent/)
+  })
+})
+
 describe('return product facts', () => {
   it('never keeps a long barcode or stock code on one line, on phones or in the desktop table', () => {
     // Live 1 Nov 2026: "MZ035DYD-B24MZ035DYD-B26" ran 8 px past a 375 px card, and in the desktop table over the
