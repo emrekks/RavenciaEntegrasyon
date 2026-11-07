@@ -499,7 +499,9 @@ internal static class ReportBuilder
         return new(orders.Count, cancelled.Count, Rate(cancelledUnits, ordered), sold, back, sold - back, orders.Sum(x => x.Claims), Rate(back, ordered),
             priced, gross, orders.Sum(x => x.Back), orders.Sum(x => x.Kept), priced > 0 ? Math.Round(gross / priced, 2) : null,
             orders.Count(x => x.City is null && x.Country == ReportBuckets.Turkey), orders.Count(x => x.Amount <= 0 && x.Currency == Try), orders.Count(x => x.Currency != Try),
-            list, list - gross, orders.Sum(x => x.BackList));
+            list, list - gross, orders.Sum(x => x.BackList),
+            orders.SelectMany(x => x.Lines).Where(x => x.Active > 0).Select(x => x.Row.VariantId?.ToString("D") ?? $"sku:{x.Row.Sku.Trim()}").Distinct(StringComparer.Ordinal).Count(),
+            Math.Round(orders.SelectMany(x => x.Lines).Sum(ReportCosts.VatFree), 2));
     }
 
     private static ReportCommissionView CommissionView(IReadOnlyList<OrderFact> orders, decimal netRevenue)

@@ -204,4 +204,17 @@ describe('PlatformUpdateDialog', () => {
     render([], ['PRICE'])
     expect(bulk(1, 'Hiçbirini Seçme').disabled).toBe(true)
   })
+
+  it('says before the send which colours of the model family the product information reaches on each store', () => {
+    host = document.createElement('div')
+    document.body.append(host)
+    root = createRoot(host)
+    const familyReach = (connection: { platformCode: string }) => connection.platformCode === 'TRENDYOL' ? '7 rengin tamamı (21 varyant) güncellenir.' : '7 renkten 5 renk (15 varyant) güncellenir; bu mağazada olmayan 2 renk gönderilmez: Bej, Siyah.'
+    act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL'), target('hb', 'HEPSIBURADA')]} selectedIds={['ty', 'hb']} onSelectedIdsChange={vi.fn()} fields={['TITLE']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} familyReach={familyReach} onClose={vi.fn()} onConfirm={vi.fn()} />))
+    expect(card('TRENDYOL')?.querySelector('.platform-update-family-reach')?.textContent).toBe('Model Ailesi7 rengin tamamı (21 varyant) güncellenir.')
+    expect(card('HEPSIBURADA')?.querySelector('.platform-update-family-reach')?.textContent).toContain('Bej, Siyah')
+    // Price and stock alone are not the family's product information: no line then.
+    act(() => root?.render(<PlatformUpdateDialog targets={[target('ty', 'TRENDYOL')]} selectedIds={['ty']} onSelectedIdsChange={vi.fn()} fields={['PRICE']} onFieldsChange={vi.fn()} openGroups={allGroups} onOpenGroupsChange={vi.fn()} submitting={false} familyReach={familyReach} onClose={vi.fn()} onConfirm={vi.fn()} />))
+    expect(card('TRENDYOL')?.querySelector('.platform-update-family-reach')).toBeNull()
+  })
 })

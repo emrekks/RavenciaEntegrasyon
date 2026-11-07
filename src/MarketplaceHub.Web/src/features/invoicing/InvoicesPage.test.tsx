@@ -292,7 +292,7 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     expect(send).not.toBeUndefined()
     act(() => send!.click())
     await settle()
-    expect(container.textContent).toContain('1 paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı; henüz iletilmedi')
+    expect(container.textContent).toContain('1 paket için taze durum kontrolü ve manuel fatura iletimi başladı; henüz iletilmedi')
   })
 
   it('keeps sending a manual invoice to the marketplace closed for operations, with the reason', async () => {

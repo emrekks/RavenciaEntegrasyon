@@ -224,3 +224,9 @@ _WEBHOOK_INGEST, _COMMON_LABEL, _CAPABILITY_PROBE, _STAGE_TEST_ORDER; plus share
 ORDER_INVOICE_RECONCILIATION (15 min), RETURN_SYNC (10 min, 20–30 min while no claim is open; ReturnCadencePolicy;
 15-min overlap), RETURN_STATUS_SYNC (open claims only, claimIds batched), PRODUCT_SYNC. The webhook carries order
 packages only, no claim events.
+
+## Return cargo (7 Nov 2026, live read-only)
+- Cargo invoice lines typed "İade Kargo Bedeli" name their order (210 lines, 20,396 TL to 7 Nov 2026; "Gönderi Kargo
+  Bedeli" 1,798 lines). "Yurtdışı Operasyon Iade Bedeli" (OTHER_FINANCIALS, category OTHER_DEDUCTION, 14 records /
+  5,018 TL in 120 days) names no order, so the reports count it by its transaction date, among the deductions tied to
+  no order. The overview's İade Kargo Zararı is both, billed amounts only (an unbilled return is not estimated there).

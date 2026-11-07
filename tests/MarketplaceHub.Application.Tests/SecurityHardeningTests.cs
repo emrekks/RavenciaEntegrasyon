@@ -436,7 +436,7 @@ public sealed class ShippingLabelSettingsSchemaTests
     {
         using var document = JsonDocument.Parse("""
             {"senderName":"Ravencia","stickerWidthMm":9000,"sectionGapMm":-3,"a4LabelsPerPage":3,"defaultFormat":"poster","showA4Button":false,
-             "injected":"<script>","layout":{"a4":[{"kind":"address","fields":["address","address","password"],"align":"middle","position":{"x":500,"y":-1,"width":1,"height":50},"extra":1},"sender",7],"other":[]}}
+             "injected":"<script>","layout":{"a4":[{"kind":"address","fields":["address","address","password"],"align":"middle","inline":true,"position":{"x":500,"y":-1,"width":1,"height":50},"extra":1},"sender",{"kind":"orderInfo","inline":"yes"},7],"other":[]}}
             """);
 
         var normalized = ShippingLabelSettingsSchema.Normalize(document.RootElement);
@@ -448,8 +448,11 @@ public sealed class ShippingLabelSettingsSchemaTests
         Assert.Equal("a4", normalized["defaultFormat"]!.GetValue<string>());
         Assert.False(normalized["showA4Button"]!.GetValue<bool>());
         var blocks = normalized["layout"]!["a4"]!.AsArray();
-        Assert.Equal(2, blocks.Count);
+        Assert.Equal(3, blocks.Count);
         Assert.Equal("left", blocks[0]!["align"]!.GetValue<string>());
+        // Tek Satır is kept only as a real true.
+        Assert.True(blocks[0]!["inline"]!.GetValue<bool>());
+        Assert.Null(blocks[2]!["inline"]);
         Assert.Equal(["address"], blocks[0]!["fields"]!.AsArray().Select(field => field!.GetValue<string>()));
         Assert.Equal(92, blocks[0]!["position"]!["x"]!.GetValue<double>());
         Assert.Null(blocks[0]!["extra"]);

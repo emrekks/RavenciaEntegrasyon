@@ -880,9 +880,16 @@ function productMetrics(data: ReportSales, money: Money | null): Metric[] {
       note: profit === null ? 'İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : `İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nTahmini net kâr ÷ net satılan adet (${formatNumber(now.keptQuantity)} adet; iadeler düşülmüş, Adet Başına Satış'ın paydasından farklı).` },
     { key: 'discount', label: 'Satıcı İndirimi', value: discountKnown ? `${formatTl(discount ?? 0)} · ${formatPercent((discount ?? 0) / list)}` : '—',
       note: discountKnown ? `Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nListe fiyatı toplamı ${formatTl(list)}, indirim ${formatTl(discount)}; iptaller hariç. Pazaryerinin kendi indirimi sayılmaz (satıcıya ödenir). Liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor; diğer pazaryerlerinin indirimi bilinmiyor.`
-        : 'Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nBu dönemde liste fiyatı okunmadı; liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor.' }
+        : 'Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nBu dönemde liste fiyatı okunmadı; liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor.' },
+    { key: 'variants', label: 'Satan Ürün', value: now.soldVariants === undefined ? '—' : `${formatCount(now.soldVariants)} varyant`, detail: 'products',
+      note: 'Dönemde en az bir adedi satılan farklı ürün (varyant) sayısı.\nİptal edilen satırlar sayılmaz; varyantı eşleşmeyen satır stok koduyla sayılır.' },
+    { key: 'vatFree', label: 'KDV Hariç Net Satış', value: noAmount || now.vatFreeNetRevenue === undefined ? '—' : formatTl(now.vatFreeNetRevenue),
+      note: 'Net Ciro\'nun KDV\'siz hali, muhasebeyle karşılaştırmak için.\nHer satırın elde kalan tutarından kendi KDV oranı düşülür; TL dışındaki siparişler sayılmaz.' }
   ]
 }
+
+// A text cut to a length with an ellipsis, so a long reason does not wrap a card's row.
+const shortText = (text: string, length: number) => text.length > length ? `${text.slice(0, length - 1).trimEnd()}…` : text
 
 // Sipariş ve Müşteri: what an order brought in and left, its cargo and its units, and the customers who came back.
 function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
@@ -893,6 +900,8 @@ function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
   const finance = financeCosts(data)
   const cargo = finance?.cargo ?? null
   const cargoOrders = finance && cargo ? finance.financeOrders + (cargo.platformOrders ?? 0) : 0
+  const taken = money?.deductions.filter(part => part.key === 'commission' || part.key === 'fees') ?? []
+  const marketplaceTaken = taken.length ? taken.reduce((sum, part) => sum + part.value, 0) : null
   return [
     // Its change goes in the explanation: a badge beside it would wrap the name and put the card's rows out of line.
     { key: 'basket', label: 'Sipariş Başına Satış', value: noAmount ? '—' : formatTl(now.averageOrderValue),
@@ -901,6 +910,11 @@ function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
       note: profit === null ? 'Her siparişten kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : 'Her siparişten kalan tahmini kâr.\nTahmini net kâr ÷ tutarı olan sipariş.' },
     { key: 'cargo', label: 'Sipariş Başına Kargo', value: finance && cargo && cargoOrders > 0 ? formatTl(cargo.combined / cargoOrders) : '—',
       note: finance && cargo ? `Bir siparişin ortalama kargo ücreti.\nKargo ÷ ${formatCount(cargoOrders)} sipariş. ${cargoNote(cargo)}` : 'Bir siparişin ortalama kargo ücreti.\nBu seçimde hesaplanamadı.' },
+    // The marketplaces' share of an order: the commission and the fees (service fee, withholding tax) of the bridge's
+    // Pazaryeri Masrafları and Stopaj, from the same account.
+    { key: 'fees', label: 'Sipariş Başına Kesinti', value: marketplaceTaken === null || noAmount ? '—' : formatTl(marketplaceTaken / now.ordersWithAmount),
+      note: marketplaceTaken === null ? 'Pazaryerinin bir siparişten aldığı ortalama kesinti.\nBu dönemde komisyon bilinmiyor.'
+        : `Pazaryerinin bir siparişten aldığı ortalama kesinti.\nKomisyon${finance ? ', hizmet bedeli ve stopaj' : ''} (${formatTl(marketplaceTaken)}) ÷ ${formatCount(now.ordersWithAmount)} tutarı olan sipariş; Kâr Köprüsü'ndeki Pazaryeri Masrafları ve Stopaj ile aynı hesap.${finance ? '' : ' Hizmet bedeli ve stopaj bu seçimde düşülmedi.'}` },
     { key: 'units', label: 'Sipariş Başına Adet', value: now.orders > 0 ? formatNumber(now.soldQuantity / now.orders) : '—', note: `Bir siparişte ortalama kaç ürün olduğu.\n${formatNumber(now.soldQuantity)} adet ÷ ${formatCount(now.orders)} sipariş.` },
     { key: 'repeat', label: 'Tekrar Alan Müşteri', value: formatPercent(data.customers.repeatRate), detail: 'customers',
       note: `Dönemde birden fazla sipariş veren müşterilerin oranı.\n${formatCount(data.customers.uniqueCustomers)} tekil müşteriden ${formatCount(data.customers.repeatCustomers)} kişi. Müşteri mağaza bazında tanınır: iki pazaryerinden alan biri iki kişi sayılır.` }
@@ -922,13 +936,21 @@ function adMetrics(data: ReportSales, money: Money | null): Metric[] {
   // The advertising is Trendyol's, so its share is taken of Trendyol's net revenue, not of every platform's.
   const trendyol = data.platforms.find(row => row.key.toUpperCase() === 'TRENDYOL' && row.ordersWithAmount > 0)
   const revenue = trendyol?.netRevenue ?? null
+  const trendyolOrders = trendyol?.ordersWithAmount ?? 0
+  const sales = data.summary.grossSales
+  // The profit with the advertising given back, over the sales: what the sales leave before the advertising.
+  const beforeAds = spend !== null && profit !== null && sales > 0 ? (profit + spend) / sales : null
   return [
     { key: 'commission', label: 'Ortalama Komisyon Oranı', value: formatPercent(data.commission.effectiveRate), note: 'Pazaryerinin satıştan aldığı ortalama pay.\nKomisyon ÷ komisyon oranı bilinen satış.' },
     { key: 'spend', label: 'Trendyol Reklamı', value: spend === null ? '—' : formatTl(spend),
       note: spend === null ? 'Dönemde reklama harcanan tutar.\nReklam bedeli yalnız Trendyol cari hesabından okunabiliyor; bu seçimde okunmadı.' : 'Dönemde Trendyol reklamlarına harcanan tutar.\nTrendyol cari hesabındaki reklam bedelleri, işlem tarihine göre; siparişe bağlı değildir, Net Kâr\'dan Siparişe Bağlı Olmayan Kesintiler içinde düşülür. Diğer pazaryerlerinin reklamı okunmuyor; Brandcenter ve influencer kesintileri ayrı okunmuyor.' },
-    { key: 'profit', label: 'Reklam / Kâr', value: spend !== null && profit !== null && profit > 0 ? formatPercent(spend / profit, 2) : '—', note: 'Kârın ne kadarının reklama gittiği.\nTrendyol reklam harcaması ÷ tahmini net kâr (tüm platformlar).' },
     { key: 'tacos', label: 'Reklam Payı (TACoS)', value: spend !== null && revenue !== null && revenue > 0 ? formatPercent(spend / revenue, 2) : '—',
-      note: `Trendyol cirosunun ne kadarının reklama gittiği.\nTrendyol reklam harcaması ÷ Trendyol net cirosu${revenue !== null ? ` (${formatTl(revenue)})` : ''}; reklam yalnız Trendyol'da okunduğu için payda da Trendyol'un.` }
+      note: `Trendyol cirosunun ne kadarının reklama gittiği.\nTrendyol reklam harcaması ÷ Trendyol net cirosu${revenue !== null ? ` (${formatTl(revenue)})` : ''}; reklam yalnız Trendyol'da okunduğu için payda da Trendyol'un.` },
+    { key: 'perOrder', label: 'Sipariş Başına Reklam', value: spend !== null && trendyolOrders > 0 ? formatTl(spend / trendyolOrders) : '—',
+      note: `Bir Trendyol siparişine düşen reklam harcaması.\nTrendyol reklam harcaması ÷ ${formatCount(trendyolOrders)} tutarı olan Trendyol siparişi; Sipariş Başına Kâr ile karşılaştırılabilir.` },
+    { key: 'beforeAds', label: 'Reklam Öncesi Marj', value: beforeAds === null ? '—' : formatPercent(beforeAds), tone: beforeAds !== null && beforeAds < 0 ? 'bad' : undefined,
+      note: beforeAds === null ? 'Reklam düşülmeden kalan kârın satışa oranı (katkı marjı).\nÜrün maliyeti girilince ve Trendyol cari hesabı okununca hesaplanır.'
+        : `Reklam düşülmeden kalan kârın satışa oranı (katkı marjı).\n(Tahmini net kâr + Trendyol reklam harcaması) ÷ satış tutarı, Kâr Köprüsü'nün hesabından. Net marj ile farkı reklamın marjdan yediği paydır.` }
   ]
 }
 
@@ -942,13 +964,23 @@ function returnMetrics(data: ReportSales): Metric[] {
   const before = data.previousSummary
   const warning = data.cancellations.warningRate
   const cancelled = data.cancellations.cancelledAmount
+  // The billed return cargo of Trendyol, read from its statement only (else unknown): the return lines of the period's
+  // orders and the cross-border return operation fees dated in it. A server that sends neither leaves it unknown.
+  const cargo = trendyolRead(data) ? financeCosts(data)?.cargo ?? null : null
+  const returnCargo = cargo && cargo.returnBilled !== undefined ? cargo.returnBilled + (cargo.returnOperationFees ?? 0) : null
+  // The reason given most, among the known ones, with its share of the claims with a reason.
+  const reasonsTotal = data.returnReasons.reduce((sum, reason) => sum + reason.count, 0)
+  const topReason = [...data.returnReasons].filter(reason => reason.known && reason.count > 0).sort((a, b) => b.count - a.count)[0]
   return [
     { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
       note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi. Önceki dönem ${formatPercent(before.returnRate)}.` },
     // The amount the customers paid for what they sent back: the İade Edilen Tutar taken off on Kâr Köprüsü.
     { key: 'returned', label: 'İade Edilen', value: `${formatNumber(now.returnedQuantity)} adet · ${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
       note: `İade edilen ürün adedi, talep sayısı ve müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır. Reddedilen ve iptal edilen talepler sayılmaz. Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
-    { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nKârlılık\'taki Kargo kalemine dahildir (Trendyol\'da İade Kargo Bedeli satırı, faturası gelmeyen iadede mağaza tarifesi); ayrı tutar olarak henüz gösterilmiyor.' },
+    { key: 'cargo', label: 'İade Kargo Zararı', value: returnCargo === null ? '—' : `${formatTl(returnCargo)} · Trendyol`, detail: 'returns',
+      note: 'İadelerin faturası gelen kargo maliyeti, yalnız Trendyol.\nDönemin siparişlerinin İade Kargo Bedeli satırları ve dönem tarihli Yurtdışı Operasyon İade Bedeli kayıtları; faturası gelmemiş iade sayılmaz, diğer pazaryerlerininki bilinmiyor.' },
+    { key: 'reason', label: 'En Sık İade Nedeni', value: topReason ? `${shortText(topReason.reason, 24)} · ${formatPercent(topReason.count / reasonsTotal)}` : '—', detail: 'returns',
+      note: 'İade taleplerinde en sık bildirilen neden ve talepler içindeki payı.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil); uyarı eşiği ${formatPercent(warning)}.` },
     { key: 'cancelled', label: 'İptal Edilen', value: `${formatCount(now.cancelledOrders)} sipariş · ${formatNumber(data.cancellations.cancelledQuantity)} adet · ${cancelled === undefined ? '—' : formatTl(cancelled)}`, detail: 'cancellations',

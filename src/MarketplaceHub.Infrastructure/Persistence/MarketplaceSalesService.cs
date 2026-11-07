@@ -1265,7 +1265,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         }
 
         var stage = string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase);
-        if (!stage && !string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)) return ServiceResult<CreateOrderPackageResult>.Fail("ENVIRONMENT_INVALID", "Paket oluşturma yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !string.Equals(connection.Environment, "PRODUCTION", StringComparison.OrdinalIgnoreCase)) return ServiceResult<CreateOrderPackageResult>.Fail("ENVIRONMENT_INVALID", "Paket oluşturma yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (!stage && !await WritesEnabled(tenantId, connection.Id, cancellationToken)) return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var policy = await ExternalWritePolicyAsync(tenantId, connection.Id, MarketplaceExternalWritePolicies.Shipment, cancellationToken);
         if (!policy.Enabled) return ServiceResult<CreateOrderPackageResult>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
@@ -1609,7 +1609,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         };
         return valid
             ? EnqueueRead(tenantId, connectionId, MarketplaceCapabilities.ReferenceRead, MarketplaceJobTypes.ReferenceSync, JsonSerializer.Serialize(new { connectionId, resourceType = normalized, parentExternalId = parent }), correlationId, cancellationToken)
-            : Task.FromResult(ServiceResult<Guid>.Fail("REFERENCE_RESOURCE_UNSUPPORTED", "CATEGORIES/BRANDS scope almaz; CATEGORY_ATTRIBUTES categoryId, ATTRIBUTE_VALUES categoryId/attributeId scope ister.", 422));
+            : Task.FromResult(ServiceResult<Guid>.Fail("REFERENCE_RESOURCE_UNSUPPORTED", "Bu liste için kategori ya da özellik seçimi hatalı; sayfayı yenileyip yeniden deneyin.", 422));
     }
 
     public async Task<ServiceResult<Guid>> EnqueueShipmentActionAsync(Guid tenantId, Guid packageId, long expectedVersion, ShipmentActionCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken)
@@ -1642,7 +1642,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                     : ValidateShipmentAction(package, action, commandPayload);
         if (validation is not null) return ServiceResult<Guid>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
-        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Kargo işlemi yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var writePolicy = await ExternalWritePolicyAsync(tenantId, package.ConnectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken);
         if (!writePolicy.Enabled) return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
@@ -1668,7 +1668,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var existing = await db.ExternalEffectRecords.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
         if (existing is not null)
         {
-            if (existing.TargetId is { } target && target != package.Id) return ServiceResult<ShipmentView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu Idempotency-Key başka bir paket için kullanılmış.", 409);
+            if (existing.TargetId is { } target && target != package.Id) return ServiceResult<ShipmentView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu istek anahtarı başka bir paket için kullanılmış; sayfayı yenileyip yeniden deneyin.", 409);
             if (existing.CompletedAt is null) return Verifying<ShipmentView>();
             var replayOrderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
             return replayOrderNumber is null ? NotFound<ShipmentView>() : ServiceResult<ShipmentView>.Ok(Map(package, replayOrderNumber));
@@ -1696,7 +1696,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         }
         if (validation is not null) return ServiceResult<ShipmentView>.Fail(validation.Code, validation.Message, validation.Status, validation.FieldErrors);
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
-        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Kargo işlemi yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         if (!await ExternalWritePolicyEnabledAsync(tenantId, package.ConnectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
         var order = await db.Orders.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.OrderId, cancellationToken);
@@ -1812,7 +1812,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     {
         const string effectType = "TRENDYOL_INSTANT_CARGO_PROVIDER_CHANGE";
         var action = command.Action.Trim().ToUpperInvariant();
-        if (action != "CHANGE_CARGO_PROVIDER") return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_UNSUPPORTED", "Bu anlık endpoint yalnız kargo firması değişikliği için kullanılabilir.", 422);
+        if (action != "CHANGE_CARGO_PROVIDER") return ServiceResult<ShipmentView>.Fail("SHIPMENT_ACTION_UNSUPPORTED", "Bu anlık işlem yalnız kargo firması değişikliği için kullanılabilir.", 422);
 
         var package = await db.ShipmentPackages.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
         if (package is null) return NotFound<ShipmentView>();
@@ -1827,7 +1827,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var existing = await db.ExternalEffectRecords.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.EffectType == effectType && x.IdempotencyKey == normalizedKey, cancellationToken);
         if (existing is not null)
         {
-            if (existing.TargetId is { } target && target != package.Id) return ServiceResult<ShipmentView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu Idempotency-Key başka bir paket için kullanılmış.", 409);
+            if (existing.TargetId is { } target && target != package.Id) return ServiceResult<ShipmentView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu istek anahtarı başka bir paket için kullanılmış; sayfayı yenileyip yeniden deneyin.", 409);
             if (existing.CompletedAt is null) return Verifying<ShipmentView>();
             var replayOrderNumber = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.OrderId).Select(x => x.OrderNumber).SingleOrDefaultAsync(cancellationToken);
             if (replayOrderNumber is null) return NotFound<ShipmentView>();
@@ -1853,7 +1853,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         }
 
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
-        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Shipment işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("ENVIRONMENT_INVALID", "Kargo işlemi yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (!stage && !await WritesEnabled(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         if (!await ExternalWritePolicyEnabledAsync(tenantId, package.ConnectionId, MarketplaceExternalWritePolicies.Shipment, cancellationToken)) return ServiceResult<ShipmentView>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Kargo dış yazma akışı kapalı.", 422);
 
@@ -1942,7 +1942,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (boxQuantity is < 1 or > 50) return Invalid<Guid>("boxQuantity", "boxQuantity 1-50 arasında olmalıdır.");
         if (volumetricHeight < 0 || volumetricHeight > 10000) return Invalid<Guid>("volumetricHeight", "volumetricHeight 0-10000 arasında olmalıdır.");
         var stage = await IsStageConnection(tenantId, package.ConnectionId, cancellationToken);
-        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Ortak etiket yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !await IsProductionConnection(tenantId, package.ConnectionId, cancellationToken)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Ortak etiket yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (hepsiburada)
         {
             var supportedFormats = stage
@@ -1960,7 +1960,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (existingAttempt is not null)
         {
             var existingJob = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.CommonLabel && x.EffectIdempotencyKey == normalizedKey, cancellationToken);
-            return existingJob is null ? ServiceResult<Guid>.Fail("LABEL_ATTEMPT_STATE_CONFLICT", "Etiket denemesi var ancak job kaydı bulunamadı.", 409) : ServiceResult<Guid>.Ok(existingJob.Id);
+            return existingJob is null ? ServiceResult<Guid>.Fail("LABEL_ATTEMPT_STATE_CONFLICT", "Etiket denemesi var ancak işlem kaydı bulunamadı; etiketi yeniden isteyin.", 409) : ServiceResult<Guid>.Ok(existingJob.Id);
         }
         var now = timeProvider.GetUtcNow(); var jobId = Guid.CreateVersion7(); var payload = JsonSerializer.Serialize(new CommonLabelJobPayload(jobId, package.Id, "SUBMIT", boxQuantity, decimal.Round(volumetricHeight, 2, MidpointRounding.ToEven), now, now.AddMinutes(15), requestedFormat));
         var job = NewJob(tenantId, package.ConnectionId, MarketplaceJobTypes.CommonLabel, $"common-label:{package.Id}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedKey)))}", payload, correlationId); job.Id = jobId; job.EffectIdempotencyKey = normalizedKey; job.MaxAttempts = 30;
@@ -1972,14 +1972,14 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId, cancellationToken);
         if (package is null) return NotFound<Guid>();
         if (package.Version != expectedVersion) return Precondition<Guid>(package.Version);
-        if (string.IsNullOrWhiteSpace(package.CargoTrackingNumber)) return ServiceResult<Guid>.Fail("CARGO_TRACKING_REQUIRED", "Stage etiket capability testi için takip numarası gerekir.", 422);
+        if (string.IsNullOrWhiteSpace(package.CargoTrackingNumber)) return ServiceResult<Guid>.Fail("CARGO_TRACKING_REQUIRED", "Etiket testi için kargo takip numarası gerekir.", 422);
         var capability = capabilityCode.Trim().ToUpperInvariant();
         if (capability is not (MarketplaceCapabilities.LabelRead or MarketplaceCapabilities.LabelWrite)) return Invalid<Guid>("capabilityCode", "Bu Stage canary yalnız LABEL_READ veya LABEL_WRITE için kullanılabilir.");
         if (boxQuantity is < 1 or > 50 || volumetricHeight <= 0 || volumetricHeight > 10000) return Invalid<Guid>("probe", "Koli adedi 1-50, desi/hacim 0-10000 arasında olmalıdır.");
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == package.ConnectionId && x.PlatformCode == "TRENDYOL", cancellationToken);
-        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("STAGE_CONNECTION_REQUIRED", "Capability canary yalnız Trendyol STAGE bağlantısında çalışır.", 422);
-        if (capability == MarketplaceCapabilities.LabelWrite && package.Status.ToString() is not ("ReadyToShip" or "Processing")) return ServiceResult<Guid>.Fail("STAGE_LABEL_PACKAGE_NOT_READY", "LABEL_WRITE canary yalnız Picking/Processing veya ReadyToShip Stage paketi üzerinde çalışır.", 422);
-        if (capability == MarketplaceCapabilities.LabelWrite && !CommonLabelCarrierPolicy.Supports(package.CargoProviderExternalId)) return ServiceResult<Guid>.Fail("COMMON_LABEL_CARRIER_UNSUPPORTED", "LABEL_WRITE canary yalnız Trendyol öder Aras Kargo veya TEX Stage paketi üzerinde çalışır.", 422);
+        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("STAGE_CONNECTION_REQUIRED", "Bu test işlemi yalnız Trendyol test mağazası bağlantısında çalışır.", 422);
+        if (capability == MarketplaceCapabilities.LabelWrite && package.Status.ToString() is not ("ReadyToShip" or "Processing")) return ServiceResult<Guid>.Fail("STAGE_LABEL_PACKAGE_NOT_READY", "Etiket testi yalnız hazırlanan ya da gönderime hazır test paketlerinde çalışır.", 422);
+        if (capability == MarketplaceCapabilities.LabelWrite && !CommonLabelCarrierPolicy.Supports(package.CargoProviderExternalId)) return ServiceResult<Guid>.Fail("COMMON_LABEL_CARRIER_UNSUPPORTED", "Etiket testi yalnız Trendyol'un ödediği Aras Kargo veya TEX test paketlerinde çalışır.", 422);
         var normalizedKey = idempotencyKey.Trim();
         var existing = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobType == MarketplaceJobTypes.CapabilityProbe && x.EffectIdempotencyKey == normalizedKey, cancellationToken);
         if (existing is not null) return ServiceResult<Guid>.Ok(existing.Id);
@@ -1997,7 +1997,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (connection is null) return NotFound<Guid>();
         if (!string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase)
             || connection.PlatformCode == "TRENDYOL" && !string.Equals(connection.ExternalStoreId, "2738", StringComparison.Ordinal))
-            return ServiceResult<Guid>.Fail("STAGE_TEST_ORDER_SCOPE_REQUIRED", "Taze test siparişi yalnız desteklenen Stage bağlantılarında oluşturulabilir.", 422);
+            return ServiceResult<Guid>.Fail("STAGE_TEST_ORDER_SCOPE_REQUIRED", "Test siparişi yalnız test mağazası bağlantılarında oluşturulabilir.", 422);
         var barcode = "9900000000486";
         string? hepsiburadaSku = null;
         if (connection.PlatformCode == "HEPSIBURADA")
@@ -2022,7 +2022,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                                                  orderby link.VariantId
                                                  select link.ExternalId).ToListAsync(cancellationToken);
                 hepsiburadaSku = HepsiburadaStageCertificationPolicy.FirstHepsiburadaSku(importedExternalIds);
-                if (hepsiburadaSku is null) return ServiceResult<Guid>.Fail("HEPSIBURADA_STAGE_LISTING_REQUIRED", "Test siparişi için Stage ortamında bağlı Hepsiburada SKU’su bulunan LIVE bir ürün veya hbSku ile içe aktarılmış ACTIVE bir teklif gerekir.", 409);
+                if (hepsiburadaSku is null) return ServiceResult<Guid>.Fail("HEPSIBURADA_STAGE_LISTING_REQUIRED", "Test siparişi için test mağazasında Hepsiburada'ya bağlı, satışta olan bir ürün gerekir.", 409);
                 barcode = hepsiburadaSku;
             }
         }
@@ -2522,7 +2522,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         var prior = await db.ReturnDecisions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.IdempotencyKey == normalizedKey, cancellationToken);
         if (prior is not null)
         {
-            if (prior.ClaimId != claimId) return ServiceResult<ReturnDetailView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu Idempotency-Key başka bir iade için kullanılmış.", 409);
+            if (prior.ClaimId != claimId) return ServiceResult<ReturnDetailView>.Fail("IDEMPOTENCY_KEY_CONFLICT", "Bu istek anahtarı başka bir iade için kullanılmış; sayfayı yenileyip yeniden deneyin.", 409);
             if (prior.Status is "SUCCEEDED" or "SUBMITTED") return await ReturnAsync(tenantId, claimId, cancellationToken);
             if (prior.Status is "PENDING" or "MANUAL_REVIEW") return ServiceResult<ReturnDetailView>.Fail("RETURN_DECISION_IN_PROGRESS", "Bu iade kararının sonucu henüz kesinleşmedi.", 409);
             return ServiceResult<ReturnDetailView>.Fail(prior.ErrorCode ?? "RETURN_ACTION_FAILED", "Bu Idempotency-Key ile başlatılan iade kararı başarısız oldu; yeni bir anahtar ile tekrar deneyin.", 409);
@@ -2578,9 +2578,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (preApprovalConfirm && (!string.IsNullOrWhiteSpace(command.FinalizedWith) || !string.IsNullOrWhiteSpace(command.ReasonCode) || !string.IsNullOrWhiteSpace(command.Explanation) || command.EvidenceAssetIds is { Count: > 0 })) return Invalid<ReturnDetailView>("action", "Hepsiburada ön onay incelemesi ek kabul, ret veya kanıt alanı almaz.");
 
         var stage = await IsStageConnection(tenantId, claim.ConnectionId, cancellationToken);
-        if (!stage && !await IsProductionConnection(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("ENVIRONMENT_INVALID", "İade aksiyonu yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!stage && !await IsProductionConnection(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("ENVIRONMENT_INVALID", "İade işlemi yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (!stage && !await WritesEnabled(tenantId, claim.ConnectionId, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
-        if (isHepsiburada && !stage && !await Supported(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("CAPABILITY_EVIDENCE_REQUIRED", "Hepsiburada talep yazması için aynı mağaza ve ortamda doğrulanmış SIT yetenek kanıtı gerekir.", 422);
+        if (isHepsiburada && !stage && !await Supported(tenantId, claim.ConnectionId, MarketplaceCapabilities.ReturnWrite, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("CAPABILITY_EVIDENCE_REQUIRED", "Hepsiburada iade talebine yanıt bu mağaza için henüz doğrulanmadı; yanıt gönderilmedi.", 422);
         if (!await ExternalWritePolicyEnabledAsync(tenantId, claim.ConnectionId, MarketplaceExternalWritePolicies.Return, cancellationToken)) return ServiceResult<ReturnDetailView>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "İade dış yazma akışı kapalı.", 422);
 
         // "Stoğa ekle": every approved line must already map to a local variant with a MAIN inventory item,
@@ -2639,7 +2639,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         if (command.EvidenceAssetIds is not null) foreach (var assetId in command.EvidenceAssetIds.Distinct())
         {
             var asset = await db.FileAssets.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == assetId && x.ArchivedAt == null && x.Status == "ACTIVE", cancellationToken);
-            if (asset is null) return ServiceResult<ReturnDetailView>.Fail("EVIDENCE_NOT_FOUND", "İade kanıt dosyası tenant private storage içinde bulunamadı.", 422);
+            if (asset is null) return ServiceResult<ReturnDetailView>.Fail("EVIDENCE_NOT_FOUND", "İade kanıt dosyası bulunamadı; dosyayı yeniden yükleyin.", 422);
             if (asset.Classification != "RETURN_EVIDENCE" || asset.SizeBytes is <= 0 or > 10 * 1024 * 1024 || totalBytes + asset.SizeBytes > 25 * 1024 * 1024 || asset.MimeType is not ("application/pdf" or "image/jpeg" or "image/png")) return ServiceResult<ReturnDetailView>.Fail("EVIDENCE_INVALID", "İade kanıtları PDF/JPEG/PNG olmalı, dosya başına 10 MiB ve toplamda 25 MiB sınırını aşmamalıdır.", 422);
             await using var source = await files.OpenReadAsync(tenantId, asset.RelativePath, cancellationToken);
             await using var buffer = new MemoryStream();
@@ -3011,7 +3011,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
     {
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && (x.PlatformCode == "TRENDYOL" || x.PlatformCode == "SHOPIFY" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11" || x.PlatformCode == "PAZARAMA" || x.PlatformCode == "PTTAVM") && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
         if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Aktif veya doğrulanmış marketplace bağlantısı gerekir.", 422);
-        if (!IntegrationRuntimePolicy.AllowsManualRead(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Read işlemi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!IntegrationRuntimePolicy.AllowsManualRead(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Okuma yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         type = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, type);
         return await Enqueue(tenantId, connectionId, type, $"{type.ToLowerInvariant()}:{connectionId}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)))}", payload, correlationId, cancellationToken);
     }

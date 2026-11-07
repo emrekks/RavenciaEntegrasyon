@@ -59,8 +59,8 @@ public static class ScheduledReadSupersession
         && string.Equals(Series(failed.DedupKey), Series(later.DedupKey), StringComparison.Ordinal)
         && later.CreatedAt > failed.CreatedAt;
 
-    internal static string Summary(string? previousCode) =>
-        $"Aynı bağlantıda aynı okumanın sonraki zamanlanmış çalışması başarılı oldu; bu eski hata kaydı kapatıldı (önceki hata: {previousCode ?? "—"}).";
+    internal const string Summary =
+        "Aynı mağazadaki aynı okumanın sonraki çalışması başarılı oldu; bu eski hata kaydı kapatıldı.";
 
     // Closes the superseded failures; returns how many. Each pass looks at a bounded number of failures.
     internal static async Task<int> CloseAsync(AppDbContext db, DateTimeOffset now, CancellationToken cancellationToken)
@@ -95,7 +95,7 @@ public static class ScheduledReadSupersession
                          (x.ConnectionId, x.JobType, x.JobDedupKey, x.Status, x.CreatedAt),
                          (series.Key.ConnectionId, series.Key.JobType, latest.JobDedupKey, JobStatus.Succeeded, latest.CreatedAt), x.LastErrorCode)))
             {
-                var summary = Summary(job.LastErrorCode);
+                var summary = Summary;
                 closed += await db.IntegrationJobs
                     .Where(x => x.Id == job.Id && x.TenantId == job.TenantId && x.Status == job.Status && x.LastErrorCode == job.LastErrorCode)
                     .ExecuteUpdateAsync(setters => setters

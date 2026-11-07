@@ -154,7 +154,7 @@ public sealed class JobLeaseService(AppDbContext db, TokenHasher hasher, TimePro
         job.Status = JobStatus.RetryScheduled;
         job.AvailableAt = now;
         job.LastErrorCode = "WORKER_SHUTDOWN";
-        job.LastErrorSummary = "Worker yeniden başlatıldı; iş kuyruğa geri bırakıldı.";
+        job.LastErrorSummary = "Sunucu yeniden başlatıldı; işlem sıraya geri alındı ve kendiliğinden devam edecek.";
         job.LeaseTokenHash = null;
         job.LeaseExpiresAt = null;
         job.HeartbeatAt = null;

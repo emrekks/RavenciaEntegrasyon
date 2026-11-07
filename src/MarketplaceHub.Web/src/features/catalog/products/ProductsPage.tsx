@@ -893,9 +893,9 @@ export function ProductsPage() {
   // A quick edit changes what the product editor shows too (panel price, channel prices, stock): both refresh.
   const refreshQuickEdit = () => Promise.all(QUICK_EDIT_SYNC_KEYS.map(queryKey => client.invalidateQueries({ queryKey })))
   // Each result lands below the toasts already shown and goes to the notification history.
-  function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info', context?: NotificationContext) {
+  function showProductToast(title: string, message: string, kind: 'success' | 'error' | 'info', context?: NotificationContext, shape: { lines?: string[]; persistent?: boolean } = {}) {
     appendNotification({ ...context, title, message, kind })
-    toastStack.show({ kind, title, message, durationMs: 4000 })
+    toastStack.show({ kind, title, message, lines: shape.lines, durationMs: shape.persistent ? undefined : shape.lines?.length ? 8000 : 4000 })
   }
   function openProductImport() {
     setProductImportMethod('BULK')
@@ -1212,7 +1212,7 @@ export function ProductsPage() {
     {/* One product card (a whole model family) opens the very same popup as its row's Platformlarda Yayınla. */}
     {bulkVatOpen && selectedProductIds.length > 0 && <Suspense fallback={null}><BulkVatDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} onClose={() => setBulkVatOpen(false)} onDone={async outcome => { showProductToast(outcome.title, outcome.message, outcome.kind, { operation: 'Toplu KDV Ata' }); setBulkVatOpen(false); await refresh().catch(() => undefined) }} /></Suspense>}
     {bulkPublishOpen && selectedProductCardCount === 1 &&selectedProductIds[0] && <Suspense fallback={null}><ProductPublishPopup productId={selectedProductIds[0]} onClose={() => { setBulkPublishOpen(false); void client.invalidateQueries({ queryKey: ['products'] }) }} /></Suspense>}
-    {bulkPublishOpen && selectedProductCardCount !== 1 && <Suspense fallback={null}><BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkPublishOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Yayın', details: notice.details, record: true } : undefined)} /></Suspense>}
+    {bulkPublishOpen && selectedProductCardCount !== 1 && <Suspense fallback={null}><BulkPublishDialog productIds={selectedProductIds} cardCount={selectedProductCardCount} connections={publicationConnections} products={[...Object.values(selectedProductCache), ...products]} onClose={() => setBulkPublishOpen(false)} onDone={notice => showProductToast(notice.title, notice.message, notice.kind, notice.details ? { operation: 'Toplu Yayın', details: notice.details, record: true } : { operation: 'Toplu Yayın' }, { lines: notice.lines, persistent: notice.persistent })} /></Suspense>}
     {lowStockOpen && <LowStockDetailsModal products={lowStockQuery.data?.items ?? []} loading={lowStockQuery.isLoading} error={lowStockQuery.error} onClose={() => setLowStockOpen(false)} onImageClick={(url, title) => setLightboxImage({ url, title })} />}
     {lightboxImage && <ImageLightboxModal image={lightboxImage} onClose={() => setLightboxImage(null)} />}
   </section>

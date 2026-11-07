@@ -99,7 +99,7 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         var mode = contentIdText is null && !splitContents ? "UNAPPROVED" : "APPROVED";
         using var source = JsonDocument.Parse(createPayloadJson);
         if (!source.RootElement.TryGetProperty("items", out var sourceItems) || sourceItems.ValueKind != JsonValueKind.Array || sourceItems.GetArrayLength() == 0)
-            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncelleme payload'ı oluşturulamadı.", 422);
+            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncellemesi hazırlanamadı; Trendyol'a gönderilmedi. Ürünü kaydedip yeniden deneyin.", 422);
 
         var unapprovedPayload = createPayloadJson;
         var contentItems = new List<Dictionary<string, object?>>();
@@ -445,7 +445,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Id == connectionId, cancellationToken);
         if (connection is null) return ServiceResult<PriceInventoryDraft>.Fail("CONNECTION_NOT_FOUND", "Pazaryeri bağlantısı bulunamadı.", 404);
         if (!HepsiburadaStageCertificationPolicy.IsStageHepsiburada(connection))
-            return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_STAGE_CONNECTION_REQUIRED", "Bu fiyat-stok yüklemesi yalnız Hepsiburada test (STAGE) bağlantısında kullanılabilir.", 422);
+            return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_STAGE_CONNECTION_REQUIRED", "Bu fiyat-stok yüklemesi yalnız Hepsiburada test mağazası bağlantısında kullanılabilir.", 422);
         var rows = await (from offer in db.ChannelOffers.AsNoTracking()
                           join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }
                           join remoteLink in db.MarketplaceVariantLinks.AsNoTracking() on new { offer.TenantId, offer.ConnectionId, offer.VariantId } equals new { remoteLink.TenantId, remoteLink.ConnectionId, remoteLink.VariantId }
@@ -457,7 +457,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                           select new { Offer = offer, Variant = variant, Inventory = inventory, ExternalId = remoteLink.ExternalId })
             .ToListAsync(cancellationToken);
         var candidates = rows.Where(row => HepsiburadaStageCertificationPolicy.LooksLikeHepsiburadaSku(row.ExternalId)).ToList();
-        if (candidates.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_SKU_LINK_REQUIRED", "SIT fiyat-stok yüklemesi için hbSku (HB…) ile içe aktarılmış ACTIVE Hepsiburada teklifi gerekir.", 422);
+        if (candidates.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("HEPSIBURADA_SKU_LINK_REQUIRED", "Test fiyat-stok yüklemesi için Hepsiburada'dan içe aktarılmış, satışta olan bir teklif (HB kodu) gerekir.", 422);
         var missingInventory = candidates.Where(row => row.Inventory is null).Select(row => row.Variant.Sku).ToList();
         if (missingInventory.Count == candidates.Count) return MissingInventory(missingInventory);
 
@@ -480,7 +480,7 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
             var barcode = string.IsNullOrWhiteSpace(row.Variant.Barcode) ? merchantSku : row.Variant.Barcode.Trim();
             lines.Add(new(row.Variant.Id, row.Offer.Id, barcode, quantity, listPrice, salePrice, "TRY", row.Inventory.ProjectionVersion, row.Offer.PriceVersion, priceHash, merchantSku, hepsiburadaSku, SafetyStock: row.Offer.SafetyStock));
         }
-        if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", "SIT fiyat-stok yüklemesine uygun teklif yok: TRY, sıfırdan büyük fiyat ve boşluksuz, tekil merchantSku/hbSku gerekir.", 422);
+        if (lines.Count == 0) return ServiceResult<PriceInventoryDraft>.Fail("CHANNEL_OFFER_INVALID", "Test fiyat-stok yüklemesine uygun teklif yok: TL para birimi, sıfırdan büyük fiyat ve tekrar etmeyen stok kodu gerekir.", 422);
         lines = lines.Take(HepsiburadaHttpClient.MaxInventoryUploadItems).ToList();
         var payload = JsonSerializer.Serialize(new
         {

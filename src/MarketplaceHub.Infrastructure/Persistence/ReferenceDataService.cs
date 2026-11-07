@@ -11,7 +11,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         if (!await VisibleConnectionAsync(tenantId, connectionId, cancellationToken)) return NotFound<ReferenceDataView>();
         var scope = string.IsNullOrWhiteSpace(parentExternalId) ? "" : parentExternalId.Trim();
         var snapshot = await db.ReferenceSnapshots.AsNoTracking().Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == resourceType && x.ScopeExternalId == scope && x.IsCurrent).OrderByDescending(x => x.FetchedAt).Select(x => new { x.Id, x.ResourceType, x.FetchedAt }).FirstOrDefaultAsync(cancellationToken);
-        if (snapshot is null) return ServiceResult<ReferenceDataView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Doğrulanmış güncel reference snapshot yok; canlı platform çağrısı yapılmadı.", 422);
+        if (snapshot is null) return ServiceResult<ReferenceDataView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Bu mağazanın kategori ve özellik listesi henüz alınmadı; Seçenek Eşitleme ekranından listeyi yenileyin.", 422);
         var query = db.ReferenceItems.AsNoTracking().Where(x => x.TenantId == tenantId && x.SnapshotId == snapshot.Id && x.ResourceType == resourceType);
         if (parentExternalId is not null) query = query.Where(x => x.ParentExternalId == parentExternalId);
         var rows = await query.OrderBy(x => x.SortOrder).ThenBy(x => x.Name).Select(x => new ReferenceItemView(x.ExternalId, x.ParentExternalId, x.Name, x.Path, x.Depth, x.IsLeaf, x.IsActive, x.IsRequired, x.AllowsCustomValue, x.AllowsMultipleValues)).ToListAsync(cancellationToken);
@@ -170,7 +170,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
             .Select(x => new BrandSnapshot(x.Id, x.FetchedAt, x.ItemCount))
             .FirstOrDefaultAsync(cancellationToken);
         return snapshot is null
-            ? ServiceResult<BrandSnapshot>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Doğrulanmış güncel reference snapshot yok; canlı platform çağrısı yapılmadı.", 422)
+            ? ServiceResult<BrandSnapshot>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Bu mağazanın kategori ve özellik listesi henüz alınmadı; Seçenek Eşitleme ekranından listeyi yenileyin.", 422)
             : ServiceResult<BrandSnapshot>.Ok(snapshot);
     }
 
@@ -237,14 +237,14 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
     {
         if (!await VisibleConnectionAsync(tenantId, command.ConnectionId, cancellationToken)) return NotFound<CatalogMappingView>();
         if (!await LocalExistsAsync(tenantId, mappingType, localId, cancellationToken)) return NotFound<CatalogMappingView>();
-        if (!string.Equals(command.Status, "VERIFIED", StringComparison.Ordinal)) return ServiceResult<CatalogMappingView>.Fail("MAPPING_STATUS_INVALID", "Panel üzerinden yalnız VERIFIED mapping kaydedilebilir.", 422);
+        if (!string.Equals(command.Status, "VERIFIED", StringComparison.Ordinal)) return ServiceResult<CatalogMappingView>.Fail("MAPPING_STATUS_INVALID", "Panelden yalnız doğrulanmış eşleme kaydedilebilir.", 422);
         var snapshot = await db.ReferenceSnapshots.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == command.ConnectionId && x.Id == command.SnapshotId && x.IsCurrent, cancellationToken);
-        if (snapshot is null) return ServiceResult<CatalogMappingView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Mapping güncel ve aynı tenant/connection reference snapshot ister.", 422);
+        if (snapshot is null) return ServiceResult<CatalogMappingView>.Fail("REFERENCE_SNAPSHOT_UNAVAILABLE", "Eşleme için bu mağazanın güncel kategori ve özellik listesi gerekir; listeyi yenileyip yeniden deneyin.", 422);
         var expectedResource = mappingType switch { "categories" => "CATEGORIES", "brands" => "BRANDS", "attributes" => "CATEGORY_ATTRIBUTES", "attribute-values" => "ATTRIBUTE_VALUES", _ => "" };
-        if (!string.Equals(snapshot.ResourceType, expectedResource, StringComparison.Ordinal)) return ServiceResult<CatalogMappingView>.Fail("REFERENCE_RESOURCE_MISMATCH", "Snapshot mapping türüyle eşleşmiyor.", 422);
+        if (!string.Equals(snapshot.ResourceType, expectedResource, StringComparison.Ordinal)) return ServiceResult<CatalogMappingView>.Fail("REFERENCE_RESOURCE_MISMATCH", "Seçilen liste bu eşleme türüyle uyuşmuyor; sayfayı yenileyip yeniden deneyin.", 422);
         var external = await db.ReferenceItems.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.SnapshotId == command.SnapshotId && x.ResourceType == expectedResource && x.ExternalId == command.ExternalId, cancellationToken);
-        if (external is null) return ServiceResult<CatalogMappingView>.Fail("EXTERNAL_REFERENCE_NOT_FOUND", "External reference kimliği snapshot içinde bulunamadı.", 422);
-        if (mappingType == "categories" && (!external.IsLeaf || !external.IsActive)) return ServiceResult<CatalogMappingView>.Fail("ACTIVE_LEAF_CATEGORY_REQUIRED", "Ürün mapping'i yalnız etkin leaf kategoriye yapılabilir.", 422);
+        if (external is null) return ServiceResult<CatalogMappingView>.Fail("EXTERNAL_REFERENCE_NOT_FOUND", "Seçilen pazaryeri değeri güncel listede bulunamadı; listeyi yenileyip yeniden seçin.", 422);
+        if (mappingType == "categories" && (!external.IsLeaf || !external.IsActive)) return ServiceResult<CatalogMappingView>.Fail("ACTIVE_LEAF_CATEGORY_REQUIRED", "Ürün eşlemesi yalnız etkin, en alt düzeydeki bir kategoriye yapılabilir; alt kategori seçin.", 422);
 
         var scope = snapshot.ScopeExternalId;
         var externalId = command.ExternalId.Trim();
@@ -267,7 +267,7 @@ public sealed class ReferenceDataService(AppDbContext db, TimeProvider timeProvi
         }
         else
         {
-            if (expectedVersion is null) return ServiceResult<CatalogMappingView>.Fail("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428);
+            if (expectedVersion is null) return ServiceResult<CatalogMappingView>.Fail("PRECONDITION_REQUIRED", "Kaydın sürümü gönderilmedi; sayfayı yenileyip yeniden deneyin.", 428);
             if (mapping.Version != expectedVersion) return ServiceResult<CatalogMappingView>.Fail("CONCURRENCY_CONFLICT", $"Kayıt sürümü değişti; güncel sürüm v{mapping.Version}.", 412);
             mapping.Version++;
             if (mappingType == "attribute-values") mapping.LocalId = localId;

@@ -36,7 +36,7 @@ function lines(value: string) {
 // The inside of one block: its padding, its text size and its parts, laid out in a column.
 export function ShippingLabelBlockBody({ block, values, barcodes, showCustomerPhone }: { block: ShippingLabelBlock; values: ShippingLabelValues; barcodes?: Partial<Record<ShippingLabelBarcodeField, string>>; showCustomerPhone: boolean }) {
   const parts = shippingLabelBlockParts(block, { showCustomerPhone })
-  return <div className="lbl-body" data-block-id={block.id} style={{ '--lbl-size': `${shippingLabelTextSize(block.fontSize)}px`, textAlign: block.align } as CSSProperties}>
+  return <div className={`lbl-body${block.inline ? ' is-inline' : ''}`} data-block-id={block.id} style={{ '--lbl-size': `${shippingLabelTextSize(block.fontSize)}px`, textAlign: block.align } as CSSProperties}>
     {parts.map((part, index) => {
       if (part.type === 'barcode') return <ShippingLabelBarcode key={index} value={barcodes?.[part.field] ?? values[part.field]} />
       if (part.type === 'title') return <span key={index} className="lbl-title">{part.text}</span>

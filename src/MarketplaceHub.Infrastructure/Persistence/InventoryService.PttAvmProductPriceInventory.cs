@@ -17,7 +17,7 @@ public sealed partial class InventoryService
         if (!price || !stock) return ServiceResult<Guid>.Fail("PRICE_INVENTORY_FIELDS_UNSUPPORTED", "PTT AVM fiyatı ve stoğu aynı istekte alır; ikisini birlikte seçin.", 422);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM" && (x.Status == "ACTIVE" || x.Status == "VERIFIED"), cancellationToken);
         if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Ürüne özel fiyat-stok gönderimi için aktif veya doğrulanmış PTT AVM bağlantısı gerekir.", 422);
-        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         var manualPolicy = await db.ConnectionSyncPolicies.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Manual)

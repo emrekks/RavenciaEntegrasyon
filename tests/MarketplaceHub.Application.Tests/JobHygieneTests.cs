@@ -64,11 +64,12 @@ public sealed class JobHygieneTests
         Assert.Equal(Guid.Empty, ProductWriteSupersession.ProductIdOf("[]"));
 
         var later = Guid.Parse("01a1b290-4e62-794d-8c52-3cf73a002275");
-        var summary = ProductWriteSupersession.Summary(later, DateTimeOffset.Parse("2026-11-06T20:32:44Z"), "PRODUCT_CONTENT_GROUP_MISMATCH");
-        Assert.Contains(later.ToString("D"), summary);
+        var summary = ProductWriteSupersession.Summary(DateTimeOffset.Parse("2026-11-06T20:32:44Z"));
+        // Plain words: neither the later job id nor the earlier raw code (owner, 7 Nov 2026).
+        Assert.DoesNotContain(later.ToString("D"), summary);
         // Istanbul time.
         Assert.Contains("23:32", summary);
-        Assert.Contains("PRODUCT_CONTENT_GROUP_MISMATCH", summary);
+        Assert.DoesNotContain("PRODUCT_CONTENT_GROUP_MISMATCH", summary);
     }
 
     [Fact]
@@ -178,8 +179,10 @@ public sealed class ProductWriteSupersessionPostgreSqlTests(PostgreSqlTenantIsol
         var closed = await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == blocked.Id);
         Assert.Equal(JobStatus.Cancelled, closed.Status);
         Assert.Equal(ProductWriteSupersession.Code, closed.LastErrorCode);
-        Assert.Contains(later.Id.ToString("D"), closed.LastErrorSummary);
-        Assert.Contains("PRODUCT_CONTENT_GROUP_MISMATCH", closed.LastErrorSummary);
+        // Plain words (owner, 7 Nov 2026): the later update and its time, no job id and no raw code.
+        Assert.DoesNotContain(later.Id.ToString("D"), closed.LastErrorSummary);
+        Assert.DoesNotContain("PRODUCT_CONTENT_GROUP_MISMATCH", closed.LastErrorSummary);
+        Assert.Contains("sonraki güncellemesi", closed.LastErrorSummary);
         // No later success of the other product; an update's success does not close an archive.
         Assert.Equal(JobStatus.Blocked, (await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == otherBlocked.Id)).Status);
         Assert.Equal(JobStatus.Dead, (await verify.IntegrationJobs.AsNoTracking().SingleAsync(x => x.Id == archiveDead.Id)).Status);

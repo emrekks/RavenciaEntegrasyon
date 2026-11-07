@@ -14,7 +14,8 @@ import { invoiceDueText } from './invoice-due-text'
 import { invoicePreviewNotice } from './invoice-preview-notice'
 import { Busy, CardBackgroundIcon, CargoProviderIcon, CountUp, ErrorBox, InvoiceStatusBadge, Modal, StickyActionBar, TitleHint, UiIcon, DialogSurface } from '../../shared/components'
 import { fullyReturnedNoInvoiceStatus, invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
-import { appendNotification, notificationError, notificationLinks, type NotificationContext } from '../../shared/notifications'
+import { appendNotification, notificationError, notificationLinks, notificationPlatformName, type NotificationContext } from '../../shared/notifications'
+import { useJobOutcomeNotice } from '../../shared/job-outcome-notice'
 import { NoticeToast } from '../../shared/components/NoticeToast'
 import { resolveInvoiceTab } from '../../shared/dashboard-operational-links'
 import { PlatformMark } from '../../shared/platform-mark'
@@ -415,13 +416,15 @@ export function InvoicesPage() {
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden gönderim açılamadı.', 'error', invoiceOrderContext(item, 'Yeniden Gönderim Açılamadı', 'Fatura yeniden gönderimi', error))
   })
   // "Tekrar Gönder" of an issued invoice: its document fetch (when missing) and its delivery; no new invoice.
+  const followJobs = useJobOutcomeNotice()
   const deliveryRetry = useMutation({
     mutationFn: async (item: InvoiceWorkspace) => {
       if (!item.invoiceId) throw new Error('Siparişte kesilmiş fatura bulunamadı.')
       return hubApi<{ jobId: string }>(`/invoices/${item.invoiceId}/delivery-retry-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ confirmed: true }) })
     },
-    onSuccess: async (_result, item) => {
-      setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden deneme sıraya alındı; sonucu fatura satırında görünür. Yeni fatura kesilmedi.`, 'info', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
+    onSuccess: async (result, item) => {
+      setMessage(`#${item.orderNumber} nolu siparişin faturası yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.`, 'info', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
+      if (result?.jobId) followJobs([{ jobId: result.jobId, platformName: notificationPlatformName(item.platformCode) ?? 'Pazaryeri', what: `#${item.orderNumber} faturası` }], invoiceOrderContext(item, '', 'Fatura iletimini yeniden deneme'))
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden deneme sıraya alınamadı.', 'error', invoiceOrderContext(item, 'Yeniden Deneme Başlatılamadı', 'Fatura iletimini yeniden deneme', error))
@@ -449,7 +452,8 @@ export function InvoicesPage() {
       if (documentId) setQueuedManualDocuments(current => new Set(current).add(documentId))
       setMessage(result.inspectionOnlyPackageCount > 0
         ? `${result.inspectionOnlyPackageCount} paketin önceki iletim sonucu belirsiz; yalnızca pazaryeri durumu okunacak, yeni belge gönderilmeyecek.`
-        : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı; henüz iletilmedi, sonucu fatura satırında görünür.`, 'info', invoiceOrderContext(item, 'Manuel Fatura İletimi Sıraya Alındı', 'Manuel fatura iletimi'))
+        : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi başladı; henüz iletilmedi, sonuç gelince bildirilecek.`, 'info', invoiceOrderContext(item, 'Manuel Fatura İletimi Başladı', 'Manuel fatura iletimi'))
+      followJobs((result.jobIds ?? []).map(jobId => ({ jobId, platformName: notificationPlatformName(item.platformCode) ?? 'Pazaryeri', what: `#${item.orderNumber} manuel faturası` })), invoiceOrderContext(item, '', 'Manuel fatura iletimi'))
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Manuel fatura iletimi kuyruğa alınamadı.', 'error', invoiceOrderContext(item, 'Manuel Fatura İletilemedi', 'Manuel fatura iletimi', error))
@@ -811,6 +815,7 @@ export function InvoiceDetailPage() {
   }, [notice, noticeKind])
   const query = useQuery({ queryKey: ['invoice', id], queryFn: () => hubApi<InvoiceDetail>(`/invoices/${id}`) })
   const canSend = useCanSendInvoices()
+  const followJobs = useJobOutcomeNotice()
   const operation = useMutation({
     mutationFn: async ({ action, invoice }: { action: string; invoice: InvoiceDetail }) => {
       if (action === 'VALIDATE') return hubApi<InvoiceDetail>(`/invoices/${id}/validate`, { method: 'POST', headers: { 'If-Match': `"v${invoice.version}"` } })
@@ -819,7 +824,13 @@ export function InvoiceDetailPage() {
       const versionless = action === 'DELIVER' || action === 'RETRY_DELIVERY'
       return hubApi(`/invoices/${id}/${endpoint}`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), ...(!versionless ? { 'If-Match': `"v${invoice.version}"` } : {}) }, ...(action === 'STAGE_CAPABILITY_PROBE' ? {} : { body: JSON.stringify({ confirmed }) }) })
     },
-    onSuccess: (_value, variables) => { setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : variables.action === 'RETRY_DELIVERY' ? 'Yeniden deneme sıraya alındı. Yeni fatura kesilmedi.' : 'İşlem sıraya alındı.', variables.action === 'VALIDATE' ? 'success' : 'info'); setConfirmed(false); void client.invalidateQueries({ queryKey: ['invoice', id] }) },
+    onSuccess: (value, variables) => {
+      setNotice(variables.action === 'VALIDATE' ? 'Yerel doğrulama tamamlandı.' : variables.action === 'RETRY_DELIVERY' ? 'Fatura yeniden gönderiliyor; sonuç gelince bildirilecek. Yeni fatura kesilmedi.' : 'İşlem başladı; sonuç gelince bildirilecek.', variables.action === 'VALIDATE' ? 'success' : 'info'); setConfirmed(false); void client.invalidateQueries({ queryKey: ['invoice', id] })
+      // A send is followed to its result (gönderildi / gönderilemedi with the reason); the page's own status follows too.
+      const jobId = (value as { jobId?: string } | null)?.jobId
+      const what = variables.action === 'SUBMIT' ? 'fatura kesimi' : variables.action === 'CANCEL' ? 'fatura iptali' : 'fatura iletimi'
+      if (jobId && variables.action !== 'VALIDATE') followJobs([{ jobId, platformName: variables.action === 'SUBMIT' || variables.action === 'CANCEL' ? 'E-Faturam' : 'Pazaryeri', what }], { operation: what, subject: { kind: 'invoice', id: variables.invoice.id, label: variables.invoice.invoiceNumber ?? `#${variables.invoice.orderNumber} faturası` } })
+    },
     onError: error => setNotice(error instanceof Error ? error.message : 'İşlem başarısız.', 'error')
   })
   const upload = useMutation({

@@ -1707,7 +1707,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         {
             if (expectedVersion is not null) return NotFound<ListingProfileView>(); profile = new ChannelListingProfile { Id = Guid.CreateVersion7(), TenantId = tenantId, ProductId = productId, ConnectionId = connectionId, DesiredStatus = "DRAFT", ActualStatus = "UNKNOWN" }; db.ChannelListingProfiles.Add(profile);
         }
-        else if (expectedVersion is null || profile.Version != expectedVersion) return expectedVersion is null ? ServiceResult<ListingProfileView>.Fail("PRECONDITION_REQUIRED", "If-Match gereklidir.", 428) : Precondition<ListingProfileView>(profile.Version);
+        else if (expectedVersion is null || profile.Version != expectedVersion) return expectedVersion is null ? ServiceResult<ListingProfileView>.Fail("PRECONDITION_REQUIRED", "Kaydın sürümü gönderilmedi; sayfayı yenileyip yeniden deneyin.", 428) : Precondition<ListingProfileView>(profile.Version);
         profile.TitleOverride = NullTrim(command.TitleOverride); profile.DescriptionOverride = NullTrim(command.DescriptionOverride); profile.ExternalCategoryId = NullTrim(command.ExternalCategoryId); profile.ExternalBrandId = NullTrim(command.ExternalBrandId); profile.DeliveryTimeDays = command.DeliveryTimeDays; profile.Enabled = command.Enabled; if (expectedVersion is not null) profile.Version++; await db.SaveChangesAsync(cancellationToken); return ServiceResult<ListingProfileView>.Ok(MapProfile(profile));
     }
 
@@ -1720,7 +1720,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var selected = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && productIds.Contains(x.Id)).ToListAsync(cancellationToken);
         var connections = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && connectionIds.Contains(x.Id)).Select(x => new { x.Id, x.PlatformCode, x.SettingsJson }).ToListAsync(cancellationToken);
         if (connections.Count != connectionIds.Count) return Invalid<BulkPublicationResult>("connectionIds", "Seçilen platform bulunamadı.");
-        var queued = 0; var skipped = 0; var failed = new List<BulkPublicationFailure>();
+        var queued = 0; var skipped = 0; var failed = new List<BulkPublicationFailure>(); var jobs = new List<BulkPublicationJob>();
         // A card deleted since the list loaded it is reported on its own instead of refusing every other card of the slice.
         foreach (var missingId in productIds.Where(id => selected.All(product => product.Id != id)))
             foreach (var connectionId in connectionIds)
@@ -1830,10 +1830,10 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         {
             var enqueued = await EnqueuePublicationAsync(tenantId, product.Id, connectionId, $"{idempotencyKey}:{product.Id:N}:{connectionId:N}", correlationId, cancellationToken);
             db.ChangeTracker.Clear();
-            if (enqueued.Succeeded) queued++;
+            if (enqueued.Succeeded) { queued++; jobs.Add(new(product.Id, connectionId, enqueued.Value)); }
             else failed.Add(new(product.Id, product.Title, connectionId, enqueued.Error!.Code, enqueued.Error.Message));
         }
-        return ServiceResult<BulkPublicationResult>.Ok(new(queued, skipped, failed));
+        return ServiceResult<BulkPublicationResult>.Ok(new(queued, skipped, failed, jobs));
     }
 
     // Whether a variant of the card is one the marketplace no longer knows there (ProductListingHealth.CountsAsMissing).
@@ -1891,8 +1891,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         if (await IsDraftProductAsync(tenantId, productId, cancellationToken)) return DraftSendBlocked<Guid>();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
-        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Yayın yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "SHOPIFY" or "N11" or "PAZARAMA" or "PTTAVM") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Yayın için etkin bir mağaza bağlantısı gerekir; bağlantıyı Entegrasyonlar ekranından etkinleştirin.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Yayın yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (IntegrationRuntimePolicy.IsProduction(connection) && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         if (connection.PlatformCode == "SHOPIFY")
         {
@@ -1901,7 +1901,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         }
         if (connection.PlatformCode == "HEPSIBURADA")
         {
-            if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar ürün yayını kuyruğa alınamaz.", 422);
+            if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada giriş bilgileri test hesabında doğrulanana kadar ürün yayını başlatılamaz.", 422);
             if (!await HasHepsiburadaPublicationEvidenceAsync(connection, cancellationToken)) return ServiceResult<Guid>.Fail("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Hepsiburada bağlantısında bu mağaza ve ortam için doğrulanmış fiyat ve stok yazma kanıtı yok; Entegrasyonlar'dan bağlantıyı test edin.", 422);
         }
         // n11 has no sandbox, so write evidence can only follow a first live write; the
@@ -2072,8 +2072,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             return ServiceResult<Guid>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Pazarama'ya API ile yalnız KDV oranı güncellenebilir.", 422);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId, cancellationToken);
-        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "PAZARAMA" or "N11") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme için ACTIVE veya doğrulanmış STAGE marketplace bağlantısı gerekir.", 422);
-        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Güncelleme yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (connection is null || connection.PlatformCode is not ("TRENDYOL" or "HEPSIBURADA" or "PAZARAMA" or "N11") || !IntegrationRuntimePolicy.IsManualProductWriteReady(connection)) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Güncelleme için etkin bir mağaza bağlantısı gerekir; bağlantıyı Entegrasyonlar ekranından etkinleştirin.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Güncelleme yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         // Pazarama writes need both write switches in any environment, as its product create does.
         if ((IntegrationRuntimePolicy.IsProduction(connection) || connection.PlatformCode == "PAZARAMA") && !WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         // n11 has no sandbox: the global and connection write switches are the gate, as for an n11 product create. Its

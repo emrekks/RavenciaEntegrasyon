@@ -71,6 +71,13 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var types = jobTypes.Select(type => type.Trim().ToUpperInvariant()).Where(type => type.Length > 0).Distinct().ToArray();
             query = query.Where(x => types.Contains(x.JobType));
         }
+        if (listQuery.Ids is { } ids)
+        {
+            // Ids asked for but none readable: nothing matches (never the whole list).
+            if (ids.Count == 0) return null;
+            var wanted = ids.Distinct().Take(JobListQuery.MaximumIds).ToArray();
+            query = query.Where(x => wanted.Contains(x.Id));
+        }
         return OfPlatforms(query, tenantId, listQuery.Platforms);
     }
 
@@ -194,23 +201,23 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     {
         var job = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
         return job is null
-            ? ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404)
+            ? ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "İşlem kaydı bulunamadı; silinmiş ya da kapatılmış olabilir.", 404)
             : ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }
 
     public async Task<ServiceResult<JobDetailView>> RetryAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
-        if (job is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
+        if (job is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "İşlem kaydı bulunamadı; silinmiş ya da kapatılmış olabilir.", 404);
         if (job.Status is JobStatus.Leased or JobStatus.Pending or JobStatus.RetryScheduled or JobStatus.Succeeded or JobStatus.Cancelled)
-            return ServiceResult<JobDetailView>.Fail("JOB_NOT_RETRYABLE", "Bu job mevcut durumunda manuel yeniden deneme kabul etmiyor.", 409);
+            return ServiceResult<JobDetailView>.Fail("JOB_NOT_RETRYABLE", "Bu işlem şu anki durumunda yeniden denenemez.", 409);
 
         var now = timeProvider.GetUtcNow();
         if (job.JobType == InvoicingJobTypes.InvoiceSubmit)
         {
             var invoiceId = PayloadGuid(job.PayloadJson, "invoiceId");
             if (invoiceId is null)
-                return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Fatura gönderim job'unda geçerli bir fatura kimliği bulunamadı.", 409);
+                return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Bu gönderim işinde geçerli bir fatura bulunamadı; faturayı Faturalar ekranından yeniden gönderin.", 409);
             var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoiceId.Value, cancellationToken);
             if (invoice is null)
                 return ServiceResult<JobDetailView>.Fail("INVOICE_NOT_FOUND", "Yeniden denenecek fatura kaydı bulunamadı.", 404);
@@ -248,7 +255,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
         var sourceJob = await db.IntegrationJobs.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
-        if (sourceJob is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
+        if (sourceJob is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "İşlem kaydı bulunamadı; silinmiş ya da kapatılmış olabilir.", 404);
         var hasPriorNoWriteAttempt = sourceJob.LastErrorCode == OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode
             || await db.JobAttempts.AsNoTracking().AnyAsync(x =>
                 x.TenantId == tenantId
@@ -262,7 +269,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_SOURCE_NOT_SAFE", "Bu sipariş için dış çağrı yapılmadan oluştuğu doğrulanmış bir fatura iletim engeli bulunamadı.", 409);
 
         var invoiceId = PayloadGuid(sourceJob.PayloadJson, "invoiceId");
-        if (invoiceId is null) return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Fatura iletim job'unda geçerli bir fatura kimliği bulunamadı.", 409);
+        if (invoiceId is null) return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Bu iletim işinde geçerli bir fatura bulunamadı; faturayı Faturalar ekranından yeniden iletin.", 409);
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoiceId.Value, cancellationToken);
         if (invoice is null) return ServiceResult<JobDetailView>.Fail("INVOICE_NOT_FOUND", "İletilecek fatura kaydı bulunamadı.", 404);
         if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)
@@ -278,7 +285,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (package is null
             || sourceJob.ConnectionId != package.ConnectionId
             || string.IsNullOrWhiteSpace(package.ExternalPackageId))
-            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PACKAGE_MISMATCH", "Fatura ve başarısız Hepsiburada teslim job'ı aynı sipariş paketini göstermiyor.", 409);
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PACKAGE_MISMATCH", "Fatura ile başarısız Hepsiburada iletimi aynı sipariş paketine ait değil; yeniden gönderilmedi.", 409);
 
         var order = await db.Orders.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
@@ -376,9 +383,9 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     public async Task<ServiceResult<JobDetailView>> CancelAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
-        if (job is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
+        if (job is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "İşlem kaydı bulunamadı; silinmiş ya da kapatılmış olabilir.", 404);
         if (job.Status is JobStatus.Succeeded or JobStatus.Dead or JobStatus.Cancelled)
-            return ServiceResult<JobDetailView>.Fail("JOB_TERMINAL", "Terminal durumdaki job iptal edilemez.", 409);
+            return ServiceResult<JobDetailView>.Fail("JOB_TERMINAL", "Bitmiş bir işlem iptal edilemez.", 409);
 
         var now = timeProvider.GetUtcNow();
         var wasLeased = job.Status == JobStatus.Leased;
@@ -476,6 +483,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     // marketplace's names for the attribute ids it carried (the connection's reference data; null when not known).
     private async Task<JobWriteSummaryView?> WriteSummaryAsync(IntegrationJob job, Guid? productId, CancellationToken cancellationToken)
     {
+        if (JobSentPayloadReader.Read(job.JobType, job.PayloadJson) is { } sent) return await WithSentItemsAsync(job, sent, cancellationToken);
         if (JobWritePayloadReader.Read(job.JobType, job.PayloadJson) is not { } write) return null;
         if (productId is { } cardId)
         {
@@ -500,6 +508,121 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             };
         }
         return write;
+    }
+
+    // Each item's answer for the other write jobs, only from the records the job itself wrote: the price/stock send log
+    // (one row per line), the package action's or label's external-effect record, the return decision, the invoice's
+    // submission attempts within the job's run and its delivery states. A missing record adds nothing; values that name
+    // a customer (decision texts, addresses, tracking numbers, provider problem bodies) are never read.
+    private async Task<JobWriteSummaryView> WithSentItemsAsync(IntegrationJob job, JobWriteSummaryView sent, CancellationToken cancellationToken)
+    {
+        var tenantId = job.TenantId;
+        var items = new List<JobSentItemView>();
+        var requests = sent.Requests.ToList();
+        void AddRequest(string key, string? id)
+        {
+            if (JobSentRequestId.Displayable(id) is { } shown && requests.All(x => x.Id != shown)) requests.Add(new(key, shown));
+        }
+        switch (job.JobType)
+        {
+            case MarketplaceJobTypes.PriceInventorySync:
+                var lines = await db.PriceStockSendLogs.AsNoTracking().Where(x => x.TenantId == tenantId && x.JobId == job.Id)
+                    .OrderBy(x => x.Barcode).ThenBy(x => x.CreatedAt)
+                    .Select(x => new { x.Barcode, x.NewQuantity, x.NewSalePrice, x.NewListPrice, x.Currency, x.Result, x.ErrorCode, x.ErrorMessage, x.CreatedAt, x.CompletedAt })
+                    .ToListAsync(cancellationToken);
+                items.AddRange(lines.Select(x => new JobSentItemView(x.Barcode, JobSentRequestId.PriceStockValues(x.NewQuantity, x.NewSalePrice, x.NewListPrice, x.Currency), x.Result,
+                    x.ErrorMessage ?? x.ErrorCode, x.CompletedAt ?? x.CreatedAt)));
+                break;
+            case MarketplaceJobTypes.ShipmentAction or MarketplaceJobTypes.CommonLabel:
+                var effect = await db.ExternalEffectRecords.AsNoTracking()
+                    .Where(x => x.TenantId == tenantId && x.EffectType == job.JobType && x.IdempotencyKey == job.EffectIdempotencyKey)
+                    .OrderByDescending(x => x.CreatedAt).Select(x => new { x.Outcome, x.CompletedAt, x.CreatedAt }).FirstOrDefaultAsync(cancellationToken);
+                if (job.JobType == MarketplaceJobTypes.CommonLabel)
+                {
+                    var label = await db.ShipmentDocumentAttempts.AsNoTracking().Where(x => x.TenantId == tenantId && x.IdempotencyKey == job.EffectIdempotencyKey)
+                        .OrderByDescending(x => x.CreatedAt).Select(x => new { x.Status, x.ErrorCode, x.ExternalOperationId, x.CreatedAt, x.CompletedAt }).FirstOrDefaultAsync(cancellationToken);
+                    if (label is not null)
+                    {
+                        items.Add(new("Ortak Etiket", null, label.Status, label.ErrorCode, label.CompletedAt ?? label.CreatedAt));
+                        AddRequest("COMMON_LABEL", label.ExternalOperationId);
+                    }
+                    else if (effect is not null) items.Add(new("Ortak Etiket", null, JobSentRequestId.EffectStatus(effect.Outcome, effect.CompletedAt), null, effect.CompletedAt ?? effect.CreatedAt));
+                }
+                else if (effect is not null) items.Add(new("Paket İşlemi", null, JobSentRequestId.EffectStatus(effect.Outcome, effect.CompletedAt), null, effect.CompletedAt ?? effect.CreatedAt));
+                break;
+            case MarketplaceJobTypes.ReturnAction:
+                if (PayloadGuid(job.PayloadJson, "decisionId") is { } decisionId)
+                {
+                    var decision = await db.ReturnDecisions.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == decisionId)
+                        .Select(x => new { x.Action, x.Status, x.ErrorCode, x.ExternalOperationId, x.CreatedAt, x.CompletedAt }).FirstOrDefaultAsync(cancellationToken);
+                    if (decision is not null)
+                    {
+                        items.Add(new("İade Kararı", JobSentRequestId.DecisionLabel(decision.Action), decision.Status, decision.ErrorCode, decision.CompletedAt ?? decision.CreatedAt));
+                        AddRequest("RETURN_DECISION", decision.ExternalOperationId);
+                    }
+                }
+                break;
+            case InvoicingJobTypes.InvoiceSubmit:
+                if (PayloadGuid(job.PayloadJson, "invoiceId") is { } submitInvoiceId)
+                {
+                    var until = job.CompletedAt ?? DateTimeOffset.MaxValue;
+                    var attempts = await db.InvoiceSubmissionAttempts.AsNoTracking()
+                        .Where(x => x.TenantId == tenantId && x.InvoiceId == submitInvoiceId && x.StartedAt >= job.CreatedAt && x.StartedAt <= until)
+                        .OrderBy(x => x.AttemptNumber).Select(x => new { x.AttemptNumber, x.Outcome, x.ErrorCode, x.RemoteRequestId, x.StartedAt, x.CompletedAt })
+                        .ToListAsync(cancellationToken);
+                    foreach (var attempt in attempts)
+                    {
+                        items.Add(new($"{attempt.AttemptNumber}. Deneme", null, attempt.Outcome, attempt.ErrorCode, attempt.CompletedAt ?? attempt.StartedAt));
+                        AddRequest("INVOICE_SUBMIT", attempt.RemoteRequestId);
+                    }
+                }
+                break;
+            case InvoicingJobTypes.InvoiceCancellation:
+                if (PayloadGuid(job.PayloadJson, "invoiceId") is { } cancelInvoiceId)
+                {
+                    var invoice = await db.Invoices.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == cancelInvoiceId)
+                        .Select(x => new { x.Status, x.LastErrorCode }).FirstOrDefaultAsync(cancellationToken);
+                    if (invoice is not null) items.Add(new("Fatura", "Faturanın güncel durumu", invoice.Status.ToString().ToUpperInvariant(), invoice.LastErrorCode));
+                }
+                break;
+            case InvoicingJobTypes.MarketplaceDelivery:
+                if (PayloadGuid(job.PayloadJson, "invoiceId") is { } deliveryInvoiceId)
+                {
+                    var packageId = PayloadGuid(job.PayloadJson, "packageId");
+                    var states = await (from state in db.MarketplaceDeliveryStates.AsNoTracking()
+                                        join package in db.ShipmentPackages.AsNoTracking() on state.PackageId equals package.Id into packages
+                                        from package in packages.DefaultIfEmpty()
+                                        where state.TenantId == tenantId && state.InvoiceId == deliveryInvoiceId && (packageId == null || state.PackageId == packageId)
+                                        orderby state.CreatedAt
+                                        select new { Package = package == null ? null : package.ExternalPackageId, state.Status, state.ErrorCode, state.ExternalReference, state.CreatedAt, state.CompletedAt, state.UpdatedAt })
+                        .ToListAsync(cancellationToken);
+                    foreach (var state in states)
+                    {
+                        items.Add(new(state.Package is { } external ? $"Paket {external}" : "Paket", null, state.Status, state.ErrorCode, state.CompletedAt ?? state.UpdatedAt));
+                        AddRequest("INVOICE_DELIVERY", state.ExternalReference);
+                    }
+                }
+                break;
+            case InvoicingJobTypes.ManualOrderInvoiceDelivery:
+                if (PayloadGuid(job.PayloadJson, "manualOrderInvoiceDocumentId") is { } documentId)
+                {
+                    var packageId = PayloadGuid(job.PayloadJson, "packageId");
+                    var states = await (from state in db.ManualOrderInvoiceDeliveryStates.AsNoTracking()
+                                        join package in db.ShipmentPackages.AsNoTracking() on state.PackageId equals package.Id into packages
+                                        from package in packages.DefaultIfEmpty()
+                                        where state.TenantId == tenantId && state.DocumentId == documentId && (packageId == null || state.PackageId == packageId)
+                                        orderby state.CreatedAt
+                                        select new { Package = package == null ? null : package.ExternalPackageId, state.Status, state.ErrorCode, state.ExternalReference, state.CompletedAt, state.UpdatedAt })
+                        .ToListAsync(cancellationToken);
+                    foreach (var state in states)
+                    {
+                        items.Add(new(state.Package is { } external ? $"Paket {external}" : "Paket", null, state.Status, state.ErrorCode, state.CompletedAt ?? state.UpdatedAt));
+                        AddRequest("INVOICE_DELIVERY", state.ExternalReference);
+                    }
+                }
+                break;
+        }
+        return sent with { Requests = requests, Items = items };
     }
 
     // A publication job's answer per variant: what it recorded, else (an older job) its card's state when the card still

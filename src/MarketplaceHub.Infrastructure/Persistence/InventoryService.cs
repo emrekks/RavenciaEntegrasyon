@@ -319,7 +319,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
             if (connection.PlatformCode is not ("PAZARAMA" or "PTTAVM") && !await db.ConnectionSyncPolicies.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ResourceType == MarketplaceExternalWritePolicies.Stock && x.Enabled, cancellationToken))
                 return ServiceResult<Guid>.Fail("EXTERNAL_WRITE_POLICY_DISABLED", "Stok dış yazma akışı kapalı.", 422);
         }
-        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         // A PTT AVM send from the panel also needs the connection's "Manuel Dış Yazmalar" switch (MANUAL_WRITE).
         if (PttAvmManualWritePolicy.Applies(connection.PlatformCode))
@@ -373,8 +373,8 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
     // Idempotency-Key) makes a new upload, so a fresh inventoryUploadId can always be produced.
     private async Task<ServiceResult<Guid>> EnqueueHepsiburadaStagePriceInventoryAsync(Guid tenantId, PlatformConnection connection, string idempotencyKey, string correlationId, string? stockCode, CancellationToken cancellationToken)
     {
-        if (!IntegrationRuntimePolicy.IsOperationalStage(connection)) return ServiceResult<Guid>.Fail("STAGE_CONNECTION_NOT_READY", "SIT fiyat-stok yüklemesi için bağlantı aktif/doğrulanmış olmalı ve son bağlantı testi hatasız tamamlanmalı.", 422);
-        if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi SIT hesabında doğrulanana kadar fiyat-stok yüklemesi kuyruğa alınamaz.", 422);
+        if (!IntegrationRuntimePolicy.IsOperationalStage(connection)) return ServiceResult<Guid>.Fail("STAGE_CONNECTION_NOT_READY", "Test fiyat-stok yüklemesi için bağlantı etkin olmalı ve son bağlantı testi hatasız bitmeli; önce bağlantıyı test edin.", 422);
+        if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return ServiceResult<Guid>.Fail("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada giriş bilgileri test hesabında doğrulanana kadar fiyat-stok gönderilemez.", 422);
         Guid? variantId = null;
         if (!string.IsNullOrWhiteSpace(stockCode))
         {
@@ -383,7 +383,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
                 .Where(x => x.TenantId == tenantId && x.ConnectionId == connection.Id && x.ExternalId == code)
                 .Select(x => x.VariantId)
                 .ToListAsync(cancellationToken);
-            if (variantIds.Count != 1) return ServiceResult<Guid>.Fail("HEPSIBURADA_SKU_NOT_LINKED", $"'{code}' hbSku'su panelde tek bir varyanta bağlı değil. Önce Hepsiburada ürün eşleştirmesini çalıştırın.", 404);
+            if (variantIds.Count != 1) return ServiceResult<Guid>.Fail("HEPSIBURADA_SKU_NOT_LINKED", $"'{code}' Hepsiburada ürün kodu panelde tek bir varyanta bağlı değil. Önce Hepsiburada ürün eşleştirmesini çalıştırın.", 404);
             variantId = variantIds[0];
         }
         var build = await new PriceInventoryComposer(db).BuildHepsiburadaStageAsync(tenantId, connection.Id, cancellationToken, variantId);
@@ -411,7 +411,7 @@ public sealed partial class InventoryService(AppDbContext db, CursorCodec cursor
         if (await db.PlatformConnections.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM", cancellationToken)) return await EnqueuePttAvmProductPriceInventoryAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, price, stock, cancellationToken);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && ((x.PlatformCode == "TRENDYOL" || x.PlatformCode == "HEPSIBURADA" || x.PlatformCode == "N11") && x.Status == "ACTIVE" || x.PlatformCode == "PAZARAMA" && (x.Status == "ACTIVE" || x.Status == "VERIFIED")), cancellationToken);
         if (connection is null) return ServiceResult<Guid>.Fail("ACTIVE_CONNECTION_REQUIRED", "Ürüne özel fiyat-stok gönderimi için ACTIVE Trendyol, Hepsiburada veya N11 ya da aktif/doğrulanmış Pazarama bağlantısı gerekir.", 422);
-        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız STAGE veya PRODUCTION bağlantısında çalışır.", 422);
+        if (!IntegrationRuntimePolicy.IsSupportedEnvironment(connection)) return ServiceResult<Guid>.Fail("ENVIRONMENT_INVALID", "Fiyat-stok gönderimi yalnız test ya da canlı mağaza bağlantısında yapılabilir.", 422);
         if (!WritesEnabled(connection.SettingsJson)) return ServiceResult<Guid>.Fail("EXTERNAL_WRITES_DISABLED", "Global veya connection dış yazma anahtarı kapalı.", 422);
         // A Pazarama send started from the panel is manual, as its single-variant send: the connection switch is the gate,
         // the automatic price/stock policies are not. Its price and stock are built together (the composer refuses one alone).
