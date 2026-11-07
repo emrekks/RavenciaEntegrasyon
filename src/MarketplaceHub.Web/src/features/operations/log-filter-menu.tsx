@@ -7,7 +7,7 @@ export type FilterMenuGroup = { label?: string; options: FilterMenuOption[] }
 
 // One filter of the Loglar views' Filtrele panel: a 36px button naming what is chosen ("Tüm Sonuçlar", the one value, or
 // "2 Sonuç") and a menu of checkboxes under it. A group's heading picks or drops its whole group.
-export function FilterMenu({ name, allLabel, unit, groups, selected, onChange, emptyText }: { name: string; allLabel: string; unit: string; groups: FilterMenuGroup[]; selected: string[]; onChange: (values: string[]) => void; emptyText?: string }) {
+export function FilterMenu({ name, allLabel, unit, groups, selected, onChange, emptyText, extra }: { name: string; allLabel: string; unit: string; groups: FilterMenuGroup[]; selected: string[]; onChange: (values: string[]) => void; emptyText?: string; extra?: { label: string; checked: boolean; onChange: (checked: boolean) => void } }) {
   const [open, setOpen] = useState(false)
   const wrap = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -20,6 +20,8 @@ export function FilterMenu({ name, allLabel, unit, groups, selected, onChange, e
     if (!open || !pop || !anchor) return
     const place = () => {
       const rect = anchor.getBoundingClientRect()
+      // Measured at the trigger's width first: a fixed menu's own min-width of 100% is the window's, not the trigger's.
+      Object.assign(pop.style, { position: 'fixed', margin: '0', left: '0px', top: '0px', right: 'auto', bottom: 'auto', minWidth: `${rect.width}px`, maxWidth: `${Math.max(rect.width, Math.min(300, window.innerWidth - 16))}px` })
       const height = pop.offsetHeight
       const width = pop.offsetWidth
       const below = rect.bottom + 6
@@ -64,6 +66,9 @@ export function FilterMenu({ name, allLabel, unit, groups, selected, onChange, e
           </label>)}
         </div>
       })}
+      {extra && <div className="psl-menu-group psl-menu-extra">
+        <label className="psl-menu-option"><input type="checkbox" checked={extra.checked} onChange={event => extra.onChange(event.target.checked)} />{extra.label}</label>
+      </div>}
     </div>}
   </div>
 }
