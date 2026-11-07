@@ -186,7 +186,9 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     if (dropdown) pin({ width: 'max-content', 'min-width': `${anchor.width}px`, 'max-width': `${window.innerWidth - 16}px`, right: 'auto' })
     // A filter or form field (a full-width .rr-trigger: Stok Durumu, Platform, PanelSelect) opens exactly as wide as its
     // bar, left edges aligned (owner, 8 Nov 2026); a very narrow bar still gives the list 200 px.
-    const field = !sheet && !dropdown && host.querySelector(':scope > .rr-trigger') !== null
+    // An action menu (İşlemler, Toplu İşlemler) is not a field: it keeps its own width (min 250), never the 91 px of its button.
+    const actionMenu = pop.classList.contains('rr-menu') && !host.closest('.rr-fld')
+    const field = !sheet && !dropdown && !actionMenu && host.querySelector(':scope > .rr-trigger') !== null
     if (field) {
       const fieldWidth = `${Math.min(Math.max(anchor.width, 200), window.innerWidth - 16)}px`
       pin({ width: fieldWidth, 'min-width': fieldWidth, 'max-width': fieldWidth, right: 'auto' })

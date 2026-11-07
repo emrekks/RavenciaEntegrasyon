@@ -59,14 +59,14 @@
   :root:root:root body .app-shell.stitch-shell main .category-attribute-dropdown > .category-attribute-dropdown-menu { width: 100%; min-width: 200px; max-width: calc(100vw - 32px); }
 }
 
-:root:root body .date-range-picker-popover > header > button {
+:root:root body .date-range-picker-popover header > button {
   box-sizing: border-box; display: inline-grid; place-items: center; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0;
   color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
   font-size: 13px; font-weight: 500; cursor: pointer;
 }
-:root:root body .date-range-picker-popover > footer > button {
+:root:root body .date-range-picker-popover footer > button {
   box-sizing: border-box; height: 32px; min-height: 0; padding: 0 12px;
   color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
   font-size: 12.5px; font-weight: 500; cursor: pointer;
 }
-:root:root body .date-range-picker-popover > :is(header, footer) > button:hover { background: var(--rv-color-surface-raised); }
+:root:root body .date-range-picker-popover :is(header, footer) > button:hover { background: var(--rv-color-surface-raised); }
