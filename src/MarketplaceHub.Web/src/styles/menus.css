@@ -137,5 +137,8 @@ html body .app-shell.stitch-shell .category-attribute-dropdown-options > button 
 html body .app-shell.stitch-shell .category-attribute-dropdown-options > button > :is(.pm-mark-radio, .pm-mark-check) { flex: 0 0 16px; min-width: 16px; overflow: visible; }
 /* Entegrasyon settings: the connection switcher is a panel menu in the head (no longer an 18px/600 select). */
 html body .cs-workspace .cs-switcher.pm-select { display: inline-block; min-width: 220px; max-width: 100%; }
+/* A menu in place of a select fills its field, as the select did, and its label reads like the other field labels. */
+html body .app-shell.stitch-shell main :is(label, .qf-fld, .commission-field) > .pm-select { display: block; width: 100%; }
+html body .app-shell.stitch-shell main .product-add-page.product-add-page label:has(> .pm-select) { color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
 /* Promosyon's Tablo Boyutu and Eşleştirmeler' A–Z: compact menus beside their labels. */
 html body .app-shell.stitch-shell .commission-zoom > .pm-select { width: 96px; }

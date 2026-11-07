@@ -4,13 +4,13 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-qu
 import { hubPoll } from '../../shared/api'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
-import { Button, UiIcon } from '../../shared/components'
+import { Button, EmptyState, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { relativeAgeText } from '../marketplace/integrations/integration-helpers'
-import { jobTimeRanges } from './job-list-query'
+import { jobTimeRangeOptions } from './job-list-query'
 import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import { PlatformFilter } from '../../shared/PlatformFilter'
 import {
@@ -82,7 +82,7 @@ function ActivityFilterCard({ filters, searchText, onSearch, platformGroups, kin
   const kindGroups: FilterMenuGroup[] = [{ options: activityKinds.map(kind => ({ value: kind.key, label: kind.label, count: kindCounts ? kindCounts[kind.key] ?? 0 : null })) }]
   return <OpsFilterCard wide label="Ürün hareketi filtreleri" active={activityFilterCount({ ...filters, search: '' })} clearCount={clearCount} onClear={onClear} onApply={onApply}>
     <SearchField label="Ürün Ara" ariaLabel="Ürün hareketlerinde ara" placeholder="Barkod, stok kodu, model kodu veya ürün adı" value={searchText} onChange={value => onSearch(value.slice(0, 100))} onEnter={onApply} />
-    <ChoiceField name="Zaman Aralığı" value={days ? '' : filters.range} label={days ? 'Seçili Tarihler' : undefined} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => onChange({ range: value as ActivityFilters['range'], from: '', to: '' })} />
+    <ChoiceField name="Zaman Aralığı" value={days ? '' : filters.range} label={days ? 'Seçili Tarihler' : undefined} options={jobTimeRangeOptions(filters.range)} onChange={value => onChange({ range: value as ActivityFilters['range'], from: '', to: '' })} />
     <DateRangePicker className="rr-fld rr-date" label="Hareket Tarihi" placeholder="Başlangıç – Bitiş" from={filters.from} to={filters.to} onChange={range => onChange({ from: range.from, to: range.to })} icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
     <PlatformFilter options={platformGroups[0]?.options ?? []} selected={filters.platforms} onChange={platforms => onChange({ platforms })} />
     <FilterMenu name="Tür" allLabel="Tüm Türler" unit="Tür" groups={kindGroups} selected={filters.kinds} onChange={kinds => onChange({ kinds })} />
@@ -169,8 +169,8 @@ export function ProductActivityLog({ platformOptions, kept }: { platformOptions:
             </tr>
           })}
           {rows.length === 0 && <tr><td className="psl-empty" colSpan={6}>{filtered
-            ? 'Seçili filtrelerle eşleşen ürün hareketi bulunamadı.'
-            : <><strong>Henüz ürün hareketi yok.</strong><span>Siparişle düşen ya da iadeyle eklenen stok, elle veya toplu yapılan stok ve fiyat değişiklikleri, ürünün satış durumu burada listelenir.</span></>}</td></tr>}
+            ? <EmptyState title="Kayıt Bulunamadı">Seçili filtrelerle eşleşen ürün hareketi bulunamadı.</EmptyState>
+            : <EmptyState title="Henüz Hareket Yok">Siparişle düşen ya da iadeyle eklenen stok, elle veya toplu yapılan stok ve fiyat değişiklikleri, ürünün satış durumu burada listelenir.</EmptyState>}</td></tr>}
         </tbody>
       </table></div>
       {/* Only the way to older rows; no count or note under the list (owner, 5 Nov 2026). */}

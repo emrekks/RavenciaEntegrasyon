@@ -1,7 +1,7 @@
 import { useState, type KeyboardEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiRequestError, hubApi } from '../../../shared/api'
-import { DialogSurface, TitleHint, UiIcon } from '../../../shared/components'
+import { Busy, DialogSurface, TitleHint, UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
 import { platformLogoSource } from '../../../shared/platform-logos'
 
@@ -145,7 +145,7 @@ export function MarketplaceCodesDialog({ productId, rows, onClose }: { productId
     <DialogSurface as="section" onClose={onClose} className="workspace-modal marketplace-codes-modal" aria-labelledby="marketplace-codes-title" onMouseDown={event => event.stopPropagation()}>
       <header><div><p className="eyebrow">{single ? 'Varyant Eşleştirme' : 'Varyantlar'}</p><h2 id="marketplace-codes-title">{single ? single.label : 'Pazaryeri Kodları'}<TitleHint label={single ? single.label : 'Pazaryeri Kodları'}>{single ? 'Bu varyantın pazaryerlerindeki kodları.' : 'Her varyantın Hepsiburada SKU’su ve Shopify Variant ID’si.'} Fiyat ve stok bu kodlarla gönderilir. Kodu yazıp kaydedin; boşaltılan kod eşleşmeyi kaldırır. Yeni kodun stok kodu ve barkodu bir sonraki ürün aktarımında okunur.</TitleHint></h2></div><button type="button" className="modal-close" onClick={onClose} aria-label="Pencereyi kapat"><UiIcon name="close" /></button></header>
       <div className="marketplace-codes-body">
-        {codes.isLoading ? <p className="marketplace-codes-note">Kodlar yükleniyor…</p>
+        {codes.isLoading ? <Busy text="Kodlar yükleniyor…" />
           : codes.isError ? <p className="marketplace-codes-note" role="alert">Pazaryeri kodları okunamadı.</p>
             : !connections.length ? <p className="marketplace-codes-note">Etkin Hepsiburada veya Shopify bağlantısı yok.</p>
               : single ? <ul className="marketplace-code-list">{connections.map(connection => {

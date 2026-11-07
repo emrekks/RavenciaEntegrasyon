@@ -350,19 +350,19 @@ describe('InvoicesPage Shopify bulk invoice status', () => {
     await act(async () => { await client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }) })
     await settle()
     apiState.pageDelayMs = 60
-    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki sayfa"]')!.click())
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 150)) })
 
     expect(apiState.pageRequests.at(-1)).toContain('pageNumber=2')
     expect(apiState.pageRequests.filter(path => path.includes('pageNumber=1')).length).toBe(2)
-    expect(container.querySelector('.invoice-pager [aria-current="page"]')?.textContent ?? container.querySelector('.invoice-pager')?.textContent).toContain('2')
+    expect(container.querySelector('.rr-pager [aria-current="page"]')?.textContent).toContain('2')
   })
 
   it('goes back to the first page when the tab changes', async () => {
     apiState.totalPages = 3
     await act(async () => { await client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }) })
     await settle()
-    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki sayfa"]')!.click())
+    act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Sonraki"]')!.click())
     await settle()
     expect(apiState.pageRequests.at(-1)).toContain('pageNumber=2')
     apiState.pageDelayMs = 60

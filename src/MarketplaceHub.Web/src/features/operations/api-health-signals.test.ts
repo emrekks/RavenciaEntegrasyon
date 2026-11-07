@@ -31,7 +31,7 @@ describe('API Sağlığı signal cells', () => {
   it('shows the 429 count, or a quota pause while one is active', () => {
     expect(rateLimitCell({ refused24h: 0, waitingJobs: 0, pausedUntil: null, lastRunRefusals: 0 }, now)).toMatchObject({ text: '0', tone: 'ok' })
     expect(rateLimitCell({ refused24h: 4, waitingJobs: 1, pausedUntil: null, lastRunRefusals: 2 }, now)).toMatchObject({ text: '4', tone: 'warn' })
-    expect(rateLimitCell({ refused24h: 1, waitingJobs: 1, pausedUntil: '2026-11-07T12:05:00Z', lastRunRefusals: 0 }, now).text).toBe('Kota bekliyor')
+    expect(rateLimitCell({ refused24h: 1, waitingJobs: 1, pausedUntil: '2026-11-07T12:05:00Z', lastRunRefusals: 0 }, now).text).toBe('Kota Bekliyor')
   })
 
   it('shows the age of the oldest due job, and Yok when nothing waits', () => {

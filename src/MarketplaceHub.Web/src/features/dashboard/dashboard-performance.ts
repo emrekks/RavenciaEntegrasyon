@@ -5,6 +5,8 @@
 // with the returned part still shown apart. The server's order count has the returned orders in it as well, so
 // Ortalama Sepet is that ciro over those orders: the report's Satış Tutarı ÷ Tutarı Olan Sipariş, not its Net Ciro.
 
+import { dateRangePresets } from '../../shared/date-range'
+
 export type PerformanceRow = { day: string; connectionId: string; currency: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
 export type DashboardChannel = { connectionId: string; platformCode: string; displayName: string; status: string }
 export type Performance = {
@@ -19,7 +21,9 @@ export type Performance = {
 export type HourRow = Omit<PerformanceRow, 'day'> & { hour: string }
 // day is the calendar day, or the hour key ("yyyy-MM-ddTHH:00") of an hourly series; label is the axis text then.
 export type DayPoint = { day: string; label?: string; amount: number; orderCount: number; productQuantity: number; packageCount: number; returnedAmount: number; returnedOrderCount: number }
-export type Range = 'today' | 'yesterday' | '7' | '30' | '90' | 'custom'
+// The ready periods are the shared date presets (shared/date-range.ts, the Raporlar list) plus a picked range.
+export type Range = 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth' | '30' | 'year' | 'custom'
+export const presetLabels: Record<Exclude<Range, 'custom'>, string> = { today: 'Bugün', yesterday: 'Dün', week: 'Bu Hafta', lastWeek: 'Geçen Hafta', month: 'Bu Ay', lastMonth: 'Geçen Ay', '30': 'Son 30 Gün', year: 'Bu Yıl' }
 
 const dayPattern = /^\d{4}-\d{2}-\d{2}$/
 
@@ -43,12 +47,10 @@ export function periodDays(range: Range, custom: { from: string; to: string }, t
     if (!dayPattern.test(custom.from) || !dayPattern.test(custom.to)) return null
     return custom.from <= custom.to ? { from: custom.from, to: custom.to } : { from: custom.to, to: custom.from }
   }
-  // "Bugün" is today so far; 7/30/90 days are Istanbul calendar days ending with today, counted as a whole day and
-  // compared with the whole days before them (no same-hour cut).
-  if (range === 'today') return { from: today, to: today }
-  // "Dün" is yesterday's whole Istanbul day (00:00-24:00); the server compares it with the whole day before it.
-  if (range === 'yesterday') { const yesterday = addDays(today, -1); return { from: yesterday, to: yesterday } }
-  return { from: addDays(today, 1 - Number(range)), to: today }
+  // The same ranges as every other date list (dateRangePresets): "Bugün" is today so far; "Dün" is yesterday's whole
+  // Istanbul day (00:00-24:00); the others are whole Istanbul calendar days (a period ending today counts today as a
+  // day). The server compares each with the whole days of equal length before it (no same-hour cut, except one day).
+  return dateRangePresets(today).find(preset => preset.label === presetLabels[range])?.range ?? null
 }
 
 const revenue = (row: { amount: number; returnedAmount: number }) => row.amount + row.returnedAmount

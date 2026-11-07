@@ -235,12 +235,12 @@
 
 /* ============ Mapping settings page (Sade) ============ */
 .app-shell.stitch-shell main section.mapping-page { --mp-control: 36px; }
-.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card { display: grid; gap: 16px; padding: 20px 24px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
+.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card { display: grid; gap: 16px; padding: 20px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card .mapping-section-heading h2, .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card > h2, .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card > header h2 { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--rv-color-ink); font-size: 16px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card .mapping-section-heading h2 .ui-icon, .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card > h2 .ui-icon, .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card > header h2 .ui-icon { width: 16px; height: 16px; color: var(--rv-color-muted); }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card .mapping-section-heading { margin: 0; padding: 0; border: 0; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card .mapping-section-heading p { margin: 4px 0 0; color: var(--rv-color-muted); font-size: 13px; text-transform: none; }
-.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card label:not(.rv-pagination-jump) { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; text-transform: none; }
+.app-shell.stitch-shell main section.mapping-page > .mapping-reference-card label:not(.rv-pagination-jump) { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; text-transform: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not(.rv-pagination-jump > input), select, .panel-category-picker-trigger) { box-sizing: border-box; height: var(--mp-control); min-height: var(--mp-control); padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 400 !important; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card :is(input, select, .panel-category-picker-trigger):focus { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); outline: none; }
 .app-shell.stitch-shell main section.mapping-page > .mapping-reference-card button:not(.category-library-remove):not(.category-chip-remove):not(.category-library-search-toggle):not([role="tab"]):not([role="option"]):not(.panel-category-picker-trigger):not(.panel-attribute-record-main):not(:is(.category-library-list, .category-chip-list) button) { height: var(--mp-control); min-height: var(--mp-control); padding: 0 14px; border-radius: 7px; font-size: 14px; font-weight: 500 !important; text-transform: none; }
@@ -535,7 +535,7 @@
 .app-shell.stitch-shell main section.mapping-page .category-library-search-control > .category-library-search-toggle { top: 50%; right: 6px; width: 30px; min-width: 0; height: 30px; min-height: 0; padding: 0; place-items: center; transform: translateY(-50%); }
 /* Attribute mapping page: its scope fields are 36px under 12px muted captions like every other field on the mapping
    pages (they were 43px fields under 16px ink captions). */
-.app-shell.stitch-shell main section.mapping-page .mapping-step > .mapping-fields > label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.app-shell.stitch-shell main section.mapping-page .mapping-step > .mapping-fields > label { display: grid; gap: 6px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
 .app-shell.stitch-shell main section.mapping-page .mapping-step > .mapping-fields select { box-sizing: border-box; height: var(--mp-control, 36px); min-height: var(--mp-control, 36px); padding-top: 0; padding-bottom: 0; }
 
 /* Phones: the saved mapping cards sit with an even gap inside their framed list. */

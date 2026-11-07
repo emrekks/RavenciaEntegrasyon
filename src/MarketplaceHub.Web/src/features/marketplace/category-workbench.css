@@ -287,7 +287,7 @@
 .app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-remove:hover:not(:disabled) { color: var(--rv-color-danger); background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .cm-extra-modal .attribute-defaults-state { color: var(--rv-color-muted); font-size: 13px; line-height: 1.5; }
 .cm-extra-modal .attribute-defaults-form label { gap: 6px; }
-.cm-extra-modal .attribute-defaults-form label > span { color: var(--rv-color-muted); font-size: 12px; font-weight: 500; }
+.cm-extra-modal .attribute-defaults-form label > span { color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
 .app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-form :is(select, input) { box-sizing: border-box; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; }
 .app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button { height: 28px; min-height: 28px; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400 !important; text-transform: none; }
 .app-shell.stitch-shell main .cm-extra-modal .attribute-defaults-values button.is-chosen { background: var(--rv-color-primary-soft); border-color: color-mix(in srgb, var(--rv-color-primary) 60%, transparent); }

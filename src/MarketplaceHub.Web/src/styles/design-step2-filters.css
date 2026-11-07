@@ -1,0 +1,95 @@
+/*
+ * Design step 2 (filters): one search input, one field label, the Ürün Soruları filter card, and filter fields wide
+ * enough at 1280 px. Kept in its own file so the page stylesheets stay as they are; it is the last import of app.css.
+ *
+ * Reference: the filter card of Siparişler / İadeler (rr-fcard): padding 16, labels 13px/500 muted, controls 36px on the
+ * surface colour with the strong border and radius 7, Temizle (secondary) left of Filtrele (primary) at the right.
+ */
+
+/* ---- Search input: the icon on the left, 36px, text starting 34px in (rr-in) ---------------------------------- */
+html body .app-shell.stitch-shell.app-shell.stitch-shell main :is(.rv-search-field, .reports-search, .qi-search) {
+  display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-width: 0; height: 36px; margin: 0; padding: 0 12px;
+  color: var(--rv-color-subtle); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong);
+  border-radius: 7px; font-size: 14px; font-weight: 400; cursor: text;
+}
+html body .app-shell.stitch-shell.app-shell.stitch-shell main :is(.rv-search-field, .reports-search, .qi-search) > svg { flex: none; }
+html body .app-shell.stitch-shell.app-shell.stitch-shell main :is(.rv-search-field, .reports-search, .qi-search) > input {
+  flex: 1; min-width: 0; height: 100%; min-height: 0; padding: 0; color: var(--rv-color-ink); background: none; border: 0;
+  border-radius: 0; box-shadow: none; font-size: 14px; outline: none;
+}
+html body .app-shell.stitch-shell.app-shell.stitch-shell main :is(.rv-search-field, .reports-search, .qi-search) > input:is(:hover, :focus, :focus-visible) { background: none; border: 0; box-shadow: none; outline: none; }
+html body .app-shell.stitch-shell.app-shell.stitch-shell main :is(.rv-search-field, .reports-search, .qi-search) > input::placeholder { color: var(--rv-color-subtle); opacity: 1; }
+html body .app-shell.stitch-shell.app-shell.stitch-shell main :is(.rv-search-field, .reports-search, .qi-search):focus-within { border-color: var(--rv-color-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
+html body .app-shell.stitch-shell.app-shell.stitch-shell main :is(.rv-search-field, .reports-search, .qi-search):hover:not(:focus-within) { border-color: color-mix(in srgb, var(--rv-color-primary) 45%, var(--rv-color-border-strong)); }
+/* Where a search sits in a row of its own it takes the room it is given; on a report it is a fixed, compact box. */
+html body .app-shell.stitch-shell.app-shell.stitch-shell main .rv-search-field { width: 100%; }
+html body .app-shell.stitch-shell.app-shell.stitch-shell main .reports-page :is(.reports-search, .rv-search-field.reports-order-search) { width: min(280px, 100%); }
+
+/* ---- Field labels: 13px / 500 / muted --------------------------------------------------------------------------- */
+/* Ürün Düzenleyici: a label that wraps its control (label text, then the input or list). */
+html body .app-shell.stitch-shell main .product-add-page.product-add-page label:has(> :is(input:not([type="checkbox"], [type="radio"], [type="file"]), select, textarea, .desi-inline-control, .searchable-select)) {
+  color: var(--rv-color-muted); font-size: 13px; font-weight: 500;
+}
+html body .app-shell.stitch-shell main .product-add-page.product-add-page label:has(> :is(input:not([type="checkbox"], [type="radio"], [type="file"]), select, textarea, .desi-inline-control, .searchable-select)) > :is(input, select, textarea) {
+  font-size: 14px; font-weight: 400;
+}
+
+/* ---- Ürün Soruları: the filter card (Arama, Mağaza, Tarih, Sıralama, Temizle, Filtrele) ------------------------------ */
+html body .app-shell.stitch-shell main .qi-page .qf-card {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; box-sizing: border-box; margin: 0; padding: 16px;
+  background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 12px;
+}
+html body .app-shell.stitch-shell main .qi-page .qf-fields { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); align-items: end; gap: 12px; min-width: 0; }
+html body .app-shell.stitch-shell main .qi-page .qf-fld { display: grid; gap: 6px; min-width: 0; margin: 0; }
+html body .app-shell.stitch-shell main .qi-page .qf-fld > small { display: block; margin: 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; line-height: 18px; }
+html body .app-shell.stitch-shell main .qi-page .qf-fld > select {
+  box-sizing: border-box; width: 100%; min-width: 0; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink);
+  background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 14px; font-weight: 400;
+}
+html body .app-shell.stitch-shell main .qi-page .qf-fld .date-range-picker { display: grid; gap: 6px; min-width: 0; }
+html body .app-shell.stitch-shell main .qi-page .qf-fld .date-range-picker-label { display: block; margin: 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; line-height: 18px; }
+html body .app-shell.stitch-shell main .qi-page .qf-fld .date-range-picker-trigger { box-sizing: border-box; width: 100%; height: 36px; min-height: 0; padding: 0 12px; font-size: 14px; font-weight: 400; border-radius: 7px; }
+html body .app-shell.stitch-shell main .qi-page .qf-actions { display: flex; grid-column: 1 / -1; justify-content: flex-end; gap: 8px; }
+html body .app-shell.stitch-shell main .qi-page .qf-actions > button { min-width: 104px; min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; text-transform: none; }
+html body .app-shell.stitch-shell main .qi-page .qf-actions > button:disabled { opacity: .5; cursor: default; }
+html body .app-shell.stitch-shell main .qi-page .qf-toggle { display: none; }
+@media (max-width: 760px) {
+  /* A phone shows the search and a Filtre button; the other fields open under them. */
+  html body .app-shell.stitch-shell main .qi-page .qf-card { padding: 12px; }
+  html body .app-shell.stitch-shell main .qi-page .qf-toggle { display: inline-flex; grid-column: 2; grid-row: 1; align-items: center; gap: 6px; min-height: 0; height: 36px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; font-weight: 500; }
+  html body .app-shell.stitch-shell main .qi-page .qf-fields { grid-column: 1; grid-row: 1; grid-template-columns: minmax(0, 1fr); }
+  html body .app-shell.stitch-shell main .qi-page .qf-card.is-open { grid-template-columns: minmax(0, 1fr); }
+  html body .app-shell.stitch-shell main .qi-page .qf-card.is-open .qf-toggle { grid-column: 1; grid-row: 1; justify-content: center; }
+  html body .app-shell.stitch-shell main .qi-page .qf-card.is-open .qf-fields { grid-column: 1; grid-row: 2; }
+  html body .app-shell.stitch-shell main .qi-page .qf-card:not(.is-open) .qf-fields > :not(.qf-search) { display: none; }
+  html body .app-shell.stitch-shell main .qi-page .qf-card:not(.is-open) .qf-search > small { display: none; }
+  html body .app-shell.stitch-shell main .qi-page .qf-actions > button { flex: 1 1 0; }
+}
+
+/* ---- Siparişler / İadeler: full filter text at 1280 px --------------------------------------------------------------- */
+/* Desktop only (from 1025px): the date and sort fields keep room for a chosen range and a sort name; a card that cannot
+   hold them in one row wraps its buttons to a second row instead of cutting the text ("Başlangıç – Bi…"). */
+@media (min-width: 1025px) {
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:has(> .rr-date) { grid-template-columns: minmax(0, 1.3fr) minmax(190px, .9fr) minmax(250px, 1fr) auto; }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:has(> .rr-date) > .rr-sheet-only { display: none; }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) > .rr-search { grid-column: auto; }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) > .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
+  html body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) { grid-template-columns: minmax(0, 1.4fr) minmax(250px, 1fr) minmax(210px, .8fr); }
+}
+@media (min-width: 1025px) and (max-width: 1179px) {
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort):has(> .rr-date) { grid-template-columns: minmax(0, 1.3fr) minmax(190px, .9fr) minmax(250px, 1fr); }
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters:not(.rr-has-sort):has(> .rr-date) > .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; }
+  html body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) > .rr-fbtns { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: nowrap; }
+}
+/* Genel Bakış > Performans: the shared period list is longer than the old one, so on a phone the segment scrolls sideways. */
+@media (max-width: 760px) {
+  html body main .rr.rr.rr-dashboard .rr-pf-tools .rr-seg.rr-seg { display: flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  html body main .rr.rr.rr-dashboard .rr-pf-tools .rr-seg.rr-seg > button { flex: none; }
+}
+@media (min-width: 1180px) {
+  /* İadeler > Onaylanan: its sort ("Onaylanma Tarihi · Yeniden Eskiye") is the widest field; the buttons take a row. */
+  html body main .rr.rr .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) { grid-template-columns: minmax(0, 1.1fr) minmax(190px, .9fr) minmax(215px, 1fr) minmax(305px, 1.2fr); }
+  html body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) { grid-template-columns: minmax(0, 1.3fr) minmax(235px, 1fr) minmax(190px, .8fr) auto; }
+  html body main .rr.rr.rr-orders .rr-fcard:not(.rr-fopen) .rr-filters.rr-has-sort:has(> .rr-date) > .rr-fbtns { grid-column: auto; }
+}

@@ -499,13 +499,17 @@ export function FilterRange({ label, inputMode, min, max, onMin, onMax, minLabel
   </div>
 }
 
-// Temizle and Filtrele, closing the card on the right as on the other filter cards.
-export function FilterActions({ onClear }: { onClear: () => void }) {
+// Temizle and Filtrele, closing the card on the right as on the other filter cards; each stays in place and fades while
+// it has nothing to do (nothing to clear, nothing typed that is not applied yet).
+export function FilterActions({ onClear, canClear, canApply }: { onClear: () => void; canClear: boolean; canApply: boolean }) {
   return <div className="commission-filter-actions">
-    <button type="button" className="secondary commission-filter-clear" onClick={onClear}>Temizle</button>
-    <button type="submit" className="rv-button-primary commission-filter-apply">Filtrele</button>
+    <button type="button" className="secondary commission-filter-clear" disabled={!canClear} onClick={onClear}>Temizle</button>
+    <button type="submit" className="rv-button-primary commission-filter-apply" disabled={!canApply}>Filtrele</button>
   </div>
 }
+// The filled fields of a filter: a draft and the applied filter are the same while these are.
+export const filterEntries = (filter: object) => JSON.stringify(Object.entries(filter).filter(([, field]) => field).sort(([a], [b]) => a.localeCompare(b)))
+export const filterHasValue = (filter: object) => Object.entries(filter).some(([key, field]) => key !== 'search' && field)
 
 // Phones: the filter card and the Toplu Seçim popover open as bottom sheets over a dimmed page (the scrim closes them),
 // a grab handle and their title on top; on wider screens the scrim and the head are not shown.
@@ -562,7 +566,7 @@ function TariffFilters({ value, facets, onApply }: { value: TariffFilter; facets
       <FilterRange label="Kâr Oranı (%)" inputMode="decimal" min={draft.minShare ?? ''} max={draft.maxShare ?? ''} onMin={set('minShare')} onMax={set('maxShare')} minLabel="En az kâr oranı (%)" maxLabel="En çok kâr oranı (%)" />
     </div>}
     {noFacts && <p className="commission-filter-note">Kategori ve marka bu tarifede yok: tarife dosyası önceden yüklendi. Aynı dosyayı yeniden yüklediğinizde dolar.</p>}
-    <FilterActions onClear={clear} />
+    <FilterActions onClear={clear} canClear={filterHasValue(draft) || filterHasValue(value)} canApply={filterEntries(draft) !== filterEntries(value)} />
   </form>
   </div>
 }

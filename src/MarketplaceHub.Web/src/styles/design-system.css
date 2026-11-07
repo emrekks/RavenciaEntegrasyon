@@ -332,7 +332,7 @@
   .rv-button-danger, .destructive { color: #fff; background: var(--rv-color-danger); border-color: var(--rv-color-danger); }
   .rv-icon-button { width: var(--rv-control-height-md); padding: 0; color: var(--rv-color-muted); background: transparent; }
   .rv-icon-button:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-soft)); }
-  .app-shell.stitch-shell main :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { width: 100%; min-height: var(--rv-control-height-md); padding: 0 var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
+  .app-shell.stitch-shell main :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { width: 100%; min-height: var(--rv-control-height-md); padding: 0 var(--rv-space-3); color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); }
   .app-shell.stitch-shell main textarea { min-height: 110px; padding-top: var(--rv-space-3); padding-bottom: var(--rv-space-3); resize: vertical; }
   .app-shell.stitch-shell main input[type="checkbox"], .app-shell.stitch-shell main input[type="radio"] { accent-color: var(--rv-color-primary); }
   .app-shell.stitch-shell main input[type="file"] { height: auto; padding: var(--rv-space-2); }
@@ -3062,7 +3062,7 @@ small,
 
 .app-shell.stitch-shell main :where(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]), select, textarea) {
   min-height: 46px;
-  padding: 11px 13px;
+  padding: 11px 12px;
   border-radius: var(--rv-radius-md);
   font-size: 14px;
   line-height: 1.5;
@@ -3151,7 +3151,7 @@ small,
 
 .app-shell.stitch-shell main :is(.searchable-select-trigger, .category-attribute-select-trigger, .variant-filter-select-trigger, .appearance-theme-trigger) {
   min-height: 46px;
-  padding: 11px 13px;
+  padding: 11px 12px;
   border-radius: var(--rv-radius-md);
   font-size: 14px;
   line-height: 1.5;
@@ -6216,7 +6216,7 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 /* Marketplace customer questions workspace */
 .rv-questions-sync-item strong { overflow-wrap: anywhere; color: var(--rv-color-ink); }
 .rv-questions-sync-item small { color: var(--rv-color-subtle); }
-.rv-questions-filter-grid label, .rv-question-template-editor label { display: grid; gap: 6px; min-width: 0; color: var(--rv-color-muted); font-size: 12px; font-weight: 700; }
+.rv-questions-filter-grid label, .rv-question-template-editor label { display: grid; gap: 6px; min-width: 0; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
 .rv-questions-filter-grid input, .rv-questions-filter-grid select, .rv-question-template-editor input, .rv-question-template-editor textarea { width: 100%; min-width: 0; min-height: 44px; box-sizing: border-box; padding: 8px 11px; border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); background: var(--rv-color-surface-raised); color: var(--rv-color-ink); font: inherit; }
 .rv-question-template-editor textarea { min-height: 100px; resize: vertical; }
 .rv-question-template-list > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-width: 0; }
@@ -6350,8 +6350,8 @@ html[data-rv-shipment-feedback="info"] .app-shell.stitch-shell main .content.f3 
 
 /* The combined question date range opens one calendar for both endpoints. */
 .date-range-picker { position: relative; display: grid; min-width: 0; gap: 5px; }
-.date-range-picker-label { color: var(--rv-color-muted); font-size: 12px; font-weight: 700; }
-.date-range-picker-trigger { display: flex; min-width: 0; min-height: var(--rv-control-height-md); align-items: center; gap: 9px; padding: 0 11px; color: var(--rv-color-ink); background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); text-align: left; }
+.date-range-picker-label { color: var(--rv-color-muted); font-size: 13px; font-weight: 500; }
+.date-range-picker-trigger { display: flex; min-width: 0; min-height: var(--rv-control-height-md); align-items: center; gap: 9px; padding: 0 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-md); text-align: left; }
 .date-range-picker-trigger > span { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .date-range-picker-trigger > .ui-icon { flex: 0 0 auto; color: var(--rv-color-ink); }
 .date-range-picker-popover { position: absolute; z-index: var(--rv-z-dropdown); top: calc(100% + 7px); left: 0; width: min(310px, calc(100vw - 32px)); padding: 12px; color: var(--rv-color-ink); background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: var(--rv-radius-lg); box-shadow: var(--rv-shadow-lg); }

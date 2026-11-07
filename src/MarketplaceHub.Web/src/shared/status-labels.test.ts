@@ -3,8 +3,8 @@ import { invoiceStatusLabel, invoiceStatusTone, statusLabel } from './status-lab
 
 describe('raw lower-case status words', () => {
   it('find their key with plain upper casing (an "i" is not turned into "İ") and name no marketplace', () => {
-    expect(statusLabel('waitinginaction')).toBe('Pazaryerinde karar bekliyor')
-    expect(statusLabel('WaitingInAction')).toBe('Pazaryerinde karar bekliyor')
+    expect(statusLabel('waitinginaction')).toBe('Pazaryerinde Karar Bekliyor')
+    expect(statusLabel('WaitingInAction')).toBe('Pazaryerinde Karar Bekliyor')
     expect(invoiceStatusLabel('fatura_iptal')).toBe('Fatura İptal')
     expect(invoiceStatusTone('fatura_bekliyor')).toBe('warning')
   })
@@ -12,10 +12,10 @@ describe('raw lower-case status words', () => {
 
 describe('package status enum names', () => {
   it('read the same as their underscored codes', () => {
-    expect(statusLabel('READYTOSHIP')).toBe('Kargoya hazır')
+    expect(statusLabel('READYTOSHIP')).toBe('Kargoya Hazır')
     expect(statusLabel('ONHOLD')).toBe('Beklemede')
-    expect(statusLabel('RETURNINTRANSIT')).toBe('İade taşımada')
-    expect(statusLabel('PARTIALLYCANCELLED')).toBe('Kısmi iptal')
+    expect(statusLabel('RETURNINTRANSIT')).toBe('İade Taşımada')
+    expect(statusLabel('PARTIALLYCANCELLED')).toBe('Kısmi İptal')
   })
 })
 
@@ -43,13 +43,13 @@ describe('invoice status labels', () => {
     expect(invoiceStatusLabel('FATURA_BELIRSIZ')).toBe('Fatura Sonucu Belirsiz')
     expect(invoiceStatusLabel('UNKNOWN_RESULT')).toBe('Fatura Sonucu Belirsiz')
     expect(invoiceStatusTone('FATURA_BELIRSIZ')).toBe('warning')
-    expect(statusLabel('FATURA_BELIRSIZ')).toBe('Fatura sonucu belirsiz')
+    expect(statusLabel('FATURA_BELIRSIZ')).toBe('Fatura Sonucu Belirsiz')
   })
 
   it('names invoices that need an adjustment and links that must be removed', () => {
     expect(invoiceStatusLabel('ADJUSTMENT_REQUIRED')).toBe('Fatura Düzeltme Gerekli')
     expect(invoiceStatusTone('ADJUSTMENT_REQUIRED')).toBe('warning')
-    expect(statusLabel('REVOCATION_REQUIRED')).toBe('Pazaryerinden kaldırılmalı')
+    expect(statusLabel('REVOCATION_REQUIRED')).toBe('Pazaryerinden Kaldırılmalı')
   })
 
   it('shows a marketplace invoice awaiting reconciliation as issued and successful', () => {
@@ -59,11 +59,11 @@ describe('invoice status labels', () => {
 
   it('translates invoice workspace values returned in English', () => {
     expect(statusLabel('None')).toBe('Yok')
-    expect(statusLabel('NotInvoiced')).toBe('Fatura kesilmedi')
+    expect(statusLabel('NotInvoiced')).toBe('Fatura Kesilmedi')
     expect(statusLabel('Not Sent')).toBe('Gönderilmedi')
-    expect(statusLabel('Invoiced')).toBe('Fatura kesildi')
-    expect(statusLabel('Remote Present Unmatched')).toBe('Pazaryerinde mevcut, eşleşmedi')
-    expect(statusLabel('REMOTE_PRESENT_UNMATCHED')).toBe('Pazaryerinde mevcut, eşleşmedi')
+    expect(statusLabel('Invoiced')).toBe('Fatura Kesildi')
+    expect(statusLabel('Remote Present Unmatched')).toBe('Pazaryerinde Mevcut, Eşleşmedi')
+    expect(statusLabel('REMOTE_PRESENT_UNMATCHED')).toBe('Pazaryerinde Mevcut, Eşleşmedi')
     expect(statusLabel('Delivered')).toBe('Teslim Edildi')
   })
 

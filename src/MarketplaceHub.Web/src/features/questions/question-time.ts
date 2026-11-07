@@ -5,7 +5,7 @@ export function questionDeadline(expiresAt: string | null | undefined, now: numb
   if (!expiresAt) return null
   const remainingMs = new Date(expiresAt).getTime() - now
   if (!Number.isFinite(remainingMs)) return null
-  if (remainingMs <= 0) return { text: 'Süre doldu', urgent: true }
+  if (remainingMs <= 0) return { text: 'Süre Doldu', urgent: true }
   const hours = Math.floor(remainingMs / 3_600_000)
   const minutes = Math.floor((remainingMs % 3_600_000) / 60_000)
   const days = Math.floor(hours / 24)

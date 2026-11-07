@@ -5,7 +5,7 @@
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-callout > .rr-icon-btn { margin: -4px -4px -4px auto; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect { display: grid; gap: 12px; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header h2 { font-size: 15px; font-weight: 600; }
+:is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header h2 { font-size: 16px; font-weight: 600; }
 :is(main .rr.rr-dashboard, .rr-layer.rr-layer) .rr-dsect > header p { color: var(--rr-muted); font-size: 13px; }
 /* The page column is the page's width: a wide block (the integration matrix) scrolls inside itself instead of pushing
    the whole page past the screen's right edge (narrow desktop windows, 20 Oct 2026). */

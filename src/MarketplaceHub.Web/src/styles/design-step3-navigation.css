@@ -1,0 +1,53 @@
+/* Design step 3: navigation and page structure (tabs, headings, KPI cards, badges, card padding).
+   Everything here sits behind `html body …` so it wins over the older per-page rules whatever order the route chunks load in. */
+
+/* 1. Page headings: one h1 (24px / 600 / no tracking) and one eyebrow (13px / 500 / subtle) on every page. */
+html body .app-shell.stitch-shell main :is(section.content > .rr-ph, .page-heading, .rv-page-head, .qi-head, .ss-page-head, .mapping-reference-heading) h1 { letter-spacing: normal !important; font-weight: 600 !important; }
+html body .app-shell.stitch-shell main :is(section.content > .rr-ph, .page-heading, .rv-page-head, .qi-head, .ss-page-head, .mapping-reference-heading) :is(.rr-crumb, .eyebrow, .qi-crumb, .ss-crumb) { margin: 0; color: var(--rv-color-subtle) !important; font-size: 13px !important; font-weight: 500 !important; letter-spacing: 0 !important; text-transform: none; }
+/* Section headings in the product editor's step cards are 16px like every other section heading. */
+html body .app-shell.stitch-shell main .product-add-page .editor-section-title h2 { font-size: 16px; font-weight: 600; letter-spacing: normal; }
+
+/* 2. Entegrasyonlar "Tümü / Bağlı Olanlar" is a page tab row like the others. */
+html body .app-shell.stitch-shell main .integrations-reference-page .rv-tabs.rv-view-tabs.integration-view-tabs > :is(button, a) { font-size: 13.5px; }
+
+/* 3. Ürün Düzenleyici steps are tabs with the number kept. */
+html body .app-shell.stitch-shell main .product-add-page .product-add-steptabs { width: 100% !important; }
+html body .app-shell.stitch-shell main .product-add-steptabs > button .rv-tab-label { gap: 10px; }
+html body .app-shell.stitch-shell main .product-add-steptabs .rv-step-num { display: inline-grid; box-sizing: border-box; width: 20px; height: 20px; flex: none; place-items: center; color: var(--rv-color-muted); background: var(--rv-color-surface-soft, #22222a); border: 1px solid var(--rv-color-border-strong); border-radius: 50%; font-size: 11.5px; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+html body .app-shell.stitch-shell main .product-add-steptabs > button.is-active .rv-step-num { color: #fff; background: var(--rv-color-primary); border-color: transparent; }
+html body .app-shell.stitch-shell main .product-add-steptabs > button > .rv-tab-label > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* Promosyon: the four tariff pages as tabs; on a phone the row scrolls sideways (the rv-view-tabs strip rule). */
+html body .app-shell.stitch-shell main .promotion-page-tabs { min-width: 0; }
+
+/* 4. Segments inside a panel (filter-like choices): Etiket Tasarımı A4 / Sticker and its field groups are 32px segments. */
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-seg2 { display: inline-flex !important; width: auto !important; height: auto !important; min-height: 0 !important; max-height: none !important; gap: 2px !important; padding: 3px !important; overflow: visible; background: var(--rv-color-surface-soft) !important; border: 1px solid var(--rv-color-border) !important; border-radius: 12px !important; box-shadow: none !important; }
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:is(.ss-seg2, .ss-itabs) > :is(button, a) { flex: 1 1 auto; gap: 6px; height: 32px !important; min-height: 32px !important; max-height: 32px; padding: 0 12px !important; color: var(--rv-color-muted) !important; background: none !important; border: 0 !important; border-radius: 7px !important; box-shadow: none !important; font-size: 12.5px; font-weight: 500 !important; white-space: nowrap; }
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:is(.ss-seg2, .ss-itabs) > :is(button, a)::before { display: none !important; }
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:is(.ss-seg2, .ss-itabs) > :is(button, a).is-active::after { display: none !important; }
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:is(.ss-seg2, .ss-itabs) > :is(button, a):hover { color: var(--rv-color-ink) !important; }
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs:is(.ss-seg2, .ss-itabs) > :is(button, a):is(.is-active, .is-on, [aria-selected="true"]) { color: var(--rv-color-ink) !important; background: var(--rv-color-surface) !important; box-shadow: 0 1px 2px rgb(0 0 0 / 14%) !important; }
+html body .app-shell.stitch-shell main .ss-page .rv-tabs.rv-tabs.rv-tabs.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.ss-itabs { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); height: auto !important; min-height: 0 !important; max-height: none !important; gap: 2px !important; padding: 3px !important; overflow: visible; background: var(--rv-color-surface-soft) !important; border: 1px solid var(--rv-color-border) !important; border-radius: 12px !important; box-shadow: none !important; }
+
+/* 5. KPI cards on the operation pages are the size of the Genel Bakış operation cards: 80px, padding 14 14 14 16.
+   the Ürünler Düşük Stok card is one whole button (no link line); Faturalar has no sub line; Siparişler keeps "Paket · Adet Ürün". */
+@media (min-width: 1025px) {
+  html body .app-shell.stitch-shell main :is(.rr.rr-products, .rr.rr-orders, .rr.rr-returns) .rr-metrics > :is(article, .rr-metric-btn),
+  html body .app-shell.stitch-shell main .invoice-reference-metrics > article { box-sizing: border-box; align-content: center; min-height: 80px; padding: 14px 14px 14px 16px; }
+  html body .app-shell.stitch-shell main :is(.rr.rr-products, .rr.rr-orders, .rr.rr-returns) .rr-metrics > :is(article, .rr-metric-btn) strong,
+  html body .app-shell.stitch-shell main .invoice-reference-metrics > article strong { line-height: 1.25; }
+}
+
+/* 6. Badges: a status badge is radius 7, 12px / 600, 22px high; a count badge is a pill. */
+html body .app-shell.stitch-shell main .reports-page :is(.reports-badge.is-warn, .reports-order-badge, .reports-payout-chip, .reports-tag) { display: inline-flex; box-sizing: border-box; align-items: center; height: 22px; padding: 0 8px; border-radius: 7px; font-size: 12px; font-style: normal; font-weight: 600; line-height: 1; white-space: nowrap; }
+html body .app-shell.stitch-shell main .reports-page .reports-tag { border-width: 1px; }
+html body .app-shell.stitch-shell main .commission-tariffs .unit-profit-badge.unit-profit-badge { box-sizing: border-box; min-height: 22px; padding: 0 8px; border-radius: 7px; font-size: 12px; font-weight: 600; line-height: 1; }
+html body .psm-chip.psm-chip { min-height: 22px; padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 1; }
+html body .app-shell.stitch-shell main .cs-workspace .cs-chip.cs-chip { height: 22px; min-height: 22px; padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 1; }
+html body .publish-step-badge.publish-step-badge { min-width: 18px; height: 18px; padding: 0 4px; font-size: 11px; font-weight: 600; line-height: 15px; }
+
+/* 7. Card padding: panels 20px (16px on phones). */
+html body .app-shell.stitch-shell main :is(.commission-tariffs.panel, .product-step-card) { padding: 20px; }
+@media (max-width: 760px) {
+  html body .app-shell.stitch-shell main :is(.commission-tariffs.panel, .product-step-card) { padding: 16px; }
+}

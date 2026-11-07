@@ -2,7 +2,7 @@ import { Fragment, useEffect, useId, useMemo, useRef, useState, type CSSProperti
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useNavigate, useSearchParams } from 'react-router'
 import { hubApi } from '../../shared/api'
-import { Busy, CardBackgroundIcon, ErrorBox, Modal, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
+import { Busy, CardBackgroundIcon, EmptyState, ErrorBox, Modal, Pager, UiIcon, type CardIconName, type UiIconName } from '../../shared/components'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { formatIstanbul } from '../../shared/format-date'
 import { PlatformFilter } from '../../shared/PlatformFilter'
@@ -1180,8 +1180,8 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
   const adRow = adReportRow(ads, adsFailed)
   const adRows: HeroRow[] = adTotals
     ? [{ key: 'roas', label: 'ROAS (kampanya)', value: adTotals.roas === null ? '—' : roasText(adTotals.roas), note: adRow.note, tone: adOld ? 'warn' : undefined, onOpen: openAds },
-      { key: 'adRevenue', label: 'Reklam cirosu (kampanya)', value: formatTlWhole(adTotals.revenue), note: adRow.note, tone: adOld ? 'warn' : undefined, onOpen: openAds }]
-    : [{ key: 'adReport', label: 'Reklam raporu', value: adRow.value, note: adRow.note, onOpen: openAds }]
+      { key: 'adRevenue', label: 'Reklam Cirosu (Kampanya)', value: formatTlWhole(adTotals.revenue), note: adRow.note, tone: adOld ? 'warn' : undefined, onOpen: openAds }]
+    : [{ key: 'adReport', label: 'Reklam Raporu', value: adRow.value, note: adRow.note, onOpen: openAds }]
 
   // Kargo: the late share against its 4 % line, the bar to 10 %.
   const late = data.cargo.reduce((sum, item) => sum + item.lateShipments, 0)
@@ -1199,7 +1199,7 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
   const over = (value: number | null, limit: number) => value !== null && value > limit
   // The reason given most as a row: the reason and its share, cut with an ellipsis when long, whole in the explanation.
   const reasonRow = (key: string, reason: ReportReason | undefined, total: number, what: string, detail: DetailKey): HeroRow[] => reason
-    ? [{ key, label: 'En sık neden', value: `${reason.reason} (${formatPercent(reason.count / total)})`, text: true, detail,
+    ? [{ key, label: 'En Sık Neden', value: `${reason.reason} (${formatPercent(reason.count / total)})`, text: true, detail,
       note: `${what} en sık verilen neden: ${reason.reason}.\nNedeni bilinen ${formatCount(total)} kaydın ${formatPercent(reason.count / total)} kadarı.` }]
     : []
 
@@ -1209,46 +1209,46 @@ function overviewCards(data: ReportSales, money: Money | null, ads: AdReports | 
       aside: now.soldVariants === undefined ? 'satılan adet' : `${formatCount(now.soldVariants)} farklı varyant`,
       delta: change(now.soldQuantity, before.soldQuantity), previous: formatNumber(before.soldQuantity),
       note: `${now.soldQuantity > 0 ? 'Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmeden.' : 'Bu dönemde satış yok.'}\nNet adet müşteride kalandır: ${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşülür, ${formatNumber(now.keptQuantity)} adet kalır. Farklı varyant: en az bir adedi satılan ürün; varyantı eşleşmeyen satır stok koduyla sayılır. ${previousText(formatNumber(before.soldQuantity))}.`,
-      rows: [{ key: 'kept', label: 'Net satılan adet', value: formatNumber(now.keptQuantity),
+      rows: [{ key: 'kept', label: 'Net Satılan Adet', value: formatNumber(now.keptQuantity),
         note: `Müşteride kalan ürün adedi.\nSatılan ${formatNumber(now.soldQuantity)} adetten iade edilen ${formatNumber(now.returnedQuantity)} adet düşülür; Adet Başına Kâr ve Adet Başına Kargo bu adede bölünür.` },
-        line(product, 'price', 'Adet başına satış'), line(product, 'vatFree', 'KDV hariç net satış'), line(product, 'discount', 'Satıcı indirimi', discountShare)] },
+        line(product, 'price', 'Adet Başına Satış'), line(product, 'vatFree', 'KDV Hariç Net Satış'), line(product, 'discount', 'Satıcı İndirimi', discountShare)] },
     { key: 'orders', title: 'Sipariş ve Müşteri', value: metric(order, 'basket').value, aside: 'sepet ortalaması', note: metric(order, 'basket').note,
-      rows: [line(order, 'units', 'Sipariş başına adet'), line(order, 'repeat', 'Tekrar gelen müşteri'), line(order, 'profit', 'Sipariş başına kâr')] },
+      rows: [line(order, 'units', 'Sipariş Başına Adet'), line(order, 'repeat', 'Tekrar Gelen Müşteri'), line(order, 'profit', 'Sipariş Başına Kâr')] },
     { key: 'profit', title: 'Kârlılık', value: metric(cost, 'beforeAds').value, aside: 'reklam öncesi marj', note: metric(cost, 'beforeAds').note,
       tone: beforeAds === null ? undefined : beforeAds < 0 ? 'bad' : 'good', bar: beforeAds === null ? undefined : { value: Math.max(0, beforeAds), scale: 1, tone: 'good' },
-      rows: [line(product, 'profit', 'Adet başına kâr'), line(order, 'profit', 'Sipariş başına kâr'),
-        { key: 'unitCost', label: 'Adet başına maliyet', value: unitCost === null ? '—' : formatTl(unitCost),
+      rows: [line(product, 'profit', 'Adet Başına Kâr'), line(order, 'profit', 'Sipariş Başına Kâr'),
+        { key: 'unitCost', label: 'Adet Başına Maliyet', value: unitCost === null ? '—' : formatTl(unitCost),
           note: `Maliyeti girili ürünlerin adet başına ortalama alış maliyeti.\nÜrün maliyeti ÷ maliyeti girili ${formatNumber(data.cost.costedQuantity)} adet.` }] },
     { key: 'fees', title: 'Pazaryeri Kesintileri', value: metric(order, 'fees').value, aside: 'sipariş başına', note: metric(order, 'fees').note,
-      rows: [line(cost, 'commission', 'Komisyon oranı'), line(order, 'cargo', 'Sipariş başına kargo'), line(order, 'unitCargo', 'Adet başına kargo')] },
+      rows: [line(cost, 'commission', 'Komisyon Oranı'), line(order, 'cargo', 'Sipariş Başına Kargo'), line(order, 'unitCargo', 'Adet Başına Kargo')] },
     { key: 'ads', title: 'Reklam · Trendyol', value: spend === null ? '—' : formatTlWhole(spend),
       aside: tacos === null ? 'reklam harcaması' : `sınır ${limitText(tacosLine)}`,
       badge: tacos === null ? undefined : `payı ${formatPercent(tacos, 2)}`, badgeTone: over(tacos, tacosLine) ? 'warn' : undefined,
       note: `${metric(cost, 'spend').note}\n${metric(cost, 'tacos').note.split('\n')[1] ?? ''} Uyarı rengi: TACoS ${formatPercent(tacosLine)} sınırının üstünde.`,
       tone: over(tacos, tacosLine) ? 'warn' : undefined, bar: tacos === null ? undefined : { value: tacos, scale: 0.1, threshold: tacosLine, tone: over(tacos, tacosLine) ? 'warn' : 'plain' },
-      rows: [line(cost, 'perOrder', 'Sipariş başına reklam'), ...adRows] },
+      rows: [line(cost, 'perOrder', 'Sipariş Başına Reklam'), ...adRows] },
     { key: 'cargo', title: 'Kargo ve Teslimat', value: metric(ops, 'late').value, aside: lateRate === null ? 'ölçülemedi' : `${formatCount(late)} paket gecikti`,
       badge: `eşik ${limitText(lateWarningRate)}`, badgeTone: over(lateRate, lateWarningRate) ? 'warn' : undefined,
       note: metric(ops, 'late').note, tone: metric(ops, 'late').tone,
       bar: lateRate === null ? undefined : { value: lateRate, scale: 0.1, threshold: lateWarningRate, tone: over(lateRate, lateWarningRate) ? 'warn' : 'plain' },
-      rows: [line(ops, 'ship', 'Kargoya verme süresi'), line(ops, 'deliver', 'Teslim süresi'),
-        { key: 'measured', label: 'Ölçülen paket', value: formatCount(measuredLate), detail: 'cargo', note: 'Kargoya verme süresi ve termini bilinen paketler.\nGeciken Kargo oranının paydası; PttAVM termin göndermediği için orada ölçülmez.' }] },
+      rows: [line(ops, 'ship', 'Kargoya Verme Süresi'), line(ops, 'deliver', 'Teslim Süresi'),
+        { key: 'measured', label: 'Ölçülen Paket', value: formatCount(measuredLate), detail: 'cargo', note: 'Kargoya verme süresi ve termini bilinen paketler.\nGeciken Kargo oranının paydası; PttAVM termin göndermediği için orada ölçülmez.' }] },
     { key: 'returns', title: 'İade', value: formatPercent(now.returnRate), aside: `önceki dönem ${formatPercent(before.returnRate)}`, note: metric(back, 'rate').note,
       delta: metric(back, 'rate').delta, invert: true, previous: formatPercent(before.returnRate),
-      rows: [line(back, 'returned', 'İade edilen adet', formatNumber(now.returnedQuantity)),
-        { key: 'claims', label: 'İade talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
-        { key: 'amount', label: 'İade edilen tutar', value: formatTlWhole(now.returnedAmount), detail: 'returns', note: `İade edilen ürünler için müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır (${formatTl(now.returnedAmount)}). Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
-        line(back, 'returnCargo', 'İade kargo bedeli'), line(back, 'operation', 'Yurt dışı operasyon iade bedeli'), line(back, 'returnCost', 'Toplam iade maliyeti'),
+      rows: [line(back, 'returned', 'İade Edilen Adet', formatNumber(now.returnedQuantity)),
+        { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
+        { key: 'amount', label: 'İade Edilen Tutar', value: formatTlWhole(now.returnedAmount), detail: 'returns', note: `İade edilen ürünler için müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır (${formatTl(now.returnedAmount)}). Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
+        line(back, 'returnCargo', 'İade Kargo Bedeli'), line(back, 'operation', 'Yurt Dışı Operasyon İade Bedeli'), line(back, 'returnCost', 'Toplam İade Maliyeti'),
         ...reasonRow('returnReason', topReturn, returnTotal, 'İade taleplerinde', 'returns')] },
     { key: 'cancels', title: 'İptal', value: metric(back, 'cancel').value, aside: `${formatCount(now.cancelledOrders)} sipariş iptal`, note: metric(back, 'cancel').note, tone: metric(back, 'cancel').tone,
       badge: `eşik ${limitText(warning)}`, badgeTone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined,
       bar: { value: now.cancelRate ?? 0, scale: 0.1, threshold: warning, tone: (now.cancelRate ?? 0) > warning ? 'warn' : 'plain' },
-      rows: [{ key: 'cancelUnits', label: 'İptal edilen adet', value: formatNumber(data.cancellations.cancelledQuantity), detail: 'cancellations', note: 'İptal edilen ürün adedi; kısmi iptaller dahil.' },
-        { key: 'cancelAmount', label: 'İptal edilen tutar', value: cancelled === undefined ? '—' : formatTlWhole(cancelled), detail: 'cancellations', note: `İptal edilen ürünlerin tutarı${cancelled === undefined ? '' : ` (${formatTl(cancelled)})`}.\nListe fiyatıyla; satış tutarına girmez.` },
+      rows: [{ key: 'cancelUnits', label: 'İptal Edilen Adet', value: formatNumber(data.cancellations.cancelledQuantity), detail: 'cancellations', note: 'İptal edilen ürün adedi; kısmi iptaller dahil.' },
+        { key: 'cancelAmount', label: 'İptal Edilen Tutar', value: cancelled === undefined ? '—' : formatTlWhole(cancelled), detail: 'cancellations', note: `İptal edilen ürünlerin tutarı${cancelled === undefined ? '' : ` (${formatTl(cancelled)})`}.\nListe fiyatıyla; satış tutarına girmez.` },
         ...reasonRow('cancelReason', topCancel, cancelTotal, 'İptallerde', 'cancellations')] },
     { key: 'todo', title: 'Yapılacaklar', value: metric(ops, 'invoice').value, aside: 'faturasız paket', badge: `${formatCount(packages)} paket içinde`, note: metric(ops, 'invoice').note,
       tone: metric(ops, 'invoice').tone, alert: notInvoiced > 0,
-      rows: [line(ops, 'stock', 'Stok riski'), line(ops, 'questions', 'Soru yanıt süresi')] }
+      rows: [line(ops, 'stock', 'Stok Riski'), line(ops, 'questions', 'Soru Yanıt Süresi')] }
   ]
 }
 
@@ -2527,7 +2527,7 @@ function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | 
   const data = result.data
   if (result.isError && !data) return <ErrorBox error={result.error} onRetry={() => void result.refetch()} />
   if (!data) return <Busy />
-  if (data.items.length === 0) return <p className="reports-empty">{search ? 'Bu numarayla kayıt bulunamadı.' : 'Kayıt yok.'}</p>
+  if (data.items.length === 0) return <EmptyState title="Kayıt Bulunamadı">{search ? 'Bu numarayla kayıt bulunamadı.' : 'Seçili dönemde kayıt yok.'}</EmptyState>
   const pages = Math.max(1, Math.ceil(data.totalCount / data.pageSize))
   // In a group every record shares its region and state, so those columns show for a search only; days are short.
   const searching = group === undefined
@@ -2551,10 +2551,6 @@ function PayoutLinesTable({ platforms, group, search }: { platforms: string[] | 
       </tr>)}</tbody>
       <tfoot><tr><th scope="row" colSpan={searching ? 8 : 7}>{formatCount(data.totalCount)} kayıt</th><td className="is-num">{formatTl(data.net)}</td>{searching && <td />}</tr></tfoot>
     </table></div>
-    {pages > 1 && <div className="reports-order-pager">
-      <button type="button" className="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>Önceki</button>
-      <span>Sayfa {page + 1} / {pages}</span>
-      <button type="button" className="secondary" disabled={page + 1 >= pages} onClick={() => setPage(page + 1)}>Sonraki</button>
-    </div>}
+    {pages > 1 && <div className="reports-order-pager"><Pager page={page + 1} totalPages={pages} onPageChange={next => setPage(next - 1)} ariaLabel="Sayfalama" /></div>}
   </>
 }

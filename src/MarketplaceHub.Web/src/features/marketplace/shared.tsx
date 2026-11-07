@@ -5,7 +5,7 @@ import { marketplaceProductSearchUrl } from '../questions/marketplace-product-li
 import { Fragment, type ReactNode } from 'react'
 import { knownPlatformName } from '../../shared/platform-names'
 import { PLATFORM_NONE, PlatformFilterPop } from '../../shared/PlatformFilter'
-import { UiIcon } from '../../shared/components'
+import { EmptyState } from '../../shared/components'
 import { ValueBadge } from '../../shared/components/ValueBadge'
 import { invoiceStatusDisplayLabel } from '../../shared/status-labels'
 import './orders-responsive.css'
@@ -38,7 +38,7 @@ export function productLineQuantity(line: { quantity?: number; orderedQuantity?:
 export type Shipment = { id: string; orderId: string; orderNumber: string; externalPackageId: string; status: string; rawStatus: string; cargoTrackingNumber: string | null; cargoProviderName: string | null; statusOccurredAt: string; version: number; isResend: boolean; manualInvoiceStatus?: string | null }
 export type ReturnLine = { status?: string | null; decisionPending?: boolean; stockDispositionAvailable?: boolean; stockPending?: boolean; acceptDetail?: string | null; marketplaceNote?: string | null; resolved?: boolean | null; acceptedBySeller?: boolean | null; id: string; externalLineId: string; orderLineId: string; sku: string; barcode: string | null; title: string; quantity: number; disposedQuantity: number; remainingQuantity: number; unitPrice: number; imageUrl: string | null; fallbackImageUrl?: string | null; hasInventoryMapping: boolean; optionSignature?: string | null; modelCode?: string | null; color?: string | null; size?: string | null; approvedAt?: string | null; systemNote?: string | null; reasonText?: string | null; sellerDescription?: string | null; platformApprovalReason?: string | null; platformDescription?: string | null; returnAmounts?: ReturnAmounts | null };
 export type IntegrationFeedback = { kind: 'success' | 'error' | 'info'; message: string; details?: NotificationDetail[]; target?: NotificationTarget | null; title?: string; context?: NotificationContext }
-export function Empty({ children }: { children: string }) { return <div className="empty"><span className="empty-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Kayıt yok</strong><p>{children}</p></div> }
+export function Empty({ children, title = 'Kayıt Bulunamadı' }: { children: string; title?: string }) { return <EmptyState title={title}>{children}</EmptyState> }
 export function Badge({ value, tooltip }: { value: string; tooltip?: string }) { return <ValueBadge value={value} title={tooltip ?? value} statusClass /> }
 export function DateText({ value }: { value: string | null }) { return <>{value ? formatDateTime(value) : '—'}</> }
 export function usableShipmentDueAt(value: string | null) { if (!value) return null; const timestamp = new Date(value).getTime(); return Number.isFinite(timestamp) && timestamp >= Date.UTC(2000, 0, 1) ? value : null }

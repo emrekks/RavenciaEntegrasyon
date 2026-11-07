@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router'
 import { loadAllPages } from '../../shared/api'
-import { Busy, ErrorBox } from '../../shared/components'
+import { Busy, ErrorBox, Tabs } from '../../shared/components'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { TabSlidePanel } from '../../shared/tab-slide'
 import { CommissionTariffsPanel, commissionTariffPlatforms } from '../marketplace/integrations/CommissionTariffsPanel'
@@ -36,8 +36,8 @@ export function PromotionsPage() {
   const tabsRef = useRef<HTMLDivElement>(null)
   // On a phone the tabs slide sideways: the open one is brought into view (sideways only, the page does not move).
   useEffect(() => {
-    const row = tabsRef.current
-    const on = row?.querySelector<HTMLElement>('[aria-pressed="true"]')
+    const row = tabsRef.current?.querySelector<HTMLElement>('.rv-tabs') ?? null
+    const on = row?.querySelector<HTMLElement>('[aria-selected="true"]')
     if (!row || !on || row.scrollWidth <= row.clientWidth) return
     row.scrollTo({ left: row.scrollLeft + on.getBoundingClientRect().left - row.getBoundingClientRect().left - (row.clientWidth - on.offsetWidth) / 2, behavior: 'auto' })
   }, [section, connections.data])
@@ -53,7 +53,7 @@ export function PromotionsPage() {
   const sameStores = store ? stores.filter(item => item.platformCode === store.platformCode) : []
   return <section className="content reports-page promotions-page">
     <div className="page-heading reports-heading">
-      <div><p className="eyebrow">Analiz</p><h1>Promosyon Kârlılık Analizi</h1></div>
+      <div><p className="eyebrow">Analiz</p><h1>Promosyon</h1></div>
     </div>
     {connections.isLoading && <Busy />}
     {connections.isError && <ErrorBox error={connections.error} onRetry={() => void connections.refetch()} />}
@@ -69,8 +69,8 @@ export function PromotionsPage() {
           <PanelSelect ariaLabel="Mağaza" value={store.id} options={sameStores.map(item => ({ value: item.id, label: item.displayName }))} onChange={value => go({ store: value })} />
         </div>}
       </div>
-      <div ref={tabsRef} className="reports-segmented reports-promotion-tabs" role="group" aria-label="Promosyon sayfaları">
-        {sections.map(([key, label]) => <button key={key} type="button" aria-pressed={key === section} onClick={() => go({ tab: key })}>{label}</button>)}
+      <div ref={tabsRef} className="promotion-page-tabs">
+        <Tabs className="rv-view-tabs" ariaLabel="Promosyon sayfaları" value={section} onChange={next => go({ tab: next as Section })} items={sections.map(([key, label]) => ({ value: key, label }))} />
       </div>
       {/* A page slides in from its side and starts the page from its top (shared/tab-slide.tsx). */}
       <TabSlidePanel active={section} order={sectionOrder} className="rv-tab-slide-grid">{section === 'TARIFF' ? <CommissionTariffsPanel key={store.id} connectionId={store.id} platformName={platformName(store.platformCode)} />

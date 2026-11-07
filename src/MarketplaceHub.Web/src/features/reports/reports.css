@@ -107,17 +107,16 @@
 .app-shell.stitch-shell main .reports-page .reports-map-panel { gap: 0; padding: 0; overflow: hidden; container-type: inline-size; }
 .app-shell.stitch-shell main .reports-page .reports-map-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px 16px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reports-page .reports-map-head h2 { margin-right: 4px; }
-/* Türkiye / Dünya as tabs under the title's line; the measure and the drawing as theme-toggle style buttons. */
-.app-shell.stitch-shell main .reports-page .reports-map-scope { display: flex; gap: 2px; min-width: 0; margin: -12px 0; align-self: stretch; }
-.app-shell.stitch-shell main .reports-page :is(.reports-map-scope, .reports-map-tabs) button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 0; padding: 0 12px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; white-space: nowrap; background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; cursor: pointer; }
-.app-shell.stitch-shell main .reports-page :is(.reports-map-scope, .reports-map-tabs) button:hover { color: var(--rv-color-ink); }
-.app-shell.stitch-shell main .reports-page :is(.reports-map-scope, .reports-map-tabs) button[aria-selected='true'] { color: var(--rv-color-ink); font-weight: 600; border-bottom-color: var(--rv-color-primary); }
-.app-shell.stitch-shell main .reports-page :is(.reports-map-scope, .reports-map-tabs, .reports-map-switches) button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
-.app-shell.stitch-shell main .reports-page .reports-map-switches { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
-.app-shell.stitch-shell main .reports-page .reports-map-switch { display: inline-flex; align-items: center; gap: 8px; min-height: 0; height: 36px; padding: 0 14px 0 12px; color: var(--rv-color-ink); font-size: 13px; font-weight: 600; line-height: 1; white-space: nowrap; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: var(--rv-radius-md, 7px); box-shadow: none; cursor: pointer; }
-.app-shell.stitch-shell main .reports-page .reports-map-switch:hover { background: var(--rv-hover, var(--rv-color-surface-raised)); border-color: var(--rv-color-border-strong); }
-.app-shell.stitch-shell main .reports-page .reports-map-switch small { color: var(--rv-color-subtle); font-size: 11.5px; font-weight: 500; }
-.app-shell.stitch-shell main .reports-page .reports-map-switch .ui-icon { color: var(--rv-color-primary); }
+/* Türkiye / Dünya, the measure and the drawing are segments (all options visible); the ranking tabs below stay tabs. */
+.app-shell.stitch-shell main .reports-page .reports-map-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 0; padding: 0 12px; color: var(--rv-color-muted); font-size: 13px; font-weight: 500; white-space: nowrap; background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 0; box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell main .reports-page .reports-map-tabs button:hover { color: var(--rv-color-ink); }
+.app-shell.stitch-shell main .reports-page .reports-map-tabs button[aria-selected='true'] { color: var(--rv-color-ink); font-weight: 600; border-bottom-color: var(--rv-color-primary); }
+.app-shell.stitch-shell main .reports-page :is(.reports-map-tabs) button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: -2px; }
+.app-shell.stitch-shell main .reports-page .reports-map-switches { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-left: auto; }
+.app-shell.stitch-shell main .reports-page .reports-map-seg-group { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.app-shell.stitch-shell main .reports-page .reports-map-seg-group > small { color: var(--rv-color-subtle); font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+.app-shell.stitch-shell main .reports-page .reports-map-seg button { display: inline-flex; align-items: center; gap: 6px; }
+.app-shell.stitch-shell main .reports-page .reports-map-seg button .ui-icon { color: currentColor; }
 /* The period in four figures, divided by rules rather than boxed. */
 .app-shell.stitch-shell main .reports-page .reports-map-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .reports-page .reports-map-strip > div { display: grid; align-content: start; gap: 3px; min-width: 0; padding: 12px 16px; }
@@ -225,10 +224,10 @@
   .app-shell.stitch-shell main .reports-page .reports-map-strip > div:nth-child(n + 3) { border-top: 1px solid var(--rv-color-border); }
 }
 @container (max-width: 560px) {
-  .app-shell.stitch-shell main .reports-page .reports-map-scope { order: 3; flex: 1 1 100%; margin: 0 -16px -12px; padding: 0 4px; border-top: 1px solid var(--rv-color-border); }
-  .app-shell.stitch-shell main .reports-page .reports-map-scope button { flex: 1 1 0; height: 40px; }
   .app-shell.stitch-shell main .reports-page .reports-map-switches { margin-left: 0; flex: 1 1 100%; }
-  .app-shell.stitch-shell main .reports-page .reports-map-switch { flex: 1 1 0; justify-content: center; }
+  .app-shell.stitch-shell main .reports-page .reports-map-seg-group { flex: 1 1 100%; flex-wrap: wrap; }
+  .app-shell.stitch-shell main .reports-page .reports-map-seg-group > .reports-segmented { flex: 1 1 auto; }
+  .app-shell.stitch-shell main .reports-page .reports-map-seg button { flex: 1 1 0; justify-content: center; }
   .app-shell.stitch-shell main .reports-page .reports-map-strip > div { padding: 10px 12px; }
   .app-shell.stitch-shell main .reports-page .reports-map-strip small { white-space: normal; }
 }
@@ -860,9 +859,6 @@ html body .app-shell.stitch-shell main .reports-page .reports-filters :is(.pf-tr
 .app-shell.stitch-shell main .reports-page .reports-order-profit { display: grid; gap: 16px; min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-order-profit-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
 .app-shell.stitch-shell main .reports-page .reports-order-profit-head h2 { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; margin: 0; font-size: 16px; font-weight: 600; }
-.app-shell.stitch-shell main .reports-page .reports-order-search { display: flex; gap: 8px; }
-.app-shell.stitch-shell main .reports-page .reports-order-search input { box-sizing: border-box; width: min(280px, 60vw); height: 36px; min-height: 0; padding: 0 10px; color: var(--rv-color-ink); background: var(--rv-color-bg); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; font-size: 13px; }
-.app-shell.stitch-shell main .reports-page .reports-order-search button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; text-transform: none; }
 .app-shell.stitch-shell main .reports-page .reports-order-summary { min-width: 0; }
 .app-shell.stitch-shell main .reports-page .reports-order-table { min-width: 860px; }
 .app-shell.stitch-shell main .reports-page .reports-order-table :is(th, td) { vertical-align: middle; }

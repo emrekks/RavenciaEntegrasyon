@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { hubApi } from '../../shared/api'
-import { Busy, ErrorBox, Modal, TitleHint, UiIcon } from '../../shared/components'
+import { Busy, ErrorBox, Modal, Pager, TitleHint, UiIcon } from '../../shared/components'
 import { copyText } from '../../shared/copy-text'
 import { formatIstanbul } from '../../shared/format-date'
 import { thumbnailUrl } from '../../shared/product-thumbnail'
@@ -80,6 +80,12 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
   const [sort, setSort] = useState<Sort>('date')
   const [descending, setDescending] = useState(true)
   const [page, setPage] = useState(0)
+  // What is typed searches a moment after typing stops (Enter at once), as the other lists do.
+  useEffect(() => {
+    if (search === applied) return undefined
+    const timer = window.setTimeout(() => { setApplied(search); setPage(0) }, 350)
+    return () => window.clearTimeout(timer)
+  }, [search, applied])
   const [open, setOpen] = useState<OrderProfit | null>(null)
   // Another period or platform choice is another list: it opens on its first page, as a new search or order does.
   const scope = `${from}|${to}|${platforms?.join(',') ?? ''}`
@@ -100,10 +106,9 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
   return <section className="reports-panel reports-order-profit" aria-labelledby="order-profit-title">
     <header className="reports-order-profit-head">
       <h2 id="order-profit-title">Sipariş Kârlılık Analizi<TitleHint label="Sipariş Kârlılık Analizi">Her sipariş için ürün maliyeti, komisyon, kargo, hizmet bedeli, stopaj ve net KDV düştükten sonra kalan kâr. Henüz kesinleşmeyen kalemler tahminidir. Reklam, ceza gibi siparişe bağlı olmayan kesintiler bir siparişe dağıtılamadığı için burada yoktur; Siparişlerin Kârı bu yüzden Kârlılık'taki Net Kâr'dan farklıdır (o, bu kesintileri de düşer).</TitleHint></h2>
-      <form className="reports-order-search" onSubmit={event => { event.preventDefault(); setApplied(search); setPage(0) }}>
-        <input type="search" value={search} onChange={event => setSearch(event.target.value)} placeholder="Sipariş no, ürün, barkod" aria-label="Sipariş ara" />
-        <button type="submit" className="secondary">Ara</button>
-      </form>
+      <label className="rv-search-field reports-order-search"><UiIcon name="search" size={16} />
+        <input type="search" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { setApplied(search); setPage(0) } }} placeholder="Sipariş no, ürün, barkod" aria-label="Sipariş ara" />
+      </label>
     </header>
     {data && <div className="reports-order-summary"><KpiStrip label="Siparişlerin özeti" items={summaryKpis(data)} long /></div>}
     {result.isLoading && <Busy />}
@@ -124,11 +129,7 @@ export function OrderProfitability({ from, to, platforms }: { from: string; to: 
         <td><button type="button" className="secondary reports-order-detail" onClick={() => setOpen(item)}>Detaylar</button></td>
       </tr>)}</tbody>
     </table></div>}
-    {pageCount > 1 && <div className="reports-order-pager">
-      <button type="button" className="secondary" disabled={page === 0} onClick={() => setPage(page - 1)}>Önceki</button>
-      <span>Sayfa {page + 1} / {pageCount}</span>
-      <button type="button" className="secondary" disabled={page + 1 >= pageCount} onClick={() => setPage(page + 1)}>Sonraki</button>
-    </div>}
+    {pageCount > 1 && <div className="reports-order-pager"><Pager page={page + 1} totalPages={pageCount} onPageChange={next => setPage(next - 1)} ariaLabel="Sayfalama" /></div>}
     {open && <OrderProfitModal order={open} onClose={() => setOpen(null)} />}
   </section>
 }

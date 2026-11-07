@@ -13,7 +13,7 @@ import { handSetInvoiceStatus, handSetInvoiceStatusNote, setManualInvoiceStatus 
 import { ShopifyInvoiceStatusDialog } from './ShopifyInvoiceStatusDialog'
 import { invoiceDueText } from './invoice-due-text'
 import { invoicePreviewNotice } from './invoice-preview-notice'
-import { Busy, CardBackgroundIcon, CargoProviderIcon, CountUp, ErrorBox, InvoiceStatusBadge, Modal, StickyActionBar, TitleHint, UiIcon, DialogSurface } from '../../shared/components'
+import { Busy, CardBackgroundIcon, CargoProviderIcon, CountUp, ErrorBox, EmptyState, InvoiceStatusBadge, Modal, Pager, StickyActionBar, TitleHint, UiIcon, DialogSurface } from '../../shared/components'
 import { fullyReturnedNoInvoiceStatus, invoiceStatusLabel, statusLabel } from '../../shared/status-labels'
 import { appendNotification, notificationError, notificationLinks, notificationPlatformName, type NotificationContext } from '../../shared/notifications'
 import { useJobOutcomeNotice } from '../../shared/job-outcome-notice'
@@ -182,7 +182,7 @@ function invoiceRingDetail(item: InvoiceWorkspace, kind: InvoiceGlyphKind, faile
   if (kind === 'waiting') return item.invoiceDueAt ? invoiceDueText(item.invoiceDueAt).text : undefined
   if (kind === 'sending') return 'Yanıt bekleniyor'
   if (kind === 'done') return item.invoiceNumber || item.manualInvoiceNumber || 'Pazaryerinde'
-  if (kind === 'cancelled') return item.invoiceStatus === fullyReturnedNoInvoiceStatus ? 'Tüm ürünler iade edildi' : 'İptal edildi'
+  if (kind === 'cancelled') return item.invoiceStatus === fullyReturnedNoInvoiceStatus ? 'Tüm Ürünler İade Edildi' : 'İptal Edildi'
   if (!item.invoiceId && item.invoiceStatus === 'FATURA_BILINMIYOR') return 'Pazaryeri bildirmiyor'
   if (!item.invoiceId && item.invoiceStatus === 'FATURA_DOGRULANAMADI') return 'Panelde yüklediyseniz işaretleyin'
   return undefined
@@ -640,7 +640,7 @@ export function InvoicesPage() {
           <div className={`order-column-filter${invoiceActionFilter !== 'ALL' ? ' has-filter' : ''}`}><span className="order-column-filter-label">İşlemler</span>{headFilter('Oluşturma Durumu', 'Fatura oluşturma filtresini aç', invoiceActionFilter, invoiceActionPopOptions, value => setInvoiceActionFilter(value as typeof invoiceActionFilter))}</div>
         </div>
         {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-to-interactive-role -- phone tap target that selects the row; its checkbox and buttons are the keyboard controls */}
-        {!pageItems.length && <div className="invoice-reference-state" role="row"><div className="empty"><span className="empty-icon" aria-hidden="true"><UiIcon name="box" /></span><strong>Kayıt yok</strong><p>Seçili fatura sekmesi ve filtrelerle eşleşen paket bulunamadı.</p></div></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onClick={event => tapRow(event, item)}>
+        {!pageItems.length && <div className="invoice-reference-state" role="row"><EmptyState title="Kayıt Bulunamadı" onClearFilters={hasInvoiceFilters ? clearFilters : undefined}>Seçili fatura sekmesi ve filtrelerle eşleşen paket bulunamadı.</EmptyState></div>}{pageItems.map(item => { const isPicked = selectedPackages.has(item.packageId); return <article className={`invoice-reference-row ${item.isDueSoon ? 'due-soon' : ''}${isPicked ? ' is-selected' : ''}`} key={item.packageId} role="row" aria-selected={selectionMode ? isPicked : undefined} onClick={event => tapRow(event, item)}>
           <div className="invoice-reference-order"><input className="invoice-reference-select" type="checkbox" aria-label={`${item.platformDisplayName} ${displayInvoiceOrderNumber(item.orderNumber)} siparişini seç`} checked={selectedPackages.has(item.packageId)} onChange={() => { togglePackage(item.packageId); if (isPhoneViewport()) setSelectionMode(true) }} /><div className="order-reference-platform"><PlatformMark code={item.platformCode} name={item.platformDisplayName} /></div><div><InvoiceOrderNumber item={item} /><small>{formatIstanbul(item.orderedAt, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{item.invoiceNumber?.trim() ? ` · ${item.invoiceNumber}` : ''}</small></div></div>
           <div className="invoice-reference-buyer"><strong>{invoiceCustomerDisplayName(item)}</strong><InvoiceProductSummary item={item} /></div>
           <div className="invoice-reference-products"><div className="cargo-provider-display invoice-cargo-provider"><CargoProviderIcon value={item.cargoProviderName ?? 'Kargo bilgisi yok'} fallbackText /></div><small>{item.cargoTrackingNumber ?? 'Takip numarası yok'}</small></div>
@@ -673,7 +673,7 @@ export function InvoicesPage() {
             <div className="invoice-reference-action-footer"><button type="button" className="invoice-reference-details-trigger" onClick={() => setSelectedItem(item)}>Detayları Aç <UiIcon name="externalLink" /></button></div>
           </div>
         </article> })}
-      </div>{pageItems.length > 0 && <nav className="order-pagination" aria-label="Fatura sayfaları"><span>Toplam {(pageData?.totalCount ?? 0).toLocaleString('tr-TR')} adet</span><InvoicePager page={currentPage} totalPages={totalPages} onChange={setPageNumber} /></nav>}</>}
+      </div>{pageItems.length > 0 && <div className="order-pagination"><span>Toplam {(pageData?.totalCount ?? 0).toLocaleString('tr-TR')} adet</span><Pager page={currentPage} totalPages={totalPages} onPageChange={setPageNumber} ariaLabel="Fatura sayfaları" /></div>}</>}
     </section>
       <StickyActionBar open={selectedItems.length > 0} label="Toplu fatura işlemleri" className="invoice-reference-bulk-toolbar"><span>{selectedItems.length} sipariş seçildi</span>{selectedCreatableItems.length > 0 && <button type="button" onClick={() => openInvoicePreview(selectedCreatableItems)}><UiIcon name="download" size={16} />Toplu Fatura Oluştur ({selectedCreatableItems.length})</button>}{selectedShopifyItems.length > 0 && <button type="button" className={selectedCreatableItems.length ? 'secondary' : undefined} onClick={() => { setManualStatusBatch(selectedShopifyItems); setSelectedPackages(current => new Set([...current].filter(id => !selectedShopifyItems.some(item => item.packageId === id)))) }}><UiIcon name="edit" size={16} /> Fatura Durumunu Güncelle ({selectedShopifyItems.length})</button>}<button type="button" className="secondary" onClick={() => visibility.mutate({ packageIds: selectedItems.map(item => item.packageId), hidden: tab !== 'HIDDEN' })} disabled={visibility.isPending}><UiIcon name={tab === 'HIDDEN' ? 'eye' : 'eyeOff'} size={16} />{tab === 'HIDDEN' ? 'Görünür Yap' : 'Siparişleri Gizle'}</button><button type="button" className="secondary" onClick={() => setSelectedPackages(new Set())}>Seçimi Temizle</button></StickyActionBar>
     {selectedItem && <div className="invoice-detail-backdrop" role="presentation" onMouseDown={() => setSelectedItem(null)}><DialogSurface as="section" onClose={() => setSelectedItem(null)} className="workspace-modal invoice-detail-modal" aria-labelledby="invoice-detail-title" onMouseDown={event => event.stopPropagation()}>
@@ -692,32 +692,6 @@ export function InvoicesPage() {
     {manualConfirmation && <InvoiceManualConfirmationModal kind={manualConfirmation.kind} item={manualConfirmation.item} onCancel={() => setManualConfirmation(null)} onConfirm={runManualConfirmation} />}
     {previewTargets && <InvoiceWorkspacePreviewModal targets={previewTargets} onClose={() => setPreviewTargets(null)} onNotice={(text, kind, context) => setMessage(text, kind, context)} onComplete={() => { void Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['invoice'] })]) }} />}
   </section>
-}
-
-
-// Page numbers around the current page with previous / next arrows, plus a go-to-page field.
-function invoicePagerPages(page: number, totalPages: number): Array<number | null> {
-  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1)
-  const pages = new Set([1, totalPages, page - 1, page, page + 1].filter(value => value >= 1 && value <= totalPages))
-  const sorted = [...pages].sort((left, right) => left - right)
-  return sorted.flatMap((value, index) => index > 0 && value - sorted[index - 1] > 1 ? [null, value] : [value])
-}
-
-function InvoicePager({ page, totalPages, onChange }: { page: number; totalPages: number; onChange: (page: number) => void }) {
-  const [draft, setDraft] = useState('')
-  const safeTotal = Math.max(1, totalPages)
-  function go(next: number) { onChange(Math.min(safeTotal, Math.max(1, next))) }
-  return <div className="invoice-pager">
-    <div className="invoice-pager-pages">
-      <button type="button" aria-label="Önceki sayfa" disabled={page <= 1} onClick={() => go(page - 1)}><UiIcon name="chevronLeft" /></button>
-      {invoicePagerPages(page, safeTotal).map((value, index) => value === null ? <span key={`gap-${index}`} className="invoice-pager-gap">…</span> : <button type="button" key={value} className={value === page ? 'is-on' : undefined} aria-current={value === page ? 'page' : undefined} onClick={() => go(value)}>{value}</button>)}
-      <button type="button" aria-label="Sonraki sayfa" disabled={page >= safeTotal} onClick={() => go(page + 1)}><UiIcon name="chevronRight" /></button>
-    </div>
-    <form className="invoice-pager-jump" onSubmit={event => { event.preventDefault(); const value = Number(draft); if (Number.isFinite(value) && value >= 1) go(value); setDraft('') }}>
-      <label>Sayfaya Git<input type="number" inputMode="numeric" min={1} max={safeTotal} value={draft} placeholder={`1–${safeTotal}`} aria-label="Sayfa numarası" onChange={event => setDraft(event.target.value)} /></label>
-      <button type="submit" className="secondary">Git</button>
-    </form>
-  </div>
 }
 
 type ManualConfirmationKind = 'delivered' | 'reviewDelivered' | 'replace' | 'noRemote' | 'retryDelivery'

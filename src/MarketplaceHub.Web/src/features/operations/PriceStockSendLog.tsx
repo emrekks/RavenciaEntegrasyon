@@ -3,12 +3,12 @@ import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-qu
 import { hubPoll } from '../../shared/api'
 import { DateRangePicker } from '../../shared/DateRangePicker'
 import { PlatformSquareMark } from '../../shared/platform-square-mark'
-import { Button, UiIcon } from '../../shared/components'
+import { Button, EmptyState, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
 import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
-import { jobTimeRanges } from './job-list-query'
+import { jobTimeRangeOptions } from './job-list-query'
 import { JobStateGlyph } from './job-state-glyph'
 import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import { PlatformFilter } from '../../shared/PlatformFilter'
@@ -64,7 +64,7 @@ function SendLogFilterCard({ filters, searchText, onSearch, platformGroups, resu
   const resultGroups: FilterMenuGroup[] = sendLogResultGroups.map(group => ({ label: group.label, options: group.values.map(value => ({ value, label: sendLogResultLabel(value), count: resultCounts ? resultCounts.filter(row => row.result === value).reduce((total, row) => total + row.count, 0) : null })) }))
   return <OpsFilterCard wide label="Gönderim kaydı filtreleri" active={sendLogFilterCount({ ...filters, search: '' })} clearCount={clearCount} onClear={onClear} onApply={onApply}>
     <SearchField label="Ürün Ara" ariaLabel="Gönderim kayıtlarında ara" placeholder="Barkod, stok kodu, model kodu veya ürün adı" value={searchText} onChange={value => onSearch(value.slice(0, 100))} onEnter={onApply} />
-    <ChoiceField name="Zaman Aralığı" value={days ? '' : filters.range} label={days ? 'Seçili Tarihler' : undefined} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => onChange({ range: value as SendLogFilters['range'], from: '', to: '' })} />
+    <ChoiceField name="Zaman Aralığı" value={days ? '' : filters.range} label={days ? 'Seçili Tarihler' : undefined} options={jobTimeRangeOptions(filters.range)} onChange={value => onChange({ range: value as SendLogFilters['range'], from: '', to: '' })} />
     <DateRangePicker className="rr-fld rr-date" label="Gönderim Tarihi" placeholder="Başlangıç – Bitiş" from={filters.from} to={filters.to} onChange={range => onChange({ from: range.from, to: range.to })} icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
     <PlatformFilter options={platformGroups[0]?.options ?? []} selected={filters.platforms} onChange={platforms => onChange({ platforms })} />
     <FilterMenu name="Sonuç" allLabel="Tüm Sonuçlar" unit="Sonuç" width={280} groups={resultGroups} selected={filters.results} onChange={results => onChange({ results })} />
@@ -159,8 +159,8 @@ export function PriceStockSendLog({ platformOptions, onOpenJob, kept }: { platfo
             </tr>
           })}
           {rows.length === 0 && <tr><td className="psl-empty" colSpan={8}>{filtered
-            ? 'Seçili filtrelerle eşleşen gönderim kaydı bulunamadı.'
-            : <><strong>Henüz gönderim kaydı yok.</strong><span>Pazaryerine fiyat veya stok gönderildiğinde her satır burada görünür; panelden yapılan ve otomatik gönderimler burada listelenir. Otomatik yazmanın her bağlantıda açık olup olmadığını API Sağlık gösterir.</span></>}</td></tr>}
+            ? <EmptyState title="Kayıt Bulunamadı">Seçili filtrelerle eşleşen gönderim kaydı bulunamadı.</EmptyState>
+            : <EmptyState title="Henüz Gönderim Yok">Pazaryerine fiyat veya stok gönderildiğinde her satır burada görünür; panelden yapılan ve otomatik gönderimler burada listelenir. Otomatik yazmanın her bağlantıda açık olup olmadığını API Sağlık gösterir.</EmptyState>}</td></tr>}
         </tbody>
       </table></div>
       {rows.length > 0 && <div className="jobs-reference-pagination">

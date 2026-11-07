@@ -213,21 +213,22 @@ describe('QuestionsPage workspace flows', () => {
       expect(container.querySelector('.qi-status-menu')).toBeNull()
     }
 
-    act(() => button('Filtre').click())
     // Mağaza is the panel menu (shared/PanelSelect): open it and pick a row.
     act(() => container.querySelector<HTMLButtonElement>('#questions-store-filter')!.click())
     const storeRows = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.pm-pop [role="option"]'))
     expect(storeRows.map(option => option.textContent)).toContain('Trendyol Mağazası')
     expect(storeRows.map(option => option.textContent)).toContain('Hepsiburada Mağazası')
     act(() => storeRows.find(option => option.textContent === 'Trendyol Mağazası')!.click())
-    act(() => button('Tarih Aralığı Seçin').click())
+    act(() => button('Başlangıç – Bitiş').click())
     const calendarDays = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button'))
     act(() => calendarDays.find(day => day.getAttribute('aria-label') === '1 Ekim 2026')!.click())
     const endDate = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.date-range-picker-grid button')).find(day => day.getAttribute('aria-label') === '5 Ekim 2026')!
     act(() => endDate.click())
-    input(container.querySelector<HTMLInputElement>('.rv-questions-search input')!, 'bluz 01')
-    // The search waits until typing stops.
+    input(container.querySelector<HTMLInputElement>('.qf-search input')!, 'bluz 01')
+    // The search waits until typing stops; the other fields apply with Filtrele.
     expect(apiState.calls.some(call => call.path.includes('search=bluz'))).toBe(false)
+    expect(button('Filtrele').disabled).toBe(false)
+    act(() => button('Filtrele').click())
     await settle(350)
     await settle()
     let params = lastQuestionRequest()
@@ -235,7 +236,8 @@ describe('QuestionsPage workspace flows', () => {
     expect(params.get('dateFrom')).toBe('2026-10-01T00:00:00.000+03:00')
     expect(params.get('dateTo')).toBe('2026-10-05T23:59:59.999+03:00')
     expect(params.get('search')).toBe('bluz 01')
-    expect(container.querySelector('.qi-filter-btn')?.textContent).toContain('2')
+    expect(button('Filtrele').disabled).toBe(true)
+    expect(button('Temizle').disabled).toBe(false)
 
     act(() => button('Sipariş Soruları').click())
     await settle()
@@ -247,8 +249,6 @@ describe('QuestionsPage workspace flows', () => {
     expect(orderStore).toContain('Hepsiburada Mağazası')
     expect(orderStore).not.toContain('Trendyol Mağazası')
     act(() => container.querySelector<HTMLButtonElement>('#questions-store-filter')!.click())
-    act(() => button('Uygula').click())
-    expect(container.querySelector('[role="dialog"]')).toBeNull()
     await settle()
     expect(container.querySelector('.rv-question-meta a')?.getAttribute('href')).toContain('HB-12345')
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Sipariş #HB-12345')
