@@ -149,7 +149,7 @@ function ReferenceConnectionCard({ item, onSaved, onFeedback: emitFeedback }: { 
   }, [settingsOpen])
   useDismissable(menuOpen, [referenceMenuRef], () => setMenuOpen(false))
   const test = useMutation({ mutationFn: () => hubApi<{ succeeded?: boolean; errorCode?: string; errorSummary?: string }>(`/connections/${item.id}/test-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }), onSuccess: async result => { onFeedback(connectionTestFeedback(notificationPlatformName(item.platformCode) ?? item.platformCode, result)); await Promise.all([client.invalidateQueries({ queryKey: ['connection', item.id] }), client.invalidateQueries({ queryKey: ['capabilities', item.id] }), client.invalidateQueries({ queryKey: ['sync-policies', item.id] })]); onSaved() }, onError: reason => { const failure = notificationError(reason, 'Bağlantı testi başlatılamadı.'); onFeedback({ kind: 'error', title: 'Bağlantı Testi Başlatılamadı', message: failure.message, context: { operation: 'Bağlantı testi', code: failure.code } }) } })
-  const initialDataSync = useMutation({ mutationFn: () => hubApi<{ jobId: string }>(`/connections/${item.id}/initial-data-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: '{}' }), onSuccess: async () => { onFeedback({ kind: 'success', message: `${item.displayName} için platformun izin verdiği en geniş geçmiş aralığını tarayan veri çekimi kuyruğa alındı.` }); await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['returns'] }), client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['dashboard-bootstrap'] })]) }, onError: reason => onFeedback(failureNotice(reason, 'İlk veri çekimi başlatılamadı.')) })
+  const initialDataSync = useMutation({ mutationFn: () => hubApi<{ jobId: string }>(`/connections/${item.id}/initial-data-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: '{}' }), onSuccess: async () => { onFeedback({ kind: 'info', message: `${item.displayName} için platformun izin verdiği en geniş geçmiş aralığını tarayan veri çekimi sıraya alındı; uzun sürebilir, sonucu İşlem Takibi’nde görünür.` }); await Promise.all([client.invalidateQueries({ queryKey: ['jobs'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['returns'] }), client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['dashboard-bootstrap'] })]) }, onError: reason => onFeedback(failureNotice(reason, 'İlk veri çekimi başlatılamadı.')) })
   const disconnect = useMutation({ mutationFn: () => hubApi<Connection>(`/connections/${item.id}/active`, { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ active: false }) }), onSuccess: () => { setDisconnectOpen(false); onFeedback({ kind: 'success', title: 'Bağlantı Pasife Alındı', message: 'Bağlantı pasife alındı.' }); onSaved() }, onError: reason => onFeedback(failureNotice(reason, 'Bağlantı pasife alınamadı.')) })
   const activate = useMutation({ mutationFn: () => hubApi<Connection>(`/connections/${item.id}/active`, { method: 'PUT', headers: { 'Idempotency-Key': newIdempotencyKey(), 'If-Match': `"v${item.version}"` }, body: JSON.stringify({ active: true }) }), onSuccess: () => { onFeedback({ kind: 'success', title: 'Bağlantı Etkinleştirildi', message: 'Bağlantı etkinleştirildi.' }); onSaved() }, onError: reason => onFeedback({ kind: 'error', message: activationErrorMessage(reason) }) })
   // Removed records show on every screen (orders, invoices, reports, dashboard, jobs), so all of them read again, as
@@ -485,7 +485,7 @@ function PazaramaSaleStatusPanel({ connectionId, writesEnabled, connectionActive
   const codes = barcodes.split(/[\s,;]+/).map(code => code.trim()).filter(Boolean)
   const send = useMutation({
     mutationFn: (close: boolean) => hubApi<{ jobId?: string }>(`/connections/${connectionId}/sale-status-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ barcodes: codes, close }) }),
-    onSuccess: (_, close) => setFeedback({ kind: 'success', message: `${codes.length} barkod için satışa ${close ? 'kapatma' : 'açma'} isteği kuyruğa alındı. Sonucu İşlem Takibi’nde görebilirsiniz.` }),
+    onSuccess: (_, close) => setFeedback({ kind: 'info', message: `${codes.length} barkod için satışa ${close ? 'kapatma' : 'açma'} isteği kuyruğa alındı. Sonucu İşlem Takibi’nde görebilirsiniz.` }),
     onError: reason => setFeedback(failureNotice(reason, 'Satışa açma/kapatma başlatılamadı.'))
   })
   const blocked = !writesEnabled || !connectionActive || codes.length === 0 || codes.length > 100 || send.isPending
@@ -511,7 +511,7 @@ function PriceStockSendPanel({ connectionId, writesEnabled, connectionActive, pl
   const [feedback, setFeedback] = useState<IntegrationFeedback | null>(null)
   const send = useMutation({
     mutationFn: () => hubApi<{ jobId?: string }>(`/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
-    onSuccess: () => setFeedback({ kind: 'success', message: `Değişen tüm ${platformName} fiyat ve stokları kuyruğa alındı. Sonucu İşlem Takibi’nde görebilirsiniz.` }),
+    onSuccess: () => setFeedback({ kind: 'info', message: `Değişen tüm ${platformName} fiyat ve stokları kuyruğa alındı. Sonucu İşlem Takibi’nde görebilirsiniz.` }),
     onError: reason => setFeedback(failureNotice(reason, 'Fiyat-stok gönderimi başlatılamadı.'))
   })
   const blocked = !writesEnabled || !connectionActive
@@ -533,7 +533,7 @@ function HepsiburadaSitPriceStockPanel({ connectionId, connectionReady }: { conn
   const [jobId, setJobId] = useState<string | null>(null)
   const send = useMutation({
     mutationFn: () => hubApi<{ jobId?: string }>(`/connections/${connectionId}/price-inventory-sync-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: '{}' }),
-    onSuccess: result => { setJobId(result.jobId ?? null); setFeedback({ kind: 'success', message: 'Stok ve fiyat yüklemesi kuyruğa alındı. inventoryUploadId, İşlem Takibi’nde bu işlemin Dış Kimlik alanında görünür.' }) },
+    onSuccess: result => { setJobId(result.jobId ?? null); setFeedback({ kind: 'info', message: 'Stok ve fiyat yüklemesi kuyruğa alındı; henüz tamamlanmadı. Sonucu ve pazaryerinin yükleme numarası İşlem Takibi’nde görünür.' }) },
     onError: reason => setFeedback(failureNotice(reason, 'Stok ve fiyat yüklemesi başlatılamadı.'))
   })
   return <section className="panel n11-price-stock-send">
@@ -605,7 +605,7 @@ function IntegrationDetailWorkspace({ id, inline = false, onClose, onSwitch }: {
    // Starts one flow now; an already waiting or running run of it is reused.
    const runSyncPolicy = useMutation({
      mutationFn: (policy: SyncPolicy) => hubApi<{ jobId: string }>('/connections/' + id + '/sync-policies/' + policy.resourceType + '/runs', { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() } }),
-     onSuccess: (_, policy) => { setFeedback({ kind: 'success', message: `${syncPolicyLabel(policy.resourceType)} başlatıldı. Sonucu İşlem Takibi’nde görebilirsiniz.` }); void client.invalidateQueries({ queryKey: ['jobs'] }) },
+     onSuccess: (_, policy) => { setFeedback({ kind: 'info', message: `${syncPolicyLabel(policy.resourceType)} kuyruğa alındı; henüz tamamlanmadı. Sonucu İşlem Takibi’nde görebilirsiniz.` }); void client.invalidateQueries({ queryKey: ['jobs'] }) },
      onError: reason => setFeedback(failureNotice(reason, 'Akış başlatılamadı.'))
    })
    const saveFlowGroup = useMutation({ mutationFn: (request: { policies: SyncPolicy[]; enabled: boolean; label: string }) => Promise.all(request.policies.map(policy => hubApi<SyncPolicy>('/connections/' + id + '/sync-policies/' + policy.resourceType, { method: 'PUT', headers: { 'If-Match': '"v' + policy.version + '"' }, body: JSON.stringify({ intervalSeconds: policy.intervalSeconds, overlapSeconds: policy.overlapSeconds, jitterSeconds: policy.jitterSeconds, enabled: request.enabled }) }))), onSuccess: async (_, request) => { setFeedback({ kind: 'success', message: `${request.label} ${request.enabled ? 'açıldı' : 'kapatıldı'}.` }); await Promise.all([client.invalidateQueries({ queryKey: ['sync-policies', id] }), invalidatePriceStockMonitor()]) }, onError: async reason => { setFeedback(failureNotice(reason, 'Akışlar güncellenemedi.')); await Promise.all([client.invalidateQueries({ queryKey: ['sync-policies', id] }), invalidatePriceStockMonitor()]) } })

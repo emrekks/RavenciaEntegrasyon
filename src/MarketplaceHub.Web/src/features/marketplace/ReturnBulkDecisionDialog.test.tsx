@@ -60,7 +60,8 @@ describe('bulk return approval dialog', () => {
     expect(api.posts).toEqual(['/returns/a/actions', '/returns/b/actions'])
     expect(onDone).toHaveBeenCalledTimes(1)
     const [message, kind] = onDone.mock.calls[0]!
-    expect(kind).toBe('info')
+    // One of two refused is a failure to read, not a partial success (owner, 7 Nov 2026).
+    expect(kind).toBe('error')
     expect(message).toContain('Onaylanamayan sipariş: #200. Neden: Pazar yeri yanıt vermedi.')
     expect(Array.from(document.querySelectorAll('button')).some(button => button.textContent === 'Kapat')).toBe(false)
   })

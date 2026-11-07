@@ -36,27 +36,27 @@ const save = (overrides: Partial<ProductSaveOutcome>): ProductSaveOutcome => ({
 describe('marketplace publish lines', () => {
   it('says a family a marketplace holds as one product was queued as one product', () => {
     expect(marketplacePublishLines(publish({ platformName: 'Shopify', platformCode: 'SHOPIFY', familyCards: 8, enqueuedCards: 8, enqueuedVariants: 24 })))
-      .toEqual(['Shopify: model ailesi (8 renk, 24 varyant) tek ürün olarak gönderim kuyruğuna alındı.'])
+      .toEqual(['Shopify: model ailesi (8 renk, 24 varyant) tek ürün olarak gönderiliyor.'])
     expect(marketplacePublishLines(publish({ platformName: 'PttAVM', platformCode: 'PTTAVM', familyCards: 8, enqueuedCards: 8, enqueuedVariants: 24 })))
-      .toEqual(['PttAVM: model ailesi (8 renk, 24 varyant) tek ürün olarak gönderim kuyruğuna alındı.'])
+      .toEqual(['PttAVM: model ailesi (8 renk, 24 varyant) tek ürün olarak gönderiliyor.'])
   })
 
   it('counts cards and variants for a marketplace that lists every card on its own, with the cards it skipped', () => {
     expect(marketplacePublishLines(publish({ familyCards: 8, enqueuedCards: 6, enqueuedVariants: 18, skipped: { live: 2, running: 0, matched: 0 } })))
-      .toEqual(['Trendyol: 6 renk kartı (18 varyant) gönderim kuyruğuna alındı; 2 renk kartı zaten yayında, atlandı.'])
+      .toEqual(['Trendyol: 6 renk kartı (18 varyant) gönderiliyor; 2 renk kartı zaten yayında, atlandı.'])
   })
 
   it('says a card already on the marketplace sent only its missing variants', () => {
     // MZ021Y-CD on Trendyol: before, the card was skipped whole ("7 renk kartı ... zaten eşleşmiş, atlandı").
     expect(marketplacePublishLines(publish({ familyCards: 7, enqueuedCards: 1, enqueuedVariants: 3, addedToListingCards: 1, skipped: { live: 0, running: 0, matched: 6 } })))
-      .toEqual(['Trendyol: 1 renk kartı için eksik 3 varyant gönderim kuyruğuna alındı; 6 renk kartı pazaryerinde zaten eşleşmiş, atlandı.'])
+      .toEqual(['Trendyol: 1 renk kartı için eksik 3 varyant gönderiliyor; 6 renk kartı pazaryerinde zaten eşleşmiş, atlandı.'])
     expect(marketplacePublishLines(publish({ enqueuedCards: 1, enqueuedVariants: 2, addedToListingCards: 1 })))
-      .toEqual(['Trendyol: eksik 2 varyant gönderim kuyruğuna alındı.'])
+      .toEqual(['Trendyol: eksik 2 varyant gönderiliyor.'])
   })
 
   it('names a single product and its variants', () => {
     expect(marketplacePublishLines(publish({ platformName: 'n11', platformCode: 'N11', enqueuedCards: 1, enqueuedVariants: 3 })))
-      .toEqual(['n11: ürün (3 varyant) gönderim kuyruğuna alındı.'])
+      .toEqual(['n11: ürün (3 varyant) gönderiliyor.'])
   })
 
   it('says why nothing new went when every card was skipped', () => {
@@ -71,14 +71,14 @@ describe('marketplace publish lines', () => {
       'Shopify: reddedildi — Birden fazla varyant Shopify\'da ancak renk, beden gibi bir seçenekle ayrılabilir. (8 renk kartında)'
     ])
     expect(marketplacePublishLines(publish({ platformName: 'n11', platformCode: 'N11', familyCards: 8, enqueuedCards: 7, enqueuedVariants: 21, failures: new Map([['Kategori eksik.', [2]]]) }))).toEqual([
-      'n11: 7 renk kartı (21 varyant) gönderim kuyruğuna alındı.',
+      'n11: 7 renk kartı (21 varyant) gönderiliyor.',
       'n11: reddedildi — Kategori eksik. (3. renk kartı)'
     ])
   })
 })
 
 describe('product save feedback', () => {
-  it('titles a queued publication "Yayın Başlatıldı" and says the product was saved first', () => {
+  it('titles a started publication "Aktarım Başladı" as work in progress, never as done (RYP003T, 7 Nov 2026)', () => {
     const feedback = productSaveFeedback(save({
       publications: [
         publish({ platformName: 'Shopify', platformCode: 'SHOPIFY', familyCards: 8, enqueuedCards: 8, enqueuedVariants: 24 }),
@@ -86,22 +86,21 @@ describe('product save feedback', () => {
       ]
     }))
     expect(feedback).toEqual({
-      title: 'Yayın Başlatıldı',
+      title: 'Aktarım Başladı',
       lines: [
         'Ürün bilgileri kaydedildi.',
-        'Shopify: model ailesi (8 renk, 24 varyant) tek ürün olarak gönderim kuyruğuna alındı.',
+        'Shopify: model ailesi (8 renk, 24 varyant) tek ürün olarak gönderiliyor.',
         'Trendyol: 8 renk kartı zaten yayında, atlandı; yeni gönderim yapılmadı.'
       ],
-      kind: 'success',
-      persistent: false,
-      durationMs: 6000
+      kind: 'info',
+      persistent: true
     })
   })
 
   it('does not claim a save when the form had no changes', () => {
     const feedback = productSaveFeedback(save({ productChanged: false, publications: [publish({ enqueuedCards: 1, enqueuedVariants: 3 })] }))
-    expect(feedback.lines).toEqual(['Trendyol: ürün (3 varyant) gönderim kuyruğuna alındı.'])
-    expect(feedback.durationMs).toBe(3500)
+    expect(feedback.lines).toEqual(['Trendyol: ürün (3 varyant) gönderiliyor.'])
+    expect(feedback).toMatchObject({ kind: 'info', persistent: true })
   })
 
   it('keeps a partly refused publication on screen as an error', () => {
@@ -135,7 +134,7 @@ describe('product save feedback', () => {
     expect(feedback).toEqual({
       title: 'Yayın Kısmen Başlatıldı',
       lines: [
-        'Trendyol: ürün (18 varyant) gönderim kuyruğuna alındı.',
+        'Trendyol: ürün (18 varyant) gönderiliyor.',
         'n11: gönderilmedi — yayın için 1 zorunlu eksik var; kartındaki eksikler giderilince seçilebilir.',
         'Pazarama: gönderilmedi — yayın için 2 zorunlu eksik var; kartındaki eksikler giderilince seçilebilir.'
       ],
@@ -173,7 +172,7 @@ describe('product save feedback', () => {
   it('names what a new product saved', () => {
     const feedback = productSaveFeedback(save({ created: true, savedParts: ['görseller', 'stok', 'kanal fiyatları'], publications: [publish({ enqueuedCards: 1, enqueuedVariants: 2 })] }))
     expect(feedback.lines[0]).toBe('Ürün oluşturuldu; görseller, stok, kanal fiyatları kaydedildi.')
-    expect(feedback.title).toBe('Yayın Başlatıldı')
+    expect(feedback.title).toBe('Aktarım Başladı')
   })
 
   it('makes a stock that was not saved an error even when the publication started', () => {
@@ -189,13 +188,13 @@ describe('product save feedback', () => {
         { platformName: 'Hepsiburada', queued: { productInformation: true, priceInventory: false }, error: 'Bağlantı pasif.' }
       ]
     }))
-    expect(feedback.title).toBe('Güncelleme Kısmen Başlatıldı')
+    expect(feedback.title).toBe('Aktarım Kısmen Başladı')
     expect(feedback.lines).toEqual([
       'Ürün bilgileri kaydedildi.',
-      'Trendyol: ürün bilgisi ve fiyat-stok güncelleme işi kuyruğa alındı.',
-      'Hepsiburada: ürün bilgisi güncelleme işi kuyruğa alındı; ardından güncelleme başlatılamadı — Bağlantı pasif.'
+      'Trendyol: ürün bilgisi ve fiyat-stok gönderiliyor.',
+      'Hepsiburada: ürün bilgisi gönderiliyor; ardından aktarım başlatılamadı — Bağlantı pasif.'
     ])
-    expect(productSaveFeedback(save({ updates: [{ platformName: 'Shopify', queued: { productInformation: false, priceInventory: true } }] })).title).toBe('Güncelleme Başlatıldı')
+    expect(productSaveFeedback(save({ updates: [{ platformName: 'Shopify', queued: { productInformation: false, priceInventory: true } }] })).title).toBe('Aktarım Başladı')
   })
 })
 
@@ -232,12 +231,12 @@ describe('a publish to the chosen marketplaces only', () => {
     expect(chosenGapSkipped(connections, ['ty', 'pz'], gaps, connection => connection.name)).toEqual([{ platformName: 'Pazarama', requiredGaps: 2 }])
   })
 
-  it('reads a Trendyol-only publish as a success that closes by itself', () => {
+  it('reads a Trendyol-only publish as a transfer in progress, not as one left out', () => {
     const feedback = productSaveFeedback(save({
       productChanged: false,
       publications: [publish({ enqueuedCards: 1, enqueuedVariants: 18 })],
       gapSkipped: chosenGapSkipped(connections, ['ty'], gaps, connection => connection.name)
     }))
-    expect(feedback).toEqual({ title: 'Yayın Başlatıldı', lines: ['Trendyol: ürün (18 varyant) gönderim kuyruğuna alındı.'], kind: 'success', persistent: false, durationMs: 3500 })
+    expect(feedback).toEqual({ title: 'Aktarım Başladı', lines: ['Trendyol: ürün (18 varyant) gönderiliyor.'], kind: 'info', persistent: true })
   })
 })

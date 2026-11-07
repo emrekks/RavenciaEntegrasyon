@@ -418,7 +418,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .OrderByDescending(x => x.AttemptNumber)
             .Select(x => new JobAttemptDetailView(x.AttemptNumber, x.StartedAt, x.CompletedAt, x.Succeeded, x.ErrorCode, x.ErrorSummary, "FAILED"))
             .ToListAsync(cancellationToken);
-        attempts = attempts.Select(x => x with { Outcome = AttemptOutcome(job, x) }).ToList();
+        attempts = attempts.Select(x => x with { Outcome = AttemptOutcome(job, x), ErrorSummary = JobErrorMessages.Display(x.ErrorCode, x.ErrorSummary) }).ToList();
         // A waiting check (the marketplace was still processing) and a run still in progress are not errors.
         var failure = attempts.Where(x => x.Outcome == "FAILED").ToList();
         var failureTimes = new FailureTime(
@@ -1066,7 +1066,10 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     }
 
     // A Shopify create stopped at its publication before the publish fix reads with the publish code ("Yayına alınamadı").
-    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null, string? platformCode = null) => Summary(x, ShopifyPublishOnlyFailure.Display(x.JobType, x.LastErrorCode, x.LastErrorSummary), failure, batchCount, lastAttemptStartedAt, platformCode);
+    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null, string? platformCode = null) => Summary(x, PlainError(ShopifyPublishOnlyFailure.Display(x.JobType, x.LastErrorCode, x.LastErrorSummary)), failure, batchCount, lastAttemptStartedAt, platformCode);
+
+    // The code stays; a developer-worded summary reads as its plain sentence (JobErrorMessages).
+    private static (string? Code, string? Summary) PlainError((string? Code, string? Summary) error) => (error.Code, JobErrorMessages.Display(error.Code, error.Summary));
 
     private static JobSummaryView Summary(IntegrationJob x, (string? Code, string? Summary) error, FailureTime? failure, int batchCount, DateTimeOffset? lastAttemptStartedAt, string? platformCode) => new(
         x.Id, x.ConnectionId, x.JobType, Wire(x.Status), x.AttemptCount, x.MaxAttempts,
