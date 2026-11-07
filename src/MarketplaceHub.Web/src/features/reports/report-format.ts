@@ -51,6 +51,9 @@ export type ReportSales = {
   dataNotes: string[]
   // The previous period's commission, cost and statement, read as the period's are (absent in an older server's answer).
   previousAccount?: { commission: ReportSales['commission']; cost: ReportSales['cost']; costs: ReportCosts } | null
+  // How fast the period's questions were answered, Trendyol and Hepsiburada only (absent in an older answer, null without
+  // such a store): answered (measured), waiting (no answer yet), average and median hours.
+  questionTimes?: { answered: number; waiting: number; averageHours: number | null; medianHours: number | null; platforms: string[] } | null
 }
 
 // The sales map: countries for every order (a Trendyol cross-border storefront's order in its country), the previous
