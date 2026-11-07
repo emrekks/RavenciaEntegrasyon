@@ -266,7 +266,7 @@ describe('ReportsPage', () => {
       const page = await open()
       await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)) })
       const row = [...page.querySelectorAll('.reports-card-metrics.is-ads li')].find(item => item.textContent?.includes('Reklam Raporu'))!
-      expect(row.querySelector('.reports-metric')?.textContent).toBe(`Reklam RaporuROAS 4,92₺16.000,75 ciro · kampanya toplamı · eski`)
+      expect(row.querySelector('.reports-metric')?.textContent).toBe(`Reklam RaporuROAS 4,92₺16.000,75 ciro · eski`)
       expect(row.classList.contains('is-warn')).toBe(true)
       expect(row.querySelector('.reports-hover-tip')?.textContent).toContain('seçili dönemin rakamı değildir')
       await act(async () => { row.querySelector<HTMLButtonElement>('.reports-metric')!.click() })

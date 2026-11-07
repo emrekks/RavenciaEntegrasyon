@@ -4,13 +4,15 @@
 //   HEIGHT  cards (panels) side by side in one row whose heights differ by more than 2px;
 //   GAP     a vertical gap between rows of a grid other than 20px;
 //   SCROLL  a page wider than the window (horizontal scroll);
-//   EMPTY   a tab that rendered no report body.
+//   EMPTY   a tab that rendered no report body;
+//   CLIP    a metric value, its second line or a strip figure cut off (wider than its box or past its row's edge).
+// Pass widths as window.__reportsAuditWidths (e.g. [1000, 1100, 1200, 1280, 1366, 1440, 375]) to check others.
 // An empty findings list means the layout follows the spacing rules.
 window.__reportsAudit = { done: false, findings: [] };
 (async () => {
   const views = ['', '?view=geo', '?view=products', '?view=products&sub=brands', '?view=profit', '?view=ops&sub=returns', '?view=ops&sub=cancellations',
     '?view=ops&sub=cargo', '?view=ops&sub=invoices', '?view=ops&sub=stock', '?view=customers', '?view=tariffs']
-  const widths = [1000, 1280, 1800]
+  const widths = window.__reportsAuditWidths ?? [1000, 1280, 1800]
   const findings = window.__reportsAudit.findings
   const box = item => item.matches('.reports-panel, .reports-card, section, .reports-stack') ? item : item.querySelector('.reports-panel, .reports-card, section') ?? item
   for (const width of widths) for (const view of views) {
@@ -43,6 +45,12 @@ window.__reportsAudit = { done: false, findings: [] };
         const gap = Math.round(tops[index] - bottom)
         if (gap !== 20) findings.push(`GAP ${where} .${grid.className.split(' ').join('.')}: ${gap}px`)
       }
+    }
+    // A figure must never be cut: a value or its second line wider than its box, or running past its row's right edge.
+    for (const element of body.querySelectorAll('.reports-metric-value, .reports-metric-main, .reports-metric-value strong, .reports-metric-sub, .reports-kpis strong')) {
+      const row = element.closest('.reports-metric, .reports-kpis > div')
+      const clipped = element.scrollWidth > element.clientWidth + 1 || (row && element.getBoundingClientRect().right > row.getBoundingClientRect().right + 1)
+      if (clipped) findings.push(`CLIP ${where} ${row?.querySelector('.reports-metric-name, .reports-kpi-label')?.textContent ?? element.className}: "${element.textContent}"`)
     }
     frame.remove()
   }
