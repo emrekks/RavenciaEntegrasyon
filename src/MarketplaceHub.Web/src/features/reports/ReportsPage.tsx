@@ -12,10 +12,11 @@ import {
   bySalesChannel, change, desiSourcesNote, downloadCsv, isSalesChannel, variantColourAndSize, formatCount, formatDay, formatHours, formatNumber, formatPercent, formatTl, formatTlShort, formatTlWhole, moneyOrMissing, platformColor, platformName, reportQuery, sortRows, toCsv, unknownLabel,
   stockQuery, type Change, type CsvColumn, type ReportCosts, type ReportGroup, type ReportInventory, type ReportProduct, type ReportReason, type ReportSales, type ReportStockGroup, type ReportStockItem, type ReportStockPlatform, type ReportStockRow
 } from './report-format'
+import { AdReportModal, adReportQuery, adReportRow } from './AdReport'
 import { OrderProfitability } from './OrderProfitability'
 import { SalesMap } from './SalesMap'
 import { transactionLabel } from './transaction-labels'
-import { byDay, emptyPayoutFilters, filterGroups, isRolledToPayoutDay, isWaitingPayout, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
+import { byDay, emptyPayoutFilters, estimateNote, filterGroups, isRolledToPayoutDay, isWaitingPayout, rolledPayoutNote, payoutRuleText, payoutGap, payoutLinesQuery, payoutState, payoutStateLabels, payoutsQuery, regionLabel, regionLabels, shortDay, statusLabels, type PayoutFilters, type PayoutGroup, type PayoutLines, type PayoutRegion, type PayoutSort, type PayoutState, type Payouts } from './payouts'
 import { readUrlChoice, readUrlList, readUrlText, useListUrlSync } from '../../shared/list-url-state'
 import { RrAnchor, RrFilterCard, RrIcon } from '../marketplace/returns-ui'
 import { RETURN_NO_PLATFORM, ReturnColumnPop, ReturnPlatformPop } from '../marketplace/shared'
@@ -300,6 +301,11 @@ function TipText({ text }: { text: string }) {
 // explanation shows while the pointer or the focus is on it. Each card plays its animation once, when first in view.
 function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
   const money = moneyBreakdown(data, profitSteps(data))
+  // Trendyol's ad report the seller uploads: campaign totals, apart from the period's figures (AdReport.tsx).
+  const ads = useQuery(adReportQuery)
+  const [adsOpen, setAdsOpen] = useState(false)
+  const adRow = adReportRow(ads.data, ads.isError)
+  const adReport: Metric = { key: 'adReport', label: 'Reklam Raporu', value: adRow.value, sub: adRow.sub, tone: adRow.tone, note: adRow.note, onOpen: () => setAdsOpen(true) }
   return <div className="reports-overview">
     <OverviewFigures data={data} money={money} />
     <CostLinesCard data={data} money={money} />
@@ -311,8 +317,9 @@ function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
     <div className="reports-overview-row is-three">
       <MetricCard title="Satış ve Ürün" icon="products" tone="product" rows={productMetrics(data, money)} onMore={onMore} />
       <MetricCard title="Sipariş ve Müşteri" icon="cart" tone="order" rows={orderMetrics(data, money)} onMore={onMore} />
-      <MetricCard title="Maliyet ve Reklam" icon="target" tone="ads" rows={adMetrics(data, money)} onMore={onMore} />
+      <MetricCard title="Maliyet ve Reklam" icon="target" tone="ads" rows={[...adMetrics(data, money), adReport]} onMore={onMore} />
     </div>
+    <AdReportModal open={adsOpen} onClose={() => setAdsOpen(false)} data={ads.data} />
     <div className="reports-overview-row is-two">
       <MetricCard title="İade ve İptal" icon="returns" tone="returns" rows={returnMetrics(data)} onMore={onMore} />
       <MetricCard title="Operasyon" icon="truck" tone="ops" rows={operationMetrics(data)} onMore={onMore} />
@@ -844,7 +851,9 @@ function ProfitLedger({ money, notes = {} }: { money: Money; notes?: Record<stri
 // sub: a second, smaller line under the value (the counts or the share behind it), so a row shows one figure, not a
 // list of them (owner, 7 Nov 2026: "çok sıkışık"). tone: warn only where a threshold is passed, and the explanation
 // names the threshold; bad for a loss.
-type Metric = { key: string; label: string; value: string; sub?: string; note: string; delta?: Change | null; invert?: boolean; previous?: string; tone?: 'warn' | 'bad'; detail?: DetailKey }
+type Metric = { key: string; label: string; value: string; sub?: string; note: string; delta?: Change | null; invert?: boolean; previous?: string; tone?: 'warn' | 'bad'; detail?: DetailKey
+  // A row that opens a window of its own (the Trendyol ad report) instead of a tab.
+  onOpen?: () => void }
 
 // A card of figures as rows of one height: the name on one line with its "?" right after it, and on the right one value
 // (with its change when it has one) and, under it, a small second line when the row has one. A row's explanation shows
@@ -867,7 +876,8 @@ function MetricCard({ title, icon, tone, rows, onMore, hints = true }: { title: 
         </span>
       </>
       return <li key={row.key} className={`reports-tip-host${row.tone ? ` is-${row.tone}` : ''}`}>
-        {detail ? <button type="button" className="reports-metric" onClick={() => onMore(detail)} aria-describedby={explained ? id : undefined}>{body}</button>
+        {row.onOpen ? <button type="button" className="reports-metric" onClick={row.onOpen} aria-haspopup="dialog" aria-describedby={explained ? id : undefined}>{body}</button>
+          : detail ? <button type="button" className="reports-metric" onClick={() => onMore(detail)} aria-describedby={explained ? id : undefined}>{body}</button>
           : <button type="button" className="reports-metric is-static" aria-describedby={explained ? id : undefined}>{body}</button>}
         {explained && <span role="tooltip" id={id} className="reports-hover-tip"><TipText text={row.note} /></span>}
       </li>
@@ -2141,6 +2151,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
     const expanded = open === group.key
     const gap = payoutGap(group)
     const area = regionLabel(group)
+    const estimate = estimateNote(group)
     return <li key={group.key} className={expanded ? 'is-open' : undefined}>
       {/* Names on the left, the money on the right, in line with the day's total. */}
       <button type="button" className="reports-payout-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : group.key)}>
@@ -2148,13 +2159,14 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
           {area && <em className="reports-payout-chip is-region">{area}</em>}</span>
         <span className="reports-payout-state">{applied.sort === 'amount' && <small>{shortDay(group.day, false)}</small>}
           {payoutState(group) !== 'EXPECTED' && <em className={`reports-payout-chip is-${payoutState(group).toLowerCase()}`}>{payoutStateLabels[payoutState(group)]}</em>}</span>
-        <strong className="reports-payout-amount">{formatTl(group.amount)}</strong>
+        <strong className="reports-payout-amount" title={estimate ?? undefined}>{formatTl(group.amount)}</strong>
         <UiIcon name="chevronDown" size={16} />
       </button>
       {expanded && <div className="reports-payout-detail">
         {gap !== null && <p className="reports-payout-gap" role="note">Okunan kayıtların toplamı {formatTl(group.linesAmount)}; ödeme tutarından {formatTl(gap)} farklı (kesinti ya da başka ödemede listelenen kayıt).</p>}
         {group.kind === 'PAYOUT' && group.linesAmount === null && <p className="reports-payout-gap" role="note">Bu ödemenin kayıtları ödemeden bir gün sonra okunur; henüz okunmadı.</p>}
         {isRolledToPayoutDay(group) && <p className="reports-payout-gap" role="note">{rolledPayoutNote}</p>}
+        {estimate && <p className="reports-payout-gap" role="note">{estimate}</p>}
         <PayoutLinesTable platforms={platforms.length ? platforms : null} group={group} />
       </div>}
     </li>

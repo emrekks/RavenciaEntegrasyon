@@ -79,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<ICommissionTariffService, CommissionTariffService>();
         services.AddScoped<ICommissionTariffLookup, CommissionTariffLookup>();
         services.AddScoped<IPromotionOfferService, PromotionOfferService>();
+        services.AddScoped<IAdReportService, AdReportService>();
         services.AddScoped<IProductTransferService, ProductTransferService>();
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<IPriceStockMonitorService, PriceStockMonitorService>();

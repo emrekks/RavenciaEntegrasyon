@@ -182,11 +182,21 @@ public static class ImportFileReader
     {
         var entry = archive.GetEntry("xl/sharedStrings.xml"); if (entry is null) return [];
         var result = new List<string>(); using var source = entry.Open(); using var reader = XmlReader.Create(source, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }); var current = new StringBuilder();
-        while (reader.Read())
+        // ReadElementContentAsString leaves the reader on the node after </t>, often </si> itself ("<si><t>A</t></si>",
+        // as Excel and Trendyol write it): that node is looked at next, not skipped by another Read. An empty <si/> is
+        // an empty string too.
+        reader.Read();
+        while (!reader.EOF)
         {
-            if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "si") current.Clear();
+            if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "si")
+            {
+                current.Clear();
+                if (reader.IsEmptyElement) result.Add(string.Empty);
+                reader.Read();
+            }
             else if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "t") current.Append(reader.ReadElementContentAsString());
-            else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "si") result.Add(current.ToString());
+            else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "si") { result.Add(current.ToString()); reader.Read(); }
+            else reader.Read();
         }
         return result;
     }

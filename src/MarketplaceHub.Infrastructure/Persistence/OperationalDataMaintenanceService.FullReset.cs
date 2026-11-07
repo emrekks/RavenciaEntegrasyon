@@ -166,6 +166,7 @@ public sealed partial class OperationalDataMaintenanceService
             DELETE FROM catalog.commission_tariff_rows r USING catalog.commission_tariffs t WHERE r."TenantId"={{tenantId}} AND r."TariffId"=t."Id" AND t."TenantId"={{tenantId}} AND t."ConnectionId"={{connectionId}};
             DELETE FROM catalog.commission_tariffs WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             DELETE FROM catalog.promotion_offer_files WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
+            DELETE FROM catalog.ad_report_files WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
             CREATE TEMP TABLE IF NOT EXISTS purge_import_sessions ("Id" uuid PRIMARY KEY) ON COMMIT DROP;
             TRUNCATE purge_import_sessions;
             INSERT INTO purge_import_sessions SELECT "Id" FROM catalog.import_sessions WHERE "TenantId"={{tenantId}} AND "ConnectionId"={{connectionId}};
@@ -237,7 +238,9 @@ public sealed partial class OperationalDataMaintenanceService
             + await db.AttributeMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
             + await db.AttributeValueMappings.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         var commissionTariffs = await db.CommissionTariffs.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
-        var promotionOffers = await db.PromotionOfferFiles.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
+        // The uploaded files of the store: promotion offers and Trendyol ad reports.
+        var promotionOffers = await db.PromotionOfferFiles.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken)
+            + await db.AdReportFiles.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId, cancellationToken);
         var jobs = await db.IntegrationJobs.CountAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType != MarketplaceJobTypes.ConnectionFullReset, cancellationToken);
         var job = await db.IntegrationJobs.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.JobType == MarketplaceJobTypes.ConnectionFullReset)
