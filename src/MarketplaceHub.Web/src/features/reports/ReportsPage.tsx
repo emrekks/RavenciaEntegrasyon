@@ -2316,7 +2316,7 @@ function PayoutsReport({ platforms: pagePlatforms }: { platforms: string[] | nul
   const covered = platforms.length ? platforms : data?.platforms.map(item => item.platformCode) ?? []
   const payoutRules = covered.map(code => payoutRuleText[code]).filter(Boolean).join(' ')
   const items: Kpi[] = [
-    { key: 'expected', label: 'Toplam Güncel Bakiye', value: balance, format: formatTl, icon: 'wallet', note: picked ? regionLabels[picked.region] : undefined,
+    { key: 'expected', label: 'Toplam Güncel Bakiye', value: balance, format: formatTl, icon: 'wallet', note: picked ? regionLabels[picked.region] : `${formatCount(data?.expectedRecords ?? 0)} kayıt`,
       tip: `Teslim edilmiş, henüz ödenmemiş siparişlerin net hakedişi (komisyon düşülmüş), bekleyen kesintiler düşülerek.\n${formatCount(picked?.records ?? data?.expectedRecords ?? 0)} kayıt.${covered.includes('TRENDYOL') ? " Trendyol'unki, Trendyol'un Toplam Güncel Bakiye'siyle aynı hesap (4 Kasım 2026'da kuruşu kuruşuna eşleşti)." : ''} Henüz kesilmemiş kesinti faturaları dahil değildir.` },
     { key: 'pending', label: 'Teslim Bekleyen Sipariş', value: pendingDelivery, format: formatTl, icon: 'truck',
       note: pendingOrders > 0 ? `${formatCount(pendingOrders)} sipariş` : 'Yok',
