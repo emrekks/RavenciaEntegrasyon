@@ -393,25 +393,32 @@ describe('JobsPage platform filter', () => {
 })
 
 describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
-  it('shows the sending health per connection, its explanation behind the help mark, and keeps the job list unread', async () => {
+  it('folds the sending health into the Entegrasyon Durumu row: one value per cell, details in tooltips, the stop in its header', async () => {
     await renderPage('/jobs?kategori=siparis')
     const jobReads = pageRequests().length
     const tab = Array.from(container.querySelectorAll<HTMLButtonElement>('[aria-label="İşlem Takibi görünümü"] [role="tab"]')).find(item => item.textContent === 'API Sağlık')!
     await act(async () => { tab.click() })
-    for (let tick = 0; tick < 200 && !container.querySelector('.psm-row:not(.is-head)'); tick++) await settle()
+    for (let tick = 0; tick < 200 && !container.querySelector('.rr-mxt tbody tr td[data-l="Otomatik Yazma"] .psm-chip'); tick++) await settle()
 
     expect(currentSearch).toBe('?kategori=siparis&sekme=api-saglik')
-    expect(container.querySelector('#psm-title')!.textContent).toContain('Fiyat ve Stok Gönderimi')
-    expect(container.querySelector('.psm-head p')).toBeNull()
-    const row = container.querySelector('.psm-row:not(.is-head)')!
-    expect(row.textContent).toContain('Ravencia Trendyol')
-    // The platform shows as its logo; a name that already says it is not followed by the platform name again.
-    expect(row.querySelector('img.psm-logo')).not.toBeNull()
-    expect(row.querySelector('.psm-conn small')).toBeNull()
-    expect(row.querySelector('[data-label="Son Başarılı"] time')!.textContent).toBe('1 sa önce')
-    expect(row.querySelector('[data-label="Kuyruk"]')!.className).toContain('is-warn')
-    expect(row.querySelector('[data-label="Başarısız"]')!.className).toContain('is-muted')
-    expect(container.querySelector('.psm-summary')!.textContent).toContain('Tümü Açık')
+    // The lower panel is gone: one table.
+    expect(container.querySelector('.psm-panel, .psm-table')).toBeNull()
+    const panel = container.querySelector('.api-health .rr-panel')!
+    expect(Array.from(panel.querySelectorAll('thead th')).map(item => item.textContent)).toEqual(['Pazar Yeri', 'Sipariş', 'Ürün', 'Stok', 'Fiyat', 'İade', 'Fatura', 'Webhook', 'Otomatik Yazma', 'Sorun', ''])
+    const row = panel.querySelector('tbody tr')!
+    const write = row.querySelector('[data-l="Otomatik Yazma"] .psm-chip')!
+    expect(write.textContent).toBe('Açık')
+    expect(write.getAttribute('title')).toContain('Kuyruk: 2')
+    expect(write.getAttribute('title')).toContain('Son başarılı gönderim: 1 sa önce')
+    // A zero problem count shows nothing; the order source sits in the Webhook tooltip.
+    expect(row.querySelector('[data-l="Sorun"]')!.textContent).toBe('')
+    expect(row.querySelector('[data-l="Webhook"] .rr-mx')!.getAttribute('title')).toContain('yedek okuma 15 dakikada bir')
+    expect(row.querySelectorAll('td small').length).toBe(1)
+    // The emergency stop moved to the table's header and keeps its confirmation.
+    const stop = panel.querySelector<HTMLButtonElement>('.rr-panel-h button.psm-stop')!
+    expect(stop.textContent).toBe('Tüm Otomatik Yazmaları Durdur')
+    expect(stop.disabled).toBe(false)
+    expect(container.querySelector('.rr-mx-notice')).toBeNull()
     expect(container.querySelector('.jobs-category-segment, [aria-label="İşlem kategorileri"]')).toBeNull()
     expect(pageRequests().length).toBe(jobReads)
   })
@@ -432,8 +439,6 @@ describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
     expect(cards[0].className).toContain('rr-warn')
     expect(cards[1].className).toBe('rr-opcard')
     expect(cards[2].className).toContain('rr-bad')
-    // The price and stock panel stays under them.
-    expect(container.querySelector('.api-health > .psm-panel')).not.toBeNull()
   })
 })
 

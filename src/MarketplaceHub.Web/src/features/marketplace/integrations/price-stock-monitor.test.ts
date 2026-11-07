@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { automaticWritesBaselineMessage, automaticWritesBaselineWarning, orderSourceState, priceStockMetricTone, priceStockMonitorSummary, priceStockNeedsAttention, priceStockProblemSignature, priceStockWriteState, relativeAgeText, type PriceStockConnectionMonitor } from './integration-helpers'
+import { statusExtras } from './PriceStockMonitorPanel'
+import { automaticWritesBaselineMessage, automaticWritesBaselineWarning, orderSourceHint, orderSourceState, priceStockMetricTone, priceStockMonitorSummary, priceStockNeedsAttention, priceStockProblemSignature, priceStockWriteState, relativeAgeText, type PriceStockConnectionMonitor } from './integration-helpers'
 
 function connection(overrides: Partial<PriceStockConnectionMonitor> = {}): PriceStockConnectionMonitor {
   return {
@@ -74,6 +75,24 @@ describe('price/stock monitor helpers', () => {
     expect(orderSourceState({ orderSource: 'POLLING', orderReadIntervalSeconds: 120 })).toEqual({ label: 'Düzenli Okuma', detail: 'Her 2 dk', tone: 'off' })
     expect(orderSourceState({ orderSource: 'POLLING', orderReadIntervalSeconds: null }).detail).toBe('Sipariş okuması kapalı')
     expect(orderSourceState({ orderSource: 'POLLING', orderReadIntervalSeconds: 90 }).detail).toBe('Her 90 sn')
+  })
+
+  it('folds the counts into one problem marker whose tooltip keeps every number; a clean row has none', () => {
+    expect(statusExtras(connection()).problem).toBeNull()
+    expect(statusExtras(connection({ queuedJobs: 4 })).attention).toBe(false)
+    const lost = statusExtras(connection({ notFoundLinks: 48, failedPushes7d: 1, manualReviewPushes: 2, invalidOffers: 3 }))
+    expect(lost.problem).toMatchObject({ text: '54', tone: 'bad' })
+    expect(lost.problem!.title).toContain('1 başarısız gönderim · 2 kısmi / inceleme bekliyor · 3 gönderilemeyen teklif')
+    expect(lost.problem!.title).toContain('48 kayıp ilan: 48 ilan pazaryerinde bulunamadı · 0 reddedildi')
+    expect(statusExtras(connection({ notFoundLinks: 48 })).problem).toMatchObject({ text: '48', tone: 'warn' })
+    expect(statusExtras(connection()).write).toMatchObject({ label: 'Kapalı', tone: 'off' })
+  })
+
+  it('keeps the order-source details in a tooltip sentence', () => {
+    const now = Date.parse('2026-11-07T12:00:00Z')
+    expect(orderSourceHint({ orderSource: 'WEBHOOK', orderReadIntervalSeconds: 480, lastNotificationAt: '2026-11-07T11:00:00Z' }, now)).toBe('Yeni siparişler bildirimle gelir · yedek okuma 8 dakikada bir · son bildirim 1 saat önce')
+    expect(orderSourceHint({ orderSource: 'POLLING', orderReadIntervalSeconds: 120, lastNotificationAt: null }, now)).toBe('Bu bağlantıda bildirim yok · siparişler 2 dakikada bir okunuyor')
+    expect(orderSourceHint({ orderSource: undefined as never, orderReadIntervalSeconds: null, lastNotificationAt: null }, now)).toBe('Sipariş kaynağı bildirilmedi.')
   })
 
   it('warns that changes made while writes were off are not sent', () => {

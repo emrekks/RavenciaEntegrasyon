@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { CardBackgroundIcon, type CardIconName, type CardTone } from '../../shared/components/CardBackgroundIcon'
 import { RrIcon } from '../marketplace/returns-ui'
 import { dashboardBootstrapQuery, IntegrationStatusPanel, knownCount, useIntegrationHealth } from '../dashboard/IntegrationStatusPanel'
-import { PriceStockMonitorPanel } from '../marketplace/integrations/PriceStockMonitorPanel'
+import { EmergencyStopButton, usePriceStockMonitor } from '../marketplace/integrations/PriceStockMonitorPanel'
 import type { IntegrationFeedback } from '../marketplace/shared'
 import './api-health.css'
 
@@ -23,11 +23,12 @@ export function apiHealthStats(attention: number | null, recentJobs: number | nu
 }
 
 // İşlem Takibi › API Sağlık: Genel Bakış's figure cards as the summary, Genel Bakış's own Entegrasyon Durumu panel,
-// then the price and stock sending panel. Each part is the shared one, so the two pages never drift apart.
+// with the automatic price/stock write state and sending problems folded into its rows. Each part is the shared one, so the two pages never drift apart.
 export function ApiHealthView({ onFeedback }: { onFeedback: (feedback: IntegrationFeedback) => void }) {
   const integration = useIntegrationHealth()
   const bootstrap = useQuery(dashboardBootstrapQuery)
   const metrics = bootstrap.data?.metrics
+  const monitor = usePriceStockMonitor()
   const stats = apiHealthStats(integration.matrix.isLoading || integration.matrix.isError ? null : integration.attention, knownCount(bootstrap.isLoading, metrics?.recentJobCount), knownCount(bootstrap.isLoading, metrics?.deadJobCount), knownCount(bootstrap.isLoading, metrics?.manualReviewJobCount))
   return <div className="api-health">
     <div className="rr rr-dashboard api-health-rr">
@@ -38,8 +39,7 @@ export function ApiHealthView({ onFeedback }: { onFeedback: (feedback: Integrati
           return stat.to ? <Link key={stat.key} className={className} to={stat.to}>{body}</Link> : <div key={stat.key} className={className}>{body}</div>
         })}
       </div></section>
-      <IntegrationStatusPanel integration={integration} />
+      <IntegrationStatusPanel integration={integration} extras={monitor.extras} headerAction={<EmergencyStopButton anyOpen={monitor.anyOpen} onFeedback={onFeedback} />} notice={monitor.problemConnections ? `${monitor.problemConnections} bağlantıda sorunlu fiyat/stok gönderimi var; ayrıntı Sorun hücresinin ipucunda.` : null} />
     </div>
-    <PriceStockMonitorPanel onFeedback={onFeedback} />
   </div>
 }

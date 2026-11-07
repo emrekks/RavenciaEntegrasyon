@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { backgroundPollHeaders, hubApi, loadAllPages } from '../../shared/api'
@@ -13,6 +14,13 @@ import './dashboard-sade.css'
 // 24-hour job counts. Genel Bakış and İşlem Takibi › API Sağlık draw the same panel from the same queries.
 
 export type DashboardMetrics = { pendingOrders: number; lateOrders: number; pendingReturns: number; pendingByConnection?: Record<string, number>; lateByConnection?: Record<string, number>; pendingReturnsByConnection?: Record<string, number>; pendingUnitsByConnection?: Record<string, number> | null; deadJobCount?: number; manualReviewJobCount?: number; recentJobCount?: number }
+/** What API Sağlık adds to a store's row: the automatic price/stock write state, a problem count and the order-source note (all as tooltips). */
+export type StatusExtras = {
+  write: { label: string; tone: 'on' | 'partial' | 'off'; title: string }
+  problem: { text: string; tone: 'warn' | 'bad'; title: string } | null
+  sourceHint: string
+  attention: boolean
+}
 export type MatrixCell = { state: 'ok' | 'warn' | 'bad' | 'off'; lastSuccessAt: string | null; lastProblemAt: string | null }
 export type MatrixRow = { connectionId: string; platformCode: string; displayName: string; externalStoreId: string; status: string; cells: Record<string, MatrixCell>; issue: string | null }
 
@@ -84,18 +92,21 @@ export function healthLink({ row, auth, webhook }: IntegrationHealth['health'][n
   return row.issue || Object.values(row.cells).some(cell => cell.state === 'bad' || cell.state === 'warn') ? matrixJobsLink(row.platformCode) : null
 }
 
-export function IntegrationStatusPanel({ integration }: { integration?: IntegrationHealth }) {
+export function IntegrationStatusPanel({ integration, extras, headerAction, notice }: { integration?: IntegrationHealth; extras?: Record<string, StatusExtras>; headerAction?: ReactNode; notice?: string | null }) {
   const own = useIntegrationHealth()
   const { matrix, rows, health, attention } = integration ?? own
   const bootstrap = useQuery(dashboardBootstrapQuery)
   const metrics = bootstrap.data?.metrics
   const loadingValue = (value: number | undefined) => { const known = knownCount(bootstrap.isLoading, value); return known === null ? '—' : known.toLocaleString('tr-TR') }
-  return <section className="rr-panel"><div className="rr-panel-h"><div><h2>Entegrasyon Durumu</h2><p>Pazaryerleriyle bağlantının son 7 günü</p></div>{matrix.isLoading ? <span className="rr-hpill">Kontrol ediliyor…</span> : <span className={`rr-hpill${attention ? ' rr-attn' : ''}`}><InvoiceGlyph kind={attention ? 'waiting' : 'done'} />{attention ? `${attention} konu dikkatinizi bekliyor` : 'Her şey yolunda'}</span>}</div>
-    <div className="rr-mxwrap"><table className="rr-mxt"><thead><tr><th>Pazar Yeri</th>{DATA_KEYS.map(([, label]) => <th key={label}>{label}</th>)}<th>Webhook</th><th /></tr></thead><tbody>
-      {!rows.length && <tr><td colSpan={DATA_KEYS.length + 3}><span className="rr-lead">{matrix.isLoading ? 'Bağlantılar yükleniyor…' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
-      {health.map(item => { const { row, auth, webhook, attention: rowAttention } = item; const link = auth || row.issue || webhook.tone === 'bad' || webhook.tone === 'warn' ? healthLink(item) : null; return <tr key={row.connectionId} className={rowAttention ? 'rr-attn' : undefined}><td><span className="rr-mx-nm"><RrLogo code={row.platformCode} /><span><b>{row.displayName}</b><small className={auth || row.issue ? 'rr-attn' : undefined} title={auth?.action ?? row.issue ?? undefined}>{auth?.title ?? row.issue ?? storeLabel(row)}</small></span></span></td>
+  return <section className="rr-panel"><div className="rr-panel-h"><div><h2>Entegrasyon Durumu</h2><p>Pazaryerleriyle bağlantının son 7 günü</p></div>{matrix.isLoading ? <span className="rr-hpill">Kontrol ediliyor…</span> : <span className={`rr-hpill${attention ? ' rr-attn' : ''}`}><InvoiceGlyph kind={attention ? 'waiting' : 'done'} />{attention ? `${attention} konu dikkatinizi bekliyor` : 'Her şey yolunda'}</span>}{headerAction}</div>
+    {notice ? <p className="rr-mx-notice" role="status">{notice}</p> : null}
+    <div className="rr-mxwrap"><table className="rr-mxt"><thead><tr><th>Pazar Yeri</th>{DATA_KEYS.map(([, label]) => <th key={label}>{label}</th>)}<th>Webhook</th>{extras ? <><th>Otomatik Yazma</th><th>Sorun</th></> : null}<th /></tr></thead><tbody>
+      {!rows.length && <tr><td colSpan={DATA_KEYS.length + 3 + (extras ? 2 : 0)}><span className="rr-lead">{matrix.isLoading ? 'Bağlantılar yükleniyor…' : 'Aktif pazar yeri bağlantısı bulunmuyor.'}</span></td></tr>}
+      {health.map(item => { const { row, auth, webhook, attention: rowAttention } = item; const extra = extras?.[row.connectionId]; const link = auth || row.issue || webhook.tone === 'bad' || webhook.tone === 'warn' ? healthLink(item) : null; return <tr key={row.connectionId} className={rowAttention || extra?.attention ? 'rr-attn' : undefined}><td><span className="rr-mx-nm"><RrLogo code={row.platformCode} /><span><b>{row.displayName}</b><small className={auth || row.issue ? 'rr-attn' : undefined} title={auth?.action ?? row.issue ?? undefined}>{auth?.title ?? row.issue ?? storeLabel(row)}</small></span></span></td>
         {DATA_KEYS.map(([key, label]) => { const cell = row.cells[key] ?? { state: 'off', lastSuccessAt: null, lastProblemAt: null }; return <td key={key} data-l={label}><span className={`rr-mx rr-${cell.state}`} title={`${label} · ${CELL_STATE[cell.state]}`}><i />{matrixCellText(cell)}</span></td> })}
-        <td data-l="Webhook"><span className={`rr-mx rr-${webhook.tone}`} title={webhook.title}><i />{webhook.text}</span></td>
+        <td data-l="Webhook"><span className={`rr-mx rr-${webhook.tone}`} title={extra ? `${webhook.title}\n${extra.sourceHint}` : webhook.title}><i />{webhook.text}</span></td>
+        {extras ? <><td data-l="Otomatik Yazma">{extra ? <span className={`psm-chip is-write-${extra.write.tone}`} title={extra.write.title}><i aria-hidden="true" />{extra.write.label}</span> : <span className="rr-mx rr-off">—</span>}</td>
+          <td data-l="Sorun">{extra?.problem ? <span className={`rr-mx rr-${extra.problem.tone}`} title={extra.problem.title}><i />{extra.problem.text}</span> : null}</td></> : null}
         <td className="rr-mx-act">{link && <Link className="rr-btn rr-link" to={link}>İncele</Link>}</td></tr> })}
     </tbody></table></div>
     <div className="rr-mx-foot"><span>Son 24 saatte <b className="rr-num">{loadingValue(metrics?.recentJobCount)}</b> istek · Açıkta kalan: <Link className="rr-mx-foot-link" to="/jobs?statu=DEAD&aralik=tum" title="Deneme hakkı dolan işler; İşlem Takibi’nde tüm zamanlarla açılır"><b className="rr-num">{loadingValue(metrics?.deadJobCount)}</b> tamamlanamayan</Link> · <Link className="rr-mx-foot-link" to="/jobs?statu=MANUAL_REVIEW&aralik=tum" title="Kararınızı bekleyen işler; İşlem Takibi’nde tüm zamanlarla açılır"><b className="rr-num">{loadingValue(metrics?.manualReviewJobCount)}</b> karar bekleyen iş</Link></span><span className="rr-legend"><span><i className="rr-mx-l rr-ok" />Güncel</span><span><i className="rr-mx-l rr-warn" />Gecikiyor</span><span><i className="rr-mx-l rr-bad" />Hata Var</span><span><i className="rr-mx-l rr-off" />İşlem Yok</span></span></div>

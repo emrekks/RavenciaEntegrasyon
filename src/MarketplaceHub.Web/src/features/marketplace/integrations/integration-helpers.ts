@@ -52,6 +52,24 @@ export function orderSourceState(row: Pick<PriceStockConnectionMonitor, 'orderSo
   return { label: 'Bilinmiyor', detail: null, tone: 'off' }
 }
 
+function cadenceLong(seconds: number | null | undefined) {
+  if (seconds == null) return null
+  return seconds % 60 === 0 ? `${seconds / 60} dakikada bir` : `${seconds} saniyede bir`
+}
+
+/** The details the order-source cell keeps out of sight: where orders come from, the read cadence, the last notification. */
+export function orderSourceHint(row: Pick<PriceStockConnectionMonitor, 'orderSource' | 'orderReadIntervalSeconds' | 'lastNotificationAt'>, now = Date.now()): string {
+  const cadence = cadenceLong(row.orderReadIntervalSeconds)
+  const age = relativeAgeText(row.lastNotificationAt, now)?.replace(/ dk önce$/, ' dakika önce').replace(/ sa önce$/, ' saat önce').toLocaleLowerCase('tr-TR')
+  const parts: string[] = []
+  if (row.orderSource === 'WEBHOOK') parts.push('Yeni siparişler bildirimle gelir', cadence ? `yedek okuma ${cadence}` : '')
+  else if (row.orderSource === 'WEBHOOK_FALLBACK') parts.push('Pazaryeri bildirimleri sağlıklı görünmüyor', cadence ? `siparişler ${cadence} okunuyor` : 'sipariş okuması kapalı')
+  else if (row.orderSource === 'POLLING') parts.push('Bu bağlantıda bildirim yok', cadence ? `siparişler ${cadence} okunuyor` : 'sipariş okuması kapalı')
+  else return 'Sipariş kaynağı bildirilmedi.'
+  if (age) parts.push(`son bildirim ${age}`)
+  return parts.filter(Boolean).join(' · ')
+}
+
 export type PriceStockMonitor = { generatedAt: string; connections: PriceStockConnectionMonitor[] }
 
 /** How a count of the monitor reads: zero is muted, a failure is bad, anything else waiting or held back is a warning. */
