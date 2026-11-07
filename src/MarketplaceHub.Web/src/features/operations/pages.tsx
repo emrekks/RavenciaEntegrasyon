@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
 import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
-import { PlatformSquareMark } from '../../shared/platform-square-mark'
+import { RrLogo, RrPageSize } from '../marketplace/returns-ui'
+import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { Button, Pagination, Tabs, TitleHint, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
@@ -17,7 +18,7 @@ import type { JobVariantResults } from '../catalog/product-editor/PublicationJob
 import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { isJobInTimeRange, jobTimeRanges, timeRangeLabel, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
+import { isJobInTimeRange, jobTimeRanges, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
 import { jobPageSizes, jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState, type JobsMainTab, type JobStatusChip, type JobsViewState } from './jobs-url-state'
 import type { IntegrationFeedback } from '../marketplace/shared'
@@ -39,7 +40,6 @@ import { formatPackageLabel } from '../../shared/package-label'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { jobAttemptDuration } from './job-duration'
 import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
-import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
 import { JobStateGlyph } from './job-state-glyph'
 import { useTabSlide } from '../../shared/tab-slide'
 
@@ -164,15 +164,11 @@ function formatOptionalJobTime(value: string | null) {
 
 type JobTimeRange = JobListTimeRange
 
-type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh' | 'search' | JobTypeIconName
+type JobsIconName = 'refresh' | JobTypeIconName
 
 function JobsIcon({ name }: { name: JobsIconName }) {
   const iconNames: Record<JobsIconName, UiIconName> = {
-    calendar: 'calendar',
-    'chevron-down': 'chevronDown',
-    filter: 'listSortAscending',
     refresh: 'refresh',
-    search: 'search',
     price: 'tag',
     order: 'orders',
     invoice: 'invoice',
@@ -372,17 +368,16 @@ function JobCategorySegment({ items: givenItems, value, onChange }: { items: Arr
 
 export function JobsPage({ me }: { me: Me }) {
   const client = useQueryClient()
-  const [filterOpen, setFilterOpen] = useState(false)
-  const [timeRangeOpen, setTimeRangeOpen] = useState(false)
-  const [logHeadingSlot, setLogHeadingSlot] = useState<HTMLDivElement | null>(null)
   // Filters and the page live in the address (jobs-url-state.ts): Back, a refresh or a link opens the same view.
   // ?durum=hata opens the list with the error filter on (the overview's İncele link uses it); ?platform=trendyol keeps
-  // the platform, which the server applies to the list and the counts.
+  // the platforms (?platform=trendyol,n11), which the server applies to the list and the counts.
   const [searchParams, setSearchParams] = useSearchParams()
   const view = readJobsViewState(searchParams)
   const { category, direction, status, search, timeRange, pageSize, page: pageNumber } = view
   const statusChips = view.chips
-  const platform = jobPlatformFromSearch(searchParams.get('platform'))
+  const platforms = jobPlatformsFromSearch(searchParams.get('platform'))
+  // The server's comma list, or null for every platform; it also keys the list and the counts.
+  const platform = platforms.length ? platforms.join(',') : null
   const updateView = (patch: Partial<JobsViewState>) => setSearchParams(current => writeJobsViewState(current, patch), { replace: true })
   // Three main tabs sit above the page body: İş Takibi (the job list with its category tabs), Loglar (the price/stock
   // send log) and API Sağlık (the price/stock sending health per connection, with the emergency stop). Going back to İş
@@ -399,17 +394,21 @@ export function JobsPage({ me }: { me: Me }) {
   const setPageSize = (next: number) => updateView({ pageSize: next })
   const setPageNumber = (next: number | ((current: number) => number)) => updateView({ page: typeof next === 'function' ? next(pageNumber) : next })
   const setStatusChips = (next: (current: JobStatusChip[]) => JobStatusChip[]) => updateView({ chips: next(statusChips) })
-  const setPlatform = (code: string | null) => setSearchParams(current => {
+  const withPlatforms = (current: URLSearchParams, codes: readonly string[]) => {
     const next = new URLSearchParams(current)
-    if (code) next.set('platform', code.toLowerCase())
+    if (codes.length) next.set('platform', codes.map(code => code.toLowerCase()).join(','))
     else next.delete('platform')
     next.delete('sayfa')
     return next
-  }, { replace: true })
+  }
+  const setPlatforms = (codes: string[]) => setSearchParams(current => withPlatforms(current, codes), { replace: true })
+  // Temizle: the card's fields back to their defaults (the status counts above the list stay as they are).
+  const clearFilters = () => setSearchParams(current => withPlatforms(writeJobsViewState(current, { direction: '', status: '', search: '', timeRange: '24h' }), []), { replace: true })
   const connections = useQuery({ queryKey: ['connections', 'job-platforms'], queryFn: () => loadAllPages<{ platformCode: string }>('/connections'), staleTime: 60_000 })
-  const platformOptions = useMemo(() => jobPlatformOptions((connections.data?.items ?? []).map(connection => connection.platformCode), platform), [connections.data, platform])
-  useDismissable(filterOpen, [], () => setFilterOpen(false), { isInside: insideSelector('.jobs-reference-filter-wrap') })
-  useDismissable(timeRangeOpen, [], () => setTimeRangeOpen(false), { isInside: insideSelector('.jobs-reference-range-wrap') })
+  const connectionPlatforms = connections.data?.items
+  const platformOptions = useMemo(() => jobPlatformOptions((connectionPlatforms ?? []).map(connection => connection.platformCode), platform ? platform.split(',') : []), [connectionPlatforms, platform])
+  const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: platformOptions.map(code => ({ value: code, label: jobPlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions])
+  const cardFilterCount = [platforms.length > 0, Boolean(direction), Boolean(status), timeRange !== '24h'].filter(Boolean).length
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info'; context?: NotificationContext } | null>(null)
   useEffect(() => {
@@ -574,31 +573,19 @@ export function JobsPage({ me }: { me: Me }) {
         <p className="eyebrow">Sistem İzleme</p>
         <h1>İşlem Takibi</h1>
       </div>
-      {!listHidden && <div className="jobs-reference-heading-actions">
-        <div className="jobs-reference-range-wrap">
-          <button type="button" className="jobs-reference-range" aria-expanded={timeRangeOpen} onClick={() => setTimeRangeOpen(value => !value)}><JobsIcon name="calendar" />{timeRangeLabel(timeRange)}<JobsIcon name="chevron-down" /></button>
-          {timeRangeOpen && <div className="jobs-reference-range-menu" role="menu" aria-label="Zaman aralığı">
-            {jobTimeRanges.map(([value, label]) => <button type="button" role="menuitem" className={timeRange === value ? 'active' : ''} key={value} onClick={() => { setTimeRange(value); setTimeRangeOpen(false) }}>{label}</button>)}
-          </div>}
-        </div>
-        <div className="jobs-reference-filter-wrap">
-          <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><JobsIcon name="filter" />Filtrele{direction && <span className="jobs-reference-filter-direction">{direction}</span>}{platform && <span className="jobs-reference-filter-platform"><PlatformSquareMark code={platform} name={jobPlatformLabel(platform)} />{jobPlatformLabel(platform)}</span>}</button>
-          {filterOpen && <div className="jobs-reference-filter-panel" role="dialog" aria-label="İşlem filtreleri">
-            <label className="jobs-reference-filter-platform-field">Platform<span className="jobs-reference-platform-select">{platform && <PlatformSquareMark code={platform} name={jobPlatformLabel(platform)} />}<select aria-label="Platform" value={platform ?? ''} onChange={event => setPlatform(event.target.value || null)}><option value="">Tümü</option>{platformOptions.map(code => <option key={code} value={code}>{jobPlatformLabel(code)}</option>)}</select></span></label>
-            <label>Yön<select aria-label="Yön" value={direction} onChange={event => setDirection(event.target.value as '' | JobDirection)}><option value="">Tümü</option>{jobDirections.map(item => <option key={item} value={item}>{item}</option>)}</select></label>
-            <label>Durum<select value={status} onChange={event => setStatus(event.target.value as '' | JobStatus)}>{statuses.map(item => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select></label>
-            <label>Sayfa Başına<select aria-label="Sayfa başına işlem" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{jobPageSizes.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-          </div>}
-        </div>
-      </div>}
-      {/* Loglar has the same range and Filtrele buttons, its own: the log view draws them here (they act on the log only). */}
-      {mainTab === 'logs' && <div className="jobs-reference-heading-actions" ref={setLogHeadingSlot} />}
     </div>
     <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İş Takibi') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
     <div key={mainSlide.key} className={`jobs-reference-canvas${mainSlide.className ? ` ${mainSlide.className}` : ''}`}>
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
-      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} headingSlot={logHeadingSlot} /></Suspense>
+      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
         : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} /></Suspense> : <>
+      <OpsFilterCard label="İşlem filtreleri" active={cardFilterCount} clearCount={cardFilterCount + (search.trim() ? 1 : 0)} onClear={clearFilters} onApply={refreshJobs}>
+        <SearchField label="İşlem Ara" ariaLabel="Correlation ID ile işlem ara" placeholder="Correlation ID, iş numarası veya hata kodu" value={search} onChange={setSearch} />
+        <ChoiceField name="Zaman Aralığı" value={timeRange} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => setTimeRange(value as JobTimeRange)} />
+        <FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={platforms} onChange={setPlatforms} emptyText="Bağlı pazaryeri yok." />
+        <ChoiceField name="Yön" allValue="" value={direction} options={[{ value: '', label: 'Tüm Yönler' }, ...jobDirections.map(item => ({ value: item, label: item }))]} onChange={value => setDirection(value as '' | JobDirection)} />
+        <ChoiceField name="Durum" allValue="" value={status} options={statuses} onChange={value => setStatus(value as '' | JobStatus)} />
+      </OpsFilterCard>
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
           <span {...statusChipProps('success')}><JobStateGlyph tone="success" />Başarılı <strong>{successCount.count ?? 0}</strong></span>
@@ -609,7 +596,7 @@ export function JobsPage({ me }: { me: Me }) {
           <span {...statusChipProps('cancelled')}><JobStateGlyph tone="cancelled" />İptal <strong>{statusSummary.cancelled}</strong></span>
         </div>
         <div className="jobs-reference-toolbar-actions">
-          <label className="jobs-reference-search"><JobsIcon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>
+          <span className="rr ops-psize"><RrPageSize value={pageSize} sizes={[...jobPageSizes]} onChange={setPageSize} /></span>
           <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}><JobsIcon name="refresh" /></button>
         </div>
       </div>

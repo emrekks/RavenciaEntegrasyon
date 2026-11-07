@@ -1,0 +1,33 @@
+/* İşlem Takibi's filter card (filter-fields.tsx). Everything else (fields, triggers, popovers, buttons, the phone sheet)
+   comes from the shared rr- card of returns-sade.css; this file only lays the fields out. */
+
+/* One row when the card is wide enough: the search, the four (is-wide: five) fields, Temizle and Filtrele. */
+main .rr.rr.ops-filters .rr-filters.ops-filter-grid { grid-template-columns: minmax(200px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto; }
+main .rr.rr.ops-filters .rr-filters.ops-filter-grid.is-wide { grid-template-columns: minmax(200px, 1.4fr) repeat(5, minmax(130px, 1fr)) auto; }
+main .rr.rr.ops-filters .rr-filters.ops-filter-grid > :is(.rr-search, .rr-fbtns) { grid-column: auto; }
+main .rr.rr.ops-filters .rr-filters.ops-filter-grid > .rr-fbtns { align-self: end; justify-content: flex-end; }
+/* Narrower cards: four columns, the search across two and the buttons under the last column. */
+@container fshell (max-width: 1060px) {
+  main .rr.rr.ops-filters .rr-filters.ops-filter-grid:not(.is-wide) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  main .rr.rr.ops-filters .rr-filters.ops-filter-grid:not(.is-wide) > .rr-search { grid-column: span 2; }
+  main .rr.rr.ops-filters .rr-filters.ops-filter-grid:not(.is-wide) > .rr-fbtns { grid-column: -2 / -1; }
+}
+@container fshell (max-width: 1240px) {
+  main .rr.rr.ops-filters .rr-filters.ops-filter-grid.is-wide { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  main .rr.rr.ops-filters .rr-filters.ops-filter-grid.is-wide > .rr-search { grid-column: span 2; }
+  main .rr.rr.ops-filters .rr-filters.ops-filter-grid.is-wide > .rr-fbtns { grid-column: -2 / -1; }
+}
+@container fshell (max-width: 620px) {
+  main .rr.rr.ops-filters .rr-filters.ops-filter-grid.ops-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  main .rr.rr.ops-filters .rr-filters.ops-filter-grid.ops-filter-grid > :is(.rr-search, .rr-fbtns) { grid-column: 1 / -1; }
+}
+
+/* Menus: a group heading ("Sorunlu") over its values, which sit indented under it; a partly picked group shows a dash. */
+main .rr.rr.ops-filters .ops-opt-group { font-weight: 600; }
+main .rr.rr.ops-filters .ops-opt-member { padding-left: 22px; }
+main .rr.rr.ops-filters .ops-pop-empty { padding: 6px 10px; color: var(--rr-muted); font-size: 13px; }
+main .rr.rr.ops-filters .rr-cb:indeterminate { background: var(--rr-primary-soft); border-color: var(--rr-violet-line); }
+main .rr.rr.ops-filters .rr-cb:indeterminate::after { content: ""; position: absolute; left: 3.5px; top: 6.2px; width: 7px; height: 1.8px; background: var(--rr-violet); border: 0; transform: none; }
+
+/* Sayfa Başına beside Yenile, as in the head of the orders table. */
+main .rr.rr.ops-psize { display: inline-flex; }
