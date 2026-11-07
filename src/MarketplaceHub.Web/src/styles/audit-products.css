@@ -39,7 +39,7 @@
 
 /* İçe / Dışa Aktar window: the field groups are two per row, so "Ürün Bilgileri" shows its three checkboxes on one line. */
 :root:root:root body .pci-modal .pci-groups { grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
-:root:root:root body .pci-modal .pci-group .pci-field-list { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+:root:root:root body .pci-modal .pci-group .pci-field-list { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
 
 /* Promosyon plan table: the product column was 176 px (name on 5 lines, code on 2) and Güncel Fiyat 88 px (a price range
    on 2 lines) while the band columns took all the extra width. Where the table has room (a window of 1400 px and up) the
@@ -47,6 +47,10 @@
 @media (min-width: 1400px) {
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { width: 220px; min-width: 220px; max-width: 220px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-now-col { width: 136px; min-width: 136px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { white-space: nowrap; }
+}
+@media (min-width: 761px) and (max-width: 1399px) {
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-now-col { width: 128px; min-width: 128px; }
   :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { white-space: nowrap; }
 }
 @media (min-width: 1700px) {
@@ -70,3 +74,8 @@
   font-size: 12.5px; font-weight: 500; cursor: pointer;
 }
 :root:root body .date-range-picker-popover :is(header, footer) > button:hover { background: var(--rv-color-surface-raised); }
+
+/* Variant barcode menu: its Üret / Yapıştır / Temizle segments are 32 px at 12.5px/500 (30 px / 600) and its submit
+   button is a normal 36 px primary (it was 58 px). */
+:root:root:root body .variant-code-menu-tabs > button { min-height: 32px; height: 32px; font-size: 12.5px; font-weight: 500; }
+:root:root:root body .variant-code-menu-submit { min-height: 36px; height: 36px; padding: 0 14px; }
