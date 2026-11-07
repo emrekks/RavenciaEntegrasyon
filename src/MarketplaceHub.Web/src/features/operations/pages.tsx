@@ -2,7 +2,8 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router'
 import { hubApi, hubPoll, loadAllPages, type Me } from '../../shared/api'
-import { PlatformSquareMark } from '../../shared/platform-square-mark'
+import { RrLogo, RrPageSize } from '../marketplace/returns-ui'
+import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { Button, Pagination, Tabs, TitleHint, UiIcon, type UiIconName, DialogSurface } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
@@ -10,10 +11,13 @@ import { NoticeToast } from '../../shared/components/NoticeToast'
 import { appendNotification, notificationError, notificationLinks, platformCodeFromName, type NotificationContext } from '../../shared/notifications'
 import { statusLabel } from '../../shared/status-labels'
 import { fallbackJobChange, jobRelatedLinks, type JobChange } from './job-change'
-import { jobPresentation, jobSubtitle, jobTitle, jobTypeCode, type JobTypeIconName } from './job-presentation'
+import { isProductLevelJob, type JobWriteSummary } from './job-write-summary'
+import { JobWriteDetail } from './JobWriteDetail'
+import type { JobVariantResults } from '../catalog/product-editor/PublicationJobVariants'
+import { jobDirections, jobPresentation, jobSubtitle, jobTitle, jobTypeCode, jobTypesForDirection, type JobDirection, type JobTypeIconName } from './job-presentation'
 import { canOfferOneTimeInvoiceDelivery } from './one-time-invoice-delivery-visibility'
 import { oneTimeInvoiceDeliveryIdempotencyKey } from './one-time-invoice-delivery-idempotency'
-import { isJobInTimeRange, jobTimeRanges, timeRangeLabel, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
+import { isJobInTimeRange, jobTimeRanges, jobCountsQueryString, jobDetailPollInterval, jobListHeadPollInterval, jobListPollInterval, jobListPollMs, jobPageQueryString, jobPlatformsFromSearch, jobPlatformOptions, shouldLoadTowardsPage, withFreshFirstPage, type JobListTimeRange } from './job-list-query'
 import { jobCategoryMatcher, jobCategoryTabs, jobTypesForCategoryTab, type JobCategory } from './job-categories'
 import { jobPageSizes, jobsMainTab, readJobsViewState, withJobsMainTab, writeJobsViewState, type JobsMainTab, type JobStatusChip, type JobsViewState } from './jobs-url-state'
 import type { IntegrationFeedback } from '../marketplace/shared'
@@ -21,7 +25,7 @@ import type { IntegrationFeedback } from '../marketplace/shared'
 // The logs (Loglar: Ürün Hareketleri and the send log) and the sending health (API Sağlık) load with their own chunks the
 // first time their tab opens.
 const OperationLogs = lazy(() => import('./OperationLogs'))
-const PriceStockMonitorPanel = lazy(() => import('../marketplace/integrations/PriceStockMonitorPanel').then(module => ({ default: module.PriceStockMonitorPanel })))
+const ApiHealthView = lazy(() => import('./ApiHealthView').then(module => ({ default: module.ApiHealthView })))
 
 // E-Faturam is the invoicing provider; every other code is a marketplace.
 const jobPlatformLabel = (code: string) => code === 'TRENDYOL_EFATURAM' ? 'E-Faturam' : marketplacePlatformLabel(code)
@@ -35,7 +39,6 @@ import { formatPackageLabel } from '../../shared/package-label'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { jobAttemptDuration } from './job-duration'
 import { isWaitingJob, jobAttemptOutcome, jobAttemptResultLabel, jobAttemptsText, waitingJobDescription, waitingJobLabel } from './job-waiting'
-import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
 import { JobStateGlyph } from './job-state-glyph'
 import { useTabSlide } from '../../shared/tab-slide'
 
@@ -79,7 +82,7 @@ type JobOrderContext = { orderId: string; orderNumber: string; externalOrderId: 
 type JobInvoiceContext = { invoiceId: string; orderNumber: string; status: string; invoiceType: string; currency: string; payableTotal: number; invoiceNumber: string | null; externalPackageId: string | null }
 type JobScan = { mode: string; label: string; detail: string; window: string | null; plannedIntervalSeconds: number | null; plannedIntervalLabel: string | null; previousScheduledAt: string | null; actualIntervalLabel: string | null }
 type JobFailureReason = { key: string; title: string; description: string; technicalDetail: string; affectedRecords: number; sampleProductIds: string[] }
-type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null; productId?: string | null }
+type JobDetail = { job: JobSummary; attempts: Array<{ attemptNumber: number; startedAt: string; completedAt: string | null; succeeded: boolean; errorCode: string | null; errorSummary: string | null; outcome?: string }>; order: JobOrderContext | null; change: JobChange | null; relatedOrders: JobOrderContext[]; scan: JobScan | null; failureReasons: JobFailureReason[] | null; invoice: JobInvoiceContext | null; productId?: string | null; variantResults?: JobVariantResults | null; write?: JobWriteSummary | null }
 // The job a notice is about: its title ("Pazarama Ürün İşlemi"), number, marketplace and store.
 function jobNotificationContext(job: Pick<JobSummary, 'id' | 'connectionId' | 'jobType' | 'marketplace'>): NotificationContext {
   const title = jobTitle(job.jobType, job.marketplace)
@@ -160,15 +163,11 @@ function formatOptionalJobTime(value: string | null) {
 
 type JobTimeRange = JobListTimeRange
 
-type JobsIconName = 'calendar' | 'chevron-down' | 'filter' | 'refresh' | 'search' | JobTypeIconName
+type JobsIconName = 'refresh' | JobTypeIconName
 
 function JobsIcon({ name }: { name: JobsIconName }) {
   const iconNames: Record<JobsIconName, UiIconName> = {
-    calendar: 'calendar',
-    'chevron-down': 'chevronDown',
-    filter: 'listSortAscending',
     refresh: 'refresh',
-    search: 'search',
     price: 'tag',
     order: 'orders',
     invoice: 'invoice',
@@ -197,8 +196,9 @@ function JobScanSummary({ scan }: { scan: JobScan }) {
   </section>
 }
 
+// A store-wide product or catalog read; a job about one product card (publish, update, archive, approval check) is not.
 function isProductSyncJob(job: JobSummary) {
-  return /PRODUCT|CATALOG/i.test(job.jobType)
+  return /PRODUCT|CATALOG/i.test(job.jobType) && !isProductLevelJob(job.jobType)
 }
 
 function jobProgressPercent(job: JobSummary) {
@@ -319,13 +319,15 @@ function JobDetailDrawer({ selected, detail, selectedIsRunning, elevated, retrya
       // A retry or cancel still on its way locks (and a failed one is reported on) the job it was for only.
       const actionOnThisJob = action.variables?.id === job.id
       const actionPending = action.isPending && actionOnThisJob
+      // A job about one product card shows the product, what each request carried and the answer per variant instead.
+      const productDetail = isProductLevelJob(job.jobType) && Boolean(detail.data.write?.productTitle || detail.data.variantResults)
       return <div className="jobs-reference-drawer-body">
         <JobStatusSummary job={job} />
-        {hasError && <div className="jobs-reference-error-alert"><strong>{job.lastErrorCode ?? 'İşlem hatası'}</strong><span>{job.lastErrorSummary ?? 'İşlem başarısız oldu ancak ayrıntılı hata açıklaması kaydedilmedi.'}</span></div>}
+        {hasError && <div className="jobs-reference-error-alert"><strong>{job.lastErrorSummary ?? 'İşlem tamamlanamadı; nedeni kaydedilmedi.'}</strong>{job.lastErrorCode && <span>Kod: {job.lastErrorCode}</span>}</div>}
         {selectedIsRunning && actionPending && <p className="jobs-reference-cancel-note">Çalışan işlem durduruluyor. Dış API çağrısı tamamlanana kadar durum birkaç saniye daha “Çalışıyor” görünebilir.</p>}
-        <section className="jobs-reference-change-summary" aria-labelledby="job-change-title"><div><span className="jobs-reference-section-kicker">İşlem Özeti</span><h3 id="job-change-title">{change.value}</h3></div><div><strong>{change.label}</strong><p>{change.detail ?? 'İşlem ayrıntısı mevcut.'}</p></div>{relatedLinks.length > 0 && <nav className="jobs-reference-related-links" aria-label="İlgili Kayıtlar">{relatedLinks.map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}</nav>}</section>
+        {productDetail ? <JobWriteDetail write={detail.data.write ?? null} variantResults={detail.data.variantResults ?? null} approvalCheck={job.jobType.toUpperCase() === 'PRODUCT_APPROVAL_RECONCILE'} running={!['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(job.status)} links={relatedLinks} note={detail.data.write?.parts.length ? null : change.detail} /> : <section className="jobs-reference-change-summary" aria-labelledby="job-change-title"><div><span className="jobs-reference-section-kicker">İşlem Özeti</span><h3 id="job-change-title">{change.value}</h3></div><div><strong>{change.label}</strong><p>{change.detail ?? 'İşlem ayrıntısı mevcut.'}</p></div>{relatedLinks.length > 0 && <nav className="jobs-reference-related-links" aria-label="İlgili Kayıtlar">{relatedLinks.map(link => <Link key={link.href} to={link.href}>{link.label}</Link>)}</nav>}</section>}
         {detail.data.invoice && <section className="jobs-reference-order-context" aria-labelledby="job-invoice-context-title"><div><span className="jobs-reference-section-kicker">Fatura Denemesi</span><h3 id="job-invoice-context-title">Sipariş #{detail.data.invoice.orderNumber}</h3></div><div className="jobs-reference-order-facts"><p><small>Fatura Kaydı</small><strong>{detail.data.invoice.invoiceId}</strong></p><p><small>Fatura Durumu</small><strong>{statusLabel(detail.data.invoice.status)}</strong></p><p><small>Fatura Türü</small><strong>{detail.data.invoice.invoiceType}</strong></p><p><small>Fatura Tutarı</small><strong>{formatMoney(detail.data.invoice.payableTotal, detail.data.invoice.currency)}</strong></p>{detail.data.invoice.invoiceNumber && <p><small>Fatura Numarası</small><strong>{detail.data.invoice.invoiceNumber}</strong></p>}{detail.data.invoice.externalPackageId && <p><small>Paket No</small><strong>{formatPackageLabel(detail.data.invoice.externalPackageId)}</strong></p>}</div></section>}
-        <JobProgressSummary job={job} />
+        {!productDetail && <JobProgressSummary job={job} />}
         <JobFailureReasons job={job} reasons={detail.data.failureReasons ?? null} />
         {canSendOneTimeInvoice && invoice && <section className="jobs-reference-order-context jobs-reference-one-time-invoice"><div><span className="jobs-reference-section-kicker">Tek Seferlik Dış İşlem</span><h3>Faturayı Hepsiburada’ya İlet<TitleHint label="Faturayı Hepsiburada’ya İlet">Bu işlem yalnız bu faturayı gönderir; fiyat, stok, sipariş veya iade yazma kapılarını açmaz.</TitleHint></h3><p>Sipariş #{invoice.orderNumber} · Fatura {invoice.invoiceNumber} · Paket {formatPackageLabel(invoice.externalPackageId)}</p>{!oneTimeDeliveryOpen ? <button type="button" disabled={oneTimeInvoiceDelivery.isPending} onClick={() => setOneTimeDeliveryOpen(true)}>Tek Seferlik Gönderimi Hazırla</button> : <form onSubmit={event => { event.preventDefault(); if (!oneTimeDeliveryConfirmed) return; oneTimeInvoiceDelivery.mutate({ id: job.id, confirmed: true, orderNumber: invoice.orderNumber }) }}><p>Hepsiburada canlı ortamındaki bu siparişe mevcut faturanın PDF bağlantısı iletilecek. Belirsiz bir yanıt olursa sistem otomatik tekrar göndermeyecek.</p><label className="check"><input type="checkbox" checked={oneTimeDeliveryConfirmed} onChange={event => setOneTimeDeliveryConfirmed(event.target.checked)} /> Yalnızca #{invoice.orderNumber} siparişine bu faturanın iletilmesini onaylıyorum.</label><div className="job-detail-actions"><button type="submit" disabled={oneTimeInvoiceDelivery.isPending || !oneTimeDeliveryConfirmed}>{oneTimeInvoiceDelivery.isPending ? 'Kuyruğa Alınıyor…' : 'Faturayı Bir Kez İlet'}</button><button type="button" className="secondary" disabled={oneTimeInvoiceDelivery.isPending} onClick={() => { setOneTimeDeliveryOpen(false); setOneTimeDeliveryConfirmed(false) }}>Vazgeç</button></div></form>}{oneTimeInvoiceDelivery.isError && <div role="alert" className="error">Tek seferlik fatura işlemi başlatılamadı. Hata ayrıntısı için işlemi yeniden yükleyin.</div>}</div></section>}
         {detail.data.scan && <JobScanSummary scan={detail.data.scan} />}
@@ -364,17 +366,16 @@ function JobCategorySegment({ items: givenItems, value, onChange }: { items: Arr
 
 export function JobsPage({ me }: { me: Me }) {
   const client = useQueryClient()
-  const [filterOpen, setFilterOpen] = useState(false)
-  const [timeRangeOpen, setTimeRangeOpen] = useState(false)
-  const [logHeadingSlot, setLogHeadingSlot] = useState<HTMLDivElement | null>(null)
   // Filters and the page live in the address (jobs-url-state.ts): Back, a refresh or a link opens the same view.
   // ?durum=hata opens the list with the error filter on (the overview's İncele link uses it); ?platform=trendyol keeps
-  // the platform, which the server applies to the list and the counts.
+  // the platforms (?platform=trendyol,n11), which the server applies to the list and the counts.
   const [searchParams, setSearchParams] = useSearchParams()
   const view = readJobsViewState(searchParams)
-  const { category, status, search, timeRange, pageSize, page: pageNumber } = view
+  const { category, direction, status, search, timeRange, pageSize, page: pageNumber } = view
   const statusChips = view.chips
-  const platform = jobPlatformFromSearch(searchParams.get('platform'))
+  const platforms = jobPlatformsFromSearch(searchParams.get('platform'))
+  // The server's comma list, or null for every platform; it also keys the list and the counts.
+  const platform = platforms.length ? platforms.join(',') : null
   const updateView = (patch: Partial<JobsViewState>) => setSearchParams(current => writeJobsViewState(current, patch), { replace: true })
   // Three main tabs sit above the page body: İş Takibi (the job list with its category tabs), Loglar (the price/stock
   // send log) and API Sağlık (the price/stock sending health per connection, with the emergency stop). Going back to İş
@@ -385,22 +386,27 @@ export function JobsPage({ me }: { me: Me }) {
   const showPanelFeedback = (next: IntegrationFeedback) => setFeedback({ message: next.message, tone: next.kind === 'error' ? 'danger' : next.kind, context: { ...next.context, title: next.title ?? next.context?.title } })
   const setCategory = (next: string) => updateView({ category: next as JobCategory })
   const setStatus = (next: '' | JobStatus) => updateView({ status: next })
+  const setDirection = (next: '' | JobDirection) => updateView({ direction: next })
   const setSearch = (next: string) => updateView({ search: next })
   const setTimeRange = (next: JobTimeRange) => updateView({ timeRange: next })
   const setPageSize = (next: number) => updateView({ pageSize: next })
   const setPageNumber = (next: number | ((current: number) => number)) => updateView({ page: typeof next === 'function' ? next(pageNumber) : next })
   const setStatusChips = (next: (current: JobStatusChip[]) => JobStatusChip[]) => updateView({ chips: next(statusChips) })
-  const setPlatform = (code: string | null) => setSearchParams(current => {
+  const withPlatforms = (current: URLSearchParams, codes: readonly string[]) => {
     const next = new URLSearchParams(current)
-    if (code) next.set('platform', code.toLowerCase())
+    if (codes.length) next.set('platform', codes.map(code => code.toLowerCase()).join(','))
     else next.delete('platform')
     next.delete('sayfa')
     return next
-  }, { replace: true })
+  }
+  const setPlatforms = (codes: string[]) => setSearchParams(current => withPlatforms(current, codes), { replace: true })
+  // Temizle: the card's fields back to their defaults (the status counts above the list stay as they are).
+  const clearFilters = () => setSearchParams(current => withPlatforms(writeJobsViewState(current, { direction: '', status: '', search: '', timeRange: '24h' }), []), { replace: true })
   const connections = useQuery({ queryKey: ['connections', 'job-platforms'], queryFn: () => loadAllPages<{ platformCode: string }>('/connections'), staleTime: 60_000 })
-  const platformOptions = useMemo(() => jobPlatformOptions((connections.data?.items ?? []).map(connection => connection.platformCode), platform), [connections.data, platform])
-  useDismissable(filterOpen, [], () => setFilterOpen(false), { isInside: insideSelector('.jobs-reference-filter-wrap') })
-  useDismissable(timeRangeOpen, [], () => setTimeRangeOpen(false), { isInside: insideSelector('.jobs-reference-range-wrap') })
+  const connectionPlatforms = connections.data?.items
+  const platformOptions = useMemo(() => jobPlatformOptions((connectionPlatforms ?? []).map(connection => connection.platformCode), platform ? platform.split(',') : []), [connectionPlatforms, platform])
+  const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: platformOptions.map(code => ({ value: code, label: jobPlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions])
+  const cardFilterCount = [platforms.length > 0, Boolean(direction), Boolean(status), timeRange !== '24h'].filter(Boolean).length
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<{ message: string; tone: 'success' | 'danger' | 'info'; context?: NotificationContext } | null>(null)
   useEffect(() => {
@@ -415,14 +421,24 @@ export function JobsPage({ me }: { me: Me }) {
   // the loaded list is counted instead.
   const serverCounts = useQuery({
     queryKey: ['jobs', 'counts', timeRange, platform],
+    // Not read while the Loglar or API Sağlık tab is shown (the list itself is off then too).
+    enabled: !listHidden,
     queryFn: () => hubPoll<Array<{ status: JobStatus; jobType: string; count: number }>>(`/jobs/counts${jobCountsQueryString(timeRange, platform)}`),
     refetchInterval: jobListPollMs
   })
   // The tab's job types come from its fixed definition, never from the live counts, so a count refresh that brings a
   // new type cannot change the list key and send the list back to page 1 (G22).
-  const categoryJobTypes = jobTypesForCategoryTab(category)
+  // Okuma / Yazma / Bildirim / Panel İçi narrows the tab's job types further; when no type is left, a type no job has
+  // keeps the server list empty instead of unfiltered.
+  const categoryJobTypes = useMemo(() => {
+    const byCategory = jobTypesForCategoryTab(category)
+    if (!direction) return byCategory
+    const byDirection = jobTypesForDirection(direction)
+    const both = byCategory ? byDirection.filter(type => byCategory.includes(type)) : byDirection
+    return both.length ? both : ['NO_MATCHING_JOB_TYPE']
+  }, [category, direction])
   const list = useInfiniteQuery({
-    queryKey: ['jobs', 'page', serverStatus, timeRange, category, platform],
+    queryKey: ['jobs', 'page', serverStatus, timeRange, category, direction, platform],
     queryFn: context => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, after: context.pageParam, platform })}`),
     initialPageParam: null as string | null,
     getNextPageParam: lastPage => lastPage.hasMore && lastPage.nextCursor ? lastPage.nextCursor : undefined,
@@ -434,14 +450,14 @@ export function JobsPage({ me }: { me: Me }) {
   // With older pages loaded the list itself stops polling; its first page is polled on its own and put in front.
   const loadedServerPages = list.data?.pages.length ?? 0
   const listHead = useQuery({
-    queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, platform],
+    queryKey: ['jobs', 'page-head', serverStatus, timeRange, category, direction, platform],
     queryFn: () => hubPoll<JobPage>(`/jobs/page${jobPageQueryString(serverStatus, timeRange, { jobTypes: categoryJobTypes, platform })}`),
     enabled: loadedServerPages > 1 && !listHidden,
     refetchInterval: jobListHeadPollInterval(loadedServerPages)
   })
   useEffect(() => {
-    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(['jobs', 'page', serverStatus, timeRange, category, platform], current => withFreshFirstPage(current, listHead.data))
-  }, [listHead.data, client, serverStatus, timeRange, category, platform])
+    if (listHead.data) client.setQueryData<InfiniteData<JobPage, string | null>>(['jobs', 'page', serverStatus, timeRange, category, direction, platform], current => withFreshFirstPage(current, listHead.data))
+  }, [listHead.data, client, serverStatus, timeRange, category, direction, platform])
   const detail = useQuery({
     queryKey: ['job', selectedId],
     queryFn: () => hubPoll<JobDetail>(`/jobs/${selectedId}`),
@@ -493,11 +509,12 @@ export function JobsPage({ me }: { me: Me }) {
     return rangeFiltered.filter(job => {
       const matchCategory = categoryMatcher(job.jobType)
       if (!matchCategory) return false
+      if (direction && jobPresentation(job.jobType).direction !== direction) return false
       if (statusChips.length && !statusChips.includes(jobStatusChip(job.status))) return false
       if (!term) return true
       return [job.id, job.jobType, job.status, job.lastErrorCode, job.lastErrorSummary, job.correlationId].some(value => value?.toLocaleLowerCase('tr-TR').includes(term))
     })
-  }, [rangeFiltered, category, search, statusChips])
+  }, [rangeFiltered, category, direction, search, statusChips])
   // A count toggles its filter; several can be on at once and tapping one again takes it off.
   const statusChipProps = (chip: JobStatusChip) => {
     const on = statusChips.includes(chip)
@@ -528,7 +545,10 @@ export function JobsPage({ me }: { me: Me }) {
   const retryable = selected && ['BLOCKED', 'MANUAL_REVIEW', 'DEAD'].includes(selected.status)
   const cancellable = selected && !['SUCCEEDED', 'DEAD', 'CANCELLED'].includes(selected.status)
   const selectedIsRunning = selected?.status === 'LEASED'
-  const countRows = useMemo(() => serverCounts.data ?? rangeFiltered.map(job => ({ status: job.status, jobType: job.jobType, count: 1 })), [serverCounts.data, rangeFiltered])
+  const countRows = useMemo(() => {
+    const rows = serverCounts.data ?? rangeFiltered.map(job => ({ status: job.status, jobType: job.jobType, count: 1 }))
+    return direction ? rows.filter(row => jobPresentation(row.jobType).direction === direction) : rows
+  }, [serverCounts.data, rangeFiltered, direction])
   const statusSummary = useMemo(() => {
     const summary = { success: 0, running: 0, waiting: 0, error: 0, cancelled: 0 }
     for (const row of countRows) summary[jobStatusChip(row.status)] += row.count
@@ -551,30 +571,19 @@ export function JobsPage({ me }: { me: Me }) {
         <p className="eyebrow">Sistem İzleme</p>
         <h1>İşlem Takibi</h1>
       </div>
-      {!listHidden && <div className="jobs-reference-heading-actions">
-        <div className="jobs-reference-range-wrap">
-          <button type="button" className="jobs-reference-range" aria-expanded={timeRangeOpen} onClick={() => setTimeRangeOpen(value => !value)}><JobsIcon name="calendar" />{timeRangeLabel(timeRange)}<JobsIcon name="chevron-down" /></button>
-          {timeRangeOpen && <div className="jobs-reference-range-menu" role="menu" aria-label="Zaman aralığı">
-            {jobTimeRanges.map(([value, label]) => <button type="button" role="menuitem" className={timeRange === value ? 'active' : ''} key={value} onClick={() => { setTimeRange(value); setTimeRangeOpen(false) }}>{label}</button>)}
-          </div>}
-        </div>
-        <div className="jobs-reference-filter-wrap">
-          <button type="button" className="jobs-reference-filter-toggle" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}><JobsIcon name="filter" />Filtrele{platform && <span className="jobs-reference-filter-platform"><PlatformSquareMark code={platform} name={jobPlatformLabel(platform)} />{jobPlatformLabel(platform)}</span>}</button>
-          {filterOpen && <div className="jobs-reference-filter-panel" role="dialog" aria-label="İşlem filtreleri">
-            <label className="jobs-reference-filter-platform-field">Platform<span className="jobs-reference-platform-select">{platform && <PlatformSquareMark code={platform} name={jobPlatformLabel(platform)} />}<select aria-label="Platform" value={platform ?? ''} onChange={event => setPlatform(event.target.value || null)}><option value="">Tümü</option>{platformOptions.map(code => <option key={code} value={code}>{jobPlatformLabel(code)}</option>)}</select></span></label>
-            <label>Durum<select value={status} onChange={event => setStatus(event.target.value as '' | JobStatus)}>{statuses.map(item => <option key={item.value || 'all'} value={item.value}>{item.label}</option>)}</select></label>
-            <label>Sayfa Başına<select aria-label="Sayfa başına işlem" value={pageSize} onChange={event => setPageSize(Number(event.target.value))}>{jobPageSizes.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-          </div>}
-        </div>
-      </div>}
-      {/* Loglar has the same range and Filtrele buttons, its own: the log view draws them here (they act on the log only). */}
-      {mainTab === 'logs' && <div className="jobs-reference-heading-actions" ref={setLogHeadingSlot} />}
     </div>
     <Tabs className="rv-view-tabs jobs-reference-main-tabs" ariaLabel="İşlem Takibi görünümü" value={mainTab} onChange={setMainTab} items={[{ value: 'jobs', label: viewTabLabel('processing', 'İş Takibi') }, { value: 'logs', label: viewTabLabel('log', 'Loglar') }, { value: 'health', label: viewTabLabel('connected', 'API Sağlık') }]} />
     <div key={mainSlide.key} className={`jobs-reference-canvas${mainSlide.className ? ` ${mainSlide.className}` : ''}`}>
       {!listHidden && <JobCategorySegment value={category} onChange={setCategory} items={jobCategoryTabs.filter(tab => tab.key !== 'SYSTEM').map(tab => ({ value: tab.key, label: tab.label, count: list.isLoading ? undefined : categoryCounts.get(tab.key) ?? 0 }))} />}
-      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} headingSlot={logHeadingSlot} /></Suspense>
-        : mainTab === 'health' ? <Suspense fallback={<Busy text="Gönderim durumu yükleniyor…" />}><PriceStockMonitorPanel onFeedback={showPanelFeedback} /></Suspense> : <>
+      {mainTab === 'logs' ? <Suspense fallback={<Busy text="Loglar yükleniyor…" />}><OperationLogs platformOptions={platformOptions} onOpenJob={setSelectedId} /></Suspense>
+        : mainTab === 'health' ? <Suspense fallback={<Busy text="API sağlığı yükleniyor…" />}><ApiHealthView onFeedback={showPanelFeedback} /></Suspense> : <>
+      <OpsFilterCard label="İşlem filtreleri" active={cardFilterCount} clearCount={cardFilterCount + (search.trim() ? 1 : 0)} onClear={clearFilters} onApply={refreshJobs}>
+        <SearchField label="İşlem Ara" ariaLabel="Correlation ID ile işlem ara" placeholder="Correlation ID, iş numarası veya hata kodu" value={search} onChange={setSearch} />
+        <ChoiceField name="Zaman Aralığı" value={timeRange} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => setTimeRange(value as JobTimeRange)} />
+        <FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={platforms} onChange={setPlatforms} emptyText="Bağlı pazaryeri yok." />
+        <ChoiceField name="Yön" allValue="" value={direction} options={[{ value: '', label: 'Tüm Yönler' }, ...jobDirections.map(item => ({ value: item, label: item }))]} onChange={value => setDirection(value as '' | JobDirection)} />
+        <ChoiceField name="Durum" allValue="" value={status} options={statuses} onChange={value => setStatus(value as '' | JobStatus)} />
+      </OpsFilterCard>
       <div className="jobs-reference-toolbar">
         <div className="jobs-reference-status-summary" aria-label="İşlem durum özeti">
           <span {...statusChipProps('success')}><JobStateGlyph tone="success" />Başarılı <strong>{successCount.count ?? 0}</strong></span>
@@ -585,7 +594,7 @@ export function JobsPage({ me }: { me: Me }) {
           <span {...statusChipProps('cancelled')}><JobStateGlyph tone="cancelled" />İptal <strong>{statusSummary.cancelled}</strong></span>
         </div>
         <div className="jobs-reference-toolbar-actions">
-          <label className="jobs-reference-search"><JobsIcon name="search" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Correlation ID..." aria-label="Correlation ID ile işlem ara" /></label>
+          <span className="rr ops-psize"><RrPageSize value={pageSize} sizes={[...jobPageSizes]} onChange={setPageSize} /></span>
           <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="İşlemleri yenile" onClick={refreshJobs}><JobsIcon name="refresh" /></button>
         </div>
       </div>
@@ -595,7 +604,7 @@ export function JobsPage({ me }: { me: Me }) {
             const presentation = jobPresentation(job.jobType)
             const time = formatJobTime(job.createdAt)
             const typeDescriptionId = `job-type-description-${job.id}`
-            return <tr className="jobs-reference-row" key={job.id} aria-describedby={typeDescriptionId} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setSelectedId(job.id) }}>
+            return <tr className="jobs-reference-row" key={job.id} aria-describedby={typeDescriptionId} onClick={() => setSelectedId(job.id)} tabIndex={0} onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setSelectedId(job.id) } }}>
               <td><div className="jobs-reference-type"><span className="jobs-reference-type-icon" aria-hidden="true"><JobsIcon name={presentation.icon} /></span><span className="jobs-reference-type-content"><strong>{jobTitle(job.jobType, job.marketplace)}</strong><small>{jobSubtitle(job.jobType)}{job.externalId ? ` · ${job.externalId}` : ''}{job.batchCount > 1 ? ` · ${job.batchCount} kayıt birlikte` : ''}</small><span id={typeDescriptionId} className="jobs-reference-type-tooltip" role="tooltip">{presentation.description}</span></span></div></td>
               <td><span className={`jobs-reference-status ${jobStateTone(job)}`}><JobStateGlyph tone={jobStateTone(job)} />{jobStateLabel(job)}</span></td>
               <td className="jobs-reference-attempt">{jobAttemptsText(job)}</td>
@@ -603,13 +612,13 @@ export function JobsPage({ me }: { me: Me }) {
               <td><span className="jobs-reference-correlation">{job.correlationId}</span></td>
             </tr>
           })}
-          {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={6}>{moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.'}</td></tr>}
+          {filtered.length === 0 && <tr><td className="jobs-reference-empty" colSpan={5}>{moreOnServer ? 'Yüklenen kayıtlarda eşleşen işlem yok. Daha eski işlemler için Daha Fazla Yükle’ye basın.' : 'Seçili kategori ve filtrelerle eşleşen kayıt bulunamadı.'}</td></tr>}
         </tbody></table></div>
         {(filtered.length > 0 || moreOnServer) && <div className="jobs-reference-pagination"><strong>{moreOnServer ? `${filtered.length.toLocaleString('tr-TR')} kayıt yüklendi, daha eskileri var` : `Toplam ${filtered.length.toLocaleString('tr-TR')} kayıt`}</strong><div className="jobs-reference-pagination-actions">{moreOnServer && <Button variant="secondary" className="jobs-reference-load-more" loading={list.isFetchingNextPage} onClick={() => void loadMoreJobs()}>Daha Fazla Yükle</Button>}<Pagination className="jobs-reference-page-controls" page={currentPage} totalPages={totalPages} hasNext={currentPage < totalPages || moreOnServer} disabled={list.isFetchingNextPage} onPageChange={setPageNumber} onPrevious={() => setPageNumber(value => Math.max(1, value - 1))} onNext={goToNextPage} /></div></div>}
       </>}
       </>}
     </div>
-     {selectedId && <JobDetailDrawer selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}
+     {selectedId && <JobDetailDrawer key={selectedId} selected={selected} detail={detail} selectedIsRunning={Boolean(selectedIsRunning)} elevated={elevated} retryable={retryable} cancellable={cancellable} action={action} oneTimeInvoiceDelivery={oneTimeInvoiceDelivery} onClose={() => setSelectedId(null)} />}
      {feedback && <NoticeToast key={`${feedback.tone}:${feedback.message}`} kind={feedback.tone === 'danger' ? 'error' : feedback.tone} title={feedback.context?.title} message={feedback.message} onClose={() => setFeedback(null)} durationMs={5500} />}
   </section>
 }

@@ -41,7 +41,7 @@ export type ReportSales = {
   cargo: ReportCargo[]; heatmap: number[][]; platformHeatmaps?: Array<{ platformCode: string; heatmap: number[][] }> | null
   rising?: ReportProduct[] | null; falling?: ReportProduct[] | null
   customers: { identifiedOrders: number; unidentifiedOrders: number; uniqueCustomers: number; repeatCustomers: number; repeatRate: number | null; ordersPerCustomer: number | null }
-  invoices: { buckets: Array<{ key: string; label: string; packages: number; amount: number }>; platforms: Array<{ platformCode: string; invoiced: number; notInvoiced: number; unknown: number }> }
+  invoices: { buckets: Array<{ key: string; label: string; packages: number; amount: number }>; platforms: Array<{ platformCode: string; invoiced: number; notInvoiced: number; unknown: number; returned: number }> }
   stock: { periodDays: number; bestSellers: ReportStockRow[]; soldOut: ReportStockRow[] }
   channels: Array<{ id: string; platformCode: string; displayName: string; isTest: boolean }>
   costs: ReportCosts

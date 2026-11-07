@@ -109,6 +109,10 @@ internal static class InvoiceSaleReturns
         var rows = await (from line in db.ReturnLines.AsNoTracking()
                           join claim in db.ReturnClaims.AsNoTracking() on new { line.TenantId, Id = line.ClaimId } equals new { claim.TenantId, claim.Id }
                           where claim.TenantId == tenantId && ids.Contains(claim.OrderId) && claim.Status != ReturnClaimStatus.Cancelled
+                              // An exchange is no return: the customer keeps a product and the sale goes on (owner, 6 Nov
+                              // 2026). Only the stored request says so; a claim that does not say is a return as before. An
+                              // exchange claim the marketplace closed with a refund (raw status Refunded) is a return.
+                              && (claim.CustomerRequest != ReturnCustomerRequestPolicy.Change || claim.RawStatus.ToUpper() == ReturnCustomerRequestPolicy.RefundedRawStatus)
                           select new { line.OrderLineId, line.Quantity, line.RawStatus, ClaimStatus = claim.Status })
             .ToListAsync(cancellationToken);
         return rows.Where(row => ReturnDecisionLinePolicy.StockDispositionAllowed(row.ClaimStatus, row.RawStatus))

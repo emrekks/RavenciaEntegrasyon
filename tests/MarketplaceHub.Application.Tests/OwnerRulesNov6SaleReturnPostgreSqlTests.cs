@@ -100,6 +100,8 @@ public sealed class OwnerRulesNov6SaleReturnPostgreSqlTests(PostgreSqlTenantIsol
             Assert.Equal("PARTIAL", item.SaleReturnScope);
             Assert.Equal("İade edilen ürünler faturaya girmez: Kısmi iade ürünü (1 adet).", item.SaleReturnNote);
             Assert.Equal([1m, 0m], item.Lines!.OrderByDescending(line => line.UnitPrice).Select(line => line.ReturnedQuantity));
+            // The amount column shows what the invoice will carry: the kept units' total, not the order's 225.
+            Assert.Equal(135m, item.Amount);
 
             var draft = await service.CreateDraftAsync(seed.Tenant.Id,
                 new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null, true), "nov6-partial", CancellationToken.None);
@@ -142,6 +144,108 @@ public sealed class OwnerRulesNov6SaleReturnPostgreSqlTests(PostgreSqlTenantIsol
             Assert.Equal(300m, preview.PayableTotal);
             Assert.Equal(3m, Assert.Single(preview.Lines).Quantity);
             Assert.Empty(preview.ReturnedLines!);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // Owner, 6 Nov 2026: an exchange the customer asked for but Hepsiburada closed with a refund (raw status Refunded)
+    // is a return: the refunded unit leaves the sale invoice. Decided by how the claim closed, not by the request.
+    [PostgreSqlFact]
+    public async Task AnExchangeClaimClosedWithARefundIsAReturnForTheInvoice()
+    {
+        var seed = NewSeed("nov6-exchange-refunded", gross: 300m, discount: 0m);
+        var line = NewLine(seed, "İadeye dönen değişim", 3m, 100m);
+        var claim = NewClaim(seed, ReturnClaimStatus.Completed, "Refunded");
+        claim.CustomerRequest = ReturnCustomerRequestPolicy.Change;
+        await SeedAsync(seed, db =>
+        {
+            db.OrderLines.Add(line);
+            db.ReturnClaims.Add(claim);
+            db.ReturnLines.Add(NewReturnLine(seed, claim, line, 1m, "Refunded"));
+        });
+
+        try
+        {
+            await using var db = fixture.CreateContext();
+            var previewed = await NewBillingService(db).PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+            Assert.True(previewed.Succeeded, previewed.Error?.Message);
+            var preview = Assert.Single(previewed.Value!);
+            Assert.Equal(200m, preview.PayableTotal);
+            Assert.Single(preview.ReturnedLines!);
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
+    // Owner, 6 Nov 2026: "Değişimde bir şey değişmiyor, satış devam etmiş oluyor." An approved exchange claim keeps its
+    // units on the sale invoice, and an issued invoice gets no return-document note for it; a refund claim does.
+    [PostgreSqlFact]
+    public async Task AnApprovedExchangeClaimIsNoReturnForTheInvoice()
+    {
+        var seed = NewSeed("nov6-exchange", gross: 300m, discount: 0m);
+        var line = NewLine(seed, "Değişim ürünü", 3m, 100m);
+        var exchange = NewClaim(seed, ReturnClaimStatus.Approved, "Accepted");
+        exchange.CustomerRequest = ReturnCustomerRequestPolicy.Change;
+        await SeedAsync(seed, db =>
+        {
+            db.OrderLines.Add(line);
+            db.ReturnClaims.Add(exchange);
+            db.ReturnLines.Add(NewReturnLine(seed, exchange, line, 3m, "Accepted"));
+        });
+
+        try
+        {
+            Guid invoiceId;
+            await using (var db = fixture.CreateContext())
+            {
+                var service = NewBillingService(db);
+                var previewed = await service.PreviewWorkspaceInvoicesAsync(seed.Tenant.Id,
+                    new InvoiceWorkspacePreviewRequest([new(seed.Order.Id, seed.Package.Id, seed.Provider.Id)], true), CancellationToken.None);
+                Assert.True(previewed.Succeeded, previewed.Error?.Message);
+                var preview = Assert.Single(previewed.Value!);
+                Assert.Equal(300m, preview.PayableTotal);
+                Assert.Empty(preview.ReturnedLines!);
+                var item = Assert.Single((await service.WorkspacePageAsync(seed.Tenant.Id, new InvoiceWorkspacePageQuery(Tab: "UNINVOICED"), CancellationToken.None)).Items);
+                Assert.Null(item.SaleReturnScope);
+                Assert.Equal(300m, item.Amount);
+                var draft = await service.CreateDraftAsync(seed.Tenant.Id,
+                    new CreateInvoiceCommand(seed.Order.Id, seed.Package.Id, seed.Provider.Id, null, true), "nov6-exchange", CancellationToken.None);
+                Assert.True(draft.Succeeded, draft.Error?.Message);
+                invoiceId = draft.Value!.Id;
+            }
+
+            // Issued since: the exchange asks for no return document; a refund of one unit does.
+            await using (var db = fixture.CreateContext())
+                await db.Invoices.Where(invoice => invoice.Id == invoiceId).ExecuteUpdateAsync(setter => setter
+                    .SetProperty(invoice => invoice.Status, InvoiceStatus.Accepted)
+                    .SetProperty(invoice => invoice.ExternalReference, "remote-nov6-exchange")
+                    .SetProperty(invoice => invoice.InvoiceNumber, "GIB2026000000099"));
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal(0, await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, seed.Tenant.Id, fixture.Now, CancellationToken.None));
+                await db.SaveChangesAsync();
+            }
+            var refund = NewClaim(seed, ReturnClaimStatus.Approved, "Accepted");
+            refund.CustomerRequest = ReturnCustomerRequestPolicy.Refund;
+            await using (var db = fixture.CreateContext())
+            {
+                db.ReturnClaims.Add(refund);
+                db.ReturnLines.Add(NewReturnLine(seed, refund, line, 1m, "Accepted"));
+                await db.SaveChangesAsync();
+            }
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal(1, await InvoiceAdjustmentTracking.FlagAdjustmentsAsync(db, seed.Tenant.Id, fixture.Now, CancellationToken.None));
+                await db.SaveChangesAsync();
+                Assert.Equal(InvoiceReturnAdjustmentPolicy.ReturnDocumentRequiredCode,
+                    (await db.OperationalIssues.AsNoTracking().SingleAsync(issue => issue.TenantId == seed.Tenant.Id)).Code);
+            }
         }
         finally
         {

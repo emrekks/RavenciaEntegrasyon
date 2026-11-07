@@ -309,9 +309,9 @@ function Overview({ data, onMore }: { data: ReportSales; onMore: OpenDetail }) {
       <PeriodCard data={data} />
     </div>
     <div className="reports-overview-row is-three">
-      <MetricCard title="Ürün Metrikleri" icon="products" tone="product" rows={productMetrics(data, money)} onMore={onMore} />
-      <MetricCard title="Sipariş Metrikleri" icon="cart" tone="order" rows={orderMetrics(data, money)} onMore={onMore} />
-      <MetricCard title="Reklam" icon="target" tone="ads" rows={adMetrics(data, money)} onMore={onMore} />
+      <MetricCard title="Satış ve Ürün" icon="products" tone="product" rows={productMetrics(data, money)} onMore={onMore} />
+      <MetricCard title="Sipariş ve Müşteri" icon="cart" tone="order" rows={orderMetrics(data, money)} onMore={onMore} />
+      <MetricCard title="Maliyet ve Reklam" icon="target" tone="ads" rows={adMetrics(data, money)} onMore={onMore} />
     </div>
     <div className="reports-overview-row is-two">
       <MetricCard title="İade ve İptal" icon="returns" tone="returns" rows={returnMetrics(data)} onMore={onMore} hints={false} />
@@ -570,8 +570,11 @@ function OverviewFigures({ data, money }: { data: ReportSales; money: Money | nu
     { key: 'cost', label: 'Maliyete Göre Kâr', value: onCost, format: percent, delta: change(onCost, earlierOnCost, 'rate'),
       note: previousText(formatPercent(earlierOnCost)), tip: 'Ürüne harcanan her liranın ne kadar kâr getirdiği.\nTahmini net kâr ÷ ürün maliyeti.', tone: (onCost ?? 0) < 0 ? 'bad' : undefined },
     { key: 'orders', label: 'Sipariş', value: now.orders, format: formatCount, delta: change(now.orders, then.orders), note: previousText(formatCount(then.orders)), tip: 'Dönemde gelen sipariş sayısı.\nİptal edilen siparişler sayılmaz.', split: split(row => row.orders, formatCount) },
-    { key: 'kept', label: 'Net Satılan Adet', value: now.keptQuantity, delta: change(now.keptQuantity, then.keptQuantity), note: previousText(formatNumber(then.keptQuantity)),
-      tip: now.soldQuantity > 0 ? `Müşteride kalan ürün adedi.\n${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşüldü.` : 'Bu dönemde satış yok.', split: split(row => row.soldQuantity - row.returnedQuantity, formatNumber) }
+    // The units sold (cancellations out, returns not taken off), with what the customers kept and sent back under it.
+    { key: 'sold', label: 'Satılan Adet', value: now.soldQuantity, delta: change(now.soldQuantity, then.soldQuantity),
+      note: `Net ${formatNumber(now.keptQuantity)} · ${formatNumber(now.returnedQuantity)} iade`,
+      tip: `${now.soldQuantity > 0 ? 'Dönemde satılan ürün adedi; iptaller sayılmaz, iadeler düşülmeden.' : 'Bu dönemde satış yok.'}\nNet adet müşteride kalandır: ${formatNumber(now.soldQuantity)} satılan adetten ${formatNumber(now.returnedQuantity)} iade düşülür. ${previousText(formatNumber(then.soldQuantity))}.`,
+      split: split(row => row.soldQuantity, formatNumber) }
   ]
   return <KpiStrip label="Dönemin göstergeleri" items={items} />
 }
@@ -863,7 +866,7 @@ function MetricCard({ title, icon, tone, rows, onMore, hints = true }: { title: 
   </Card>
 }
 
-// Ürün Metrikleri: the average sale price and profit of a unit, the commission rate and the marketplace's discount.
+// Satış ve Ürün: the average sale price and profit of a unit and the seller's discount off the list price.
 function productMetrics(data: ReportSales, money: Money | null): Metric[] {
   const now = data.summary
   const noAmount = now.ordersWithAmount === 0
@@ -872,17 +875,16 @@ function productMetrics(data: ReportSales, money: Money | null): Metric[] {
   const discount = now.discountAmount ?? null
   const discountKnown = !noAmount && discount !== null && list > 0
   return [
-    { key: 'price', label: 'Adet Başına Satış', value: noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity), note: `Bir ürünün ortalama satış fiyatı.\nSatış tutarı ÷ satılan adet (${formatNumber(now.soldQuantity)} adet).` },
+    { key: 'price', label: 'Adet Başına Satış', value: noAmount || now.soldQuantity === 0 ? '—' : formatTl(now.grossSales / now.soldQuantity), note: `Bir ürünün ortalama satış fiyatı.\nSatış tutarı ÷ satılan adet (${formatNumber(now.soldQuantity)} adet, iadeler düşülmeden).` },
     { key: 'profit', label: 'Adet Başına Kâr', value: profit === null || now.keptQuantity === 0 ? '—' : signedTl(profit / now.keptQuantity), tone: profit !== null && profit < 0 ? 'bad' : undefined,
-      note: profit === null ? 'Satılan her üründen kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : `Satılan her üründen kalan tahmini kâr.\nTahmini net kâr ÷ net satılan adet (${formatNumber(now.keptQuantity)} adet).` },
-    { key: 'commission', label: 'Ortalama Komisyon Oranı', value: formatPercent(data.commission.effectiveRate), note: 'Pazaryerinin satıştan aldığı ortalama pay.\nKomisyon ÷ komisyon oranı bilinen satış.' },
-    { key: 'discountTotal', label: 'İndirim Toplamı', value: discountKnown ? formatTl(discount ?? 0) : '—', note: 'Satıcının liste fiyatından yaptığı indirimlerin toplamı.\nPazaryerinin kendi indirimi sayılmaz (satıcıya ödenir). İptaller hariç.' },
-    { key: 'discount', label: 'Ortalama İndirim Oranı', value: discountKnown ? formatPercent((discount ?? 0) / list) : '—',
-      note: discountKnown ? `Ürünlerin liste fiyatına göre ortalama indirimi.\nListe fiyatı toplamı ${formatTl(list)}, yapılan indirim ${formatTl(discount)}; iptaller hariç.` : 'Ürünlerin liste fiyatına göre ortalama indirimi.\nBu dönemde liste fiyatı okunmadı.' }
+      note: profit === null ? 'İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : `İade sonrası: müşteride kalan her üründen kalan tahmini kâr.\nTahmini net kâr ÷ net satılan adet (${formatNumber(now.keptQuantity)} adet; iadeler düşülmüş, Adet Başına Satış'ın paydasından farklı).` },
+    { key: 'discount', label: 'Satıcı İndirimi', value: discountKnown ? `${formatTl(discount ?? 0)} · ${formatPercent((discount ?? 0) / list)}` : '—',
+      note: discountKnown ? `Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nListe fiyatı toplamı ${formatTl(list)}, indirim ${formatTl(discount)}; iptaller hariç. Pazaryerinin kendi indirimi sayılmaz (satıcıya ödenir). Liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor; diğer pazaryerlerinin indirimi bilinmiyor.`
+        : 'Satıcının liste fiyatından yaptığı indirim ve liste fiyatına oranı.\nBu dönemde liste fiyatı okunmadı; liste fiyatı yalnız Trendyol ve Hepsiburada siparişlerinde okunuyor.' }
   ]
 }
 
-// Sipariş Metrikleri: what an order brought in and left, its cargo and its units.
+// Sipariş ve Müşteri: what an order brought in and left, its cargo and its units, and the customers who came back.
 function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
   const now = data.summary
   const before = data.previousSummary
@@ -899,28 +901,39 @@ function orderMetrics(data: ReportSales, money: Money | null): Metric[] {
       note: profit === null ? 'Her siparişten kalan tahmini kâr.\nÜrün maliyeti girilince hesaplanır.' : 'Her siparişten kalan tahmini kâr.\nTahmini net kâr ÷ tutarı olan sipariş.' },
     { key: 'cargo', label: 'Sipariş Başına Kargo', value: finance && cargo && cargoOrders > 0 ? formatTl(cargo.combined / cargoOrders) : '—',
       note: finance && cargo ? `Bir siparişin ortalama kargo ücreti.\nKargo ÷ ${formatCount(cargoOrders)} sipariş. ${cargoNote(cargo)}` : 'Bir siparişin ortalama kargo ücreti.\nBu seçimde hesaplanamadı.' },
-    { key: 'units', label: 'Sipariş Başına Adet', value: now.orders > 0 ? formatNumber(now.soldQuantity / now.orders) : '—', note: `Bir siparişte ortalama kaç ürün olduğu.\n${formatNumber(now.soldQuantity)} adet ÷ ${formatCount(now.orders)} sipariş.` }
+    { key: 'units', label: 'Sipariş Başına Adet', value: now.orders > 0 ? formatNumber(now.soldQuantity / now.orders) : '—', note: `Bir siparişte ortalama kaç ürün olduğu.\n${formatNumber(now.soldQuantity)} adet ÷ ${formatCount(now.orders)} sipariş.` },
+    { key: 'repeat', label: 'Tekrar Alan Müşteri', value: formatPercent(data.customers.repeatRate), detail: 'customers',
+      note: `Dönemde birden fazla sipariş veren müşterilerin oranı.\n${formatCount(data.customers.uniqueCustomers)} tekil müşteriden ${formatCount(data.customers.repeatCustomers)} kişi. Müşteri mağaza bazında tanınır: iki pazaryerinden alan biri iki kişi sayılır.` }
   ]
 }
 
-// Reklam: what was spent on advertising and what it weighs against the profit and the revenue; what is not read says so.
-function adMetrics(data: ReportSales, money: Money | null): Metric[] {
+// The advertising spend of the period: read from Trendyol's statement only (else null). It is tied to no order, so it is
+// read from the deductions tied to no order (and, should Trendyol ever tie one to an order, from the costs).
+function adSpend(data: ReportSales): number | null {
   const finance = trendyolRead(data) ? financeCosts(data) : null
-  // Advertising is tied to no order: it is read from the deductions tied to no order (and, should Trendyol ever tie one
-  // to an order, from the costs).
-  const spend = finance ? (finance.lines.find(line => line.category === 'ADVERTISING')?.amount ?? 0) + (finance.unlinked?.find(line => line.category === 'ADVERTISING')?.amount ?? 0) : null
+  return finance ? (finance.lines.find(line => line.category === 'ADVERTISING')?.amount ?? 0) + (finance.unlinked?.find(line => line.category === 'ADVERTISING')?.amount ?? 0) : null
+}
+
+// Maliyet ve Reklam: the marketplaces' commission rate, then what was spent on advertising (Trendyol only) and what it
+// weighs against the profit and Trendyol's revenue; what is not read says so.
+function adMetrics(data: ReportSales, money: Money | null): Metric[] {
+  const spend = adSpend(data)
   const profit = money?.profit ?? null
-  const revenue = data.summary.netRevenue
+  // The advertising is Trendyol's, so its share is taken of Trendyol's net revenue, not of every platform's.
+  const trendyol = data.platforms.find(row => row.key.toUpperCase() === 'TRENDYOL' && row.ordersWithAmount > 0)
+  const revenue = trendyol?.netRevenue ?? null
   return [
-    { key: 'spend', label: 'Toplam Reklam Harcaması', value: spend === null ? '—' : formatTl(spend),
-      note: spend === null ? 'Dönemde reklama harcanan tutar.\nReklam bedeli yalnız Trendyol cari hesabından okunabiliyor.' : 'Dönemde reklama harcanan tutar.\nTrendyol cari hesabındaki reklam bedelleri, işlem tarihine göre; siparişe bağlı değildir, Net Kâr\'dan Siparişe Bağlı Olmayan Kesintiler içinde düşülür. Brandcenter ve influencer kesintileri ayrı okunmuyor.' },
-    { key: 'profit', label: 'Reklam / Kâr', value: spend !== null && profit !== null && profit > 0 ? formatPercent(spend / profit, 2) : '—', note: 'Kârın ne kadarının reklama gittiği.\nReklam harcaması ÷ tahmini net kâr.' },
-    { key: 'revenue', label: 'Reklam / Ciro', value: spend !== null && revenue > 0 ? formatPercent(spend / revenue, 2) : '—', note: 'Cironun ne kadarının reklama gittiği.\nReklam harcaması ÷ net ciro.' },
-    { key: 'roas', label: 'Reklam Cirosu ve ROAS', value: '—', note: 'Reklamdan gelen satış ve reklamın getirisi.\nTrendyol reklam raporu panele bağlı olmadığı için gösterilemiyor.' }
+    { key: 'commission', label: 'Ortalama Komisyon Oranı', value: formatPercent(data.commission.effectiveRate), note: 'Pazaryerinin satıştan aldığı ortalama pay.\nKomisyon ÷ komisyon oranı bilinen satış.' },
+    { key: 'spend', label: 'Trendyol Reklamı', value: spend === null ? '—' : formatTl(spend),
+      note: spend === null ? 'Dönemde reklama harcanan tutar.\nReklam bedeli yalnız Trendyol cari hesabından okunabiliyor; bu seçimde okunmadı.' : 'Dönemde Trendyol reklamlarına harcanan tutar.\nTrendyol cari hesabındaki reklam bedelleri, işlem tarihine göre; siparişe bağlı değildir, Net Kâr\'dan Siparişe Bağlı Olmayan Kesintiler içinde düşülür. Diğer pazaryerlerinin reklamı okunmuyor; Brandcenter ve influencer kesintileri ayrı okunmuyor.' },
+    { key: 'profit', label: 'Reklam / Kâr', value: spend !== null && profit !== null && profit > 0 ? formatPercent(spend / profit, 2) : '—', note: 'Kârın ne kadarının reklama gittiği.\nTrendyol reklam harcaması ÷ tahmini net kâr (tüm platformlar).' },
+    { key: 'tacos', label: 'Reklam Payı (TACoS)', value: spend !== null && revenue !== null && revenue > 0 ? formatPercent(spend / revenue, 2) : '—',
+      note: `Trendyol cirosunun ne kadarının reklama gittiği.\nTrendyol reklam harcaması ÷ Trendyol net cirosu${revenue !== null ? ` (${formatTl(revenue)})` : ''}; reklam yalnız Trendyol'da okunduğu için payda da Trendyol'un.` }
   ]
 }
 
-// İade ve İptal: the return rate and claims, the units sent back, then the cancel rate against its warning line.
+// İade ve İptal: the return rate, what came back (units, claims and the amount paid for them), then the cancel rate
+// against its warning line and what was cancelled.
 // Returns at their list price, as Trendyol's sales report shows them; what was paid when an older server sends no list.
 export const returnedAtList = (summary: { returnedAmount: number; returnedListAmount?: number }) => summary.returnedListAmount ?? summary.returnedAmount
 
@@ -932,36 +945,37 @@ function returnMetrics(data: ReportSales): Metric[] {
   return [
     { key: 'rate', label: 'İade Oranı', value: formatPercent(now.returnRate), delta: change(now.returnRate, before.returnRate, 'rate'), invert: true, previous: formatPercent(before.returnRate), detail: 'returns',
       note: `Satılan ürünlerin yüzde kaçının iade edildiği.\nİade edilen adet ÷ sipariş edilen adet (iptaller dahil), Trendyol gibi. Önceki dönem ${formatPercent(before.returnRate)}.` },
-    { key: 'claims', label: 'İade Talebi', value: formatCount(now.returnClaims), detail: 'returns', note: 'Müşterilerin açtığı iade talepleri.\nReddedilen ve iptal edilen talepler sayılmaz.' },
-    { key: 'units', label: 'İade Edilen Adet', value: `${formatNumber(now.returnedQuantity)} adet`, detail: 'returns', note: 'İade edilen ürün adedi.' },
-    { key: 'returned', label: 'İade Liste Tutarı', value: formatTl(returnedAtList(now)), detail: 'returns', note: 'İade edilen ürünlerin liste fiyatı, Trendyol gibi.\nMasraf Kalemleri ve Kâr Köprüsü\'ndeki İade Edilen Tutar müşterinin ödediğidir; satıştan o düşülür.' },
+    // The amount the customers paid for what they sent back: the İade Edilen Tutar taken off on Kâr Köprüsü.
+    { key: 'returned', label: 'İade Edilen', value: `${formatNumber(now.returnedQuantity)} adet · ${formatCount(now.returnClaims)} talep · ${formatTl(now.returnedAmount)}`, detail: 'returns',
+      note: `İade edilen ürün adedi, talep sayısı ve müşterinin ödediği tutar.\nKâr Köprüsü'ndeki İade Edilen Tutar ile aynıdır. Reddedilen ve iptal edilen talepler sayılmaz. Liste fiyatıyla ${formatTl(returnedAtList(now))}.` },
     { key: 'cargo', label: 'İade Kargo Zararı', value: '—', note: 'İadelerin kargo maliyeti.\nKârlılık\'taki Kargo kalemine dahildir (Trendyol\'da İade Kargo Bedeli satırı, faturası gelmeyen iadede mağaza tarifesi); ayrı tutar olarak henüz gösterilmiyor.' },
     { key: 'cancel', label: 'İptal Oranı', value: formatPercent(now.cancelRate), tone: (now.cancelRate ?? 0) > warning ? 'warn' : undefined, detail: 'cancellations',
       note: `Sipariş edilen ürünlerin yüzde kaçının iptal edildiği.\nİptal edilen adet ÷ sipariş edilen adet (iptaller dahil); uyarı eşiği ${formatPercent(warning)}.` },
-    { key: 'cancelled', label: 'İptal Edilen Sipariş', value: `${formatCount(now.cancelledOrders)} sipariş · ${formatNumber(data.cancellations.cancelledQuantity)} adet`, detail: 'cancellations', note: 'İptal edilen sipariş ve ürün adedi.' },
-    { key: 'amount', label: 'İptal Edilen Tutar', value: cancelled === undefined ? '—' : formatTl(cancelled), detail: 'cancellations', note: 'İptal edilen ürünlerin tutarı.\nListe fiyatıyla; satış tutarına girmez.' }
+    { key: 'cancelled', label: 'İptal Edilen', value: `${formatCount(now.cancelledOrders)} sipariş · ${formatNumber(data.cancellations.cancelledQuantity)} adet · ${cancelled === undefined ? '—' : formatTl(cancelled)}`, detail: 'cancellations',
+      note: 'İptal edilen sipariş, ürün adedi ve tutarı.\nTutar liste fiyatıyla; satış tutarına girmez.' }
   ]
 }
 
-// Operasyon: how fast and how late the packages left and with whom, what waits to be invoiced or restocked, and the
-// customers who came back; each row opens its tab.
+// Operasyon: how fast and how late the packages left, how long they took to arrive, and what waits to be invoiced or
+// restocked; each row opens its tab.
 function operationMetrics(data: ReportSales): Metric[] {
   const ship = weightedHours(data.cargo, row => row.averageHoursToShip, row => row.measuredShip)
+  const deliver = weightedHours(data.cargo, row => row.averageHoursToDeliver, row => row.measuredDeliver)
   const late = data.cargo.reduce((sum, row) => sum + row.lateShipments, 0)
   const measuredLate = data.cargo.reduce((sum, row) => sum + row.measuredLate, 0)
-  const carrier = [...data.cargo].filter(row => row.known).sort((a, b) => b.packages - a.packages)[0]
   const low = data.stock.bestSellers.filter(row => row.daysLeft !== null && row.daysLeft < 7).length
   const packages = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
   const notInvoiced = data.invoices.buckets.find(bucket => bucket.key === 'NOT_INVOICED')?.packages ?? 0
   return [
     { key: 'ship', label: 'Kargoya Verme Süresi', value: formatHours(ship.hours), detail: 'cargo', note: `Siparişin kargoya verilmesine kadar geçen ortalama süre.\n${ship.measured > 0 ? `${formatCount(ship.measured)} pakette ölçüldü.` : 'Ölçülemedi.'}` },
-    { key: 'late', label: 'Geciken Kargo', value: formatCount(late), tone: late > 0 ? 'warn' : undefined, detail: 'cargo',
-      note: `Süresinde kargoya verilmeyen paket sayısı.\n${measuredLate > 0 ? `${formatCount(measuredLate)} pakette ölçüldü.` : 'Ölçülemedi.'}` },
-    { key: 'carrier', label: 'Kargo Firması', value: carrier?.label ?? '—', detail: 'cargo', note: `En çok paket taşıyan kargo firması.\n${carrier ? `Paketlerin ${formatPercent(carrier.share)} kadarı.` : 'Kargo firması okunamadı.'}` },
+    { key: 'late', label: 'Geciken Kargo', value: measuredLate > 0 ? `${formatPercent(late / measuredLate)} · ${formatCount(late)} paket` : '—', tone: late > 0 ? 'warn' : undefined, detail: 'cargo',
+      note: measuredLate > 0 ? `Süresinde kargoya verilmeyen paketlerin oranı.\nGeciken ${formatCount(late)} paket ÷ kargoya verme süresi bilinen ${formatCount(measuredLate)} paket. PTT AVM kargo süresi göndermediği için orada ölçülmez.`
+        : 'Süresinde kargoya verilmeyen paketlerin oranı.\nBu dönemde kargoya verme süresi bilinen paket yok.' },
+    { key: 'deliver', label: 'Teslim Süresi', value: formatHours(deliver.hours), detail: 'cargo',
+      note: deliver.hours === null ? 'Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.\nBu dönemde teslim anı okunan paket yok.'
+        : `Kargoya verilen paketin müşteriye ulaşmasına kadar geçen ortalama süre.\n${formatCount(deliver.measured)} pakette ölçüldü.` },
     { key: 'invoice', label: 'Faturasız Paket', value: formatCount(notInvoiced), tone: notInvoiced > 0 ? 'warn' : undefined, detail: 'invoices', note: `Faturası henüz kesilmemiş paketler.\n${formatCount(packages)} paket içinde.` },
-    { key: 'stock', label: 'Stok Riski', value: `${formatCount(low)} ürün`, tone: low > 0 ? 'warn' : undefined, detail: 'stock', note: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nGünlük satış hızına göre kalan gün 7\'den az.' },
-    { key: 'repeat', label: 'Tekrar Alan Müşteri', value: formatPercent(data.customers.repeatRate), detail: 'customers',
-      note: `Dönemde birden fazla sipariş veren müşterilerin oranı.\n${formatCount(data.customers.uniqueCustomers)} tekil müşteriden ${formatCount(data.customers.repeatCustomers)} kişi.` }
+    { key: 'stock', label: 'Stok Riski', value: `${formatCount(low)} ürün`, tone: low > 0 ? 'warn' : undefined, detail: 'stock', note: 'Stoğu bir haftadan az yetecek çok satan ürünler.\nGünlük satış hızına göre kalan gün 7\'den az.' }
   ]
 }
 
@@ -1736,7 +1750,7 @@ function statementRows(costs: ReportCosts): CostLine[] {
 // Fatura: the packages by invoice state as one bar beside each platform's counts.
 function Invoices({ data }: { data: ReportSales }) {
   const total = data.invoices.buckets.reduce((sum, bucket) => sum + bucket.packages, 0)
-  const tone = (key: string) => key === 'INVOICED' ? 'left' : key === 'NOT_INVOICED' ? 'returned' : 'fees'
+  const tone = (key: string) => key === 'INVOICED' ? 'left' : key === 'NOT_INVOICED' ? 'returned' : key === 'RETURNED' ? 'cargo' : 'fees'
   const parts: Part[] = data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, tone: tone(bucket.key) }))
   return <div className="reports-grid">
     <div className="is-wide"><KpiStrip label="Faturanın göstergeleri" items={data.invoices.buckets.map(bucket => ({ key: bucket.key, label: bucket.label, value: bucket.packages, format: formatCount,
@@ -1749,11 +1763,12 @@ Toplam tutarları ${formatTl(bucket.amount)}.`, tone: bucket.key === 'NOT_INVOIC
       </> : <p className="reports-empty">Bu dönemde paket yok.</p>}
     </RevealPanel>
     <div><DataTable title="Platformlara Göre Fatura Durumu" csvName="rapor-fatura" rows={data.invoices.platforms} rowKey={row => row.platformCode} initialSort="invoiced"
-      footer={data.invoices.platforms.length > 1 && <tr><td>Toplam</td>{(['invoiced', 'notInvoiced', 'unknown'] as const).map(key => <td key={key} className="is-num">{formatCount(data.invoices.platforms.reduce((sum, row) => sum + row[key], 0))}</td>)}</tr>}
+      footer={data.invoices.platforms.length > 1 && <tr><td>Toplam</td>{(['invoiced', 'notInvoiced', 'returned', 'unknown'] as const).map(key => <td key={key} className="is-num">{formatCount(data.invoices.platforms.reduce((sum, row) => sum + row[key], 0))}</td>)}</tr>}
       columns={[
       { key: 'platform', header: 'Platform', value: row => platformName(row.platformCode) },
       { key: 'invoiced', header: 'Faturalı', value: row => row.invoiced, render: row => formatCount(row.invoiced), numeric: true },
       { key: 'notInvoiced', header: 'Faturasız', value: row => row.notInvoiced, render: row => formatCount(row.notInvoiced), numeric: true },
+      { key: 'returned', header: 'İade – Fatura Gerekmez', value: row => row.returned, render: row => formatCount(row.returned), numeric: true },
       { key: 'unknown', header: unknownLabel, value: row => row.unknown, render: row => formatCount(row.unknown), numeric: true }
     ]} empty="Bu dönemde paket yok." /></div>
   </div>

@@ -126,3 +126,24 @@ _FINANCE_SYNC (issue code PAZARAMA_FINANCE_SYNC_FAILED).
   read-back, so an uncertain delivery goes to the automatic retry schedule (`InvoiceDeliveryAutoRetryPolicy`).
 - Buyer kind: billingAddress `invoiceType` 1 Bireysel, 2 Kurumsal (`:2305`, `:2333`).
 - E-Arşiv internet sale: purchaseUrl `https://www.pazarama.com`, paymentMeans MEDIATOR.
+
+## Return progress: requested / on its way / arrived (6 Nov 2026)
+- `order/getRefund` documents no field that tells a request, a parcel on its way and a parcel that reached the seller
+  apart: `refundStatus` 1 "İade Onayı Bekliyor" covers all three until the seller (2/3), Pazarama (4/5) or the auto
+  approval (6) decides; there is no delivery, receipt or cargo-status date (`pazarama-api-son.md:3198-3223` field
+  table, `:3337-3350` flow: customer starts the return → getOrdersForApi item 7, getRefund 1 → seller decides).
+- `shipmentCode` is the **İade Kargo Kodu** Pazarama generates for contracted cargo (`:3194`, `:3222`), not a sign that
+  the customer shipped: live 674544454 (refundDate 5 Nov 11:00 Istanbul) carried `shipmentCode` PZ15649905156 with
+  Aras Kargo in the first read at 11:16, and on 6 Nov, after the parcel reached the seller, every read (RETURN_SYNC
+  each minute, 0 updated) still sent status 1 with the same code; the claim row never changed. So a code present does
+  **not** put a Pazarama return in Kargoda: status 1 stays Aksiyon Bekleyen (the seller may decide at any time).
+- Order side: getOrdersForApi `orderItemStatus` 7 "İade Süreci Başlatıldı" while the refund is open, then 8 approved,
+  9 rejected, 10 "İade Edildi" (`:2306`, `:3352-3360`); 674544454 showed 7 on 6 Nov, and its `orderItemStatusHistory`
+  ended at 11 Teslim Edildi (no history entry for 7).
+- The raw refund row is not stored; since 6 Nov 2026 each poll logs the row's field names and progress values (status,
+  date, cargo, shipment, delivery, tracking; no customer fields, the cargo code only as set/none) as "Pazarama refund
+  rows" (`PazaramaReturnMapper.RowShapes`). Read it in the worker log on the next return before mapping a new field.
+- Images: order line `imageUrl` / `product.imageURL` is an `img.pzrmcdn.com/asset/{stockCode}/images/…` address. The
+  674544454 one answered 403 (4.5 KB HTML) to a plain curl on 6 Nov, the same answer as the docs' own sample image
+  (`:3893`): a block page, not proof the photo is gone; the panel showed "Görsel yok". Return rows and details now
+  carry the catalog photo as `fallbackImageUrl` behind the marketplace's (`MarketplaceSalesService.LineImageUrls`).

@@ -6,17 +6,24 @@ type VariantRow = { platformStatuses?: VariantPlatformStatus[] | null }
 // How the family's variants stand on one connection: present there (a variant link or a LIVE listing) and missing (the
 // marketplace no longer knows them: link NOT_FOUND or REJECTED). A variant with neither stays out of both: no link is
 // never read as missing. offSale: present variants the marketplace says are closed to sale (offSaleStockZero: those whose
-// only named reason is a stock of 0); a variant whose sale state is unknown is in neither.
+// only named reason is a stock of 0; offSaleReasons: the other closures by their named reason, as the server's
+// OffSaleReasonCounts); a variant whose sale state is unknown is in neither.
 export function publishCardVariantLinks(rows: ReadonlyArray<VariantRow>, connectionId: string) {
   const statusOf = (row: VariantRow) => row.platformStatuses?.find(status => status.connectionId === connectionId)
   const present = rows.filter(row => statusOf(row)?.isMatched && !statusOf(row)?.isMissing)
   const closed = present.filter(row => isOffSale(statusOf(row)?.saleState))
+  const offSaleReasons: Record<string, number> = {}
+  for (const row of closed) {
+    const reason = statusOf(row)?.saleStateReason?.trim().toUpperCase()
+    if (reason && reason !== 'STOCK_ZERO') offSaleReasons[reason] = (offSaleReasons[reason] ?? 0) + 1
+  }
   return {
     total: rows.length,
     linked: present.length,
     missing: rows.filter(row => statusOf(row)?.isMissing).length,
     offSale: closed.length,
-    offSaleStockZero: closed.filter(row => statusOf(row)?.saleStateReason === 'STOCK_ZERO').length
+    offSaleStockZero: closed.filter(row => statusOf(row)?.saleStateReason?.trim().toUpperCase() === 'STOCK_ZERO').length,
+    offSaleReasons
   }
 }
 

@@ -1,0 +1,44 @@
+/* "Beden Tablosu Oluştur" as a button beside Güvenlik Stoğu, its window (SizeChartDialog.tsx, portalled to the body, so its controls carry
+   their own 36 px / 7 px look) and the size chart mark on the image tiles. */
+.size-chart-trigger { display: grid; align-content: start; gap: var(--rv-space-2); min-width: 0; }
+.size-chart-trigger-label { font-size: 13px; font-weight: 700; color: var(--rv-color-ink); }
+.app-shell.stitch-shell main .product-step-grid .size-chart-trigger button.size-chart-button { width: 100%; min-height: 0; height: 36px; padding: 0 12px; border-radius: 7px; font-size: 14px; white-space: nowrap; }
+.app-shell.stitch-shell main .product-step-grid .size-chart-trigger button.size-chart-button:disabled { cursor: not-allowed; }
+.size-chart-disabled-reason { color: var(--rv-color-subtle); font-size: 12px; font-weight: 500; }
+
+.size-chart-modal { width: min(720px, calc(100vw - 32px)); }
+.size-chart-modal .rv-modal-body { display: grid; gap: 14px; }
+.size-chart-modal button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.size-chart-modal .size-chart-table-wrap { overflow-x: auto; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.size-chart-modal .size-chart-table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.size-chart-modal .size-chart-table th, .size-chart-modal .size-chart-table td { padding: 6px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rv-color-border); }
+.size-chart-modal .size-chart-table tbody tr:last-child > * { border-bottom: 0; }
+.size-chart-modal .size-chart-table thead th { color: var(--rv-color-muted); font-weight: 600; white-space: nowrap; background: var(--rv-color-surface-soft); }
+.size-chart-modal .size-chart-table tbody th { color: var(--rv-color-ink); font-weight: 700; white-space: nowrap; line-height: 36px; }
+.size-chart-modal .size-chart-column-head { display: inline-flex; align-items: center; gap: 4px; }
+.size-chart-modal .size-chart-column-head .is-invalid { color: var(--rv-color-danger); }
+.size-chart-modal button.size-chart-icon-button { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; color: var(--rv-color-muted); background: transparent; border: 0; box-shadow: none; }
+.size-chart-modal button.size-chart-icon-button:hover { color: var(--rv-color-danger); }
+.size-chart-modal .size-chart-table input, .size-chart-modal .size-chart-column-menu input { box-sizing: border-box; width: 100%; min-width: 72px; height: 36px; min-height: 36px; padding: 0 10px; color: var(--rv-color-ink); font: inherit; font-size: 14px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border); border-radius: 7px; }
+.size-chart-modal .size-chart-table input[aria-invalid='true'] { border-color: var(--rv-color-danger); }
+.size-chart-modal input:focus-visible { border-color: var(--rv-color-primary); outline: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--rv-color-primary) 18%, transparent); }
+.size-chart-modal .size-chart-cell-error { display: block; margin-top: 2px; color: var(--rv-color-danger); font-size: 12px; line-height: 16px; white-space: normal; }
+.size-chart-modal .size-chart-columns { display: grid; gap: 8px; justify-items: start; }
+.size-chart-modal .size-chart-add { display: inline-flex; align-items: center; gap: 6px; }
+.size-chart-modal .size-chart-column-menu { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.size-chart-modal .size-chart-column-menu input { width: 180px; }
+.size-chart-modal .size-chart-column-menu .size-chart-cell-error { flex-basis: 100%; }
+.size-chart-modal .size-chart-note { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--rv-color-muted); font-size: 13px; }
+.size-chart-modal .size-chart-error { margin: 0; padding: 10px 12px; color: var(--rv-color-danger); font-size: 13px; background: var(--rv-color-danger-soft); border-radius: 12px; }
+.size-chart-modal .size-chart-preview { display: grid; justify-items: center; gap: 6px; margin: 0; }
+.size-chart-modal .size-chart-preview img { width: min(320px, 100%); aspect-ratio: 2 / 3; object-fit: contain; background: #fff; border: 1px solid var(--rv-color-border); border-radius: 12px; }
+.size-chart-modal .size-chart-preview figcaption { color: var(--rv-color-subtle); font-size: 12px; }
+
+/* The tile marked as the size chart: a badge, and a small menu button on every own picture. */
+.image-preview-card .size-chart-badge { position: absolute; left: 6px; bottom: 30px; padding: 2px 6px; color: #fff; font-size: 11px; font-weight: 700; line-height: 16px; background: var(--rv-color-primary-fill); border-radius: 7px; pointer-events: none; }
+.image-preview-card button.size-chart-menu-btn { position: absolute; top: 6px; left: 6px; display: grid; place-items: center; width: 26px; height: 26px; min-height: 0; padding: 0; color: var(--rv-color-ink); background: color-mix(in srgb, var(--rv-color-surface) 88%, transparent); border: 1px solid var(--rv-color-border); border-radius: 7px; box-shadow: none; opacity: 0; cursor: pointer; }
+.image-preview-card:hover button.size-chart-menu-btn, .image-preview-card:focus-within button.size-chart-menu-btn, .image-preview-card button.size-chart-menu-btn[aria-expanded='true'] { opacity: 1; }
+@media (hover: none) { .image-preview-card button.size-chart-menu-btn { opacity: 1; } }
+.image-preview-card .size-chart-menu { position: absolute; top: 36px; left: 6px; z-index: 5; display: grid; min-width: 200px; padding: 4px; background: var(--rv-color-surface-raised); border: 1px solid var(--rv-color-border); border-radius: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 22%); }
+.image-preview-card .size-chart-menu button { min-height: 0; height: 36px; padding: 0 10px; color: var(--rv-color-ink); font-size: 13px; font-weight: 500; text-align: left; text-transform: none; background: transparent; border: 0; border-radius: 7px; box-shadow: none; }
+.image-preview-card .size-chart-menu button:hover, .image-preview-card .size-chart-menu button:focus-visible { background: var(--rv-color-surface-soft); }

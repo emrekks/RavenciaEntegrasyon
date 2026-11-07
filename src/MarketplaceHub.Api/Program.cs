@@ -82,6 +82,12 @@ builder.Services.AddHttpClient(PublicNetwork.ClientName, client =>
 // Sign-in, the steps after it, a per-network ceiling and the webhook limits (see RateLimitPolicies).
 builder.Services.AddRateLimiter(options => RateLimitPolicies.Configure(options, builder.Configuration));
 builder.Services.AddScoped<MarketplaceHub.Infrastructure.Alerts.AlertEmailSettingsService>();
+// Ayarlar › Yapay Zekâ and its consumers (the size chart). The SDK applies its own per-call timeouts.
+builder.Services.AddHttpClient(MarketplaceHub.Infrastructure.Ai.ClaudeClient.HttpClientName, client => client.Timeout = Timeout.InfiniteTimeSpan);
+builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Ai.IClaudeClient, MarketplaceHub.Infrastructure.Ai.ClaudeClient>();
+builder.Services.AddScoped<MarketplaceHub.Infrastructure.Ai.AiSettingsService>();
+builder.Services.AddScoped<MarketplaceHub.Infrastructure.Ai.ClaudeService>();
+builder.Services.AddScoped<MarketplaceHub.Infrastructure.SizeCharts.SizeChartService>();
 builder.Services.AddSingleton<MarketplaceHub.Infrastructure.Alerts.IAlertEmailSender, MarketplaceHub.Infrastructure.Alerts.GmailSmtpAlertSender>();
 builder.Services.AddScoped<IWebhookRouteGate, WebhookRouteGate>();
 builder.Services.AddSingleton<WebhookConnectionQuota>();
@@ -146,6 +152,7 @@ app.MapQuestionEndpoints();
 app.MapInvoicingEndpoints();
 app.MapSettingsEndpoints();
 app.MapAlertEmailEndpoints();
+app.MapAiEndpoints();
 app.MapHub<OperationsHub>("/hubs/operations");
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });

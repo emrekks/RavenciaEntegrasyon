@@ -418,7 +418,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             .OrderByDescending(x => x.AttemptNumber)
             .Select(x => new JobAttemptDetailView(x.AttemptNumber, x.StartedAt, x.CompletedAt, x.Succeeded, x.ErrorCode, x.ErrorSummary, "FAILED"))
             .ToListAsync(cancellationToken);
-        attempts = attempts.Select(x => x with { Outcome = AttemptOutcome(job, x) }).ToList();
+        attempts = attempts.Select(x => x with { Outcome = AttemptOutcome(job, x), ErrorSummary = JobErrorMessages.Display(x.ErrorCode, x.ErrorSummary) }).ToList();
         // A waiting check (the marketplace was still processing) and a run still in progress are not errors.
         var failure = attempts.Where(x => x.Outcome == "FAILED").ToList();
         var failureTimes = new FailureTime(
@@ -469,7 +469,37 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         var productId = PayloadGuid(job.PayloadJson, "productId");
         if (productId is { } payloadProductId && !await db.Products.AsNoTracking().AnyAsync(x => x.TenantId == job.TenantId && x.Id == payloadProductId, cancellationToken))
             productId = null;
-        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice, productId, await VariantResultsAsync(job, cancellationToken));
+        return new JobDetailView(summary, attempts, currentOrder, Change(job), relatedOrders, scan, failureReasons, invoice, productId, await VariantResultsAsync(job, cancellationToken), await WriteSummaryAsync(job, productId, cancellationToken));
+    }
+
+    // What a product write job sent, from its stored payload: the product's title and model codes from the card, and the
+    // marketplace's names for the attribute ids it carried (the connection's reference data; null when not known).
+    private async Task<JobWriteSummaryView?> WriteSummaryAsync(IntegrationJob job, Guid? productId, CancellationToken cancellationToken)
+    {
+        if (JobWritePayloadReader.Read(job.JobType, job.PayloadJson) is not { } write) return null;
+        if (productId is { } cardId)
+        {
+            var title = await db.Products.AsNoTracking().Where(x => x.TenantId == job.TenantId && x.Id == cardId).Select(x => x.Title).FirstOrDefaultAsync(cancellationToken);
+            var modelCodes = await db.ProductVariants.AsNoTracking()
+                .Where(x => x.TenantId == job.TenantId && x.ProductId == cardId && x.ModelCode != null && x.ModelCode != "")
+                .Select(x => x.ModelCode!).Distinct().OrderBy(x => x).Take(10).ToListAsync(cancellationToken);
+            write = write with { ProductTitle = title, ModelCodes = modelCodes };
+        }
+        var attributeIds = write.Parts.SelectMany(x => x.Attributes).Select(x => x.Id).Distinct(StringComparer.Ordinal).ToArray();
+        if (attributeIds.Length > 0 && job.ConnectionId is Guid connectionId)
+        {
+            var names = (await db.ReferenceItems.AsNoTracking()
+                    .Where(x => x.TenantId == job.TenantId && x.ConnectionId == connectionId && x.ResourceType == "CATEGORY_ATTRIBUTES" && attributeIds.Contains(x.ExternalId))
+                    .Select(x => new { x.ExternalId, x.Name })
+                    .ToListAsync(cancellationToken))
+                .GroupBy(x => x.ExternalId, StringComparer.Ordinal)
+                .ToDictionary(x => x.Key, x => x.First().Name, StringComparer.Ordinal);
+            write = write with
+            {
+                Parts = write.Parts.Select(part => part with { Attributes = part.Attributes.Select(attribute => attribute with { Name = names.GetValueOrDefault(attribute.Id) }).ToList() }).ToList()
+            };
+        }
+        return write;
     }
 
     // A publication job's answer per variant: what it recorded, else (an older job) its card's state when the card still
@@ -1036,7 +1066,10 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     }
 
     // A Shopify create stopped at its publication before the publish fix reads with the publish code ("Yayına alınamadı").
-    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null, string? platformCode = null) => Summary(x, ShopifyPublishOnlyFailure.Display(x.JobType, x.LastErrorCode, x.LastErrorSummary), failure, batchCount, lastAttemptStartedAt, platformCode);
+    private static JobSummaryView Summary(IntegrationJob x, FailureTime? failure = null, int batchCount = 1, DateTimeOffset? lastAttemptStartedAt = null, string? platformCode = null) => Summary(x, PlainError(ShopifyPublishOnlyFailure.Display(x.JobType, x.LastErrorCode, x.LastErrorSummary)), failure, batchCount, lastAttemptStartedAt, platformCode);
+
+    // The code stays; a developer-worded summary reads as its plain sentence (JobErrorMessages).
+    private static (string? Code, string? Summary) PlainError((string? Code, string? Summary) error) => (error.Code, JobErrorMessages.Display(error.Code, error.Summary));
 
     private static JobSummaryView Summary(IntegrationJob x, (string? Code, string? Summary) error, FailureTime? failure, int batchCount, DateTimeOffset? lastAttemptStartedAt, string? platformCode) => new(
         x.Id, x.ConnectionId, x.JobType, Wire(x.Status), x.AttemptCount, x.MaxAttempts,

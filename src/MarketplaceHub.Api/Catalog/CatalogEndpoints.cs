@@ -143,7 +143,9 @@ public static class CatalogEndpoints
         {
             if (Tenant(http) is not { } tenant) return Unauthorized(http);
             var keyFailure = RequireIdempotency(http); if (keyFailure is not null) return keyFailure;
-            return Accepted(await service.EnqueueProductUpdateAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command.Fields));
+            // notices: what the panel records in its notification center (a card value sent where the listing profile has none).
+            var queued = await service.EnqueueProductUpdateWithNoticesAsync(tenant.TenantId, id, command.ConnectionId, http.Request.Headers["Idempotency-Key"].ToString(), http.TraceIdentifier, http.RequestAborted, command.Fields);
+            return queued.Succeeded ? Results.Accepted($"/api/v1/jobs/{queued.Value!.JobId:D}", new { jobId = queued.Value.JobId, notices = queued.Value.Notices }) : MarketplaceHub.Api.Security.ApiProblems.Of(null, queued.Error!);
         });
         api.MapPost("/connections/{connectionId:guid}/sale-status-jobs", async (Guid connectionId, PazaramaSaleStatusRequest command, HttpContext http, ICatalogService service) =>
         {
@@ -420,6 +422,9 @@ public static class CatalogEndpoints
                 .Select(media => media.FileAssetId)
                 .Distinct()
                 .ToListAsync(http.RequestAborted)).ToHashSet();
+        // A size chart generated for this card ("Kullan") has no picture row yet; its save attaches it. Any of the card's
+        // tries counts, not only the newest: Kullan, then Yeniden Oluştur without using it, then Kaydet (O8).
+        activeTenantMediaAssetIds.UnionWith(await MarketplaceHub.Infrastructure.SizeCharts.SizeChartService.GeneratedForProductAsync(db, tenant.TenantId, command.ProductId, storedAssetIds, http.RequestAborted));
         var assetsById = assets.ToDictionary(asset => asset.Id);
         var assetsByUrl = assets.Where(asset => externalUrls.Contains(asset.RelativePath)).ToDictionary(asset => asset.RelativePath, StringComparer.Ordinal);
         var desiredAssets = new List<FileAsset>(references.Count);
@@ -947,6 +952,12 @@ public static class CatalogEndpoints
         var affectedProducts = await db.Products
             .Where(item => item.TenantId == tenant.TenantId && affectedProductIds.Contains(item.Id))
             .ToListAsync(http.RequestAborted);
+        // D5: a picture that leaves its card is no longer the card's size chart.
+        foreach (var chart in await db.ProductSizeCharts.Where(chart => chart.TenantId == tenant.TenantId && affectedProductIds.Contains(chart.ProductId) && chart.FileAssetId == assetId).ToListAsync(http.RequestAborted))
+        {
+            chart.FileAssetId = null;
+            chart.UpdatedAt = timeProvider.GetUtcNow();
+        }
         await CatalogLocalEdits.MarkMediaEditedAsync(db, tenant.TenantId, affectedProducts, timeProvider.GetUtcNow(), http.RequestAborted);
         await db.SaveChangesAsync(http.RequestAborted);
         await transaction.CommitAsync(http.RequestAborted);

@@ -27,7 +27,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "HEPSIBURADA", cancellationToken);
         if (connection is null) return NotFound();
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi Hepsiburada bağlantısına ait listing profile oluşturulmalıdır.");
+        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("Hepsiburada"));
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
 
         var categoryMapping = product.CategoryId is Guid categoryId
@@ -113,6 +113,7 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Hepsiburada fiyat teklifi gerekir.");
         if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
 
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
@@ -138,14 +139,16 @@ internal sealed class HepsiburadaProductPublicationComposer(AppDbContext db, ICo
             if (offer.VatRate < 0 || offer.VatRate > 100 || decimal.Truncate(offer.VatRate) != offer.VatRate)
                 return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı 0-100 arasında tam sayı olmalıdır.");
 
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
             // Only uploaded files have a verified MIME type; a registered URL is stored as image/remote and
             // Hepsiburada fetches and checks it itself (K4).
             if (relevantMedia.Any(item => item.Classification == "PRODUCT_MEDIA" && !string.Equals(item.MimeType, "image/jpeg", StringComparison.OrdinalIgnoreCase) && !string.Equals(item.MimeType, "image/png", StringComparison.OrdinalIgnoreCase))) return Fail("PRODUCT_MEDIA_MIME_INVALID", $"'{variant.Sku}' ürün görselleri JPEG veya PNG olmalıdır.");
             var directUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (directUrls.Any(url => !ProductPublicationComposer.IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
-            var imageUrls = relevantMedia.Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
-                .Where(url => !string.IsNullOrWhiteSpace(url)).Select(url => url!).Distinct(StringComparer.OrdinalIgnoreCase).Take(5).ToArray();
+            var pictureUrls = relevantMedia
+                .Select(item => (item.Id, Url: item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id)))
+                .ToList();
+            string[] imageUrls = [.. ProductPublicationComposer.SelectPublicationImageUrls(pictureUrls.Select(item => item.Url), PublicationVariantMedia.SizeChartUrl(pictureUrls, sizeChartAssetId), limit: 5)];
             if (imageUrls.Length == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir herkese açık HTTPS ürün görseli gerekir.");
 
             var importAttributes = new Dictionary<string, object?>(StringComparer.Ordinal)

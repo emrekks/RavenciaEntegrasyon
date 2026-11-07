@@ -925,6 +925,15 @@ public sealed class PttAvmAdapterTests
         """;
 
     [Fact]
+    public void AVatExclusivePriceIsNoSalePriceWhenTheVatRateIsUnknown()
+    {
+        static XElement Row(string fields) => XElement.Parse($"<StokKontrolDetay>{fields}</StokKontrolDetay>");
+        Assert.Equal(120m, PttAvmProductMapper.SalePrice(Row("<KDVli>0</KDVli><KDVsiz>100</KDVsiz>"), 20m));
+        Assert.Null(PttAvmProductMapper.SalePrice(Row("<KDVli>0</KDVli><KDVsiz>100</KDVsiz>"), null));
+        Assert.Equal(110m, PttAvmProductMapper.SalePrice(Row("<KDVli>110</KDVli><KDVsiz>100</KDVsiz>"), null));
+    }
+
+    [Fact]
     public async Task AProductPageMapsBarcodesPricesStockAndVariants()
     {
         var handler = new CapturingHandler(_ => Respond(HttpStatusCode.OK, ProductListAnswer));

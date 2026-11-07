@@ -427,6 +427,13 @@ public static class ListingSaleState
     // Closed for a reason other than zero stock (or for a reason the marketplace does not name): what the products
     // list's "Satışa Kapalı" filter finds. A listing closed only because its stock is 0 is found by the stock filter.
     public static bool ClosedBeyondStock(string? state, string? reason) => state == OffSale && reason != StockZero;
+
+    // The closures beyond a stock of 0 by their named reason (owner, 6 Nov 2026: a variant closed only for a stock of 0
+    // reads as on sale on every screen). A closure without a named reason is left out; callers count it as the rest.
+    public static IReadOnlyDictionary<string, int> ClosedBeyondStockReasonCounts(IEnumerable<(string? State, string? Reason)> links) =>
+        links.Where(link => ClosedBeyondStock(link.State, link.Reason) && !string.IsNullOrWhiteSpace(link.Reason))
+            .GroupBy(link => link.Reason!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
 }
 
 public static class MarketplaceVariantLinkHealth
@@ -569,7 +576,16 @@ public sealed class ChannelListingProfile
     public required string DesiredStatus { get; set; }
     public required string ActualStatus { get; set; }
     public string? LastRejectionCode { get; set; }
+    // Who made the profile: null is the panel (Yayınla, the listing profile form); MARKETPLACE_IMPORT is a product the
+    // panel matched to a listing read from the marketplace (ImportedListingProfiles). Such a profile carries no override:
+    // the card and its verified mappings stay the source of every update.
+    public string? Source { get; set; }
     public long Version { get; set; } = 1;
+}
+
+public static class ChannelListingProfileSource
+{
+    public const string MarketplaceImport = "MARKETPLACE_IMPORT";
 }
 
 public sealed class ChannelListingVariant

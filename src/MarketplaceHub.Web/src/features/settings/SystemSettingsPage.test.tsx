@@ -4,9 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2 }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, aiVersion: 1 }))
 
 vi.mock('../../shared/api', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../shared/api')>()
   const respond = async (requestedPath: string, init?: RequestInit) => {
     // Security calls go through hubApi under /auth; the fixture answers them by their auth path.
     const path = requestedPath.replace(/^\/auth(?=\/)/, '')
@@ -31,11 +32,16 @@ vi.mock('../../shared/api', async importOriginal => {
     }
     if (path === '/settings/alert-email') return { senderAddress: 'ravencia.alarm@gmail.com', recipients: ['owner@example.com'], appPasswordSaved: true, updatedAt: '2026-11-03T19:00:00Z', version: 2 }
     if (path === '/settings/alert-email/test') return { sent: true, recipients: ['owner@example.com'] }
+    if (path.startsWith('/settings/ai') && apiState.aiForbidden) throw new actual.ApiRequestError('Bu işlem için yeterli yetkiniz yok.', 403, 'PERMISSION_DENIED')
+    if (path === '/settings/ai' && method === 'PUT') return { apiKeySaved: true, defaultModel: JSON.parse(body ?? '{}').defaultModel, updatedAt: '2026-11-06T20:00:00Z', version: ++apiState.aiVersion, skills: [] }
+    if (path === '/settings/ai') return { apiKeySaved: true, defaultModel: 'claude-sonnet-5-5', updatedAt: '2026-11-06T19:00:00Z', version: apiState.aiVersion, skills: [{ key: 'beden-tablosu', title: 'Beden Tablosu', description: 'Ölçülerden beden tablosu görseli çizer.', bundleHash: 'h2', uploaded: { skillId: 'skill_01', version: '3', uploadedAt: '2026-11-06T18:00:00Z', bundleHash: 'h1' }, upToDate: false }] }
+    if (path === '/settings/ai/usage?limit=50') return { items: [{ id: 'u1', createdAt: '2026-11-06T19:30:00Z', feature: 'size-chart', featureLabel: 'Beden Tablosu', userName: 'Emre', subjectLabel: 'RYP007', model: 'claude-sonnet-5-5', inputTokens: 1200, outputTokens: 800, costUsd: 0.0104, status: 'SUCCEEDED', error: null, durationMs: 42000 }] }
+    if (path === '/settings/ai/test') return { ok: true, model: 'claude-sonnet-5-5', message: 'Bağlantı çalışıyor.' }
     if (path === '/settings/data-reset' && method === 'GET') return { items: [{ scope: 'PRODUCTS', count: 944 }, { scope: 'CATEGORIES', count: 12 }, { scope: 'CATEGORY_ATTRIBUTES', count: 40 }, { scope: 'BRANDS', count: 3 }, { scope: 'OPTIONS', count: 2 }] }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
     throw new Error(`Test API fixture does not handle ${method} ${path}`)
   }
-  return { ...(await importOriginal<typeof import('../../shared/api')>()), api: vi.fn(respond), hubApi: vi.fn(respond) }
+  return { ...actual, api: vi.fn(respond), hubApi: vi.fn(respond) }
 })
 
 import { SystemSettingsPage } from './SystemSettingsPage'
@@ -78,6 +84,8 @@ describe('SystemSettingsPage', () => {
     apiState.calls = []
     apiState.failShippingSave = null
     apiState.alertVersion = 2
+    apiState.aiForbidden = false
+    apiState.aiVersion = 1
     localStorage.clear()
     container = document.createElement('div')
     document.body.appendChild(container)
@@ -124,7 +132,7 @@ describe('SystemSettingsPage', () => {
     await renderPage()
     expect(paneTitle()).toBe('Authenticator')
     const groups = Array.from(container.querySelectorAll('.ss-gtabs > button')).map(item => item.textContent)
-    expect(groups).toEqual(['Güvenlik ve Oturumlar', 'Veri', 'Kargo Ayarları', 'Görünüm'])
+    expect(groups).toEqual(['Güvenlik ve Oturumlar', 'Veri', 'Yapay Zekâ', 'Kargo Ayarları', 'Görünüm'])
     expect(container.querySelector('.ss-gtabs > button.is-on')?.textContent).toBe('Güvenlik ve Oturumlar')
     expect(Array.from(container.querySelectorAll('.ss-seg > button')).map(item => item.textContent)).toEqual(['Authenticator', 'Oturumlar3', 'Alarm BildirimleriAlarmlar'])
     expect(button('Authenticator’ı Etkinleştir')).toBeTruthy()
@@ -308,5 +316,33 @@ describe('SystemSettingsPage', () => {
     await settle()
     expect(apiState.calls.some(call => call.path === '/settings/alert-email/test' && call.method === 'POST')).toBe(true)
     expect(container.querySelector('[role="status"]')?.textContent).toContain('Test e-postası gönderildi: owner@example.com')
+  })
+
+  it('never shows the saved Claude API key and sends a new one only when it is changed', async () => {
+    await renderPage('/settings?tab=ai')
+    expect(paneTitle()).toContain('Yapay Zekâ')
+    expect(container.querySelector('input[type="password"]')).toBeNull()
+    expect(container.textContent).toContain('Kayıtlı')
+    expect(container.textContent).toContain('Güncel Değil · Sürüm 3')
+    expect(button('Beceriyi Güncelle')).toBeTruthy()
+    expect(container.querySelector('.ss-ai-usage')?.textContent).toContain('$0.0104')
+
+    click(button('Değiştir'))
+    input(container.querySelector<HTMLInputElement>('input[type="password"]')!, 'sk-ant-test-value')
+    click(button('Ayarları Kaydet'))
+    await settle()
+    const save = apiState.calls.find(call => call.path === '/settings/ai' && call.method === 'PUT')!
+    expect(JSON.parse(save.body!)).toEqual({ apiKey: 'sk-ant-test-value', defaultModel: 'claude-sonnet-5-5' })
+    expect(save.headers?.['if-match']).toBe('"v1"')
+    // After the save the field closes and nothing of the key is left on the page.
+    expect(container.querySelector('input[type="password"]')).toBeNull()
+    expect(container.innerHTML).not.toContain('sk-ant-test-value')
+  })
+
+  it('shows the lock callout to roles that may not see the AI settings', async () => {
+    apiState.aiForbidden = true
+    await renderPage('/settings?tab=ai')
+    expect(container.querySelector('.ss-callout[role="alert"]')?.textContent).toContain('yalnız hesap sahibi ve yöneticiler')
+    expect(container.textContent).not.toContain('Ayarları Kaydet')
   })
 })

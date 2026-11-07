@@ -9,6 +9,7 @@ vi.mock('../../../shared/api', async importOriginal => {
   return { ...original, hubApi: vi.fn(async (path: string) => { throw new Error(`Test API fixture does not handle ${path}`) }) }
 })
 
+import { hubApi } from '../../../shared/api'
 import { ProductQuickEditModal } from './ProductsPage'
 import type { Product, Variant } from '../shared'
 
@@ -32,11 +33,11 @@ let root: Root
 const errors: unknown[] = []
 const onError = (event: ErrorEvent) => { errors.push(event.error); event.preventDefault() }
 
-async function render() {
+async function render(products: Product[] = [product]) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   root = createRoot(container, { onUncaughtError: error => { errors.push(error) } })
   await act(async () => {
-    root.render(<QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode="stock" products={[product]} connections={[]} onChanged={async () => undefined} onClose={() => undefined} /></MemoryRouter></QueryClientProvider>)
+    root.render(<QueryClientProvider client={client}><MemoryRouter><ProductQuickEditModal mode="stock" products={products} connections={[]} onChanged={async () => undefined} onClose={() => undefined} /></MemoryRouter></QueryClientProvider>)
   })
 }
 
@@ -127,5 +128,52 @@ describe('ProductQuickEditModal variant selection', () => {
     expect(trigger('Renk').textContent).toBe('Renk: Seçiniz')
     expect(note()).toContain('2 varyant')
     expect(groupBox('Bej').checked).toBe(true)
+  })
+})
+
+// Live MZ028IH (6 Nov 2026): ten colour cards of one variant each. The window reads every card by id, and a card read by
+// id lists the whole family's variants, so each colour showed ten rows of the same variant ("1 varyant varken 10").
+describe('ProductQuickEditModal on a family of colour cards', () => {
+  const colors = ['Bordo', 'Füme', 'Gri']
+  const familyVariants = colors.map((color, index) => ({ ...variant(`v${index}`, color, 'Standart'), productId: `card${index}`, onHand: index + 1 }))
+  // Each card as GET /products/{id} returns it: its own fields, every card's variants.
+  const cards = colors.map((color, index) => ({ ...product, id: `card${index}`, title: `${color} Hırka`, variants: familyVariants }) as Product)
+
+  it('shows each variant once, under its own colour', async () => {
+    await render(cards)
+    for (const color of colors) {
+      const group = groupBox(color).closest('.rr-vgroup')!
+      expect(group.querySelector('.rr-vg-name small')?.textContent).toBe('1 varyant')
+    }
+    await pick('Renk', 'Tümü')
+    expect(note()).toContain('3 varyant')
+    await click(groupBox('Bordo').closest('.rr-vg-h')!.querySelector<HTMLButtonElement>('button.rr-vg-t')!)
+    // A stock window opens the groups of one row together (Bordo and Füme here): each shows its own variant only.
+    const rowsOf = (color: string) => Array.from(document.body.querySelectorAll(`[aria-label="${color} varyantları"] tbody tr`)).map(row => row.querySelector('.rr-qname small')?.textContent)
+    expect(rowsOf('Bordo')).toEqual(['SKU-v0'])
+    expect(rowsOf('Füme')).toEqual(['SKU-v1'])
+    expect(errors).toEqual([])
+  })
+
+  it('writes the stock of each selected variant once, by its own id', async () => {
+    const calls: Array<{ path: string; body: { onHand: number; expectedOnHand: number } }> = []
+    vi.mocked(hubApi).mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'PUT' && path.startsWith('/inventory/')) calls.push({ path, body: JSON.parse(String(init.body)) })
+      return {} as never
+    })
+    await render(cards)
+    await pick('Renk', 'Tümü')
+    const amount = document.body.querySelector<HTMLInputElement>('input[placeholder="Miktar"]')!
+    const action = Array.from(document.body.querySelectorAll<HTMLSelectElement>('select.rr-in')).find(item => item.querySelector('option[value="ADD"]'))!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(action, 'ADD')
+      action.dispatchEvent(new Event('change', { bubbles: true }))
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(amount, '5')
+      amount.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { document.body.querySelector<HTMLFormElement>('#product-quick-edit-form')!.requestSubmit() })
+    expect(calls.map(call => call.path).sort()).toEqual(['/inventory/v0/on-hand', '/inventory/v1/on-hand', '/inventory/v2/on-hand'])
+    expect(Object.fromEntries(calls.map(call => [call.path, call.body.onHand]))).toEqual({ '/inventory/v0/on-hand': 6, '/inventory/v1/on-hand': 7, '/inventory/v2/on-hand': 8 })
+    expect(calls.every(call => call.body.onHand - call.body.expectedOnHand === 5)).toBe(true)
   })
 })

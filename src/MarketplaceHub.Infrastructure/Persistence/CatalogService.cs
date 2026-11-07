@@ -705,6 +705,48 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             : null;
     }
 
+    // Owner, 6 Nov 2026: a card saved before its variants were generated holds an option-less "Tek Ürün" variant; once
+    // the editor replaces it with generated variants, the save removes it, but only when nothing is tied to it: no option
+    // values, no marketplace link, listing state or offer, no order line, no stock movement, reservation or return, no
+    // pending job, and at least one other variant stays. Anything else keeps it (the editor then says so); unlike an
+    // explicit variant delete, a kept placeholder never fails the save.
+    private async Task<IReadOnlyList<Guid>> RemovablePlaceholderVariantIdsAsync(Guid tenantId, List<ProductVariant> existingVariants, IReadOnlyList<Guid> placeholderIds, IReadOnlyCollection<Guid> deletingIds, int createdCount, IReadOnlySet<Guid> updatedIds, CancellationToken cancellationToken)
+    {
+        var candidates = existingVariants
+            .Where(variant => placeholderIds.Contains(variant.Id) && !updatedIds.Contains(variant.Id) && IsPlaceholderSignature(variant.OptionSignature))
+            .Select(variant => variant.Id)
+            .ToList();
+        if (candidates.Count == 0) return [];
+        var tied = new HashSet<Guid>();
+        tied.UnionWith(await db.VariantOptionValues.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => x.VariantId).ToListAsync(cancellationToken));
+        tied.UnionWith(await db.MarketplaceVariantLinks.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => x.VariantId).ToListAsync(cancellationToken));
+        tied.UnionWith(await db.MarketplaceListingStates.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => x.VariantId).ToListAsync(cancellationToken));
+        tied.UnionWith(await db.ChannelOffers.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => x.VariantId).ToListAsync(cancellationToken));
+        tied.UnionWith(await db.OrderLines.AsNoTracking().Where(x => x.TenantId == tenantId && x.VariantId != null && candidates.Contains(x.VariantId.Value)).Select(x => x.VariantId!.Value).ToListAsync(cancellationToken));
+        var inventory = await db.InventoryItems.AsNoTracking().Where(x => x.TenantId == tenantId && candidates.Contains(x.VariantId)).Select(x => new { x.Id, x.VariantId }).ToListAsync(cancellationToken);
+        var inventoryIds = inventory.Select(x => x.Id).ToArray();
+        if (inventoryIds.Length > 0)
+        {
+            var movedInventoryIds = new HashSet<Guid>();
+            movedInventoryIds.UnionWith(await db.StockLedgerEntries.AsNoTracking().Where(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId)).Select(x => x.InventoryItemId).ToListAsync(cancellationToken));
+            movedInventoryIds.UnionWith(await db.StockReservations.AsNoTracking().Where(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId)).Select(x => x.InventoryItemId).ToListAsync(cancellationToken));
+            movedInventoryIds.UnionWith(await db.ReturnStockDispositions.AsNoTracking().Where(x => x.TenantId == tenantId && inventoryIds.Contains(x.InventoryItemId)).Select(x => x.InventoryItemId).ToListAsync(cancellationToken));
+            tied.UnionWith(inventory.Where(x => movedInventoryIds.Contains(x.Id)).Select(x => x.VariantId));
+        }
+        var removable = new List<Guid>();
+        foreach (var candidate in candidates.Where(candidate => !tied.Contains(candidate)))
+        {
+            if (await StockHistoryDeleteBlockAsync(tenantId, [], [candidate], [], cancellationToken) is not null) continue;
+            var remaining = existingVariants.Count(variant => !deletingIds.Contains(variant.Id) && !removable.Contains(variant.Id) && variant.Id != candidate) + createdCount;
+            if (remaining < 1) continue;
+            removable.Add(candidate);
+        }
+        return removable;
+    }
+
+    private static bool IsPlaceholderSignature(string? signature) =>
+        string.IsNullOrWhiteSpace(signature) || signature.Trim() == "-" || string.Equals(signature.Trim(), "Tek Ürün", StringComparison.OrdinalIgnoreCase);
+
     public Task<ServiceResult<ProductDeleteResult>> DeleteProductAsync(Guid tenantId, Guid id, long expectedVersion, CancellationToken cancellationToken) =>
         DeleteProductsAsync(tenantId, [id], expectedVersion, cancellationToken);
 
@@ -1168,17 +1210,22 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                                      select new { MediaId = item.Id, item.ProductId, item.VariantId, item.SortOrder, AssetId = asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
         var familyProductTitles = familyProducts.ToDictionary(item => item.Id, item => item.Title);
         var familyRows = familyMediaRows.Select(item => new CatalogFamilyMedia.Row(item.MediaId, item.ProductId, item.VariantId, item.SortOrder, CatalogMediaDisplay.Url(item.AssetId, item.Classification, item.Url))).ToList();
-        var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles);
+        var (familyMediaUrls, familyMediaItems) = CatalogFamilyMedia.Build(familyRows, familyProductTitles, familyProducts.Select(item => item.Id).ToList());
         var familyOrderedMediaUrls = CatalogFamilyMedia.OrderedUrls(familyRows);
+        var familyChartUrls = familyViews.Select(view => view.SizeChartUrl).ToList();
+        IReadOnlyList<string> FamilyStripWithChartsLast(IReadOnlyList<string> urls, string? ownChartUrl) =>
+            SizeCharts.SizeChartPlacement.Last(SizeCharts.SizeChartPlacement.LastAll(urls, familyChartUrls), ownChartUrl);
         return ServiceResult<ProductView>.Ok(primaryView with
         {
             Variants = allVariants,
             TotalStock = allVariants.Sum(x => x.OnHand),
             StartingPrice = CatalogPricePolicy.MinimumPositivePrice(familyViews.SelectMany(view => view.Variants.Select(variant => CatalogPricePolicy.EffectiveSalePrice(variant.SalePrice, variant.DefaultSalePrice, view.DefaultSalePrice)))),
             Options = allOptions,
-            FamilyMediaUrls = familyMediaUrls,
+            // The size charts close the strip, after the family's other pictures: the opened card's last, any other
+            // colour's before it (each card has its own), so no chart stands among the colours' pictures.
+            FamilyMediaUrls = FamilyStripWithChartsLast(familyMediaUrls, primaryView.SizeChartUrl),
             FamilyMediaItems = familyMediaItems,
-            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? familyOrderedMediaUrls : null,
+            FamilyOrderedMediaUrls = familyViews.Any(view => view.HasCustomMediaOrder) ? FamilyStripWithChartsLast(familyOrderedMediaUrls, primaryView.SizeChartUrl) : null,
             FamilyProductIds = familyViews.Select(view => view.Id).ToList()
         });
     }
@@ -1221,7 +1268,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         // product status leaves its variants on their previous status.
         var familyVariantProductIds = await ProductFamilyProductIdsAsync(tenantId, product, cancellationToken);
         var variantIdsToDelete = (command.VariantIdsToDelete ?? []).Distinct().ToList();
-        var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || variantIdsToDelete.Count > 0 || command.Status is not null
+        var placeholderIdsToDelete = (command.PlaceholderVariantIdsToDelete ?? []).Distinct().Where(placeholderId => !variantIdsToDelete.Contains(placeholderId)).ToList();
+        var existingVariants = variantsToCreate.Count > 0 || variantUpdates.Count > 0 || variantIdsToDelete.Count > 0 || placeholderIdsToDelete.Count > 0 || command.Status is not null
             ? await db.ProductVariants.Where(x => x.TenantId == tenantId && familyVariantProductIds.Contains(x.ProductId)).ToListAsync(cancellationToken)
             : [];
         if (variantIdsToDelete.Count > 0)
@@ -1236,6 +1284,27 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             var variantDeleteBlock = await StockHistoryDeleteBlockAsync(tenantId, deletingProductIds, [.. variantIdsToDelete], deletingInventoryIds, cancellationToken);
             if (variantDeleteBlock is not null)
                 return Conflict<ProductView>("VARIANT_DELETE_BLOCKED", $"Varyant {variantDeleteBlock} bağlı olduğu için silinemiyor. Stok geçmişini korumak için ürünü arşivleyin.");
+        }
+        if (placeholderIdsToDelete.Count > 0)
+            variantIdsToDelete.AddRange(await RemovablePlaceholderVariantIdsAsync(tenantId, existingVariants, placeholderIdsToDelete, variantIdsToDelete, variantsToCreate.Count, variantUpdates.Select(update => update.Id).ToHashSet(), cancellationToken));
+        // O7/D6: the family as this save leaves it (kept rows with their updated codes, then the new rows) may not hold
+        // one stock code or barcode twice; the unique index would refuse it as a 500 after half the checks. A deleted
+        // variant's code may go to another row (D6). Nothing is saved; the editor marks every row holding the code.
+        if (variantsToCreate.Count > 0 || variantUpdates.Count > 0)
+        {
+            var finalUpdates = variantUpdates.GroupBy(update => update.Id).ToDictionary(group => group.Key, group => group.First());
+            var finalRows = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id))
+                .Select(variant => finalUpdates.TryGetValue(variant.Id, out var update)
+                    ? new VariantCodeAvailability.SaveRow($"variant:{variant.Id:D}", update.Sku, update.Barcode)
+                    : new VariantCodeAvailability.SaveRow($"variant:{variant.Id:D}", variant.Sku, variant.Barcode))
+                .Concat(variantsToCreate.Select((variant, index) => new VariantCodeAvailability.SaveRow($"new:{index}", variant.Sku, variant.Barcode)))
+                .ToList();
+            var duplicatesInSave = VariantCodeAvailability.DuplicatesInSave(finalRows);
+            if (duplicatesInSave.Count > 0)
+            {
+                var (duplicateMessage, duplicateFields) = VariantCodeAvailability.DescribeDuplicates(duplicatesInSave);
+                return ServiceResult<ProductView>.Fail("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", duplicateMessage, 409, duplicateFields);
+            }
         }
         var changedVariantIds = new HashSet<Guid>();
         foreach (var update in variantUpdates)
@@ -1269,12 +1338,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
             }
             var updatesById = variantUpdates.ToDictionary(x => x.Id);
-            var proposedSkus = existingVariants.Select(variant => Normalize(updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku)).ToArray();
+            var proposedSkus = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => Normalize(updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku)).ToArray();
             if (proposedSkus.Any(string.IsNullOrWhiteSpace) || proposedSkus.Distinct().Count() != proposedSkus.Length) return Invalid<ProductView>("variantUpdates", "Stok kodları boş veya tekrarlı olamaz.");
-            var proposedBarcodes = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? NormalizeBarcode(update.Barcode) : NormalizeBarcode(variant.Barcode)).OfType<string>().ToArray();
+            var proposedBarcodes = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? NormalizeBarcode(update.Barcode) : NormalizeBarcode(variant.Barcode)).OfType<string>().ToArray();
             if (proposedBarcodes.Distinct().Count() != proposedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
-            var proposedSkuValues = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku).ToArray();
-            var proposedBarcodeValues = existingVariants.Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Barcode : variant.Barcode).OfType<string>().Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
+            var proposedSkuValues = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Sku : variant.Sku).ToArray();
+            var proposedBarcodeValues = existingVariants.Where(variant => !variantIdsToDelete.Contains(variant.Id)).Select(variant => updatesById.TryGetValue(variant.Id, out var update) ? update.Barcode : variant.Barcode).OfType<string>().Where(value => !string.IsNullOrWhiteSpace(value)).ToArray();
             var updateClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId)), proposedSkuValues, proposedBarcodeValues, cancellationToken);
             if (updateClashes.Count > 0) return CodeConflict<ProductView>("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", "Stok kodu veya barkod başka bir üründe kullanılıyor", updateClashes);
             var updatedAt = timeProvider.GetUtcNow();
@@ -1387,11 +1456,11 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
             if (optionValidation is not null) return ServiceResult<ProductView>.Fail(optionValidation.Code, optionValidation.Message, optionValidation.Status, optionValidation.FieldErrors);
             var normalizedSkus = variantsToCreate.Select(x => Normalize(x.Sku)).ToArray();
             if (normalizedSkus.Any(string.IsNullOrWhiteSpace) || normalizedSkus.Distinct().Count() != normalizedSkus.Length) return Invalid<ProductView>("variantsToCreate", "SKU boş veya tekrarlı olamaz.");
-            var newSkuClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !variantIdsToDelete.Contains(x.Id)), [.. variantsToCreate.Select(x => x.Sku)], [], cancellationToken);
+            var newSkuClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId)), [.. variantsToCreate.Select(x => x.Sku)], [], cancellationToken);
             if (newSkuClashes.Count > 0) return CodeConflict<ProductView>("SKU_CONFLICT_REVIEW_REQUIRED", "Stok kodu başka bir varyantta kullanılıyor", newSkuClashes);
             var normalizedBarcodes = variantsToCreate.Select(x => NormalizeBarcode(x.Barcode)).OfType<string>().ToArray();
             if (normalizedBarcodes.Distinct().Count() != normalizedBarcodes.Length) return Conflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkodlar ürün içinde benzersiz olmalıdır.");
-            var newBarcodeClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !variantIdsToDelete.Contains(x.Id)), [], [.. variantsToCreate.Select(x => x.Barcode).OfType<string>().Where(x => !string.IsNullOrWhiteSpace(x))], cancellationToken);
+            var newBarcodeClashes = await VariantCodeAvailability.FindAsync(db, db.ProductVariants.Where(x => x.TenantId == tenantId && !familyVariantProductIds.Contains(x.ProductId)), [], [.. variantsToCreate.Select(x => x.Barcode).OfType<string>().Where(x => !string.IsNullOrWhiteSpace(x))], cancellationToken);
             if (newBarcodeClashes.Count > 0) return CodeConflict<ProductView>("BARCODE_CONFLICT_REVIEW_REQUIRED", "Barkod başka bir varyantta kullanılıyor", newBarcodeClashes);
 
             var globalAssignments = command.Attributes ?? await db.ProductAttributeAssignments.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == id && x.VariantId == null).Select(x => new ProductAttributeCommand(x.AttributeId, x.ValueId, x.TextValue, x.NumberValue, x.BooleanValue, x.SortOrder)).ToListAsync(cancellationToken);
@@ -1949,6 +2018,46 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // fields: the product information "Platformlarda Güncelle" picked (ProductUpdateFields); null sends all of it.
     public async Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null)
     {
+        var queued = await EnqueueProductUpdateWithNoticesAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, cancellationToken, fields);
+        return queued.Succeeded ? ServiceResult<Guid>.Ok(queued.Value!.JobId) : ServiceResult<Guid>.Fail(queued.Error!.Code, queued.Error.Message, queued.Error.Status, queued.Error.FieldErrors);
+    }
+
+    // A product matched to a marketplace listing gets its listing profile only from a product sync that reads the
+    // products' information (ImportedListingProfiles); the update never makes one (owner decision 6 Nov 2026), and a card
+    // without one is refused with what to run (ImportedListingProfiles.MissingPublicationMessage). On such a profile the
+    // card's values go: a field the update sends that the card lacks stops it here, before anything is queued, and the
+    // notices say where the card's value went in place of the profile's.
+    public async Task<ServiceResult<ProductUpdateQueued>> EnqueueProductUpdateWithNoticesAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null)
+    {
+        var card = await ImportedProfileCardAsync(tenantId, productId, connectionId, cancellationToken);
+        if (card is not null && ImportedProfileCardFallbacks.EmptyCardField(card.PlatformCode, card.PlatformName, card.ShortLabel, card.Source, card.ProfileDeliveryDays, card.CardDeliveryDays, fields) is { } empty)
+            return ServiceResult<ProductUpdateQueued>.Fail(ImportedProfileCardFallbacks.EmptyCardFieldCode, empty, 422, new Dictionary<string, string[]> { ["deliveryDays"] = [empty] });
+        var queued = await EnqueueProductUpdateCoreAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, cancellationToken, fields);
+        if (!queued.Succeeded) return ServiceResult<ProductUpdateQueued>.Fail(queued.Error!.Code, queued.Error.Message, queued.Error.Status, queued.Error.FieldErrors);
+        var notices = card is null ? [] : ImportedProfileCardFallbacks.Notices(card.PlatformCode, card.PlatformName, card.LongLabel, card.Source, card.ProfileDeliveryDays, card.ProfileWarranty, card.CardDeliveryDays, card.CardWarrantyMonths, fields);
+        return ServiceResult<ProductUpdateQueued>.Ok(new(queued.Value, notices));
+    }
+
+    private sealed record ImportedProfileCard(string PlatformCode, string PlatformName, string ShortLabel, string LongLabel, string? Source, int? ProfileDeliveryDays, string? ProfileWarranty, int? CardDeliveryDays, int? CardWarrantyMonths);
+
+    // The card and its marketplace-import profile, or null when the profile is the panel's own (or there is none).
+    private async Task<ImportedProfileCard?> ImportedProfileCardAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken)
+    {
+        var profile = await db.ChannelListingProfiles.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId)
+            .Select(x => new { x.Source, x.DeliveryTimeDays, x.Warranty }).SingleOrDefaultAsync(cancellationToken);
+        if (profile?.Source != ChannelListingProfileSource.MarketplaceImport) return null;
+        var product = await db.Products.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == productId).Select(x => new { x.Title, x.DeliveryDays, x.WarrantyMonths }).SingleOrDefaultAsync(cancellationToken);
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (product is null || platformCode is null) return null;
+        var modelCode = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenantId && x.ProductId == productId && x.ModelCode != null).OrderBy(x => x.SortOrder).Select(x => x.ModelCode).FirstOrDefaultAsync(cancellationToken);
+        var title = product.Title.Trim();
+        var shortLabel = string.IsNullOrWhiteSpace(modelCode) ? title : modelCode.Trim();
+        var longLabel = string.IsNullOrWhiteSpace(modelCode) ? title : $"{modelCode.Trim()} ({title})";
+        return new(platformCode, ListingVerificationPolicy.PlatformName(platformCode), shortLabel, longLabel, profile.Source, profile.DeliveryTimeDays, profile.Warranty, product.DeliveryDays, product.WarrantyMonths);
+    }
+
+    private async Task<ServiceResult<Guid>> EnqueueProductUpdateCoreAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields)
+    {
         // Shopify takes the product whole (ShopifyProductPublicationComposer): an update is the publication's productSet again
         // under the handle the panel gave the product, which Shopify applies to that product in place. The picked fields do
         // not narrow it (price and stock ride along), and the send never creates a product.
@@ -2442,22 +2551,28 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                            where item.TenantId == tenantId && productIds.Contains(item.ProductId) && item.Status == "ACTIVE" && asset.Status == "ACTIVE" && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
                            orderby item.SortOrder, item.VariantId, item.Id
                            select new { item.ProductId, item.VariantId, item.MediaRole, item.SortOrder, MediaId = item.Id, asset.Id, asset.Classification, Url = asset.RelativePath }).ToListAsync(cancellationToken);
+        // Each card's size chart (one of its active pictures), always its last picture everywhere it is listed.
+        var sizeChartAssetByProduct = await db.ProductSizeCharts.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && productIds.Contains(x.ProductId) && x.FileAssetId != null)
+            .ToDictionaryAsync(x => x.ProductId, x => x.FileAssetId!.Value, cancellationToken);
+        var sizeChartUrlByProduct = media
+            .Where(item => sizeChartAssetByProduct.TryGetValue(item.ProductId, out var chartAssetId) && item.Id == chartAssetId)
+            .GroupBy(item => item.ProductId)
+            .ToDictionary(group => group.Key, group => CatalogMediaDisplay.Url(group.First().Id, group.First().Classification, group.First().Url));
         var mediaUrlsByVariant = media.Where(x => x.VariantId is not null)
             .GroupBy(x => x.VariantId!.Value)
-            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
-        var globalMediaUrlsByProduct = media.Where(x => x.VariantId is null)
-            .GroupBy(x => x.ProductId)
-            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
+            .ToDictionary(group => group.Key, group => SizeCharts.SizeChartPlacement.Last(CatalogImageIdentity.DistinctDisplayUrls(group.Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))), sizeChartUrlByProduct.GetValueOrDefault(group.First().ProductId)));
+        // The card's pictures (mediaUrls) in its strip's order (CatalogFamilyMedia.StripUrls), the same rule the editor,
+        // the family strip and the marketplace payloads read.
+        var mediaRowsByProduct = media
+            .GroupBy(item => item.ProductId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<CatalogFamilyMedia.Row>)group
+                .Select(item => new CatalogFamilyMedia.Row(item.MediaId, item.ProductId, item.VariantId, item.SortOrder, CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)))
+                .ToList());
         var customMediaOrderProductIds = media
             .Where(item => item.MediaRole.StartsWith("ORDERED_", StringComparison.Ordinal))
             .Select(item => item.ProductId)
             .ToHashSet();
-        var customMediaUrlsByProduct = media
-            .Where(item => customMediaOrderProductIds.Contains(item.ProductId))
-            .GroupBy(item => item.ProductId)
-            .ToDictionary(group => group.Key, group => CatalogImageIdentity.DistinctDisplayUrls(
-                group.OrderBy(item => item.SortOrder).ThenBy(item => item.VariantId).ThenBy(item => item.MediaId)
-                    .Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url))));
         var categoryIds = products.Select(x => x.CategoryId).OfType<Guid>().Distinct().ToArray();
         var categoryPathById = categoryIds.Length == 0
             ? new Dictionary<Guid, string>()
@@ -2566,12 +2681,18 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                     return new ProductPlatformStatusView(connection.DisplayName, status, matchedVariantCount, productVariantIds.Count, IsPlatformUpdateInProgress(profile?.ActualStatus), connection.PlatformCode, missingVariantCount,
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OnSale),
                         saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale),
-                        saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale && x.SaleStateReason == ListingSaleState.StockZero));
+                        saleLinks.Count(x => x.SaleState == ListingSaleState.OffSale && x.SaleStateReason == ListingSaleState.StockZero),
+                        ListingSaleState.ClosedBeyondStockReasonCounts(saleLinks.Select(x => (x.SaleState, x.SaleStateReason))));
                 })
                 .OrderBy(x => x.Platform, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             var activePlatforms = platformStatuses.Select(x => x.Platform).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-            var image = media.Where(x => x.ProductId == product.Id && x.VariantId == null).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault() ?? media.Where(x => x.ProductId == product.Id).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault();
+            // The card's front picture is never its size chart while it has another picture.
+            var chartAssetId = sizeChartAssetByProduct.TryGetValue(product.Id, out var chartAsset) ? chartAsset : (Guid?)null;
+            var image = media.Where(x => x.ProductId == product.Id && x.VariantId == null && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
+                ?? media.Where(x => x.ProductId == product.Id && x.Id != chartAssetId).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault()
+                ?? media.Where(x => x.ProductId == product.Id).Select(item => CatalogMediaDisplay.Url(item.Id, item.Classification, item.Url)).FirstOrDefault();
+            var sizeChartUrl = sizeChartUrlByProduct.GetValueOrDefault(product.Id);
             var prices = variantViews.Select(variant => CatalogPricePolicy.EffectiveSalePrice(variant.SalePrice, variant.DefaultSalePrice, product.DefaultSalePrice));
             var currency = variantViews.Select(x => x.Currency).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? "TRY";
             var modelCode = variantViews.Select(x => x.ModelCode).FirstOrDefault(x => !string.IsNullOrWhiteSpace(x));
@@ -2582,47 +2703,8 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
                 .Select(option => new ProductOptionView(option.Id, option.Label, optionValues.Where(value => value.OptionId == option.Id).Select(value => new ProductOptionValueView(value.Id, value.Label)).ToList()))
                 .ToList();
             var hasCustomMediaOrder = customMediaOrderProductIds.Contains(product.Id);
-            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, ProductMediaForView(variantViews, globalMediaUrlsByProduct.GetValueOrDefault(product.Id), hasCustomMediaOrder, customMediaUrlsByProduct.GetValueOrDefault(product.Id)), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion, product.DeliveryDays);
+            return new ProductView(product.Id, product.Title, product.Description, product.BrandId, product.CategoryId, product.Status.ToString().ToUpperInvariant(), product.UpdatedAt, product.Version, variantViews, image, variantViews.Sum(x => x.OnHand), CatalogPricePolicy.MinimumPositivePrice(prices), currency, modelCode, activePlatforms, attributes, options, SizeCharts.SizeChartPlacement.Last(CatalogFamilyMedia.StripUrls(mediaRowsByProduct.GetValueOrDefault(product.Id) ?? [], hasCustomMediaOrder, variantViews.Select(variant => variant.Id).ToList()), sizeChartUrl), null, platformStatuses, product.CategoryId is Guid categoryId ? categoryPathById.GetValueOrDefault(categoryId) : null, null, hasCustomMediaOrder, product.DefaultListPrice, product.DefaultSalePrice, product.WarrantyMonths, product.TrendyolWebColorValueId, product.VatRate, product.VatInclusion, product.DeliveryDays) { SizeChartUrl = sizeChartUrl };
         }).ToList();
-    }
-
-    private static IReadOnlyList<string> ProductMediaForView(IReadOnlyList<ProductVariantView> variants, IReadOnlyList<string>? globalMedia, bool hasCustomMediaOrder, IReadOnlyList<string>? customOrderedMedia)
-    {
-        var fallback = globalMedia ?? [];
-        if (hasCustomMediaOrder) return customOrderedMedia ?? fallback;
-        var hasColor = variants.Any(variant => ColorOptionValue(variant.OptionSignature) is not null);
-        if (!hasColor) return fallback;
-
-        var selected = new List<string>();
-        var seenColors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var seenImages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var variant in variants)
-        {
-            var color = ColorOptionValue(variant.OptionSignature);
-            if (color is null || !seenColors.Add(color)) continue;
-            foreach (var image in variant.MediaUrls ?? [])
-                if (!string.IsNullOrWhiteSpace(image) && seenImages.Add(CatalogImageIdentity.Key(image))) selected.Add(image);
-        }
-
-        return selected.Count > 0 ? selected : fallback.Take(1).ToList();
-    }
-
-    private static string? ColorOptionValue(string optionSignature)
-    {
-        foreach (var part in optionSignature.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-        {
-            var separator = part.IndexOf(':');
-            if (separator < 0) separator = part.IndexOf('=');
-            if (separator < 0) continue;
-            var key = part[..separator].Replace(" ", "", StringComparison.Ordinal).Trim().ToUpperInvariant();
-            if (key is "RENK" or "WEBCOLOR" or "COLOR" or "COLOUR")
-            {
-                var value = part[(separator + 1)..].Trim();
-                return string.IsNullOrWhiteSpace(value) ? null : value.ToUpperInvariant();
-            }
-        }
-
-        return null;
     }
 
     private static decimal? PositiveOrNull(decimal? value) => value is > 0 ? value : null;

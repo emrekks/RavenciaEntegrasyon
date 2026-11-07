@@ -98,10 +98,11 @@ describe('PlatformUpdateDialog', () => {
 
   it('lists on each card exactly what goes, including what rides along', () => {
     render(['ty', 'hb'], ['TITLE', 'PRICE'])
-    expect(chipsOf('TRENDYOL Mağaza')).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Liste Fiyatı', 'Satış Fiyatı', 'Renk / Beden', 'Menşei'])
-    expect(extraChipsOf('TRENDYOL Mağaza')).toEqual(['Renk / Beden', 'Menşei'])
-    expect(card('TRENDYOL Mağaza')?.querySelector('.platform-update-sends dd')?.getAttribute('title')).toBe('Ürün Adı, Açıklama, Görseller, Kategori Özellikleri, Liste Fiyatı, Satış Fiyatı, Renk / Beden, Menşei')
-    expect(sendsOf('TRENDYOL Mağaza')).toContain('aynı istekte birlikte gider: Açıklama, Görseller, Kategori Özellikleri')
+    // Trendyol's approved content request carries only the picked content fields.
+    expect(chipsOf('TRENDYOL Mağaza')).toEqual(['Ürün Adı', 'Liste Fiyatı', 'Satış Fiyatı'])
+    expect(extraChipsOf('TRENDYOL Mağaza')).toEqual([])
+    expect(card('TRENDYOL Mağaza')?.querySelector('.platform-update-sends dd')?.getAttribute('title')).toBe('Ürün Adı, Liste Fiyatı, Satış Fiyatı')
+    expect(sendsOf('TRENDYOL Mağaza')).not.toContain('aynı istekte birlikte gider')
     expect(chipsOf('HEPSIBURADA Mağaza')).toEqual(['Ürün Adı', 'Açıklama', 'Görseller', 'Kategori Özellikleri', 'Garanti Süresi', 'Desi', 'KDV Oranı', 'Satış Fiyatı', 'Renk / Beden', 'Menşei', 'Barkod'])
     expect(chipsOf('SHOPIFY Mağaza')).toEqual([])
     expect(sendsOf('SHOPIFY Mağaza')).toContain('—')
@@ -111,6 +112,20 @@ describe('PlatformUpdateDialog', () => {
     expect(chipsOf('PAZARAMA Mağaza')).toEqual(['Liste Fiyatı', 'Satış Fiyatı', 'Stok', 'Ürün Adı'])
     expect([...card('PAZARAMA Mağaza')!.querySelectorAll('.platform-update-chips li.is-skipped s')].map(node => node.textContent)).toEqual(['Ürün Adı'])
     expect(card('TRENDYOL Mağaza')!.querySelector('.is-skipped')).toBeNull()
+  })
+
+  it('sends only the picked desi or VAT rate to Trendyol, with no stock code or origin riding along', () => {
+    const { onConfirm } = render(['ty'], ['VAT_RATE'])
+    expect(chipsOf('TRENDYOL Mağaza')).toEqual(['KDV Oranı'])
+    expect(extraChipsOf('TRENDYOL Mağaza')).toEqual([])
+    expect(sendsOf('TRENDYOL Mağaza')).not.toContain('Menşei')
+    expect(sendsOf('TRENDYOL Mağaza')).not.toContain('Stok Kodu')
+    act(() => [...document.querySelectorAll('button')].find(button => button.textContent === 'Güncelle')!.click())
+    expect(onConfirm).toHaveBeenLastCalledWith(['VAT_RATE'])
+    act(() => root?.unmount()); root = undefined
+    render(['ty'], ['DESI'])
+    expect(chipsOf('TRENDYOL Mağaza')).toEqual(['Desi'])
+    expect(extraChipsOf('TRENDYOL Mağaza')).toEqual([])
   })
 
   it('keeps the bar out of the scrolling body, as the window footer', () => {

@@ -144,6 +144,24 @@ public static class ProductActivityTypes
     public static readonly IReadOnlyList<string> OnHandLedger = [OrderReceived, ManualAdjustment, MarketplaceStockImport, ImportOpening, ReturnPass];
 }
 
+// The movement-type filter's codes: one per label the page shows beside a change (Satış, Stok Düzenleme, Mağaza Fiyatı...).
+public static class ProductActivityMovements
+{
+    public const string Sale = "SALE";
+    public const string OrderCancel = "ORDER_CANCEL";
+    public const string Shortfall = "SHORTFALL";
+    public const string ManualStock = "MANUAL_STOCK";
+    public const string OpeningStock = "OPENING_STOCK";
+    public const string MarketplaceStock = "MARKETPLACE_STOCK";
+    public const string ReturnRestocked = "RETURN_RESTOCKED";
+    public const string ReturnKeptOut = "RETURN_KEPT_OUT";
+    public const string OfferPrice = "OFFER_PRICE";
+    public const string PanelPrice = "PANEL_PRICE";
+    public const string Status = "STATUS";
+
+    public static readonly IReadOnlyList<string> All = [Sale, OrderCancel, Shortfall, ManualStock, OpeningStock, MarketplaceStock, ReturnRestocked, ReturnKeptOut, OfferPrice, PanelPrice, Status];
+}
+
 public static class ProductActivityPolicy
 {
     // The catalog import's opening stock (MarketplaceJobProcessor): the source type the ledger row carries.
@@ -247,8 +265,10 @@ public static class OpeningStockLedger
 }
 
 // The activity list: newest first, at most Limit rows (default 50, max 100); After is the NextCursor of the previous page.
+// Movements narrows to the movement types the page names (ProductActivityMovements codes); a first price (no price before
+// it) is left out unless IncludeInitialPrices.
 public sealed record ProductActivityQuery(int? Limit = null, string? After = null, IReadOnlyList<string>? Kinds = null, IReadOnlyList<string>? Platforms = null,
-    DateTimeOffset? From = null, DateTimeOffset? To = null, string? Search = null)
+    DateTimeOffset? From = null, DateTimeOffset? To = null, string? Search = null, IReadOnlyList<string>? Movements = null, bool IncludeInitialPrices = false)
 {
     public const int DefaultLimit = 50;
     public const int MaximumLimit = 100;

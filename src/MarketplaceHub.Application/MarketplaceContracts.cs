@@ -439,7 +439,10 @@ public sealed record AdapterContext(
     bool IsOneTimeInvoiceDeliveryAuthorized = false,
     string? OneTimeInvoiceDeliveryOrderNumber = null,
     bool IsAutomaticInvoiceMarketplaceDelivery = false,
-    bool IsExplicitManualInvoiceDelivery = false);
+    bool IsExplicitManualInvoiceDelivery = false,
+    // Owner decision (6 Nov 2026, ExchangeInvoiceResendPolicy): the same, already delivered invoice link is sent again after a
+    // Hepsiburada exchange, so the package is expected to hold an invoice already.
+    bool IsExchangeInvoiceResend = false);
 public sealed record AdapterError(AdapterErrorClass Class, string Code, string SafeMessage, int? HttpStatus, TimeSpan? RetryAfter, string? RemoteRequestId);
 public sealed record RateLimitMetadata(int? Remaining, DateTimeOffset? ResetAt, TimeSpan? RetryAfter, int? Limit = null);
 public sealed record AdapterResult<T>(bool IsSuccess, T? Value, AdapterError? Error, RateLimitMetadata? RateLimit)
@@ -473,19 +476,46 @@ public sealed record ProductPublicationJobPayload(Guid JobId, Guid ProductId, Gu
 public sealed record ProductApprovalReconciliationJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string PayloadHash, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt, string? ExternalOperationId = null);
 public sealed record ProductUpdatePublication(Guid ProductId, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson);
 // The product information "Platformlarda Güncelle" sends, as the requests a marketplace takes it in. Trendyol updates an
-// approved product in three separate calls: content (title, description, images, attributes), variant (desi, VAT rate;
-// the listing's origin rides along) and delivery (the product card's Teslimat Süresi); each goes only when one of its
-// fields was picked, and always whole. A product Trendyol has not approved yet, and every Hepsiburada product, takes one
+// approved product in three separate calls: content (title, description, images, attributes), variant (desi, VAT rate)
+// and delivery (the product card's Teslimat Süresi); each goes only when one of its fields was picked. The content
+// request carries only the picked content fields (ContentParts): content-bulk-update takes a partial update (only
+// contentId is required) except for the attributes, which go as the whole list when any of them goes (Trendyol doc,
+// updateContentBulk). The variant request carries the barcode and only the picked variant fields (VariantParts):
+// Trendyol's guide (Ürün Güncelleme Onaylı Ürün v2, Varyant Güncelleme, checked 6.11.2026) takes a partial update there
+// and deletes a field sent as null. A product Trendyol has not approved yet, and every Hepsiburada product, takes one
 // full update carrying all of it.
 // Hepsiburada: whether a field its single update carries was picked (it alone takes the warranty); its delivery time
 // goes apart, as Delivery, in a listing shipping-info upload.
-public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true)
+// ContentParts / VariantParts: the picked content / variant fields; null is all of them (a send with no field list).
+public sealed record ProductUpdateSections(bool Content, bool Variants, bool Delivery, bool Hepsiburada = true, ProductContentParts? ContentParts = null, ProductVariantParts? VariantParts = null)
 {
     public static readonly ProductUpdateSections All = new(true, true, true);
     // Whether a Trendyol request has a picked field: a pick Trendyol does not carry (the warranty alone) sends nothing
     // there, not the whole card.
     public bool Trendyol => Content || Variants || Delivery;
     public bool Any => Trendyol || Hepsiburada;
+    // The fields the approved Trendyol content request carries: none when no content field was picked.
+    public ProductContentParts ContentFields => Content ? ContentParts ?? ProductContentParts.All : ProductContentParts.None;
+    // The fields the approved Trendyol variant request carries beside the barcode: none when no variant field was picked.
+    public ProductVariantParts VariantFields => Variants ? VariantParts ?? ProductVariantParts.All : ProductVariantParts.None;
+}
+
+// The fields of Trendyol's approved variant request (products/variants/bulk-update) that go beside the barcode. Never the
+// stock code or the origin: nothing picks them, and a field sent there is overwritten (a null one deleted).
+public sealed record ProductVariantParts(bool Desi, bool VatRate)
+{
+    public static readonly ProductVariantParts All = new(true, true);
+    public static readonly ProductVariantParts None = new(false, false);
+    public bool Any => Desi || VatRate;
+}
+
+// The fields of Trendyol's approved content request (content-bulk-update) that go. Attributes is the whole attribute
+// list (colour, size and Menşei included), never a part of it.
+public sealed record ProductContentParts(bool Title, bool Description, bool Images, bool Attributes)
+{
+    public static readonly ProductContentParts All = new(true, true, true, true);
+    public static readonly ProductContentParts None = new(false, false, false, false);
+    public bool Any => Title || Description || Images || Attributes;
 }
 
 public static class ProductUpdateFields
@@ -498,9 +528,9 @@ public static class ProductUpdateFields
     public const string VatRate = "VAT_RATE";
     public const string Delivery = "DELIVERY";
     public const string Warranty = "WARRANTY";
-    // Menşei is no field of its own: it is a category attribute (it goes with ATTRIBUTES) and Trendyol's variant request
-    // carries the listing's origin whole whenever DESI or VAT_RATE goes. A page opened before that still sends "ORIGIN";
-    // it is dropped instead of refusing the whole update.
+    // Menşei is no field of its own: it is a category attribute (it goes with ATTRIBUTES); Trendyol's variant request
+    // never carries the listing's origin. A page opened before that still sends "ORIGIN"; it is dropped instead of
+    // refusing the whole update.
     private const string RetiredOrigin = "ORIGIN";
 
     private static readonly string[] ContentFields = [Title, Description, Images, Attributes];
@@ -509,7 +539,8 @@ public static class ProductUpdateFields
     public static readonly IReadOnlySet<string> Known = new HashSet<string>([.. ContentFields, .. VariantFields, Delivery, Warranty], StringComparer.Ordinal);
 
     // The fields each marketplace's product update can take (the same table the editor's "Platformlarda Güncelle" shows;
-    // platform-update-fields.ts). Trendyol: content, variant and delivery requests (no warranty). Hepsiburada: one
+    // platform-update-fields.ts). Trendyol: content (only the picked content fields), variant and delivery requests (no
+    // warranty). Hepsiburada: one
     // product update with the warranty, and the dispatch time (DispatchTime) in a listing shipping-info upload of its own.
     // Shopify: the whole card in one productSet (price and stock ride along, so the picked fields do not narrow it).
     // Pazarama: the VAT rate alone (product/vatRate/bulk); it has no content update API. n11: one product-update task
@@ -540,14 +571,16 @@ public static class ProductUpdateFields
         var codes = fields.Select(field => field?.Trim().ToUpperInvariant() ?? "").Where(code => code != RetiredOrigin).ToHashSet(StringComparer.Ordinal);
         var unknown = codes.Where(code => !Known.Contains(code)).ToList();
         if (unknown.Count > 0) return ServiceResult<ProductUpdateSections>.Fail("PRODUCT_UPDATE_FIELD_UNKNOWN", $"Tanınmayan ürün bilgisi alanı: {string.Join(", ", unknown.Take(5))}.", 422);
-        var sections = new ProductUpdateSections(ContentFields.Any(codes.Contains), VariantFields.Any(codes.Contains), codes.Contains(Delivery), HepsiburadaFields.Any(codes.Contains));
+        var parts = new ProductContentParts(codes.Contains(Title), codes.Contains(Description), codes.Contains(Images), codes.Contains(Attributes));
+        var variantParts = new ProductVariantParts(codes.Contains(Desi), codes.Contains(VatRate));
+        var sections = new ProductUpdateSections(parts.Any, variantParts.Any, codes.Contains(Delivery), HepsiburadaFields.Any(codes.Contains), parts.Any ? parts : null, variantParts.Any ? variantParts : null);
         return sections.Any ? ServiceResult<ProductUpdateSections>.Ok(sections) : ServiceResult<ProductUpdateSections>.Fail("PRODUCT_UPDATE_FIELDS_REQUIRED", "Gönderilecek en az bir ürün bilgisi alanı seçin.", 422);
     }
 }
 
 // ProductOperationId: the id of the product update request once it was answered (Hepsiburada's ticket-api trackingId),
 // kept while later phases (the dispatch time upload) run, so the approval check reads the product update's result.
-public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt, string? ProductOperationId = null);
+public sealed record ProductUpdateJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, string Phase, string Mode, string PayloadHash, string UnapprovedPayloadJson, string ApprovedContentPayloadJson, string ApprovedVariantPayloadJson, string ApprovedDeliveryPayloadJson, string? ExternalOperationId, DateTimeOffset? SubmittedAt, string? ProductOperationId = null, IReadOnlyList<string>? ContentNotFoundBarcodes = null);
 // Pazarama sale open/close by barcode; it travels in a PRODUCT_ARCHIVE job and is told apart by SaleStatusBarcodes.
 public sealed record PazaramaSaleStatusJobPayload(Guid JobId, IReadOnlyList<string> SaleStatusBarcodes, bool Close, DateTimeOffset StartedAt);
 public sealed record ProductArchiveJobPayload(Guid JobId, Guid ProductId, Guid ProfileId, bool Archived, string Phase, string PayloadHash, string PayloadJson, string? ExternalOperationId, DateTimeOffset StartedAt, DateTimeOffset DeadlineAt);
@@ -785,7 +818,8 @@ public sealed record RemoteReturnLine(string ExternalLineId, string ExternalOrde
 public sealed record RemoteReturnLineAudit(string? PreviousStatus, string NewStatus, string? ExecutorApp, string? ExecutorUser, DateTimeOffset At);
 // ActionDueAtEstimated: the marketplace sent no deadline and ActionDueAt follows its usual rule.
 // CustomerRequest: what the customer asked for (ReturnCustomerRequestPolicy: REFUND or CHANGE); only Hepsiburada says it, null = unknown.
-public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null);
+// ResolvedWith: how an approved claim was closed (REFUND or CHANGE, Hepsiburada finalizedWith); null = unknown.
+public sealed record RemoteReturnClaim(string ExternalClaimId, string ExternalOrderId, string RawStatus, string? ReasonCode, string? ReasonText, DateTimeOffset? ActionDueAt, DateTimeOffset? LastModifiedAt, IReadOnlyList<RemoteReturnLine> Lines, string RawJson, string? CargoProviderName = null, string? CargoTrackingNumber = null, string? CargoTrackingLink = null, DateTimeOffset? OrderCreatedAt = null, bool ActionDueAtEstimated = false, string? RejectedPackageState = null, DateTimeOffset? DecidedAt = null, string? CustomerRequest = null, string? ResolvedWith = null);
 public sealed record ReturnEvidenceFile(string FileName, string MimeType, byte[] Content);
 // ReturnShipment: the seller's shipment of the product back to the buyer that a denial names (n11 ClaimReturnDeny CUSTOM).
 public sealed record ReturnActionCommand(string ExternalClaimId, IReadOnlyList<string> ExternalLineItemIds, string Action, string? ReasonCode, string? Explanation, IReadOnlyList<ReturnEvidenceFile> EvidenceFiles, string? FinalizedWith = null, ReturnShipmentCommand? ReturnShipment = null);
@@ -1377,7 +1411,12 @@ public sealed record OrderSummaryView(
     IReadOnlyList<OrderCargoCountView>? ProcessingByCargo = null,
     // The New and İşleme Alınanlar tabs' orders per store id (the cards' "N paket · M adet" rows); null when not counted.
     IReadOnlyDictionary<string, int>? NewByConnection = null,
-    IReadOnlyDictionary<string, int>? ProcessingByConnection = null);
+    IReadOnlyDictionary<string, int>? ProcessingByConnection = null,
+    // The Bekleyen tab's orders per store id and their products (each line's ordered quantity less what was cancelled of
+    // it); null when that tab was not counted. The menu badge and the overview's Bekleyen Siparişler card both read them
+    // from one request, so the badge, the card and the tab always say the same number.
+    IReadOnlyDictionary<string, int>? PendingByConnection = null,
+    IReadOnlyDictionary<string, decimal>? PendingUnitsByConnection = null);
 public sealed record OrderCargoCountView(string Cargo, int Orders, decimal Units);
 public sealed record OrderLineView(
     Guid Id,
@@ -1486,7 +1525,9 @@ public sealed record ReturnLineView(
     // Stock can be decided on this line: the line, or the claim when the line has no status of its own, is approved.
     bool StockDispositionAvailable = false,
     // "Stoğa Ekle" was chosen with an approval whose outcome is not settled yet; the stock is added once it is.
-    bool StockPending = false);
+    bool StockPending = false,
+    // The catalog's photo when ImageUrl is the marketplace's own address; shown if that one fails to load.
+    string? FallbackImageUrl = null);
 // A return's amounts as the marketplace wrote them: sale (before discount), discount, invoiced, and the refund itself
 // where the marketplace states one (Hepsiburada). A null figure is unknown, never calculated from the order.
 public sealed record ReturnAmountsView(decimal? SaleAmount, decimal? DiscountAmount, decimal? InvoicedAmount, decimal? RefundAmount);

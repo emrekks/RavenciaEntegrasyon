@@ -254,7 +254,8 @@ internal static class PayoutBuilder
             var text = TrendyolFinanceCategorizer.Fold(row.TransactionType);
             if (text.Contains("odeme yapildi", StringComparison.Ordinal)) return Paid;
             if (text.Contains("bekliyor", StringComparison.Ordinal)) return Expected;
-            return Unknown;
+            // A "Satış" or "İade" row names no state: its due day still to come is expected (as n11); past and unpaid stays unknown.
+            return row.PaymentDate is { } pazaramaDue && Day(pazaramaDue) >= today ? Expected : Unknown;
         }
         // n11 names a day's state in a word its WSDL does not list; a word that says paid or waiting decides.
         if (row.Source == N11SettlementSyncJobHandler.Source)

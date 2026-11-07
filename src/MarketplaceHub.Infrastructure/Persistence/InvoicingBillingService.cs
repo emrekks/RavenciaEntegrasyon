@@ -750,6 +750,7 @@ public sealed partial class InvoicingBillingService(
                 .ToDictionary(issue => issue.DedupeKey, issue => (issue.Code, issue.Summary), StringComparer.Ordinal);
         var deliveryRetries = await InvoiceDeliveryRetryReader.LoadAsync(db, tenantId, invoiceIds, timeProvider.GetUtcNow(), cancellationToken);
         var returnDocumentNotes = await InvoiceAdjustmentTracking.ReturnDocumentNotesAsync(db, tenantId, invoiceIds, cancellationToken);
+        var keptShares = await KeptAmountSharesAsync(tenantId, candidates, lines, cancellationToken);
 
         return candidates.Select(candidate =>
         {
@@ -819,9 +820,10 @@ public sealed partial class InvoicingBillingService(
                 candidate.InvoiceDueAt,
                 candidate.IsDueSoon,
                 orderSnapshotsForItem?.Currency ?? string.Empty,
-                packageDetailsForItem is null
+                KeptAmount(packageDetailsForItem is null
                     ? candidate.Amount
                     : packageDetailsForItem.NetAmount > 0 ? packageDetailsForItem.NetAmount : orderSnapshotsForItem?.NetAmount ?? candidate.Amount,
+                    saleReturnScope == "PARTIAL" ? keptShares.GetValueOrDefault(candidate.Order.Id) : null),
                 orderLines.Count,
                 primaryImage,
                 candidate.Package.CargoProviderExternalId,
@@ -868,6 +870,37 @@ public sealed partial class InvoicingBillingService(
                 saleReturnNote);
         }).ToList();
     }
+
+    // The share of a partly returned order's amount its kept units make (owner's rule of 6 Nov 2026): the kept-units
+    // total the sale invoice would carry (InvoiceSaleReturnPolicy.KeptTotals) over the order total. A package row shows
+    // its amount times this share, so a one-package order shows exactly the invoice total. Only partly returned orders
+    // are in the result.
+    private async Task<IReadOnlyDictionary<Guid, decimal>> KeptAmountSharesAsync(Guid tenantId, IReadOnlyList<WorkspaceCandidate> candidates, IReadOnlyList<OrderLine> lines, CancellationToken cancellationToken)
+    {
+        var partial = candidates.Where(candidate => candidate.ReturnState?.Scope == InvoiceSaleReturnScope.Partial)
+            .Select(candidate => candidate.Order.Id).Distinct().ToArray();
+        if (partial.Length == 0) return new Dictionary<Guid, decimal>();
+        var orders = await db.Orders.AsNoTracking().Where(order => order.TenantId == tenantId && partial.Contains(order.Id))
+            .Select(order => new { order.Id, order.NetAmount, order.GrossAmount, order.DiscountAmount }).ToListAsync(cancellationToken);
+        var packages = await MarketplaceSalesService.CurrentShipmentPackages(db)
+            .Where(package => package.TenantId == tenantId && partial.Contains(package.OrderId) && package.Status != ShipmentPackageStatus.Cancelled)
+            .Select(package => new { package.OrderId, package.NetAmount, package.GrossAmount, package.DiscountAmount }).ToListAsync(cancellationToken);
+        var returnStates = candidates.Where(candidate => candidate.ReturnState is not null)
+            .GroupBy(candidate => candidate.Order.Id).ToDictionary(group => group.Key, group => group.First().ReturnState!);
+        var shares = new Dictionary<Guid, decimal>();
+        foreach (var order in orders)
+        {
+            var totals = InvoiceAmounts.ResolveOrderTotals(order.NetAmount, order.GrossAmount, order.DiscountAmount,
+                packages.Where(package => package.OrderId == order.Id).Select(package => new InvoicePackageTotalSource(package.NetAmount, package.GrossAmount, package.DiscountAmount)).ToArray());
+            if (totals.PayableAmount <= 0) continue;
+            var units = InvoiceSaleReturns.Units(lines.Where(line => line.OrderId == order.Id), returnStates[order.Id].ReturnedByLine);
+            shares[order.Id] = InvoiceSaleReturnPolicy.KeptTotals(units, totals).PayableAmount / totals.PayableAmount;
+        }
+        return shares;
+    }
+
+    internal static decimal KeptAmount(decimal amount, decimal? keptShare) =>
+        keptShare is { } share and >= 0 and < 1 ? decimal.Round(amount * share, 2, MidpointRounding.AwayFromZero) : amount;
 
     // What the returns mean for an order no invoice was issued for yet (owner's rule of 6 Nov 2026): every unit back,
     // no sale invoice; some back, the invoice leaves them out. An issued invoice, or one the marketplace already holds,
@@ -1569,6 +1602,9 @@ public sealed partial class InvoicingBillingService(
     {
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken); if (invoice is null) return NotFound<Guid>();
         if (await IsShopifyManualInvoiceAsync(tenantId, invoice, cancellationToken)) return ServiceResult<Guid>.Fail("SHOPIFY_MANUAL_INVOICE_ONLY", "Shopify manuel belge kayıtları pazaryeri fatura aktarımına gönderilemez.", 422);
+        // At most one delivery job of an invoice waits or runs at a time, whatever key asked for it
+        // (InvoiceDeliveryJobHygiene): a second request gets that job and changes nothing.
+        if (await InvoiceDeliveryJobHygiene.OpenJobAsync(db, tenantId, invoice.Id, cancellationToken) is { } openJob) return ServiceResult<Guid>.Ok(openJob);
         var ownStates = ownerRetry && invoice.Status == InvoiceStatus.MarketplacePending
             ? await db.MarketplaceDeliveryStates.AsNoTracking().Where(state => state.TenantId == tenantId && state.InvoiceId == invoice.Id)
                 .Select(state => new { state.Status, state.ConnectionId }).ToListAsync(cancellationToken)

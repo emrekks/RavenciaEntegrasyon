@@ -15,6 +15,7 @@ export type ReturnApproveRow = {
   orderLineId: string
   title: string
   imageUrl: string | null
+  fallbackImageUrl?: string | null
   quantity: number
   sku: string
   barcode: string | null
@@ -187,7 +188,7 @@ export function ReturnApproveDialog({ open, claimId, version, marketplaceName, o
         return <div className="rr-apr-r" role="row" key={group.key}>
           <label className="rr-apr-info" role="cell">
             <input type="checkbox" className="rr-cb" checked={isSelected} disabled={wholeClaim} onChange={() => toggle(group.key)} aria-label={`${first.title} işleme dahil`} />
-            <RrThumb src={first.imageUrl} quantity={unitCount(group.rows)} large alt={first.title} />
+            <RrThumb src={first.imageUrl} fallbackSrc={first.fallbackImageUrl} quantity={unitCount(group.rows)} large alt={first.title} />
             <span className="rr-ptext"><b>{first.title}</b>{facts.map(([label, value]) => <small key={label}>{label}: {value}</small>)}</span>
           </label>
           <div className="rr-apr-side" role="cell">

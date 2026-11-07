@@ -55,10 +55,12 @@ export function useShippingLabelSettings() {
     const normalized = normalizeShippingLabelSettings(next)
     let saved: ShippingLabelSettingsEnvelope
     try {
-      saved = await hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', { method: 'PUT', headers: settingsIfMatch(query.data?.version), body: JSON.stringify(normalized) })
+      // D9: a stored setting is written only over the version read (If-Match); one not read yet is read first.
+      const current = query.data ?? await client.fetchQuery({ queryKey: shippingLabelSettingsQueryKey, queryFn: () => hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label') })
+      saved = await hubApi<ShippingLabelSettingsEnvelope>('/settings/shipping-label', { method: 'PUT', headers: settingsIfMatch(current?.version), body: JSON.stringify(normalized) })
     } catch (error) {
       // changed elsewhere meanwhile: read the current settings so the next save is made on them
-      if (error instanceof ApiRequestError && error.status === 412) void client.invalidateQueries({ queryKey: shippingLabelSettingsQueryKey })
+      if (error instanceof ApiRequestError && (error.status === 412 || error.status === 428)) void client.invalidateQueries({ queryKey: shippingLabelSettingsQueryKey })
       throw error
     }
     setSettings(normalized)

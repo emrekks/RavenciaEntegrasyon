@@ -23,6 +23,77 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("MarketplaceHub.Domain.AiUsageLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<long?>("CacheCreationInputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("CacheReadInputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<decimal?>("CostUsd")
+                        .HasPrecision(12, 6)
+                        .HasColumnType("numeric(12,6)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("Feature")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<long?>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<long?>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid?>("SubjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SubjectLabel")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SubjectType")
+                        .HasMaxLength(48)
+                        .HasColumnType("character varying(48)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CreatedAt");
+
+                    b.ToTable("ai_usage_logs", "ops");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.ApiIdempotencyRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -756,6 +827,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -5312,6 +5387,45 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("product_option_values", "catalog");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductSizeChart", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("FileAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("LastGeneratedAssetId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("MeasurementsJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileAssetId");
+
+                    b.HasIndex("LastGeneratedAssetId");
+
+                    b.HasIndex("TenantId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("product_size_charts", "catalog");
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.ProductVariant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5801,6 +5915,10 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.Property<string>("RejectedPackageState")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ResolvedWith")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -7075,6 +7193,15 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.ToTable("category_mappings", "catalog");
                 });
 
+            modelBuilder.Entity("MarketplaceHub.Domain.AiUsageLog", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("MarketplaceHub.Domain.ApiIdempotencyRecord", b =>
                 {
                     b.HasOne("MarketplaceHub.Domain.Tenant", null)
@@ -8064,6 +8191,26 @@ namespace MarketplaceHub.Infrastructure.Persistence.Migrations
                     b.HasOne("MarketplaceHub.Domain.ProductOption", null)
                         .WithMany()
                         .HasForeignKey("TenantId", "OptionId")
+                        .HasPrincipalKey("TenantId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("MarketplaceHub.Domain.ProductSizeChart", b =>
+                {
+                    b.HasOne("MarketplaceHub.Domain.FileAsset", null)
+                        .WithMany()
+                        .HasForeignKey("FileAssetId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MarketplaceHub.Domain.FileAsset", null)
+                        .WithMany()
+                        .HasForeignKey("LastGeneratedAssetId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MarketplaceHub.Domain.Product", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId", "ProductId")
                         .HasPrincipalKey("TenantId", "Id")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

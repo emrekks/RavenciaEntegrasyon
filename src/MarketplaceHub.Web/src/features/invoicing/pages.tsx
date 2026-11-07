@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { Link, useParams, useSearchParams } from 'react-router'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { hubApi, hubPoll, loadAllPages } from '../../shared/api'
+import { readUrlList, readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../../shared/list-url-state'
 import { newIdempotencyKey } from '../../shared/idempotency'
 import { invoiceSendDeniedReason, useCanSendInvoices } from '../../shared/hooks/useCanSendInvoices'
 import { ValueBadge } from '../../shared/components/ValueBadge'
@@ -354,7 +355,7 @@ export function InvoicesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedTab = searchParams.get('tab')
   const initialTab = resolveInvoiceTab(requestedTab)
-  const client = useQueryClient(); const [search, setSearch] = useState(''); const [searchFilter, setSearchFilter] = useState(''); const [sortOrder, setSortOrder] = useState('ORDER_DESC'); const [tab, setTab] = useState(initialTab); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState('ALL'); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(''); const [dateTo, setDateTo] = useState(''); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | 'action' | null>(null); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(20); const [pageNumber, setPageNumber] = useState(1); const [selectedSnapshot, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [manualStatusBatch, setManualStatusBatch] = useState<InvoiceWorkspace[] | null>(null); const [manualUploadItem, setManualUploadItem] = useState<InvoiceWorkspace | null>(null); const [selectedPackages, setSelectedPackages] = useState<Set<string>>(() => new Set())
+  const client = useQueryClient(); const [search, setSearch] = useState(() => readUrlText(searchParams, 'q')); const [searchFilter, setSearchFilter] = useState(() => readUrlText(searchParams, 'q')); const [sortOrder, setSortOrder] = useState('ORDER_DESC'); const [tab, setTab] = useState(initialTab); const [selectedPlatforms, setSelectedPlatforms] = useState<string[] | null>(() => readUrlList(searchParams, 'platforms').length ? readUrlList(searchParams, 'platforms') : null); const [shipmentStatusFilter, setShipmentStatusFilter] = useState(() => readUrlText(searchParams, 'shipment', 'ALL')); const [cargoFilter, setCargoFilter] = useState('ALL'); const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('ALL'); const [invoiceActionFilter, setInvoiceActionFilter] = useState<'ALL' | 'CREATABLE' | 'NOT_CREATABLE'>('ALL'); const [dateFrom, setDateFrom] = useState(() => readUrlText(searchParams, 'from')); const [dateTo, setDateTo] = useState(() => readUrlText(searchParams, 'to')); const [columnFilterOpen, setColumnFilterOpen] = useState<'cargo' | 'shipment' | 'invoice' | 'action' | null>(null); const [message, setMessageState] = useState(''); const [messageKind, setMessageKind] = useState<InvoiceNoticeKind>('info'); const [pageSize, setPageSize] = useState(() => readUrlNumber(searchParams, 'size', 20, [20, 50, 100, 200])); const [pageNumber, setPageNumber] = useState(() => readUrlNumber(searchParams, 'page', 1)); const [selectedSnapshot, setSelectedItem] = useState<InvoiceWorkspace | null>(null); const [shopifyStatusItem, setShopifyStatusItem] = useState<InvoiceWorkspace | null>(null); const [manualStatusBatch, setManualStatusBatch] = useState<InvoiceWorkspace[] | null>(null); const [manualUploadItem, setManualUploadItem] = useState<InvoiceWorkspace | null>(null); const [selectedPackages, setSelectedPackages] = useState<Set<string>>(() => new Set())
   // A column filter closes on a press outside its column heading, Escape, a route change or another popover opening.
   const openColumnFilter = { get current() { return columnFilterOpen ? document.getElementById(`invoices-${columnFilterOpen}-filter`)?.closest('.order-column-filter') ?? null : null } }
   useDismissable(Boolean(columnFilterOpen), [openColumnFilter], () => setColumnFilterOpen(null))
@@ -420,7 +421,7 @@ export function InvoicesPage() {
       return hubApi<{ jobId: string }>(`/invoices/${item.invoiceId}/delivery-retry-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ confirmed: true }) })
     },
     onSuccess: async (_result, item) => {
-      setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden deneme sıraya alındı. Yeni fatura kesilmedi.`, 'success', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
+      setMessage(`#${item.orderNumber} nolu siparişin faturası için yeniden deneme sıraya alındı; sonucu fatura satırında görünür. Yeni fatura kesilmedi.`, 'info', invoiceOrderContext(item, 'Fatura İletimi Yeniden Deneniyor', 'Fatura iletimini yeniden deneme'))
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['invoice'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Yeniden deneme sıraya alınamadı.', 'error', invoiceOrderContext(item, 'Yeniden Deneme Başlatılamadı', 'Fatura iletimini yeniden deneme', error))
@@ -448,7 +449,7 @@ export function InvoicesPage() {
       if (documentId) setQueuedManualDocuments(current => new Set(current).add(documentId))
       setMessage(result.inspectionOnlyPackageCount > 0
         ? `${result.inspectionOnlyPackageCount} paketin önceki iletim sonucu belirsiz; yalnızca pazaryeri durumu okunacak, yeni belge gönderilmeyecek.`
-        : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı.`, 'success', invoiceOrderContext(item, 'Manuel Fatura İletimi Başlatıldı', 'Manuel fatura iletimi'))
+        : `${result.queuedPackageCount} paket için taze durum kontrolü ve manuel fatura iletimi kuyruğa alındı; henüz iletilmedi, sonucu fatura satırında görünür.`, 'info', invoiceOrderContext(item, 'Manuel Fatura İletimi Sıraya Alındı', 'Manuel fatura iletimi'))
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Manuel fatura iletimi kuyruğa alınamadı.', 'error', invoiceOrderContext(item, 'Manuel Fatura İletilemedi', 'Manuel fatura iletimi', error))
@@ -468,7 +469,7 @@ export function InvoicesPage() {
       })
     },
     onSuccess: async (_result, item) => {
-      setMessage('Pazaryerindeki sipariş durumu yenileme kuyruğuna alındı.', 'success', invoiceOrderContext(item, 'Sipariş Durumu Yenileniyor', 'Sipariş durumu yenileme'))
+      setMessage('Pazaryerindeki sipariş durumu yenileme kuyruğuna alındı.', 'info', invoiceOrderContext(item, 'Sipariş Durumu Yenileniyor', 'Sipariş durumu yenileme'))
       await Promise.all([client.invalidateQueries({ queryKey: ['invoice-workspace-page'] }), client.invalidateQueries({ queryKey: ['invoice-workspace-summary'] }), client.invalidateQueries({ queryKey: ['orders'] }), client.invalidateQueries({ queryKey: ['jobs'] })])
     },
     onError: (error, item) => setMessage(error instanceof Error ? error.message : 'Sipariş durumu pazaryerinden yenilenemedi.', 'error', invoiceOrderContext(item, 'Sipariş Durumu Yenilenemedi', 'Sipariş durumu yenileme', error))
@@ -566,7 +567,9 @@ export function InvoicesPage() {
   useEffect(() => { if (selectionMode && selectedPackages.size === 0) setSelectionMode(false) }, [selectionMode, selectedPackages])
   // The search goes out once typing pauses, not on every key (W27).
   useEffect(() => { const timer = window.setTimeout(() => setSearchFilter(search.trim()), 250); return () => window.clearTimeout(timer) }, [search])
-  useEffect(() => { setPageNumber(1) }, [searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize])
+  // Not for the values the page opened with: a page restored from the address stays.
+  useChangeEffect(JSON.stringify([searchFilter, sortOrder, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageSize]), () => setPageNumber(1))
+  useListUrlSync({ q: searchFilter, platforms: selectedPlatforms, shipment: shipmentStatusFilter, from: dateFrom, to: dateTo, size: pageSize, page: pageNumber }, { shipment: 'ALL', size: 20, page: 1 })
   useEffect(() => { setSelectedPackages(new Set()) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo, pageNumber, pageSize])
   // Another tab or filter shows other rows: the phone selection mode closes with the emptied selection.
   useEffect(() => { setSelectionMode(false) }, [searchFilter, tab, selectedPlatforms, shipmentStatusFilter, cargoFilter, invoiceStatusFilter, invoiceActionFilter, dateFrom, dateTo])

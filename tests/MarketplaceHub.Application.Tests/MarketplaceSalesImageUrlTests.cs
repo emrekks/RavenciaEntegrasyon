@@ -92,6 +92,24 @@ public sealed class MarketplaceSalesImageUrlTests
         Assert.Equal<(string?, string?)>(("https://cdn.example.test/a.jpg", null), MarketplaceSalesService.LineImageUrls("https://cdn.example.test/a.jpg", "https://cdn.example.test/a.jpg"));
     }
 
+    // Live 6 Nov 2026: Pazarama return 674544454's img.pzrmcdn.com photo answered 403 and the row showed "Görsel yok"
+    // although the catalog holds the product's pictures; the return detail line now carries the catalog's as fallback.
+    [Fact]
+    public void ReturnDetailLineKeepsTheCatalogPhotoBehindTheMarketplaceImage()
+    {
+        Assert.Equal<(string?, string?)>(("https://img.pzrmcdn.com/asset/x.jpg", "/api/v1/files/product-media/1/content"),
+            MarketplaceSalesService.ReturnDetailLineImageUrls("https://img.pzrmcdn.com/asset/x.jpg", "/api/v1/files/product-media/1/content", "MZ028IH6"));
+        Assert.Equal<(string?, string?)>(("/api/v1/files/product-media/1/content", null),
+            MarketplaceSalesService.ReturnDetailLineImageUrls(null, "/api/v1/files/product-media/1/content", "MZ028IH6"));
+    }
+
+    [Fact]
+    public void ReturnDetailLineLooksTheBarcodeUpOnlyWhenNoPhotoIsKnown()
+    {
+        Assert.Equal<(string?, string?)>(("/api/v1/orders/product-image?barcode=MZ%20028", null), MarketplaceSalesService.ReturnDetailLineImageUrls(null, null, "MZ 028"));
+        Assert.Equal<(string?, string?)>((null, null), MarketplaceSalesService.ReturnDetailLineImageUrls(null, null, " "));
+    }
+
     [Fact]
     public void LineImageUrlsStayEmptyWhenNothingIsKnown()
     {

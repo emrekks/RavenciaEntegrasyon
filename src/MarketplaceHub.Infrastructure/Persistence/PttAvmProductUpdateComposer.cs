@@ -21,7 +21,7 @@ internal sealed class PttAvmProductUpdateComposer(AppDbContext db, IConfiguratio
         if (product is null) return ServiceResult<ProductUpdateDraft>.Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", 404);
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
         if (profile is null || !await db.ChannelListingVariants.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ProfileId == profile.Id, cancellationToken))
-            return ServiceResult<ProductUpdateDraft>.Fail("PTTAVM_PUBLICATION_REQUIRED", "PTT AVM'de yalnız panelden yayınlanmış (yayın kaydı olan) kart güncellenebilir; bu kartın PTT AVM yayın kaydı yok.", 409);
+            return ServiceResult<ProductUpdateDraft>.Fail("PTTAVM_PUBLICATION_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("PTT AVM"), 409);
 
         var publication = await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
         if (!publication.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(publication.Error!.Code, publication.Error.Message, publication.Error.Status, publication.Error.FieldErrors);

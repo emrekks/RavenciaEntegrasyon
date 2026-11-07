@@ -34,6 +34,37 @@ Shared across all of them:
   `catalog.marketplace_variant_links` (`MarkVariantLinksSeen`). Shown beside the publication status, never part of it
   or of any price/stock rule. The field per marketplace is in its file ("Sale state").
 
+## Listing profiles of imported products (owner decisions 6 Nov 2026)
+
+- Who makes them: a product sync that reads the products' information (full scan, the incremental scan, Mevcut Ürünleri
+  Güncelle, a single lookup) makes a `catalog.channel_listing_profiles` row with `Source = MARKETPLACE_IMPORT` for every
+  product it matched (variant links), with one listing variant per linked variant (the link's barcode and stock code).
+  New-only, mapping-only and options-only runs do not. "Platformlarda Güncelle" never makes one: a card without a
+  profile is refused with the sync to run. Trendyol, Hepsiburada, n11, Pazarama, PTT AVM; not Shopify.
+  Code: `ImportedListingProfiles.cs`, `MarketplaceJobProcessor.CompleteImportedListingProfiles`.
+- The panel card wins: the profile holds no marketplace value (no title, description, delivery days, origin, warranty,
+  VAT override; no category or brand id, which would stop updates as LISTING_MAPPING_CONFLICT). Profile, listing variants and one
+  `marketplace_listing_states` row per listing start UNKNOWN (the update and approval jobs need the state; live 7 Nov
+  2026 PRODUCT_UPDATE_STATE_INCOMPLETE on RYP003T, repaired by migration AddImportedListingStates). UNKNOWN is never
+  read as live: imported price/stock keeps going by the link until a marketplace read records LIVE.
+- Where an update would read the profile first, the card's value goes and the panel's notification center says so
+  (`ImportedProfileCardFallbacks`): Teslimat Süresi (Trendyol, Hepsiburada, PTT AVM), Garanti Süresi (Hepsiburada; an
+  empty card warranty is the card's 0). A Teslimat Süresi the card lacks too stops the update ("RYP003T – Trendyol:
+  Teslimat Süresi boş; ürün kartında doldurun.").
+- What each marketplace's product read returns (for reference; none of it is written to the profile):
+  - Trendyol `products/approved` v2 (`trendyol-api-son.md` 10410-10500): `category.id`, `brand.id`, per variant
+    `origin` (10492), `deliveryOption.deliveryDuration` (10480), `vatRate`; no desi, cargo or warranty. Unapproved
+    (10033-10128): `dimensionalWeight`, `cargoProviders`, `origin`.
+  - Hepsiburada listings (`hepsiburada-api-son.md` 3378-3470): DispatchTime, CargoCompany1-3, ShippingProfileName; no
+    category, brand, VAT or warranty. `all-products-of-merchant` (1581, schema 2410-2480): categoryId, brand (name
+    only), tax, baseAttributes.
+  - n11 `ms/product-query` (no offline copy; doc sample in `N11ProductMapperTests`): categoryId, vatRate, preparingDay,
+    shipmentTemplate, brand as attribute 1 (name only); no origin or warranty.
+  - Pazarama product lists (`pazarama-api-son.md` 1176-1280): categoryId (may be an empty GUID), brandName (no id),
+    vatRate, deliveryTypes; no days, origin or warranty.
+  - PTT AVM `get-by-barcodes` (`pttavm-api-son.md` 455-512): yeniKategoriId, KDVOran, Desi, GarantiSuresi,
+    KargoProfilId, TahminiKargoSuresi; no brand or origin.
+
 ## Official docs, offline (search these first)
 
 Full copies of the official developer docs, downloaded 2026-11-01, are kept outside the repository (this repository

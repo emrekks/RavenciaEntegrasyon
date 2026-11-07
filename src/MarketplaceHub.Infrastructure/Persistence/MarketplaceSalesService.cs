@@ -742,7 +742,9 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             !includeMicro && requested.Contains("NEW") ? await TabByCargoAsync(tenantId, options, "NEW", cancellationToken) : null,
             !includeMicro && requested.Contains("PROCESSING") ? await TabByCargoAsync(tenantId, options, "PROCESSING", cancellationToken) : null,
             !includeMicro && requested.Contains("NEW") ? await TabOrdersByConnectionAsync(tenantId, options, "NEW", cancellationToken) : null,
-            !includeMicro && requested.Contains("PROCESSING") ? await TabOrdersByConnectionAsync(tenantId, options, "PROCESSING", cancellationToken) : null);
+            !includeMicro && requested.Contains("PROCESSING") ? await TabOrdersByConnectionAsync(tenantId, options, "PROCESSING", cancellationToken) : null,
+            !includeMicro && requested.Contains("PENDING") ? await TabOrdersByConnectionAsync(tenantId, options, "PENDING", cancellationToken) : null,
+            !includeMicro && requested.Contains("PENDING") ? await TabUnitsByConnectionAsync(tenantId, options, "PENDING", cancellationToken) : null);
     }
 
 
@@ -772,7 +774,7 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             .GroupBy(order => order.ConnectionId).Select(group => new { ConnectionId = group.Key, Count = group.Count() })
             .ToDictionaryAsync(row => row.ConnectionId.ToString("D"), row => row.Count, cancellationToken);
 
-    // The products of the orders a tab (Yeni, İşleme Alınanlar) lists under the same filters, per store: each line's
+    // The products of the orders a tab (Yeni, İşleme Alınanlar, Bekleyen) lists under the same filters, per store: each line's
     // ordered quantity less what was cancelled of it (the rule of the overview's Bekleyen Ürün Adedi).
     private async Task<IReadOnlyDictionary<string, decimal>> TabUnitsByConnectionAsync(Guid tenantId, OrderListQuery options, string tab, CancellationToken cancellationToken)
     {
@@ -2186,7 +2188,11 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
                 if (line is null) return null;
                 var source = SourceLine(line.SourceSnapshotJson);
                 var variant = ResolveReturnVariant(line);
-                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, source.ImageUrl ?? (variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id)),
+                // The marketplace's photo with the catalog's behind it: a marketplace address that stops loading (a
+                // Pazarama img.pzrmcdn.com link answered 403 on 6 Nov 2026) falls back to our own picture.
+                var images = LineImageUrls(source.ImageUrl, variant is null ? null : returnImageUrls.GetValueOrDefault(variant.Id));
+                return new OrderLineView(line.Id, line.Sku, line.Barcode ?? variant?.Barcode, line.TitleSnapshot, returnLine.Quantity, line.CancelledQuantity, line.ShippedQuantity, line.DeliveredQuantity, line.ReturnedQuantity, line.UnitPrice, line.VatRate, line.RawStatus, line.VariantId ?? variant?.Id, ReturnLineModelCode(variant, source.ModelCode), variant?.OptionSignature ?? source.OptionSignature, images.ImageUrl,
+                    FallbackImageUrl: images.FallbackImageUrl,
                     ReturnAmounts: ReturnMarketplaceAmounts.Line(platformCode, line.SourceSnapshotJson, returnLine.Quantity, claim.ExternalClaimId));
             }).Where(line => line is not null).Select(line => line!).ToList();
             return new ReturnListView(claim.Id, claim.ExternalClaimId, order?.OrderNumber ?? "—", ReturnStatusWire(claim.Status, claimLines.Select(x => x.RawStatus).ToList()), claim.RawStatus, claim.ReasonText, ReturnActionDueAt(platformCode, claim.RawStatus, claim.ActionDueAt, claim.LastRemoteModifiedAt), claim.Version,
@@ -2399,18 +2405,17 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
             var sourceSnapshot = source is null ? null : SourceLine(source.SourceSnapshotJson);
             var variant = source is null ? null : ResolveReturnDetailVariant(source);
             var disposed = dispositions.GetValueOrDefault(line.Id);
-            var imageUrl = sourceSnapshot?.ImageUrl ?? (variant is null ? null : imageUrls.GetValueOrDefault(variant.Id));
-            if (imageUrl is null && !string.IsNullOrWhiteSpace(source?.Barcode))
-                imageUrl = $"/api/v1/orders/product-image?barcode={Uri.EscapeDataString(source.Barcode)}";
+            var images = ReturnDetailLineImageUrls(sourceSnapshot?.ImageUrl, variant is null ? null : imageUrls.GetValueOrDefault(variant.Id), source?.Barcode);
             return new ReturnLineView(line.Id, line.ExternalLineId, line.OrderLineId, source?.Sku ?? "—", source?.Barcode, source?.TitleSnapshot ?? "—", line.Quantity, disposed, Math.Max(0, line.Quantity - disposed), source?.UnitPrice ?? 0,
-                imageUrl,
+                images.ImageUrl,
                 variant is not null && inventoryVariants.Contains(variant.Id),
                 variant?.OptionSignature ?? sourceSnapshot?.OptionSignature,
                 variant?.ModelCode ?? sourceSnapshot?.ModelCode,
                 string.IsNullOrWhiteSpace(line.RawStatus) ? null : Wire(MarketplaceReturnStatus.Canonicalize(line.RawStatus)),
                 source is null ? null : ReturnMarketplaceAmounts.Line(platformCode, source.SourceSnapshotJson, line.Quantity, claim.ExternalClaimId),
                 line.AcceptDetail, line.MarketplaceNote, line.Resolved, line.AcceptedBySeller,
-                HeldByDecision(line.Id), ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus), pendingStockLineIds.Contains(line.Id));
+                HeldByDecision(line.Id), ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, line.RawStatus), pendingStockLineIds.Contains(line.Id),
+                images.FallbackImageUrl);
         }).ToList();
         var stockDispositionAvailable = sourceLines.Count == 0
             ? ReturnDecisionLinePolicy.StockDispositionAllowed(claim.Status, null)
@@ -3618,6 +3623,16 @@ public sealed partial class MarketplaceSalesService(AppDbContext db, CursorCodec
         sourceImageUrl is null
             ? (catalogImageUrl, null)
             : (sourceImageUrl, catalogImageUrl is null || string.Equals(catalogImageUrl, sourceImageUrl, StringComparison.Ordinal) ? null : catalogImageUrl);
+
+    // A return detail line's photo: the marketplace's with the catalog's as fallback (LineImageUrls); with neither, the
+    // barcode lookup (/orders/product-image) is the photo.
+    internal static (string? ImageUrl, string? FallbackImageUrl) ReturnDetailLineImageUrls(string? sourceImageUrl, string? catalogImageUrl, string? barcode)
+    {
+        var images = LineImageUrls(sourceImageUrl, catalogImageUrl);
+        return images.ImageUrl is null && !string.IsNullOrWhiteSpace(barcode)
+            ? ($"/api/v1/orders/product-image?barcode={Uri.EscapeDataString(barcode)}", null)
+            : images;
+    }
 
     private static string? FindImageField(JsonElement element, string field)
     {

@@ -12,7 +12,6 @@ export function saleStateLabel(state?: string | null) {
 }
 
 const saleReasonLabels: Record<string, string> = {
-  STOCK_ZERO: 'Stok 0',
   PRICE_ZERO: 'Fiyat 0',
   BY_SELLER: 'Satıcı Kapattı',
   SUSPENDED: 'Askıda',
@@ -32,17 +31,34 @@ export function isOffSale(state?: string | null) {
   return state?.trim().toUpperCase() === 'OFF_SALE'
 }
 
-// A marketplace's closed variants among the matched ones. allClosed: every matched variant is closed there; stockOnly:
-// every closed one names a stock of 0 as its only reason. Null when none is known to be closed.
-export type OffSaleSummary = { closed: number; matched: number; allClosed: boolean; stockOnly: boolean; label: string }
+// A blacklisted or locked variant is the marketplace's own block, not a pause: it shows red (the error colour), over
+// every other closure, whether all variants or only some are closed.
+const blockingReasons = new Set(['BLACKLISTED', 'LOCKED'])
 
-export function offSaleSummary(matched: number, offSale: number, offSaleStockZero = 0): OffSaleSummary | null {
-  if (offSale <= 0 || matched <= 0) return null
-  const closed = Math.min(offSale, matched)
+// A marketplace's variants closed to sale among the matched ones, by the owner's rule (6 Nov 2026, every marketplace):
+// a closure only for a stock of 0 is no closure at all (that variant reads as on sale), so only the other closures
+// count. reasons: those closures by their named reason (server OffSaleReasonCounts); a closure without a named one is
+// the rest. The reason is named only when every counted closure has the same one. blocking: one of them is blacklisted
+// or locked. Null when none is known to be closed beyond a stock of 0.
+export type OffSaleSummary = { closed: number; matched: number; allClosed: boolean; reason: string | null; reasonLabel: string | null; blocking: boolean; label: string }
+
+export function offSaleSummary(matched: number, offSale: number, offSaleStockZero = 0, reasons?: Readonly<Record<string, number>> | null): OffSaleSummary | null {
+  if (matched <= 0) return null
+  const beyondStock = Math.max(0, offSale - offSaleStockZero)
+  if (beyondStock <= 0) return null
+  const named = Object.entries(reasons ?? {})
+    .map(([reason, count]) => [reason.trim().toUpperCase(), count] as const)
+    .filter(([reason, count]) => count > 0 && reason !== 'STOCK_ZERO')
+  const namedTotal = named.reduce((sum, [, count]) => sum + count, 0)
+  const unnamed = Math.max(0, beyondStock - namedTotal)
+  const kinds = named.length + (unnamed > 0 ? 1 : 0)
+  const reason = kinds === 1 && named.length === 1 ? named[0][0] : null
+  const reasonLabel = saleReasonLabel(reason)
+  const blocking = named.some(([code]) => blockingReasons.has(code))
+  const closed = Math.min(beyondStock, matched)
   const allClosed = closed === matched
-  const stockOnly = offSaleStockZero >= offSale
   const label = allClosed
-    ? `Satışa Kapalı${stockOnly ? ' · Stok 0' : ''}`
-    : `${closed}/${matched} varyant satışa kapalı${stockOnly ? ' (stok 0)' : ''}`
-  return { closed, matched, allClosed, stockOnly, label }
+    ? `Satışa Kapalı${reasonLabel ? ` · ${reasonLabel}` : ''}`
+    : `${closed}/${matched} Varyant Satışa Kapalı${reasonLabel ? ` (${reasonLabel})` : ''}`
+  return { closed, matched, allClosed, reason, reasonLabel, blocking, label }
 }

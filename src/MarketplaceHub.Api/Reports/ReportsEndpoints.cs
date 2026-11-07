@@ -36,6 +36,13 @@ public static class ReportsEndpoints
                 sort, dir != "asc", page ?? 0, limit ?? 50), http.RequestAborted);
             return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
         });
+        // Fiyat Hesapla's hints: each store's commission, cargo and service fee on the clothing orders of the last 60 days.
+        api.MapGet("/reports/price-assumptions", async (HttpContext http, IReportsService service) =>
+        {
+            if (Tenant(http) is not { } tenant) return MarketplaceHub.Api.Security.ApiProblems.Unauthenticated(http);
+            var result = await service.PriceAssumptionsAsync(tenant.TenantId, http.RequestAborted);
+            return result.Succeeded ? Results.Ok(result.Value) : MarketplaceHub.Api.Security.ApiProblems.Of(http, result.Error!);
+        });
         // Stok raporu: the stock now with its cost and value; the period only sets the sales the cover days are read from.
         api.MapGet("/reports/stock", async (HttpContext http, IReportsService service, string? from, string? to, string? platformCodes, bool? includeTest) =>
         {

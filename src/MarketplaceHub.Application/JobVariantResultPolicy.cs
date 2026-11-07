@@ -19,6 +19,17 @@ public static class JobVariantResultPolicy
     // A variant the marketplace already holds (matched there, e.g. by an import) is left out the same way.
     public const string AlreadyOnMarketplaceReason = "Pazaryerinde zaten var (eşleşmiş); bu gönderime alınmadı.";
 
+    // A Trendyol content update leaves out a barcode its approved list does not hold: there is no content to write.
+    public const string ApprovedContentNotFoundReason = "Onaylı içerik bulunamadı; içerik güncellemesine alınmadı.";
+
+    // The card variants a content update left out (no approved content) that no other phase of the update carried
+    // either: they were not sent at all. A barcode another phase sent counts as sent.
+    public static IReadOnlySet<string> NotSentBarcodes(IEnumerable<string>? contentNotFound, IEnumerable<string> sentInOtherPhases)
+    {
+        var sent = new HashSet<string>(sentInOtherPhases.Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase);
+        return new HashSet<string>((contentNotFound ?? []).Select(x => x.Trim()).Where(x => x.Length > 0 && !sent.Contains(x)), StringComparer.OrdinalIgnoreCase);
+    }
+
     public static bool AppliesTo(string jobType) => jobType is MarketplaceJobTypes.ProductCreate or MarketplaceJobTypes.ProductUpdate or MarketplaceJobTypes.ProductApprovalReconcile;
 
     // The outcome a listing's status stands for in a job of this type.

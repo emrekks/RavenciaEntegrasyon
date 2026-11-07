@@ -147,7 +147,8 @@ describe('PublishPlatformCard status steps', () => {
   it('reads a never sent, ready card as Hazırlık done and Gönderim next, with no count', async () => {
     await render({ productChecks: ok })
     await answer('p1', { actualStatus: 'UNKNOWN' })
-    expect(steps()).toEqual(['done', 'next', 'idle', 'idle'])
+    // The product checks settle a moment after the status on a loaded CI runner: wait for them instead of a fixed delay.
+    await vi.waitFor(() => expect(steps()).toEqual(['done', 'next', 'idle', 'idle']))
     expect(counts()).toEqual([])
     expect(pill().querySelector('.publish-steps-label')?.textContent).toBe('Yayına Hazır')
     expect(pill().getAttribute('aria-label')).toBe('Trendyol: Yayına Hazır')

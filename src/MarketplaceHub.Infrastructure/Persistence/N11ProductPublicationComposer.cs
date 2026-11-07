@@ -43,7 +43,7 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         if (shipmentTemplate is null) return Fail("N11_SHIPMENT_TEMPLATE_REQUIRED", "N11'de ürün açmak için kargo şablonu seçilmemiş. Sol menüden Entegrasyonlar sayfasını açın, N11 bağlantısının kartındaki Yönet düğmesine basın, açılan pencerede Araçlar sekmesine geçin. N11 Ürün Açma Ayarları bölümündeki Kargo Şablonu listesinden (şablonlar N11 satıcı panelinizden okunur) birini seçip Ayarları Kaydet'e basın, sonra ürünü N11'e yeniden yayınlayın.");
         if (preparingDay is < 1 or > MaxPreparingDay) return Fail("N11_PREPARING_DAY_INVALID", $"Ürün kartındaki teslimat süresi (yoksa N11 bağlantısındaki hazırlık süresi) 1-{MaxPreparingDay} gün arasında olmalıdır.");
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi N11 bağlantısına ait listing profile oluşturulmalıdır.");
+        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("N11"));
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
 
         var loaded = await LoadAttributeContextAsync(tenantId, product, connectionId, profile, cancellationToken);
@@ -84,6 +84,7 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin N11 fiyat teklifi gerekir.");
         if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
 
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
@@ -108,13 +109,13 @@ internal sealed class N11ProductPublicationComposer(AppDbContext db, IConfigurat
                 return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı {offer.VatRate.ToString("0.##", CultureInfo.InvariantCulture)}; N11 yalnız 0, 1, 10 veya 20 kabul eder.");
 
             // Explicit variant media replaces the product gallery for that variant.
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
             if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
                 return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
-            var imageUrls = ProductPublicationComposer.SelectPublicationImageUrls(relevantMedia
-                .Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
-                .Where(url => !string.IsNullOrWhiteSpace(url))
-                .Select(url => url!));
+            var pictureUrls = relevantMedia
+                .Select(item => (item.Id, Url: item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id)))
+                .ToList();
+            var imageUrls = ProductPublicationComposer.SelectPublicationImageUrls(pictureUrls.Select(item => item.Url), PublicationVariantMedia.SizeChartUrl(pictureUrls, sizeChartAssetId));
             if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir herkese açık HTTPS ürün görseli gerekir.");
 
             var composed = await VariantAttributesAsync(attributeContext, optionRows, variant, title, cancellationToken);

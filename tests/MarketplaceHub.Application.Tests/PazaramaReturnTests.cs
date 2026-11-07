@@ -246,6 +246,31 @@ public sealed class PazaramaReturnTests
     [Fact]
     public void The_update_service_is_the_documented_one() => Assert.Equal("order/updateRefund", PazaramaHttpClient.UpdateRefund);
 
+    // The log line that shows what a refund row carries: field names, progress values, never customer data.
+    [Fact]
+    public void Row_shape_names_the_fields_and_progress_values_without_customer_data()
+    {
+        var shape = PazaramaReturnMapper.RowShapes(Parse(Page(Refund)));
+
+        Assert.StartsWith("#564213 [", shape);
+        Assert.Contains("customerName", shape);
+        Assert.Contains("refundStatus=1", shape);
+        Assert.Contains("refundStatusName=İade Onayı Bekliyor", shape);
+        Assert.Contains("refundDate=6 Ekim 2021 19:46", shape);
+        Assert.Contains("shipmentCompanyName=MNG", shape);
+        Assert.Contains("shipmentCode=set", shape);
+        Assert.DoesNotContain("Dilara", shape);
+        Assert.DoesNotContain("54895647251356", shape);
+        Assert.DoesNotContain("description=", shape);
+    }
+
+    [Fact]
+    public void Row_shape_is_empty_for_a_page_without_rows()
+    {
+        Assert.Equal(string.Empty, PazaramaReturnMapper.RowShapes(Parse("""{"data":null,"success":true}""")));
+        Assert.Equal(string.Empty, PazaramaReturnMapper.RowShapes(Parse("""{"data":{"refundList":[]},"success":true}""")));
+    }
+
     [Fact]
     public void The_documented_reject_reasons_are_offered() =>
         Assert.Equal(Enumerable.Range(1, 12).Select(x => x.ToString()), PazaramaReturnMapper.RejectReasons.Select(x => x.Id));

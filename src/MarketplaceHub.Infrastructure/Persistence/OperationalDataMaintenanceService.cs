@@ -342,6 +342,7 @@ public sealed partial class OperationalDataMaintenanceService(AppDbContext db, T
         DELETE FROM catalog.channel_listing_profiles p USING purge_products targets WHERE p."TenantId"={{tenantId}} AND p."ProductId"=targets."Id";
         DELETE FROM catalog.marketplace_product_links l USING purge_products p WHERE l."TenantId"={{tenantId}} AND l."ProductId"=p."Id";
         INSERT INTO purge_files SELECT m."FileAssetId" FROM catalog.product_media m JOIN purge_products p ON p."Id"=m."ProductId" WHERE m."TenantId"={{tenantId}} ON CONFLICT DO NOTHING;
+        INSERT INTO purge_files SELECT c."LastGeneratedAssetId" FROM catalog.product_size_charts c JOIN purge_products p ON p."Id"=c."ProductId" WHERE c."TenantId"={{tenantId}} AND c."LastGeneratedAssetId" IS NOT NULL ON CONFLICT DO NOTHING;
         DELETE FROM catalog.product_media m USING purge_products p WHERE m."TenantId"={{tenantId}} AND m."ProductId"=p."Id";
         DELETE FROM catalog.product_attribute_assignments a USING purge_products p WHERE a."TenantId"={{tenantId}} AND a."ProductId"=p."Id";
         DELETE FROM catalog.variant_option_values x USING catalog.product_variants v, purge_products p WHERE x."TenantId"={{tenantId}} AND x."VariantId"=v."Id" AND v."ProductId"=p."Id";

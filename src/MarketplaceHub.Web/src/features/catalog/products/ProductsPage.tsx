@@ -14,7 +14,6 @@ import { RrAnchor, RrBadge, RrColumnPop, RrError, RrFilterCard, RrHeadCell, RrIc
 import { appendNotification, notificationError, productNotificationSubject, type NotificationContext } from '../../../shared/notifications'
 import { toggleVariantGroupRow, updateVariantGroupSelection, variantGroupRowMates, variantGroupSelectionState, variantShortcutLabel, variantShortcutSelection } from '../variant-bulk-edit'
 import { productPlatformDisplayLabel, productPlatformDisplayState, withProductPlatformSaleState } from '../product-platform-status'
-import { offSaleSummary } from '../sale-state'
 import { nextProductCatalogSort, parseProductCatalogSort, productCatalogSortOptions, productCatalogSortValue, type ProductCatalogSort } from '../product-catalog-sorting'
 import { applyVariantStockSets, bulkEditSummary, isStaleStockError, parseStockInput, setVariantOnHand, stockErrorMessage, stockTarget, type VariantStockSet } from '../variant-stock-set'
 import { activeProductSyncJobs as filterActiveProductSyncJobs, productSyncJobsPath, settleTrackedProductSyncJobs, trackProductSyncJobs } from '../product-sync-tracking'
@@ -29,7 +28,7 @@ import { readUrlNumber, readUrlText, useChangeEffect, useListUrlSync } from '../
 import { ProductTransferDialog } from './ProductTransferDialog'
 import { ModelCodeCopy } from './ModelCodeCopy'
 import { productDeleteJobNote, productDeleteListing, productDeleteMoreText, productDeleteResultMessage, type ProductDeleteResponse } from './product-delete-text'
-import { loadProductsByIds, quickStockCellValue, type SavedStock } from './quick-edit-products'
+import { loadProductsByIds, quickEditVariantItems, quickStockCellValue, type SavedStock } from './quick-edit-products'
 import { fitTip, unfitTip } from '../../../shared/touch-tips'
 // Loaded with the editor's stylesheet only when a bulk publication opens, like a row's publish popup.
 const BulkPublishDialog = lazy(() => import('./BulkPublishDialog').then(module => ({ default: module.BulkPublishDialog })))
@@ -130,7 +129,8 @@ export function ProductQuickEditModal({ products, connections, mode = 'both', on
   const contextProduct = products[0]
   const contextTitle = contextProduct?.title || 'Toplu düzenleme'
   const contextModelCode = contextProduct ? contextProduct.modelCode || contextProduct.variants.find(variant => variant.modelCode)?.modelCode || '—' : null
-  const variants = products.flatMap(product => product.variants.map(variant => ({ product, variant })))
+  // Each variant once, beside its own card: a product read by id lists its whole family's variants.
+  const variants = quickEditVariantItems(products)
   const sortedVariants = [...variants].sort(compareVariantItemsAlphabetically)
   const groups = sortedVariants.reduce<Record<string, typeof variants>>((result, item) => {
     const color = variantColorKey(item.variant) || 'Diğer'
@@ -619,7 +619,7 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   const navigate = useNavigate()
   const product = group.primary
   const platformStatuses = group.products.flatMap(item => item.platformStatuses ?? [])
-  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; offSale: number; offSaleStockZero: number }>()
+  const platformStatusAggregates = new Map<string, { platform: string; platformCode: string; statuses: string[]; matchedVariantCount: number; variantCount: number; isChecking: boolean; onSale: number; offSale: number; offSaleStockZero: number; reasons: Record<string, number> }>()
   for (const item of platformStatuses) {
     const platform = item.platform?.trim() || 'Platform'
     const platformCode = item.platformCode?.trim().toUpperCase() || (platform.toUpperCase().includes('SHOPIFY') ? 'SHOPIFY' : platform.toUpperCase().includes('HEPSIBURADA') ? 'HEPSIBURADA' : platform.toUpperCase().includes('TRENDYOL') ? 'TRENDYOL' : platform.toUpperCase().includes('N11') ? 'N11' : platform.toUpperCase().includes('PAZARAMA') ? 'PAZARAMA' : platform.toUpperCase().replace(/\s/g, '').includes('PTTAVM') ? 'PTTAVM' : 'UNKNOWN')
@@ -630,17 +630,19 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
       current.matchedVariantCount += item.matchedVariantCount ?? 0
       current.variantCount += item.variantCount ?? 0
       current.isChecking ||= Boolean(item.isChecking)
+      current.onSale += item.onSaleVariantCount ?? 0
       current.offSale += item.offSaleVariantCount ?? 0
       current.offSaleStockZero += item.offSaleStockZeroVariantCount ?? 0
+      for (const [reason, count] of Object.entries(item.offSaleReasonCounts ?? {})) current.reasons[reason] = (current.reasons[reason] ?? 0) + count
     } else {
-      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0 })
+      platformStatusAggregates.set(key, { platform, platformCode, statuses: [item.status], matchedVariantCount: item.matchedVariantCount ?? 0, variantCount: item.variantCount ?? 0, isChecking: Boolean(item.isChecking), onSale: item.onSaleVariantCount ?? 0, offSale: item.offSaleVariantCount ?? 0, offSaleStockZero: item.offSaleStockZeroVariantCount ?? 0, reasons: { ...item.offSaleReasonCounts } })
     }
   }
   const platformCards = [...platformStatusAggregates.entries()].map(([key, item]) => {
-    const publicationState = productPlatformDisplayState(item.statuses, item.isChecking, item.matchedVariantCount)
+    const publicationState = productPlatformDisplayState(item.statuses, item.isChecking, item.matchedVariantCount, item.variantCount)
     const publicationLabel = productPlatformDisplayLabel(item.platform, item.statuses, item.matchedVariantCount, item.variantCount, publicationState)
-    // A listing the marketplace closed to sale is not "yayında": the sale state goes over the publication state.
-    const { state, label } = withProductPlatformSaleState(item.platform, publicationState, publicationLabel, offSaleSummary(item.matchedVariantCount, item.offSale, item.offSaleStockZero))
+    // The sale state goes over the publication state (a stock of 0 is never a closure; see withProductPlatformSaleState).
+    const { state, label } = withProductPlatformSaleState(item.platform, publicationState, publicationLabel, { matched: item.matchedVariantCount, variantCount: item.variantCount, onSale: item.onSale, offSale: item.offSale, offSaleStockZero: item.offSaleStockZero, reasons: item.reasons })
     return { key, platform: item.platform, platformCode: item.platformCode, state, label, matchedVariantCount: item.matchedVariantCount, variantCount: item.variantCount }
   })
   const totalStock = group.products.reduce((sum, item) => sum + item.totalStock, 0)
@@ -658,15 +660,15 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   const variantSizes = [...new Set(variantDisplayGroups.flatMap(item => item.values.map(value => value.label)))].sort((left, right) => compareOptionValues('Beden', left, right))
   const modelCode = group.products.map(item => item.modelCode).find(value => value?.trim()) ?? '—'
   // Every marketplace is listed, those without a match greyed out. The dot is green when every variant is live or
-  // connected there, yellow when only some are (or some failed), red when all failed or the marketplace no longer
-  // knows any of them (Bulunamadı), orange when it is listed there but closed to sale (Satışa Kapalı), and cycles
-  // while it updates.
+  // connected there, yellow when only some are (or some failed, or some are closed to sale), red when all failed, the
+  // marketplace no longer knows any of them (Bulunamadı) or a variant is blacklisted or locked there, orange when it is
+  // listed there but archived or closed to sale (Satışa Kapalı), and cycles while it updates. A stock of 0 never closes.
   const platformMarks = (['TRENDYOL', 'HEPSIBURADA', 'N11', 'PAZARAMA', 'PTTAVM', 'SHOPIFY'] as const).map(code => {
     const card = platformCards.find(item => item.platformCode === code)
     const name = code === 'N11' ? 'N11' : code === 'PTTAVM' ? 'PTT AVM' : code.charAt(0) + code.slice(1).toLocaleLowerCase('tr-TR')
     const linkedTone = card && card.variantCount > 0 && card.matchedVariantCount < card.variantCount ? 'part' : 'on'
-    const state = card ? ({ active: 'on', partial: 'part', linked: linkedTone, processing: 'busy', error: 'err', missing: 'err', inactive: 'none', closed: 'off' } as Record<string, string>)[card.state] ?? 'none' : 'none'
-    return { code, state, label: card?.label ?? `${name} ürün eşleşmesi bulunamadı` }
+    const state = card ? ({ active: 'on', partial: 'part', linked: linkedTone, processing: 'busy', error: 'err', missing: 'err', inactive: 'none', closed: 'off', blocked: 'err' } as Record<string, string>)[card.state] ?? 'none' : 'none'
+    return { code, state, label: card?.label ?? `${name}: Ürün Eşleşmesi Bulunamadı` }
   })
   const [ringTone, ringProgress] = ({ ACTIVE: ['ok', 1], DRAFT: ['prog', 0.3], ARCHIVED: ['off', 0], MIXED: ['bad', 0.66] } as Record<string, [RingTone, number]>)[status] ?? ['off', 0]
   const statusLabelText = status === 'MIXED' ? 'Hatalı' : titleTr(statusLabel)
@@ -679,7 +681,7 @@ function ProductColorRows({ group, selected, onSelect, selectionMode: _selection
   // Phones select a card only through its round checkbox; a hold or a tap elsewhere on the card no longer selects it.
   return <tr className={selected ? 'rr-sel' : undefined}>
     <td className="rr-wide"><div className="rr-prodcell"><input type="checkbox" className="rr-cb" aria-label={`${product.title} ürün grubunu seç`} checked={selected} onChange={onSelect} /><RrThumb src={product.primaryImageUrl} alt={product.title} onOpen={product.primaryImageUrl ? () => onImageClick(product.primaryImageUrl!, product.title) : undefined} /><div><b title={product.title}>{product.title}</b><small><span>Model Kodu:</span> <b className="rr-num">{modelCode}</b>{modelCode !== '—' && <ModelCodeCopy value={modelCode} />}</small></div></div></td>
-    <td className="rr-mid" data-l="Varyant"><span className={variantDisplayGroups.length > 0 ? 'rr-vhover' : 'rr-vhover rr-vhover-none'} tabIndex={0} onMouseEnter={event => placeVariantTip(event.currentTarget)} onFocus={event => placeVariantTip(event.currentTarget)} role="button" aria-label={`${product.title}: varyantları aç`} onPointerDown={event => { event.currentTarget.dataset.wasOpen = document.activeElement === event.currentTarget ? '1' : '' }} onClick={event => { if (variantDisplayGroups.length > 0 && window.matchMedia('(max-width: 760px), (hover: none)').matches) { if (event.currentTarget.dataset.wasOpen) event.currentTarget.blur(); return } onQuickEdit('both') }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onQuickEdit('both') } }}><span className="rr-varcell"><b>{group.products.length} seçenek</b><small>{group.variants.length} varyant</small></span>{variantDisplayGroups.length > 0 && <span className="rr-tip rr-vtip" role="tooltip"><table className="rr-vtab"><thead><tr><th />{variantSizes.map(size => <th key={size}>{size}</th>)}</tr></thead><tbody>{variantDisplayGroups.map(item => <tr key={item.label}><th title={item.label}>{item.label}</th>{variantSizes.map(size => { const value = item.values.find(entry => entry.label === size); return <td key={size} className={value == null ? 'rr-none' : value.quantity === 0 ? 'rr-empty' : value.quantity < 5 ? 'rr-low' : undefined}>{value == null ? '—' : value.quantity}</td> })}</tr>)}</tbody></table></span>}</span></td>
+    <td className="rr-mid" data-l="Varyant"><span className={variantDisplayGroups.length > 0 ? 'rr-vhover' : 'rr-vhover rr-vhover-none'} tabIndex={0} onFocus={event => placeVariantTip(event.currentTarget)} onBlur={event => hideVariantTip(event.currentTarget)} role="button" aria-label={`${product.title}: varyantları aç`} onPointerDown={event => { event.currentTarget.dataset.wasOpen = document.activeElement === event.currentTarget ? '1' : '' }} onClick={event => { if (variantDisplayGroups.length > 0 && window.matchMedia('(max-width: 760px), (hover: none)').matches) { if (event.currentTarget.dataset.wasOpen) event.currentTarget.blur(); return } onQuickEdit('both') }} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onQuickEdit('both') } }}><span className="rr-varcell" onMouseEnter={event => { if (event.currentTarget.parentElement) placeVariantTip(event.currentTarget.parentElement) }} onMouseLeave={event => { if (event.currentTarget.parentElement) hideVariantTip(event.currentTarget.parentElement) }}><b>{group.products.length} seçenek</b><small>{group.variants.length} varyant</small></span>{variantDisplayGroups.length > 0 && <span className="rr-tip rr-vtip" role="tooltip"><table className="rr-vtab"><thead><tr><th />{variantSizes.map(size => <th key={size}>{size}</th>)}</tr></thead><tbody>{variantDisplayGroups.map(item => <tr key={item.label}><th title={item.label}>{item.label}</th>{variantSizes.map(size => { const value = item.values.find(entry => entry.label === size); return <td key={size} className={value == null ? 'rr-none' : value.quantity === 0 ? 'rr-empty' : value.quantity < 5 ? 'rr-low' : undefined}>{value == null ? '—' : value.quantity}</td> })}</tr>)}</tbody></table></span>}</span></td>
     <td className="rr-mid" data-l="Fiyat"><button type="button" className="rr-qbtn" title="Fiyatı hızlı düzenle" aria-label={`${product.title}: fiyatı düzenle`} onClick={() => onQuickEdit('price')}><b className="rr-num">{formatMoney(startingPrice ?? 0, product.currency)}</b>{listPrice != null && <small className="rr-num">{formatMoney(listPrice, product.currency)}</small>}</button></td>
     <td className="rr-mid" data-l="Stok"><button type="button" className={`rr-qbtn${totalStock === 0 ? ' rr-zero' : ''}`} title="Stoğu hızlı düzenle" aria-label={`${product.title}: stoğu düzenle`} onClick={() => onQuickEdit('stock')}><b className="rr-num">{totalStock}</b><small>{totalStock === 0 ? 'Stoksuz' : 'adet'}</small></button></td>
     {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- tooltip trigger: focusable so keyboards can read the platform state */}
@@ -757,19 +759,33 @@ function selectionChips(variants: Array<Pick<Variant, 'optionSignature' | 'sku'>
 // (products-responsive.css, tablet-catalog.css), under its trigger, and fitTip only moves it above the trigger when the
 // window has no room below, never past the window or under the sticky top bar. A fixed position written here on a
 // wider screen is taken off, or it would pull the table out of the card.
+// The tip leaves the top layer when the pointer leaves "N seçenek" (unless the keyboard focus keeps it open) or focus goes.
+function closeVariantTip(tip: HTMLElement) {
+  if (typeof tip.hidePopover === 'function' && tip.matches(':popover-open')) tip.hidePopover()
+}
+function hideVariantTip(anchor: HTMLElement) {
+  const tip = anchor.querySelector<HTMLElement>('.rr-vtip')
+  if (tip && !anchor.matches(':focus-visible')) closeVariantTip(tip)
+}
 function placeVariantTip(anchor: HTMLElement) {
   const tip = anchor.querySelector<HTMLElement>('.rr-vtip')
   if (!tip) return
   if (window.matchMedia('(max-width: 1024px)').matches) {
-    for (const property of ['position', 'transform', 'top', 'left', 'right', 'bottom', 'max-height']) tip.style.removeProperty(property)
+    closeVariantTip(tip)
+    for (const property of ['position', 'transform', 'top', 'left', 'right', 'bottom', 'max-height', 'margin']) tip.style.removeProperty(property)
     anchor.removeAttribute('data-up')
     fitTip(anchor, tip)
     return
   }
   unfitTip(tip)
+  // In the browser's top layer the tip sits above every sticky bar, card and sidebar and no ancestor can clip it.
+  if (typeof tip.showPopover === 'function') {
+    tip.setAttribute('popover', 'manual')
+    if (!tip.matches(':popover-open')) tip.showPopover()
+  }
   const edge = 8, offset = 6
   const own = anchor.getBoundingClientRect()
-  Object.assign(tip.style, { position: 'fixed', transform: 'none', right: 'auto', bottom: 'auto', maxHeight: 'none' })
+  Object.assign(tip.style, { position: 'fixed', transform: 'none', right: 'auto', bottom: 'auto', maxHeight: 'none', margin: '0' })
   const needed = tip.scrollHeight || 260
   const below = window.innerHeight - own.bottom - offset - edge
   const above = own.top - offset - edge

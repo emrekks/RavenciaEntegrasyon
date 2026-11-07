@@ -52,6 +52,46 @@ public sealed class ShopifyMediaPublicationTests
         Assert.Equal(Url("siyah", 0), plan.VariantUrls[variant]);
     }
 
+    // Live 6.11.2026, RYP006-18: a picture assignment renumbered the variant's rows and put the size chart at 0. The
+    // variant picture is the first of its pictures in the panel's strip, not the variant's own first row.
+    [Fact]
+    public void AVariantsPictureIsItsFirstInThePanelsOrder_NotItsOwnRenumberedFirst()
+    {
+        var variant = Guid.NewGuid();
+        var rows = new List<ShopifyMediaRow>
+        {
+            new(Card, variant, 0, Url("vizon", 9)),
+            new(Card, variant, 1, Url("vizon", 0)),
+            new(Card, variant, 2, Url("vizon", 1)),
+            new(Card, null, 1380, Url("vizon", 0)),
+            new(Card, null, 1472, Url("vizon", 1)),
+            new(Card, null, 1656, Url("vizon", 9))
+        };
+
+        var plan = ShopifyProductPublicationComposer.PlanMedia(rows, [Card], [(variant, Card)]);
+
+        Assert.Equal([Url("vizon", 0), Url("vizon", 1), Url("vizon", 9)], plan.ProductUrls);
+        Assert.Equal(Url("vizon", 0), plan.VariantUrls[variant]);
+    }
+
+    // O6: in a multi-colour family each card's size chart sat mid-list (after its card's gallery) and could be cut by the
+    // file limit; now every chart goes last, once.
+    [Fact]
+    public void EveryCardsSizeChartGoesLastOnceInAFamily()
+    {
+        var other = Guid.NewGuid();
+        var (first, second) = (Guid.NewGuid(), Guid.NewGuid());
+        var rows = new List<ShopifyMediaRow>
+        {
+            new(Card, null, 0, Url("card", 0)), new(Card, null, 1, Url("chart", 0)), new(Card, null, 2, Url("card", 1)),
+            new(other, null, 0, Url("other", 0)), new(other, null, 1, Url("chart", 1))
+        };
+
+        var plan = ShopifyProductPublicationComposer.PlanMedia(rows, [Card, other], [(first, Card), (second, other)], [Url("chart", 0), Url("chart", 1)]);
+
+        Assert.Equal([Url("card", 0), Url("card", 1), Url("other", 0), Url("chart", 0), Url("chart", 1)], plan.ProductUrls);
+    }
+
     [Fact]
     public void AVariantWithoutItsOwnPictureShowsItsCardsFirstOnlyInAFamily()
     {

@@ -35,7 +35,7 @@ internal static class ReportPlatformCosts
                     var company = HepsiburadaCarrier(carrier);
                     var baremable = company is "HEPSIJET" or "SURAT" && parcel < 10m;
                     var cargo = baremable && amount < 200m ? 43.99m : baremable && amount < 400m ? 75.99m : Desi(HepsiburadaTable[company], parcel);
-                    return new(Shipping(cargo * Vat, returned), 10.99m * Vat, Stoppage(keptVatFree), 0m);
+                    return new(Shipping(cargo * Vat, returned), ServiceFee(platformCode).PerOrder, Stoppage(keptVatFree), 0m);
                 }
             case "N11":
                 {
@@ -44,7 +44,7 @@ internal static class ReportPlatformCosts
                     var company = N11Carrier(carrier);
                     var (low, high) = N11Barem[company];
                     var cargo = parcel <= 10m && amount < 150m ? low : parcel <= 10m && amount < 300m ? high : Desi(N11Table[company], parcel);
-                    return new(Shipping(cargo * PostFee * Vat, returned), amount * 0.0167m * Vat, Stoppage(keptVatFree), 0m);
+                    return new(Shipping(cargo * PostFee * Vat, returned), amount * ServiceFee(platformCode).OfSale, Stoppage(keptVatFree), 0m);
                 }
             case "PAZARAMA":
                 {
@@ -53,11 +53,11 @@ internal static class ReportPlatformCosts
                     var company = PazaramaCarrier(carrier);
                     var (low, high) = PazaramaBarem[company];
                     var cargo = parcel <= 10m && amount < 150m ? low : parcel <= 10m && amount < 300m ? high : Desi(PazaramaTable[company], parcel);
-                    return new(Shipping(cargo * PostFee * Vat, returned), 6.90m * Vat, Stoppage(keptVatFree), 0m);
+                    return new(Shipping(cargo * PostFee * Vat, returned), ServiceFee(platformCode).PerOrder, Stoppage(keptVatFree), 0m);
                 }
             case "PTTAVM":
                 // PTT Kargo at the contract's table (27 Mar 2026, VAT included); a 1.5 % infrastructure fee of the sale.
-                return new(Shipping(PttAvm(parcel), returned), amount * 0.015m, Stoppage(keptVatFree), 0m);
+                return new(Shipping(PttAvm(parcel), returned), amount * ServiceFee(platformCode).OfSale, Stoppage(keptVatFree), 0m);
             case "SHOPIFY":
                 // The own store: no marketplace, so no withholding tax; the customer pays a return's cargo.
                 return new(ShopifyCargo, 0m, 0m, amount > 0 ? amount * (IyzicoRate + ShopifyFeeRate) + IyzicoFixed : 0m);
@@ -65,6 +65,18 @@ internal static class ReportPlatformCosts
                 return new(0m, 0m, 0m, 0m);
         }
     }
+
+    // A platform's service fees of one order, VAT included: an amount per order and a share of what the customer paid.
+    // Hepsiburada 10.99 + VAT a delivery; n11 the pazarlama (1 %) and pazaryeri (0.67 %) fees plus VAT; Pazarama a 6.90 +
+    // VAT integration fee; PTT AVM a 1.5 % infrastructure fee (VAT included); Shopify none (its card fees are PaymentFee).
+    internal static (decimal PerOrder, decimal OfSale) ServiceFee(string platformCode) => platformCode switch
+    {
+        "HEPSIBURADA" => (10.99m * Vat, 0m),
+        "N11" => (0m, 0.0167m * Vat),
+        "PAZARAMA" => (6.90m * Vat, 0m),
+        "PTTAVM" => (0m, 0.015m),
+        _ => (0m, 0m)
+    };
 
     // A returned order's cargo comes back at the seller's cost too (on a withdrawal the seller pays the return).
     private static decimal Shipping(decimal oneWay, bool returned) => returned ? oneWay * 2m : oneWay;

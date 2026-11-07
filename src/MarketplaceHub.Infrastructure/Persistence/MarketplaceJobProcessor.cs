@@ -48,6 +48,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private int telemetryImportProcessedCount;
     private int telemetryImportSkippedCount;
     private int telemetryImportFailedCount;
+    // A product import run reports to its cursor what the job reports (received, processed, skipped, failed), counted
+    // over the whole import, not each product the pages brought as changed (audit 2026-11-06 O3).
+    private bool productImportTelemetry;
+    private int telemetryImportReceivedCount;
 
     public async Task<JobExecutionResult> ProcessAsync(Guid tenantId, Guid? connectionId, string jobType, string payloadJson, string correlationId, CancellationToken cancellationToken, Guid? jobId = null)
     {
@@ -143,8 +147,9 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 {
                     // A finished slice of a long job is progress, not a failure; it is recorded as a slice, and
                     // only the run's last slice moves the last success and resets the failure count.
-                    // Waiting for the connection's order read (decision C) is not a failure either.
-                    if (directResult.Continues || directResult.ErrorCode == OrderFreshnessGatePolicy.WaitCode)
+                    // Waiting for the connection's order read (decision C) is not a failure either, nor is a
+                    // marketplace that has not settled an approval or a batch yet.
+                    if (directResult.Continues || directResult.ErrorCode == OrderFreshnessGatePolicy.WaitCode || IsRemoteWait(directResult))
                     {
                         if (telemetryResource is not null) await RecordSyncSlice(tenantId, connectionId.Value, telemetryResource, stopwatch.Elapsed, cancellationToken);
                         return directResult;
@@ -299,6 +304,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     internal static bool IsConnectionTestJob(string jobType) =>
         jobType is MarketplaceJobTypes.ConnectionTest or MarketplaceJobTypes.ShopifyConnectionTest or MarketplaceJobTypes.HepsiburadaConnectionTest or MarketplaceJobTypes.N11ConnectionTest or MarketplaceJobTypes.PazaramaConnectionTest or MarketplaceJobTypes.PttAvmConnectionTest;
 
+    // A marketplace that has not settled yet (an approval, a batch) is a wait, not a failed run: counted as one, the
+    // PRODUCT_APPROVAL cursor showed 8 failures in a row for a Pazarama card that was only pending (audit 2026-11-06 Y2).
+    internal static bool IsRemoteWait(JobExecutionResult result) => JobWaitingPolicy.IsWaiting(result);
+
     internal static bool IsConnectionAuthenticationFailure(string jobType, JobExecutionResult result) =>
         !IsConnectionTestJob(jobType)
         && result.Kind == JobCompletionKind.Blocked
@@ -347,12 +356,13 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         var cursor = await Cursor(tenantId, connectionId, resourceType, cancellationToken);
         ApplySliceTelemetry(cursor, timeProvider.GetUtcNow(), duration);
+        var counts = CurrentCursorCounts();
         cursor.LastRequestCount = telemetryRequestCount;
-        cursor.LastReceivedCount = telemetryReceivedCount;
-        cursor.LastChangedCount = telemetryChangedCount;
+        cursor.LastReceivedCount = counts.Received;
+        cursor.LastChangedCount = counts.Changed;
         cursor.LastInsertedCount = telemetryInsertedCount;
         cursor.LastUpdatedCount = telemetryUpdatedCount;
-        cursor.LastSkippedCount = telemetrySkippedCount;
+        cursor.LastSkippedCount = counts.Skipped;
         cursor.LastRetryCount = telemetryRetryCount;
         cursor.LastRateLimitCount = telemetryRateLimitCount;
         cursor.Version++;
@@ -369,6 +379,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     {
         if (!succeeded) db.ChangeTracker.Clear();
         var cursor = await Cursor(tenantId, connectionId, resourceType, cancellationToken);
+        var counts = CurrentCursorCounts();
         cursor.LastDurationMs = Math.Max(0, (long)duration.TotalMilliseconds);
         if (succeeded)
         {
@@ -376,21 +387,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             cursor.LastError = null;
             cursor.LastErrorAt = null;
             cursor.ConsecutiveFailureCount = 0;
-            cursor.LastFailedCount = telemetryFailedCount;
+            cursor.LastFailedCount = counts.Failed;
         }
         else
         {
             cursor.LastError = Short(error, 1024);
             cursor.LastErrorAt = timeProvider.GetUtcNow();
             cursor.ConsecutiveFailureCount++;
-            cursor.LastFailedCount = Math.Max(1, telemetryFailedCount);
+            cursor.LastFailedCount = Math.Max(1, counts.Failed);
         }
         cursor.LastRequestCount = telemetryRequestCount;
-        cursor.LastReceivedCount = telemetryReceivedCount;
-        cursor.LastChangedCount = telemetryChangedCount;
+        cursor.LastReceivedCount = counts.Received;
+        cursor.LastChangedCount = counts.Changed;
         cursor.LastInsertedCount = telemetryInsertedCount;
         cursor.LastUpdatedCount = telemetryUpdatedCount;
-        cursor.LastSkippedCount = telemetrySkippedCount;
+        cursor.LastSkippedCount = counts.Skipped;
         cursor.LastRetryCount = telemetryRetryCount + (succeeded ? 0 : 1);
         cursor.LastRateLimitCount = telemetryRateLimitCount;
         cursor.Version++;
@@ -411,7 +422,21 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         telemetryImportProcessedCount = 0;
         telemetryImportSkippedCount = 0;
         telemetryImportFailedCount = 0;
+        productImportTelemetry = false;
+        telemetryImportReceivedCount = 0;
     }
+
+    internal readonly record struct CursorCounts(int Received, int Changed, int Skipped, int Failed);
+
+    // The counts a run leaves on its cursor. A product import counts what the import did over the whole run (the job's
+    // own Alınan / İşlenen / Atlanan / Hatalı); any other read counts its records as it read them.
+    internal static CursorCounts CursorImportCounts(bool productImport, CursorCounts run, CursorCounts import) =>
+        productImport ? import : run;
+
+    private CursorCounts CurrentCursorCounts() => CursorImportCounts(
+        productImportTelemetry,
+        new(telemetryReceivedCount, telemetryChangedCount, telemetrySkippedCount, telemetryFailedCount),
+        new(telemetryImportReceivedCount, telemetryImportProcessedCount, telemetryImportSkippedCount, telemetryImportFailedCount));
 
     // Order and return reads write what they brought on the job (received, new, updated), so the list tells a read that
     // came back empty from one that brought records. The counts are the run's own telemetry.
@@ -1941,7 +1966,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
     // Replaces the job's per-variant answer with this run's listing outcome; the caller's SaveChanges stores it. With a
     // publication hash, a listing another publication left (a live variant not sent again) is not this job's.
-    private async Task RecordJobVariantResults(Guid tenantId, Guid jobId, string jobType, IEnumerable<ChannelListingVariant> listings, IReadOnlyDictionary<Guid, string?>? reasons, CancellationToken cancellationToken, string? payloadHash = null, IReadOnlyDictionary<Guid, MarketplaceListingState>? states = null)
+    private async Task RecordJobVariantResults(Guid tenantId, Guid jobId, string jobType, IEnumerable<ChannelListingVariant> listings, IReadOnlyDictionary<Guid, string?>? reasons, CancellationToken cancellationToken, string? payloadHash = null, IReadOnlyDictionary<Guid, MarketplaceListingState>? states = null, IReadOnlyDictionary<Guid, string>? notSent = null)
     {
         await db.JobVariantResults.Where(x => x.TenantId == tenantId && x.JobId == jobId).ExecuteDeleteAsync(cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -1952,8 +1977,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 && !string.Equals(state.PayloadHash, payloadHash, StringComparison.Ordinal)) continue;
             var barcode = (listing.ExternalBarcode ?? listing.ExternalSku)?.Trim();
             if (string.IsNullOrWhiteSpace(barcode) || !seen.Add(barcode)) continue;
-            var status = JobVariantResultPolicy.StatusFor(jobType, listing.ActualStatus);
-            var reason = status is JobVariantResultPolicy.Rejected or JobVariantResultPolicy.Pending
+            var notSentReason = notSent?.GetValueOrDefault(listing.VariantId);
+            var status = notSentReason is not null ? JobVariantResultPolicy.NotSent : JobVariantResultPolicy.StatusFor(jobType, listing.ActualStatus);
+            var reason = notSentReason is not null ? notSentReason
+                : status is JobVariantResultPolicy.Rejected or JobVariantResultPolicy.Pending
                 ? JobVariantResultPolicy.Reason([reasons?.GetValueOrDefault(listing.VariantId) ?? listing.RejectionCode])
                 : null;
             db.JobVariantResults.Add(new JobVariantResult
@@ -2002,6 +2029,18 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             {
                 if (!string.Equals(configuration["Hepsiburada:AuthenticationMode"], "BASIC", StringComparison.OrdinalIgnoreCase)) return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", "HEPSIBURADA_AUTHENTICATION_UNVERIFIED", JobExecutionResult.Blocked("HEPSIBURADA_AUTHENTICATION_UNVERIFIED", "Hepsiburada auth biçimi doğrulanmadı; ürün güncellemesi gönderilmedi."), cancellationToken);
                 if (!await HasHepsiburadaPublicationEvidenceAsync(tenantId, connectionId, cancellationToken)) return await MarkPublicationResult(tenantId, connectionId, profile, "UPDATE_BLOCKED", "HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", JobExecutionResult.Blocked("HEPSIBURADA_WRITE_CAPABILITY_EVIDENCE_REQUIRED", "Ürün güncellemesi için bu mağaza/ortamda doğrulanmış fiyat ve stok yazma kanıtı bulunamadı; bağlantıyı test edin. Gönderim yapılmadı."), cancellationToken);
+            }
+            // Trendyol's content request goes per content: each barcode's content is read first (TrendyolContentGroups).
+            if (phase == "SUBMIT_CONTENT" && string.Equals(platformCode, "TRENDYOL", StringComparison.OrdinalIgnoreCase)
+                && TrendyolContentGroups.NeedsResolution(payload.ApprovedContentPayloadJson))
+            {
+                var (resolvedContent, contentNotFound, stop) = await ResolveTrendyolContentGroupsAsync(tenantId, connectionId, job, profile, payload.ApprovedContentPayloadJson, correlationId, cancellationToken);
+                if (stop is not null) return stop;
+                // A barcode with no approved content is left out of the content request: the job's variant results say so
+                // (D7) instead of counting it as sent.
+                payload = payload with { ApprovedContentPayloadJson = resolvedContent!, ContentNotFoundBarcodes = contentNotFound.Count > 0 ? contentNotFound : null };
+                job.PayloadJson = JsonSerializer.Serialize(payload); job.PayloadHash = Hash(job.PayloadJson);
+                await db.SaveChangesAsync(cancellationToken);
             }
             var phasePayload = UpdatePayload(payload, phase);
             if (!HasItems(phasePayload))
@@ -2160,7 +2199,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         var approvalOperationId = payload.ProductOperationId
             ?? (payload.ExternalOperationId?.StartsWith(Adapters.Hepsiburada.HepsiburadaHttpClient.ShippingInfoUploadPrefix, StringComparison.Ordinal) == true ? null : payload.ExternalOperationId);
         if (rejected < listings.Count) await EnsureApprovalReconciliationJob(tenantId, connectionId, payload.ProductId, profile.Id, payload.PayloadHash, correlationId, cancellationToken, approvalOperationId);
-        await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductUpdate, listings, null, cancellationToken);
+        var notSentBarcodes = JobVariantResultPolicy.NotSentBarcodes(payload.ContentNotFoundBarcodes,
+            TrendyolContentGroups.Barcodes(payload.UnapprovedPayloadJson).Concat(TrendyolContentGroups.Barcodes(payload.ApprovedVariantPayloadJson)).Concat(TrendyolContentGroups.Barcodes(payload.ApprovedDeliveryPayloadJson)));
+        var notSent = listings.Where(x => x.ExternalBarcode is { } barcode && notSentBarcodes.Contains(barcode.Trim()))
+            .DistinctBy(x => x.VariantId)
+            .ToDictionary(x => x.VariantId, _ => JobVariantResultPolicy.ApprovedContentNotFoundReason);
+        await RecordJobVariantResults(tenantId, payload.JobId, MarketplaceJobTypes.ProductUpdate, listings, null, cancellationToken, notSent: notSent.Count > 0 ? notSent : null);
         await db.SaveChangesAsync(cancellationToken);
         var platformName = ProductUpdatePlatformName(isHepsiburada, string.Equals(platformCode, "N11", StringComparison.OrdinalIgnoreCase));
         return rejected == 0 ? JobExecutionResult.Success() : rejected == listings.Count ? JobExecutionResult.Blocked("PRODUCT_UPDATE_REJECTED", $"{platformName} ürün güncellemesindeki tüm varyantlar reddedildi.") : JobExecutionResult.Blocked("PRODUCT_UPDATE_PARTIAL_FAILURE", $"{platformName} ürün güncellemesi bazı varyantlar için reddedildi.");
@@ -6126,6 +6170,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             : !newOnly && !mappingOnly
             ? updateExistingProducts ? " · Mevcut ürün bilgileri güncellenecek" : " · Mevcut ürün bilgileri korunacak"
             : "";
+        // A run that reads the products' information (full scan, the incremental scan, "Mevcut ürünleri güncelle", a single
+        // lookup) completes the listing profiles of the products it matched; new-only, mapping-only and options-only runs
+        // do not (owner decision 6 Nov 2026).
+        var completesListingProfiles = !newOnly && !mappingOnly && !optionsOnly && ImportedListingProfiles.Supported(connection.PlatformCode);
         var importJobId = jobId ?? Guid.CreateVersion7();
         var importSession = await db.ProductImportSessions.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
         var now = timeProvider.GetUtcNow();
@@ -6161,6 +6209,8 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         telemetryImportSkippedCount = previousProgress?.ProgressSkipped ?? 0;
         telemetryImportFailedCount = previousProgress?.ProgressFailed ?? 0;
         var receivedProducts = importSession.ReceivedProducts;
+        productImportTelemetry = true;
+        telemetryImportReceivedCount = receivedProducts;
         int? totalProducts = importSession.TotalProducts;
         var cursor = await Cursor(tenantId, connectionId, "PRODUCTS", cancellationToken);
         var scanRequired = importSession.Phase == "SCANNING";
@@ -6248,8 +6298,11 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 pageNumber--;
                 continue;
             }
-            foreach (var _ in result.Value!.Items) TrackReceived();
+            // A product read is not a product changed: the cursor's changed count is what the import processed
+            // (CursorImportCounts), not every product the page brought.
+            telemetryReceivedCount += result.Value!.Items.Count;
             receivedProducts += result.Value.Items.Count;
+            telemetryImportReceivedCount = receivedProducts;
             totalProducts ??= result.Value.TotalCount;
             var pageSnapshots = result.Value.Items
                 .Where(snapshot => includeDrafts || !snapshot.IsDraft)
@@ -6351,6 +6404,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
 
         var stagedSession = await db.ProductImportSessions.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.JobId == importJobId, cancellationToken);
         receivedProducts = stagedSession.ReceivedProducts;
+        telemetryImportReceivedCount = receivedProducts;
         totalProducts = stagedSession.TotalProducts;
         pageNumber = stagedSession.PageNumber;
 
@@ -6488,6 +6542,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
                 // PTT AVM lists colour and size rows, not variants; its mapping writes the variant codes itself.
                 if (!isPttAvm) await RecordVariantLinkCodes(tenantId, connectionId, snapshotGroups, cancellationToken);
                 await db.SaveChangesAsync(cancellationToken);
+                if (completesListingProfiles) await CompleteImportedListingProfiles(tenantId, connectionId, snapshotGroups, cancellationToken);
                 await db.ProductImportStagingRecords
                     .Where(x => x.TenantId == tenantId && x.JobId == importJobId && x.ModelKey == modelKey && x.State == "STAGED")
                     .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.State, "COMPLETED").SetProperty(x => x.FinalizedAt, timeProvider.GetUtcNow()), cancellationToken);
@@ -6562,6 +6617,24 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         if (jobId is { } completedJob)
             await UpdateProductSyncProgressAsync(tenantId, completedJob, receivedProducts, null, 100, ProductImportProgressLabel(totalProducts, receivedProducts, mappingOnly), cancellationToken, keepExistingTotal: true);
         return true;
+    }
+
+    // The listing profiles of the products this batch matched (ImportedListingProfiles). The batch is already saved; a
+    // failure here leaves the import as it is (the next run completes the profile; an update never makes one).
+    private async Task CompleteImportedListingProfiles(Guid tenantId, Guid connectionId, IReadOnlyList<RemoteCatalogProduct> snapshots, CancellationToken cancellationToken)
+    {
+        var codes = snapshots.SelectMany(snapshot => snapshot.Variants)
+            .SelectMany(variant => new[] { Short(variant.ExternalVariantId, 256), string.IsNullOrWhiteSpace(variant.Barcode) ? null : Short(variant.Barcode.Trim(), 160) })
+            .Where(code => !string.IsNullOrWhiteSpace(code)).Select(code => code!).ToHashSet(StringComparer.Ordinal);
+        try
+        {
+            var productIds = await ImportedListingProfiles.ProductIdsForCodesAsync(db, tenantId, connectionId, codes, cancellationToken);
+            await ImportedListingProfiles.EnsureAsync(db, tenantId, connectionId, productIds, cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            db.ChangeTracker.Clear();
+        }
     }
 
     private Task<int> UpdateProductSyncProgressAsync(Guid tenantId, Guid jobId, int current, int? total, int? percent, string label, CancellationToken cancellationToken, bool keepExistingTotal = false)
@@ -10638,6 +10711,10 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
     private async Task QueueAutomaticInvoiceRedelivery(Invoice invoice, ShipmentPackage package, CancellationToken cancellationToken)
     {
         if (invoiceBilling is null) return;
+        // An invoice in review is the owner's, and a delivery job of this package that waits, runs or stopped for review
+        // already stands for it: no second job next to it under another time bucket (live 13 Oct 2026).
+        if (invoice.Status == InvoiceStatus.ManualReview
+            || await InvoiceDeliveryJobHygiene.AutomaticDeliveryHeldAsync(db, invoice.TenantId, invoice.Id, package.Id, reviewHolds: true, cancellationToken)) return;
         var state = db.ChangeTracker.Entries<MarketplaceDeliveryState>()
             .Where(entry => entry.Entity.TenantId == invoice.TenantId
                 && entry.Entity.InvoiceId == invoice.Id
@@ -12777,6 +12854,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
             if (claim.DecidedAt != decidedAt) { claim.DecidedAt = decidedAt; claimChanged = true; }
             // What the customer asked for is kept once known; a read that does not say it leaves it as it is.
             if (remote.CustomerRequest is { } customerRequest && !string.Equals(claim.CustomerRequest, customerRequest, StringComparison.Ordinal)) { claim.CustomerRequest = customerRequest; claimChanged = true; }
+            if (remote.ResolvedWith is { } resolvedWith && !string.Equals(claim.ResolvedWith, resolvedWith, StringComparison.Ordinal)) { claim.ResolvedWith = resolvedWith; claimChanged = true; }
             if (claimChanged) { claim.UpdatedAt = now; claim.Version++; telemetryUpdatedCount++; }
         }
         if (!remoteIsFresh)
@@ -12839,6 +12917,12 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         // dropped when it shows them rejected; committed with the read, under the lines' locks.
         var claimId = claim.Id;
         await ReturnPendingStock.SettleAndSaveAsync(db, () => ReturnPendingStock.SettleClaimAsync(db, tenantId, claimId, $"return-stock:{claimId:N}", now, cancellationToken), cancellationToken);
+        // Owner decision (6 Nov 2026): a Hepsiburada claim closed as an exchange sends the order's delivered invoice link again.
+        if (await HepsiburadaExchangeInvoiceResend.QueueAsync(db, tenantId, claim,
+                configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+                configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites"),
+                now, cancellationToken))
+            await db.SaveChangesAsync(cancellationToken);
     }
 
     // A read whose marketplace change time is older than the one stored is stale. A read without a change time (or a
@@ -12936,6 +13020,7 @@ public sealed partial class MarketplaceJobProcessor(AppDbContext db, IConnection
         RejectedPackageState = status == ReturnClaimStatus.Rejected ? remote.RejectedPackageState : null,
         DecidedAt = status is ReturnClaimStatus.Approved or ReturnClaimStatus.Rejected ? remote.DecidedAt?.ToUniversalTime() : null,
         CustomerRequest = remote.CustomerRequest,
+        ResolvedWith = remote.ResolvedWith,
         CreatedAt = now,
         UpdatedAt = now,
         Version = 1

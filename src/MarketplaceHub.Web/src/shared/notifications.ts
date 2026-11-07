@@ -1,3 +1,4 @@
+import { formatDateTime } from './format-date'
 import { scopedStorageKey } from './storage-scope'
 
 export type NotificationTarget = { href: string; label: string }
@@ -139,8 +140,8 @@ const burstWindowMs = 5 * 60_000
 export function normalizeNotificationKind(message: string, kind: AppNotification['kind']): AppNotification['kind'] {
   // A count of none ("3 başarılı, 0 başarısız") reports no failure.
   const normalized = message.toLocaleLowerCase('tr-TR').replace(/(?<![\d.,])0\s+(?:başarısız|hatalı|hata)/gu, '')
-  if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi|sorgulanamadı|reddi|reddedildi|yayın uyarısı|eşlemesi (?:yok|gerek)|zorunlu özellik)/u.test(normalized)) return 'error'
-  if (/(kuyruğa\s+alındı|kuyrukta|işleniyor|sonucu\s+(?:henüz\s+)?bekleniyor|incelemesi\s+bekleniyor|onayı\s+bekleniyor|yeniden\s+kuyruğa|waiting(?:fraudcheck|[_\s-]*approval)|pending|processing|salt-okunur)/u.test(normalized)) return 'info'
+  if (/(hata|başarısız|kaydedilemedi|güncellenemedi|silinemedi|oluşturulamadı|alınamadı|bulunamadı|geçersiz|uygulanamadı|okunamadı|yenilenemedi|eşlenemedi|sorgulanamadı|aktarılamadı|gönderilemedi|inceleme bekliyor|reddi|reddedildi|yayın uyarısı|eşlemesi (?:yok|gerek)|zorunlu özellik)/u.test(normalized)) return 'error'
+  if (/(kuyruğa\s+alındı|sıraya\s+alındı|aktarım\s+(?:başladı|sürüyor|sırada)|gönderiliyor|sonucu?\s+henüz\s+bilinmiyor|kuyrukta|işleniyor|sonucu\s+(?:henüz\s+)?bekleniyor|incelemesi\s+bekleniyor|onayı\s+bekleniyor|yeniden\s+kuyruğa|waiting(?:fraudcheck|[_\s-]*approval)|pending|processing|salt-okunur)/u.test(normalized)) return 'info'
   return kind
 }
 
@@ -442,4 +443,120 @@ export function subscribeNotificationHistory(listener: () => void) {
     window.removeEventListener(notificationChangeEvent, refresh)
     window.removeEventListener('storage', refresh)
   }
+}
+
+// Background notices from GET /jobs/attention (AttentionNoticeView): a read failing run after run, product approvals
+// whose check ran out of time. One entry per notice key: raised (unread) when a new revision comes, updated in place
+// while it lasts, and removed once the server stops listing it (the read succeeded, the card was settled).
+export type AttentionNoticeItem = { productId?: string | null; label: string; barcodes: string[] }
+export type AttentionNotice = {
+  key: string
+  revision: string
+  code: string
+  title: string
+  message: string
+  connectionId: string
+  platformCode: string
+  storeName: string
+  resourceType?: string | null
+  failureCount: number
+  lastAttemptAt?: string | null
+  sinceAt?: string | null
+  lastError?: string | null
+  items: AttentionNoticeItem[]
+}
+
+const attentionPrefix = 'attention:'
+const attentionSeenStorageKey = 'ravencia.attention-notices'
+
+function readAttentionSeen(): Record<string, string> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(scopedStorageKey(attentionSeenStorageKey)) ?? '{}') as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed as Record<string, unknown>).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+  } catch {
+    return {}
+  }
+}
+
+function writeAttentionSeen(seen: Record<string, string>) {
+  try { localStorage.setItem(scopedStorageKey(attentionSeenStorageKey), JSON.stringify(seen)) } catch { /* a full store only means the notice may be raised again */ }
+}
+
+function attentionNotification(notice: AttentionNotice, previous?: AppNotification): AppNotification {
+  const expired = notice.code === 'PRODUCT_APPROVAL_DEADLINE_EXPIRED'
+  const details: NotificationDetail[] = [
+    { label: expired ? 'Süresi Dolan Kontrol' : 'Art Arda Hata', value: String(notice.failureCount), tone: 'error' },
+    ...(notice.lastAttemptAt ? [{ label: 'Son Deneme', value: formatDateTime(notice.lastAttemptAt) }] : []),
+    ...(!expired && notice.sinceAt ? [{ label: 'Son Başarılı', value: formatDateTime(notice.sinceAt) }] : []),
+    ...(!expired && notice.lastError ? [{ label: 'Son Hata', value: notice.lastError }] : [])
+  ]
+  const items: NotificationSubject[] = notice.items.slice(0, 50).map(item => ({
+    kind: 'product',
+    id: item.productId ?? undefined,
+    label: `${item.label}${item.barcodes.length > 0 ? ` · ${item.barcodes.join(', ')}` : ''}`.slice(0, 160),
+    href: item.productId ? notificationLinks.product(item.productId) : undefined
+  }))
+  const target = expired
+    ? items.length === 1 && items[0].href ? { href: items[0].href, label: 'Ürüne Git' } : { href: notificationLinks.job('PRODUCT_APPROVAL_DEADLINE_EXPIRED'), label: 'İşlem Takibine Git' }
+    : { href: notificationLinks.connection(notice.connectionId), label: 'Entegrasyona Git' }
+  return {
+    id: previous?.id ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    message: notice.message,
+    kind: 'error',
+    createdAt: previous?.createdAt ?? new Date().toISOString(),
+    read: previous?.read ?? false,
+    href: target.href,
+    actionLabel: target.label,
+    details,
+    title: notice.title.slice(0, 80),
+    operation: expired ? 'Ürün onay kontrolü' : 'Senkronizasyon',
+    platformCode: notice.platformCode.toUpperCase(),
+    connectionId: notice.connectionId,
+    storeName: notice.storeName,
+    subject: items.length === 1 ? items[0] : undefined,
+    code: notice.code,
+    groupKey: `${attentionPrefix}${notice.key}`,
+    items: items.length > 1 ? items : undefined,
+    recorded: true
+  }
+}
+
+// What a notice shows: an update that leaves it the same is not written (the history is not rewritten on every poll).
+function attentionSignature(notification: AppNotification) {
+  return JSON.stringify([notification.title, notification.message, notification.href,
+    (notification.details ?? []).map(detail => [detail.label, detail.value]),
+    subjectsOf(notification).map(subject => [subject.label, subject.href ?? ''])])
+}
+
+/** Brings the history in line with the server's open notices; returns whether the history changed. */
+export function syncAttentionNotices(notices: AttentionNotice[]) {
+  const history = readNotificationHistory()
+  const seen = readAttentionSeen()
+  const listed = new Set(notices.map(notice => notice.key))
+  let next = history.filter(notification => !notification.groupKey?.startsWith(attentionPrefix) || listed.has(notification.groupKey.slice(attentionPrefix.length)))
+  let changed = next.length !== history.length
+  const nextSeen: Record<string, string> = {}
+  for (const notice of notices) {
+    nextSeen[notice.key] = notice.revision
+    const groupKey = `${attentionPrefix}${notice.key}`
+    const index = next.findIndex(notification => notification.groupKey === groupKey)
+    if (seen[notice.key] !== notice.revision) {
+      // A new notice, or a new revision of one (a new failure streak, another expired card): raised again, unread.
+      next = [attentionNotification(notice), ...next.filter((_, position) => position !== index)]
+      changed = true
+    } else if (index >= 0) {
+      const updated = attentionNotification(notice, next[index])
+      if (attentionSignature(updated) !== attentionSignature(next[index])) {
+        next = next.map((notification, position) => position === index ? updated : notification)
+        changed = true
+      }
+    }
+    // Seen and no longer in the history: the person cleared it; it is not raised again until its revision changes.
+  }
+  if (JSON.stringify(seen) !== JSON.stringify(nextSeen)) writeAttentionSeen(nextSeen)
+  if (!changed) return false
+  if (!writeHistory(next.slice(0, historyLimit))) return false
+  window.dispatchEvent(new CustomEvent(notificationChangeEvent))
+  return true
 }

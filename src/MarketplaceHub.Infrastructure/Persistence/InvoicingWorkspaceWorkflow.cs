@@ -582,8 +582,13 @@ public sealed partial class InvoicingBillingService
         if (invoice.Status is not (InvoiceStatus.Accepted or InvoiceStatus.MarketplacePending or InvoiceStatus.MarketplaceFailed or InvoiceStatus.ManualReview) || string.IsNullOrWhiteSpace(invoice.InvoiceNumber))
             return ServiceResult<bool>.Fail("INVOICE_STATE_INVALID", "Bu fatura için platform teslimi doğrulanamaz; fatura sağlayıcıda kabul edilmiş ve numaralı olmalıdır.", 409);
         var needle = invoice.Id.ToString();
+        // A delivery job of the invoice that only waits does not hold the owner's confirmation back: it is closed with it
+        // (InvoiceDeliveryJobHygiene). A running job, or any other job of the invoice still open, does.
+        var deliveryPrefix = InvoiceDeliveryJobHygiene.KeyPrefix(invoice.Id);
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(job => job.TenantId == tenantId && job.PayloadJson.Contains(needle)
-            && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled), cancellationToken))
+            && (job.Status == JobStatus.Leased
+                || (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled)
+                    && !(job.JobType == InvoicingJobTypes.MarketplaceDelivery && job.JobDedupKey.StartsWith(deliveryPrefix))), cancellationToken))
             return ServiceResult<bool>.Fail("INVOICE_JOB_STILL_RUNNING", "Bu fatura için işlem hâlâ sürüyor. Birkaç dakika bekleyip tekrar deneyin.", 409);
         var packages = await db.ShipmentPackages.Where(item => item.TenantId == tenantId && (invoice.PackageId == null
                 ? item.OrderId == invoice.OrderId && item.Status != ShipmentPackageStatus.Cancelled
@@ -652,6 +657,8 @@ public sealed partial class InvoicingBillingService
         invoice.Version++;
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "INVOICE_MARKETPLACE_DELIVERY_OPERATOR_CONFIRMED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"operator-saw-invoice-on-platform:{invoice.InvoiceNumber}", CorrelationId = correlationId, CreatedAt = now });
         await db.SaveChangesAsync(cancellationToken);
+        // The invoice's delivery jobs that wait or stopped have nothing left to do once the owner confirmed the delivery.
+        await InvoiceDeliveryJobHygiene.CloseWaitingJobsAsync(db, tenantId, invoice.Id, now, cancellationToken, ownerConfirmed: true);
         return ServiceResult<bool>.Ok(true);
     }
 
@@ -683,6 +690,8 @@ public sealed partial class InvoicingBillingService
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "INVOICE_REPLACED_AFTER_PROVIDER_CANCELLATION", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"operator-cancelled-in-provider-portal:{invoice.InvoiceNumber}", CorrelationId = correlationId, CreatedAt = now });
         await InvoiceAdjustmentTracking.MarkLinkRevocationRequiredAsync(db, invoice, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
+        // Its delivery jobs stopped for review, blocked or dead have nothing left to do.
+        await InvoiceDeliveryJobHygiene.CloseStoppedJobsAfterCancellationAsync(db, tenantId, invoice.Id, invoice.Status, now, correlationId, cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }
 

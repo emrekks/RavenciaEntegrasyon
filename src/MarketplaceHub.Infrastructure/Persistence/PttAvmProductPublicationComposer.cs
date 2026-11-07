@@ -30,7 +30,7 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "PTTAVM", cancellationToken);
         if (connection is null) return NotFound();
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi PTT AVM bağlantısına ait listing profile oluşturulmalıdır.");
+        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("PTT AVM"));
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
 
         var categoryMapping = product.CategoryId is Guid categoryId
@@ -108,13 +108,14 @@ internal sealed class PttAvmProductPublicationComposer(AppDbContext db, IConfigu
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null
                            orderby productMedia.SortOrder, productMedia.Id
                            select new { productMedia.VariantId, asset.Id, asset.Classification, asset.RelativePath }).ToListAsync(cancellationToken);
-        var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
+        var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
         if (relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Any(x => !ProductPublicationComposer.IsPublicHttpsUrl(x.RelativePath.Trim())))
             return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için görsel adresleri geçerli herkese açık HTTPS adresi olmalıdır.");
-        var imageUrls = ProductPublicationComposer.SelectPublicationImageUrls(relevantMedia
-            .Select(item => item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
-            .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Select(url => url!));
+        var pictureUrls = relevantMedia
+            .Select(item => (item.Id, Url: item.Classification == "PRODUCT_MEDIA_URL" ? item.RelativePath.Trim() : ProductPublicationComposer.BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id)))
+            .ToList();
+        var imageUrls = ProductPublicationComposer.SelectPublicationImageUrls(pictureUrls.Select(item => item.Url), PublicationVariantMedia.SizeChartUrl(pictureUrls, sizeChartAssetId));
         // PTT AVM needs at least one image for a new product.
         if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir herkese açık HTTPS ürün görseli gerekir.");
 

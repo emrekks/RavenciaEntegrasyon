@@ -37,14 +37,32 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                 InvoicingJobTypes.StageCapabilityProbe => await StageCapabilityProbe(tenantId, connectionId!.Value, payloadJson, correlationId, cancellationToken),
                 _ => false
             };
-            return succeeded
+            var result = succeeded
                 ? JobExecutionResult.Success()
                 : JobExecutionResult.Blocked("F4_JOB_REJECTED", "Job payload, capability or invoice state did not permit the operation.");
+            await CloseSettledWaitingDeliveryJobs(tenantId, jobType, payloadJson);
+            return result;
         }
         catch (JobProcessingException exception)
         {
+            await CloseSettledWaitingDeliveryJobs(tenantId, jobType, payloadJson);
             return exception.Result;
         }
+    }
+
+    // After a job of an invoice ran, the invoice's other delivery jobs that still wait are closed at once when the invoice
+    // went to review or was cancelled, or its delivery was confirmed (InvoiceDeliveryJobHygiene). Housekeeping only: it
+    // reads what was saved, writes with guarded updates, and a failure here never changes the job's own result.
+    private async Task CloseSettledWaitingDeliveryJobs(Guid tenantId, string jobType, string payloadJson)
+    {
+        if (jobType is not (InvoicingJobTypes.InvoiceSubmit or InvoicingJobTypes.InvoiceReconcile or InvoicingJobTypes.InvoiceDocumentFetch
+                or InvoicingJobTypes.MarketplaceDelivery or InvoicingJobTypes.InvoiceCancellation)) return;
+        if (DeliveryJobTarget(payloadJson) is not { } target) return;
+        try
+        {
+            await InvoiceDeliveryJobHygiene.CloseWaitingJobsAsync(db, tenantId, target.InvoiceId, timeProvider.GetUtcNow(), CancellationToken.None);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException) { }
     }
 
     internal static string? PazaramaOrderId(string? customerSnapshotJson)
@@ -597,6 +615,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
+        // Cancelled or refused at the provider: its delivery jobs stopped for review close at once.
+        await InvoiceDeliveryJobHygiene.CloseStoppedJobsAfterCancellationAsync(db, tenantId, invoice.Id, invoice.Status, invoice.UpdatedAt, correlationId, cancellationToken);
         return true;
     }
 
@@ -609,6 +629,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
 
     private async Task<bool> Deliver(Guid tenantId, Guid jobConnectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
     {
+        if (ReadExchangeResendClaimId(payloadJson) is { } exchangeClaimId)
+            return await ResendForExchange(tenantId, jobConnectionId, exchangeClaimId, payloadJson, correlationId, cancellationToken);
         if (!TryReadOneTimeInvoiceDeliveryAuthorization(payloadJson, out var oneTimeAuthorization)) return false;
         var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
         if (invoice is null) return false;
@@ -626,6 +648,120 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             if (!succeeded) return false;
         }
         return true;
+    }
+
+    private static Guid? ReadExchangeResendClaimId(string payloadJson)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("exchangeResendClaimId", out var value)
+                && value.ValueKind == JsonValueKind.String
+                && Guid.TryParse(value.GetString(), out var claimId)
+                ? claimId
+                : null;
+        }
+        catch (JsonException) { return null; }
+    }
+
+    /// <summary>
+    /// Owner decision (6 Nov 2026, ExchangeInvoiceResendPolicy): a Hepsiburada claim closed as an exchange sends the SAME
+    /// invoice link again to the package it was delivered to. No new invoice, no cancellation, no E-Faturam call; the
+    /// invoice and its delivery record stay as they are. Everything is checked again here, since the claim, the invoice or
+    /// the switches may have changed after the job was queued; a stop or a failure leaves a note for the owner.
+    /// </summary>
+    private async Task<bool> ResendForExchange(Guid tenantId, Guid jobConnectionId, Guid claimId, string payloadJson, string correlationId, CancellationToken cancellationToken)
+    {
+        var invoice = await FindInvoice(tenantId, payloadJson, cancellationToken);
+        var packageId = ReadPackageId(payloadJson);
+        if (invoice is null || packageId is null) return false;
+        var claim = await db.ReturnClaims.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == claimId, cancellationToken);
+        var package = await db.ShipmentPackages.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == packageId && x.OrderId == invoice.OrderId, cancellationToken);
+        if (claim is null || package is null || claim.OrderId != invoice.OrderId || package.ConnectionId != jobConnectionId || claim.ConnectionId != jobConnectionId) return false;
+        var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == package.ConnectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        if (!string.Equals(platformCode, "HEPSIBURADA", StringComparison.OrdinalIgnoreCase)) return false;
+        var order = await db.Orders.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId).Select(x => new { x.OrderNumber, x.StoreFrontCode }).SingleOrDefaultAsync(cancellationToken);
+        var issueKey = ExchangeInvoiceResendPolicy.IssueKey(claim.Id);
+        var facts = $"sipariş {order?.OrderNumber}, fatura {invoice.InvoiceNumber}, paket {package.ExternalPackageId}";
+
+        var panelApprovedWith = claim.ResolvedWith is null
+            ? await db.ReturnDecisions.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && x.ClaimId == claim.Id && x.Action == "APPROVE" && x.Status == "SUCCEEDED")
+                .OrderByDescending(x => x.CreatedAt).Select(x => x.ReasonCode).FirstOrDefaultAsync(cancellationToken)
+            : null;
+        if (!ExchangeInvoiceResendPolicy.ClosedAsExchange(claim.Status, claim.RawStatus, claim.ResolvedWith, panelApprovedWith))
+            throw new JobProcessingException(JobExecutionResult.Blocked("HEPSIBURADA_EXCHANGE_NOT_CONFIRMED",
+                $"Talep {claim.ExternalClaimId} artık değişimle kapanmış görünmüyor; fatura yeniden gönderilmedi ({facts})."));
+        if (InvoiceDeliveryGuardPolicy.InvoiceBlocksDelivery(invoice.Status))
+            throw new JobProcessingException(JobExecutionResult.Blocked(InvoiceDeliveryGuardPolicy.InvoiceNotDeliverableCode,
+                $"Fatura iptal sürecinde, iptal edilmiş, reddedilmiş veya düzeltme bekliyor; Hepsiburada'ya yeniden gönderilmedi ({facts})."));
+        var state = await db.MarketplaceDeliveryStates.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.InvoiceId == invoice.Id && x.PackageId == package.Id, cancellationToken);
+        var document = await LoadPermanentInvoiceDocumentAsync(tenantId, invoice.Id, cancellationToken);
+        if (state?.Status != "CONFIRMED" || string.IsNullOrWhiteSpace(invoice.InvoiceNumber)
+            || !Uri.TryCreate(document?.PermanentUrl, UriKind.Absolute, out var link) || link.Scheme != Uri.UriSchemeHttps)
+            throw new JobProcessingException(JobExecutionResult.Blocked("HEPSIBURADA_EXCHANGE_INVOICE_NOT_DELIVERED",
+                $"Bu paketin faturası Hepsiburada'ya teslim edilmiş görünmüyor veya fatura bağlantısı yok; yeniden gönderilmedi ({facts})."));
+
+        var now = timeProvider.GetUtcNow();
+        if (!IntegrationRuntimePolicy.AllowsAutomaticInvoiceMarketplaceDeliveryQueue(
+                configuration.GetValue<bool>("FeatureFlags:ExternalWrites"),
+                configuration.GetValue<bool>("FeatureFlags:InvoiceMarketplaceDeliveryWrites")))
+        {
+            var message = $"Değişim onaylandı ancak pazaryerine fatura iletme kapalı; mevcut fatura Hepsiburada'ya yeniden gönderilmedi ({facts}).";
+            await HepsiburadaExchangeInvoiceResend.NoteAsync(db, tenantId, issueKey, ExchangeInvoiceResendPolicy.DeliveryDisabledCode, message, now, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            throw new JobProcessingException(JobExecutionResult.Blocked(ExchangeInvoiceResendPolicy.DeliveryDisabledCode, message));
+        }
+
+        var payload = JsonSerializer.Serialize(new Dictionary<string, object?>
+        {
+            ["shipmentPackageId"] = package.ExternalPackageId,
+            ["invoiceLink"] = link.AbsoluteUri,
+            ["invoiceDateTime"] = invoice.IssuedAt?.ToUnixTimeMilliseconds(),
+            ["invoiceNumber"] = invoice.InvoiceNumber,
+            ["arrangementDate"] = invoice.IssuedAt?.ToString("O", CultureInfo.InvariantCulture),
+            ["contentType"] = document!.MimeType,
+            ["orderNumber"] = order?.OrderNumber,
+            ["micro"] = false
+        });
+        var context = Context(tenantId, package.ConnectionId, correlationId, ExchangeInvoiceResendPolicy.JobKey(claim.Id), IntegrationOperation.Automatic) with
+        {
+            IsAutomaticInvoiceMarketplaceDelivery = true,
+            IsExchangeInvoiceResend = true
+        };
+        AdapterResult<InvoiceDeliveryResult> result;
+        try
+        {
+            result = await marketplace.DeliverAsync(context, new(package.ExternalPackageId, "LINK", payload, Hash($"exchange-resend:{claim.Id:N}:{invoice.Id:N}:{package.Id:N}"), order?.StoreFrontCode), cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not JobProcessingException)
+        {
+            var message = $"Değişim için fatura Hepsiburada'ya yeniden gönderilirken sonuç alınamadı; otomatik tekrar gönderilmedi ({facts}).";
+            await HepsiburadaExchangeInvoiceResend.NoteAsync(db, tenantId, issueKey, ExchangeInvoiceResendPolicy.FailedCode, message, timeProvider.GetUtcNow(), CancellationToken.None);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw new JobProcessingException(JobExecutionResult.ManualReview("DELIVERY_RESULT_UNKNOWN", message));
+        }
+
+        if (!result.IsSuccess)
+        {
+            var error = result.Error!;
+            await HepsiburadaExchangeInvoiceResend.NoteAsync(db, tenantId, issueKey, ExchangeInvoiceResendPolicy.FailedCode,
+                $"Değişim onaylandı ancak mevcut fatura Hepsiburada'ya yeniden gönderilemedi ({facts}): {error.SafeMessage}", timeProvider.GetUtcNow(), CancellationToken.None);
+            await db.SaveChangesAsync(CancellationToken.None);
+            throw JobProcessingException.FromAdapter(error);
+        }
+
+        var done = $"Değişim onaylandı; mevcut fatura Hepsiburada'ya yeniden gönderildi ({facts}).";
+        var doneAt = timeProvider.GetUtcNow();
+        await HepsiburadaExchangeInvoiceResend.NoteAsync(db, tenantId, issueKey, ExchangeInvoiceResendPolicy.ResentCode, done, doneAt, cancellationToken, resolved: true);
+        db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = ExchangeInvoiceResendPolicy.ResentCode, TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"exchange-claim:{claim.ExternalClaimId}:package:{package.ExternalPackageId}", CorrelationId = correlationId, CreatedAt = doneAt });
+        await db.SaveChangesAsync(cancellationToken);
+        throw new JobProcessingException(JobExecutionResult.SuccessWithNote(ExchangeInvoiceResendPolicy.ResentCode, done));
     }
 
     private async Task<bool> DeliverManualOrderInvoiceDocument(Guid tenantId, Guid jobConnectionId, string payloadJson, string correlationId, CancellationToken cancellationToken)
@@ -2081,6 +2217,8 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         await QueuePendingMarketplaceDeliveryRecovery(tenantId, now, cancellationToken);
         await QueueDeliveryRetries(tenantId, now, cancellationToken);
         await CloseDeliveryJobsSettledElsewhere(tenantId, now, cancellationToken);
+        // Catch-up for the cancel paths: stopped delivery jobs of an invoice cancelled for good close here too.
+        await InvoiceDeliveryJobHygiene.CloseStoppedJobsOfCancelledInvoicesAsync(db, tenantId, null, now, "invoice-due-scan", cancellationToken);
         await db.SaveChangesAsync(cancellationToken); return true;
     }
 
@@ -2096,6 +2234,21 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         const int pageSize = 200;
         const int maximumPages = 10;
         var since = now.AddDays(-30);
+        // Waiting jobs of an invoice that went to review, was cancelled or got its delivery confirmed by any path (a
+        // marketplace read, another job) are closed too; the job run closes them at once, this catches the rest.
+        var waitingInvoiceIds = (await db.IntegrationJobs.AsNoTracking()
+                .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
+                    && (job.Status == JobStatus.Pending || job.Status == JobStatus.RetryScheduled))
+                .OrderBy(job => job.CreatedAt)
+                .Select(job => job.PayloadJson)
+                .Take(500)
+                .ToListAsync(cancellationToken))
+            .Select(payload => DeliveryJobTarget(payload)?.InvoiceId)
+            .OfType<Guid>()
+            .Distinct()
+            .ToList();
+        foreach (var invoiceId in waitingInvoiceIds)
+            await InvoiceDeliveryJobHygiene.CloseWaitingJobsAsync(db, tenantId, invoiceId, now, cancellationToken);
         (DateTimeOffset CreatedAt, Guid Id)? before = null;
         for (var page = 0; page < maximumPages; page++)
         {
@@ -2140,7 +2293,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     internal static bool DeliveryJobCoversPackage(string payloadJson, Guid packageId) =>
         DeliveryJobTarget(payloadJson) is not { } target || target.PackageId is null || target.PackageId == packageId;
 
-    private static (Guid InvoiceId, Guid? PackageId)? DeliveryJobTarget(string payloadJson)
+    internal static (Guid InvoiceId, Guid? PackageId)? DeliveryJobTarget(string payloadJson)
     {
         try
         {
@@ -2267,10 +2420,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
                     true, true, true, await ShopifyWriteScopeVerifiedAsync(tenantId, connection, cancellationToken)) is null)
                 deliverableConnections.Add(connection.Id);
         }
+        // A job stopped for the owner's review holds its package too (InvoiceDeliveryJobHygiene): the recovery does not
+        // add a job every five minutes next to it, each stopping on the same cause (live 13 Oct 2026).
         var activeDeliveryJobs = await db.IntegrationJobs.AsNoTracking()
             .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
-                && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled))
-            .Select(job => new { job.JobDedupKey, job.PayloadJson }).ToListAsync(cancellationToken);
+                && (job.Status == JobStatus.Pending || job.Status == JobStatus.Leased || job.Status == JobStatus.RetryScheduled || job.Status == JobStatus.ManualReview))
+            .Select(job => new { job.JobDedupKey, job.PayloadJson, job.Status }).ToListAsync(cancellationToken);
         var neverQueued = new List<(Guid InvoiceId, Guid ConnectionId)>();
         foreach (var invoice in acceptedNeverDelivered)
         {
@@ -2303,7 +2458,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             // cannot be read is taken as covering the whole invoice.
             var keyPrefix = $"{InvoicingJobTypes.MarketplaceDelivery}:{candidate.Id}:";
             if (activeDeliveryJobs.Any(job => job.JobDedupKey.StartsWith(keyPrefix, StringComparison.Ordinal)
-                && DeliveryJobCoversPackage(job.PayloadJson, candidate.PackageId))) continue;
+                && InvoiceDeliveryJobHygiene.Holds(job.Status, job.PayloadJson, candidate.PackageId, reviewHolds: true))) continue;
 
             var dedup = RecoveryDedupKey(candidate.Id, candidate.PackageId, candidate.StateVersion, bucket);
             if (!queuedRecoveryKeys.Add(dedup)) continue;
@@ -2441,6 +2596,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
             invoice.UpdatedAt = timeProvider.GetUtcNow();
             invoice.Version++;
             await db.SaveChangesAsync(cancellationToken);
+            await InvoiceDeliveryJobHygiene.CloseStoppedJobsAfterCancellationAsync(db, tenantId, invoice.Id, invoice.Status, invoice.UpdatedAt, correlationId, cancellationToken);
             return true;
         }
         var result = await provider.CancelAsync(Context(tenantId, connectionId, correlationId, $"cancel:{invoice.Id:N}"), new(invoice.ExternalReference, invoice.EttnUuid, "OPERATOR_CONFIRMED"), cancellationToken);
@@ -2464,6 +2620,7 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
         invoice.UpdatedAt = timeProvider.GetUtcNow();
         invoice.Version++;
         await db.SaveChangesAsync(cancellationToken);
+        await InvoiceDeliveryJobHygiene.CloseStoppedJobsAfterCancellationAsync(db, tenantId, invoice.Id, invoice.Status, invoice.UpdatedAt, correlationId, cancellationToken);
         if (!result.IsSuccess)
         {
             var error = result.Error!;
@@ -2481,6 +2638,12 @@ public sealed class InvoicingJobProcessor(AppDbContext db, IInvoiceProviderPort 
     {
         var dedup = $"{jobType}:{invoiceId}:{suffix}";
         if (await db.IntegrationJobs.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.JobType == jobType && x.JobDedupKey == dedup, cancellationToken)) return;
+        // At most one delivery job of an invoice waits, runs or sits in review at a time, whatever key started it: a
+        // later trigger adds none next to it. The owner's own retry (its key carries "delivery-retry:manual:") is not held
+        // by a job in review, only by one that still runs.
+        if (jobType == InvoicingJobTypes.MarketplaceDelivery
+            && await InvoiceDeliveryJobHygiene.AutomaticDeliveryHeldAsync(db, tenantId, invoiceId, null,
+                reviewHolds: !suffix.Contains(":delivery-retry:manual:", StringComparison.Ordinal), cancellationToken)) return;
         var payload = JsonSerializer.Serialize(new { invoiceId });
         // Status check, document and marketplace delivery follow a submission the user waits for, so they run in
         // the user lane, at the pace of that submission: a single click's chain stays ahead of a bulk confirmation,

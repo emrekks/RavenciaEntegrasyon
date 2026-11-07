@@ -88,6 +88,12 @@ purpose (`TurkeyTime.cs`).
 - Live (import staging 2026-10-07, 3,605 variants): `onSale=false` on every variant with stock 0 and on none with
   stock, so most closures are stock-outs. Code: `TrendyolJsonMapper.SaleState/SaleStateReason` (STOCK_ZERO when the same
   answer has quantity 0). The unapproved list has no sale state.
+- Trendyol names no reason field for `onSale=false`. STOCK_ZERO is our own inference: `onSale=false` + `quantity` 0 +
+  none of `locked` / `blacklisted` / `archived` set (those give LOCKED / BLACKLISTED / ARCHIVED instead). The October
+  live staging never showed `onSale=false` with stock > 0, so a closure with stock and no flag (reason null, plain
+  "Satışa Kapalı") has not been seen yet. Source: live staging 2026-10-07 above; `TrendyolJsonMapper.SaleStateReason`.
+- Display rule (owner, 6 Nov 2026, all marketplaces): a STOCK_ZERO closure is no closure in the products list, the
+  publish card or the Satışa Kapalı filter (`ListingSaleState.ClosedBeyondStock`, server `OffSaleReasonCounts`).
 
 ## Statuses
 - Packages: shared mapping. The order uses the top-level package `status`, not `shipmentPackageStatus`.
@@ -99,6 +105,44 @@ purpose (`TurkeyTime.cs`).
 ## Quirks
 - `products/approved?productMainId=` is case-sensitive: live 7 Nov 2026 "Ryp003t" read 0 products, "RYP003T" 7. A single
   import by a typed code that reads nothing asks once more in upper case (`ProductImportMergePolicy.UpperCaseLookupRetry`).
+- One content (`contentId`) per colour: a model (`productMainId`) with several colours is several contents, each with
+  its own title, description, images and content attributes (Renk is a slicer); sizes are variants inside a content.
+  `content-bulk-update` takes one item per contentId, so a multi-colour panel card is updated content by content: the
+  job reads each barcode's content from `products/approved?barcode=` right before the send (`TrendyolContentGroups`).
+  Source: offline docs "Ürün Güncelleme - Onaylı Ürün v2" and "Ürün Filtreleme - Onaylı Ürün V2"; live RYP006
+  (6.11.2026, six colours x three sizes = six contents; the panel's product link held only the first approved one).
+- `content-bulk-update` (approved products) is a partial update: only `contentId` is required per item; `title`,
+  `description`, `images` (max 8) and `attributes` are optional and a field left out stays as Trendyol has it. The
+  exception is the attributes: if any attribute changes, the whole attribute list with every value must go. Max 1,000
+  items per request. So "Platformlarda Güncelle" sends only the picked content fields (Görseller alone = `contentId` +
+  `images`); ATTRIBUTES sends the full list (colour, size, Menşei); nothing picked from the content group = no content
+  request. A product not yet approved still goes whole via `unapproved-bulk-update`. Source: offline
+  `trendyol-api-son.md`, `updateContentBulk` / `ContentBulkUpdateRequest` / `ContentUpdateItem` (~line 31769); bug
+  6.11.2026, RYP007 images-only job 01a1b1c8-6fe7-78d3-bc90-702736436c38 had sent title, description and 18 attributes.
+- A content's attribute list is built for the content, not taken from its first variant (`TrendyolContentGroups
+  .ContentAttributes`, owner 6.11.2026): the category's **varianter** attribute (the size, one value per variant
+  inside a content) is left out of `content-bulk-update`; every other attribute, the **slicer** (Renk) included, must
+  have the same value on every variant of the content, else that content is not sent (PRODUCT_CONTENT_GROUP_MISMATCH,
+  "aynı içerikteki varyantların özellikleri farklı: …"). The flags come from `getCategoryAttributes` (`varianter`,
+  `slicer`), read right before the send; when they cannot be read nothing is left out and any differing attribute stops
+  the content. Source: offline `trendyol-api-son.md` ~2081-2100 (slicer opens separate contents, varianter = sizes of
+  one content, one varianter per category), ~2135 and ~2208 ("Onaylı ürünlerde … slicer veya varianter olan attribute
+  value değerleri güncellenememektedir"; updatable only when both flags are false). **Unverified on live:** the guide
+  also says a content attribute update must carry "tüm attribute ve değerleri"; whether Trendyol accepts the list
+  without the varianter has not been seen yet (live RYP007 6.11.2026 went with the first variant's size and was
+  accepted). Check the first ATTRIBUTES content update's batch result.
+- Approved-product variant update (`variant-bulk-update`) is partial too, and a null DELETES: the guide says a partial
+  request is taken when you send the `barcode` plus the field to change, and that sending a field as null (e.g.
+  `vatRate: null`) removes that field's current value from the product entirely. So the variant request carries
+  `barcode` + only the picked field (VAT_RATE → `vatRate`, DESI → `dimensionalWeight`), never `stockCode` or `origin`
+  (no pick for them; all 14 live Trendyol profiles had an empty Origin on 6.11.2026, so the old request would have
+  wiped Menşei), and never a null: a value the card lacks is left out, an item left with its barcode alone is dropped
+  and an empty phase makes no call. The delivery request likewise carries only `barcode` + `deliveryOptions` (an
+  object). Treat the same null-deletes rule as applying to every Trendyol update body. The older API reference
+  sentence "Partial update desteklenmez" is contradicted by this guide; the guide (newer) wins. Source:
+  https://developers.trendyol.com/docs/%C3%BCr%C3%BCn-g%C3%BCncelleme-onayl%C4%B1-%C3%BCr%C3%BCn-v2 (Varyant
+  Güncelleme tab, checked 6.11.2026); audit Y1/D1. The job drawer lists a field a stored payload sent as null as
+  "(silinir)" (`JobWritePayloadReader.ClearedFields`).
 - Cross-border storefronts: orders are read per `storeFrontCode` (TR, AE, SA, GR, DE, BG, QA, KW, OM, BH, AZ, SK, RO,
   CZ; QA/OM/BH/AZ only when the connection already has orders there). Listed ones probed every 6 h, others 24 h; a
   400/404 pauses one for 30 days. SA, AZ, BG, RO, GR, AE orders ship to the Istanbul export depot but count in their

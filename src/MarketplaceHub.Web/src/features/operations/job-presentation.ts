@@ -1,3 +1,4 @@
+import { knownJobTypes } from './job-categories'
 // How İşlem Takibi names a job. The title is the platform and the area ("N11 Sipariş İşlemi"); the line under it says
 // which way the data goes and what is done ("Okuma · Yeni Sipariş Çekme"); the tooltip explains it.
 
@@ -77,13 +78,20 @@ const catalogue: Record<string, JobPresentation> = {
 // A type the catalogue does not know yet is named from its words, so it still reads as a sentence.
 function unknownJob(jobType: string): JobPresentation {
   const type = jobType.toUpperCase()
-  const words = jobType.replaceAll('_', ' ').toLocaleLowerCase('tr-TR').replace(/(^|\s)\S/g, value => value.toLocaleUpperCase('tr-TR'))
+  const words = jobType.replaceAll('_', ' ').toLocaleLowerCase('en-US').replace(/(^|\s)\S/g, value => value.toLocaleUpperCase('en-US'))
   if (/INVOICE|EFATURAM|BILLING/.test(type)) return job('Fatura', 'invoice', PANEL, words, 'Faturayla ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')
   if (/RETURN|CLAIM/.test(type)) return job('İade', 'return', PANEL, words, 'İadeyle ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')
   if (/PRICE|INVENTORY|STOCK/.test(type)) return job('Fiyat ve Stok', 'price', PANEL, words, 'Fiyat veya stokla ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')
   if (/ORDER|SHIPMENT|PACKAGE|LABEL/.test(type)) return job('Sipariş', 'order', PANEL, words, 'Siparişle ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')
   if (/PRODUCT|CATALOG|CATEGORY|ATTRIBUTE|BRAND/.test(type)) return job('Ürün', 'product', PANEL, words, 'Ürün veya katalogla ilgili arka plan işlemi yürütülür; ayrıntılar için kaydı açabilirsiniz.')
   return job('Sistem', 'generic', PANEL, words, 'İşlem arka planda yürütülür; ayrıntılar için kaydı açabilirsiniz.')
+}
+
+export const jobDirections: readonly JobDirection[] = [READ, SEND, NOTICE, PANEL]
+
+/** The known job types that go the given way; the list asks the server for these. */
+export function jobTypesForDirection(direction: JobDirection): string[] {
+  return [...new Set([...knownJobTypes, ...Object.keys(catalogue)])].filter(type => jobPresentation(type).direction === direction)
 }
 
 export function jobPresentation(jobType: string): JobPresentation {

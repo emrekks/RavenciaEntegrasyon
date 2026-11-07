@@ -34,7 +34,8 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
     };
 
-    // sections: the requests of an approved Trendyol product that go (content, variant, delivery); null is all of them.
+    // sections: the requests of an approved Trendyol product that go (content with only its picked fields, variant,
+    // delivery); null is all of them.
     // A product Trendyol has not approved yet takes one full update whatever was picked; a Hepsiburada product takes its
     // whole product package when one of its fields was picked, and the dispatch time apart when DELIVERY was.
     public async Task<ServiceResult<ProductUpdateDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, ProductUpdateSections? sections = null)
@@ -54,7 +55,11 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         // Trendyol takes no warranty: a pick of that alone has nothing to send there (it must not send the whole card of
         // a product Trendyol has not approved yet).
         if (!sections.Trendyol) return ServiceResult<ProductUpdateDraft>.Fail("PRODUCT_UPDATE_FIELDS_UNSUPPORTED", "Seçilen ürün bilgileri Trendyol'a gönderilemiyor.", 422);
-        var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
+        // A card Trendyol split into one content per colour is updated content by content (the job finds each barcode's
+        // content right before the send), so the publication composer's split stop does not hold an update back.
+        // The desi is checked below, once it is known whether this update sends one (live 7.11.2026: RYP003T, approved,
+        // stopped on a missing desi although the owner had not picked Desi).
+        var create = await new ProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, contentSplitAllowed: true, desiRequired: false);
         if (!create.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(create.Error!.Code, create.Error.Message, create.Error.Status, create.Error.FieldErrors);
         var draft = create.Value!;
         var productLink = await db.MarketplaceProductLinks.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && x.ProductId == productId, cancellationToken);
@@ -62,20 +67,36 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
         // link only once approved) but no single content is the product's. It is not an unapproved product.
         var variantIds = draft.Variants.Select(variant => variant.VariantId).ToArray();
         var splitContents = productLink is null && await db.MarketplaceVariantLinks.AsNoTracking().AnyAsync(x => x.TenantId == tenantId && x.ConnectionId == connectionId && variantIds.Contains(x.VariantId), cancellationToken);
+        if (DesiMissingSku(draft, sections, unapproved: productLink is null && !splitContents) is { } missingDesiSku)
+            return ServiceResult<ProductUpdateDraft>.Fail("DESI_REQUIRED", ProductPublicationComposer.DesiMissingMessage(missingDesiSku), 422);
         var publication = Split(productId, productLink?.ExternalId, draft.PayloadJson, sections, splitContents);
         if (!publication.Succeeded) return ServiceResult<ProductUpdateDraft>.Fail(publication.Error!.Code, publication.Error.Message, publication.Error.Status);
         return ServiceResult<ProductUpdateDraft>.Ok(new(draft.ProfileId, publication.Value!, draft.Variants));
     }
 
+    // The first variant (by stock code) without a desi when this update sends one: the whole card of a product Trendyol
+    // has not approved yet (dimensionalWeight is required there), or Desi picked. Null when no desi is needed or all have one.
+    internal static string? DesiMissingSku(ProductPublicationDraft draft, ProductUpdateSections sections, bool unapproved)
+    {
+        if (!unapproved && !sections.VariantFields.Desi) return null;
+        using var payload = JsonDocument.Parse(draft.PayloadJson);
+        var missing = payload.RootElement.GetProperty("items").EnumerateArray()
+            .Where(item => !item.TryGetProperty("dimensionalWeight", out var desi) || desi.ValueKind != JsonValueKind.Number || desi.GetDecimal() <= 0)
+            .Select(item => Text(item, "barcode"))
+            .ToHashSet(StringComparer.Ordinal);
+        return draft.Variants.Where(variant => missing.Contains(variant.Barcode)).Select(variant => variant.Sku).Order(StringComparer.Ordinal).FirstOrDefault();
+    }
+
     // The Trendyol create payload split into the update requests. contentIdText: the product link's id once Trendyol has
     // approved the product (null before: then the create payload goes whole to the unapproved update). splitContents: the
-    // product is approved as one content per colour, so its variants and delivery go as approved, and its content (one
-    // per colour, none of them the product's) cannot go from here.
+    // product is approved as one content per colour (no product link, its variants linked), so it is approved too.
+    // The content request is written per barcode, without a contentId: Trendyol keeps one content per colour and the
+    // product link holds at most one of them (live 6.11.2026: RYP006's link is one colour's content of six), so the job
+    // asks Trendyol which content each barcode is in right before the send and sends each content once, with its own
+    // variants' data (TrendyolContentGroups).
     internal static ServiceResult<ProductUpdatePublication> Split(Guid productId, string? contentIdText, string createPayloadJson, ProductUpdateSections sections, bool splitContents = false)
     {
         var mode = contentIdText is null && !splitContents ? "UNAPPROVED" : "APPROVED";
-        if (mode == "APPROVED" && contentIdText is null && sections.Content)
-            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_CONTENT_SPLIT", "Bu ürün Trendyol'da her renk ayrı bir ürün olarak yayında; başlık, açıklama, görsel ve özellikler buradan gönderilemez. Varyant ve teslimat bilgilerini seçerek gönderebilirsiniz.", 422);
         using var source = JsonDocument.Parse(createPayloadJson);
         if (!source.RootElement.TryGetProperty("items", out var sourceItems) || sourceItems.ValueKind != JsonValueKind.Array || sourceItems.GetArrayLength() == 0)
             return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_PAYLOAD_INVALID", "Ürün güncelleme payload'ı oluşturulamadı.", 422);
@@ -87,29 +108,38 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
         if (mode == "APPROVED")
         {
-            var contentId = 0L;
-            if (contentIdText is not null && !long.TryParse(contentIdText, out contentId)) return ServiceResult<ProductUpdatePublication>.Fail("REMOTE_CONTENT_ID_INVALID", "Trendyol contentId sayısal değil; otomatik güncelleme güvenli biçimde durduruldu.", 409);
-            var first = sourceItems[0];
-            // A request whose fields were not picked goes empty; the job skips an empty phase without a call.
-            if (sections.Content && contentIdText is not null) contentItems.Add(new Dictionary<string, object?>
-            {
-                ["contentId"] = contentId,
-                ["title"] = Clone(first, "title"),
-                ["description"] = Clone(first, "description"),
-                ["images"] = Clone(first, "images"),
-                ["attributes"] = Clone(first, "attributes")
-            });
-
+            var parts = sections.ContentFields;
             foreach (var item in sourceItems.EnumerateArray())
             {
-                if (sections.Variants) variantItems.Add(new Dictionary<string, object?>
+                // A request whose fields were not picked goes empty; the job skips an empty phase without a call.
+                // The content request carries only the picked content fields: content-bulk-update takes a partial update
+                // (only contentId is required), so a field left out stays as Trendyol has it. The attributes go as the
+                // whole list (colour, size and Menşei included) whenever they go: Trendyol takes no part of them. A
+                // field not picked is left out of the item, never written as null (the serializer writes a dictionary's
+                // null values).
+                if (parts.Any)
                 {
-                    ["barcode"] = Text(item, "barcode"),
-                    ["stockCode"] = Text(item, "stockCode"),
-                    ["dimensionalWeight"] = Clone(item, "dimensionalWeight"),
-                    ["origin"] = Clone(item, "origin"),
-                    ["vatRate"] = Clone(item, "vatRate"),
-                });
+                    var content = new Dictionary<string, object?> { ["barcode"] = Text(item, "barcode") };
+                    if (parts.Title) AddPresent(content, item, "title");
+                    if (parts.Description) AddPresent(content, item, "description");
+                    if (parts.Images) AddPresent(content, item, "images");
+                    if (parts.Attributes) AddPresent(content, item, "attributes");
+                    if (content.Count > 1) contentItems.Add(content);
+                }
+                // The variant request carries the barcode and only the picked variant fields: Trendyol's guide takes a
+                // partial update there (the barcode and the field to change) and deletes a field sent as null (Ürün
+                // Güncelleme Onaylı Ürün v2, Varyant Güncelleme, checked 6.11.2026). No stock code or origin: nothing
+                // picks them, and an empty origin would wipe Menşei. A value the card lacks is left out, never sent as
+                // null; an item left with its barcode alone does not go.
+                var variantParts = sections.VariantFields;
+                if (variantParts.Any)
+                {
+                    var variant = new Dictionary<string, object?> { ["barcode"] = Text(item, "barcode") };
+                    if (variantParts.VatRate) AddPresent(variant, item, "vatRate");
+                    if (variantParts.Desi) AddPresent(variant, item, "dimensionalWeight");
+                    if (variant.Count > 1) variantItems.Add(variant);
+                }
+                // The delivery item goes only with its delivery options object, so it never carries a null.
                 if (sections.Delivery && item.TryGetProperty("deliveryOption", out var delivery) && delivery.ValueKind == JsonValueKind.Object)
                 {
                     deliveryItems.Add(new Dictionary<string, object?>
@@ -123,7 +153,9 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
 
         // A pick with nothing behind it (the delivery alone on a product with no delivery time) makes no job.
         if (mode == "APPROVED" && contentItems.Count == 0 && variantItems.Count == 0 && deliveryItems.Count == 0)
-            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_NOTHING_TO_SEND", "Seçilen ürün bilgileri için Trendyol'a gönderilecek değer yok.", 422);
+            return ServiceResult<ProductUpdatePublication>.Fail("PRODUCT_UPDATE_NOTHING_TO_SEND", sections.Delivery && !sections.ContentFields.Any && !sections.VariantFields.Any
+                ? "Teslimat Süresi gönderilemedi: ürün kartında teslimat süresi yok. Ürün kartına teslimat süresini girip tekrar deneyin."
+                : "Seçilen ürün bilgileri için Trendyol'a gönderilecek değer yok.", 422);
         var contentPayload = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = contentItems }, JsonOptions);
         var variantPayload = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = variantItems }, JsonOptions);
         var deliveryPayload = JsonSerializer.Serialize(new Dictionary<string, object?> { ["items"] = deliveryItems }, JsonOptions);
@@ -133,6 +165,10 @@ internal sealed class ProductUpdateComposer(AppDbContext db, IConfiguration conf
     }
 
     private static object? Clone(JsonElement source, string name) => source.TryGetProperty(name, out var value) && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined) ? value.Clone() : null;
+    private static void AddPresent(Dictionary<string, object?> target, JsonElement source, string name)
+    {
+        if (Clone(source, name) is { } value) target[name] = value;
+    }
     private static string Text(JsonElement source, string name) => source.TryGetProperty(name, out var value) ? value.ToString() : "";
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }
@@ -230,11 +266,12 @@ internal sealed class PriceInventoryComposer(AppDbContext db)
                 row.Link?.ExternalSku ?? row.ListingSku, row.Link?.ExternalId, row.Link?.ExternalSku is not null,
                 isShopify ? MarketplaceVariantLinkHealth.RemoteVariantId(row.Link?.ExternalId) : null, row.Link?.FulfilledByMarketplace))
             .ToList();
-        // An imported variant has no listing rows: it goes by the marketplace codes its link carries.
+        // An imported variant has no listing rows: it goes by the marketplace codes its link carries. The listing rows the
+        // panel made for a matched product (ImportedListingProfiles) do not change that until a status check reads it live.
         var publishedVariantIds = published.Select(row => row.Variant.Id).ToHashSet();
         var listedVariantIds = await (from profile in db.ChannelListingProfiles.AsNoTracking()
                                       join listingVariant in db.ChannelListingVariants.AsNoTracking() on new { profile.TenantId, ProfileId = profile.Id } equals new { listingVariant.TenantId, listingVariant.ProfileId }
-                                      where profile.TenantId == tenantId && profile.ConnectionId == connectionId
+                                      where profile.TenantId == tenantId && profile.ConnectionId == connectionId && (profile.Source == null || profile.Source != ChannelListingProfileSource.MarketplaceImport)
                                       select listingVariant.VariantId).Distinct().ToListAsync(cancellationToken);
         var imported = await (from offer in db.ChannelOffers.AsNoTracking()
                               join variant in db.ProductVariants.AsNoTracking() on new { offer.TenantId, offer.VariantId } equals new { variant.TenantId, VariantId = variant.Id }

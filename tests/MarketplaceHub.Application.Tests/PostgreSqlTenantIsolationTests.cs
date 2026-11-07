@@ -667,7 +667,10 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var variantStatus = Assert.Single(closedView.Variants.Single(x => x.Id == closedVariants[0].Id).PlatformStatuses!);
         Assert.Equal(("LIVE", ListingSaleState.OffSale, ListingSaleState.BySeller), (variantStatus.Status, variantStatus.SaleState, variantStatus.SaleStateReason));
         var stockOutStatus = StatusOf(await View(stockOut));
+        // The by-seller closure is counted by its reason; the unnamed one is the rest (2 - 0 - 1).
+        Assert.Equal(new Dictionary<string, int> { [ListingSaleState.BySeller] = 1 }, closedStatus.OffSaleReasonCounts);
         Assert.Equal(("LIVE", 1, 1), (stockOutStatus.Status, stockOutStatus.OffSaleVariantCount, stockOutStatus.OffSaleStockZeroVariantCount));
+        Assert.Empty(stockOutStatus.OffSaleReasonCounts!);
         var openStatus = StatusOf(await View(open));
         Assert.Equal(("LIVE", 1, 0), (openStatus.Status, openStatus.OnSaleVariantCount, openStatus.OffSaleVariantCount));
 
@@ -920,6 +923,59 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
         var afterDesi = await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).OrderBy(x => x.SortOrder).ToListAsync();
         // An unsent desi leaves the stored one as it is.
         Assert.Equal([3m, null], afterDesi.Select(x => x.Desi));
+
+        await transaction.RollbackAsync();
+    }
+
+    // O7: an updated and a new variant given the same code in one save are refused as a 409 naming the code and both
+    // rows, nothing written (the unique index made it a 500). D6: a deleted variant's code may go to a kept one.
+    [PostgreSqlFact]
+    public async Task UpdateProductAsync_RefusesOneCodeOnTwoRowsOfTheSave_AndLetsADeletedVariantsCodeMove()
+    {
+        var tenant = NewTenant("variant-code-save");
+        var product = new Product { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Title = $"Code save {Guid.NewGuid():N}", VatRate = 10m, VatInclusion = "INCLUDED", Description = "Code save test", DefaultListPrice = 0m, DefaultSalePrice = 0m, CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        var suffix = Guid.NewGuid().ToString("N")[..10].ToUpperInvariant();
+        ProductVariant NewVariant(int order)
+        {
+            var code = $"CS{order}-{suffix}";
+            return new ProductVariant { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ProductId = product.Id, SortOrder = order, Sku = code, SkuNormalized = CatalogKeyNormalizer.Key(code), OptionSignature = $"Beden={order}", CreatedAt = fixture.Now, UpdatedAt = fixture.Now, Version = 1 };
+        }
+        var kept = NewVariant(0);
+        var removed = NewVariant(1);
+        await using var db = fixture.CreateContext();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Tenants.Add(tenant);
+        db.Products.Add(product);
+        db.ProductVariants.AddRange(kept, removed);
+        await db.SaveChangesAsync();
+        var service = new CatalogService(db, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider, new MemoryCache(new MemoryCacheOptions()));
+
+        var shared = $"CSX-{suffix}";
+        var clash = await service.UpdateProductAsync(tenant.Id, product.Id, product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null,
+                VariantUpdates: [new UpdateVariantCommand(kept.Id, shared, null, null)],
+                VariantsToCreate: [new CreateVariantCommand(shared, null, null)]),
+            CancellationToken.None);
+        Assert.False(clash.Succeeded);
+        Assert.Equal("VARIANT_CODE_CONFLICT_REVIEW_REQUIRED", clash.Error!.Code);
+        Assert.Equal(409, clash.Error.Status);
+        Assert.Contains($"{shared} iki varyantta kullanılıyor", clash.Error.Message);
+        var entry = Assert.Single(clash.Error.FieldErrors!["variantCodeConflicts"]);
+        Assert.Equal($"sku\t{shared}\t\tSAME_SAVE\tvariant:{kept.Id:D},new:0", entry);
+        db.ChangeTracker.Clear();
+        Assert.Equal(kept.Sku, (await db.ProductVariants.AsNoTracking().SingleAsync(x => x.Id == kept.Id)).Sku);
+        Assert.Equal(2, await db.ProductVariants.AsNoTracking().CountAsync(x => x.TenantId == tenant.Id));
+
+        // D6: the deleted row's stock code goes to the kept row in the same save.
+        var moved = await service.UpdateProductAsync(tenant.Id, product.Id, product.Version,
+            new UpdateProductCommand(product.Title, product.Description, null, null,
+                VariantUpdates: [new UpdateVariantCommand(kept.Id, removed.Sku, null, null)],
+                VariantIdsToDelete: [removed.Id]),
+            CancellationToken.None);
+        Assert.True(moved.Succeeded, moved.Error?.Message);
+        db.ChangeTracker.Clear();
+        var left = Assert.Single(await db.ProductVariants.AsNoTracking().Where(x => x.TenantId == tenant.Id).ToListAsync());
+        Assert.Equal((kept.Id, removed.Sku), (left.Id, left.Sku));
 
         await transaction.RollbackAsync();
     }
@@ -8926,6 +8982,84 @@ public sealed class PostgreSqlTenantIsolationTests(PostgreSqlTenantIsolationFixt
                 await cleanupDb.ReferenceSnapshots.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
                 await cleanupDb.Products.Where(row => row.TenantId == tenant.Id).ExecuteUpdateAsync(set => set.SetProperty(row => row.BrandId, (Guid?)null));
                 await cleanupDb.Brands.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+            }
+            await DeleteCatalogOptionRepairTestTenantAsync(tenant.Id);
+        }
+    }
+
+    // Owner decision 6 Nov 2026: a product sync that reads the products' information completes the listing profile of a
+    // product it matched (ImportedListingProfiles); a new-only run does not. The import itself writes nothing remote.
+    [PostgreSqlFact]
+    public async Task TrendyolImport_CompletesTheMatchedProductsListingProfile_OnlyInARunThatReadsItsInformation()
+    {
+        var tenant = NewTenant("trendyol-import-profile");
+        var connection = NewQuestionConnection(tenant);
+        var productId = Guid.CreateVersion7();
+        var variantId = Guid.CreateVersion7();
+        var listing = new RemoteCatalogProduct(
+            "content-ryp003t", "RYP003T", "Kadın Haki Kazak", "", "100", "Uzak Marka", null, null, [],
+            [new RemoteCatalogVariant("1489791218", "RYP003T20", "RYP003T20", "RYP003T", new Dictionary<string, string>(), Archived: false, SalePrice: 100m, ListPrice: 120m, VatRate: 10m, StockQuantity: 2m, Currency: "TRY", RawJson: "{}")],
+            "{}");
+
+        await using (var seedDb = fixture.CreateContext())
+        {
+            seedDb.Tenants.Add(tenant);
+            seedDb.PlatformConnections.Add(connection);
+            seedDb.ReferenceSnapshots.AddRange(
+                new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "BRANDS", SourceVersion = "test", ContentHash = "test", FetchedAt = fixture.Now, IsCurrent = true },
+                new ReferenceSnapshot { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ResourceType = "CATEGORIES", SourceVersion = "test", ContentHash = "test", FetchedAt = fixture.Now, IsCurrent = true });
+            seedDb.Products.Add(new Product { Id = productId, TenantId = tenant.Id, Title = "Kadın Haki Kazak", Description = "", Status = ProductStatus.Active, CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-2), Version = 1 });
+            seedDb.ProductVariants.Add(new ProductVariant { Id = variantId, TenantId = tenant.Id, ProductId = productId, SortOrder = 0, Sku = "RYP003T20", SkuNormalized = "RYP003T20", Barcode = "RYP003T20", BarcodeNormalized = "RYP003T20", ModelCode = "RYP003T", OptionSignature = "RYP003T20", CreatedAt = fixture.Now.AddDays(-2), UpdatedAt = fixture.Now.AddDays(-2) });
+            seedDb.MarketplaceProductLinks.Add(new MarketplaceProductLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, ProductId = productId, ExternalId = "content-ryp003t", LastImportedProductVersion = 1, SyncStatus = "SYNCED", Version = 1 });
+            seedDb.MarketplaceVariantLinks.Add(new MarketplaceVariantLink { Id = Guid.CreateVersion7(), TenantId = tenant.Id, ConnectionId = connection.Id, VariantId = variantId, ExternalId = "1489791218", Version = 1 });
+            await seedDb.SaveChangesAsync();
+        }
+
+        async Task RunAsync(string payloadJson)
+        {
+            await using var processorDb = fixture.CreateContext();
+            var port = new ReadOnlyCatalogProductTestPort(listing);
+            var processor = new MarketplaceJobProcessor(processorDb, null!, null!, port, null!, null!, null!, null!, null!, null!, null!, new ConfigurationBuilder().Build(), fixture.TimeProvider);
+            var result = await processor.ProcessAsync(tenant.Id, connection.Id, MarketplaceJobTypes.ProductSync, payloadJson, "trendyol-import-profile", CancellationToken.None);
+            Assert.True(result.Succeeded, result.ErrorSummary);
+            Assert.Equal(0, port.WriteAttempts);
+        }
+
+        try
+        {
+            await RunAsync("{\"newOnly\":true}");
+            await using (var db = fixture.CreateContext())
+                Assert.False(await db.ChannelListingProfiles.AnyAsync(row => row.TenantId == tenant.Id));
+
+            await RunAsync("{\"existingOnly\":true,\"updateExistingProducts\":true}");
+            await using (var db = fixture.CreateContext())
+            {
+                var profile = await db.ChannelListingProfiles.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+                Assert.Equal((productId, ChannelListingProfileSource.MarketplaceImport, true, "UNKNOWN"), (profile.ProductId, profile.Source, profile.Enabled, profile.ActualStatus));
+                // The listing's category and brand stay out of the profile: the card's verified mappings decide.
+                Assert.Null(profile.ExternalCategoryId);
+                Assert.Null(profile.ExternalBrandId);
+                var listed = await db.ChannelListingVariants.AsNoTracking().SingleAsync(row => row.TenantId == tenant.Id);
+                Assert.Equal((variantId, "RYP003T20", "RYP003T20"), (listed.VariantId, listed.ExternalBarcode, listed.ExternalSku));
+            }
+
+            // A second run finds it complete.
+            await RunAsync("{\"existingOnly\":true,\"updateExistingProducts\":true}");
+            await using (var db = fixture.CreateContext())
+            {
+                Assert.Equal(1, await db.ChannelListingProfiles.CountAsync(row => row.TenantId == tenant.Id));
+                Assert.Equal(1, await db.ChannelListingVariants.CountAsync(row => row.TenantId == tenant.Id));
+            }
+        }
+        finally
+        {
+            await using (var cleanupDb = fixture.CreateContext())
+            {
+                await cleanupDb.ChannelPriceHistory.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.StockLedgerEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.IntegrationJobs.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ProductChangeEntries.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
+                await cleanupDb.ReferenceSnapshots.Where(row => row.TenantId == tenant.Id).ExecuteDeleteAsync();
             }
             await DeleteCatalogOptionRepairTestTenantAsync(tenant.Id);
         }

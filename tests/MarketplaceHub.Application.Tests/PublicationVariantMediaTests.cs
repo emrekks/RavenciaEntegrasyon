@@ -34,6 +34,37 @@ public sealed class PublicationVariantMediaTests
         Assert.Equal([A, B, C], Pick(media, Added).Select(x => x.Id));
     }
 
+    // Live 6.11.2026, RYP006 Vizon: -16 and -17 hold the four pictures in the strip's order (size chart last); a picture
+    // assignment renumbered -18's own rows 0..3 with the size chart first. Pictures go in the panel's order, so all three
+    // sizes send the same list, the strip's front picture first.
+    [Fact]
+    public void Sizes_with_the_same_pictures_follow_the_panel_strip_even_when_one_was_renumbered()
+    {
+        var (s16, s17, s18) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var (p1, p2, p3, chart) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+        var other = Guid.NewGuid();
+        // Ordered by SortOrder, as the composers read them: -18's renumbered rows first (0..3), then 1380..1656.
+        Item[] media =
+        [
+            new(s18, chart), new(s18, p1), new(s18, p2), new(s18, p3),
+            new(null, other),
+            new(null, p1), new(s16, p1), new(s17, p1),
+            new(null, p2), new(s16, p2), new(s17, p2),
+            new(null, p3), new(s16, p3), new(s17, p3),
+            new(null, chart), new(s16, chart), new(s17, chart)
+        ];
+
+        foreach (var size in new[] { s16, s17, s18 }) Assert.Equal([p1, p2, p3, chart], Pick(media, size).Select(x => x.Id));
+    }
+
+    [Fact]
+    public void A_picture_the_strip_lacks_follows_the_strip_pictures_in_the_variants_own_order()
+    {
+        var (only1, only2) = (Guid.NewGuid(), Guid.NewGuid());
+        Item[] media = [new(Added, only2), new(Added, B), new(Added, only1), new(Added, A), new(null, A), new(null, B)];
+        Assert.Equal([A, B, only2, only1], Pick(media, Added).Select(x => x.Id));
+    }
+
     [Fact]
     public void A_card_without_pictures_gives_none()
     {

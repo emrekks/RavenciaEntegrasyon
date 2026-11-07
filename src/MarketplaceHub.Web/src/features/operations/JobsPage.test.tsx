@@ -47,6 +47,11 @@ vi.mock('../../shared/api', () => {
       automaticWritesOpen: true, lastSuccessfulPushAt: hoursAgo(1), queuedJobs: 2, waitingForOrderRead: 0, failedPushes7d: 0, manualReviewPushes: 0, invalidOffers: 0,
       notFoundLinks: 0, rejectedLinks: 0, latestFailure: null, invalidOfferSamples: [], orderSource: 'WEBHOOK', lastNotificationAt: hoursAgo(1), orderReadIntervalSeconds: 900
     }] }
+    if (path === '/dashboard/integration-matrix') return [{ connectionId: 'ty', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', externalStoreId: '123', status: 'ACTIVE', issue: 'Ürün güncelleme listing state kayıtları eksik.', cells: {
+      orders: { state: 'ok', lastSuccessAt: hoursAgo(1), lastProblemAt: null }, products: { state: 'bad', lastSuccessAt: null, lastProblemAt: hoursAgo(2) }
+    } }]
+    if (path === '/dashboard/bootstrap') return { metrics: { pendingOrders: 0, lateOrders: 0, pendingReturns: 0, recentJobCount: 5987, deadJobCount: 12, manualReviewJobCount: 18 } }
+    if (path === '/connections/ty/instant-notifications') return { state: 'ACTIVE', endpoint: null, registeredAt: null, lastReceivedAt: hoursAgo(1), receivedLast24Hours: 4, message: null }
     if (path === '/price-stock-monitor/emergency-stop') return { connectionsStopped: 1, policiesDisabled: 2, jobsCancelled: 3 }
     if (path === '/jobs/job-1/retry') { await apiState.retryGate; return { job: job('job-1', 'TRENDYOL_ORDER_SYNC', 'PENDING', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] } }
     if (path === '/jobs/job-1' || path === '/jobs/job-2') { const id = path.slice(6); return { job: job(id, 'TRENDYOL_ORDER_SYNC', 'DEAD', hoursAgo(1)), attempts: [], order: null, change: null, relatedOrders: [] } }
@@ -67,7 +72,7 @@ vi.mock('../../shared/api', () => {
   })
   }
   // Polled reads go through hubPoll; the fixture answers them the same way.
-  return { ...mocked, hubPoll: mocked.hubApi }
+  return { ...mocked, hubPoll: mocked.hubApi, backgroundPollHeaders: {} }
 })
 
 import { formatJobTime, JobsPage } from './pages'
@@ -84,6 +89,26 @@ async function settle() {
 
 function button(label: string) {
   return Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(item => item.textContent?.trim() === label) ?? null
+}
+
+// The filter card's fields (filter-fields.tsx): a trigger named "<field>: <value>" opens an rr-pop named after the field.
+function trigger(name: string) {
+  return container.querySelector<HTMLButtonElement>(`.ops-filters button.rr-trigger[aria-label^="${name}: "]`)!
+}
+
+async function openField(name: string) {
+  await act(async () => { trigger(name).click() })
+  return container.querySelector<HTMLElement>(`.rr-pop[aria-label="${name}"]`)!
+}
+
+// A single-choice row (a button) by its text.
+function optionNamed(pop: Element, label: string) {
+  return Array.from(pop.querySelectorAll<HTMLButtonElement>('button.rr-opt')).find(item => item.querySelector('.rr-grow')?.textContent === label)!
+}
+
+// A multiple-choice row's checkbox (a value or a group heading) by its text.
+function checkboxNamed(pop: Element, label: string) {
+  return Array.from(pop.querySelectorAll('label.rr-opt')).find(item => item.querySelector('.rr-grow')?.textContent === label)!.querySelector<HTMLInputElement>('input')!
 }
 
 function pageRequests() {
@@ -223,9 +248,42 @@ describe('JobsPage address state (W16)', () => {
     const request = pageRequests().at(-1)!
     expect(request.get('status')).toBe('BLOCKED,MANUAL_REVIEW,DEAD')
     expect(request.get('since')).not.toBeNull()
-    expect(container.querySelector('.jobs-reference-range')!.textContent).toContain('Son 7 Gün')
-    act(() => { container.querySelector<HTMLButtonElement>('.jobs-reference-filter-toggle')!.click() })
-    expect(container.querySelector<HTMLSelectElement>('select[aria-label="Sayfa başına işlem"]')!.value).toBe('50')
+    // The filter card shows the range and the phone Filtre count; Sayfa Başına sits beside Yenile.
+    expect(trigger('Zaman Aralığı').textContent).toBe('Son 7 Gün')
+    expect(container.querySelector('.ops-filters .rr-ftoggle .rr-fcount')!.textContent).toBe('1')
+    expect(container.querySelector('.jobs-reference-toolbar .rr-psize-btn')!.textContent).toBe('50')
+  })
+
+  it('picks Yön, Durum, the range and the page size from the shared dropdowns, and Temizle resets the card', async () => {
+    await renderPage()
+    const direction = await openField('Yön')
+    expect(Array.from(direction.querySelectorAll('.rr-opt')).map(item => item.textContent)).toEqual(['Tüm Yönler', 'Okuma', 'Yazma', 'Bildirim', 'Panel İçi'])
+    await act(async () => { optionNamed(direction, 'Yazma').click() })
+    await settle()
+    expect(currentSearch).toBe('?yon=yazma')
+    expect(container.querySelector('.rr-pop[aria-label="Yön"]')).toBeNull()
+
+    const state = await openField('Durum')
+    await act(async () => { optionNamed(state, 'Manuel İnceleme').click() })
+    await settle()
+    expect(pageRequests().at(-1)!.get('status')).toBe('MANUAL_REVIEW')
+
+    const range = await openField('Zaman Aralığı')
+    await act(async () => { optionNamed(range, 'Tüm Zamanlar').click() })
+    await settle()
+    expect(new URLSearchParams(currentSearch).get('aralik')).toBe('tum')
+
+    await act(async () => { container.querySelector<HTMLButtonElement>('.rr-psize-btn')!.click() })
+    await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('.rr-psize-pop .rr-opt')).find(item => item.textContent === '100')!.click() })
+    expect(new URLSearchParams(currentSearch).get('adet')).toBe('100')
+
+    const clear = container.querySelector<HTMLButtonElement>('.ops-filters .ops-clear')!
+    expect(clear.textContent).toBe('Temizle3')
+    await act(async () => { clear.click() })
+    await settle()
+    // The card's filters go back to their defaults; the page size is not a filter and stays.
+    expect(currentSearch).toBe('?adet=100')
+    expect(clear.disabled).toBe(true)
   })
 
   it('writes the search into the address and drops the page number on a filter change', async () => {
@@ -257,31 +315,36 @@ describe('JobsPage platform filter', () => {
     return apiState.calls.filter(path => path.startsWith('/jobs/counts')).map(path => new URLSearchParams(path.slice(path.indexOf('?') + 1)))
   }
 
-  function openFilters() {
-    act(() => { container.querySelector<HTMLButtonElement>('.jobs-reference-filter-toggle')!.click() })
-    return container.querySelector<HTMLSelectElement>('select[aria-label="Platform"]')!
-  }
-
-  it('offers Tümü and every connected platform, and sends the choice to the list and the counts', async () => {
+  it('offers every connected platform with its logo, and sends the choice to the list and the counts', async () => {
     await renderPage()
-    const select = openFilters()
+    const pop = await openField('Platform')
 
-    expect(Array.from(select.options).map(option => option.textContent)).toEqual(['Tümü', 'Trendyol', 'N11', 'E-Faturam'])
+    expect(Array.from(pop.querySelectorAll('.rr-opt .rr-grow')).map(option => option.textContent)).toEqual(['Trendyol', 'N11', 'E-Faturam'])
+    expect(pop.querySelectorAll('.rr-opt .rr-logo')).toHaveLength(3)
+    expect(trigger('Platform').textContent).toBe('Tüm Platformlar')
     expect(pageRequests().every(params => params.get('platform') === null)).toBe(true)
 
-    await act(async () => { select.value = 'TRENDYOL_EFATURAM'; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    await act(async () => { checkboxNamed(pop, 'E-Faturam').click() })
     await settle()
     await settle()
 
     expect(currentSearch).toBe('?platform=trendyol_efaturam')
     expect(pageRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
     expect(countRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM')
+    expect(trigger('Platform').textContent).toBe('E-Faturam')
     // The status row and the tab counts come from the platform's counts.
     const summary = container.querySelector('.jobs-reference-status-summary')!.textContent
     expect(summary).toContain('Hata 4')
     expect(summary).toContain('Başarılı 0')
     const invoiceTab = Array.from(container.querySelectorAll('[role="tab"]')).find(tab => tab.textContent?.includes('Faturalar'))!
     expect(invoiceTab.textContent).toContain('4')
+
+    // Several platforms go to the server as one comma list.
+    await act(async () => { checkboxNamed(container.querySelector('.rr-pop[aria-label="Platform"]')!, 'N11').click() })
+    await settle()
+    expect(currentSearch).toBe('?platform=trendyol_efaturam%2Cn11')
+    expect(pageRequests().at(-1)!.get('platform')).toBe('TRENDYOL_EFATURAM,N11')
+    expect(trigger('Platform').textContent).toBe('2 Platform')
   })
 
   it('keeps the platform from the URL on load and through the next page', async () => {
@@ -289,15 +352,15 @@ describe('JobsPage platform filter', () => {
 
     expect(pageRequests().at(-1)!.get('platform')).toBe('N11')
     expect(countRequests().at(-1)!.get('platform')).toBe('N11')
-    expect(container.querySelector('.jobs-reference-filter-toggle')!.textContent).toContain('N11')
+    expect(trigger('Platform').textContent).toBe('N11')
 
     await act(async () => { button('Daha Fazla Yükle')!.click() })
     await settle()
     const next = pageRequests().find(params => params.get('after') === 'cursor-1')!
     expect(next.get('platform')).toBe('N11')
 
-    const select = openFilters()
-    await act(async () => { select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })) })
+    const pop = await openField('Platform')
+    await act(async () => { Array.from(pop.querySelectorAll<HTMLButtonElement>('.rr-ph button')).find(item => item.textContent === 'Tümünü Kaldır')!.click() })
     await settle()
     expect(currentSearch).toBe('')
     expect(pageRequests().at(-1)!.get('platform')).toBeNull()
@@ -326,6 +389,26 @@ describe('JobsPage API Sağlık tab (price/stock sending health)', () => {
     expect(container.querySelector('.psm-summary')!.textContent).toContain('Tümü Açık')
     expect(container.querySelector('.jobs-category-segment, [aria-label="İşlem kategorileri"]')).toBeNull()
     expect(pageRequests().length).toBe(jobReads)
+  })
+
+  it('draws the Genel Bakış Entegrasyon Durumu panel and its operation cards for what needs a look', async () => {
+    await renderPage('/jobs?sekme=api-saglik')
+    for (let tick = 0; tick < 200 && !container.querySelector('.rr-mxt tbody tr td[data-l]'); tick++) await settle()
+    await settle()
+
+    const panel = container.querySelector('.api-health .rr.rr-dashboard .rr-panel')!
+    expect(panel.querySelector('h2')!.textContent).toBe('Entegrasyon Durumu')
+    expect(panel.querySelector('.rr-mxt tbody tr')!.className).toBe('rr-attn')
+    expect(panel.querySelector('.rr-mx-foot')!.textContent).toContain('5.987')
+    const cards = Array.from(container.querySelectorAll<HTMLAnchorElement>('.api-health .rr-opgrid > a.rr-opcard'))
+    // Worst first: the store's failure and the jobs that ended are red, the decisions waiting amber.
+    expect(cards.map(card => card.getAttribute('href'))).toEqual(['/jobs?durum=hata&aralik=7g&platform=trendyol', '/jobs?statu=DEAD', '/jobs?statu=MANUAL_REVIEW&aralik=tum'])
+    expect(cards[0].className).toContain('rr-bad')
+    expect(cards[0].textContent).toContain('Ürün güncelleme listing state kayıtları eksik.')
+    expect(cards[1].textContent).toContain('12')
+    expect(cards[2].className).toContain('rr-warn')
+    // The price and stock panel stays under them.
+    expect(container.querySelector('.api-health > .psm-panel')).not.toBeNull()
   })
 })
 
@@ -370,27 +453,26 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(container.querySelector('[aria-label="Gönderim sonuç özeti"]')).not.toBeNull()
   })
 
-  it('has the job list heading controls of its own: range, Filtrele and a result summary that filters', async () => {
+  it('has a filter card of its own: range, the shared dropdowns and a result summary that filters', async () => {
     apiState.sendLogCounts = [{ result: 'APPLIED', count: 3 }, { result: 'UNCHANGED', count: 1 }, { result: 'REJECTED', count: 2 }, { result: 'SUBMITTED', count: 1 }]
     await renderPage('/jobs?sekme=loglar&kayit=gonderimler&aralik=7g')
     await logViewLoaded()
     const countRequests = () => apiState.calls.filter(path => path.startsWith('/price-stock-send-log/counts'))
 
     // The log opens on its whole history whatever range the job list holds.
-    const range = container.querySelector<HTMLButtonElement>('.jobs-reference-heading-actions .jobs-reference-range')!
-    expect(range.textContent).toBe('Tüm Zamanlar')
+    expect(trigger('Zaman Aralığı').textContent).toBe('Tüm Zamanlar')
     expect(logRequests().at(-1)!.get('from')).toBeNull()
     const summary = container.querySelector('[aria-label="Gönderim sonuç özeti"]')!
     expect(Array.from(summary.querySelectorAll('[role="button"]')).map(chip => chip.textContent)).toEqual(['Başarılı 4', 'Sorunlu 2', 'Bekleyen 1', 'Yeni Sürüm 0'])
 
-    await act(async () => { range.click() })
-    await act(async () => { Array.from(container.querySelectorAll<HTMLButtonElement>('.jobs-reference-range-menu button')).find(item => item.textContent === 'Son 24 Saat')!.click() })
+    const range = await openField('Zaman Aralığı')
+    await act(async () => { optionNamed(range, 'Son 24 Saat').click() })
     await settle()
     const since = Date.parse(logRequests().at(-1)!.get('from')!)
     expect(Math.abs(Date.now() - 24 * 60 * 60 * 1000 - since)).toBeLessThan(60_000)
     // The counts and the list each work out the range start when they are built; a millisecond apart is the same range.
     expect(Math.abs(Date.parse(new URLSearchParams(countRequests().at(-1)!.split('?')[1]).get('from')!) - since)).toBeLessThan(1_000)
-    expect(container.querySelector('.jobs-reference-heading-actions .jobs-reference-range')!.textContent).toBe('Son 24 Saat')
+    expect(trigger('Zaman Aralığı').textContent).toBe('Son 24 Saat')
     // The job list's range in the address is untouched.
     expect(currentSearch).toContain('aralik=7g')
 
@@ -401,9 +483,13 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
     expect(logRequests().at(-1)!.get('results')).toBe('REJECTED,FAILED,UNKNOWN')
     expect(countRequests().at(-1)).not.toContain('results=')
     expect(problems.getAttribute('aria-pressed')).toBe('true')
-    await act(async () => { container.querySelector<HTMLButtonElement>('.jobs-reference-filter-toggle')!.click() })
-    expect(container.querySelector('button[aria-label="Sonuç: 3 Sonuç"]')).not.toBeNull()
-    expect(container.querySelector('.jobs-reference-filter-toggle .psl-clear-count')!.textContent).toBe('1')
+    expect(trigger('Sonuç').textContent).toBe('3 Sonuç')
+    // The phone Filtre button counts the range and the result filter; Temizle counts the same.
+    expect(container.querySelector('.ops-filters .rr-fcount')!.textContent).toBe('2')
+    expect(container.querySelector('.ops-filters .ops-clear')!.textContent).toBe('Temizle2')
+    // Each result shows its count in the menu.
+    const results = await openField('Sonuç')
+    expect(checkboxNamed(results, 'Reddedildi').closest('label')!.querySelector('.rr-opt-count')!.textContent).toBe('2')
   })
 
   it('is a main tab beside İş Takibi, above the category tabs, and İş Takibi brings the category back', async () => {
@@ -460,21 +546,26 @@ describe('JobsPage Loglar tab (price/stock send log)', () => {
   it('sends the result filter and clears it with Temizle', async () => {
     await renderPage('/jobs?sekme=loglar&kayit=gonderimler')
     await logViewLoaded()
-    // The filters sit in the Filtrele panel of the page heading, like the job list's.
-    expect(container.querySelector('button[aria-label="Sonuç: Tüm Sonuçlar"]')).toBeNull()
-    await act(async () => { container.querySelector<HTMLButtonElement>('.jobs-reference-heading-actions .jobs-reference-filter-toggle')!.click() })
-    expect(container.querySelector('[role="dialog"][aria-label="Gönderim kaydı filtreleri"]')).not.toBeNull()
-    const clearButton = () => Array.from(container.querySelectorAll<HTMLButtonElement>('.psl-clear'))[0]
+    // The filters sit in the log's own filter card, the shared one of the other pages.
+    expect(container.querySelector('.ops-filters[aria-label="Gönderim kaydı filtreleri"] .rr-fcard')).not.toBeNull()
+    const clearButton = () => container.querySelector<HTMLButtonElement>('.ops-filters .ops-clear')!
     expect(clearButton().disabled).toBe(true)
-    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="Sonuç: Tüm Sonuçlar"]')!.click() })
-    const menu = container.querySelector('[role="group"][aria-label="Sonuç"]')!
-    expect(Array.from(menu.querySelectorAll('.psl-menu-heading')).map(heading => heading.textContent)).toEqual(['Başarılı', 'Sorunlu', 'Bekleyen', 'Diğer'])
-    // The Sorunlu heading picks its whole group.
-    const problems = Array.from(menu.querySelectorAll<HTMLLabelElement>('.psl-menu-heading')).find(heading => heading.textContent === 'Sorunlu')!
-    await act(async () => { problems.querySelector('input')!.click() })
+    const menu = await openField('Sonuç')
+    expect(trigger('Sonuç').textContent).toBe('Tüm Sonuçlar')
+    expect(Array.from(menu.querySelectorAll('.ops-opt-group')).map(heading => heading.textContent)).toEqual(['Başarılı', 'Sorunlu', 'Bekleyen', 'Diğer'])
+    // Every option is one row: a checkbox beside its text.
+    for (const row of Array.from(menu.querySelectorAll('label.rr-opt'))) expect(row.firstElementChild!.matches('input.rr-cb')).toBe(true)
+    // The Sorunlu heading picks its whole group; the menu stays open for more picks.
+    await act(async () => { checkboxNamed(menu, 'Sorunlu').click() })
     await settle()
     expect(logRequests().at(-1)!.get('results')).toBe('REJECTED,FAILED,UNKNOWN')
-    expect(container.querySelector('button[aria-label="Sonuç: 3 Sonuç"]')).not.toBeNull()
+    expect(trigger('Sonuç').textContent).toBe('3 Sonuç')
+    expect(checkboxNamed(menu, 'Sorunlu').checked).toBe(true)
+    // One value of the group dropped leaves the heading half picked.
+    await act(async () => { checkboxNamed(menu, 'Reddedildi').click() })
+    await settle()
+    expect(checkboxNamed(menu, 'Sorunlu').indeterminate).toBe(true)
+    expect(trigger('Sonuç').textContent).toBe('2 Sonuç')
     expect(container.textContent).toContain('Seçili filtrelerle eşleşen gönderim kaydı bulunamadı.')
     expect(clearButton().disabled).toBe(false)
     expect(clearButton().textContent).toBe('Temizle1')
@@ -563,8 +654,29 @@ describe('JobsPage Loglar › Ürün Hareketleri', () => {
     expect(prices.getAttribute('aria-pressed')).toBe('true')
     expect(countRequests().at(-1)).not.toContain('kinds=')
     expect(container.textContent).toContain('Seçili filtrelerle eşleşen ürün hareketi bulunamadı.')
-    await act(async () => { container.querySelector<HTMLButtonElement>('.jobs-reference-heading-actions .jobs-reference-filter-toggle')!.click() })
-    expect(container.querySelector('button[aria-label="Tür: Fiyat"]')).not.toBeNull()
+    expect(trigger('Tür').textContent).toBe('Fiyat')
+  })
+
+  it('keeps İlk Fiyatları Göster in the Hareket Türü menu and sends the typed search on Filtrele', async () => {
+    await renderPage('/jobs?sekme=loglar')
+    await loaded()
+    const movements = await openField('Hareket Türü')
+    const rows = Array.from(movements.querySelectorAll('label.rr-opt .rr-grow')).map(item => item.textContent)
+    expect(rows.at(-1)).toBe('İlk Fiyatları Göster')
+    await act(async () => { checkboxNamed(movements, 'Satış').click() })
+    await act(async () => { checkboxNamed(movements, 'İlk Fiyatları Göster').click() })
+    await settle()
+    expect(trigger('Hareket Türü').textContent).toBe('Satış')
+    expect(container.querySelector('.ops-filters .ops-clear')!.textContent).toBe('Temizle2')
+
+    const search = container.querySelector<HTMLInputElement>('input[aria-label="Ürün hareketlerinde ara"]')!
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(search, 'BRK-1')
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await act(async () => { button('Filtrele')!.click() })
+    await settle()
+    expect(activityRequests().at(-1)!.get('search')).toBe('BRK-1')
   })
 })
 

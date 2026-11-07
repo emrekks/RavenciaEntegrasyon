@@ -134,6 +134,10 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   parcel, twice on a return), `Stoppage` (1 % of the VAT-free payment) / `StoppageRefund`,
   `PaymentServiceCostReflection` (~0.87 % of the payment) / its Refund, `ProcessingFeeExpense` (13.19, rare),
   `CustomerSatisfaction` (150.00), `TotalPayment` (the week's payout, equal to its records to the kuruş).
+- Service charges per order (live read-only SQL, 6 Nov 2026, the 27 billed clothing orders of 8 Sep-6 Nov): 206.08 TL
+  of `PaymentServiceCostReflection` (net of refunds) and `ProcessingFeeExpense` = 7.63 TL an order (0.86 % of the
+  sale); `ProcessingFeeExpense` (13.19) was on 2 of them only. The reports still cost 10.99 + VAT on every order
+  (`ReportPlatformCosts`); Fiyat Hesapla's hint shows the records' mean (`ReportPriceAssumptions`).
 - Money objects carry `"currency": "TRY"` (e.g. `hepsiburada-api-son.md:8371`, `:12479`). Since 5 Nov 2026 an order
   with another, unknown currency value is refused with an issue and read again; a read without any currency is lira.
   The paid-order list (one item per line) no longer fails the page on one unreadable line: that order is read by
@@ -146,6 +150,21 @@ Claims: NewRequest, AwaitingAction, InDispute, Accepted, Rejected, Refunded, Can
   HEPSIBURADA_ACCESS_FORBIDDEN (`MarketplaceErrorRules`, report item 16, 5 Nov 2026).
 - Price/stock results list only the refused SKUs, so a SKU left out was applied: the one marketplace where an unnamed
   line counts as applied (the others settle it UNKNOWN, report item 14).
+
+## Exchange claims and the invoice (owner decision, 6 Nov 2026)
+- The claim list carries `finalizedWith` ("Onaylanan talebin onay türü": `Refund` ücret iadesi, `Change` yeni ürün ile
+  değişim; `hepsiburada-api-son.md:26135`, schema :28262). Stored as `ReturnClaim.ResolvedWith` (REFUND/CHANGE, null =
+  unknown). The claim model has **no package field**: a replacement package is never named by the claim.
+- HB's guide (Talep Önemli Bilgiler) asks for cancel + new invoice after an exchange:
+  https://developers.hepsiburada.com/tr/companies/hepsiburada?category=hepsiburada-talep-entegrasyonu&product=talep-entegrasyonu&version=v1&guide=talep-onemli-bilgiler-2&view=guide
+  The owner knowingly chose instead: re-send the SAME invoice link (no new invoice, no cancellation, no E-Faturam call).
+- Rule (`ExchangeInvoiceResendPolicy`, `HepsiburadaExchangeInvoiceResend`): a claim Approved/Completed whose
+  `finalizedWith` (or the panel's own confirmed approval) is Change and not Refunded, on an order whose sale invoice
+  link was CONFIRMED on a package, queues one INVOICE_MARKETPLACE_DELIVERY job (dedup `hb-exchange-invoice-resend:{claim}`)
+  that PUTs the same link to that package (`IsExchangeInvoiceResend`: no "empty before" check, no read-back; HB's 2xx
+  is the result, a refusal fails the job). Package not certain (several delivered packages, claim line elsewhere),
+  or the invoice delivery switch off: no send, an OperationalIssue `hb-exchange-invoice:{claim}` for the owner.
+  Open claim, refund, unknown outcome, no invoice / not delivered yet: nothing. Live had no exchange claims on 6 Nov 2026.
 
 ## Job types
 HEPSIBURADA_CONNECTION_TEST, _REFERENCE_SYNC, _PRODUCT_SYNC, _ORDER_SYNC, _ORDER_RECOVERY_SYNC (also reads packages,

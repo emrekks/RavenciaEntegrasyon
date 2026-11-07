@@ -44,7 +44,7 @@ internal sealed class N11ProductUpdateComposer(AppDbContext db, IConfiguration c
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == connectionId && x.PlatformCode == "N11", cancellationToken);
         if (connection is null) return Fail("RESOURCE_NOT_FOUND", "Kayıt bulunamadı.", status: 404);
         var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "N11 ürün güncellemesi için ürünün N11 yayın kaydı gerekir; ürünü önce N11'e yayınlayın.");
+        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", ImportedListingProfiles.MissingPublicationMessage("N11"));
         if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden güncelleme işi oluşturulamaz.");
 
         // Every listing of the card takes the job's payload hash (the job checks it); only the SKUs n11 holds are sent.

@@ -116,8 +116,9 @@ export function isPttAvmChecking(platformCode?: string | null, actualStatus?: st
   return platformCode?.trim().toUpperCase() === 'PTTAVM' && ['APPROVAL_PENDING', 'APPROVAL_PARTIAL_PENDING'].includes(actualStatus?.trim().toUpperCase() ?? '')
 }
 
-export function publicationStatusLabel(actualStatus?: string | null, lastJobStatus?: string | null, platformCode?: string | null) {
+export function publicationStatusLabel(actualStatus?: string | null, lastJobStatus?: string | null, platformCode?: string | null, statusCode?: string | null) {
   const status = actualStatus?.trim().toUpperCase() ?? ''
+  if (isApprovalDeadlineExpired(status, statusCode)) return approvalDeadlineExpiredLabel
   if (isPttAvmChecking(platformCode, status)) return 'Kontrol ediliyor'
   if (status && status !== 'UNKNOWN') return forPlatform(publicationLabels[status] ?? statusLabel(status), platformCode)
 
@@ -127,8 +128,9 @@ export function publicationStatusLabel(actualStatus?: string | null, lastJobStat
   return publicationLabels.UNKNOWN
 }
 
-export function publicationStatusTone(actualStatus?: string | null, lastJobStatus?: string | null) {
+export function publicationStatusTone(actualStatus?: string | null, lastJobStatus?: string | null, statusCode?: string | null) {
   const status = actualStatus?.trim().toUpperCase() ?? ''
+  if (isApprovalDeadlineExpired(status, statusCode)) return 'warning' as const
   if (['LIVE', 'PARTIAL_LIVE', 'APPROVED'].includes(status)) return 'success' as const
   if (status === 'DRY_RUN' || status === 'ALREADY_PRESENT') return 'info' as const
   if (status === 'NOT_FOUND') return 'danger' as const
@@ -137,7 +139,23 @@ export function publicationStatusTone(actualStatus?: string | null, lastJobStatu
   return 'neutral' as const
 }
 
-export function publicationStatusNote(statusCode?: string | null) {
+export const approvalDeadlineExpiredCode = 'PRODUCT_APPROVAL_DEADLINE_EXPIRED'
+
+// The approval check ran out of time without the marketplace approving or refusing the card: not a refusal, so the
+// card says the outcome is unknown and asks for a look, in the warning tone (audit 2026-11-06 Y2).
+export function isApprovalDeadlineExpired(actualStatus?: string | null, statusCode?: string | null) {
+  return actualStatus?.trim().toUpperCase() === 'MANUAL_REVIEW' && statusCode?.trim().toUpperCase() === approvalDeadlineExpiredCode
+}
+
+export const approvalDeadlineExpiredLabel = 'Onay Sonucu Bilinmiyor'
+
+export function approvalDeadlineExpiredNote(platformCode?: string | null) {
+  const name = platformNames[platformCode?.trim().toUpperCase() ?? '']?.name ?? 'Trendyol'
+  return `${name} onayı kontrol süresi içinde sonuçlanmadı; onaylandığı ya da reddedildiği bilinmiyor. Barkodları ${name} satıcı panelinden kontrol edip yayın durumunu yeniden sorgulayın.`
+}
+
+export function publicationStatusNote(statusCode?: string | null, platformCode?: string | null) {
+  if (statusCode?.trim().toUpperCase() === approvalDeadlineExpiredCode) return approvalDeadlineExpiredNote(platformCode)
   // The dry run's job message, and the "already on PTT AVM" status, say what happened; their codes are no rejection.
   if (['PRODUCT_APPROVAL_CONTENT_SPLIT', 'PTTAVM_VARIANT_SEND_DRY_RUN', 'PTTAVM_VARIANTS_ALREADY_PRESENT'].includes(statusCode?.trim().toUpperCase() ?? '')) return null
   return statusCode ? `Red kodu: ${statusCode}` : null

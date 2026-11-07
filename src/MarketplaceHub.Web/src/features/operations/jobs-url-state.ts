@@ -1,8 +1,9 @@
 import type { JobCategory } from './job-categories'
 import type { JobListTimeRange } from './job-list-query'
+import type { JobDirection } from './job-presentation'
 
 // İşlem Takibi's filters and page live in the address (W16), so Back, a refresh or a shared link opens the same view.
-//   ?kategori=siparis&durum=hata,bekliyor&statu=DEAD&aralik=7g&ara=corr&sayfa=2&adet=50&platform=trendyol
+//   ?kategori=siparis&yon=yazma&durum=hata,bekliyor&statu=DEAD&aralik=7g&ara=corr&sayfa=2&adet=50&platform=trendyol
 // Every default is left out of the address. `platform` keeps its own reader (job-list-query.ts).
 
 export type JobStatusChip = 'success' | 'running' | 'waiting' | 'error' | 'cancelled'
@@ -10,6 +11,7 @@ export type JobStatusCode = 'PENDING' | 'LEASED' | 'RETRY_SCHEDULED' | 'BLOCKED'
 
 export type JobsViewState = {
   category: JobCategory
+  direction: '' | JobDirection
   chips: JobStatusChip[]
   status: '' | JobStatusCode
   timeRange: JobListTimeRange
@@ -19,6 +21,7 @@ export type JobsViewState = {
 }
 
 const categorySlugs: Record<JobCategory, string> = { ALL: '', ORDERS: 'siparis', PRICE_INVENTORY: 'fiyat-stok', CATALOG: 'urun', INVOICES: 'fatura', RETURNS: 'iade', SYSTEM: 'sistem' }
+const directionSlugs: Record<JobDirection, string> = { Okuma: 'okuma', Yazma: 'yazma', Bildirim: 'bildirim', 'Panel İçi': 'panel' }
 const chipSlugs: Record<JobStatusChip, string> = { success: 'basarili', running: 'calisiyor', waiting: 'bekliyor', error: 'hata', cancelled: 'iptal' }
 const rangeSlugs: Record<JobListTimeRange, string> = { '24h': '', '7d': '7g', all: 'tum' }
 const statusCodes: readonly JobStatusCode[] = ['PENDING', 'LEASED', 'RETRY_SCHEDULED', 'BLOCKED', 'MANUAL_REVIEW', 'SUCCEEDED', 'DEAD', 'CANCELLED']
@@ -41,6 +44,7 @@ export function readJobsViewState(params: URLSearchParams): JobsViewState {
   const category = fromSlug<JobCategory>(categorySlugs, params.get('kategori'), 'ALL')
   return {
     category: category === 'SYSTEM' ? 'ALL' : category,
+    direction: (Object.keys(directionSlugs) as JobDirection[]).find(key => directionSlugs[key] === params.get('yon')) ?? '',
     chips: [...new Set(chips)],
     status: (statusCodes as readonly string[]).includes(status) ? status as JobStatusCode : '',
     timeRange: fromSlug(rangeSlugs, params.get('aralik'), '24h'),
@@ -60,6 +64,7 @@ export function writeJobsViewState(current: URLSearchParams, patch: Partial<Jobs
   const params = new URLSearchParams(current)
   const set = (name: string, value: string) => { if (value) params.set(name, value); else params.delete(name) }
   set('kategori', categorySlugs[next.category])
+  set('yon', next.direction ? directionSlugs[next.direction] : '')
   set('durum', next.chips.map(chip => chipSlugs[chip]).join(','))
   set('statu', next.status)
   set('aralik', rangeSlugs[next.timeRange])

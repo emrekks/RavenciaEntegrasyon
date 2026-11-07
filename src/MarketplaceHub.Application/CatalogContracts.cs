@@ -95,9 +95,13 @@ public sealed record ProductPlatformStatusView(
     int MissingVariantCount = 0,
     // Matched variants the marketplace says are on sale / closed to sale; the rest of the matched ones are unknown.
     // OffSaleStockZeroVariantCount: those of the closed ones whose only named reason is a stock of 0.
+    // OffSaleReasonCounts: the closed ones beyond a stock of 0 (ListingSaleState.ClosedBeyondStock) by the reason the
+    // marketplace named; those closed without a named reason are OffSale - OffSaleStockZero - the sum of these. The
+    // products list, the publish card and the Satışa Kapalı filter read the closures through this one rule.
     int OnSaleVariantCount = 0,
     int OffSaleVariantCount = 0,
-    int OffSaleStockZeroVariantCount = 0);
+    int OffSaleStockZeroVariantCount = 0,
+    IReadOnlyDictionary<string, int>? OffSaleReasonCounts = null);
 public sealed record ProductView(
     Guid Id,
     string Title,
@@ -133,6 +137,8 @@ public sealed record ProductView(
     public IReadOnlyList<string>? FamilyOrderedMediaUrls { get; init; }
     // Every product card of the family (same brand and model code: one per colour), the opened one first.
     public IReadOnlyList<Guid>? FamilyProductIds { get; init; }
+    // The card's picture marked as its size chart (Beden Tablosu); it is the last of MediaUrls and of every variant's.
+    public string? SizeChartUrl { get; init; }
 }
 public sealed record ProductFamilyMediaView(string Url, IReadOnlyList<Guid> MediaIds, IReadOnlyList<string> SourceProductTitles);
 public sealed record ProductSummaryView(
@@ -145,6 +151,50 @@ public sealed record ProductSummaryView(
     decimal TotalUnits = 0);
 public sealed record ListingProfileView(Guid Id, Guid ProductId, Guid ConnectionId, string? TitleOverride, string? DescriptionOverride, string? ExternalCategoryId, string? ExternalBrandId, int? DeliveryTimeDays, bool Enabled, string DesiredStatus, string ActualStatus, long Version);
 public sealed record PublicationLineView(Guid VariantId, string Sku, string? Barcode, string DesiredStatus, string ActualStatus, string? RejectionCode);
+public sealed record ProductUpdateQueued(Guid JobId, IReadOnlyList<string> Notices);
+
+// A listing profile the panel made for a product matched to a marketplace listing (Source MARKETPLACE_IMPORT) carries no
+// value of its own (owner decision 6 Nov 2026: the card wins). Where an update would take a field from the profile first,
+// the card's value goes, and the owner is told so: one notice per field, naming the product, the marketplace, the field
+// and the card value sent. A field the update sends that the card lacks too stops the update before anything is queued,
+// asking the owner to fill it on the card (EmptyCardField).
+//   Teslimat Süresi: Trendyol deliveryDuration, Hepsiburada DispatchTime, PTT AVM delivery (ProductPublicationComposer.DeliveryDays).
+//   Garanti Süresi: Hepsiburada GarantiSuresi (HepsiburadaProductPublicationComposer). The editor stores the warranty's 0
+//   as empty and the composer sends that 0, so an empty card warranty is the card's 0, never a stop.
+public static class ImportedProfileCardFallbacks
+{
+    public const string EmptyCardFieldCode = "PRODUCT_CARD_FIELD_REQUIRED";
+
+    // The stop for a field the update sends that neither the profile nor the card holds: "RYP003T – Trendyol: Teslimat
+    // Süresi boş; ürün kartında doldurun." Null when nothing is missing.
+    public static string? EmptyCardField(string? platformCode, string platformName, string productLabel, string? profileSource, int? profileDeliveryDays, int? cardDeliveryDays, IReadOnlyCollection<string>? fields)
+    {
+        if (!string.Equals(profileSource, MarketplaceHub.Domain.ChannelListingProfileSource.MarketplaceImport, StringComparison.Ordinal)) return null;
+        var platform = platformCode?.Trim().ToUpperInvariant();
+        var picked = fields?.Select(field => field?.Trim().ToUpperInvariant()).Where(field => !string.IsNullOrEmpty(field)).ToHashSet(StringComparer.Ordinal);
+        var deliverySent = picked is null || picked.Contains(ProductUpdateFields.Delivery);
+        if (platform is "TRENDYOL" or "HEPSIBURADA" or "PTTAVM" && deliverySent && profileDeliveryDays is not > 0 && cardDeliveryDays is not > 0)
+            return $"{productLabel} – {platformName}: Teslimat Süresi boş; ürün kartında doldurun.";
+        return null;
+    }
+
+    public static IReadOnlyList<string> Notices(string? platformCode, string platformName, string productLabel, string? profileSource, int? profileDeliveryDays, string? profileWarranty, int? cardDeliveryDays, int? cardWarrantyMonths, IReadOnlyCollection<string>? fields)
+    {
+        if (!string.Equals(profileSource, MarketplaceHub.Domain.ChannelListingProfileSource.MarketplaceImport, StringComparison.Ordinal)) return [];
+        var platform = platformCode?.Trim().ToUpperInvariant();
+        var picked = fields?.Select(field => field?.Trim().ToUpperInvariant()).Where(field => !string.IsNullOrEmpty(field)).ToHashSet(StringComparer.Ordinal);
+        bool Picked(string field) => picked is null || picked.Contains(field);
+        var notices = new List<string>();
+        var prefix = $"{productLabel} · {platformName}: pazaryerinden oluşturulan yayın profilinde";
+        if (platform is "TRENDYOL" or "HEPSIBURADA" or "PTTAVM" && Picked(ProductUpdateFields.Delivery) && profileDeliveryDays is not > 0 && cardDeliveryDays is > 0)
+            notices.Add($"{prefix} Teslimat Süresi yok; ürün kartındaki {cardDeliveryDays} gün gönderildi.");
+        var hepsiburadaPackage = picked is null || new[] { ProductUpdateFields.Title, ProductUpdateFields.Description, ProductUpdateFields.Images, ProductUpdateFields.Attributes, ProductUpdateFields.Warranty, ProductUpdateFields.Desi, ProductUpdateFields.VatRate }.Any(picked.Contains);
+        if (platform == "HEPSIBURADA" && hepsiburadaPackage && string.IsNullOrWhiteSpace(profileWarranty))
+            notices.Add($"{prefix} Garanti Süresi yok; ürün kartındaki {cardWarrantyMonths ?? 0} ay gönderildi.");
+        return notices;
+    }
+}
+
 public sealed record PublicationStatusView(Guid ProductId, Guid ConnectionId, Guid? ProfileId, string? DesiredStatus, string? ActualStatus, string? LastRejectionCode, Guid? LastJobId, string? LastJobStatus, IReadOnlyList<PublicationLineView> Lines);
 
 public sealed record CreateCategoryCommand(string Name, Guid? ParentId);
@@ -186,7 +236,7 @@ public sealed record BulkProductVatResult(int UpdatedCount, int UnchangedCount);
 public sealed record BulkPublicationCommand(IReadOnlyList<Guid> ProductIds, IReadOnlyList<Guid> ConnectionIds, decimal? VatRate = null);
 public sealed record BulkPublicationFailure(Guid ProductId, string ProductTitle, Guid ConnectionId, string Code, string Message);
 public sealed record BulkPublicationResult(int Queued, int Skipped, IReadOnlyList<BulkPublicationFailure> Failed);
-public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null);
+public sealed record UpdateProductCommand(string Title, string Description, Guid? BrandId, Guid? CategoryId, IReadOnlyList<ProductAttributeCommand>? Attributes = null, IReadOnlyList<CreateVariantCommand>? VariantsToCreate = null, IReadOnlyList<UpdateVariantCommand>? VariantUpdates = null, string? Status = null, decimal? DefaultListPrice = null, decimal? DefaultSalePrice = null, IReadOnlyList<Guid>? VariantIdsToDelete = null, int? WarrantyMonths = null, Guid? TrendyolWebColorValueId = null, decimal? VatRate = null, string? VatInclusion = null, int? DeliveryDays = null, IReadOnlyList<Guid>? PlaceholderVariantIdsToDelete = null);
 // Teslimat Süresi on the product card: whole days, 1-30 (n11 takes at most 30); a new card starts at 1.
 public static class ProductDeliveryDays
 {
@@ -254,6 +304,9 @@ public interface ICatalogService
     Task<ServiceResult<Guid>> EnqueuePublicationAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<BulkPublicationResult>> EnqueueBulkPublicationAsync(Guid tenantId, Guid userId, BulkPublicationCommand command, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> EnqueueProductUpdateAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null);
+    // The same update, with the notices the panel records in its notification center (a card value sent where the
+    // listing profile read from the marketplace has none: ImportedProfileCardFallbacks).
+    Task<ServiceResult<ProductUpdateQueued>> EnqueueProductUpdateWithNoticesAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null);
     Task<ServiceResult<Guid>> EnqueuePazaramaSaleStatusAsync(Guid tenantId, Guid connectionId, IReadOnlyList<string> barcodes, bool close, string idempotencyKey, string correlationId, CancellationToken cancellationToken);
     Task<ServiceResult<Guid>> RequestPublicationStatusRefreshAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);
     Task<ServiceResult<PublicationStatusView>> GetPublicationStatusAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken);

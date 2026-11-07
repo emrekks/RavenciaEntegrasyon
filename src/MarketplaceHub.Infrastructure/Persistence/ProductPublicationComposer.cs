@@ -25,18 +25,22 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
     };
 
     // onlyUnsentVariants: Yayınla's send, which leaves out the card's variants already on the marketplace
-    // (PublicationUnsentVariants); the update composers build from the whole card.
-    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false)
+    // (PublicationUnsentVariants); the update composers build from the whole card. contentSplitAllowed: the Trendyol
+    // update, which writes a card Trendyol split into one content per colour content by content (TrendyolContentGroups);
+    // Yayınla still stops on such a card. desiRequired false: the Trendyol update, which needs a desi only when it sends
+    // one (DESI picked, or the whole card of a product Trendyol has not approved yet); a variant without a desi then
+    // gets no dimensionalWeight and the update composer decides (DesiMissingSku).
+    public async Task<ServiceResult<ProductPublicationDraft>> BuildAsync(Guid tenantId, Guid productId, Guid connectionId, CancellationToken cancellationToken, bool onlyUnsentVariants = false, bool contentSplitAllowed = false, bool desiRequired = true)
     {
         var product = await db.Products.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == productId, cancellationToken);
         if (product is null) return NotFound<ProductPublicationDraft>();
         if (product.Status == ProductStatus.Archived) return Fail("PRODUCT_ARCHIVED", "Arşivlenmiş ürün yayınlanamaz.");
         if (product.Status == ProductStatus.Draft) return Fail(ProductDraftPolicy.SendBlockedCode, ProductDraftPolicy.SendBlockedMessage);
 
-        var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
-        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", "Yayın öncesi bağlantıya ait listing profile oluşturulmalıdır.");
-        if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
         var platformCode = await db.PlatformConnections.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == connectionId).Select(x => x.PlatformCode).SingleOrDefaultAsync(cancellationToken);
+        var profile = await db.ChannelListingProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ProductId == productId && x.ConnectionId == connectionId, cancellationToken);
+        if (profile is null) return Fail("LISTING_PROFILE_REQUIRED", ImportedListingProfiles.MissingPublicationMessage(ListingVerificationPolicy.PlatformName(platformCode)));
+        if (!profile.Enabled) return Fail("LISTING_PROFILE_DISABLED", "Listing profile etkinleştirilmeden yayın işi oluşturulamaz.");
         if (platformCode == "HEPSIBURADA")
             return await new HepsiburadaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, onlyUnsentVariants);
         if (platformCode == "N11")
@@ -45,7 +49,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             return await new PazaramaProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken, onlyUnsentVariants);
         if (platformCode == "PTTAVM")
             return await new PttAvmProductPublicationComposer(db, configuration).BuildAsync(tenantId, productId, connectionId, cancellationToken);
-        if (ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
+        if (!contentSplitAllowed && ProductApprovalReconciliationPolicy.RequiresContentSplitReview(profile.LastRejectionCode))
             return Fail("PRODUCT_APPROVAL_CONTENT_SPLIT", "Trendyol varyantları birden fazla içerik kimliğine ayırdı. Yanlış ilana yazmamak için ürün içeriği güncellemesi durduruldu; varyant durumları ayrı ayrı izlenebilir.", status: 409);
 
         var categoryMapping = product.CategoryId is Guid categoryId
@@ -148,6 +152,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         if (offers.Count != variants.Count) return Fail("CHANNEL_OFFER_REQUIRED", "Her varyant için etkin Trendyol fiyat teklifi gerekir.");
         if (inventories.Count != variants.Count) return Fail("INVENTORY_REQUIRED", "Her varyant için MAIN stok kaydı gerekir.");
 
+        var sizeChartAssetId = await SizeCharts.SizeChartPlacement.AssetIdAsync(db, tenantId, productId, cancellationToken);
         var media = await (from productMedia in db.ProductMedia.AsNoTracking()
                            join asset in db.FileAssets.AsNoTracking() on productMedia.FileAssetId equals asset.Id
                            where productMedia.TenantId == tenantId && productMedia.ProductId == productId && productMedia.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE" && asset.ArchivedAt == null && (asset.Classification == "PRODUCT_MEDIA_URL" || asset.Classification == "PRODUCT_MEDIA")
@@ -171,20 +176,20 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
             // D11: Trendyol accepts only the Turkish VAT rates.
             if (!IsTrendyolVatRate(offer.VatRate)) return Fail("VAT_RATE_INVALID", $"'{variant.Sku}' için KDV oranı {offer.VatRate.ToString("0.##", CultureInfo.InvariantCulture)}; Trendyol için 0, 1, 10 veya 20 olmalıdır.");
             // D7 (K20): Trendyol prices the cargo by dimensionalWeight; a guessed 1 desi bills the wrong shipping cost.
-            if (!HasDesi(variant.Desi)) return Fail("DESI_REQUIRED", $"'{variant.Sku}' için Trendyol'un zorunlu desi değeri girilmemiş.");
+            if (desiRequired && !HasDesi(variant.Desi)) return Fail("DESI_REQUIRED", DesiMissingMessage(variant.Sku));
 
             // Explicit variant media replaces the product gallery for that
             // variant. This keeps marketplace colors from receiving every
             // product image while preserving the old product-level fallback.
-            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id);
+            var relevantMedia = PublicationVariantMedia.For(media, variant.Id, x => x.VariantId, x => x.Id, sizeChartAssetId);
             var relevantUrls = relevantMedia.Where(x => x.Classification == "PRODUCT_MEDIA_URL").Select(x => x.RelativePath.Trim()).ToList();
             if (relevantUrls.Any(url => !IsPublicHttpsUrl(url))) return Fail("PRODUCT_MEDIA_PUBLIC_URL_INVALID", $"'{variant.Sku}' için kayıtlı tüm PRODUCT_MEDIA_URL değerleri geçerli HTTPS adresi olmalıdır.");
-            var imageUrls = SelectPublicationImageUrls(relevantMedia
-                .Select(item => item.Classification == "PRODUCT_MEDIA_URL"
+            var pictureUrls = relevantMedia
+                .Select(item => (item.Id, Url: item.Classification == "PRODUCT_MEDIA_URL"
                     ? item.RelativePath.Trim()
-                    : BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id))
-                .Where(url => !string.IsNullOrWhiteSpace(url))
-                .Select(url => url!));
+                    : BuildPublicProductMediaUrl(configuration["Marketplace:PublicBaseUrl"], item.Id)))
+                .ToList();
+            var imageUrls = SelectPublicationImageUrls(pictureUrls.Select(item => item.Url), PublicationVariantMedia.SizeChartUrl(pictureUrls, sizeChartAssetId));
             if (imageUrls.Count == 0 && relevantMedia.Count > 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için yerel görseller HTTPS üzerinden sunulamıyor. Marketplace:PublicBaseUrl ayarını yapılandırın.");
             if (imageUrls.Count == 0) return Fail("PRODUCT_MEDIA_PUBLIC_URL_REQUIRED", $"'{variant.Sku}' için en az bir geçerli HTTPS görsel adresi gerekir.");
 
@@ -320,7 +325,7 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
                 ["categoryId"] = externalCategoryId,
                 ["quantity"] = TrendyolStockRules.Quantity(publishable),
                 ["stockCode"] = variant.Sku.Trim(),
-                ["dimensionalWeight"] = variant.Desi.GetValueOrDefault(),
+                ["dimensionalWeight"] = HasDesi(variant.Desi) ? variant.Desi!.Value : null,
                 ["origin"] = string.IsNullOrWhiteSpace(profile.Origin) ? null : profile.Origin.Trim().ToUpperInvariant(),
                 ["listPrice"] = PriceInventoryComposer.OutboundListPrice(offer),
                 ["salePrice"] = PriceInventoryComposer.OutboundSalePrice(offer),
@@ -485,6 +490,10 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
 
     internal static bool HasDesi(decimal? desi) => desi is > 0;
 
+    // The desi lives on the variants (ProductVariant.Desi); the editor's Desi field writes it to every variant of the card.
+    internal static string DesiMissingMessage(string sku) =>
+        $"'{sku.Trim()}' için desi girilmemiş; Trendyol kargo ücretini desiye göre hesapladığı için tahmini bir değer gönderilmez. Ürünü düzenleyip Desi alanına ürünün desisini girin, kaydedin ve tekrar deneyin.";
+
     internal static bool IsTrendyolVatRate(decimal rate) => rate is 0m or 1m or 10m or 20m;
 
     // The delivery days a marketplace gets: a listing's own override, else the product card's Teslimat Süresi; none of
@@ -507,11 +516,14 @@ internal sealed class ProductPublicationComposer(AppDbContext db, IConfiguration
         return url.Length <= 512 ? url : null;
     }
 
-    internal static IReadOnlyList<string> SelectPublicationImageUrls(IEnumerable<string> imageUrls) => imageUrls
-        .Where(url => !string.IsNullOrWhiteSpace(url))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .Take(MaximumPublicationImageCount)
-        .ToArray();
+    // sizeChartUrl: the card's size chart, which goes last and stays the last picture sent even when the list is
+    // longer than the marketplace takes. It is told by its url after the blanks and duplicates are gone (Ş2).
+    internal static IReadOnlyList<string> SelectPublicationImageUrls(IEnumerable<string?> imageUrls, string? sizeChartUrl = null, int limit = MaximumPublicationImageCount) =>
+        SizeCharts.SizeChartPlacement.TakeKeepingChart(imageUrls
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Select(url => url!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray(), limit, sizeChartUrl);
 
     private static bool IsPublicHost(string host)
     {

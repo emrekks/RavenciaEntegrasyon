@@ -249,6 +249,7 @@ describe('QuestionsPage workspace flows', () => {
     expect(Array.from(orderStore.options).map(option => option.textContent)).not.toContain('Trendyol Mağazası')
     act(() => button('Uygula').click())
     expect(container.querySelector('[role="dialog"]')).toBeNull()
+    await settle()
     expect(container.querySelector('.rv-question-meta a')?.getAttribute('href')).toContain('HB-12345')
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Sipariş #HB-12345')
     expect(container.querySelector('.rv-question-card')?.textContent).toContain('Ürün boyu kaç santimetredir?')

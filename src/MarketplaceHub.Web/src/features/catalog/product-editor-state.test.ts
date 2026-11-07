@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ApiRequestError } from '../../shared/api'
-import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorSnapshotWithWebColor, editorStockUpdates, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
+import { SAME_SAVE_CODE_HOLDER, variantCodeFieldIssueText } from './platform-code-rules'
+import { editorAwaitingSeed, editorDataStamp, editorFieldErrors, editorOpeningStock, editorSeedKey, editorSnapshot, editorSnapshotWithWebColor, editorStockUpdates, editorOpenedDesi, editorVariantCostUpdate, editorVariantDesiUpdate, editorVat, editorVatRateIssue, rekeySavedVariantRows, VAT_RATE_REQUIRED_MESSAGE, variantCodeConflictsFrom, variantCodeKey } from './product-editor-state'
 
 describe('saved variant rows and code conflicts', () => {
   it('gives rows still under a temporary key the id of the saved variant with their stock code', () => {
@@ -16,6 +17,13 @@ describe('saved variant rows and code conflicts', () => {
     const error = new ApiRequestError('Stok kodu başka bir üründe kullanılıyor', 409, 'SKU_CONFLICT_REVIEW_REQUIRED', { variantCodeConflicts: ['sku\tMZ021Y-CD-01\tİndigo Bluz', 'barcode\tMZ021Y-CD-02\t', 'junk'] })
     expect(variantCodeConflictsFrom(error)).toEqual({ [variantCodeKey('sku', 'MZ021Y-CD-01')]: 'İndigo Bluz', [variantCodeKey('barcode', 'mz021y-cd-02')]: 'başka bir ürün' })
     expect(variantCodeConflictsFrom(new Error('x'))).toEqual({})
+  })
+
+  it('marks a code the save gave to two of its own rows on every row holding it (O7)', () => {
+    const error = new ApiRequestError('Aynı kod bu kayıtta birden çok varyanta verilmiş', 409, 'VARIANT_CODE_CONFLICT_REVIEW_REQUIRED', { variantCodeConflicts: ['sku\tMZ071-M\t\tSAME_SAVE\tvariant:v1,new:0'] })
+    const conflicts = variantCodeConflictsFrom(error)
+    expect(conflicts).toEqual({ [variantCodeKey('sku', 'mz071-m')]: SAME_SAVE_CODE_HOLDER })
+    expect(variantCodeFieldIssueText([], 'sku', 'MZ071-M', conflicts[variantCodeKey('sku', 'MZ071-M')])).toBe('MZ071-M iki varyantta kullanılıyor')
   })
 })
 
@@ -78,6 +86,16 @@ describe('product editor state', () => {
     // Untouched: a desi set per variant (e.g. by the products import) is left as it is.
     expect(editorVariantDesiUpdate(2, 2, 5)).toEqual({})
     expect(editorVariantDesiUpdate(0, 2, 2)).toEqual({})
+    // A variant with no desi of its own takes the form's (the card's) desi on save even when the field was not changed.
+    expect(editorVariantDesiUpdate(2, 2, null)).toEqual({ desi: 2, loadedDesi: null })
+    expect(editorVariantDesiUpdate(0, 0, null)).toEqual({})
+  })
+
+  it('opens the desi field empty when no variant has a desi, never with a guessed 1', () => {
+    expect(editorOpenedDesi([{ desi: null }, { desi: null }])).toBeNull()
+    expect(editorOpenedDesi([])).toBeNull()
+    expect(editorOpenedDesi([{ desi: null }, { desi: 3 }])).toBe(3)
+    expect(editorOpenedDesi([{ desi: 2 }, { desi: 3 }])).toBe(2)
   })
 
   it('ignores platform prices when deciding whether the form has unsaved edits', () => {

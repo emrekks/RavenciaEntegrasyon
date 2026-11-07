@@ -143,6 +143,33 @@ public sealed class ReportsTests
         Assert.Equal(expected, ReportBuilder.InvoiceBucket(new ReportPackageRow { ManualInvoiceStatus = manual, MarketplaceInvoiceStatus = marketplace, PanelInvoiced = panel }));
 
     [Fact]
+    public void A_partly_cancelled_line_is_counted_at_its_list_price_per_unit()
+    {
+        var row = new ReportLineRow { UnitPrice = 573.34m, PlatformDiscount = 0m, CancelledQuantity = 1m };
+        // Trendyol's own list price per unit wins; else the price paid plus the marketplace's discount.
+        Assert.Equal(608.67m, ReportBuilder.PartlyListUnitPrice(new(row, 1m, 0m, 0m, null, null, 608.67m)));
+        Assert.Equal(573.34m, ReportBuilder.PartlyListUnitPrice(new(row, 1m, 0m, 0m, null, null)));
+        Assert.Equal(600m, ReportBuilder.PartlyListUnitPrice(new(new ReportLineRow { UnitPrice = 550m, PlatformDiscount = 50m }, 1m, 0m, 0m, null, null)));
+    }
+
+    [Fact]
+    public void A_not_invoiced_package_that_came_back_is_no_invoice_due()
+    {
+        static ReportBuilder.OrderFact Order(decimal active, decimal back) =>
+            new(null!, "TRENDYOL", "TRY", default, null, null, null, 100m, back, 100m - back, [new(null!, active, back, 0m, null, null)], 0);
+        static ReportPackageRow Package(ShipmentPackageStatus status, MarketplaceInvoiceStatus marketplace = MarketplaceInvoiceStatus.NotInvoiced, bool panel = false) =>
+            new() { Status = status, MarketplaceInvoiceStatus = marketplace, PanelInvoiced = panel };
+        Assert.Equal("NOT_INVOICED", ReportBuilder.ReportedInvoiceBucket(Package(ShipmentPackageStatus.Delivered), Order(2m, 0m)));
+        // A partly returned order is still invoiced for its kept units.
+        Assert.Equal("NOT_INVOICED", ReportBuilder.ReportedInvoiceBucket(Package(ShipmentPackageStatus.Delivered), Order(2m, 1m)));
+        Assert.Equal("RETURNED", ReportBuilder.ReportedInvoiceBucket(Package(ShipmentPackageStatus.Delivered), Order(2m, 2m)));
+        Assert.Equal("RETURNED", ReportBuilder.ReportedInvoiceBucket(Package(ShipmentPackageStatus.Returned), Order(2m, 0m)));
+        // An invoice already issued stays Faturalı; an unknown state stays unknown.
+        Assert.Equal("INVOICED", ReportBuilder.ReportedInvoiceBucket(Package(ShipmentPackageStatus.Returned, MarketplaceInvoiceStatus.Unknown, true), Order(2m, 2m)));
+        Assert.Equal("UNKNOWN", ReportBuilder.ReportedInvoiceBucket(Package(ShipmentPackageStatus.Returned, MarketplaceInvoiceStatus.Unknown), Order(2m, 2m)));
+    }
+
+    [Fact]
     public void Products_rise_and_fall_against_the_previous_period_and_one_sold_only_before_falls_to_nothing()
     {
         static ReportProductView Product(Guid id, string title, decimal sold) => new(id, null, title, title, "", "", sold, 0m, null, sold * 100m, 0m, 0m, NetAmount: sold * 100m);

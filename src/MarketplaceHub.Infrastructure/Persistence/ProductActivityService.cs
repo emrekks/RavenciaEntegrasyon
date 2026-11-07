@@ -39,8 +39,11 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         }
         var kinds = Codes(request.Kinds, ProductActivityKinds.All);
         if (kinds is { Length: 0 }) return empty;
+        var movements = Codes(request.Movements, ProductActivityMovements.All);
+        if (movements is { Length: 0 }) return empty;
         var filter = await FilterAsync(tenantId, request, cancellationToken);
         if (filter is null) return empty;
+        filter = filter with { Movements = movements, IncludeInitialPrices = request.IncludeInitialPrices };
         var limit = request.EffectiveLimit;
         var parameters = filter.Parameters(tenantId);
         parameters.Add(new NpgsqlParameter("limit", NpgsqlDbType.Integer) { Value = limit + 1 });
@@ -91,8 +94,11 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
     // The summary above the list: rows per kind under the list's filters, the kind filter left out.
     public async Task<ServiceResult<IReadOnlyList<ProductActivityCount>>> CountsAsync(Guid tenantId, ProductActivityQuery request, CancellationToken cancellationToken)
     {
+        var movements = Codes(request.Movements, ProductActivityMovements.All);
+        if (movements is { Length: 0 }) return ServiceResult<IReadOnlyList<ProductActivityCount>>.Ok([]);
         var filter = await FilterAsync(tenantId, request, cancellationToken);
         if (filter is null) return ServiceResult<IReadOnlyList<ProductActivityCount>>.Ok([]);
+        filter = filter with { Movements = movements, IncludeInitialPrices = request.IncludeInitialPrices };
         var parameters = filter.Parameters(tenantId);
         var branches = Branches(ProductActivityKinds.All, filter, withCursor: false)
             .Select(branch => $"SELECT {branch.KindSql} AS \"Kind\", count(*)::int AS \"Count\" {branch.From} WHERE {branch.Where} GROUP BY 1");
@@ -111,6 +117,11 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
     // products a search names.
     private sealed record Filter(DateTimeOffset? From, DateTimeOffset? To, Guid[]? ConnectionIds, Guid[]? VariantIds, Guid[]? ProductIds)
     {
+        // Set after the lookups: the movement types the list is narrowed to (null: all) and whether first prices show.
+        public string[]? Movements { get; init; }
+        public bool IncludeInitialPrices { get; init; }
+        public bool Wants(string movement) => Movements is null || Movements.Contains(movement, StringComparer.Ordinal);
+
         public List<NpgsqlParameter> Parameters(Guid tenantId)
         {
             var list = new List<NpgsqlParameter> { new("tenant", NpgsqlDbType.Uuid) { Value = tenantId } };
@@ -165,7 +176,8 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
         var ledgerTypes = new List<string>();
         if (kinds.Contains(ProductActivityKinds.Stock)) ledgerTypes.AddRange(ProductActivityTypes.StockLedger);
         if (kinds.Contains(ProductActivityKinds.Return)) ledgerTypes.AddRange(ProductActivityTypes.ReturnLedger);
-        if (ledgerTypes.Count > 0)
+        var ledgerMovement = LedgerMovementCondition(filter);
+        if (ledgerTypes.Count > 0 && ledgerMovement is not null)
         {
             var connection = $"""COALESCE(o."ConnectionId", c."ConnectionId", CASE WHEN e."SourceType" = 'MARKETPLACE_CATALOG' AND e."SourceId" ~ {UuidPattern} THEN e."SourceId"::uuid END)""";
             yield return new(
@@ -183,12 +195,12 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                 LEFT JOIN sales.return_stock_dispositions d ON e."MovementType" = 'RETURN_PASS' AND d."TenantId" = e."TenantId" AND d."IdempotencyKey" = e."IdempotencyKey"
                 LEFT JOIN sales.return_claims c ON c."TenantId" = d."TenantId" AND c."Id" = d."ClaimId"
                 """,
-                Where($"""e."TenantId" = @tenant AND e."MovementType" IN ({Literals(ledgerTypes)})""", filter, withCursor, "e.\"OccurredAt\"", "e.\"Id\"", connection, "i.\"VariantId\"", null),
+                Where($"""e."TenantId" = @tenant AND e."MovementType" IN ({Literals(ledgerTypes)}){ledgerMovement}""", filter, withCursor, "e.\"OccurredAt\"", "e.\"Id\"", connection, "i.\"VariantId\"", null),
                 "e.\"OccurredAt\"", "e.\"Id\"",
                 $"""CASE WHEN e."MovementType" = '{ProductActivityTypes.ReturnPass}' THEN '{ProductActivityKinds.Return}' ELSE '{ProductActivityKinds.Stock}' END""");
         }
         // Returns kept out of stock: information, the stock did not change.
-        if (kinds.Contains(ProductActivityKinds.Return))
+        if (kinds.Contains(ProductActivityKinds.Return) && filter.Wants(ProductActivityMovements.ReturnKeptOut))
         {
             yield return new(
                 """
@@ -206,7 +218,7 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                 Where("""d."TenantId" = @tenant AND d."Disposition" <> 'Pass'""", filter, withCursor, "d.\"CreatedAt\"", "d.\"Id\"", "c.\"ConnectionId\"", "i.\"VariantId\"", null),
                 "d.\"CreatedAt\"", "d.\"Id\"", $"'{ProductActivityKinds.Return}'");
         }
-        if (kinds.Contains(ProductActivityKinds.Price))
+        if (kinds.Contains(ProductActivityKinds.Price) && filter.Wants(ProductActivityMovements.OfferPrice))
         {
             // A user's price always counts (the first one too: it was set then); a marketplace import's only when it
             // differs from the version before, a repeat of the same price is no change.
@@ -227,12 +239,12 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                     h."TenantId" = @tenant
                     AND (h."ActorSource" LIKE 'USER:%' OR (p."Id" IS NOT NULL AND (p."SalePrice" <> h."SalePrice" OR p."ListPrice" <> h."ListPrice")))
                     AND (p."Id" IS NULL OR p."SalePrice" <> h."SalePrice" OR p."ListPrice" <> h."ListPrice")
-                    """, filter, withCursor, "h.\"EffectiveAt\"", "h.\"Id\"", "o.\"ConnectionId\"", "o.\"VariantId\"", null),
+                    """ + (filter.IncludeInitialPrices ? "" : " AND p.\"Id\" IS NOT NULL"), filter, withCursor, "h.\"EffectiveAt\"", "h.\"Id\"", "o.\"ConnectionId\"", "o.\"VariantId\"", null),
                 "h.\"EffectiveAt\"", "h.\"Id\"", $"'{ProductActivityKinds.Price}'");
         }
         var changeKinds = new List<string>();
-        if (kinds.Contains(ProductActivityKinds.Status)) changeKinds.Add(ProductChangeKinds.Status);
-        if (kinds.Contains(ProductActivityKinds.Price)) changeKinds.Add(ProductChangeKinds.DefaultPrice);
+        if (kinds.Contains(ProductActivityKinds.Status) && filter.Wants(ProductActivityMovements.Status)) changeKinds.Add(ProductChangeKinds.Status);
+        if (kinds.Contains(ProductActivityKinds.Price) && filter.Wants(ProductActivityMovements.PanelPrice)) changeKinds.Add(ProductChangeKinds.DefaultPrice);
         if (changeKinds.Count > 0)
         {
             yield return new(
@@ -243,11 +255,40 @@ public sealed class ProductActivityService(AppDbContext db) : IProductActivitySe
                     x."ConnectionId" AS "ConnectionId", NULL::uuid AS "OrderId", NULL::uuid AS "ReturnId", x."ActorUserId" AS "ActorUserId"
                 """,
                 "FROM catalog.product_change_entries x",
-                Where($"""x."TenantId" = @tenant AND x."Kind" IN ({Literals(changeKinds)})""", filter, withCursor, "x.\"OccurredAt\"", "x.\"Id\"", "x.\"ConnectionId\"", "x.\"VariantId\"", "x.\"ProductId\""),
+                Where($"""x."TenantId" = @tenant AND x."Kind" IN ({Literals(changeKinds)}){InitialPriceCondition(filter)}""", filter, withCursor, "x.\"OccurredAt\"", "x.\"Id\"", "x.\"ConnectionId\"", "x.\"VariantId\"", "x.\"ProductId\""),
                 "x.\"OccurredAt\"", "x.\"Id\"",
                 $"""CASE WHEN x."Kind" = '{ProductChangeKinds.Status}' THEN '{ProductActivityKinds.Status}' ELSE '{ProductActivityKinds.Price}' END""");
         }
     }
+
+    // " AND (...)" for the ledger movements the filter names; "" when it names none of them (all), null when it names
+    // movements but none of the ledger's (the branch is left out).
+    private static string? LedgerMovementCondition(Filter filter)
+    {
+        if (filter.Movements is null) return "";
+        var opening = $"""COALESCE(btrim(e."SourceId"::text), '') = '{ProductActivityPolicy.NewProductStockReason}'""";
+        var conditions = new List<string>();
+        foreach (var movement in filter.Movements)
+        {
+            var condition = movement switch
+            {
+                ProductActivityMovements.Sale => $"""(e."MovementType" = '{ProductActivityTypes.OrderReceived}' AND e."QuantityDelta" <= 0)""",
+                ProductActivityMovements.OrderCancel => $"""(e."MovementType" = '{ProductActivityTypes.OrderReceived}' AND e."QuantityDelta" > 0)""",
+                ProductActivityMovements.Shortfall => $"""e."MovementType" = '{ProductActivityTypes.OrderStockShortfall}'""",
+                ProductActivityMovements.ManualStock => $"""(e."MovementType" = '{ProductActivityTypes.ManualAdjustment}' AND NOT ({opening}))""",
+                ProductActivityMovements.OpeningStock => $"""(e."MovementType" = '{ProductActivityTypes.ImportOpening}' OR (e."MovementType" = '{ProductActivityTypes.ManualAdjustment}' AND {opening}))""",
+                ProductActivityMovements.MarketplaceStock => $"""e."MovementType" = '{ProductActivityTypes.MarketplaceStockImport}'""",
+                ProductActivityMovements.ReturnRestocked => $"""e."MovementType" = '{ProductActivityTypes.ReturnPass}'""",
+                _ => null
+            };
+            if (condition is not null) conditions.Add(condition);
+        }
+        return conditions.Count == 0 ? null : $" AND ({string.Join(" OR ", conditions)})";
+    }
+
+    // A panel price change's first price (no sale price before it, or a list price alone) is left out unless asked for.
+    private static string InitialPriceCondition(Filter filter) => filter.IncludeInitialPrices ? "" :
+        """ AND (x."Kind" <> 'DEFAULT_PRICE' OR NOT ((x."NewSalePrice" IS NOT NULL AND x."PreviousSalePrice" IS NULL) OR (x."NewSalePrice" IS NULL AND x."PreviousListPrice" IS NULL AND x."NewListPrice" IS NOT NULL)))""";
 
     // A branch's conditions: its own, then the shared filters on its time, connection and variant (a card-wide change,
     // without a variant, matches by its product).

@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ReportGroup, ReportInventory, ReportSales, ReportSummary } from './report-format'
+import { formatHours, formatPercent, type ReportGroup, type ReportInventory, type ReportSales, type ReportSummary } from './report-format'
 
 const group = (key: string, label: string, values: Partial<ReportGroup> = {}): ReportGroup => ({
   key, label, known: label !== 'Bilinmiyor', isTest: false, orders: 1, soldQuantity: 1, returnedQuantity: 0, returnClaims: 0, returnRate: 0, ordersWithAmount: 1,
@@ -44,7 +44,7 @@ const report: ReportSales = {
     { platformCode: 'SHOPIFY', heatmap: Array.from({ length: 7 }, (_, day) => Array.from({ length: 24 }, (_, hour) => (day === 3 && hour === 12 ? 1 : 0))) }
   ],
   customers: { identifiedOrders: 3, unidentifiedOrders: 1, uniqueCustomers: 2, repeatCustomers: 1, repeatRate: 0.5, ordersPerCustomer: 1.5 },
-  invoices: { buckets: [{ key: 'INVOICED', label: 'Faturalı', packages: 2, amount: 200 }, { key: 'NOT_INVOICED', label: 'Faturasız', packages: 1, amount: 50 }, { key: 'UNKNOWN', label: 'Bilinmiyor', packages: 0, amount: 0 }], platforms: [{ platformCode: 'TRENDYOL', invoiced: 2, notInvoiced: 1, unknown: 0 }] },
+  invoices: { buckets: [{ key: 'INVOICED', label: 'Faturalı', packages: 2, amount: 200 }, { key: 'NOT_INVOICED', label: 'Faturasız', packages: 1, amount: 50 }, { key: 'UNKNOWN', label: 'Bilinmiyor', packages: 0, amount: 0 }], platforms: [{ platformCode: 'TRENDYOL', invoiced: 2, notInvoiced: 1, unknown: 0, returned: 0 }] },
   stock: { periodDays: 22, bestSellers: [{ variantId: 'v1', title: 'Koltuk Kılıfı', sku: 'KLF-1', soldQuantity: 2, available: 1, dailyAverage: 0.09, daysLeft: 11.1 }], soldOut: [] },
   channels: [{ id: 'c1', platformCode: 'TRENDYOL', displayName: 'Ravencia Trendyol', isTest: false }, { id: 'c2', platformCode: 'SHOPIFY', displayName: 'Shopify', isTest: false }],
   costs: { source: 'estimate', lastSyncedAt: null, coveredFrom: null, coveredThrough: null, financeOrders: 3, settledOrders: 0, coverage: null, realCostTotal: null, commission: null, cargo: null, lines: [], channels: [], products: [] },
@@ -174,7 +174,10 @@ describe('ReportsPage', () => {
     expect(figures[2]).toContain('%36,3')
     expect(figures[3]).toContain('%158,8')
     expect(figures[4]).toContain('+%100')
-    expect(figures[5]).toContain('5 satılan adetten 1 iade düşüldü')
+    // Satılan Adet: 5 sold (returns not taken off), the 4 kept (the old Net Satılan Adet) and 1 return under it.
+    expect(figures[5]).toContain('Satılan Adet5')
+    expect(figures[5]).toContain('Net 4 · 1 iade')
+    expect(figures[5]).toContain('5 satılan adetten 1 iade düşülür')
     // Every figure against the previous period: the profit against its 160, the margin against 45,7 % (a rate's change
     // written in per cent, not points); every change on its own line, so the notes under them start level.
     expect(figures[1]).toContain('−%20,6')
@@ -215,21 +218,26 @@ describe('ReportsPage', () => {
     expect(days.querySelector('.reports-period-facts')?.textContent).toContain('01.10.2026, Perşembe')
     expect(days.querySelector('.reports-period-facts')?.textContent).toContain('1 gün önde0 gün geride; toplam 1 gün')
     // The metric cards: four rows on each of the first three, six on the two under them.
-    expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Ortalama Komisyon Oranı%21,5', 'İndirim Toplamı₺30,00', 'Ortalama İndirim Oranı%7,9'])
-    expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Adet1,25'])
-    expect(metricRows(page, 'ads')).toEqual(['Toplam Reklam Harcaması—', 'Reklam / Kâr—', 'Reklam / Ciro—', 'Reklam Cirosu ve ROAS—'])
+    expect(texts(page, '.reports-card-metrics h2')).toEqual(['Satış ve Ürün', 'Sipariş ve Müşteri', 'Maliyet ve Reklam', 'İade ve İptal', 'Operasyon'])
+    expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Satıcı İndirimi₺30,00 · %7,9'])
+    expect(page.querySelector('.reports-card-metrics.is-product')?.textContent).toContain('yalnız Trendyol ve Hepsiburada')
+    expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Adet1,25', 'Tekrar Alan Müşteri%50,0'])
+    expect(metricRows(page, 'ads')).toEqual(['Ortalama Komisyon Oranı%21,5', 'Trendyol Reklamı—', 'Reklam / Kâr—', 'Reklam Payı (TACoS)—'])
+    expect(page.querySelector('.reports-card-metrics.is-ads')?.textContent).not.toContain('ROAS')
     // Without Trendyol's statement there is nothing tied to no order to list.
     expect(page.querySelector('.reports-card-unlinked')).toBeNull()
     // Returns and cancellations: eight rows, no explanation under the pointer; the change names the previous rate.
-    expect(metricRows(page, 'returns')).toHaveLength(8)
-    expect(metricRows(page, 'returns')[3]).toContain('İade Liste Tutarı₺')
-    expect(metricRows(page, 'returns')[4]).toContain('İade Kargo Zararı—')
-    expect(metricRows(page, 'returns')[5]).toContain('İptal Oranı%20,0')
-    expect(metricRows(page, 'returns')[6]).toContain('İptal Edilen Sipariş')
+    // The amount returned is what the customers paid, the İade Edilen Tutar of the bridge (₺100), not the list price.
+    expect(metricRows(page, 'returns')).toHaveLength(5)
+    expect(metricRows(page, 'returns')[1]).toBe('İade Edilen1 adet · 1 talep · ₺100,00')
+    expect(metricRows(page, 'returns')[2]).toContain('İade Kargo Zararı—')
+    expect(metricRows(page, 'returns')[3]).toContain('İptal Oranı%20,0')
+    expect(metricRows(page, 'returns')[4]).toBe('İptal Edilen1 sipariş · 1 adet · ₺120,00')
     expect(page.querySelectorAll('.reports-card-metrics.is-returns .reports-hover-tip')).toHaveLength(0)
     expect(page.querySelector('.reports-card-metrics.is-returns .reports-delta')?.getAttribute('title')).toMatch(/^Önceki dönem /)
     expect(page.querySelector('.reports-card-metrics.is-returns li.is-warn')?.textContent).toContain('İptal Oranı')
-    expect(metricRows(page, 'ops')).toEqual(['Kargoya Verme Süresi24 sa', 'Geciken Kargo1', 'Kargo FirmasıAras Kargo', 'Faturasız Paket1', 'Stok Riski0 ürün', 'Tekrar Alan Müşteri%50,0'])
+    // The late packages as a share of those measured, with their count; the delivery time the server sends.
+    expect(metricRows(page, 'ops')).toEqual(['Kargoya Verme Süresi24 sa', 'Geciken Kargo%100,0 · 1 paket', `Teslim Süresi${formatHours(48)}`, 'Faturasız Paket1', 'Stok Riski0 ürün'])
     // The old cards are gone, and no card repeats another.
     expect(page.querySelector('.reports-journey, .reports-card-summary, .reports-operations, .reports-card-revenue')).toBeNull()
     // One tab per area, each with its headline figure.
@@ -267,7 +275,9 @@ describe('ReportsPage', () => {
     await act(async () => { (loss.querySelector('.reports-kpi-delta-toggle') as HTMLButtonElement).click() })
     expect(loss.textContent).toContain('Önceki dönemde veri yok')
     // The advertising spend is told from the deductions tied to no order.
-    expect(metricRows(page, 'ads')[0]).toBe('Toplam Reklam Harcaması₺5.000,00')
+    expect(metricRows(page, 'ads')[1]).toBe('Trendyol Reklamı₺5.000,00')
+    // TACoS: the spend over Trendyol's net revenue (₺250), not every platform's.
+    expect(metricRows(page, 'ads')[3]).toBe(`Reklam Payı (TACoS)${formatPercent(5000 / 250, 2)}`)
     // Siparişe Bağlı Olmayan Kesintiler: each deduction with its records, largest first, and their total; the foreign
     // sale is no deduction. Its "i" and its total say Net Kâr takes them off.
     const unlinked = page.querySelector('.reports-card-unlinked')!

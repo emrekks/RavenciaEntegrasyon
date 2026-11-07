@@ -89,6 +89,18 @@ public sealed class OwnerRulesNov5Tests
             ReturnCustomerRequestPolicy.FinalizedWith(expected));
     }
 
+    // Decided by how the claim closed, not by what was requested (owner, 6 Nov 2026).
+    [Theory]
+    [InlineData(ReturnCustomerRequestPolicy.Change, "Refunded", true)]
+    [InlineData(ReturnCustomerRequestPolicy.Change, "refunded", true)]
+    [InlineData(ReturnCustomerRequestPolicy.Change, "Accepted", false)]
+    [InlineData(ReturnCustomerRequestPolicy.Change, "AwaitingAction", false)]
+    [InlineData(ReturnCustomerRequestPolicy.Change, null, false)]
+    [InlineData(ReturnCustomerRequestPolicy.Refund, "Accepted", true)]
+    [InlineData(null, "Accepted", true)]
+    public void AnExchangeClosedWithARefundCountsAsAReturn(string? request, string? rawStatus, bool counts) =>
+        Assert.Equal(counts, ReturnCustomerRequestPolicy.CountsAsReturn(request, rawStatus));
+
     [Fact]
     public void AHepsiburadaExchangeClaimCarriesTheCustomersRequest()
     {

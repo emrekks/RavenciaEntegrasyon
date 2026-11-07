@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { hubPoll } from '../../shared/api'
@@ -8,14 +7,14 @@ import { PlatformSquareMark } from '../../shared/platform-square-mark'
 import { Button, UiIcon } from '../../shared/components'
 import { Busy } from '../../shared/components/AsyncState'
 import { formatIstanbul } from '../../shared/format-date'
-import { insideSelector, useDismissable } from '../../shared/hooks/useDismissable'
+import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import { marketplacePlatformLabel } from '../marketplace/marketplace-platform-support'
 import { relativeAgeText } from '../marketplace/integrations/integration-helpers'
 import { jobTimeRanges } from './job-list-query'
-import { FilterMenu, type FilterMenuGroup } from './log-filter-menu'
+import { ChoiceField, FilterMenu, OpsFilterCard, SearchField, type FilterMenuGroup } from './filter-fields'
 import {
-  activityActor, activityChange, activityVariantText, activityCountsQueryString, activityFilterCount, activityKindCounts, activityKinds, activityLink, activityPanelFilterCount,
-  activityQueryString, activityRangeLabel, activitySourceText, activityTypeLabel, emptyActivityFilters, toggleActivityKind,
+  activityActor, activityChange, activityMovements, activityProductLines, activityCountsQueryString, activityFilterCount, activityKindCounts, activityKinds, activityLink,
+  activityQueryString, activitySourceText, activityTypeLabel, emptyActivityFilters, toggleActivityKind,
   type ActivityFilters, type ProductActivityEntry, type ProductActivityPage
 } from './product-activity'
 import { ProductThumb } from './ProductThumb'
@@ -30,14 +29,15 @@ const exactTime: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit'
 const dayOptions: Intl.DateTimeFormatOptions = { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
 
 function ProductCell({ entry }: { entry: ProductActivityEntry }) {
-  const codes = [activityVariantText(entry.optionText), entry.barcode ?? entry.sku, entry.modelCode].filter(Boolean).join(' · ')
+  const { codes, variant } = activityProductLines(entry)
   return <div className="psl-product">
     <ProductThumb url={entry.imageUrl} title={entry.productTitle ?? 'Ürün'} />
     <span className="psl-product-text">
       {entry.productId && entry.productTitle
         ? <Link to={`/products/${encodeURIComponent(entry.productId)}`} className="pal-product-link" title={entry.productTitle}>{entry.productTitle}</Link>
         : <strong>{entry.productTitle ?? 'Silinmiş ürün'}</strong>}
-      {codes && <small title={codes}>{codes}</small>}
+      {codes && <small className="pal-product-codes" title={codes}>{codes}</small>}
+      {variant && <small className="pal-product-variant" title={variant}>{variant}</small>}
     </span>
   </div>
 }
@@ -51,7 +51,7 @@ function ChangeChip({ entry }: { entry: ProductActivityEntry }) {
       ? <span className={`pal-change-text is-${change.tone}`}>{change.text}</span>
       : <span className="pal-change-line">
         <span className="pal-change-flow">
-          {change.label && <span className="pal-change-label">{change.label} </span>}
+          {change.label && <span className="pal-change-label">{change.label}</span>}
           {change.from !== undefined && <><span className="pal-change-from">{change.from}</span><span className="pal-change-arrow" aria-label="iken"> → </span></>}
           <span className="pal-change-to">{change.to}</span>
         </span>
@@ -72,51 +72,38 @@ function SourceCell({ entry }: { entry: ProductActivityEntry }) {
   </span>
 }
 
-const kindGroups: FilterMenuGroup[] = [{ options: activityKinds.map(kind => ({ value: kind.key, label: kind.label })) }]
+const movementGroups: FilterMenuGroup[] = [{ options: activityMovements }]
 
-// The page heading's controls for Ürün Hareketleri, drawn into İşlem Takibi's heading like the send log's: the range
-// menu with the job list's presets (chosen days override it) and Filtrele with Platform, Tür and Tarih.
-function ActivityHeadingControls({ filters, platformGroups, onChange, onClear, clearCount }: { filters: ActivityFilters; platformGroups: FilterMenuGroup[]; onChange: (patch: Partial<ActivityFilters>) => void; onClear: () => void; clearCount: number }) {
-  const [rangeOpen, setRangeOpen] = useState(false)
-  const [panelOpen, setPanelOpen] = useState(false)
-  const rangeWrap = useRef<HTMLDivElement>(null)
-  const panelWrap = useRef<HTMLDivElement>(null)
-  useDismissable(rangeOpen, [rangeWrap], () => setRangeOpen(false))
-  useDismissable(panelOpen, [panelWrap], () => setPanelOpen(false), { isInside: insideSelector('.date-range-picker-popover') })
+// The filter card of Ürün Hareketleri: the search, the range with the job list's presets (chosen days override it), the
+// days, Platform, Tür and Hareket Türü (with İlk Fiyatları Göster in its menu).
+function ActivityFilterCard({ filters, searchText, onSearch, platformGroups, kindCounts, onChange, onClear, onApply, clearCount }: { filters: ActivityFilters; searchText: string; onSearch: (value: string) => void; platformGroups: FilterMenuGroup[]; kindCounts: Record<string, number> | null; onChange: (patch: Partial<ActivityFilters>) => void; onClear: () => void; onApply: () => void; clearCount: number }) {
   const days = Boolean(filters.from || filters.to)
-  const panelCount = activityPanelFilterCount(filters)
-  return <>
-    <div className="jobs-reference-range-wrap" ref={rangeWrap}>
-      <button type="button" className="jobs-reference-range" aria-expanded={rangeOpen} aria-label={`Hareket zaman aralığı: ${activityRangeLabel(filters)}`} onClick={() => setRangeOpen(value => !value)}>
-        <UiIcon name="calendar" className="jobs-reference-icon" size={18} />{activityRangeLabel(filters)}<UiIcon name="chevronDown" className="jobs-reference-icon" size={18} />
-      </button>
-      {rangeOpen && <div className="jobs-reference-range-menu" role="menu" aria-label="Zaman aralığı">
-        {jobTimeRanges.map(([value, label]) => <button type="button" role="menuitem" className={!days && filters.range === value ? 'active' : ''} key={value} onClick={() => { onChange({ range: value, from: '', to: '' }); setRangeOpen(false) }}>{label}</button>)}
-      </div>}
-    </div>
-    <div className="jobs-reference-filter-wrap" ref={panelWrap}>
-      <button type="button" className="jobs-reference-filter-toggle" aria-expanded={panelOpen} onClick={() => setPanelOpen(value => !value)}>
-        <UiIcon name="listSortAscending" className="jobs-reference-icon" size={18} />Filtrele{panelCount > 0 && <span className="psl-clear-count" aria-label={`${panelCount} filtre`}>{panelCount}</span>}
-      </button>
-      {panelOpen && <div className="jobs-reference-filter-panel psl-filter-panel" role="dialog" aria-label="Ürün hareketi filtreleri">
-        <div className="psl-panel-field psl-panel-wide"><span>Platform</span><FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={filters.platforms} onChange={platforms => onChange({ platforms })} emptyText="Bağlı pazaryeri yok." /></div>
-        <div className="psl-panel-field psl-panel-wide"><span>Tür</span><FilterMenu name="Tür" allLabel="Tüm Türler" unit="Tür" groups={kindGroups} selected={filters.kinds} onChange={kinds => onChange({ kinds })} /></div>
-        <DateRangePicker className="psl-dates psl-panel-wide" label="Hareket Tarihi" placeholder="Aralık Seçilmedi" from={filters.from} to={filters.to} onChange={range => onChange({ from: range.from, to: range.to })} />
-        <button type="button" className="psl-control psl-clear psl-panel-wide" onClick={onClear} disabled={clearCount === 0}>Temizle{clearCount > 0 && <span className="psl-clear-count" aria-label={`${clearCount} filtre`}>{clearCount}</span>}</button>
-      </div>}
-    </div>
-  </>
+  const kindGroups: FilterMenuGroup[] = [{ options: activityKinds.map(kind => ({ value: kind.key, label: kind.label, count: kindCounts ? kindCounts[kind.key] ?? 0 : null })) }]
+  return <OpsFilterCard wide label="Ürün hareketi filtreleri" active={activityFilterCount({ ...filters, search: '' })} clearCount={clearCount} onClear={onClear} onApply={onApply}>
+    <SearchField label="Ürün Ara" ariaLabel="Ürün hareketlerinde ara" placeholder="Barkod, stok kodu, model kodu veya ürün adı" value={searchText} onChange={value => onSearch(value.slice(0, 100))} onEnter={onApply} />
+    <ChoiceField name="Zaman Aralığı" value={days ? '' : filters.range} label={days ? 'Seçili Tarihler' : undefined} options={jobTimeRanges.map(([value, label]) => ({ value, label }))} onChange={value => onChange({ range: value as ActivityFilters['range'], from: '', to: '' })} />
+    <DateRangePicker className="rr-fld rr-date" label="Hareket Tarihi" placeholder="Başlangıç – Bitiş" from={filters.from} to={filters.to} onChange={range => onChange({ from: range.from, to: range.to })} icon={<RrIcon name="cal" />} chevron={<RrIcon name="chev" />} />
+    <FilterMenu name="Platform" allLabel="Tüm Platformlar" unit="Platform" groups={platformGroups} selected={filters.platforms} onChange={platforms => onChange({ platforms })} emptyText="Bağlı pazaryeri yok." />
+    <FilterMenu name="Tür" allLabel="Tüm Türler" unit="Tür" groups={kindGroups} selected={filters.kinds} onChange={kinds => onChange({ kinds })} />
+    <FilterMenu name="Hareket Türü" allLabel="Tüm Hareketler" unit="Hareket Türü" width={300} groups={movementGroups} selected={filters.movements} onChange={movements => onChange({ movements })} extra={{ label: 'İlk Fiyatları Göster', checked: filters.initialPrices, onChange: initialPrices => onChange({ initialPrices }) }} />
+  </OpsFilterCard>
 }
 
-export function ProductActivityLog({ platformOptions, headingSlot }: { platformOptions: string[]; headingSlot?: HTMLElement | null }) {
-  const [filters, setFilters] = useState<ActivityFilters>(emptyActivityFilters)
-  const [searchText, setSearchText] = useState('')
+export type KeptActivityView = { filters: ActivityFilters; searchText: string }
+
+// kept holds the filters while another log view is shown, so switching views and back keeps them.
+export function ProductActivityLog({ platformOptions, kept }: { platformOptions: string[]; kept?: { current: KeptActivityView | null } }) {
+  const [filters, setFilters] = useState<ActivityFilters>(() => kept?.current?.filters ?? emptyActivityFilters)
+  const [searchText, setSearchText] = useState(() => kept?.current?.searchText ?? '')
+  useEffect(() => { if (kept) kept.current = { filters, searchText } }, [kept, filters, searchText])
   useEffect(() => {
     const timeout = window.setTimeout(() => setFilters(current => current.search === searchText ? current : { ...current, search: searchText }), searchDelayMs)
     return () => window.clearTimeout(timeout)
   }, [searchText])
   const update = (patch: Partial<ActivityFilters>) => setFilters(current => ({ ...current, ...patch }))
   const clear = () => { setSearchText(''); setFilters(emptyActivityFilters) }
+  // Filtrele (and Enter in the search) sends the typed search at once instead of after the typing pause.
+  const apply = () => setFilters(current => current.search === searchText ? current : { ...current, search: searchText })
 
   // The summary counts every kind under the other filters, so a picked kind keeps the others' counts in view.
   const countFilters = useMemo(() => ({ ...filters, kinds: [] }), [filters])
@@ -143,7 +130,7 @@ export function ProductActivityLog({ platformOptions, headingSlot }: { platformO
   const filtered = activityFilterCount(filters) > 0
   const filterCount = activityFilterCount({ ...filters, search: searchText })
   const platformGroups = useMemo<FilterMenuGroup[]>(() => [{ options: [...new Set([...platformOptions.filter(code => code !== 'TRENDYOL_EFATURAM'), ...filters.platforms])]
-    .map(code => ({ value: code, label: marketplacePlatformLabel(code), mark: <PlatformSquareMark code={code} name={marketplacePlatformLabel(code)} /> })) }], [platformOptions, filters.platforms])
+    .map(code => ({ value: code, label: marketplacePlatformLabel(code), mark: <RrLogo code={code} /> })) }], [platformOptions, filters.platforms])
 
   const kindChipProps = (kind: string) => {
     const on = filters.kinds.includes(kind)
@@ -153,15 +140,14 @@ export function ProductActivityLog({ platformOptions, headingSlot }: { platformO
   const now = Date.now()
 
   return <div className="psl pal">
-    {headingSlot && createPortal(<ActivityHeadingControls filters={filters} platformGroups={platformGroups} onChange={update} onClear={clear} clearCount={filterCount} />, headingSlot)}
+    <ActivityFilterCard filters={filters} searchText={searchText} onSearch={setSearchText} platformGroups={platformGroups} kindCounts={summary} onChange={update} onClear={clear} onApply={apply} clearCount={filterCount} />
     <div className="jobs-reference-toolbar psl-toolbar">
       <div className="jobs-reference-status-summary" aria-label="Ürün hareketi özeti">
         {activityKinds.map(kind => <span key={kind.key} {...kindChipProps(kind.key)}>
           <UiIcon name={kind.icon} size={14} />{kind.label} <strong>{summary ? summary[kind.key].toLocaleString('tr-TR') : '—'}</strong>
         </span>)}
       </div>
-      <div className="jobs-reference-toolbar-actions" role="search" aria-label="Ürün hareketi arama">
-        <label className="jobs-reference-search psl-search"><UiIcon name="search" size={15} /><input value={searchText} onChange={event => setSearchText(event.target.value.slice(0, 100))} placeholder="Barkod, stok kodu, model kodu veya ürün adı…" aria-label="Ürün hareketlerinde ara" /></label>
+      <div className="jobs-reference-toolbar-actions">
         <button type="button" className="jobs-reference-refresh" title="Yenile" aria-label="Ürün hareketlerini yenile" onClick={() => { void list.refetch(); void counts.refetch() }}><UiIcon name="refresh" size={16} /></button>
       </div>
     </div>

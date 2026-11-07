@@ -1,4 +1,5 @@
 import { ApiRequestError } from '../../shared/api'
+import { SAME_SAVE_CODE_HOLDER } from './platform-code-rules'
 import type { VariantStockSet } from './variant-stock-set'
 
 // The key of the product snapshot the editor form was filled from. Every place that tells the editor "this version is
@@ -45,6 +46,8 @@ export function editorSnapshot(state: {
   channelPricing?: Record<string, { listPrice: string; salePrice: string }>
   variantChannelPricing?: Record<string, { listPrice: string; salePrice: string }>
   webColor?: EditorWebColor
+  // The picture marked as the size chart (Beden Tablosu); marking or unmarking one is an unsaved change.
+  sizeChartUrl?: string | null
 }) {
   return JSON.stringify({
     form: state.form,
@@ -57,7 +60,8 @@ export function editorSnapshot(state: {
     pendingFamilyMediaRemovalUrls: state.pendingFamilyMediaRemovalUrls ?? [],
     channelPricing: sortedPricing(state.channelPricing),
     variantChannelPricing: sortedPricing(state.variantChannelPricing),
-    webColor: state.webColor ? [state.webColor.autoEnabled, state.webColor.manualValueId] : null
+    webColor: state.webColor ? [state.webColor.autoEnabled, state.webColor.manualValueId] : null,
+    ...(state.sizeChartUrl !== undefined ? { sizeChartUrl: state.sizeChartUrl } : {})
   })
 }
 
@@ -102,11 +106,20 @@ export function editorVariantCostUpdate(row: { costPrice: number | null; loadedC
   return { costPrice: row.costPrice, loadedCostPrice: row.loadedCostPrice ?? null }
 }
 
-// The desi field of an existing variant's update. The form has one desi for the product: it is sent only when the user
-// changed it from the value the form opened with, together with the variant's stored desi as loaded, so the server
-// refuses a desi changed meanwhile elsewhere (ürün içe aktarma) instead of overwriting it.
+// The desi the form opens with: the first variant's, else the first variant that has one. Null when no variant has a
+// desi: the field opens empty instead of showing a 1 nothing stores (live 7.11.2026: RYP003T showed Desi 1 while its
+// variants had none, and the Trendyol update stopped on the missing desi).
+export function editorOpenedDesi(variants: ReadonlyArray<{ desi?: number | null }>): number | null {
+  const desi = variants[0]?.desi ?? variants.find(variant => variant.desi != null && variant.desi > 0)?.desi
+  return desi != null && desi > 0 ? desi : null
+}
+
+// The desi field of an existing variant's update. The form has one desi for the product: it is sent when the user
+// changed it from the value the form opened with, or to a variant with no desi of its own (the form's desi is the
+// card's), together with the variant's stored desi as loaded, so the server refuses a desi changed meanwhile elsewhere
+// (ürün içe aktarma) instead of overwriting it.
 export function editorVariantDesiUpdate(desi: number, openedDesi: number, loadedDesi: number | null | undefined): { desi?: number; loadedDesi?: number | null } {
-  if (!(desi > 0) || desi === openedDesi) return {}
+  if (!(desi > 0) || (desi === openedDesi && loadedDesi != null)) return {}
   return { desi, loadedDesi: loadedDesi ?? null }
 }
 
@@ -150,14 +163,15 @@ export function variantCodeKey(field: 'barcode' | 'sku', code: string) {
 }
 
 // The codes a refused save names as held by another card ("sku\tMZ021Y-CD-01\tKadın … Bluz"), keyed by field and
-// code, with the holding card's title.
+// code, with the holding card's title. A code the save gave to several of its own rows ("sku\tMZ071-M\t\tSAME_SAVE\t…")
+// maps to SAME_SAVE_CODE_HOLDER, so every row holding it is marked.
 export function variantCodeConflictsFrom(error: unknown): Record<string, string> {
   if (!(error instanceof ApiRequestError)) return {}
   const entries = error.fieldErrors?.variantCodeConflicts ?? error.fieldErrors?.VariantCodeConflicts ?? []
   const result: Record<string, string> = {}
   for (const entry of entries) {
-    const [field, code, title] = entry.split('\t')
-    if ((field === 'sku' || field === 'barcode') && code?.trim()) result[variantCodeKey(field, code)] = title?.trim() || 'başka bir ürün'
+    const [field, code, title, kind] = entry.split('\t')
+    if ((field === 'sku' || field === 'barcode') && code?.trim()) result[variantCodeKey(field, code)] = kind === 'SAME_SAVE' ? SAME_SAVE_CODE_HOLDER : title?.trim() || 'başka bir ürün'
   }
   return result
 }

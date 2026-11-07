@@ -1,4 +1,5 @@
 import { Children, Fragment, isValidElement, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { BrandSymbol } from '../../shared/components/BrandSymbol'
 import { thumbnailSources } from '../../shared/product-thumbnail'
 import { orderPlatformLogoSource, platformLogoSource } from '../../shared/platform-logos'
 import { createPortal } from 'react-dom'
@@ -170,7 +171,10 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
     const sheet = host.closest('.rr-fopen')
     const area = sheet ?? host.closest('.rr-tblwrap')
     const pop = host.querySelector<HTMLElement>(':scope > .rr-menu, :scope > .rr-pop')
-    if (!area || !pop || (!sheet && getComputedStyle(area).overflowX === 'visible')) return
+    if (!pop) return
+    // Already pinned by the stylesheet (the phone bottom sheet): leave it. Every other popover is pinned to the screen
+    // and opened in the top layer, so no card, scroll box, sticky header or sidebar can clip or cover it.
+    if (!sheet && !area && getComputedStyle(pop).position === 'fixed') return
     const pin = (styles: Record<string, string>) => Object.entries(styles).forEach(([key, value]) => pop.style.setProperty(key, value, 'important'))
     // In the sheet the popover first leaves the flow (the open list had grown the sheet and lifted the field), then
     // the field is measured where it really sits.
@@ -187,7 +191,11 @@ function useScrollAreaPopover(open: boolean, ref: RefObject<HTMLElement | null>,
       : (box.bottom > window.innerHeight - 8 && above > 8 ? above : box.top)
     const width = sheet ? anchor.width : box.width
     const left = Math.max(8, Math.min(sheet ? anchor.left : box.left, window.innerWidth - width - 8))
-    pin({ position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', width: `${width}px`, transform: 'none', 'z-index': '1000' })
+    pin({ position: 'fixed', top: `${top}px`, left: `${left}px`, right: 'auto', bottom: 'auto', margin: '0', width: `${width}px`, transform: 'none', 'z-index': '1000' })
+    if (typeof pop.showPopover === 'function') {
+      pop.setAttribute('popover', 'manual')
+      pop.showPopover()
+    }
     // A tall list (İade Sebebi) stays inside the screen and scrolls within itself instead of running off the bottom.
     if (!sheet && top + box.height > window.innerHeight - 8) pin({ 'max-height': `${Math.max(160, window.innerHeight - top - 12)}px`, 'overflow-y': 'auto' })
     // A positioned head-cell anchor (z-index 70) caps the pinned popover's z-index at its own, so a popover flipped
@@ -292,7 +300,7 @@ export function RrModal({ crumb, title, desc, hint, size, flush, head, foot, onC
 
 // Loading and error states inside popups (same as the panel's).
 export function RrLoading({ text = 'Veriler yükleniyor…' }: { text?: string }) {
-  return <div className="rr-state rr-loading" role="status" aria-live="polite"><span className="rr-mark"><img src="/pack/brand/ravencia-symbol-128.webp" alt="" style={{ width: 30, height: 30, objectFit: 'contain' }} /></span><strong>{text}</strong><p>Bu birkaç saniye sürebilir.</p><span className="rr-bar"><i /></span></div>
+  return <div className="rr-state rr-loading" role="status" aria-live="polite"><span className="rr-mark"><BrandSymbol style={{ width: 30, height: 30, objectFit: 'contain' }} /></span><strong>{text}</strong><p>Bu birkaç saniye sürebilir.</p><span className="rr-bar"><i /></span></div>
 }
 export function RrError({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const retry = useAutoRetry(error, onRetry)

@@ -203,8 +203,14 @@ public sealed class AlertEmailEndToEndTests(ApiEndToEndFixture fixture) : IClass
             Assert.True(body.GetProperty("appPasswordSaved").GetBoolean());
             Assert.Equal("ravencia.alarm@gmail.com", body.GetProperty("senderAddress").GetString());
 
+            // D9: a stored setting is not written blind: without If-Match the save is refused (428).
+            using var blind = await admin.SendAsync(ApiTestHost.Json(HttpMethod.Put, "/api/v1/settings/alert-email", csrf, new { senderAddress = "ravencia.alarm@gmail.com", recipients = new[] { "owner@example.com", "second@example.com" }, appPassword = "" }));
+            Assert.Equal((HttpStatusCode)428, blind.StatusCode);
+
             // A blank password keeps the saved one.
-            using var kept = await admin.SendAsync(ApiTestHost.Json(HttpMethod.Put, "/api/v1/settings/alert-email", csrf, new { senderAddress = "ravencia.alarm@gmail.com", recipients = new[] { "owner@example.com", "second@example.com" }, appPassword = "" }));
+            var keep = ApiTestHost.Json(HttpMethod.Put, "/api/v1/settings/alert-email", csrf, new { senderAddress = "ravencia.alarm@gmail.com", recipients = new[] { "owner@example.com", "second@example.com" }, appPassword = "" });
+            keep.Headers.TryAddWithoutValidation("If-Match", saved.Headers.ETag!.Tag);
+            using var kept = await admin.SendAsync(keep);
             Assert.Equal(HttpStatusCode.OK, kept.StatusCode);
 
             using var read = await admin.GetAsync("/api/v1/settings/alert-email");
