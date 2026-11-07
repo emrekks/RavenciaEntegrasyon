@@ -244,8 +244,8 @@ public sealed record ReportChannelView(Guid Id, string PlatformCode, string Disp
 // period has real records, else "estimate": then RealCostTotal and Commission are null and the lists are empty, never
 // zeros. A record tied to an order counts in the period of the order; Trendyol's service fee and withholding tax invoices
 // of a payment day are split over the orders of their payout and count with them. A record tied to no order of the
-// period (advertising, penalties, a record of an order never imported, a fee invoice whose payout's orders are not read
-// yet or that names no payout) counts by its own date in Unlinked only (owner, 5 Nov 2026): it never enters Lines, Channels, Commission, Cargo,
+// period (advertising, penalties, a record of an order never imported, a fee invoice that names no payout) counts by its
+// own date in Unlinked only; a fee invoice whose payout's lines are not read yet is in CoveredByEstimate instead (owner, 5 Nov 2026): it never enters Lines, Channels, Commission, Cargo,
 // NetVat or RealCostTotal, so every profit figure carries only the costs of the period's own orders (their records, or
 // the estimates when there is none). Amounts are what the seller was charged (debt - credit); a negative amount was
 // paid back or credited (sales are negative).
@@ -268,7 +268,10 @@ public sealed record ReportCostsView(
     IReadOnlyList<ReportCostProductView> Products,
     ReportNetVatView? NetVat = null,
     IReadOnlyList<ReportUnlinkedCostView>? Unlinked = null,
-    decimal UnlinkedTotal = 0m);
+    decimal UnlinkedTotal = 0m,
+    // The service fee and withholding tax invoices dated in the period whose payout's lines are not read yet: their
+    // orders carry the estimate of that fee, so they are taken off nowhere (each cost once), only listed by category.
+    IReadOnlyList<ReportUnlinkedCostView>? CoveredByEstimate = null);
 
 // The records of the period's dates tied to no order of the period, by category (see ReportCostsView). IsCost: a
 // deduction, added to UnlinkedTotal; a sale, return or discount of an order never imported is not.

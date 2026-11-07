@@ -160,6 +160,12 @@ internal static class ReportCosts
         // (ReportFeeAllocation) and count with those orders, in their period.
         var unlinked = new Dictionary<string, LineTotal>(StringComparer.Ordinal);
         LineTotal Unlinked(string category) => unlinked.TryGetValue(category, out var total) ? total : unlinked[category] = new();
+        // A service fee or withholding tax invoice of a payout whose lines are not read yet (Trendyol gives them a day after
+        // paying): it is not split, and every order it pays carries that fee's estimate in its own period until its share
+        // replaces it. Taking the invoice off as well charged the fee twice for that day (5 Nov 2026: 448.01 TL of
+        // withholding tax and 986.86 TL of service fee on top of their orders' estimates); every cost counts once, so it
+        // is listed as covered by the estimate and taken off nowhere.
+        var covered = new Dictionary<string, LineTotal>(StringComparer.Ordinal);
         var realCommission = new Dictionary<Guid, decimal>();
         var settled = new HashSet<Guid>();
         // The period's orders with a service fee or withholding tax record of their own (a share of their payout's
@@ -208,6 +214,11 @@ internal static class ReportCosts
             {
                 // Trendyol's return operation fee of a cross-border order names no order: it is counted by its date.
                 if (IsReturnOperationFee(row)) { returnOperationFees += amount; returnOperationRecords++; }
+                if (ReportFeeAllocation.IsPerSaleInvoice(row))
+                {
+                    (covered.TryGetValue(category, out var line) ? line : covered[category] = new()).Add(amount);
+                    continue;
+                }
                 if (category != MarketplaceFinanceCategories.Commission) Unlinked(category).Add(amount);
                 if (charged) Unlinked(MarketplaceFinanceCategories.Commission).Add(commission);
                 continue;
@@ -359,6 +370,9 @@ internal static class ReportCosts
             .Select(category => new ReportUnlinkedCostView(category, Labels.GetValueOrDefault(category, category), TrendyolFinanceCategorizer.IsCost(category), Round(unlinked[category].Amount), unlinked[category].Records))
             .ToList();
         var unlinkedTotal = unlinkedViews.Where(line => line.IsCost).Sum(line => line.Amount);
+        var coveredViews = MarketplaceFinanceCategories.All.Where(category => covered.TryGetValue(category, out var line) && Round(line.Amount) != 0m)
+            .Select(category => new ReportUnlinkedCostView(category, Labels.GetValueOrDefault(category, category), true, Round(covered[category].Amount), covered[category].Records))
+            .ToList();
         var channels = input.Channels.Values
             .Where(channel => orders.Any(order => order.Order.ConnectionId == channel.Id) || financeStores.Contains(channel.Id))
             .Select(channel =>
@@ -397,7 +411,7 @@ internal static class ReportCosts
         var netVat = new ReportNetVatView(Round(salesVat), Round(costVat), Round(expenseVat), Round(salesVat - costVat - expenseVat));
         return new(read ? FinanceSource : EstimateSource, lastSynced, coveredFrom, coveredThrough, financeOrders.Count, settledFinanceOrders,
             financeOrders.Count > 0 ? Math.Round((decimal)settledFinanceOrders / financeOrders.Count, 4) : null,
-            total, commissionView, cargoView, lineViews, channels, productViews, netVat, unlinkedViews, unlinkedTotal);
+            total, commissionView, cargoView, lineViews, channels, productViews, netVat, unlinkedViews, unlinkedTotal, coveredViews);
     }
 
     internal static bool IsCommissionInvoice(ReportFinanceRow row) =>
@@ -426,14 +440,14 @@ internal static class ReportCosts
             yield break;
         }
         if (PlatformNote(costs, tr) is { } platforms) yield return platforms;
-        yield return $"Gerçek masraflar Trendyol cari hesap ekstresinden okunur{(costs.LastSyncedAt is { } synced ? $" (son okuma {Time(synced)})" : " (okuma sürüyor)")}: siparişe bağlı kalemler siparişin dönemine yazılır. Trendyol hizmet bedelini ve stopajı ödeme günü faturasıyla keser; bu faturalar ödemenin siparişlerine paylaştırılır (hizmet bedeli paket başına, uluslararası hizmet bedeli yurt dışı satışa, stopaj satışa göre) ve o siparişlerle kâra girer. Faturası henüz gelmeyen siparişlerin hizmet bedeli ve stopajı tahmin edilir. Dönemin siparişlerine bağlı olmayan kesintiler (reklam, ceza) kâra dahil edilmez, ayrıca gösterilir{(costs.UnlinkedTotal != 0m ? $" ({Money(costs.UnlinkedTotal)})" : "")}.";
+        yield return $"Gerçek masraflar Trendyol cari hesap ekstresinden okunur{(costs.LastSyncedAt is { } synced ? $" (son okuma {Time(synced)})" : " (okuma sürüyor)")}: siparişe bağlı kalemler siparişin dönemine yazılır. Trendyol hizmet bedelini ve stopajı ödeme günü faturasıyla keser; bu faturalar ödemenin siparişlerine paylaştırılır (hizmet bedeli paket başına, uluslararası hizmet bedeli yurt dışı satışa, stopaj satışa göre) ve o siparişlerle kâra girer. Faturası henüz gelmeyen siparişlerin hizmet bedeli ve stopajı tahmin edilir. Dönemin siparişlerine bağlı olmayan kesintiler (reklam, ceza) işlem tarihine göre sayılır ve Net Kâr'dan kendi satırında düşülür{(costs.UnlinkedTotal != 0m ? $" ({Money(costs.UnlinkedTotal)})" : "")}.";
         // The per-sale fee invoices left with no order: their payout's orders are not read yet, or they name no payout.
         var unsplit = input.Finance!.Rows.Where(row => row.Source == TrendyolFinanceRequestContract.OtherFinancials && row.OrderNumber is null
             && row.Category is MarketplaceFinanceCategories.ServiceFee or MarketplaceFinanceCategories.Stoppage).ToList();
         var awaiting = unsplit.Where(ReportFeeAllocation.IsPerSaleInvoice).Sum(row => TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit));
         var unreferenced = unsplit.Where(row => string.IsNullOrEmpty(row.PaymentOrderId)).Sum(row => TrendyolFinanceCategorizer.NetCost(row.Debt, row.Credit));
         if (awaiting != 0m)
-            yield return $"Siparişe bağlı olmayan kesintilerdeki hizmet bedeli ve stopajın {Money(awaiting)} kadarı, Trendyol'un ödeme kayıtlarını henüz vermediği ödemelere ait; ödeme kayıtları okununca (ödemeden bir gün sonra) siparişlerine paylaştırılır ve bu listeden çıkar.";
+            yield return $"{Money(awaiting)} hizmet bedeli ve stopaj faturası, Trendyol'un ödeme kayıtlarını henüz vermediği ödemelere ait: tahminle karşılandı. O ödemenin siparişlerinden bu kesintiler tahminle düşüldüğü için fatura ayrıca düşülmez (her masraf bir kez); ödeme kayıtları okununca (ödemeden bir gün sonra) siparişlerine paylaştırılır ve tahminin yerini alır.";
         if (unreferenced != 0m)
             yield return $"{Money(unreferenced)} hizmet bedeli ve stopaj faturasında Trendyol ne sipariş ne ödeme bilgisi veriyor; hangi siparişe ait olduğu bilinmediği için siparişe bağlı olmayan kesintilerde kalır.";
         if (costs.Coverage is { } coverage)
