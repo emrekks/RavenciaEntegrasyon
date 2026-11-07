@@ -346,3 +346,10 @@
   .app-shell.stitch-shell main .qi-composer-foot > div { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; width: 100%; }
   .app-shell.stitch-shell main .qi-composer-foot > div > .rv-button { width: 100%; min-width: 0; height: 36px; min-height: 0; justify-content: center; }
 }
+
+/* Phones: a saved answer reads across the whole card; Düzenle and Sil sit below it in one row. */
+@media (max-width: 760px) {
+  .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-card.rv-question-template-card { grid-template-columns: minmax(0, 1fr); row-gap: 10px; }
+  .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-card > div:last-child { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-shell.stitch-shell main .qi-templates-modal .rv-question-template-card > div:last-child > .rv-button { width: 100%; min-width: 0; justify-content: center; }
+}
