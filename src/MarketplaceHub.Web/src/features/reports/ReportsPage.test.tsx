@@ -239,7 +239,7 @@ describe('ReportsPage', () => {
     expect(page.querySelector('.reports-card-metrics.is-returns .reports-delta')?.getAttribute('title')).toMatch(/^Önceki dönem /)
     expect(page.querySelector('.reports-card-metrics.is-returns li.is-warn')?.textContent).toContain('İptal Oranı')
     // The late packages as a share of those measured, with their count; the delivery time the server sends.
-    expect(metricRows(page, 'ops')).toEqual(['Kargoya Verme Süresi24 sa', 'Geciken Kargo%100,0 · 1 paket', `Teslim Süresi${formatHours(48)}`, 'Faturasız Paket1', 'Stok Riski0 ürün'])
+    expect(metricRows(page, 'ops')).toEqual(['Kargoya Verme Süresi24 sa', 'Geciken Kargo%100,0 · 1 paket', `Teslim Süresi${formatHours(48)}`, 'Faturasız Paket1', 'Stok Riski0 ürün', 'Soru Yanıt Süresi—'])
     // The old cards are gone, and no card repeats another.
     expect(page.querySelector('.reports-journey, .reports-card-summary, .reports-operations, .reports-card-revenue')).toBeNull()
     // One tab per area, each with its headline figure.
@@ -247,6 +247,14 @@ describe('ReportsPage', () => {
     expect(tabs.some(tab => tab?.includes('Genel Bakış'))).toBe(true)
     expect(tabs.some(tab => tab?.includes('Operasyon') && tab.includes('%'))).toBe(true)
     expect(page.querySelector('.reports-map-panel')).toBeNull()
+  })
+
+  it('shows the questions\' average answer time, Trendyol and Hepsiburada only', async () => {
+    const page = await open('', { ...report, questionTimes: { answered: 12, waiting: 2, averageHours: 3.5, medianHours: 2, platforms: ['TRENDYOL', 'HEPSIBURADA'] } })
+    const row = [...page.querySelectorAll('.reports-card-metrics.is-ops li')].find(item => item.textContent?.includes('Soru Yanıt Süresi'))!
+    expect(row.querySelector('.reports-metric')?.textContent).toBe(`Soru Yanıt Süresi${formatHours(3.5)}`)
+    expect(row.querySelector('.reports-hover-tip')?.textContent).toContain('12 yanıtta ölçüldü')
+    expect(row.querySelector('.reports-hover-tip')?.textContent).toContain('n11 ve Pazarama')
   })
 
   it('takes commission, cargo and fees from Trendyol\'s statement, real plus estimated, and names what is not read', async () => {

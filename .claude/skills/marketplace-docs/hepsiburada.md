@@ -173,3 +173,14 @@ cursor `PACKAGES`), _ORDER_STATUS_SYNC, _WEBHOOK_INGEST, _RETURN_SYNC, _ORDER_IN
 ## Buyer kind (stage 5, 5 Nov 2026)
 - No corporate flag; an individual buyer comes with `identityNo: "11111111111"` and may still carry a `companyName`
   (the sample has "Test User"): that placeholder is the "individual" flag (`hepsiburada-api-son.md:13394`).
+
+## Report data gaps (7 Nov 2026)
+- Advertising in the accounting records: the documented ad types are `AdSharingExpense`, `MarketingExpense` (and their
+  refunds), `SponsorshipFee` ("Sponsorluk bedeli"), `FacebookAdExpense` ("MP Facebook reklam gideri"),
+  `MarketingSupportParticipation` (influencer-ad orders' participation fee, and its refund) and
+  `AdBalanceTopUpFromAllowance` (payout moved into the ad balance, and its refund) (`hepsiburada-api-son.md:19628-19680`).
+  All but the balance top-up count as ADVERTISING (`HepsiburadaFinanceSyncJobHandler.Category`); the top-up moves money
+  into the ad balance and is not the spend itself, so it stays OTHER.
+- Live, 90 days to 7 Nov 2026 (read-only SQL): the OTHER records are only PaymentServiceCostReflection (+Refund),
+  StoppageRefund, TotalPayment (the weekly payout total) and one CustomerSatisfaction, Description empty. No ad record,
+  so no Hepsiburada ad was bought in that window; the panel's ad figures stay Trendyol's.
