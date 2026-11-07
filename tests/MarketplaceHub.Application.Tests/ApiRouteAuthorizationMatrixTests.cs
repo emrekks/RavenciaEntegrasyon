@@ -210,6 +210,7 @@ public sealed class ApiRouteAuthorizationMatrixTests(ApiPipelineHost fixture) : 
         "POST   /api/v1/orders/shopify-csv-import Operations",
         "GET    /api/v1/orders/summary SignedIn",
         "GET    /api/v1/price-stock-monitor SignedIn",
+        "GET    /api/v1/api-health-signals SignedIn",
         "POST   /api/v1/price-stock-monitor/emergency-stop Elevated",
         "GET    /api/v1/price-stock-send-log SignedIn",
         "GET    /api/v1/price-stock-send-log/counts SignedIn",
