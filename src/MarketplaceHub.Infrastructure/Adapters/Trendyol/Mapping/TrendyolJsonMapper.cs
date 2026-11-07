@@ -719,7 +719,15 @@ public static class TrendyolJsonMapper
             {
                 var key = "";
                 if (item.TryGetProperty("requestItem", out var request) && request.ValueKind == JsonValueKind.Object)
+                {
                     key = Text(request, "barcode", "contentId", "stockCode");
+                    // The approved-product updates nest the item: content and variant results under updateRequest
+                    // ({contentId, ...} / {barcode, ...}), the delivery result under request. Source: offline
+                    // trendyol-api-son.md ~9472-9585 ("Onaylı Ürün Content/Varyant/Teslimat Güncelleme" answers).
+                    foreach (var nested in new[] { "updateRequest", "request" })
+                        if (string.IsNullOrWhiteSpace(key) && request.TryGetProperty(nested, out var inner) && inner.ValueKind == JsonValueKind.Object)
+                            key = Text(inner, "barcode", "contentId", "stockCode");
+                }
                 if (string.IsNullOrWhiteSpace(key)) key = Text(item, "barcode", "contentId", "stockCode");
                 var status = Text(item, "status"); var succeeded = string.Equals(status, "SUCCESS", StringComparison.OrdinalIgnoreCase); var allFailures = item.TryGetProperty("failureReasons", out var reasons) && reasons.ValueKind == JsonValueKind.Array ? reasons.EnumerateArray().Select(x => x.ToString()).Where(x => !string.IsNullOrWhiteSpace(x)).ToList() : [];
                 var failure = allFailures.FirstOrDefault();

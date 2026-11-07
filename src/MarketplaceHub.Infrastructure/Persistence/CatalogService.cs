@@ -2027,12 +2027,12 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
     // without one is refused with what to run (ImportedListingProfiles.MissingPublicationMessage). On such a profile the
     // card's values go: a field the update sends that the card lacks stops it here, before anything is queued, and the
     // notices say where the card's value went in place of the profile's.
-    public async Task<ServiceResult<ProductUpdateQueued>> EnqueueProductUpdateWithNoticesAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null)
+    public async Task<ServiceResult<ProductUpdateQueued>> EnqueueProductUpdateWithNoticesAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields = null, Guid? sendGroupId = null)
     {
         var card = await ImportedProfileCardAsync(tenantId, productId, connectionId, cancellationToken);
         if (card is not null && ImportedProfileCardFallbacks.EmptyCardField(card.PlatformCode, card.PlatformName, card.ShortLabel, card.Source, card.ProfileDeliveryDays, card.CardDeliveryDays, fields) is { } empty)
             return ServiceResult<ProductUpdateQueued>.Fail(ImportedProfileCardFallbacks.EmptyCardFieldCode, empty, 422, new Dictionary<string, string[]> { ["deliveryDays"] = [empty] });
-        var queued = await EnqueueProductUpdateCoreAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, cancellationToken, fields);
+        var queued = await EnqueueProductUpdateCoreAsync(tenantId, productId, connectionId, idempotencyKey, correlationId, cancellationToken, fields, sendGroupId);
         if (!queued.Succeeded) return ServiceResult<ProductUpdateQueued>.Fail(queued.Error!.Code, queued.Error.Message, queued.Error.Status, queued.Error.FieldErrors);
         var notices = card is null ? [] : ImportedProfileCardFallbacks.Notices(card.PlatformCode, card.PlatformName, card.LongLabel, card.Source, card.ProfileDeliveryDays, card.ProfileWarranty, card.CardDeliveryDays, card.CardWarrantyMonths, fields);
         return ServiceResult<ProductUpdateQueued>.Ok(new(queued.Value, notices));
@@ -2056,7 +2056,7 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         return new(platformCode, ListingVerificationPolicy.PlatformName(platformCode), shortLabel, longLabel, profile.Source, profile.DeliveryTimeDays, profile.Warranty, product.DeliveryDays, product.WarrantyMonths);
     }
 
-    private async Task<ServiceResult<Guid>> EnqueueProductUpdateCoreAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields)
+    private async Task<ServiceResult<Guid>> EnqueueProductUpdateCoreAsync(Guid tenantId, Guid productId, Guid connectionId, string idempotencyKey, string correlationId, CancellationToken cancellationToken, IReadOnlyCollection<string>? fields, Guid? sendGroupId = null)
     {
         // Shopify takes the product whole (ShopifyProductPublicationComposer): an update is the publication's productSet again
         // under the handle the panel gave the product, which Shopify applies to that product in place. The picked fields do
@@ -2096,7 +2096,9 @@ public sealed partial class CatalogService(AppDbContext db, CursorCodec cursors,
         var jobId = Guid.CreateVersion7();
         var now = timeProvider.GetUtcNow();
         var phase = draft.Publication.Mode == "APPROVED" ? "SUBMIT_CONTENT" : "SUBMIT_UNAPPROVED";
-        var payload = JsonSerializer.Serialize(new ProductUpdateJobPayload(jobId, productId, profile.Id, phase, draft.Publication.Mode, draft.Publication.PayloadHash, draft.Publication.UnapprovedPayloadJson, draft.Publication.ApprovedContentPayloadJson, draft.Publication.ApprovedVariantPayloadJson, draft.Publication.ApprovedDeliveryPayloadJson, null, null));
+        // Trendyol sends the cards of one send together (TrendyolUpdateGroups); other marketplaces keep one request a card.
+        var group = connection.PlatformCode == "TRENDYOL" && sendGroupId is { } groupId && groupId != Guid.Empty ? groupId : (Guid?)null;
+        var payload = JsonSerializer.Serialize(new ProductUpdateJobPayload(jobId, productId, profile.Id, phase, draft.Publication.Mode, draft.Publication.PayloadHash, draft.Publication.UnapprovedPayloadJson, draft.Publication.ApprovedContentPayloadJson, draft.Publication.ApprovedVariantPayloadJson, draft.Publication.ApprovedDeliveryPayloadJson, null, null, SendGroupId: group));
         db.IntegrationJobs.Add(new IntegrationJob { Id = jobId, TenantId = tenantId, ConnectionId = connectionId, JobType = MarketplaceJobTypes.ProductUpdate, PayloadJson = payload, PayloadVersion = 1, PayloadHash = Hash(payload), JobDedupKey = dedup, EffectIdempotencyKey = $"{dedup}:{NormalizeKey(idempotencyKey)}", Priority = JobPriorityPolicy.For(MarketplaceJobTypes.ProductUpdate, userInitiated: true), TriggerType = "user", Status = JobStatus.Pending, AvailableAt = now, MaxAttempts = 12, CorrelationId = correlationId, CreatedAt = now, Version = 1 });
         return await SavePublicationJobAsync(transaction, tenantId, MarketplaceJobTypes.ProductUpdate, dedup, jobId, cancellationToken);
     }

@@ -13,6 +13,8 @@ public static class JobWaitingPolicy
         "PRODUCT_BATCH_PENDING",
         "PRODUCT_UPDATE_BATCH_PENDING",
         "PRODUCT_UPDATE_NEXT_PHASE",
+        // A card of a grouped Trendyol send waiting for the group's other cards to be ready (TrendyolUpdateGroups).
+        "PRODUCT_UPDATE_GROUP_PENDING",
         "PRODUCT_ARCHIVE_BATCH_PENDING",
         "PRODUCT_ARCHIVE_RECONCILE_PENDING",
         "PRICE_INVENTORY_BATCH_PENDING",

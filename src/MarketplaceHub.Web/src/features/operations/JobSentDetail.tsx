@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { formatDateTime } from '../../shared/format-date'
 import { sendLogTriggerLabel } from './price-stock-send-log'
-import { isSentProblem, sentItemStatus, sentItemSummary, writeAttributeNames, writeFieldLabels, writePartCount, writePartLabel, writeRequestLabel, type JobSentItem, type JobWritePart, type JobWriteSummary } from './job-write-summary'
+import { isSentProblem, sentItemStatus, sentItemSummary, writeAttributeNames, writeFieldLabels, writePartCount, writePartLabel, writePartShared, writeRequestLabel, type JobSentItem, type JobWritePart, type JobWriteSummary } from './job-write-summary'
 import '../catalog/product-editor/publication-job-variants.css'
 import './job-write-detail.css'
 
@@ -11,8 +11,10 @@ export function JobWriteParts({ parts, showBarcodes }: { parts: readonly JobWrit
   return <ul>{parts.map(part => {
     const fields = writeFieldLabels(part.fields, part.clearedFields ?? [])
     const attributes = writeAttributeNames(part.attributes)
+    const shared = writePartShared(part)
     return <li key={part.key} className={part.itemCount === 0 ? 'is-empty' : undefined}>
       <div className="jobs-write-part-head"><strong>{writePartLabel(part.key)}</strong><span>{writePartCount(part)}</span></div>
+      {shared && <p><small>Ortak İstek</small>{shared}</p>}
       {fields.length > 0 && <p><small>Alanlar</small>{fields.join(', ')}</p>}
       {attributes.length > 0 && <p><small>Özellikler ({attributes.length})</small>{attributes.join(', ')}</p>}
       {showBarcodes && part.barcodes.length > 0 && <p><small>Barkodlar</small>{part.barcodes.join(', ')}</p>}

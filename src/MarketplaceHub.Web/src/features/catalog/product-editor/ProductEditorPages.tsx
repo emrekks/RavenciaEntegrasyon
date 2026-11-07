@@ -3075,10 +3075,12 @@ export function NewProductPage({ editProductId, publishOnly = false }: { editPro
               const familyFailures = new Map<string, string[]>()
               const family: MarketplaceFamilyUpdate = { cards: familyPlan.familyCards, queuedCards: 0, queuedVariants: 0, absent: familyPlan.absent.map(familyCardName), failures: familyFailures }
               update.family = family
+              // The cards of one send share an id: Trendyol takes them in one request per step (TrendyolUpdateGroups).
+              const sendGroupId = familyPlan.send.length > 1 ? newIdempotencyKey() : undefined
               for (const card of familyPlan.send) {
                 const cardName = familyCardName(card)
                 try {
-                  const accepted = await hubApi<ProductUpdateAccepted>(`/products/${card.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields }) })
+                  const accepted = await hubApi<ProductUpdateAccepted>(`/products/${card.productId}/update-jobs`, { method: 'POST', headers: { 'Idempotency-Key': newIdempotencyKey() }, body: JSON.stringify({ connectionId, fields: plan.productFields, sendGroupId }) })
                   recordProductUpdateNotices(accepted, { productId: card.productId, productName: form.title, modelCode: form.modelCode, platformCode: updatePlatformCode, connectionId })
                   if (accepted?.jobId) followedJobs.push({ jobId: accepted.jobId, platformName, what: familyPlan.send.length > 1 ? `${cardName} ürün bilgisi` : 'ürün bilgisi' })
                   family.queuedCards++
