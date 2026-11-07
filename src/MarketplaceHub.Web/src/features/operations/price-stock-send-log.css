@@ -17,7 +17,7 @@
 .app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel .psl-dates .date-range-picker-label { position: static; width: auto; height: auto; overflow: visible; clip: auto; }
 .app-shell.stitch-shell main .jobs-reference-page .psl-filter-panel .psl-clear { justify-content: center; }
 .app-shell.stitch-shell main .jobs-reference-page .jobs-reference-filter-toggle .psl-clear-count { margin-left: 2px; }
-.app-shell.stitch-shell main .jobs-reference-page .psl-control { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 13px; font-weight: 400; text-transform: none; }
+.app-shell.stitch-shell main .jobs-reference-page .psl-control { box-sizing: border-box; height: 36px; min-height: 0; padding: 0 12px; color: var(--rv-color-ink); background-color: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; font-size: 14px; font-weight: 500; text-transform: none; }
 .app-shell.stitch-shell main .jobs-reference-page button.psl-control { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
 .app-shell.stitch-shell main .jobs-reference-page button.psl-control:hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-soft)); }
 .app-shell.stitch-shell main .jobs-reference-page .psl-clear:disabled { color: var(--rv-color-muted); cursor: default; opacity: .55; }
