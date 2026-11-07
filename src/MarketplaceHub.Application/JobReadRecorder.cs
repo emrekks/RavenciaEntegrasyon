@@ -164,6 +164,18 @@ public static class JobReadSentence
         return $"{head}: {string.Join(", ", parts)}.";
     }
 
+    // The detail's heading for a read whose type has no text of its own, in Title Case.
+    public static string Title(string kind) => kind switch
+    {
+        "ORDER" => "Sipariş Okuma",
+        "RETURN" => "İade Talebi Okuma",
+        "QUESTION" => "Müşteri Sorusu Okuma",
+        "INVOICE" => "Paket Fatura Taraması",
+        "PRODUCT" => "Ürün Okuma",
+        "FINANCE" => "Finans Hareketi Okuma",
+        _ => "Kayıt Okuma"
+    };
+
     public static string Noun(string kind) => kind switch
     {
         "ORDER" => "sipariş",
