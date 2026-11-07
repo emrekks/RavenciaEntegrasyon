@@ -238,7 +238,7 @@ public sealed partial class InvoicingBillingService(
 
         var normalizedKey = idempotencyKey.Trim();
         if (normalizedKey.Length is < 1 or > 200)
-            return ServiceResult<Guid>.Fail("IDEMPOTENCY_KEY_INVALID", "Idempotency-Key uzunluğu geçersiz.", 400);
+            return ServiceResult<Guid>.Fail("IDEMPOTENCY_KEY_INVALID", "İstek anahtarı geçersiz; sayfayı yenileyip yeniden deneyin.", 400);
         var jobType = MarketplaceJobTypes.ForPlatform(connection.PlatformCode, MarketplaceJobTypes.OrderInvoiceReconciliation);
         var dedup = $"workspace-invoice-check:{connection.Id:N}:{order.Id:N}:{Hash(normalizedKey)}";
         var existing = await db.IntegrationJobs.AsNoTracking()
@@ -1531,9 +1531,9 @@ public sealed partial class InvoicingBillingService(
         if (await IsMarketplaceInvoiceCreationDisabledAsync(tenantId, invoice.OrderId, cancellationToken))
             return ServiceResult<Guid>.Fail(MarketplaceInvoiceCreationPolicy.DisabledErrorCode, MarketplaceInvoiceCreationPolicy.DisabledMessage, 422);
         var safeReplay = IsSafeStageReplay(invoice.Status, invoice.LastErrorCode, invoice.ExternalReference);
-        if (invoice.Status != InvoiceStatus.Ready && !safeReplay || invoice.InvoiceType != "EARSIVFATURA" || !string.IsNullOrWhiteSpace(invoice.ExternalReference)) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_INVALID", "Canary yalnız gönderilmemiş Ready taslakta veya kesin dış referanssız Stage kimlik doğrulama sonucuyla duran aynı taslakta çalışır.", 409);
+        if (invoice.Status != InvoiceStatus.Ready && !safeReplay || invoice.InvoiceType != "EARSIVFATURA" || !string.IsNullOrWhiteSpace(invoice.ExternalReference)) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_INVALID", "Bu test işlemi yalnız gönderilmemiş, hazır bir test faturasında çalışır.", 409);
         var connection = await db.PlatformConnections.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoice.ProviderConnectionId && x.PlatformCode == "TRENDYOL_EFATURAM", cancellationToken);
-        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || !string.Equals(connection.ExternalStoreId, "Ravencia - Ravencia", StringComparison.Ordinal)) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_REQUIRED", "Canary yalnız sabitlenmiş E-Faturam Stage test hesabındaki faturada çalışır.", 422);
+        if (connection is null || !string.Equals(connection.Environment, "STAGE", StringComparison.OrdinalIgnoreCase) || !string.Equals(connection.ExternalStoreId, "Ravencia - Ravencia", StringComparison.Ordinal)) return ServiceResult<Guid>.Fail("STAGE_INVOICE_FIXTURE_REQUIRED", "Bu test işlemi yalnız E-Faturam test hesabındaki faturada çalışır.", 422);
         invoice.Status = InvoiceStatus.Submitting; invoice.IssuedAt ??= timeProvider.GetUtcNow(); invoice.UpdatedAt = timeProvider.GetUtcNow(); invoice.Version++;
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "EFATURAM_STAGE_CAPABILITY_PROBE_ENQUEUED", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = safeReplay ? "no-external-reference-authentication-replay" : "auditli-stage-test-order", CorrelationId = correlationId, CreatedAt = timeProvider.GetUtcNow() });
         return await AddJob(invoice, InvoicingJobTypes.StageCapabilityProbe, idempotencyKey, correlationId, cancellationToken);

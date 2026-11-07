@@ -1,5 +1,42 @@
 import { describe, expect, it } from 'vitest'
-import { followJobOutcomes, jobOutcome, jobOutcomeFeedback, outcomeTarget, type FollowedJob, type FollowedJobDetail, type JobOutcomeFeedback } from './job-outcome'
+import { followJobOutcomes, groupedOutcomeFeedback, jobOutcome, jobOutcomeFeedback, outcomeTarget, type FollowedJob, type FollowedJobDetail, type JobOutcomeFeedback } from './job-outcome'
+
+describe('many jobs of one press (Toplu Yayın, a store-wide push)', () => {
+  const jobs: FollowedJob[] = [
+    { jobId: 'a', platformName: 'Trendyol', what: 'ürün', label: 'Elbise' },
+    { jobId: 'b', platformName: 'Trendyol', what: 'ürün', label: 'Gömlek' },
+    { jobId: 'c', platformName: 'n11', what: 'ürün', label: 'Etek' },
+    { jobId: 'd', platformName: 'n11', what: 'ürün', label: 'Ceket' }
+  ]
+  const one = (status: string, summary: string | null = null): FollowedJobDetail => ({ job: { id: 'x', status, lastErrorCode: null, lastErrorSummary: summary } })
+
+  it('counts each marketplace by outcome and names the refused records with their reasons', () => {
+    const outcomes = [
+      jobOutcome(jobs[0], one('SUCCEEDED')),
+      jobOutcome(jobs[1], one('BLOCKED', 'Desi eksik: GM-1 varyantına desi girin.')),
+      jobOutcome(jobs[2], one('SUCCEEDED')),
+      jobOutcome(jobs[3], one('LEASED'))
+    ]
+    expect(groupedOutcomeFeedback(jobs, outcomes, '2 Platforma')).toEqual({
+      title: 'Kısmen Aktarıldı', kind: 'error', settled: false,
+      lines: ['Trendyol: 1 ürün aktarıldı, 1 ürün aktarılamadı.', 'n11: 1 ürün aktarıldı, 1 ürün sürüyor.', 'Trendyol · Gömlek: Desi eksik: GM-1 varyantına desi girin.']
+    })
+  })
+
+  it('reads the jobs in one call and never calls a running batch a success', async () => {
+    const asked: string[][] = []
+    let round = 0
+    let time = 0
+    const last = await followJobOutcomes(jobs, '2 Platforma', () => undefined, {
+      now: () => (time += 1000), sleep: async () => undefined,
+      readJobs: async ids => { asked.push([...ids]); round++; return new Map(ids.map(id => [id, one(round > 1 ? 'SUCCEEDED' : 'LEASED')])) },
+      summarize: outcomes => groupedOutcomeFeedback(jobs, outcomes, '2 Platforma')
+    })
+    expect(asked[0]).toEqual(['a', 'b', 'c', 'd'])
+    expect(round).toBe(2)
+    expect(last).toMatchObject({ title: '2 Platforma Aktarıldı', kind: 'success', lines: ['Trendyol: 2 ürün aktarıldı.', 'n11: 2 ürün aktarıldı.'] })
+  })
+})
 
 const trendyol: FollowedJob = { jobId: 'j1', platformName: 'Trendyol', what: 'ürün bilgisi' }
 const detail = (status: string, extra: Partial<FollowedJobDetail['job']> = {}, items: NonNullable<FollowedJobDetail['variantResults']>['items'] = []): FollowedJobDetail => ({
@@ -23,7 +60,7 @@ describe('the result of a followed marketplace job', () => {
 
   it('names the refused variants and their reasons, and a partial result is not a success', () => {
     const outcome = jobOutcome(trendyol, detail('SUCCEEDED', {}, [variant('RYP003T-T17', 'SENT'), variant('RYP003T-T18', 'SENT'), variant('RYP003T-T20', 'APPROVED'), variant('RYP003T-T19', 'REJECTED', 'Desi eksik.')]))
-    expect(outcome).toEqual({ state: 'partial', line: 'Trendyol: 3 varyant aktarıldı, 1 varyant aktarılamadı — RYP003T-T19: Desi eksik.' })
+    expect(outcome).toMatchObject({ state: 'partial', line: 'Trendyol: 3 varyant aktarıldı, 1 varyant aktarılamadı — RYP003T-T19: Desi eksik.', reason: 'RYP003T-T19: Desi eksik' })
     expect(jobOutcomeFeedback([outcome], 'Trendyol’a')).toMatchObject({ title: 'Kısmen Aktarıldı', kind: 'error' })
   })
 
@@ -34,7 +71,7 @@ describe('the result of a followed marketplace job', () => {
 
   it('keeps a retry after an error as scheduled and an unreadable job as unknown', () => {
     const scheduled = jobOutcome(trendyol, detail('RETRY_SCHEDULED', { lastErrorSummary: 'Trendyol istek sınırına ulaşıldı.', nextRetryAt: null }))
-    expect(scheduled).toEqual({ state: 'scheduled', line: 'Trendyol: sırada — Trendyol istek sınırına ulaşıldı.' })
+    expect(scheduled).toMatchObject({ state: 'scheduled', line: 'Trendyol: sırada — Trendyol istek sınırına ulaşıldı.' })
     expect(jobOutcomeFeedback([scheduled], 'Trendyol’a')).toMatchObject({ title: 'Aktarım Sırada', kind: 'info', settled: false })
     const unknown = jobOutcome(trendyol, null)
     expect(unknown.state).toBe('unknown')

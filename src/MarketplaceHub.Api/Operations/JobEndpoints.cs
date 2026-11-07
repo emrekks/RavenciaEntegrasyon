@@ -7,11 +7,11 @@ public static class JobEndpoints
     public static IEndpointRouteBuilder MapJobEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var api = endpoints.MapGroup("/api/v1/jobs");
-        api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? platform, string? platforms) =>
+        api.MapGet("", async (HttpContext http, IJobOperationsService service, string? status, DateTimeOffset? since, string? jobTypes, int? limit, string? platform, string? platforms, string? ids) =>
             Tenant(http) is { } tenant
                 ? Results.Ok(await service.ListAsync(
                     tenant.TenantId,
-                    new JobListQuery(status, since, List(jobTypes), limit, Platforms: Platforms(platform, platforms)),
+                    new JobListQuery(status, since, List(jobTypes), limit, Platforms: Platforms(platform, platforms), Ids: Ids(ids)),
                     http.RequestAborted))
                 : Unauthorized(http));
         // Cursor-paged list for the operations page: { items, nextCursor, hasMore }; after continues a previous page.
@@ -75,6 +75,8 @@ public static class JobEndpoints
         return endpoints;
     }
 
+    // ids: a comma list of job ids; anything that is not an id is left out.
+    public static IReadOnlyList<Guid>? Ids(string? value) => List(value)?.Select(part => Guid.TryParse(part, out var id) ? id : Guid.Empty).Where(id => id != Guid.Empty).Take(JobListQuery.MaximumIds).ToArray();
     private static string[]? List(string? value) => value?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     public static IReadOnlyList<string>? Platforms(string? platform, string? platforms)
     {

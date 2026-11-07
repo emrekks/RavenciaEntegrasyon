@@ -184,10 +184,12 @@ public sealed record JobVariantResultView(string? Barcode, string? StockCode, st
 // The job list returns at most Limit of the newest matching jobs (default 200, max 1,000)
 // instead of the whole history. After is the NextCursor of the previous page (paged list only):
 // the next page continues the same CreatedAt desc, Id desc order with the same filters.
-public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null, string? After = null, IReadOnlyList<string>? Platforms = null)
+// Ids: only these jobs (at most MaximumIds), so a screen can follow the jobs it started with one read.
+public sealed record JobListQuery(string? Status = null, DateTimeOffset? Since = null, IReadOnlyList<string>? JobTypes = null, int? Limit = null, string? After = null, IReadOnlyList<string>? Platforms = null, IReadOnlyList<Guid>? Ids = null)
 {
     public const int DefaultLimit = 200;
     public const int MaximumLimit = 1_000;
+    public const int MaximumIds = 200;
     public int EffectiveLimit => Math.Clamp(Limit ?? DefaultLimit, 1, MaximumLimit);
 }
 

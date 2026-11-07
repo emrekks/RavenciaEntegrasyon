@@ -19,10 +19,10 @@ export type FollowedJobDetail = {
 }
 
 /** One job the screen follows: which marketplace and what it carries ("ürün bilgisi", "fiyat-stok", "ürün"). */
-export type FollowedJob = { jobId: string; platformName: string; what: string }
+export type FollowedJob = { jobId: string; platformName: string; what: string; /** The record it is about (a product title), for a summary of many jobs. */ label?: string }
 
 export type JobOutcomeState = 'running' | 'scheduled' | 'succeeded' | 'partial' | 'failed' | 'review' | 'cancelled' | 'unknown'
-export type JobOutcome = { state: JobOutcomeState; line: string }
+export type JobOutcome = { state: JobOutcomeState; line: string; /** Why it did not go through, for a summary of many jobs. */ reason?: string }
 
 const failedVariantStatuses = new Set(['REJECTED', 'NOT_SENT'])
 const sentVariantStatuses = new Set(['SENT', 'APPROVED', 'PENDING'])
@@ -38,7 +38,7 @@ function variantReasons(items: ReadonlyArray<{ barcode: string | null; stockCode
 }
 
 function reasonOf(job: FollowedJobDetail['job']) {
-  return job.lastErrorSummary?.trim().replace(/\.$/u, '') || (job.lastErrorCode ? `hata kodu ${job.lastErrorCode}` : 'neden bildirilmedi')
+  return job.lastErrorSummary?.trim().replace(/\.$/u, '') || 'nedeni kaydedilmedi'
 }
 
 /** The result of one job as one line of the toast, by its status and its per-variant answers. */
@@ -51,17 +51,18 @@ export function jobOutcome(followed: FollowedJob, detail: FollowedJobDetail | nu
   const refused = items.filter(item => failedVariantStatuses.has(item.status))
   const sent = items.filter(item => sentVariantStatuses.has(item.status))
   if (status === 'SUCCEEDED') {
-    if (refused.length && sent.length) return { state: 'partial', line: `${name}: ${sent.length} varyant aktarıldı, ${refused.length} varyant aktarılamadı — ${variantReasons(refused)}.` }
-    if (refused.length) return { state: 'failed', line: `${name}: aktarılamadı — ${variantReasons(refused)}.` }
+    if (refused.length && sent.length) return { state: 'partial', line: `${name}: ${sent.length} varyant aktarıldı, ${refused.length} varyant aktarılamadı — ${variantReasons(refused)}.`, reason: variantReasons(refused) }
+    if (refused.length) return { state: 'failed', line: `${name}: aktarılamadı — ${variantReasons(refused)}.`, reason: variantReasons(refused) }
     return { state: 'succeeded', line: `${name}: ${followed.what} aktarıldı.` }
   }
-  if (status === 'MANUAL_REVIEW') return { state: 'review', line: `${name}: inceleme bekliyor — ${refused.length ? variantReasons(refused) : reasonOf(job)}.` }
-  if (status === 'BLOCKED' || status === 'DEAD') return { state: 'failed', line: `${name}: aktarılamadı — ${refused.length ? variantReasons(refused) : reasonOf(job)}.` }
+  const why = refused.length ? variantReasons(refused) : reasonOf(job)
+  if (status === 'MANUAL_REVIEW') return { state: 'review', line: `${name}: inceleme bekliyor — ${why}.`, reason: why }
+  if (status === 'BLOCKED' || status === 'DEAD') return { state: 'failed', line: `${name}: aktarılamadı — ${why}.`, reason: why }
   if (status === 'CANCELLED') return { state: 'cancelled', line: `${name}: aktarım durduruldu; ${followed.what} gönderilmedi.` }
   // A retry after an error (a quota wait, a busy marketplace) is scheduled for later, not done.
   if (status === 'RETRY_SCHEDULED' && !job.waiting && job.lastErrorSummary) {
     const at = job.nextRetryAt ? new Date(job.nextRetryAt).toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' }) : null
-    return { state: 'scheduled', line: `${name}: sırada — ${reasonOf(job)}${at ? `; ${at}'de yeniden denenecek` : ''}.` }
+    return { state: 'scheduled', line: `${name}: sırada — ${reasonOf(job)}${at ? `; ${at}'de yeniden denenecek` : ''}.`, reason: reasonOf(job) }
   }
   return { state: 'running', line: `${name}: ${followed.what} aktarımı sürüyor; sonuç gelince bildirilecek.` }
 }
@@ -109,6 +110,10 @@ function dative(name: string) {
 export type FollowOptions = {
   /** Read one job; the default reads /jobs/{id}. A failed read counts as not known yet. */
   readJob?: (jobId: string) => Promise<FollowedJobDetail>
+  /** Read many jobs at once (by id); the default reads /jobs?ids=… in parts of 200 when more than three are followed. */
+  readJobs?: (jobIds: readonly string[]) => Promise<ReadonlyMap<string, FollowedJobDetail>>
+  /** The toast for the outcomes; the default has one line per job, groupedOutcomeFeedback one per marketplace. */
+  summarize?: (outcomes: readonly JobOutcome[]) => JobOutcomeFeedback
   /** How long the screen waits for the result before saying the transfer is still running. */
   shortWaitMs?: number
   /** How long the result is still followed after that, more slowly. */
@@ -122,12 +127,25 @@ export type FollowOptions = {
 const defaultSleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 const defaultRead = (jobId: string) => hubPoll<FollowedJobDetail>(`/jobs/${jobId}`)
 
+/** Many jobs in one read per 200: the list API answers with the jobs' summaries (no per-variant answers). */
+export async function readJobsByIds(jobIds: readonly string[]) {
+  const found = new Map<string, FollowedJobDetail>()
+  for (let start = 0; start < jobIds.length; start += 200) {
+    const part = jobIds.slice(start, start + 200)
+    const rows = await hubPoll<Array<FollowedJobDetail['job']>>(`/jobs?ids=${part.join(',')}&limit=200`)
+    for (const row of rows) found.set(row.id, { job: row })
+  }
+  return found
+}
+
 /**
  * Follows the jobs until all have settled. onUpdate gets the feedback once after the short wait if they still run
  * (interim: true), and once at the end (interim: false) — the settled result, or after the long wait what is known.
  */
 export async function followJobOutcomes(jobs: readonly FollowedJob[], target: string, onUpdate: (feedback: JobOutcomeFeedback, interim: boolean) => void, options: FollowOptions = {}) {
   const read = options.readJob ?? defaultRead
+  const readMany = options.readJobs ?? (jobs.length > 3 && !options.readJob ? readJobsByIds : null)
+  const summarize = options.summarize ?? ((outcomes: readonly JobOutcome[]) => jobOutcomeFeedback(outcomes, target))
   const sleep = options.sleep ?? defaultSleep
   const now = options.now ?? Date.now
   const shortWaitMs = options.shortWaitMs ?? 25_000
@@ -136,18 +154,46 @@ export async function followJobOutcomes(jobs: readonly FollowedJob[], target: st
   let interimShown = false
   let outcomes: JobOutcome[] = []
   for (;;) {
-    outcomes = await Promise.all(jobs.map(job => read(job.jobId).then(detail => jobOutcome(job, detail), () => jobOutcome(job, null))))
-    const feedback = jobOutcomeFeedback(outcomes, target)
+    if (readMany) {
+      const details = await readMany(jobs.map(job => job.jobId)).catch(() => new Map<string, FollowedJobDetail>())
+      outcomes = jobs.map(job => jobOutcome(job, details.get(job.jobId)))
+    } else {
+      outcomes = await Promise.all(jobs.map(job => read(job.jobId).then(detail => jobOutcome(job, detail), () => jobOutcome(job, null))))
+    }
+    const feedback = summarize(outcomes)
     const elapsed = now() - started
     if (feedback.settled) { onUpdate(feedback, false); return feedback }
     if (elapsed >= shortWaitMs + longWaitMs) {
       // Unknown stays unknown: what is still open is said to be open, never done.
       const open = outcomes.map(outcome => isSettledOutcome(outcome) ? outcome : { state: 'unknown' as const, line: outcome.line.replace(/aktarımı sürüyor; sonuç gelince bildirilecek\./u, "sonucu henüz bilinmiyor; İşlem Takibi'nden ya da ürün kartından kontrol edin.") })
-      const last = jobOutcomeFeedback(open, target)
+      const last = summarize(open)
       onUpdate(last, false)
       return last
     }
     if (!interimShown && elapsed >= shortWaitMs) { interimShown = true; onUpdate(feedback, true) }
     await sleep(elapsed >= shortWaitMs ? options.slowPollMs ?? 15_000 : options.pollMs ?? 1_500)
   }
+}
+
+const outcomeWords: Record<JobOutcomeState, string> = { succeeded: 'aktarıldı', partial: 'kısmen aktarıldı', failed: 'aktarılamadı', review: 'inceleme bekliyor', cancelled: 'durduruldu', scheduled: 'sırada', running: 'sürüyor', unknown: 'sonucu bilinmiyor' }
+const outcomeOrder: JobOutcomeState[] = ['succeeded', 'partial', 'failed', 'review', 'scheduled', 'running', 'unknown', 'cancelled']
+
+/**
+ * The toast for many jobs (Toplu Yayın, a store-wide push): one line per marketplace with how many ended which way,
+ * then the first refusals by record and reason. Titled like jobOutcomeFeedback, by the worst outcome.
+ */
+export function groupedOutcomeFeedback(jobs: readonly FollowedJob[], outcomes: readonly JobOutcome[], target: string, noun = 'ürün'): JobOutcomeFeedback {
+  const base = jobOutcomeFeedback(outcomes, target)
+  const byPlatform = new Map<string, Map<JobOutcomeState, number>>()
+  outcomes.forEach((outcome, index) => {
+    const name = jobs[index]?.platformName ?? 'Pazaryeri'
+    const counts = byPlatform.get(name) ?? new Map<JobOutcomeState, number>()
+    counts.set(outcome.state, (counts.get(outcome.state) ?? 0) + 1)
+    byPlatform.set(name, counts)
+  })
+  const lines = [...byPlatform].map(([name, counts]) => `${name}: ${outcomeOrder.filter(state => counts.get(state)).map(state => `${counts.get(state)} ${noun} ${outcomeWords[state]}`).join(', ')}.`)
+  const problems = outcomes.flatMap((outcome, index) => outcome.reason && outcome.state !== 'scheduled' ? [`${jobs[index]?.platformName ?? 'Pazaryeri'} · ${jobs[index]?.label ?? noun}: ${outcome.reason}.`] : [])
+  lines.push(...problems.slice(0, 5))
+  if (problems.length > 5) lines.push(`${problems.length - 5} sorun daha var; İşlem Takibi'nde listelenir.`)
+  return { ...base, lines }
 }

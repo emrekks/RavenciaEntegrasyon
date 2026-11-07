@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { hubApi } from '../../../shared/api'
 import { DialogSurface, TitleHint, UiIcon } from '../../../shared/components'
 import { newIdempotencyKey } from '../../../shared/idempotency'
+import { followJobOutcomes, groupedOutcomeFeedback, outcomeTarget, type FollowedJob } from '../../../shared/job-outcome'
 import type { NotificationDetail } from '../../../shared/notifications'
 import { platformLogoClass, platformLogoSource } from '../../../shared/platform-logos'
 import type { MarketplaceConnection, Product } from '../shared'
@@ -19,7 +20,7 @@ import './bulk-publish-model-tip.css'
 import '../product-editor/product-editor-design-system.css'
 import '../product-editor/product-editor-hydration.css'
 
-export type BulkPublishNotice = { title: string; message: string; kind: 'success' | 'error' | 'info'; details?: NotificationDetail[] }
+export type BulkPublishNotice = { title: string; message: string; kind: 'success' | 'error' | 'info'; details?: NotificationDetail[]; lines?: string[]; persistent?: boolean }
 
 const emptyResult: BulkPublicationResult = { queued: 0, skipped: 0, failed: [] }
 
@@ -117,12 +118,27 @@ export function BulkPublishDialog({ productIds, cardCount, connections, products
     await Promise.all([client.invalidateQueries({ queryKey: ['products'] }), client.invalidateQueries({ queryKey: ['publication-status'] })])
     const refused = sent.failed.length > 0
     onDone({
-      title: interrupted ? 'Toplu Yayın Yarıda Kesildi' : !refused ? 'Toplu Yayın Kuyruğa Alındı' : sent.queued ? 'Toplu Yayın Kısmen Gönderildi' : 'Toplu Yayın Gönderilemedi',
+      title: interrupted ? 'Toplu Yayın Yarıda Kesildi' : !refused ? 'Toplu Aktarım Başladı' : sent.queued ? 'Toplu Aktarım Kısmen Başladı' : 'Toplu Yayın Gönderilemedi',
       message: bulkPublishResultMessage(sent, interrupted),
       // Queued is not done (the cards show each result); a refusal next to queued cards is still a refusal.
       kind: interrupted || refused ? 'error' : 'info',
       details: refused ? bulkPublishFailureDetails(sent.failed, connections, knownRecords) : undefined
     })
+    // The queued cards are followed to their result (aktarıldı / aktarılamadı with the reason), which reaches the
+    // notification center even after this popup is closed; nothing reads as published before the jobs say so.
+    const followed: FollowedJob[] = (sent.jobs ?? []).map(job => ({
+      jobId: job.jobId,
+      platformName: bulkPublishPlatformName(connections.find(connection => connection.id === job.connectionId)?.platformCode ?? ''),
+      what: 'ürün',
+      label: knownRecords.find(record => record.id === job.productId)?.title
+    }))
+    if (followed.length) {
+      const target = outcomeTarget(followed)
+      void followJobOutcomes(followed, target, outcome => onDone({ title: outcome.title, message: outcome.lines.join(' '), lines: outcome.lines, kind: outcome.kind, persistent: outcome.kind === 'error' }), {
+        summarize: outcomes => groupedOutcomeFeedback(followed, outcomes, target),
+        pollMs: 5_000
+      })
+    }
   }
 
   const selectedCount = connectionIds.length

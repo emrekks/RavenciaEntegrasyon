@@ -71,6 +71,13 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             var types = jobTypes.Select(type => type.Trim().ToUpperInvariant()).Where(type => type.Length > 0).Distinct().ToArray();
             query = query.Where(x => types.Contains(x.JobType));
         }
+        if (listQuery.Ids is { } ids)
+        {
+            // Ids asked for but none readable: nothing matches (never the whole list).
+            if (ids.Count == 0) return null;
+            var wanted = ids.Distinct().Take(JobListQuery.MaximumIds).ToArray();
+            query = query.Where(x => wanted.Contains(x.Id));
+        }
         return OfPlatforms(query, tenantId, listQuery.Platforms);
     }
 
@@ -194,23 +201,23 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     {
         var job = await db.IntegrationJobs.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
         return job is null
-            ? ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404)
+            ? ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "İşlem kaydı bulunamadı; silinmiş ya da kapatılmış olabilir.", 404)
             : ServiceResult<JobDetailView>.Ok(await DetailAsync(job, cancellationToken));
     }
 
     public async Task<ServiceResult<JobDetailView>> RetryAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
-        if (job is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
+        if (job is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "İşlem kaydı bulunamadı; silinmiş ya da kapatılmış olabilir.", 404);
         if (job.Status is JobStatus.Leased or JobStatus.Pending or JobStatus.RetryScheduled or JobStatus.Succeeded or JobStatus.Cancelled)
-            return ServiceResult<JobDetailView>.Fail("JOB_NOT_RETRYABLE", "Bu job mevcut durumunda manuel yeniden deneme kabul etmiyor.", 409);
+            return ServiceResult<JobDetailView>.Fail("JOB_NOT_RETRYABLE", "Bu işlem şu anki durumunda yeniden denenemez.", 409);
 
         var now = timeProvider.GetUtcNow();
         if (job.JobType == InvoicingJobTypes.InvoiceSubmit)
         {
             var invoiceId = PayloadGuid(job.PayloadJson, "invoiceId");
             if (invoiceId is null)
-                return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Fatura gönderim job'unda geçerli bir fatura kimliği bulunamadı.", 409);
+                return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Bu gönderim işinde geçerli bir fatura bulunamadı; faturayı Faturalar ekranından yeniden gönderin.", 409);
             var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoiceId.Value, cancellationToken);
             if (invoice is null)
                 return ServiceResult<JobDetailView>.Fail("INVOICE_NOT_FOUND", "Yeniden denenecek fatura kaydı bulunamadı.", 404);
@@ -248,7 +255,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
 
         var sourceJob = await db.IntegrationJobs.AsNoTracking()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
-        if (sourceJob is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
+        if (sourceJob is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "İşlem kaydı bulunamadı; silinmiş ya da kapatılmış olabilir.", 404);
         var hasPriorNoWriteAttempt = sourceJob.LastErrorCode == OneTimeInvoiceDeliveryPolicy.PriorNoWriteFailureCode
             || await db.JobAttempts.AsNoTracking().AnyAsync(x =>
                 x.TenantId == tenantId
@@ -262,7 +269,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
             return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_SOURCE_NOT_SAFE", "Bu sipariş için dış çağrı yapılmadan oluştuğu doğrulanmış bir fatura iletim engeli bulunamadı.", 409);
 
         var invoiceId = PayloadGuid(sourceJob.PayloadJson, "invoiceId");
-        if (invoiceId is null) return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Fatura iletim job'unda geçerli bir fatura kimliği bulunamadı.", 409);
+        if (invoiceId is null) return ServiceResult<JobDetailView>.Fail("INVOICE_JOB_PAYLOAD_INVALID", "Bu iletim işinde geçerli bir fatura bulunamadı; faturayı Faturalar ekranından yeniden iletin.", 409);
         var invoice = await db.Invoices.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == invoiceId.Value, cancellationToken);
         if (invoice is null) return ServiceResult<JobDetailView>.Fail("INVOICE_NOT_FOUND", "İletilecek fatura kaydı bulunamadı.", 404);
         if (!InvoiceMarketplaceRetryPolicy.CanRetryDelivery(invoice.Status, invoice.LastErrorCode)
@@ -278,7 +285,7 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
         if (package is null
             || sourceJob.ConnectionId != package.ConnectionId
             || string.IsNullOrWhiteSpace(package.ExternalPackageId))
-            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PACKAGE_MISMATCH", "Fatura ve başarısız Hepsiburada teslim job'ı aynı sipariş paketini göstermiyor.", 409);
+            return ServiceResult<JobDetailView>.Fail("ONE_TIME_INVOICE_PACKAGE_MISMATCH", "Fatura ile başarısız Hepsiburada iletimi aynı sipariş paketine ait değil; yeniden gönderilmedi.", 409);
 
         var order = await db.Orders.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.Id == invoice.OrderId)
@@ -376,9 +383,9 @@ public sealed class JobOperationsService(AppDbContext db, TimeProvider timeProvi
     public async Task<ServiceResult<JobDetailView>> CancelAsync(Guid tenantId, Guid jobId, CancellationToken cancellationToken)
     {
         var job = await db.IntegrationJobs.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == jobId, cancellationToken);
-        if (job is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "Job bulunamadı.", 404);
+        if (job is null) return ServiceResult<JobDetailView>.Fail("JOB_NOT_FOUND", "İşlem kaydı bulunamadı; silinmiş ya da kapatılmış olabilir.", 404);
         if (job.Status is JobStatus.Succeeded or JobStatus.Dead or JobStatus.Cancelled)
-            return ServiceResult<JobDetailView>.Fail("JOB_TERMINAL", "Terminal durumdaki job iptal edilemez.", 409);
+            return ServiceResult<JobDetailView>.Fail("JOB_TERMINAL", "Bitmiş bir işlem iptal edilemez.", 409);
 
         var now = timeProvider.GetUtcNow();
         var wasLeased = job.Status == JobStatus.Leased;
