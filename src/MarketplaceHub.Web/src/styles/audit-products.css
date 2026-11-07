@@ -14,6 +14,51 @@
   :root:root:root body .app-shell.stitch-shell main .product-top-layout > .product-top-sidebar { align-self: start; align-content: start; }
 }
 
+/* Variant table header menus (Panodan Barkod, Barkoddan Doldur): the shared rr-pop shell (padding 6, strong border,
+   the menu shadow) and 36 px action rows at weight 500 (they were 8 px, a faint border and 30 px / 600 rows). */
+:root:root:root body .variant-header-action-menu.variant-header-action-menu-portal { padding: 6px; border-color: var(--rv-color-border-strong); box-shadow: var(--rv-menu-shadow); }
+:root:root:root body .variant-header-action-menu.variant-header-action-menu-portal .variant-header-action-menu-group > button { min-height: 36px; font-weight: 500; }
+
+/* Toplu değişiklik window: its Eşitle / Arttır / Azalt segments are 32 px at 12.5px/500 like every other segment. */
+:root:root:root body .variant-bulk-modes > button { height: 32px; min-height: 0; font-size: 12.5px; font-weight: 500; }
+
+/* Ürünler list: Platform Durumu is wide enough for its six marks on one line (a 16 % column was 170 px for 186 px of
+   icons at 1280 px), taking the width from the product column. */
+@media (min-width: 1025px) {
+  :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-pd { width: 25%; }
+  :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl col.rr-c-pl { width: 18%; }
+  :root:root:root body :is(main .rr.rr-products, .rr-layer.rr-layer) .rr-ptbl .rr-pmarks { flex-wrap: nowrap; }
+}
+
+/* Ürün Düzenleyici variant table: Liste Fiyatı (heading, pencil and bulk icon) was 96 px and wrapped to two lines while
+   Seçenek and Barkod had room; every heading stays on one line and the table fits at 1280 px without sideways scroll. */
+@media (min-width: 1201px) {
+  :root:root:root body .variant-table-editor :is(.variant-table-head, .variant-table-row) { min-width: 1100px; grid-template-columns: 42px minmax(140px, 1.1fr) minmax(112px, .9fr) minmax(112px, .9fr) 84px 110px 110px 126px 178px; }
+  :root:root:root body .variant-table-editor .variant-table-head > * > span { white-space: nowrap; }
+}
+
+/* İçe / Dışa Aktar window: the field groups are two per row, so "Ürün Bilgileri" shows its three checkboxes on one line. */
+:root:root:root body .pci-modal .pci-groups { grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); }
+:root:root:root body .pci-modal .pci-group .pci-field-list { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+
+/* Promosyon plan table: the product column was 176 px (name on 5 lines, code on 2) and Güncel Fiyat 88 px (a price range
+   on 2 lines) while the band columns took all the extra width. Where the table has room (a window of 1400 px and up) the
+   product column is 220 px (260 px from 1700) and Güncel Fiyat 136 px with the range on one line. */
+@media (min-width: 1400px) {
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { width: 220px; min-width: 220px; max-width: 220px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) .commission-now-col { width: 136px; min-width: 136px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-now-col .commission-price { white-space: nowrap; }
+}
+@media (min-width: 1700px) {
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan:not(.promotion-table) tbody th { width: 260px; min-width: 260px; max-width: 260px; }
+  :root:root:root body .app-shell.stitch-shell main .commission-tariffs .commission-table.is-plan .commission-choice > small { white-space: nowrap; }
+}
+
+/* Category attribute dropdowns open exactly as wide as their bar (they were a fixed 320 px under a 400 px bar). */
+@media (min-width: 761px) {
+  :root:root:root body .app-shell.stitch-shell main .category-attribute-dropdown > .category-attribute-dropdown-menu { width: 100%; min-width: 200px; max-width: calc(100vw - 32px); }
+}
+
 :root:root body .date-range-picker-popover > header > button {
   box-sizing: border-box; display: inline-grid; place-items: center; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0;
   color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
