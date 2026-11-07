@@ -24,6 +24,8 @@ export type DayPoint = { day: string; label?: string; amount: number; orderCount
 // The ready periods are the shared date presets (shared/date-range.ts, the Raporlar list) plus a picked range.
 export type Range = 'today' | 'yesterday' | 'week' | 'lastWeek' | 'month' | 'lastMonth' | '30' | 'year' | 'custom'
 export const presetLabels: Record<Exclude<Range, 'custom'>, string> = { today: 'Bugün', yesterday: 'Dün', week: 'Bu Hafta', lastWeek: 'Geçen Hafta', month: 'Bu Ay', lastMonth: 'Geçen Ay', '30': 'Son 30 Gün', year: 'Bu Yıl' }
+// The buttons' order (an object lists its numeric key first).
+export const presetOrder = ['today', 'yesterday', 'week', 'lastWeek', 'month', 'lastMonth', '30', 'year'] as const satisfies ReadonlyArray<Exclude<Range, 'custom'>>
 
 const dayPattern = /^\d{4}-\d{2}-\d{2}$/
 

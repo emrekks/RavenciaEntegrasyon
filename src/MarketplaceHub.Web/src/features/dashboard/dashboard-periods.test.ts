@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { axisLabel, matrixCellText } from './DashboardPage'
-import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, presetLabels, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
+import { addDays, channelTotals, dayKeys, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, presetLabels, presetOrder, primaryCurrency, revenueReport, type Performance, type PerformanceRow } from './dashboard-performance'
 
 const row = (day: string, connectionId: string, amount: number, extra: Partial<PerformanceRow> = {}): PerformanceRow =>
   ({ day, connectionId, currency: 'TRY', amount, orderCount: 1, productQuantity: 2, packageCount: 1, returnedAmount: 0, returnedOrderCount: 0, ...extra })
@@ -28,6 +28,7 @@ describe('dashboard periods', () => {
     expect(periodDays('month', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-10-01', to: '2026-10-20' })
     expect(periodDays('lastMonth', { from: '', to: '' }, '2026-03-05')).toEqual({ from: '2026-02-01', to: '2026-02-28' })
     expect(periodDays('year', { from: '', to: '' }, '2026-10-20')).toEqual({ from: '2026-01-01', to: '2026-10-20' })
+    expect(presetOrder.map(key => presetLabels[key])).toEqual(['Bugün', 'Dün', 'Bu Hafta', 'Geçen Hafta', 'Bu Ay', 'Geçen Ay', 'Son 30 Gün', 'Bu Yıl'])
     // Every ready period is a range the server takes (at most 366 days, never in the future).
     for (const range of Object.keys(presetLabels) as Array<keyof typeof presetLabels>) {
       const days = periodDays(range, { from: '', to: '' }, '2026-12-31')!
