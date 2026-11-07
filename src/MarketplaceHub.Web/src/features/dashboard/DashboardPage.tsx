@@ -13,7 +13,7 @@ import { RrIcon, RrLogo } from '../marketplace/returns-ui'
 import './dashboard-sade.css'
 import { formatIstanbul, istanbulDateKey } from '../../shared/format-date'
 import { formatMoney } from '../../shared/format-money'
-import { periodTrend as trend, channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, presetLabels, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
+import { periodTrend as trend, channelTotals, daySeries, hourSeries, istanbulHour, otherCurrencies, periodDays, periodFigures, presetLabels, presetOrder, primaryCurrency, revenueReport, type DashboardChannel, type DayPoint, type Performance, type Range } from './dashboard-performance'
 import { smoothPath } from './smooth-path'
 import { IntegrationStatusPanel, knownCount, useIntegrationHealth, type DashboardMetrics } from './IntegrationStatusPanel'
 
@@ -25,7 +25,7 @@ type CancellationRow = { connectionId: string; cancelledOrders: number; partialO
 type BreakdownRow = { key: string; code: string; name: string; value: string }
 type ProductSummary = { totalCount: number; activeCount: number; outOfStockCount: number; lowStockCount: number }
 
-const PERIODS: Array<[Range, string]> = [...(Object.entries(presetLabels) as Array<[Exclude<Range, 'custom'>, string]>), ['custom', 'Özel Tarih']]
+const PERIODS: Array<[Range, string]> = [...presetOrder.map(key => [key, presetLabels[key]] as [Range, string]), ['custom', 'Özel Tarih']]
 const periodLabel = (range: Range) => PERIODS.find(([value]) => value === range)?.[1] ?? ''
 const PLATFORMS: Array<[string, string, string]> = [['TRENDYOL', 'Trendyol', '#f27a1a'], ['HEPSIBURADA', 'Hepsiburada', '#f5b301'], ['N11', 'N11', '#7c5cff'], ['PAZARAMA', 'Pazarama', '#2f9bd8'], ['PTTAVM', 'PttAVM', '#1f3a8a'], ['SHOPIFY', 'Shopify', '#5e8e3e']]
 const platformColor = (code: string, index: number) => PLATFORMS.find(([value]) => value === code.toUpperCase())?.[2] ?? ['#9b7aff', '#59d6bd', '#79a4ff', '#f0b15a'][index % 4]
@@ -183,7 +183,7 @@ export function DashboardPage() {
   const performanceReady = performance.isSuccess
   useEffect(() => {
     if (!performanceReady) return
-    for (const other of Object.keys(presetLabels) as Array<Exclude<Range, 'custom'>>) {
+    for (const other of presetOrder) {
       const span = periodDays(other, custom, today)
       if (span) void queryClient.prefetchQuery({ queryKey: ['dashboard', 'performance', span.from, span.to], queryFn: () => hubApi<Performance>(`/dashboard/performance?from=${span.from}&to=${span.to}`, poll), staleTime: 60_000 })
     }
