@@ -57,13 +57,13 @@ html body .app-shell.stitch-shell :is(.reference-menu-popover > :is(a, button), 
 /* ---------- selected marks ---------- */
 .pm-mark-radio, .pm-mark-check { position: relative; flex: 0 0 16px; box-sizing: border-box; width: 16px; height: 16px; border: 1.5px solid var(--rv-color-border-strong); }
 .pm-mark-radio { border-radius: 50%; }
-.pm-mark-check { border-width: 1px; border-radius: 4px; background: var(--rv-color-surface); }
+.pm-mark-check { border-width: 1px; border-radius: 50%; background: var(--rv-color-surface); }
 :is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-radio { border-color: var(--rv-color-primary); }
 :is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-radio::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--rv-color-primary); }
 :is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-check { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
 :is(.active, .is-on, [aria-selected="true"], [aria-checked="true"]) > .pm-mark-check::after { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid #fff; border-width: 0 1.8px 1.8px 0; transform: rotate(45deg); }
 
-/* The checkbox: square 16px, radius 4, purple with a white tick (rr-cb, ss-cb and native boxes alike). */
+/* The checkbox: round 16px (owner, 8 Nov 2026: "yuvarlak olmalı her yerde"), purple with a white tick (rr-cb, ss-cb and native boxes alike). */
 html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch, .integration-write-toggle > input, .sync-policy-card-switch > input, .marketplace-pricing-switch > input) {
   position: relative;
   box-sizing: border-box;
@@ -78,7 +78,7 @@ html body input[type="checkbox"]:not([role="switch"], .cs-switch, .rr-qt-switch,
   -webkit-appearance: none;
   background: var(--rv-color-surface) !important;
   border: 1px solid var(--rv-color-border-strong) !important;
-  border-radius: 4px !important;
+  border-radius: 50% !important;
   box-shadow: none;
   cursor: pointer;
   vertical-align: middle;
