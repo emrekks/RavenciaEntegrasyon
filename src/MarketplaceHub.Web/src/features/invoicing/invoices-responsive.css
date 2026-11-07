@@ -140,7 +140,6 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-workspace > header { padding: 4px 2px 12px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-shipment { justify-content: flex-start; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-status { justify-content: flex-end; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .invoice-reference-select { width: 20px; height: 20px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row .order-number-copy { width: 36px; height: 36px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-buyer small,
   .app-shell.stitch-shell main .invoices-page .invoice-reference-amount small { font-size: 13px; }
@@ -151,24 +150,6 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row :is(.invoice-reference-shipment, .invoice-reference-status) > * { margin: 0; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row .cargo-provider-display { flex: 0 0 auto; width: auto; max-width: none; }
 }
-/* Phone invoice card laid out like the order card: number and date stacked on the left, platform
-   logo and the selection checkbox together on the right, then buyer and amount, shipping, status. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 2px 10px;
-    padding: 12px 12px 8px;
-  }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) { grid-column: 1; grid-row: 1; display: grid; gap: 2px; min-width: 0; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small { font-size: 12px; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .order-reference-platform { grid-column: 2; grid-row: 1; justify-self: end; line-height: 0; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .invoice-reference-select { grid-column: 3; grid-row: 1; justify-self: end; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-row .order-platform-logo { max-width: 72px; height: 18px; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > :is(.invoice-reference-buyer, .invoice-reference-amount) { padding-top: 4px; }
-}
-
 /* Phone invoices, one tidy control area: search, sort and filter in the framed bar; page size and
    the sort field live in the sheets; the heading collapses to a result count and a select-all row. */
 @media (max-width: 760px) {
@@ -192,61 +173,17 @@
   .app-shell.stitch-shell main .invoices-page .invoice-reference-products small { font-size: 13px; font-family: var(--rv-font-mono); letter-spacing: .01em; }
 }
 
-/* Invoice card header in the same layout: [checkbox][logo] at the left, the order number at the
-   right; customer name left, date under the number, amount under the date. Phones only. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      "select logo number"
-      "buyer buyer date"
-      "buyer buyer amount"
-      "cargo cargo cargo"
-      "shipment shipment status"
-      "actions actions actions";
-    column-gap: 10px;
-  }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order,
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) { display: contents; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .invoice-reference-select { grid-area: select; align-self: center; margin: 12px 0 0 12px; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .order-reference-platform { grid-area: logo; justify-self: start; align-self: center; margin-top: 12px; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .order-platform-logo { max-width: 96px; height: 24px; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .invoice-order-number { grid-area: number; justify-self: end; align-self: center; margin: 12px 12px 0 0; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { grid-area: date; justify-self: end; margin: 0 12px 0 0; font-size: 12px; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:nth-of-type(n+2) { display: none; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-buyer { grid-area: buyer; align-self: start; padding: 4px 0 10px 12px; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { grid-area: amount; justify-self: end; padding: 0 12px 10px 0; }
-}
-
-/* Date on the first row, order number on the second (swapped). */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row {
-    grid-template-areas:
-      "select logo date"
-      "buyer buyer number"
-      "buyer buyer amount"
-      "cargo cargo cargo"
-      "shipment shipment status"
-      "actions actions actions";
-  }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .invoice-order-number { margin: 0 12px 0 0; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { margin: 12px 12px 0 0; }
-}
-
 /* Invoices follow the orders pattern on phones: no "select all" row; the round dot left of the logo starts
    selection mode (tinted cards), a bottom bar offers İptal / count / Tümünü Seç, tapping a card
    opens its detail and tapping the number copies it. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-head { display: none; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .invoice-reference-select { display: none; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row.is-selected {
     background: color-mix(in srgb, var(--rv-color-primary) 16%, var(--rv-color-surface));
     border-color: var(--rv-color-primary);
     box-shadow: 0 0 0 1px var(--rv-color-primary);
   }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .order-number-copy { width: 0; min-width: 0; margin: 0; padding: 0; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .order-number-copy > .ui-icon { display: none; }
   .app-shell.stitch-shell main .invoices-page .invoice-selection-bar {
     position: fixed; right: 0; bottom: 0; left: 0; z-index: calc(var(--rv-z-modal, 1000) - 1);
     display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px;
@@ -271,19 +208,6 @@
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row { column-gap: 0; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > :is(.invoice-reference-products, .invoice-reference-shipment, .invoice-reference-status, .invoice-reference-actions) { border-top: 1px solid var(--rv-color-border); }
-}
-
-/* Invoice card header: the cell already has 12px side padding, so no extra right margin — number,
-   date and amount share the same right edge. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .invoice-order-number { margin-right: 0; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > div:not(.order-reference-platform) > small:first-of-type { margin-right: 0; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { padding-right: 12px; }
-}
-
-/* Invoice card header: the logo starts on the same left edge as the customer name below it. */
-@media (max-width: 760px) {
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order > .order-reference-platform { margin: 12px 0 0 12px; align-self: center; }
 }
 
 /* Invoice detail: "Platformdan Bilgileri Güncelle" looks like a button (framed, with a refresh icon). */
@@ -435,12 +359,10 @@
 .app-shell.stitch-shell main .reference-invoices-page { grid-template-columns: minmax(0, 1fr); }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-filter-shell { grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .app-shell.stitch-shell main .reference-invoices-page .invoice-reference-tabs { min-width: 0; max-width: 100%; }
-/* Phones: the amount's label on top, level with the invoice state's text, and the amount under it; the order number
-   level with the marketplace's name (Trendyol's ".com" sits above the name, so the logo's middle is too high). */
+/* Phones: the amount's label on top, level with the invoice state's text, and the amount under it. */
 @media (max-width: 760px) {
   .app-shell.stitch-shell main .invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-amount { align-content: start; gap: 2px; padding-top: 14px; }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-amount > small { order: -1; }
-  .app-shell.stitch-shell main .invoices-page .invoice-reference-order .invoice-order-number { align-self: end; translate: 0 3px; }
 }
 /* The product summary is a button: it opens the package's products on a click and shows that it can be tapped. */
 .app-shell.stitch-shell main .invoices-page .invoice-reference-product-summary { display: inline-flex; align-items: center; gap: 3px; min-height: 0; height: auto; margin: 0; padding: 1px 6px; color: var(--rv-color-primary); font: inherit; text-transform: none; background: color-mix(in srgb, var(--rv-color-primary) 8%, transparent); border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
@@ -451,8 +373,13 @@
 /* Phones: the card is picked with a round dot left of the platform logo, as on Siparişler (owner, 5 Nov 2026); holding
    the card no longer starts selection. */
 @media (max-width: 760px) {
-  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order { grid-template-columns: auto auto minmax(0, 1fr) !important; }
-  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > .invoice-reference-select { display: inline-block !important; position: relative !important; align-self: center; width: 20px; min-width: 20px; height: 20px; min-height: 20px; border-radius: 50%; }
+  /* Header row: [dot 20px][logo][number + copy] vertically centred on one line, the date on the second row. The desktop
+     checkbox is absolutely placed (left/top insets); the dot here sits in its own grid column, so the insets are reset. */
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order { grid-template-columns: 20px auto minmax(0, 1fr) !important; align-items: center; column-gap: 10px; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > .invoice-reference-select { display: inline-block !important; position: relative !important; inset: auto !important; margin: 0 !important; transform: none !important; align-self: center; width: 20px; min-width: 20px; height: 20px; min-height: 20px; border-radius: 50%; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .invoice-order-number { align-self: center; justify-self: start; min-width: 0; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .invoice-order-number > .order-number-copy { display: inline-grid; flex: none; width: 22px; min-width: 22px; height: 22px; min-height: 22px; margin: 0; padding: 0; }
+  .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order .invoice-order-number > .order-number-copy > .ui-icon { display: block; width: 14px; height: 14px; }
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > .invoice-reference-select:checked { background: var(--rv-color-primary); border-color: var(--rv-color-primary); }
   .app-shell.stitch-shell main .invoices-page .invoice-reference-row { -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
   .app-shell.stitch-shell main .invoices-page.invoices-page.invoices-page .invoice-reference-table > .invoice-reference-row > .invoice-reference-order > .invoice-reference-select:checked::after { left: 6.5px; top: 3px; width: 4.5px; height: 9px; border-color: #fff; opacity: 1; }
