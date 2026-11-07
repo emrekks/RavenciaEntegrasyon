@@ -544,6 +544,65 @@ public sealed class PostgreSqlInvoicingAuditTests(PostgreSqlTenantIsolationFixtu
         }
     }
 
+    // Owner decision 7 Nov 2026 (live: eleven delivery jobs of a cancelled invoice in review since 13 Oct): a stopped
+    // delivery job of an invoice cancelled for good closes; one of an invoice whose cancellation is pending, or of a live
+    // invoice, stays for the owner.
+    [PostgreSqlFact]
+    public async Task DueScan_ClosesStoppedDeliveryJobsOfAnInvoiceCancelledForGoodOnly()
+    {
+        var seed = NewSeed("audit-stopped-cancelled");
+        var cancelled = NewInvoice(seed, seed.Order.Id, InvoiceStatus.Cancelled);
+        var pendingOrder = NewOrder(seed.Tenant.Id, seed.Marketplace.Id, "audit-stopped-cancelled-pending");
+        var pending = NewInvoice(seed, pendingOrder.Id, InvoiceStatus.CancellationPending);
+        var liveOrder = NewOrder(seed.Tenant.Id, seed.Marketplace.Id, "audit-stopped-cancelled-live");
+        var live = NewInvoice(seed, liveOrder.Id, InvoiceStatus.MarketplaceFailed);
+        var review = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{cancelled.Id}:{seed.Package.Id}:recovery:2:1", $$"""{"invoiceId":"{{cancelled.Id}}","packageId":"{{seed.Package.Id}}"}""", JobStatus.ManualReview);
+        review.LastErrorCode = "DELIVERY_RETRY_PAYLOAD_CHANGED";
+        review.CreatedAt = fixture.Now.AddDays(-25);
+        var dead = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{cancelled.Id}:after-document", $$"""{"invoiceId":"{{cancelled.Id}}"}""", JobStatus.Dead);
+        var outsideSeries = NewDeliveryJob(seed, $"hb-exchange-resend:{cancelled.Id}", $$"""{"invoiceId":"{{cancelled.Id}}"}""", JobStatus.ManualReview);
+        var pendingStopped = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{pending.Id}:after-document", $$"""{"invoiceId":"{{pending.Id}}"}""", JobStatus.ManualReview);
+        var liveStopped = NewDeliveryJob(seed, $"{InvoicingJobTypes.MarketplaceDelivery}:{live.Id}:after-document", $$"""{"invoiceId":"{{live.Id}}"}""", JobStatus.Blocked);
+        await SeedAsync(seed, db =>
+        {
+            db.Orders.AddRange(pendingOrder, liveOrder);
+            db.Invoices.AddRange(cancelled, pending, live);
+            db.IntegrationJobs.AddRange(review, dead, outsideSeries, pendingStopped, liveStopped);
+        });
+
+        try
+        {
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null).ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "audit-stopped-cancelled", CancellationToken.None)).Succeeded);
+            // A second scan changes nothing.
+            await using (var db = fixture.CreateContext())
+                Assert.True((await NewProcessor(db, null).ProcessAsync(seed.Tenant.Id, null, InvoicingJobTypes.InvoiceDueScan, "{}", "audit-stopped-cancelled", CancellationToken.None)).Succeeded);
+
+            await using var verification = fixture.CreateContext();
+            async Task<IntegrationJob> Read(Guid id) => await verification.IntegrationJobs.AsNoTracking().SingleAsync(job => job.Id == id);
+            foreach (var id in new[] { review.Id, dead.Id })
+            {
+                var closed = await Read(id);
+                Assert.Equal(JobStatus.Cancelled, closed.Status);
+                Assert.Equal(InvoiceDeliveryGuardPolicy.CancelledJobCode, closed.LastErrorCode);
+                Assert.NotNull(closed.CompletedAt);
+                Assert.True(await verification.IntegrationOutboxEvents.AnyAsync(outbox => outbox.TenantId == seed.Tenant.Id
+                    && outbox.ResourceType == JobLeaseService.JobEventResource && outbox.AggregateId == id && outbox.AggregateVersion == closed.Version));
+            }
+            Assert.Equal(JobStatus.ManualReview, (await Read(outsideSeries.Id)).Status);
+            Assert.Equal(JobStatus.ManualReview, (await Read(pendingStopped.Id)).Status);
+            Assert.Equal(JobStatus.Blocked, (await Read(liveStopped.Id)).Status);
+            var audits = await verification.AuditLogs.AsNoTracking()
+                .Where(audit => audit.TenantId == seed.Tenant.Id && audit.Action == InvoiceDeliveryJobHygiene.StoppedJobClosedAuditAction).ToListAsync();
+            Assert.Equal(2, audits.Count);
+            Assert.Contains(audits, audit => audit.TargetId == review.Id.ToString("D") && audit.Reason.Contains("DELIVERY_RETRY_PAYLOAD_CHANGED", StringComparison.Ordinal));
+        }
+        finally
+        {
+            await DeleteTenantAsync(seed.Tenant.Id);
+        }
+    }
+
     private IntegrationJob NewDeliveryJob(Seed seed, string key, string payload, JobStatus status) => new()
     {
         Id = Guid.CreateVersion7(),

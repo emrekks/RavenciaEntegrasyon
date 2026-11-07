@@ -104,6 +104,35 @@ public sealed class JobHygieneTests
         foreach (var status in new[] { JobStatus.Succeeded, JobStatus.Cancelled, JobStatus.Blocked, JobStatus.Dead })
             Assert.False(InvoiceDeliveryJobHygiene.Holds(status, packageJob, package, reviewHolds: true));
     }
+
+    // Live 7 Nov 2026: eleven delivery jobs of a cancelled invoice sat in review since 13 Oct.
+    [Fact]
+    public void AStoppedDeliveryJobClosesOnlyWhenItsInvoiceIsCancelledForGood()
+    {
+        var invoice = Guid.NewGuid();
+        var key = $"{InvoicingJobTypes.MarketplaceDelivery}:{invoice}:{Guid.NewGuid()}:recovery:2:1";
+        var payload = $$"""{"invoiceId":"{{invoice}}","packageId":"{{Guid.NewGuid()}}"}""";
+        Dictionary<Guid, InvoiceStatus> With(InvoiceStatus status) => new() { [invoice] = status };
+
+        foreach (var final in new[] { InvoiceStatus.Cancelled, InvoiceStatus.CancelledLocal, InvoiceStatus.Rejected })
+        {
+            Assert.True(InvoiceDeliveryGuardPolicy.InvoiceBlocksDelivery(final));
+            foreach (var stopped in new[] { JobStatus.ManualReview, JobStatus.Blocked, JobStatus.Dead })
+                Assert.True(InvoiceDeliveryJobHygiene.StoppedJobClosesForCancelledInvoice(stopped, key, payload, With(final)));
+            // Waiting jobs are CloseWaitingJobsAsync's; running, finished and closed ones are never touched here.
+            foreach (var other in new[] { JobStatus.Pending, JobStatus.Leased, JobStatus.RetryScheduled, JobStatus.Succeeded, JobStatus.Cancelled })
+                Assert.False(InvoiceDeliveryJobHygiene.StoppedJobClosesForCancelledInvoice(other, key, payload, With(final)));
+            Assert.Equal(InvoiceDeliveryGuardPolicy.CancelledJobCode, InvoiceDeliveryJobHygiene.CloseReason(final, false)?.Code);
+        }
+        // A cancellation still pending or refused, an invoice waiting for an adjustment, a live or reviewed one: stays.
+        foreach (var status in Enum.GetValues<InvoiceStatus>().Where(status => status is not (InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal or InvoiceStatus.Rejected)))
+            Assert.False(InvoiceDeliveryJobHygiene.StoppedJobClosesForCancelledInvoice(JobStatus.ManualReview, key, payload, With(status)));
+        // A missing invoice is unknown, not cancelled.
+        Assert.False(InvoiceDeliveryJobHygiene.StoppedJobClosesForCancelledInvoice(JobStatus.ManualReview, key, payload, new Dictionary<Guid, InvoiceStatus>()));
+        // Jobs outside the invoice's key series (the exchange resend, the stage delivery) are left alone.
+        Assert.False(InvoiceDeliveryJobHygiene.StoppedJobClosesForCancelledInvoice(JobStatus.ManualReview, $"hb-exchange-resend:{invoice}", payload, With(InvoiceStatus.Cancelled)));
+        Assert.False(InvoiceDeliveryJobHygiene.StoppedJobClosesForCancelledInvoice(JobStatus.ManualReview, key, "{}", With(InvoiceStatus.Cancelled)));
+    }
 }
 
 [Collection("postgres-integration")]
