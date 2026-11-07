@@ -1194,7 +1194,10 @@ function AlertEmailSettingsSection() {
   </>
 }
 
-type AiSkillView = { key: string; title: string; description: string; bundleHash: string; uploaded: { skillId: string; version: string; uploadedAt: string; bundleHash: string } | null; upToDate: boolean }
+type AiSkillView = { key: string; title: string; description: string; bundleHash: string; uploaded: { skillId: string; version: string; uploadedAt: string; bundleHash: string; source?: AiSkillSource; fileName?: string | null } | null; upToDate: boolean }
+// FILE: a .skill file the owner uploaded (it is the one generation uses); BUNDLED: the copy that comes with the panel.
+type AiSkillSource = 'FILE' | 'BUNDLED'
+const maxSkillFileBytes = 10 * 1024 * 1024
 type AiSettings = { apiKeySaved: boolean; defaultModel: string; updatedAt: string | null; version: number; skills: AiSkillView[] }
 type AiUsageEntry = { id: string; createdAt: string; feature: string; featureLabel: string; userName: string | null; subjectLabel: string | null; model: string; inputTokens: number | null; outputTokens: number | null; costUsd: number | null; status: 'SUCCEEDED' | 'FAILED' | 'CANCELLED'; error: string | null; durationMs: number }
 const defaultAiModel = 'claude-sonnet-5-5'
@@ -1213,6 +1216,18 @@ function aiTokens(entry: AiUsageEntry) {
   return entry.inputTokens == null && entry.outputTokens == null ? '—' : `${(entry.inputTokens ?? 0).toLocaleString('tr-TR')} / ${(entry.outputTokens ?? 0).toLocaleString('tr-TR')}`
 }
 
+function fileSize(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(bytes / 1024)).toLocaleString('tr-TR')} KB`
+}
+
+// Which copy of a skill Claude runs, as the Beceriler row says it.
+function aiSkillState(skill: AiSkillView) {
+  const uploaded = skill.uploaded
+  if (!uploaded) return 'Yüklenmedi'
+  if (uploaded.source === 'FILE') return `Yüklendi · Sürüm ${uploaded.version} · ${uploaded.fileName ?? 'beceri dosyası'} · ${formatSettingsDate(uploaded.uploadedAt)}`
+  return skill.upToDate ? `Yüklendi · Sürüm ${uploaded.version} · Panelle gelen sürüm · ${formatSettingsDate(uploaded.uploadedAt)}` : `Güncel Değil · Sürüm ${uploaded.version} · Panelle gelen eski sürüm`
+}
+
 // Settings → Yapay Zekâ: the Claude API key every AI feature of the panel uses (the size chart is the first), the default
 // model, the Agent Skills the server uploads, and the log of every run. Owner and administrators only. The key is
 // write-only like the alert app password: the server never returns it, the form shows "Kayıtlı" and "Değiştir".
@@ -1229,6 +1244,8 @@ function AiSettingsSection() {
   const [notice, setNotice] = useState<SettingsNoticeState | null>(null)
   const [testResult, setTestResult] = useState<{ kind: 'done' | 'bad'; message: string } | null>(null)
   const [skillResult, setSkillResult] = useState<{ key: string; kind: 'done' | 'bad'; message: string } | null>(null)
+  const [skillFile, setSkillFile] = useState<{ key: string; label: string } | null>(null)
+  const skillInputs = useRef(new Map<string, HTMLInputElement>())
   const [loadedVersion, setLoadedVersion] = useState<number | null>(null)
   // The form starts from the saved settings, and again after a save (a new version); the key field always starts empty.
   if (saved && loadedVersion !== saved.version) {
@@ -1267,16 +1284,27 @@ function AiSettingsSection() {
       void client.invalidateQueries({ queryKey: ['ai-usage'] })
     }
   }
-  async function uploadSkill(skill: AiSkillView) {
-    setBusy(`skill:${skill.key}`); setSkillResult(null)
+  // file: the owner's .skill / .zip file; none: the copy bundled with the panel (only offered while nothing is uploaded).
+  async function uploadSkill(skill: AiSkillView, file?: File) {
+    setSkillResult(null)
+    if (file && !/\.(skill|zip)$/i.test(file.name)) { setSkillResult({ key: skill.key, kind: 'bad', message: `${file.name}: yalnız .skill ya da .zip dosyası yüklenebilir.` }); return }
+    if (file && (file.size === 0 || file.size > maxSkillFileBytes)) { setSkillResult({ key: skill.key, kind: 'bad', message: `${file.name} (${fileSize(file.size)}): dosya boş olamaz ve en fazla 10 MB olabilir.` }); return }
+    setBusy(`skill:${skill.key}`)
+    setSkillFile(file ? { key: skill.key, label: `${file.name} · ${fileSize(file.size)}` } : null)
     try {
-      const next = await hubApi<AiSettings>(`/settings/ai/skills/${encodeURIComponent(skill.key)}/upload`, { method: 'POST' })
+      let body: FormData | undefined
+      if (file) { body = new FormData(); body.append('file', file, file.name) }
+      const next = await hubApi<AiSettings>(`/settings/ai/skills/${encodeURIComponent(skill.key)}/upload`, { method: 'POST', body })
       client.setQueryData(['ai-settings'], next)
-      const uploaded = next.skills.find(item => item.key === skill.key)?.uploaded
-      setSkillResult({ key: skill.key, kind: 'done', message: uploaded ? `Beceri yüklendi · Sürüm ${uploaded.version}.` : 'Beceri yüklendi.' })
+      const updated = next.skills.find(item => item.key === skill.key)
+      setSkillResult({ key: skill.key, kind: 'done', message: updated ? `${aiSkillState(updated)}.` : 'Beceri yüklendi.' })
     } catch (reason) {
       setSkillResult({ key: skill.key, kind: 'bad', message: reason instanceof Error ? reason.message : 'Beceri yüklenemedi.' })
-    } finally { setBusy(null) }
+    } finally {
+      setBusy(null)
+      setSkillFile(null)
+      void client.invalidateQueries({ queryKey: ['ai-usage'] })
+    }
   }
 
   const bar = <SettingsBar title="Yapay Zekâ" dirty={dirty} copy={dirty ? 'Kaydedilmemiş değişiklikler var' : saved?.updatedAt ? `Son kayıt ${formatSettingsDate(saved.updatedAt)}` : 'Henüz kaydedilmedi'}>
@@ -1302,10 +1330,16 @@ function AiSettingsSection() {
         </div>
         <div className="ss-fld" role="group" aria-label="Beceriler"><small>Beceriler</small>
           <div className="ss-ai-skills">{saved.skills.map(skill => {
-            const state = !skill.uploaded ? 'Yüklenmedi' : !skill.upToDate ? `Güncel Değil · Sürüm ${skill.uploaded.version}` : `Yüklendi · Sürüm ${skill.uploaded.version} · ${formatSettingsDate(skill.uploaded.uploadedAt)}`
+            const blocked = !configured || dirty || busy !== null
             return <div key={skill.key} className="ss-ai-skill">
-              <span className="ss-ai-skill-copy"><b>{skill.title}</b><small>{skill.description}</small><span className="ss-tag"><SettingsGlyph state={!skill.uploaded ? 'none' : skill.upToDate ? 'done' : 'pending'} />{state}</span></span>
-              <button type="button" className="ss-btn" disabled={!configured || dirty || busy !== null} onClick={() => void uploadSkill(skill)}><SettingsIcon name="plus" />{busy === `skill:${skill.key}` ? 'Yükleniyor…' : skill.uploaded ? 'Beceriyi Güncelle' : 'Beceriyi Yükle'}</button>
+              <span className="ss-ai-skill-copy"><b>{skill.title}</b><small>{skill.description}</small><span className="ss-tag"><SettingsGlyph state={!skill.uploaded ? 'none' : skill.upToDate ? 'done' : 'pending'} />{aiSkillState(skill)}</span></span>
+              <input ref={element => { if (element) skillInputs.current.set(skill.key, element); else skillInputs.current.delete(skill.key) }} type="file" accept=".skill,.zip" hidden aria-label={`${skill.title} beceri dosyası`}
+                onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) void uploadSkill(skill, file) }} />
+              <span className="ss-alert-row">
+                <button type="button" className="ss-btn" disabled={blocked} onClick={() => skillInputs.current.get(skill.key)?.click()}><SettingsIcon name="plus" />{busy === `skill:${skill.key}` ? 'Yükleniyor…' : skill.uploaded ? 'Beceriyi Güncelle' : 'Beceriyi Yükle'}</button>
+                {!skill.uploaded && <button type="button" className="ss-btn is-xs" disabled={blocked} onClick={() => void uploadSkill(skill)}>Panelle Gelen Sürümü Yükle</button>}
+              </span>
+              {skillFile?.key === skill.key && <span role="status" className="ss-help ss-ai-skill-result">{skillFile.label} yükleniyor…</span>}
               {skillResult?.key === skill.key && <span role="status" className="ss-help ss-ai-skill-result"><SettingsGlyph state={skillResult.kind} />{skillResult.message}</span>}
             </div>
           })}{saved.skills.length === 0 && <span className="ss-help">Yüklenecek beceri yok.</span>}</div>

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, aiVersion: 1 }))
+const apiState = vi.hoisted(() => ({ calls: [] as Array<{ path: string; method: string; body?: string; headers?: Record<string, string> }>, failShippingSave: null as string | null, alertVersion: 2, aiForbidden: false, aiVersion: 1, uploadedFile: null as string | null }))
 
 vi.mock('../../shared/api', async importOriginal => {
   const actual = await importOriginal<typeof import('../../shared/api')>()
@@ -36,6 +36,11 @@ vi.mock('../../shared/api', async importOriginal => {
     if (path === '/settings/ai' && method === 'PUT') return { apiKeySaved: true, defaultModel: JSON.parse(body ?? '{}').defaultModel, updatedAt: '2026-11-06T20:00:00Z', version: ++apiState.aiVersion, skills: [] }
     if (path === '/settings/ai') return { apiKeySaved: true, defaultModel: 'claude-sonnet-5-5', updatedAt: '2026-11-06T19:00:00Z', version: apiState.aiVersion, skills: [{ key: 'beden-tablosu', title: 'Beden Tablosu', description: 'Ölçülerden beden tablosu görseli çizer.', bundleHash: 'h2', uploaded: { skillId: 'skill_01', version: '3', uploadedAt: '2026-11-06T18:00:00Z', bundleHash: 'h1' }, upToDate: false }] }
     if (path === '/settings/ai/usage?limit=50') return { items: [{ id: 'u1', createdAt: '2026-11-06T19:30:00Z', feature: 'size-chart', featureLabel: 'Beden Tablosu', userName: 'Emre', subjectLabel: 'RYP007', model: 'claude-sonnet-5-5', inputTokens: 1200, outputTokens: 800, costUsd: 0.0104, status: 'SUCCEEDED', error: null, durationMs: 42000 }] }
+    if (path === '/settings/ai/skills/beden-tablosu/upload') {
+      const file = init?.body instanceof FormData ? init.body.get('file') : null
+      apiState.uploadedFile = file instanceof File ? file.name : null
+      return { apiKeySaved: true, defaultModel: 'claude-sonnet-5-5', updatedAt: '2026-11-07T19:40:00Z', version: ++apiState.aiVersion, skills: [{ key: 'beden-tablosu', title: 'Beden Tablosu', description: 'x', bundleHash: 'h2', uploaded: { skillId: 'skill_02', version: 'skver_9', uploadedAt: '2026-11-07T19:40:00Z', bundleHash: 'f1', source: 'FILE', fileName: apiState.uploadedFile }, upToDate: true }] }
+    }
     if (path === '/settings/ai/test') return { ok: true, model: 'claude-sonnet-5-5', message: 'Bağlantı çalışıyor.' }
     if (path === '/settings/data-reset' && method === 'GET') return { items: [{ scope: 'PRODUCTS', count: 944 }, { scope: 'CATEGORIES', count: 12 }, { scope: 'CATEGORY_ATTRIBUTES', count: 40 }, { scope: 'BRANDS', count: 3 }, { scope: 'OPTIONS', count: 2 }] }
     if (path === '/settings/data-reset') return { products: 3, orders: 0, returns: 0, invoices: 0, categories: 0, categoryAttributes: 0, brands: 0, options: 0 }
@@ -361,6 +366,29 @@ describe('SystemSettingsPage', () => {
     // After the save the field closes and nothing of the key is left on the page.
     expect(container.querySelector('input[type="password"]')).toBeNull()
     expect(container.innerHTML).not.toContain('sk-ant-test-value')
+  })
+
+  it('Beceriyi Güncelle uploads the chosen .skill file and says which copy is active', async () => {
+    await renderPage('/settings?tab=ai')
+    expect(container.textContent).toContain('Güncel Değil · Sürüm 3 · Panelle gelen eski sürüm')
+    const picker = container.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(picker.accept).toBe('.skill,.zip')
+    const pick = (file: File) => act(() => {
+      Object.defineProperty(picker, 'files', { value: [file], configurable: true })
+      picker.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    apiState.calls = []
+    await pick(new File(['x'], 'notlar.txt'))
+    expect(apiState.calls.some(call => call.path.includes('/skills/'))).toBe(false)
+    expect(container.textContent).toContain('notlar.txt: yalnız .skill ya da .zip dosyası yüklenebilir.')
+
+    await pick(new File(['zip'], 'ravencia-beden-tablosu.skill'))
+    await settle()
+    const upload = apiState.calls.find(call => call.path === '/settings/ai/skills/beden-tablosu/upload')!
+    expect(upload.method).toBe('POST')
+    expect(apiState.uploadedFile).toBe('ravencia-beden-tablosu.skill')
+    expect(container.textContent).toContain('Yüklendi · Sürüm skver_9 · ravencia-beden-tablosu.skill')
   })
 
   it('shows the lock callout to roles that may not see the AI settings', async () => {

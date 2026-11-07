@@ -3,6 +3,7 @@ using System.Text.Json;
 using MarketplaceHub.Domain;
 using MarketplaceHub.Infrastructure.Ai;
 using MarketplaceHub.Infrastructure.Persistence;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -109,5 +110,78 @@ public sealed class AiSettingsEndToEndTests(ApiEndToEndFixture fixture) : IClass
             Assert.True(Uploaded(await SaveAsync(first)));
             Assert.False(Uploaded(await SaveAsync(second)));
         }
+    }
+
+    // Claude's Skills API as a fake: records what would have been uploaded.
+    private sealed class FakeSkillsApi : IClaudeClient
+    {
+        public List<(string? ExistingSkillId, IReadOnlyList<string> Paths)> Uploads { get; } = [];
+        public Task<ClaudeUsage> TestAsync(string apiKey, string model, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ClaudeSkillResult> RunSkillAsync(ClaudeSkillRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<byte[]> DownloadFileAsync(string apiKey, string fileId, long maxBytes, CancellationToken cancellationToken) => throw new NotSupportedException();
+
+        public Task<ClaudeSkillUpload> UploadSkillAsync(string apiKey, string displayTitle, IReadOnlyList<ClaudeSkillFile> files, string? existingSkillId, CancellationToken cancellationToken)
+        {
+            Uploads.Add((existingSkillId, files.Select(file => file.Path).ToList()));
+            return Task.FromResult(new ClaudeSkillUpload(existingSkillId ?? $"skill_{Uploads.Count}", $"skver_{Uploads.Count}"));
+        }
+    }
+
+    // The owner's .skill file through the endpoint: checked, sent as a new skill (its name differs from the bundled
+    // one), then as a new version of it; a broken file is refused before anything is sent.
+    [PostgreSqlFact]
+    public async Task An_uploaded_skill_file_is_checked_and_sent_as_a_skill_then_as_its_new_version()
+    {
+        var fake = new FakeSkillsApi();
+        using var host = fixture.Host!.WithWebHostBuilder(builder => builder.ConfigureTestServices(services => services.AddSingleton<IClaudeClient>(fake)));
+        using var admin = host.CreateClient();
+        var csrf = await fixture.Host.CsrfAsync(admin);
+        using (var signIn = await admin.SendAsync(ApiTestHost.Json(HttpMethod.Post, "/api/v1/auth/login", csrf, new { email = fixture.Email(MembershipRole.Administrator), password = ApiEndToEndFixture.Password })))
+            Assert.Equal(HttpStatusCode.OK, signIn.StatusCode);
+        using (var current = await admin.GetAsync("/api/v1/settings/ai"))
+        {
+            var request = ApiTestHost.Json(HttpMethod.Put, "/api/v1/settings/ai", csrf, new { apiKey = "sk-ant-api03-e2e-skill-file-upload-3333", defaultModel = "claude-sonnet-5-5" });
+            if (current.Headers.ETag is { } etag) request.Headers.TryAddWithoutValidation("If-Match", etag.Tag);
+            using var saved = await admin.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        }
+
+        async Task<HttpResponseMessage> UploadAsync(byte[] bytes, string fileName)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, $"/api/v1/settings/ai/skills/{AiSkillCatalog.SizeChartKey}/upload");
+            request.Headers.Add("X-CSRF-TOKEN", csrf);
+            var form = new MultipartFormDataContent();
+            form.Add(new ByteArrayContent(bytes), "file", fileName);
+            request.Content = form;
+            return await admin.SendAsync(request);
+        }
+        const string skillMd = "---\nname: ravencia-beden-tablosu\ndescription: Ravencia beden tablosu.\n---\n";
+        var skill = AiSkillPackageTests.Zip(("ravencia-beden-tablosu/SKILL.md", skillMd), ("ravencia-beden-tablosu/scripts/render_size_chart.py", "print(1)"));
+
+        using (var traversal = await UploadAsync(AiSkillPackageTests.Zip(("a/SKILL.md", skillMd), ("a/../../x.py", "1")), "kotu.skill"))
+            Assert.Equal((HttpStatusCode)422, traversal.StatusCode);
+        using (var wrongType = await UploadAsync(skill, "beceri.txt"))
+            Assert.Equal((HttpStatusCode)422, wrongType.StatusCode);
+        Assert.Empty(fake.Uploads);
+
+        using (var first = await UploadAsync(skill, "ravencia-beden-tablosu.skill"))
+        {
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+            var uploaded = JsonDocument.Parse(await first.Content.ReadAsStringAsync()).RootElement.GetProperty("skills").EnumerateArray().Single(item => item.GetProperty("key").GetString() == AiSkillCatalog.SizeChartKey);
+            Assert.True(uploaded.GetProperty("upToDate").GetBoolean());
+            Assert.Equal("FILE", uploaded.GetProperty("uploaded").GetProperty("source").GetString());
+            Assert.Equal("ravencia-beden-tablosu.skill", uploaded.GetProperty("uploaded").GetProperty("fileName").GetString());
+        }
+        using (var second = await UploadAsync(skill, "ravencia-beden-tablosu.skill"))
+            Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+
+        Assert.Equal(2, fake.Uploads.Count);
+        Assert.Null(fake.Uploads[0].ExistingSkillId);
+        Assert.Equal("skill_1", fake.Uploads[1].ExistingSkillId);
+        Assert.Equal(["ravencia-beden-tablosu/SKILL.md", "ravencia-beden-tablosu/scripts/render_size_chart.py"], fake.Uploads[1].Paths);
+
+        await using var scope = host.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.True(await db.AiUsageLogs.AnyAsync(x => x.TenantId == fixture.TenantId && x.Feature == "SKILL_UPLOAD" && x.SubjectLabel == "Beden Tablosu · ravencia-beden-tablosu.skill"));
     }
 }

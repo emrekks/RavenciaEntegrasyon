@@ -8,7 +8,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MarketplaceHub.Infrastructure.Ai;
 
-public sealed record AiUploadedSkillView(string SkillId, string Version, DateTimeOffset UploadedAt, string BundleHash);
+// Source: FILE (a .skill file the owner uploaded; FileName names it) or BUNDLED (the copy bundled with the panel). Name is
+// the SKILL.md name (null on rows written before it was kept: those were the bundled "beden-tablosu").
+public sealed record AiUploadedSkillView(string SkillId, string Version, DateTimeOffset UploadedAt, string BundleHash, string Source = AiUploadedSkillView.Bundled, string? FileName = null, string? Name = null)
+{
+    public const string Bundled = "BUNDLED";
+    public const string File = "FILE";
+}
 public sealed record AiSkillView(string Key, string Title, string Description, string BundleHash, AiUploadedSkillView? Uploaded, bool UpToDate);
 // The API key never leaves the server: the view says only whether one is saved.
 public sealed record AiSettingsView(bool ApiKeySaved, string DefaultModel, DateTimeOffset? UpdatedAt, long Version, IReadOnlyList<AiSkillView> Skills);
@@ -40,6 +46,9 @@ public sealed class AiSettingsService(AppDbContext db, IDataProtectionProvider d
         [JsonPropertyName("version")] public string Version { get; set; } = "";
         [JsonPropertyName("uploadedAt")] public DateTimeOffset UploadedAt { get; set; }
         [JsonPropertyName("bundleHash")] public string BundleHash { get; set; } = "";
+        [JsonPropertyName("source")] public string? Source { get; set; }
+        [JsonPropertyName("fileName")] public string? FileName { get; set; }
+        [JsonPropertyName("name")] public string? Name { get; set; }
     }
 
     public async Task<AiSettingsView> GetAsync(Guid tenantId, CancellationToken cancellationToken) =>
@@ -89,14 +98,17 @@ public sealed class AiSettingsService(AppDbContext db, IDataProtectionProvider d
         return new(apiKey, stored.DefaultModel ?? DefaultModel, (stored.Skills ?? []).ToDictionary(pair => pair.Key, pair => UploadedView(pair.Value), StringComparer.Ordinal));
     }
 
-    public async Task<AiSettingsView> RecordSkillAsync(Guid tenantId, Guid userId, string correlationId, AiSkillDefinition skill, ClaudeSkillUpload upload, CancellationToken cancellationToken)
+    public Task<AiSettingsView> RecordSkillAsync(Guid tenantId, Guid userId, string correlationId, AiSkillDefinition skill, ClaudeSkillUpload upload, CancellationToken cancellationToken) =>
+        RecordSkillAsync(tenantId, userId, correlationId, skill.Key, new AiSkillBundle(skill.Name, skill.Files, skill.BundleHash), AiUploadedSkillView.Bundled, null, upload, cancellationToken);
+
+    public async Task<AiSettingsView> RecordSkillAsync(Guid tenantId, Guid userId, string correlationId, string key, AiSkillBundle bundle, string source, string? fileName, ClaudeSkillUpload upload, CancellationToken cancellationToken)
     {
         var setting = await db.TenantSettings.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Key == SettingKey, cancellationToken);
         var stored = Read(setting) ?? new Stored();
         stored.Skills ??= [];
-        stored.Skills[skill.Key] = new StoredSkill { SkillId = upload.SkillId, Version = upload.Version, UploadedAt = timeProvider.GetUtcNow(), BundleHash = skill.BundleHash };
+        stored.Skills[key] = new StoredSkill { SkillId = upload.SkillId, Version = upload.Version, UploadedAt = timeProvider.GetUtcNow(), BundleHash = bundle.BundleHash, Source = source, FileName = fileName, Name = bundle.Name };
         Write(tenantId, ref setting, stored);
-        Audit(tenantId, userId, correlationId, "AI_SKILL_UPLOADED", $"Yapay zekâ becerisi yüklendi: {skill.Key} ({upload.SkillId}, sürüm {upload.Version}).");
+        Audit(tenantId, userId, correlationId, "AI_SKILL_UPLOADED", $"Yapay zekâ becerisi yüklendi: {key} ({upload.SkillId}, sürüm {upload.Version}, {(fileName is null ? "panelle gelen sürüm" : $"dosya {fileName}")}).");
         await db.SaveChangesAsync(cancellationToken);
         return View(setting);
     }
@@ -148,7 +160,7 @@ public sealed class AiSettingsService(AppDbContext db, IDataProtectionProvider d
         CreatedAt = timeProvider.GetUtcNow()
     });
 
-    private static AiUploadedSkillView UploadedView(StoredSkill skill) => new(skill.SkillId, skill.Version, skill.UploadedAt, skill.BundleHash);
+    private static AiUploadedSkillView UploadedView(StoredSkill skill) => new(skill.SkillId, skill.Version, skill.UploadedAt, skill.BundleHash, skill.Source ?? AiUploadedSkillView.Bundled, skill.FileName, skill.Name);
 
     private static AiSettingsView View(TenantSetting? setting)
     {
@@ -156,7 +168,7 @@ public sealed class AiSettingsService(AppDbContext db, IDataProtectionProvider d
         var skills = AiSkillCatalog.All.Select(skill =>
         {
             var uploaded = stored?.Skills?.GetValueOrDefault(skill.Key) is { } saved ? UploadedView(saved) : null;
-            return new AiSkillView(skill.Key, skill.Title, skill.Description, skill.BundleHash, uploaded, uploaded is not null && uploaded.BundleHash == skill.BundleHash);
+            return new AiSkillView(skill.Key, skill.Title, skill.Description, skill.BundleHash, uploaded, uploaded is not null && (uploaded.Source == AiUploadedSkillView.File || uploaded.BundleHash == skill.BundleHash));
         }).ToList();
         return new AiSettingsView(!string.IsNullOrEmpty(stored?.ApiKeyProtected), stored?.DefaultModel ?? DefaultModel, setting?.UpdatedAt, setting?.Version ?? 0, skills);
     }

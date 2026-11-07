@@ -3,7 +3,11 @@ using System.Security.Cryptography;
 
 namespace MarketplaceHub.Infrastructure.Ai;
 
-public sealed record AiSkillDefinition(string Key, string Title, string Description, IReadOnlyList<ClaudeSkillFile> Files, string BundleHash);
+public sealed record AiSkillDefinition(string Key, string Title, string Description, IReadOnlyList<ClaudeSkillFile> Files, string BundleHash)
+{
+    // The name in its SKILL.md (a new Skills API version must keep the skill's name).
+    public string Name => AiSkillPackage.FrontmatterName(Files.Single(file => file.Path == $"{Key}/SKILL.md").Content).Name ?? Key;
+}
 
 // The Agent Skills the panel can upload, read from the repository's skills/<key>/ folder (embedded in this assembly).
 // BundleHash fingerprints the files, so the settings page can tell when the uploaded copy is older than the code.
@@ -47,7 +51,7 @@ public static class AiSkillCatalog
         return buffer.ToArray();
     }
 
-    private static string Hash(IReadOnlyList<ClaudeSkillFile> files)
+    internal static string Hash(IReadOnlyList<ClaudeSkillFile> files)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         foreach (var file in files)

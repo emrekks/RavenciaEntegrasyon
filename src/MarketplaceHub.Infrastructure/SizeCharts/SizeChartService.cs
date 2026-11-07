@@ -22,13 +22,14 @@ public sealed class SizeChartException(string code, string message, int status) 
 }
 
 // "Beden Tablosu Oluştur": the product's sizes and last measurements, the Claude call that draws the chart with the
-// beden-tablosu skill, and which picture of the card is its size chart. The generated JPEG is stored as an ordinary
+// beden-tablosu skill, and which picture of the card is its size chart. The generated 1200×1800 PNG is stored as an ordinary
 // product picture file; it joins the card only with the editor's Kaydet (no marketplace send here).
 public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPrivateFileStorage storage, TimeProvider timeProvider)
 {
     public const int Width = 1200;
     public const int Height = 1800;
     private const long MaxImageBytes = 6 * 1024 * 1024;
+    private const long MaxProductImageBytes = 5 * 1024 * 1024; // the API's limit for one picture
     private static readonly TimeSpan CallTimeout = TimeSpan.FromMinutes(4);
 
     private sealed class StoredMeasurements
@@ -60,11 +61,18 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
             stored.Rows.Select(row => new SizeChartMeasurementRowView(row.Size, row.Values.Select(value => decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.GetCultureInfo("tr-TR"), out var number) ? number : (decimal?)null).ToList())).ToList());
         var url = chart?.FileAssetId is Guid assetId ? await UrlAsync(tenantId, assetId, cancellationToken) : null;
         var credentials = await claude.CredentialsOrNullAsync(tenantId, cancellationToken);
-        var issue = credentials is null ? "Claude API anahtarı kayıtlı değil. Ayarlar › Yapay Zekâ bölümünden hesap sahibi ya da yönetici girmeli."
-            : !credentials.Skills.ContainsKey(AiSkillCatalog.SizeChartKey) ? "Beden tablosu becerisi yüklenmedi. Ayarlar › Yapay Zekâ bölümünde \"Beceriyi Yükle\" düğmesine basılmalı."
-            : null;
+        var issue = credentials is null ? "Claude API anahtarı kayıtlı değil. Ayarlar › Yapay Zekâ bölümünden hesap sahibi ya da yönetici girmeli." : SkillIssue(credentials);
         return new SizeChartView(sizes, label, measurements, url, issue is null, issue);
     }
+
+    internal static string? SkillIssue(AiCredentials credentials) =>
+        credentials.Skills.ContainsKey(AiSkillCatalog.SizeChartKey) ? null
+            : "Beden tablosu becerisi yüklenmedi. Ayarlar › Yapay Zekâ › Beceriler bölümünde \"Beceriyi Yükle\" ile beceri dosyasını (.skill) seçip yükleyin.";
+
+    // The latest upload decides how the chart is drawn: a skill file the owner uploaded (spec.json, 1200×1800 PNG) or,
+    // when none was, the copy bundled with the panel (chart.json, 1200×1800 JPEG).
+    internal static bool UsesSkillFile(AiCredentials credentials) =>
+        credentials.Skills.GetValueOrDefault(AiSkillCatalog.SizeChartKey)?.Source == AiUploadedSkillView.File;
 
     public async Task<SizeChartGenerated> GenerateAsync(Guid tenantId, Guid userId, Guid productId, SizeChartInput input, CancellationToken cancellationToken)
     {
@@ -84,18 +92,37 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
 
         AiCredentials credentials;
         AiSkillRun run;
+        SizeChartSpecRequest? spec = null;
         try
         {
             credentials = await claude.RequireCredentialsAsync(tenantId, cancellationToken);
-            run = await claude.RunSkillAsync(new AiCallContext(tenantId, userId, "SIZE_CHART", "Product", productId, product.Title), credentials, AiSkillCatalog.SizeChartKey,
-                SystemPrompt, Prompt(product.Title, table), "low", 8000, CallTimeout, cancellationToken);
+            if (SkillIssue(credentials) is { } skillIssue) throw new SizeChartException("AI_SKILL_MISSING", skillIssue, 409);
+            var context = new AiCallContext(tenantId, userId, "SIZE_CHART", "Product", productId, product.Title);
+            if (UsesSkillFile(credentials))
+            {
+                var (sizes, specError) = SizeChartSpec.Map(table);
+                if (sizes is null) throw new SizeChartException("SIZE_CHART_INVALID", specError!, 422);
+                spec = new SizeChartSpecRequest(SizeChartSpec.ProductName(product.Title), sizes);
+                // The icon (sleeve, neckline, hem) is read from the product's own picture, never guessed without one.
+                var image = await ProductImageAsync(tenantId, productId, chart.FileAssetId, cancellationToken)
+                    ?? throw new SizeChartException("SIZE_CHART_NO_IMAGE", "Ürünün görseli yok: tablodaki ikon ürün görselinden seçilir. Önce bir ürün görseli ekleyip kaydedin.", 422);
+                run = await claude.RunSkillAsync(context, credentials, AiSkillCatalog.SizeChartKey,
+                    SpecSystemPrompt, SpecPrompt(spec), "low", 16000, CallTimeout, cancellationToken, [image]);
+            }
+            else
+            {
+                run = await claude.RunSkillAsync(context, credentials, AiSkillCatalog.SizeChartKey,
+                    SystemPrompt, Prompt(product.Title, table), "low", 8000, CallTimeout, cancellationToken);
+            }
         }
         catch (ClaudeException exception) { throw new SizeChartException(exception.Code, exception.Message, exception.Status); }
 
         try
         {
-            var bytes = await ImageFromRunAsync(credentials, run.Result, table, cancellationToken);
-            var asset = await StoreAsync(tenantId, productId, bytes, cancellationToken);
+            var bytes = spec is not null
+                ? await PngFromRunAsync(credentials, run.Result, spec, cancellationToken)
+                : await JpegFromRunAsync(credentials, run.Result, table, cancellationToken);
+            var asset = await StoreAsync(tenantId, productId, bytes, spec is not null, cancellationToken);
             chart.LastGeneratedAssetId = asset.Id;
             chart.UpdatedAt = timeProvider.GetUtcNow();
             await db.SaveChangesAsync(cancellationToken);
@@ -160,9 +187,9 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
     public static async Task<HashSet<Guid>> GeneratedForProductAsync(AppDbContext db, Guid tenantId, Guid productId, IReadOnlyCollection<Guid> assetIds, CancellationToken cancellationToken)
     {
         if (assetIds.Count == 0) return [];
-        var fileName = GeneratedFileName(productId);
+        string[] fileNames = [GeneratedFileName(productId), GeneratedFileName(productId, png: true)];
         var named = await db.FileAssets.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && assetIds.Contains(x.Id) && x.Classification == "PRODUCT_MEDIA" && x.OriginalNameSafe == fileName)
+            .Where(x => x.TenantId == tenantId && assetIds.Contains(x.Id) && x.Classification == "PRODUCT_MEDIA" && fileNames.Contains(x.OriginalNameSafe))
             .Select(x => x.Id).ToListAsync(cancellationToken);
         var newest = await db.ProductSizeCharts.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.ProductId == productId && x.LastGeneratedAssetId != null && assetIds.Contains(x.LastGeneratedAssetId.Value))
@@ -170,8 +197,9 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         return [.. named, .. newest];
     }
 
-    internal static string GeneratedFileName(Guid productId) => $"beden-tablosu-{productId:N}.jpg";
+    internal static string GeneratedFileName(Guid productId, bool png = false) => $"beden-tablosu-{productId:N}.{(png ? "png" : "jpg")}";
 
+    // The bundled skill (chart.json → JPEG): the seller's table drawn exactly as given.
     internal const string SystemPrompt =
         "You make product size chart images for the Ravencia seller panel with the beden-tablosu skill. "
         + "Follow the skill's SKILL.md exactly: write the given JSON to chart.json unchanged and run scripts/draw_size_chart.py once. "
@@ -191,7 +219,55 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         return $"Bu ürün için beden tablosu görselini oluştur. chart.json içeriği tam olarak şu olsun:\n\n{json}";
     }
 
-    private async Task<byte[]> ImageFromRunAsync(AiCredentials credentials, ClaudeSkillResult result, SizeChartTable table, CancellationToken cancellationToken)
+    // An uploaded skill file (spec.json → PNG). The panel's rules take precedence over its SKILL.md: the seller's numbers
+    // and the product name copied exactly, only the icon chosen from the picture, 1200×1800 (scale 1) only.
+    internal const string SpecSystemPrompt =
+        "You make product size chart images for the Ravencia seller panel with the beden-tablosu skill. "
+        + "Follow the skill's SKILL.md; these panel rules take precedence over it.\n"
+        + "1. The attached picture is the product. Choose only the icon fields from it as SKILL.md says: sleeve, neckline and hem always; "
+        + "motif, studs or placket only when clearly visible; never color.\n"
+        + "2. spec.json is exactly the given JSON plus the icon object. Copy product_name, sizes, every number and extra_notes character for character. "
+        + "Never add kilo, ease, height_assumed, age_offset_kg, kilo_band_width, background or color; never invent, round, convert or reorder a value. "
+        + "gogus is already one side: never halve or double it.\n"
+        + "3. Render exactly once per try with the skill's render script, writing /mnt/user-data/outputs/beden-tablosu.png, always with --scale 1: "
+        + "the output must be a 1200x1800 px PNG. Never pass --scale 2 and never produce 2400x3600 or any other size.\n"
+        + "4. Copy the spec.json you rendered from, unchanged, to /mnt/user-data/outputs/beden-tablosu-spec.json.\n"
+        + "5. If the icon shows the wrong garment category, change only the icon and render again; never change a measurement or the name.\n"
+        + "6. The container has no network: never install packages. If the script fails, reply with 'HATA: ' and its error and stop.\n"
+        + "7. When the PNG and the spec copy are written, reply OK.";
+
+    internal static string SpecPrompt(SizeChartSpecRequest spec)
+    {
+        var json = SizeChartSpec.Json(spec.ProductName, spec.Sizes).ToJsonString(new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping, WriteIndented = true });
+        return "Bu ürün için 1200×1800 PNG beden tablosu görselini oluştur (--scale 1). Ekteki görsel ürünün kendisi.\n\n"
+            + $"spec.json bu JSON'a yalnız icon eklenerek yazılsın:\n\n{json}";
+    }
+
+    // The picture Claude reads the garment from: the card's first own picture (product-level first), not a size chart.
+    private async Task<ClaudeImage?> ProductImageAsync(Guid tenantId, Guid productId, Guid? chartAssetId, CancellationToken cancellationToken)
+    {
+        var candidates = await (from media in db.ProductMedia.AsNoTracking()
+                                join asset in db.FileAssets.AsNoTracking() on media.FileAssetId equals asset.Id
+                                where media.TenantId == tenantId && media.ProductId == productId && media.Status == "ACTIVE" && asset.TenantId == tenantId && asset.Status == "ACTIVE"
+                                      && (chartAssetId == null || asset.Id != chartAssetId) && (asset.OriginalNameSafe == null || !asset.OriginalNameSafe.StartsWith("beden-tablosu-"))
+                                orderby media.VariantId == null ? 0 : 1, media.SortOrder
+                                select new { asset.Classification, asset.RelativePath, asset.MimeType, asset.SizeBytes }).Take(8).ToListAsync(cancellationToken);
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Classification == "PRODUCT_MEDIA" && candidate.MimeType is "image/jpeg" or "image/png" && candidate.SizeBytes is > 0 and <= MaxProductImageBytes)
+            {
+                await using var stream = await storage.OpenReadAsync(tenantId, candidate.RelativePath, cancellationToken);
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer, cancellationToken);
+                return new ClaudeImage(buffer.ToArray(), candidate.MimeType, null);
+            }
+            if (candidate.Classification == "PRODUCT_MEDIA_URL" && Uri.TryCreate(candidate.RelativePath, UriKind.Absolute, out var url) && url.Scheme == Uri.UriSchemeHttps)
+                return new ClaudeImage(null, null, url.AbsoluteUri);
+        }
+        return null;
+    }
+
+    private static void CheckStop(ClaudeSkillResult result)
     {
         switch (result.StopReason)
         {
@@ -202,21 +278,45 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
             case "pause_turn":
                 throw new SizeChartException("AI_UNFINISHED", "Claude görseli zamanında bitiremedi; görsel eklenmedi. Yeniden Oluştur ile tekrar deneyin.", 502);
             case "end_turn" or "stop_sequence":
-                break;
+                return;
             default:
                 throw new SizeChartException("AI_UNEXPECTED_STOP", $"Claude beklenmeyen biçimde durdu ({result.StopReason}); görsel eklenmedi.", 502);
         }
+    }
+
+    // A skill whose renderer needs a browser (Playwright/Chromium) cannot run in Claude's offline code container.
+    private static SizeChartException NoImage(ClaudeSkillResult result) =>
+        result.Text is { } text && (text.Contains("playwright", StringComparison.OrdinalIgnoreCase) || text.Contains("chromium", StringComparison.OrdinalIgnoreCase))
+            ? new("AI_RENDERER_MISSING", $"Beceri dosyasındaki çizici (Playwright/Chromium) Claude'un kod ortamında çalışmadı; görsel eklenmedi. Yanıt: {Short(text)}", 502)
+            : new("AI_NO_IMAGE", $"Claude görsel dosyası üretmedi; görsel eklenmedi.{(string.IsNullOrWhiteSpace(result.Text) ? "" : $" Yanıt: {Short(result.Text)}")}", 502);
+
+    private async Task<byte[]> JpegFromRunAsync(AiCredentials credentials, ClaudeSkillResult result, SizeChartTable table, CancellationToken cancellationToken)
+    {
+        CheckStop(result);
         var image = result.Files.LastOrDefault(file => file.FileName.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || file.FileName.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase));
         var echo = result.Files.LastOrDefault(file => file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
-        if (image is null || echo is null)
-            throw new SizeChartException("AI_NO_IMAGE", $"Claude görsel dosyası üretmedi; görsel eklenmedi.{(string.IsNullOrWhiteSpace(result.Text) ? "" : $" Yanıt: {Short(result.Text)}")}", 502);
+        if (image is null || echo is null) throw NoImage(result);
 
         var echoBytes = await claude.DownloadFileAsync(credentials, echo.FileId, 256 * 1024, cancellationToken);
         if (!EchoMatches(echoBytes, table))
             throw new SizeChartException("AI_VALUES_CHANGED", "Çizilen tablodaki ölçüler girilenlerle birebir aynı değil; görsel eklenmedi. Yeniden Oluştur ile tekrar deneyin.", 502);
         var bytes = await claude.DownloadFileAsync(credentials, image.FileId, MaxImageBytes, cancellationToken);
-        if (JpegSize(bytes) is not (Width, Height))
-            throw new SizeChartException("AI_IMAGE_INVALID", $"Claude'un ürettiği dosya {Width}×{Height} tam bir JPEG değil; görsel eklenmedi.", 502);
+        CheckSize(JpegSize(bytes), "JPEG");
+        return bytes;
+    }
+
+    private async Task<byte[]> PngFromRunAsync(AiCredentials credentials, ClaudeSkillResult result, SizeChartSpecRequest request, CancellationToken cancellationToken)
+    {
+        CheckStop(result);
+        var image = result.Files.LastOrDefault(file => file.FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase));
+        var spec = result.Files.LastOrDefault(file => file.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase));
+        if (image is null || spec is null) throw NoImage(result);
+
+        var specBytes = await claude.DownloadFileAsync(credentials, spec.FileId, 256 * 1024, cancellationToken);
+        if (SizeChartSpec.Check(specBytes, request.ProductName, request.Sizes) is { } difference)
+            throw new SizeChartException("AI_VALUES_CHANGED", $"Çizilen tablo girilen ölçülerle birebir aynı değil ({difference}); görsel eklenmedi. Yeniden Oluştur ile tekrar deneyin.", 502);
+        var bytes = await claude.DownloadFileAsync(credentials, image.FileId, MaxImageBytes, cancellationToken);
+        CheckImage(bytes);
         return bytes;
     }
 
@@ -230,6 +330,31 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         return echo.Columns.SequenceEqual(table.Columns, StringComparer.Ordinal)
             && echo.Rows.Count == table.Rows.Count
             && echo.Rows.Zip(table.Rows).All(pair => pair.First.Size == pair.Second.Size && pair.First.Values.SequenceEqual(pair.Second.Values, StringComparer.Ordinal));
+    }
+
+    // Only a complete PNG of exactly 1200×1800 is kept; anything else is refused before it is stored.
+    internal static void CheckImage(byte[] bytes) => CheckSize(PngSize(bytes), "PNG");
+
+    private static void CheckSize((int Width, int Height)? size, string format)
+    {
+        if (size is not { } found)
+            throw new SizeChartException("AI_IMAGE_INVALID", $"Claude'un ürettiği dosya tam bir {format} görseli değil; görsel eklenmedi. Tekrar deneyin.", 502);
+        if (found is not (Width, Height))
+            throw new SizeChartException("SIZE_CHART_WRONG_SIZE", $"Beden tablosu {Width}×{Height} olmalı; üretilen görsel {found.Width}×{found.Height} geldi, tekrar deneyin.", 502);
+    }
+
+    private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    private static readonly byte[] PngEnd = [0, 0, 0, 0, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
+
+    // Width and height of a complete PNG (signature, IHDR first, IEND last); null for anything else.
+    internal static (int Width, int Height)? PngSize(byte[] bytes)
+    {
+        if (bytes.Length < 8 + 25 + 12 || !bytes.AsSpan(0, 8).SequenceEqual(PngSignature) || !bytes.AsSpan(bytes.Length - 12).SequenceEqual(PngEnd)) return null;
+        var header = bytes.AsSpan(8);
+        if (System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(header) != 13 || !header.Slice(4, 4).SequenceEqual("IHDR"u8)) return null;
+        var width = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(header[8..]);
+        var height = System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(header[12..]);
+        return width is 0 or > int.MaxValue || height is 0 or > int.MaxValue ? null : ((int)width, (int)height);
     }
 
     // Width and height of a complete baseline or progressive JPEG (SOI … SOFn … EOI); null for anything else.
@@ -258,7 +383,7 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
         return null;
     }
 
-    private async Task<FileAsset> StoreAsync(Guid tenantId, Guid productId, byte[] bytes, CancellationToken cancellationToken)
+    private async Task<FileAsset> StoreAsync(Guid tenantId, Guid productId, byte[] bytes, bool png, CancellationToken cancellationToken)
     {
         var hash = Convert.ToHexString(SHA256.HashData(bytes));
         var existing = await db.FileAssets
@@ -271,9 +396,10 @@ public sealed class SizeChartService(AppDbContext db, ClaudeService claude, IPri
             return existing;
         }
         var id = Guid.CreateVersion7();
+        var mime = png ? "image/png" : "image/jpeg";
         using var content = new MemoryStream(bytes);
-        var stored = await storage.SaveAsync(tenantId, $"{id:N}.jpg", "image/jpeg", content, MaxImageBytes, cancellationToken);
-        var asset = new FileAsset { Id = id, TenantId = tenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = GeneratedFileName(productId), MimeType = "image/jpeg", SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
+        var stored = await storage.SaveAsync(tenantId, $"{id:N}.{(png ? "png" : "jpg")}", mime, content, MaxImageBytes, cancellationToken);
+        var asset = new FileAsset { Id = id, TenantId = tenantId, Classification = "PRODUCT_MEDIA", RelativePath = stored, OriginalNameSafe = GeneratedFileName(productId, png), MimeType = mime, SizeBytes = bytes.Length, Sha256 = hash, Status = "ACTIVE", CreatedAt = timeProvider.GetUtcNow() };
         db.FileAssets.Add(asset);
         await db.SaveChangesAsync(cancellationToken);
         return asset;

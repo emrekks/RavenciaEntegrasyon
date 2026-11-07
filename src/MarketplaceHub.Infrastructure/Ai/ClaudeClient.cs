@@ -3,6 +3,7 @@ using Anthropic.Core;
 using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
 using Anthropic.Models.Skills;
+using Anthropic.Models.Skills.Versions;
 using Beta = Anthropic.Models.Beta.Messages;
 
 namespace MarketplaceHub.Infrastructure.Ai;
@@ -22,7 +23,11 @@ public sealed record ClaudeSkillRequest(
     string Prompt,
     string Effort,
     int MaxTokens,
-    TimeSpan Timeout);
+    TimeSpan Timeout,
+    IReadOnlyList<ClaudeImage>? Images = null);
+
+// A picture sent with the prompt: either bytes (JPEG or PNG) or an https URL Claude fetches itself.
+public sealed record ClaudeImage(byte[]? Data, string? MediaType, string? Url);
 
 // The outcome of a skill run: the model's text, the files it produced, how it stopped and what it used.
 public sealed record ClaudeSkillResult(string StopReason, string Text, IReadOnlyList<ClaudeOutputFile> Files, ClaudeUsage Usage, string? RefusalExplanation);
@@ -45,7 +50,8 @@ public sealed class ClaudeException(string code, string message, int status, Cla
 public interface IClaudeClient
 {
     Task<ClaudeUsage> TestAsync(string apiKey, string model, CancellationToken cancellationToken);
-    Task<ClaudeSkillUpload> UploadSkillAsync(string apiKey, string displayTitle, IReadOnlyList<ClaudeSkillFile> files, CancellationToken cancellationToken);
+    // existingSkillId: a new version of that skill (its SKILL.md name must stay the same); null creates a new skill.
+    Task<ClaudeSkillUpload> UploadSkillAsync(string apiKey, string displayTitle, IReadOnlyList<ClaudeSkillFile> files, string? existingSkillId, CancellationToken cancellationToken);
     Task<ClaudeSkillResult> RunSkillAsync(ClaudeSkillRequest request, CancellationToken cancellationToken);
     Task<byte[]> DownloadFileAsync(string apiKey, string fileId, long maxBytes, CancellationToken cancellationToken);
 }
@@ -77,8 +83,18 @@ public sealed class ClaudeClient(IHttpClientFactory httpClients) : IClaudeClient
         return Usage(message.Usage);
     }
 
-    public async Task<ClaudeSkillUpload> UploadSkillAsync(string apiKey, string displayTitle, IReadOnlyList<ClaudeSkillFile> files, CancellationToken cancellationToken)
+    public async Task<ClaudeSkillUpload> UploadSkillAsync(string apiKey, string displayTitle, IReadOnlyList<ClaudeSkillFile> files, string? existingSkillId, CancellationToken cancellationToken)
     {
+        if (existingSkillId is not null)
+        {
+            var version = await Call(() => Client(apiKey, TimeSpan.FromMinutes(2)).Skills.Versions.Create(existingSkillId, new VersionCreateParams
+            {
+                Files = files.Select(file => new BinaryContent { Stream = new MemoryStream(file.Content), FileName = file.Path }).ToList()
+            }, cancellationToken), cancellationToken);
+            if (string.IsNullOrWhiteSpace(version.ID))
+                throw new ClaudeException("AI_SKILL_UPLOAD_EMPTY", "Claude beceri sürümünü kaydetti ama sürüm kimliğini bildirmedi.", 502);
+            return new(existingSkillId, version.ID);
+        }
         var skill = await Call(() => Client(apiKey, TimeSpan.FromMinutes(2)).Skills.Create(new SkillCreateParams
         {
             DisplayName = displayTitle,
@@ -105,7 +121,7 @@ public sealed class ClaudeClient(IHttpClientFactory httpClients) : IClaudeClient
             System = request.System,
             Container = new Beta.BetaContainerParams { Skills = [new Beta.BetaSkillParams { Type = Beta.BetaSkillParamsType.Custom, SkillID = request.SkillId, Version = request.SkillVersion }] },
             Tools = [new Beta.BetaCodeExecutionTool20260521()],
-            Messages = [new Beta.BetaUserMessageParam { Content = request.Prompt }]
+            Messages = [request.Images is { Count: > 0 } ? new Beta.BetaUserMessageParam { Content = Blocks(request.Images, request.Prompt) } : new Beta.BetaUserMessageParam { Content = request.Prompt }]
         }, cancellationToken), cancellationToken);
 
         var text = new List<string>();
@@ -132,6 +148,21 @@ public sealed class ClaudeClient(IHttpClientFactory httpClients) : IClaudeClient
             throw new ClaudeException(exception.Code, exception.Message, exception.Status, usage, exception.InnerException);
         }
         return new(message.StopReason?.Raw() ?? "", string.Join("\n", text), files, usage, message.StopDetails?.Explanation);
+    }
+
+    // The pictures first, then the prompt.
+    private static List<Beta.BetaContentBlockParam> Blocks(IReadOnlyList<ClaudeImage> images, string prompt)
+    {
+        List<Beta.BetaContentBlockParam> blocks = [];
+        foreach (var image in images)
+            blocks.Add(new Beta.BetaImageBlockParam
+            {
+                Source = image.Data is { } data
+                    ? new Beta.BetaBase64ImageSource { Data = Convert.ToBase64String(data), MediaType = image.MediaType == "image/png" ? Beta.MediaType.ImagePng : Beta.MediaType.ImageJpeg }
+                    : new Beta.BetaUrlImageSource { Url = image.Url! }
+            });
+        blocks.Add(new Beta.BetaTextBlockParam { Text = prompt });
+        return blocks;
     }
 
     public async Task<byte[]> DownloadFileAsync(string apiKey, string fileId, long maxBytes, CancellationToken cancellationToken)

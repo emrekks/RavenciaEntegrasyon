@@ -65,6 +65,94 @@ public sealed class SizeChartRulesTests
     [InlineData(null, false)]
     public void The_size_option_is_the_one_named_beden(string? label, bool expected) => Assert.Equal(expected, SizeChartRules.IsSizeOption(label));
 
+    private static IReadOnlyList<SizeChartSpecSize> Sizes(string?[] columns, params (string Size, decimal?[] Values)[] rows)
+    {
+        var (table, error) = SizeChartRules.Validate(Input(columns, rows));
+        Assert.Null(error);
+        var (sizes, specError) = SizeChartSpec.Map(table!);
+        Assert.Null(specError);
+        return sizes!;
+    }
+
+    private static string? MapError(string?[] columns, params (string Size, decimal?[] Values)[] rows) => SizeChartSpec.Map(SizeChartRules.Validate(Input(columns, rows)).Table!).Error;
+
+    [Fact]
+    public void En_is_one_side_gogus_and_boy_is_boy_in_the_skills_spec()
+    {
+        var sizes = Sizes(["Boy (cm)", "En (cm)"], ("S", [64m, 50m]), ("M", [66.5m, 53m]));
+        Assert.Equal(new SizeChartSpecSize("S", 50m, 64m, null, null), sizes[0]);
+        Assert.Equal(new SizeChartSpecSize("M", 53m, 66.5m, null, null), sizes[1]);
+        var json = SizeChartSpec.Json("Kadın Kısa Kollu Bluz", sizes).ToJsonString();
+        Assert.Equal("""{"product_name":"Kadın Kısa Kollu Bluz","extra_notes":["Kilonuz iki aralığın sınırındaysa veya bol giymeyi seviyorsanız bir üst bedeni seçmenizi öneririz."],"sizes":[{"beden":"S","gogus":50,"boy":64},{"beden":"M","gogus":53,"boy":66.5}]}""",
+            System.Text.RegularExpressions.Regex.Unescape(json));
+        Assert.DoesNotContain("kilo\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("icon", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Front_and_back_lengths_go_together_and_goguse_alias_works()
+    {
+        var sizes = Sizes(["Göğüs", "Ön Boy", "Arka Boy"], ("L", [54m, 71m, 77m]));
+        Assert.Equal(new SizeChartSpecSize("L", 54m, null, 71m, 77m), sizes[0]);
+        Assert.Contains("Ön Boy ve Arka Boy", MapError(["En", "Ön Boy"], ("L", [54m, 71m])), StringComparison.Ordinal);
+        Assert.Contains("birlikte", MapError(["En", "Boy", "Ön Boy", "Arka Boy"], ("L", [54m, 70m, 71m, 77m])), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Columns_the_chart_cannot_show_are_refused_never_guessed()
+    {
+        Assert.Contains("En kolonu", MapError(["Boy"], ("S", [64m])), StringComparison.Ordinal);
+        Assert.Contains("Boy kolonu", MapError(["En"], ("S", [50m])), StringComparison.Ordinal);
+        Assert.Contains("tahmin", MapError(["Boy", "En", "Kilo"], ("S", [64m, 50m, 60m])), StringComparison.Ordinal);
+        Assert.Contains("'Kol Boyu'", MapError(["Boy", "En", "Kol Boyu"], ("S", [64m, 50m, 20m])), StringComparison.Ordinal);
+        Assert.Contains("aynı ölçü", MapError(["En", "Göğüs", "Boy"], ("S", [50m, 50m, 64m])), StringComparison.Ordinal);
+        var thirteen = Enumerable.Range(1, 13).Select(i => ($"B{i}", new decimal?[] { 60m, 50m })).ToArray();
+        Assert.Contains("en fazla 12", MapError(["Boy", "En"], thirteen), StringComparison.Ordinal);
+    }
+
+    private static byte[] Spec(string sizes, string icon = """{"sleeve":"short","neckline":"round","hem":"straight"}""", string extra = "") =>
+        Encoding.UTF8.GetBytes($$"""{"product_name":"Kadın Kısa Kollu Bluz","icon":{{icon}},"extra_notes":["{{SizeChartSpec.KiloNote}}"],"sizes":{{sizes}}{{extra}}}""");
+
+    [Fact]
+    public void The_spec_the_chart_was_drawn_from_must_hold_exactly_the_given_values()
+    {
+        var sizes = Sizes(["Boy", "En"], ("S", [64m, 50m]), ("M", [66.5m, 53m]));
+        Assert.Null(SizeChartSpec.Check(Spec("""[{"beden":"S","gogus":50,"boy":64},{"beden":"M","gogus":53,"boy":66.5}]"""), "Kadın Kısa Kollu Bluz", sizes));
+        Assert.Null(SizeChartSpec.Check(Spec("""[{"beden":"S","gogus":50.0,"boy":64},{"beden":"M","gogus":53,"boy":66.50}]""", """{"sleeve":"long","neckline":"v","hem":"curved","studs":4,"motif":"chevron","placket":false}"""), "Kadın Kısa Kollu Bluz", sizes));
+
+        Assert.NotNull(SizeChartSpec.Check(Spec("""[{"beden":"S","gogus":50,"boy":64},{"beden":"M","gogus":53,"boy":67}]"""), "Kadın Kısa Kollu Bluz", sizes));
+        Assert.NotNull(SizeChartSpec.Check(Spec("""[{"beden":"M","gogus":53,"boy":66.5},{"beden":"S","gogus":50,"boy":64}]"""), "Kadın Kısa Kollu Bluz", sizes));
+        Assert.NotNull(SizeChartSpec.Check(Spec("""[{"beden":"S","gogus":50,"boy":64,"kilo":"58-64"},{"beden":"M","gogus":53,"boy":66.5}]"""), "Kadın Kısa Kollu Bluz", sizes));
+        Assert.NotNull(SizeChartSpec.Check(Spec("""[{"beden":"S","gogus":100,"boy":64},{"beden":"M","gogus":106,"boy":66.5}]"""), "Kadın Kısa Kollu Bluz", sizes));
+        Assert.NotNull(SizeChartSpec.Check(Spec("""[{"beden":"S","gogus":50,"boy":64},{"beden":"M","gogus":53,"boy":66.5}]""", extra: ""","ease":10"""), "Kadın Kısa Kollu Bluz", sizes));
+        Assert.NotNull(SizeChartSpec.Check(Spec("""[{"beden":"S","gogus":50,"boy":64},{"beden":"M","gogus":53,"boy":66.5}]""", """{"sleeve":"short","neckline":"round","hem":"straight","color":"#1F2A56"}"""), "Kadın Kısa Kollu Bluz", sizes));
+        Assert.NotNull(SizeChartSpec.Check(Spec("""[{"beden":"S","gogus":50,"boy":64},{"beden":"M","gogus":53,"boy":66.5}]""", """{"sleeve":"short","neckline":"round"}"""), "Kadın Kısa Kollu Bluz", sizes));
+        Assert.NotNull(SizeChartSpec.Check(Spec("""[{"beden":"S","gogus":50,"boy":64},{"beden":"M","gogus":53,"boy":66.5}]""", """{"sleeve":"cape","neckline":"round","hem":"straight"}"""), "Kadın Kısa Kollu Bluz", sizes));
+        Assert.NotNull(SizeChartSpec.Check(Encoding.UTF8.GetBytes("not json"), "Kadın Kısa Kollu Bluz", sizes));
+    }
+
+    [Fact]
+    public void Only_a_complete_png_reports_its_size()
+    {
+        var png = Png(1200, 1800);
+        Assert.Equal((1200, 1800), SizeChartService.PngSize(png));
+        Assert.Null(SizeChartService.PngSize(png[..^12]));
+        Assert.Null(SizeChartService.PngSize([0xFF, 0xD8, 0xFF, 0xE0]));
+        Assert.Equal((2400, 3600), SizeChartService.PngSize(Png(2400, 3600)));
+    }
+
+    [Theory]
+    [InlineData(1200, 1800, null)]
+    [InlineData(2400, 3600, "Beden tablosu 1200×1800 olmalı; üretilen görsel 2400×3600 geldi, tekrar deneyin.")]
+    [InlineData(1200, 1799, "Beden tablosu 1200×1800 olmalı; üretilen görsel 1200×1799 geldi, tekrar deneyin.")]
+    public void Only_a_1200x1800_png_is_accepted(int width, int height, string? expected)
+    {
+        var failure = Record.Exception(() => SizeChartService.CheckImage(Png(width, height)));
+        Assert.Equal(expected, failure?.Message);
+        Assert.Equal("AI_IMAGE_INVALID", Assert.IsType<SizeChartException>(Record.Exception(() => SizeChartService.CheckImage([1, 2, 3]))).Code);
+    }
+
+    // The bundled fallback skill (chart.json → JPEG).
     [Fact]
     public void The_drawn_values_must_echo_the_request_exactly()
     {
@@ -96,6 +184,103 @@ public sealed class SizeChartRulesTests
         0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x12, 0x34,
         0xFF, 0xD9
     ];
+
+    // A minimal complete PNG: signature, IHDR with the size, IEND.
+    internal static byte[] Png(int width, int height)
+    {
+        byte[] header = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, (byte)'I', (byte)'H', (byte)'D', (byte)'R',
+            (byte)(width >> 24), (byte)(width >> 16), (byte)(width >> 8), (byte)width, (byte)(height >> 24), (byte)(height >> 16), (byte)(height >> 8), (byte)height,
+            8, 6, 0, 0, 0, 0, 0, 0, 0];
+        return [.. header, 0, 0, 0, 0, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
+    }
+}
+
+// The owner's .skill / .zip file: checked before anything is sent to the Skills API.
+public sealed class AiSkillPackageTests
+{
+    private const string SkillMd = "---\nname: ravencia-beden-tablosu\ndescription: Ravencia beden tablosu görseli üretir.\n---\n\n# Beden\n";
+
+    internal static byte[] Zip(params (string Path, string Content)[] entries)
+    {
+        using var buffer = new MemoryStream();
+        using (var archive = new System.IO.Compression.ZipArchive(buffer, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+            foreach (var (path, content) in entries)
+            {
+                using var writer = new StreamWriter(archive.CreateEntry(path).Open());
+                writer.Write(content);
+            }
+        return buffer.ToArray();
+    }
+
+    private static (AiSkillBundle? Bundle, string? Error) Read(byte[] bytes) => AiSkillPackage.Read(new MemoryStream(bytes));
+
+    [Fact]
+    public void A_skill_file_with_one_folder_and_skill_md_is_read_with_its_name()
+    {
+        var (bundle, error) = Read(Zip(("ravencia-beden-tablosu/SKILL.md", SkillMd), ("ravencia-beden-tablosu/scripts/render_size_chart.py", "print(1)"), ("__MACOSX/._SKILL.md", "x"), ("ravencia-beden-tablosu/", "")));
+        Assert.Null(error);
+        Assert.Equal("ravencia-beden-tablosu", bundle!.Name);
+        Assert.Equal(["ravencia-beden-tablosu/SKILL.md", "ravencia-beden-tablosu/scripts/render_size_chart.py"], bundle.Files.Select(file => file.Path));
+        Assert.Equal(12, bundle.BundleHash.Length);
+    }
+
+    [Fact]
+    public void Not_a_zip_is_refused() => Assert.Contains("arşivi değil", Read(Encoding.UTF8.GetBytes("plain text")).Error, StringComparison.Ordinal);
+
+    [Fact]
+    public void A_missing_skill_md_or_bad_frontmatter_is_refused()
+    {
+        Assert.Contains("SKILL.md", Read(Zip(("beden/README.md", "x"))).Error, StringComparison.Ordinal);
+        Assert.Contains("tek bir üst klasör", Read(Zip(("SKILL.md", SkillMd))).Error, StringComparison.Ordinal);
+        Assert.Contains("tek bir üst klasör", Read(Zip(("a/SKILL.md", SkillMd), ("b/x.py", "1"))).Error, StringComparison.Ordinal);
+        Assert.Contains("'name' yok", Read(Zip(("a/SKILL.md", "---\ndescription: x\n---\n"))).Error, StringComparison.Ordinal);
+        Assert.Contains("geçersiz", Read(Zip(("a/SKILL.md", "---\nname: Claude Beden\ndescription: x\n---\n"))).Error, StringComparison.Ordinal);
+        Assert.Contains("description", Read(Zip(("a/SKILL.md", "---\nname: beden\n---\n"))).Error, StringComparison.Ordinal);
+        Assert.Contains("frontmatter", Read(Zip(("a/SKILL.md", "# no frontmatter"))).Error, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("a/../../etc/passwd")]
+    [InlineData("/a/SKILL.md")]
+    [InlineData("a/./x.py")]
+    [InlineData("C:/a/x.py")]
+    [InlineData("a\\..\\x.py")]
+    public void A_path_leaving_the_folder_is_refused(string path) =>
+        Assert.Contains("izin verilmeyen bir dosya yolu", Read(Zip(("a/SKILL.md", SkillMd), (path, "x"))).Error, StringComparison.Ordinal);
+
+    [Fact]
+    public void An_archive_unpacking_past_the_limit_is_refused()
+    {
+        // 26 MB of one letter packs into a few KB: a small upload that would unpack too large.
+        var bomb = Zip(("a/SKILL.md", SkillMd), ("a/big.txt", new string('a', (int)AiSkillPackage.MaxUnpackedBytes + 1024 * 1024)));
+        Assert.True(bomb.Length < AiSkillPackage.MaxUploadBytes);
+        Assert.Contains("açılmış boyutu", Read(bomb).Error, StringComparison.Ordinal);
+    }
+}
+
+public sealed class SizeChartSpecNameTests
+{
+    [Theory]
+    [InlineData("Kadın Kısa Kollu Bluz", "Kadın Kısa Kollu Bluz")]
+    [InlineData("  Kadın   Kısa Kollu  Bluz ", "Kadın Kısa Kollu Bluz")]
+    [InlineData("Kışlık Saç Örgü Triko Düğmeli Yumuşak Bluz Büyük Beden Kadın Giyim Siyah", "Kışlık Saç Örgü Triko Düğmeli Yumuşak Bluz Büyük Beden Kadın")]
+    public void The_product_name_is_the_cards_title_cut_at_a_word(string title, string expected)
+    {
+        var name = SizeChartSpec.ProductName(title);
+        Assert.Equal(expected, name);
+        Assert.True(name.Length <= SizeChartSpec.MaxProductName);
+    }
+
+    [Fact]
+    public void A_changed_product_name_is_refused()
+    {
+        var sizes = new[] { new SizeChartSpecSize("S", 50m, 64m, null, null) };
+        var spec = SizeChartSpec.Json("Kadın Bluz", sizes);
+        spec["icon"] = System.Text.Json.Nodes.JsonNode.Parse("""{"sleeve":"short","neckline":"round","hem":"straight"}""");
+        var bytes = Encoding.UTF8.GetBytes(spec.ToJsonString());
+        Assert.Null(SizeChartSpec.Check(bytes, "Kadın Bluz", sizes));
+        Assert.Equal("ürün adı değiştirilmiş", SizeChartSpec.Check(bytes, "Kadın Kısa Kollu Bluz", sizes));
+    }
 }
 
 // The size chart is always the last picture: in the strip and variant lists the panel reads, and in what goes out.
@@ -244,6 +429,7 @@ public sealed class AiSettingsRoleTests
         Assert.NotNull(skill);
         Assert.Contains(skill.Files, file => file.Path == "beden-tablosu/SKILL.md");
         Assert.Contains(skill.Files, file => file.Path == "beden-tablosu/scripts/draw_size_chart.py");
+        Assert.Equal("beden-tablosu", skill.Name);
         Assert.Contains(skill.Files, file => file.Path == "beden-tablosu/assets/ravencia-symbol.png");
         Assert.Equal(12, skill.BundleHash.Length);
     }
@@ -381,5 +567,40 @@ public sealed class ClaudeClientTests
         Assert.Equal(2048, (await client.DownloadFileAsync(Key, "file_img", 4096, CancellationToken.None)).Length);
         var failure = await Assert.ThrowsAsync<ClaudeException>(() => client.DownloadFileAsync(Key, "file_img", 1024, CancellationToken.None));
         Assert.Equal("AI_FILE_TOO_LARGE", failure.Code);
+    }
+
+    [Fact]
+    public async Task The_product_picture_goes_before_the_prompt()
+    {
+        var handler = new FakeHandler(request => request.RequestUri!.AbsolutePath == "/v1/messages" ? Json(SkillResponse) : Json(Metadata("file_img", "beden-tablosu.png")));
+        var client = new ClaudeClient(new Factory(handler));
+
+        await client.RunSkillAsync(new ClaudeSkillRequest(Key, "claude-sonnet-5-5", "skill_1", "v1", "system", "prompt", "low", 8000, TimeSpan.FromSeconds(30),
+            [new ClaudeImage(null, null, "https://cdn.example.invalid/bluz.jpg"), new ClaudeImage([1, 2, 3], "image/png", null)]), CancellationToken.None);
+
+        var body = handler.Requests.First(request => request.Path == "/v1/messages").Body;
+        Assert.Contains("\"type\":\"url\"", body, StringComparison.Ordinal);
+        Assert.Contains("https://cdn.example.invalid/bluz.jpg", body, StringComparison.Ordinal);
+        Assert.Contains("\"media_type\":\"image/png\"", body, StringComparison.Ordinal);
+        Assert.Contains("\"data\":\"AQID\"", body, StringComparison.Ordinal);
+        Assert.True(body.IndexOf("bluz.jpg", StringComparison.Ordinal) < body.IndexOf("\"text\":\"prompt\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_skill_with_the_same_name_is_uploaded_as_a_new_version_of_it()
+    {
+        var handler = new FakeHandler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/v1/skills/skill_1/versions" => Json("""{"id":"skver_2","type":"skill_version","skill_id":"skill_1","version":"1762540000000000","name":"beden-tablosu","description":"x","directory":"beden-tablosu","created_at":"2026-11-07T19:00:00Z"}"""),
+            _ => Json("""{"type":"error","error":{"type":"not_found_error","message":"no"}}""", HttpStatusCode.NotFound)
+        });
+        var client = new ClaudeClient(new Factory(handler));
+
+        var upload = await client.UploadSkillAsync(Key, "Ravencia Beden Tablosu", [new ClaudeSkillFile("beden-tablosu/SKILL.md", Encoding.UTF8.GetBytes("---\nname: beden-tablosu\n---"))], "skill_1", CancellationToken.None);
+
+        Assert.Equal(new ClaudeSkillUpload("skill_1", "skver_2"), upload);
+        var call = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Post, call.Method);
+        Assert.Contains("beden-tablosu/SKILL.md", call.Body, StringComparison.Ordinal);
     }
 }

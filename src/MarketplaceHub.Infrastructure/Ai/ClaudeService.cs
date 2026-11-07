@@ -60,20 +60,30 @@ public sealed class ClaudeService(AiSettingsService settings, IClaudeClient clie
         return credentials.DefaultModel;
     }
 
-    public async Task<AiSettingsView> UploadSkillAsync(AiCallContext context, string correlationId, AiSkillDefinition skill, CancellationToken cancellationToken)
+    // The copy bundled with the panel.
+    public Task<AiSettingsView> UploadSkillAsync(AiCallContext context, string correlationId, AiSkillDefinition skill, CancellationToken cancellationToken) =>
+        UploadSkillAsync(context, correlationId, skill, new AiSkillBundle(skill.Name, skill.Files, skill.BundleHash), AiUploadedSkillView.Bundled, null, cancellationToken);
+
+    // A skill file the owner chose (fileName) or the bundled copy. It becomes a new version of the skill uploaded before
+    // when its SKILL.md name is the same (the Skills API keeps a skill's name); otherwise a new skill. Generation then
+    // runs on exactly this version.
+    public async Task<AiSettingsView> UploadSkillAsync(AiCallContext context, string correlationId, AiSkillDefinition skill, AiSkillBundle bundle, string source, string? fileName, CancellationToken cancellationToken)
     {
         var credentials = await RequireCredentialsAsync(context.TenantId, cancellationToken);
-        var upload = await Logged(context, "skills-api", () => client.UploadSkillAsync(credentials.ApiKey, $"Ravencia {skill.Title}", skill.Files, cancellationToken), _ => null, cancellationToken);
-        return await settings.RecordSkillAsync(context.TenantId, context.UserId ?? Guid.Empty, correlationId, skill, upload.Value, cancellationToken);
+        var existing = credentials.Skills.GetValueOrDefault(skill.Key);
+        // Rows written before the name was kept were the bundled skill, whose name was its key.
+        var sameSkill = existing is not null && string.Equals(existing.Name ?? skill.Key, bundle.Name, StringComparison.Ordinal);
+        var upload = await Logged(context, "skills-api", () => client.UploadSkillAsync(credentials.ApiKey, $"Ravencia {skill.Title}", bundle.Files, sameSkill ? existing!.SkillId : null, cancellationToken), _ => null, cancellationToken);
+        return await settings.RecordSkillAsync(context.TenantId, context.UserId ?? Guid.Empty, correlationId, skill.Key, bundle, source, fileName, upload.Value, cancellationToken);
     }
 
-    public async Task<AiSkillRun> RunSkillAsync(AiCallContext context, AiCredentials credentials, string skillKey, string system, string prompt, string effort, int maxTokens, TimeSpan timeout, CancellationToken cancellationToken)
+    public async Task<AiSkillRun> RunSkillAsync(AiCallContext context, AiCredentials credentials, string skillKey, string system, string prompt, string effort, int maxTokens, TimeSpan timeout, CancellationToken cancellationToken, IReadOnlyList<ClaudeImage>? images = null)
     {
         if (!credentials.Skills.TryGetValue(skillKey, out var skill))
             throw new ClaudeException("AI_SKILL_MISSING", "Beceri henüz yüklenmedi. Ayarlar › Yapay Zekâ bölümünde \"Beceriyi Yükle\" düğmesine basın.", 409);
         var model = credentials.DefaultModel;
         var run = await Logged(context, model,
-            () => client.RunSkillAsync(new ClaudeSkillRequest(credentials.ApiKey, model, skill.SkillId, skill.Version, system, prompt, effort, maxTokens, timeout), cancellationToken),
+            () => client.RunSkillAsync(new ClaudeSkillRequest(credentials.ApiKey, model, skill.SkillId, skill.Version, system, prompt, effort, maxTokens, timeout, images), cancellationToken),
             result => result.Usage, cancellationToken);
         return new(run.Value, run.LogId, model);
     }

@@ -11,7 +11,8 @@ namespace MarketplaceHub.Api.Settings;
 //   GET  /api/v1/settings/ai                       key saved or not (never the key), default model, skills
 //   PUT  /api/v1/settings/ai                       save; a blank apiKey keeps the saved one; audit-logged
 //   POST /api/v1/settings/ai/test                  a tiny request with the saved key and model
-//   POST /api/v1/settings/ai/skills/{key}/upload   uploads the repository's skill with the Skills API
+//   POST /api/v1/settings/ai/skills/{key}/upload   multipart "file": the owner's .skill / .zip file; without a file:
+//                                                  the copy bundled with the panel. Either goes to the Skills API.
 //   GET  /api/v1/settings/ai/usage                 the latest Claude calls (who, what, tokens, cost)
 //   GET  /api/v1/products/{id}/size-chart          sizes, last measurements, the chart picture, AI readiness
 //   POST /api/v1/products/{id}/size-chart/generate draws the chart (Claude + beden-tablosu skill); 30-180 s
@@ -27,7 +28,7 @@ public static class AiEndpoints
         settings.MapGet("", GetAsync);
         settings.MapPut("", SaveAsync);
         settings.MapPost("/test", TestAsync);
-        settings.MapPost("/skills/{key}/upload", UploadSkillAsync);
+        settings.MapPost("/skills/{key}/upload", UploadSkillAsync).DisableAntiforgery();
         settings.MapGet("/usage", UsageAsync);
 
         var products = endpoints.MapGroup("/api/v1/products/{id:guid}/size-chart");
@@ -77,9 +78,32 @@ public static class AiEndpoints
     {
         if (Tenant(http) is not { } tenant) return Unauthorized(http);
         if (AiSkillCatalog.Find(key) is not { } skill) return Problem(http, new("AI_SKILL_UNKNOWN", "Bu adla bir beceri yok.", 404));
+        var bundle = new AiSkillBundle(skill.Name, skill.Files, skill.BundleHash);
+        var source = AiUploadedSkillView.Bundled;
+        string? fileName = null;
+        if (http.Request.HasFormContentType)
+        {
+            var sizeFeature = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+            if (sizeFeature is { IsReadOnly: false }) sizeFeature.MaxRequestBodySize = AiSkillPackage.MaxUploadBytes + 128 * 1024;
+            var form = await http.Request.ReadFormAsync(http.RequestAborted);
+            if (form.Files.GetFile("file") is not { } file) return Problem(http, new("VALIDATION_FAILED", "Beceri dosyası (file) gönderilmedi.", 422));
+            fileName = Path.GetFileName(file.FileName.Replace('\\', '/'));
+            if (fileName.Length is 0 or > 120 || !(fileName.EndsWith(".skill", StringComparison.OrdinalIgnoreCase) || fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
+                return Problem(http, new("AI_SKILL_FILE_INVALID", "Yalnız .skill ya da .zip uzantılı beceri dosyası yüklenebilir.", 422));
+            if (file.Length is <= 0 or > AiSkillPackage.MaxUploadBytes)
+                return Problem(http, new("AI_SKILL_FILE_INVALID", $"Beceri dosyası boş olamaz ve en fazla {AiSkillPackage.MaxUploadBytes / 1024 / 1024} MB olabilir.", 422));
+            await using var input = file.OpenReadStream();
+            using var buffer = new MemoryStream();
+            await input.CopyToAsync(buffer, http.RequestAborted);
+            buffer.Position = 0;
+            var (read, error) = AiSkillPackage.Read(buffer);
+            if (read is null) return Problem(http, new("AI_SKILL_FILE_INVALID", error ?? "Beceri dosyası okunamadı.", 422));
+            (bundle, source) = (read, AiUploadedSkillView.File);
+        }
         try
         {
-            var view = await claude.UploadSkillAsync(new AiCallContext(tenant.TenantId, tenant.UserId, "SKILL_UPLOAD", "Skill", null, skill.Title), http.TraceIdentifier, skill, http.RequestAborted);
+            var context = new AiCallContext(tenant.TenantId, tenant.UserId, "SKILL_UPLOAD", "Skill", null, fileName is null ? skill.Title : $"{skill.Title} · {fileName}");
+            var view = await claude.UploadSkillAsync(context, http.TraceIdentifier, skill, bundle, source, fileName, http.RequestAborted);
             return Versioned(http, view);
         }
         catch (ClaudeException exception) { return Problem(http, new(exception.Code, exception.Message, exception.Status)); }
