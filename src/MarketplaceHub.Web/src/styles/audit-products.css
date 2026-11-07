@@ -1,0 +1,27 @@
+/*
+ * Audit of Ürünler, Ürün Düzenleyici and Promosyon (owner, 8 Nov 2026).
+ * - Action menus (.rr-menu: İşlemler, Toplu İşlemler) use the unified rows: 36 px, 13px/500, padded 6px 10px (they were
+ *   40 px, 14px, 8px 12px). Two-line rows (.rr-two) keep their own height. Phones keep the bottom-sheet rows.
+ * - Filter and sort lists: option rows are 13px/400 like every other option row.
+ * - The product editor's right column (Fiyat, Stok ve Vergi) takes its content's height instead of the left card's.
+ * - The shared date range calendar: month buttons and the Temizle button were unstyled (grey, white outset border,
+ *   radius 0, 16 px).
+ */
+@media (min-width: 761px) {
+  :root:root:root body :is(main .rr, .rr-layer) .rr-menu > button:not(.rr-two) { min-height: 36px; padding: 6px 10px; gap: 10px; font-size: 13px; font-weight: 500 !important; }
+  :root:root:root body :is(main .rr, .rr-layer) .rr-menu > button.rr-two { padding: 8px 10px; font-size: 13px; }
+  :root:root:root body :is(main .rr, .rr-layer) .rr-pop .rr-opt { font-weight: 400 !important; }
+  :root:root:root body .app-shell.stitch-shell main .product-top-layout > .product-top-sidebar { align-self: start; align-content: start; }
+}
+
+:root:root body .date-range-picker-popover > header > button {
+  box-sizing: border-box; display: inline-grid; place-items: center; width: 32px; height: 32px; min-width: 0; min-height: 0; padding: 0;
+  color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+}
+:root:root body .date-range-picker-popover > footer > button {
+  box-sizing: border-box; height: 32px; min-height: 0; padding: 0 12px;
+  color: var(--rv-color-ink); background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border-strong); border-radius: 7px;
+  font-size: 12.5px; font-weight: 500; cursor: pointer;
+}
+:root:root body .date-range-picker-popover > :is(header, footer) > button:hover { background: var(--rv-color-surface-raised); }

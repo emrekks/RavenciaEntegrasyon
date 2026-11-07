@@ -11,7 +11,7 @@
 .rv-modal.size-chart-modal > header { padding-block: 14px; }
 .rv-modal.size-chart-modal > .rv-modal-body { padding-block: 14px; }
 .rv-modal.size-chart-modal > footer { padding-block: 12px; }
-.size-chart-modal button.rv-button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 14px; text-transform: none; }
+.size-chart-modal button.rv-button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; text-transform: none; }
 .size-chart-modal .size-chart-table-wrap { overflow-x: auto; border: 1px solid var(--rv-color-border); border-radius: 12px; }
 .size-chart-modal .size-chart-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
 .size-chart-modal .size-chart-table th, .size-chart-modal .size-chart-table td { padding: 6px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--rv-color-border); }
