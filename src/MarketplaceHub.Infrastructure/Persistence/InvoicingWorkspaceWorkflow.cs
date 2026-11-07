@@ -690,6 +690,8 @@ public sealed partial class InvoicingBillingService
         db.AuditLogs.Add(new AuditLog { TenantId = tenantId, Action = "INVOICE_REPLACED_AFTER_PROVIDER_CANCELLATION", TargetType = "Invoice", TargetId = invoice.Id.ToString("D"), Reason = $"operator-cancelled-in-provider-portal:{invoice.InvoiceNumber}", CorrelationId = correlationId, CreatedAt = now });
         await InvoiceAdjustmentTracking.MarkLinkRevocationRequiredAsync(db, invoice, now, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
+        // Its delivery jobs stopped for review, blocked or dead have nothing left to do.
+        await InvoiceDeliveryJobHygiene.CloseStoppedJobsAfterCancellationAsync(db, tenantId, invoice.Id, invoice.Status, now, correlationId, cancellationToken);
         return ServiceResult<bool>.Ok(true);
     }
 

@@ -16,6 +16,7 @@ internal static class InvoiceDeliveryJobHygiene
 {
     public const string ManualReviewClosedCode = "INVOICE_DELIVERY_CLOSED_FOR_MANUAL_REVIEW";
     public const string OwnerConfirmedCode = "INVOICE_DELIVERY_CONFIRMED_BY_OWNER";
+    public const string StoppedJobClosedAuditAction = "INVOICE_DELIVERY_STOPPED_JOB_CLOSED_INVOICE_CANCELLED";
 
     public static string KeyPrefix(Guid invoiceId) => $"{InvoicingJobTypes.MarketplaceDelivery}:{invoiceId}:";
 
@@ -39,6 +40,97 @@ internal static class InvoiceDeliveryJobHygiene
         if (invoiceStatus == InvoiceStatus.ManualReview)
             return (ManualReviewClosedCode, "Fatura incelemeye alındı; bekleyen otomatik pazaryeri iletimi kapatıldı. İletim yalnız sizin işleminizle (Tekrar Gönder) yeniden başlar.");
         return null;
+    }
+
+    // Owner decision 7 Nov 2026 (live: eleven delivery jobs of invoice DAP2026000000436, stopped for review on 13 Oct with
+    // DELIVERY_RETRY_PAYLOAD_CHANGED, still open long after the invoice was cancelled). A delivery job stopped for review,
+    // blocked or dead has nothing left to do once its invoice is cancelled for good: cancelled at the provider, a local
+    // draft cancelled or replaced, or refused by the provider (all states InvoiceBlocksDelivery holds, none leading back
+    // to a deliverable invoice). An invoice whose cancellation is pending or was refused, one waiting for an adjustment,
+    // a live one and a missing one leave the stopped job as it is.
+    public static bool InvoiceCancelledForGood(InvoiceStatus status) =>
+        status is InvoiceStatus.Cancelled or InvoiceStatus.CancelledLocal or InvoiceStatus.Rejected;
+
+    // Whether a stopped delivery job closes because its invoice is cancelled for good: the job is stopped, of its
+    // invoice's key series, and the invoice's saved status is known and final.
+    public static bool StoppedJobClosesForCancelledInvoice(JobStatus jobStatus, string jobDedupKey, string payloadJson, IReadOnlyDictionary<Guid, InvoiceStatus> invoiceStatuses) =>
+        jobStatus is JobStatus.ManualReview or JobStatus.Blocked or JobStatus.Dead
+        && InvoicingJobProcessor.DeliveryJobTarget(payloadJson) is { } target
+        && jobDedupKey.StartsWith(KeyPrefix(target.InvoiceId), StringComparison.Ordinal)
+        && invoiceStatuses.TryGetValue(target.InvoiceId, out var invoiceStatus)
+        && InvoiceCancelledForGood(invoiceStatus);
+
+    // Closes the stopped (review, blocked, dead) delivery jobs of the given invoices, or of every invoice (null: the
+    // scheduled catch-up), whose invoice is cancelled for good, as Cancelled with the cancelled code. Each close raises
+    // the job's "jobs" event and writes an audit entry. Idempotent: a closed job is no longer stopped. The changes are
+    // tracked and the caller saves them (a job changed meanwhile fails that save on its version). Returns how many.
+    public static async Task<int> CloseStoppedJobsOfCancelledInvoicesAsync(AppDbContext db, Guid tenantId, IReadOnlyCollection<Guid>? invoiceIds, DateTimeOffset now, string correlationId, CancellationToken cancellationToken)
+    {
+        if (invoiceIds is { Count: 0 }) return 0;
+        // Stopped delivery jobs are few (each waits for the owner), so they are read whole and matched here.
+        var candidates = (await db.IntegrationJobs.AsNoTracking()
+                .Where(job => job.TenantId == tenantId && job.JobType == InvoicingJobTypes.MarketplaceDelivery
+                    && (job.Status == JobStatus.ManualReview || job.Status == JobStatus.Blocked || job.Status == JobStatus.Dead))
+                .Select(job => new { job.Id, job.Status, job.JobDedupKey, job.PayloadJson })
+                .ToListAsync(cancellationToken))
+            .Select(job => (job.Id, job.Status, job.JobDedupKey, job.PayloadJson, InvoiceId: InvoicingJobProcessor.DeliveryJobTarget(job.PayloadJson)?.InvoiceId))
+            .Where(job => job.InvoiceId is { } invoiceId && (invoiceIds is null || invoiceIds.Contains(invoiceId)))
+            .ToList();
+        if (candidates.Count == 0) return 0;
+        var targetInvoiceIds = candidates.Select(job => job.InvoiceId!.Value).Distinct().ToArray();
+        var statuses = await db.Invoices.AsNoTracking()
+            .Where(invoice => invoice.TenantId == tenantId && targetInvoiceIds.Contains(invoice.Id))
+            .ToDictionaryAsync(invoice => invoice.Id, invoice => invoice.Status, cancellationToken);
+        // A status changed in this context and not saved yet counts: a cancel path closes the jobs in its own save.
+        foreach (var local in db.Invoices.Local.Where(invoice => invoice.TenantId == tenantId && statuses.ContainsKey(invoice.Id)).ToList())
+            statuses[local.Id] = local.Status;
+        var closing = candidates.Where(job => StoppedJobClosesForCancelledInvoice(job.Status, job.JobDedupKey, job.PayloadJson, statuses)).Select(job => job.Id).ToArray();
+        if (closing.Length == 0) return 0;
+        var jobs = await db.IntegrationJobs.Where(job => job.TenantId == tenantId && closing.Contains(job.Id)).ToListAsync(cancellationToken);
+        var closed = 0;
+        foreach (var job in jobs)
+        {
+            if (!StoppedJobClosesForCancelledInvoice(job.Status, job.JobDedupKey, job.PayloadJson, statuses)) continue;
+            var invoiceId = InvoicingJobProcessor.DeliveryJobTarget(job.PayloadJson)!.Value.InvoiceId;
+            var previous = $"{job.Status}:{job.LastErrorCode}";
+            var reason = CloseReason(statuses[invoiceId], targetConfirmed: false)!.Value;
+            job.Status = JobStatus.Cancelled;
+            job.CompletedAt = now;
+            job.LastErrorCode = reason.Code;
+            job.LastErrorSummary = reason.Summary;
+            job.Version++;
+            db.IntegrationOutboxEvents.Add(JobLeaseService.NewJobEvent(job, now));
+            db.AuditLogs.Add(new AuditLog
+            {
+                TenantId = tenantId,
+                Action = StoppedJobClosedAuditAction,
+                TargetType = "IntegrationJob",
+                TargetId = job.Id.ToString("D"),
+                Reason = $"invoice:{invoiceId:D}:{statuses[invoiceId]}:was:{previous}",
+                CorrelationId = correlationId,
+                CreatedAt = now
+            });
+            closed++;
+        }
+        return closed;
+    }
+
+    // After a cancel path saved the invoice as cancelled for good: closes its stopped delivery jobs in a save of their
+    // own. Housekeeping only: a job changed meanwhile, or any failure, never undoes the saved cancellation; the
+    // scheduled scan closes what is left.
+    public static async Task CloseStoppedJobsAfterCancellationAsync(AppDbContext db, Guid tenantId, Guid invoiceId, InvoiceStatus invoiceStatus, DateTimeOffset now, string correlationId, CancellationToken cancellationToken)
+    {
+        if (!InvoiceCancelledForGood(invoiceStatus)) return;
+        try
+        {
+            if (await CloseStoppedJobsOfCancelledInvoicesAsync(db, tenantId, [invoiceId], now, correlationId, cancellationToken) > 0)
+                await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            foreach (var entry in db.ChangeTracker.Entries().Where(entry => entry.State is EntityState.Added or EntityState.Modified).ToList())
+                entry.State = EntityState.Detached;
+        }
     }
 
     // Whether an automatic trigger must not add a delivery job for this invoice and package: the invoice is in review,
