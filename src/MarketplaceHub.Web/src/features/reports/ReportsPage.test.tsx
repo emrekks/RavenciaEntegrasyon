@@ -221,8 +221,8 @@ describe('ReportsPage', () => {
     expect(texts(page, '.reports-card-metrics h2')).toEqual(['Satış ve Ürün', 'Sipariş ve Müşteri', 'Maliyet ve Reklam', 'İade ve İptal', 'Operasyon'])
     expect(metricRows(page, 'product')).toEqual(['Adet Başına Satış₺70,00', 'Adet Başına Kâr₺31,75', 'Satıcı İndirimi₺30,00 · %7,9'])
     expect(page.querySelector('.reports-card-metrics.is-product')?.textContent).toContain('yalnız Trendyol ve Hepsiburada')
-    expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Adet1,25', 'Tekrar Alan Müşteri%50,0'])
-    expect(metricRows(page, 'ads')).toEqual(['Ortalama Komisyon Oranı%21,5', 'Trendyol Reklamı—', 'Reklam / Kâr—', 'Reklam Payı (TACoS)—'])
+    expect(metricRows(page, 'order')).toEqual(['Sipariş Başına Satış₺116,67', 'Sipariş Başına Kâr₺42,33', 'Sipariş Başına Kargo—', 'Sipariş Başına Kesinti₺14,33', 'Sipariş Başına Adet1,25', 'Tekrar Alan Müşteri%50,0'])
+    expect(metricRows(page, 'ads')).toEqual(['Ortalama Komisyon Oranı%21,5', 'Trendyol Reklamı—', 'Reklam Payı (TACoS)—', 'Sipariş Başına Reklam—', 'Reklam Öncesi Marj—'])
     expect(page.querySelector('.reports-card-metrics.is-ads')?.textContent).not.toContain('ROAS')
     // Without Trendyol's statement there is nothing tied to no order to list.
     expect(page.querySelector('.reports-card-unlinked')).toBeNull()
@@ -277,7 +277,12 @@ describe('ReportsPage', () => {
     // The advertising spend is told from the deductions tied to no order.
     expect(metricRows(page, 'ads')[1]).toBe('Trendyol Reklamı₺5.000,00')
     // TACoS: the spend over Trendyol's net revenue (₺250), not every platform's.
-    expect(metricRows(page, 'ads')[3]).toBe(`Reklam Payı (TACoS)${formatPercent(5000 / 250, 2)}`)
+    expect(metricRows(page, 'ads')[2]).toBe(`Reklam Payı (TACoS)${formatPercent(5000 / 250, 2)}`)
+    // The spend over Trendyol's 3 orders with an amount; the margin before it gives the advertising back to the profit.
+    expect(metricRows(page, 'ads')[3]).toBe('Sipariş Başına Reklam₺1.666,67')
+    expect(metricRows(page, 'ads')[4]).toMatch(/^Reklam Öncesi Marj−?%/u)
+    // The commission (41,50) and the service fee and withholding tax (12,50 + 1) over 3 orders, as on the bridge.
+    expect(metricRows(page, 'order')[3]).toBe('Sipariş Başına Kesinti₺18,33')
     // Siparişe Bağlı Olmayan Kesintiler: each deduction with its records, largest first, and their total; the foreign
     // sale is no deduction. Its "i" and its total say Net Kâr takes them off.
     const unlinked = page.querySelector('.reports-card-unlinked')!
