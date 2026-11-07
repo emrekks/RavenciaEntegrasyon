@@ -53,6 +53,12 @@ describe('label size, text sizes and layout checks', () => {
     expect(shippingLabelTextSizes.map(size => size.px)).toEqual([12, 14, 17])
   })
 
+  it('keeps a block’s Tek Satır only when it is switched on', () => {
+    const base = defaultShippingLabelSettings.layout.sticker[0]
+    const inline = [true, false, 'yes', undefined].map(value => normalizeShippingLabelSettings({ layout: { sticker: [{ ...base, inline: value as boolean | undefined }] } }).layout.sticker[0].inline)
+    expect(inline).toEqual([true, undefined, undefined, undefined])
+  })
+
   it('warns about blocks on top of each other but not about blocks that only touch', () => {
     const a = block({ id: 'a', position: { x: 0, y: 0, width: 50, height: 20 } })
     expect(shippingLabelLayoutIssues([a, block({ id: 'b', position: { x: 0, y: 20, width: 50, height: 20 } })], { width: 100, height: 100 }, {})).toEqual([])
