@@ -411,9 +411,9 @@
 
 /* A segmented choice (a statement's marketplace): one rounded track, the picked one raised. */
 .app-shell.stitch-shell main .reports-page .reports-segmented { display: inline-flex; flex-wrap: wrap; justify-self: start; gap: 2px; max-width: 100%; padding: 3px; background: var(--rv-color-surface-soft); border: 1px solid var(--rv-color-border); border-radius: 12px; }
-.app-shell.stitch-shell main .reports-page .reports-segmented button { min-height: 0; height: 30px; padding: 0 12px; color: var(--rv-color-muted); font: inherit; font-size: 12.5px; font-weight: 500; text-transform: none; white-space: nowrap; background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
+.app-shell.stitch-shell main .reports-page .reports-segmented button { min-height: 0; height: 32px; padding: 0 12px; color: var(--rv-color-muted); font: inherit; font-size: 12.5px; font-weight: 500; text-transform: none; white-space: nowrap; background: transparent; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; }
 .app-shell.stitch-shell main .reports-page .reports-segmented button:hover { color: var(--rv-color-ink); }
-.app-shell.stitch-shell main .reports-page .reports-segmented button[aria-pressed='true'] { color: var(--rv-color-ink); font-weight: 600; background: var(--rv-color-surface); box-shadow: 0 1px 2px rgb(0 0 0 / 14%); }
+.app-shell.stitch-shell main .reports-page .reports-segmented button[aria-pressed='true'] { color: var(--rv-color-ink); font-weight: 500; background: var(--rv-color-surface); box-shadow: 0 1px 2px rgb(0 0 0 / 14%); }
 .app-shell.stitch-shell main .reports-page .reports-segmented button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
 
 /* A step's breakdown in a window over the page (nothing under the card moves); the window is as wide as its content needs. */
@@ -878,7 +878,7 @@
 .app-shell.stitch-shell main .reports-page .reports-order-sort { display: inline-flex; align-items: center; gap: 6px; min-height: 0; height: auto; margin: 0; padding: 0; color: inherit; font: inherit; text-transform: none; background: none; border: 0; box-shadow: none; cursor: pointer; }
 .app-shell.stitch-shell main .reports-page .reports-order-sort span { color: var(--rv-color-subtle); }
 .app-shell.stitch-shell main .reports-page .reports-order-sort.is-on, .app-shell.stitch-shell main .reports-page .reports-order-sort.is-on span { color: var(--rv-color-primary); }
-.app-shell.stitch-shell main .reports-page .reports-order-detail { min-height: 0; height: 32px; padding: 0 12px; border-radius: 7px; font-size: 12px; text-transform: none; }
+.app-shell.stitch-shell main .reports-page .reports-order-detail { min-height: 0; height: 36px; padding: 0 12px; border-radius: 7px; font-size: 13px; text-transform: none; }
 .app-shell.stitch-shell main .reports-page .reports-order-pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; color: var(--rv-color-muted); font-size: 13px; }
 .app-shell.stitch-shell main .reports-page .reports-order-pager button { min-height: 0; height: 36px; border-radius: 7px; text-transform: none; }
 

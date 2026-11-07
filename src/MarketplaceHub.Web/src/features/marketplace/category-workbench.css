@@ -228,7 +228,7 @@
 .app-shell .panel.mapping-step.cm-card .cm-actions > button { flex: 1 1 auto; justify-content: center; }
 
 /* Field groups in the list fold open and closed from their heading. */
-.app-shell.stitch-shell main .cm-card button.cm-section { display: flex; align-items: center; gap: 6px; width: 100%; height: auto; min-height: 0; padding: 14px 20px 6px; color: var(--rv-color-muted); text-align: left; background: none; border: 0; border-radius: 0; box-shadow: none; font-size: 12px; font-weight: 600 !important; letter-spacing: .02em; text-transform: uppercase; cursor: pointer; }
+.app-shell.stitch-shell main .cm-card button.cm-section { display: flex; align-items: center; gap: 6px; width: 100%; height: auto; min-height: 0; padding: 14px 20px 6px; color: var(--rv-color-muted); text-align: left; background: none; border: 0; border-radius: 0; box-shadow: none; font-size: 12px; font-weight: 600 !important; letter-spacing: 0; text-transform: none; cursor: pointer; }
 .app-shell.stitch-shell main .cm-card button.cm-section:hover { color: var(--rv-color-ink); }
 .app-shell.stitch-shell main .cm-card button.cm-section > span:first-of-type { flex: 1; }
 .app-shell.stitch-shell main .cm-card button.cm-section > span:last-child { color: var(--rv-color-muted); font-weight: 500; letter-spacing: 0; font-variant-numeric: tabular-nums; }
@@ -481,7 +481,7 @@
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-layout:has(.cm-detail > .cm-foot) { padding-bottom: 52px; }
 /* Footer row: hint, legend and 34 px buttons in one 52 px band (9 px above and below). */
 .app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot { height: 52px; padding: 9px 20px; }
-.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot > button { height: 34px; min-height: 0; }
+.app-shell.stitch-shell main .mapping-advanced-modal .panel.mapping-step.cm-card.cm-card .cm-detail > .cm-foot > button { height: 36px; min-height: 0; }
 /* Değer Eşlemeleri's tools share the field row's columns, Kaldır's column included, so Değer ara starts under Panel
    Özelliği (owner, 5 Nov 2026). */
 @media (min-width: 901px) {

@@ -220,7 +220,7 @@ function SettingsDataReset({ groups, counts, countsFailed, picked, onToggle, con
       </div>
       <div className="ss-bar-actions">
         <input id="settings-reset-confirm" className={`ss-in ss-dr-in${confirmed ? ' is-match' : ''}`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={`${resetConfirmWord} yazın`} aria-label={`Onaylamak için ${resetConfirmWord} yazın`} title={`Onaylamak için ${resetConfirmWord} yazın`} />
-        <button type="button" className="ss-btn is-danger is-solid ss-dr-go" disabled={!going.length || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
+        <button type="button" className="ss-btn is-danger ss-dr-go" disabled={!going.length || !confirmed || busy} onClick={onConfirm}><SettingsIcon name="trash" />{busy ? 'Sıfırlanıyor…' : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
       </div>
     </StickyActionBar>
   </>

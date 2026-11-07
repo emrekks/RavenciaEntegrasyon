@@ -135,9 +135,9 @@
   padding: 0 14px;
   color: #fff;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  background: var(--rv-color-primary-fill, var(--rv-color-primary));
+  background: var(--rv-color-primary);
   border: 1px solid var(--rv-color-primary);
   border-radius: 7px;
   cursor: pointer;
@@ -145,4 +145,4 @@
 .missing-value-mapping > footer > button:hover:not(:disabled) { background: var(--rv-color-primary-hover, var(--rv-color-primary)); }
 .missing-value-mapping > footer > button.secondary { color: var(--rv-color-ink); background: var(--rv-color-surface); border-color: var(--rv-color-border-strong); }
 .missing-value-mapping > footer > button.secondary:hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-soft)); }
-.missing-value-mapping > footer > button:disabled { cursor: not-allowed; opacity: .55; }
+.missing-value-mapping > footer > button:disabled { cursor: not-allowed; opacity: .5; }

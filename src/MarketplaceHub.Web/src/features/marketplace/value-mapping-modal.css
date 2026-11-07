@@ -24,7 +24,7 @@
 .mapping-reference-heading .mapping-reference-heading-actions { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: flex-end; gap: 10px; padding: 0; background: none; border: 0; border-radius: 0; }
 .mapping-reference-heading .mapping-reference-heading-actions > span { min-height: 0; padding: 0; color: var(--rv-color-primary); background: none; border: 0; border-radius: 0; font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; white-space: nowrap; }
 .mapping-reference-heading .mapping-transfer-actions { flex-wrap: nowrap; }
-.panel-value-multi-menu > button:disabled { opacity: .55; cursor: not-allowed; }
+.panel-value-multi-menu > button:disabled { opacity: .5; cursor: not-allowed; }
 .panel-value-multi-menu > button:disabled:hover { background: transparent; }
 .value-mapping-unmatched { --unmatched-tone: var(--rv-color-info); display: grid; gap: 10px; padding: 12px 14px; background: color-mix(in srgb, var(--unmatched-tone) 7%, var(--rv-color-surface)); border: 1px solid color-mix(in srgb, var(--unmatched-tone) 35%, var(--rv-color-border)); border-radius: 12px; }
 .value-mapping-unmatched.is-complete { --unmatched-tone: var(--rv-color-accent); }

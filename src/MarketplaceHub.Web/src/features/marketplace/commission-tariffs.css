@@ -209,6 +209,7 @@
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-range i { color: var(--rv-color-subtle); font-style: normal; }
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-actions { display: flex; grid-column: 1 / -1; justify-content: flex-end; gap: 8px; }
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-actions > button { min-height: 0; height: 36px; padding: 0 14px; border-radius: 7px; font-size: 13px; font-weight: 500; text-transform: none; }
+.app-shell.stitch-shell main .commission-tariffs .commission-filter-actions > button.rv-button-primary { font-weight: 600; }
 .app-shell.stitch-shell main .commission-tariffs .commission-filter-note { grid-column: 1 / -1; margin: 0; color: var(--rv-color-warning); font-size: 12px; }
 @media (max-width: 900px) { .app-shell.stitch-shell main .commission-tariffs .commission-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 

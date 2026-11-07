@@ -78,7 +78,7 @@ export function DataResetLedger<S extends string>({ groups, counts, countsFailed
       <div className="drl-confirm">
         <label htmlFor={`${idPrefix}-confirm`}>Onaylamak için <b>{confirmWord}</b> yazın</label>
         <span className={`drl-field${confirmed ? ' is-ok' : ''}`}><input id={`${idPrefix}-confirm`} value={confirmation} onChange={event => onConfirmation(event.target.value)} disabled={busy} autoComplete="off" placeholder={confirmWord} />{confirmed && <UiIcon name="check" size={16} />}</span>
-        <button type="button" className="destructive drl-go" onClick={onConfirm} disabled={!picked.length || !confirmed || busy}>{busy ? 'Sıfırlanıyor…' : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
+        <button type="button" className="destructive drl-go is-danger-outline" onClick={onConfirm} disabled={!picked.length || !confirmed || busy}>{busy ? 'Sıfırlanıyor…' : going.length ? `${going.length} Veri Türünü Sıfırla` : 'Seçilen Verileri Sıfırla'}</button>
         {onCancel && <button type="button" className="secondary drl-cancel" onClick={onCancel} disabled={busy}>Vazgeç</button>}
       </div>
     </aside>

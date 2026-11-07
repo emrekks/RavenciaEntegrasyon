@@ -104,7 +104,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .cs-workspace .cs-switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: var(--rv-color-subtle); border-radius: 50%; transition: transform .15s; }
 .cs-workspace .cs-switch:checked { background: var(--rv-color-primary); }
 .cs-workspace .cs-switch:checked::after { transform: translateX(14px); }
-.cs-workspace .cs-switch:disabled { opacity: .4; cursor: default; }
+.cs-workspace .cs-switch:disabled { opacity: .5; cursor: not-allowed; }
 .cs-workspace .cs-switch:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
 
 /* Reused sections inside the pane: flat cards, quiet headings, no eyebrow labels. */
@@ -205,7 +205,7 @@ html body .cs-workspace .cs-switcher select:focus-visible { outline: 2px solid v
 .app-shell.stitch-shell main :is(.cs-workspace, .sp-sade) input.cs-switch:checked::after,
 .app-shell.stitch-shell main .cs-workspace .cs-pane .integration-write-toggle > input[type="checkbox"]:checked::after,
 .app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch > input:checked + i::after { background: var(--cs-sw-on-knob) !important; transform: translateX(14px); }
-.app-shell.stitch-shell main :is(.cs-workspace, .sp-sade) input.cs-switch:disabled { opacity: .45; cursor: default; }
+.app-shell.stitch-shell main :is(.cs-workspace, .sp-sade) input.cs-switch:disabled { opacity: .45; cursor: not-allowed; }
 .cs-workspace .cs-switch-field { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .app-shell.stitch-shell main :is(.cs-workspace, .sp-sade) .cs-switch-state,
 .app-shell.stitch-shell main .cs-workspace .sync-policy-card-switch > span { min-width: 38px; color: var(--rv-color-muted) !important; font-size: 12px; font-style: normal; font-weight: 500 !important; line-height: 20px; text-align: right; }

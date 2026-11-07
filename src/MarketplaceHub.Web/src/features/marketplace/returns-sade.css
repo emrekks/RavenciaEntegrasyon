@@ -43,7 +43,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-st.rr-bad { color: var(--rr-bad); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 12px; white-space: nowrap; color: var(--rr-ink); background: var(--rr-surface); border: 1px solid var(--rr-line-strong); border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn:hover { background: var(--rv-hover, var(--rr-soft)); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-primary { color: #fff; background: var(--rr-primary); border-color: var(--rr-primary); }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-primary { padding-inline: 14px; color: #fff; font-weight: 600; background: var(--rr-primary); border-color: var(--rr-primary); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-primary:hover { filter: brightness(1.08); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-quiet { color: var(--rr-muted); background: none; border-color: transparent; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-quiet:hover { color: var(--rr-ink); background: var(--rv-hover, var(--rr-raised)); }
@@ -51,7 +51,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-solid { color: #fff; background: var(--rr-bad); border-color: var(--rr-bad); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-link { height: auto; padding: 0; color: var(--rr-violet); background: none; border: 0; font-size: 13px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-btn.rr-link:hover { text-decoration: underline; background: none; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn:disabled { opacity: .45; cursor: default; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-btn:disabled { opacity: .5; cursor: not-allowed; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-icon-btn { display: grid; width: 28px; height: 28px; place-items: center; color: var(--rr-muted); background: none; border: 0; border-radius: 7px; cursor: pointer; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-icon-btn:hover { color: var(--rr-ink); background: var(--rv-hover, var(--rr-raised)); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-count { display: inline-grid; min-width: 20px; height: 18px; place-items: center; padding: 0 5px; color: var(--rr-ink); background: var(--rr-line-strong); border-radius: 7px; font-size: 11px; font-weight: 500; line-height: 1; }
@@ -106,7 +106,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on .rr-radio { border-color: var(--rr-violet); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt.rr-on .rr-radio::after { content: ""; position: absolute; inset: 3px; background: var(--rr-violet); border-radius: 50%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-opt[role="radio"].rr-on { color: var(--rr-ink); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:disabled { opacity: .45; cursor: default; background: none; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-opt:disabled { opacity: .5; cursor: not-allowed; background: none; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-sep { height: 1px; margin: 4px 6px; background: var(--rr-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-pop .rr-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 6px 2px; border-top: 1px solid var(--rr-line); margin-top: 6px; color: var(--rr-subtle); font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-cal { display: grid; grid-template-columns: 132px 252px; gap: 8px; }
@@ -200,8 +200,8 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics span { color: var(--rr-subtle); font-size: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-metrics article.rr-warn strong { color: var(--rr-warn); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-fshell { display: grid; gap: 14px; padding: 14px 16px 16px; background: var(--rr-surface); border: 1px solid var(--rr-line); border-radius: 12px; container: fshell / inline-size; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-seg { display: inline-flex; gap: 3px; max-width: 100%; padding: 3px; overflow-x: auto; background: var(--rr-bg); border: 1px solid var(--rr-line-strong); border-radius: 12px; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-seg button { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; color: var(--rr-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 500; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-seg { display: inline-flex; gap: 2px; max-width: 100%; padding: 1px; overflow-x: auto; background: var(--rr-bg); border: 1px solid var(--rr-line-strong); border-radius: 12px; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-seg button { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; color: var(--rr-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer; font-size: 12.5px; font-weight: 500; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-seg button:hover { color: var(--rr-ink); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-seg button.rr-on { color: var(--rr-violet); background: var(--rr-primary-soft); border-color: var(--rr-violet-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-filters { display: grid; grid-template-columns: minmax(200px, 1.3fr) minmax(150px, .8fr) minmax(220px, 1fr) auto; gap: 12px; align-items: end; }
@@ -302,7 +302,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-switch.rr-on { border-color: var(--rr-violet-line); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-switch.rr-on i { background: var(--rr-primary); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-switch.rr-on i::after { left: 14px; background: #fff; }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-switch:disabled { opacity: .45; cursor: default; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-switch:disabled { opacity: .5; cursor: not-allowed; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-osum { display: grid; gap: 12px; padding: 14px 16px; background: var(--rr-raised); border: 1px solid var(--rr-line); border-radius: 12px; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-osum > span { display: flex; align-items: center; gap: 10px; font-weight: 600; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-osum dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px 16px; margin: 0; font-size: 13px; }
@@ -474,7 +474,7 @@ main .rr, .rr-layer {
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button .rr-c { margin-left: auto; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-danger { color: var(--rr-bad); }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button.rr-danger svg { color: var(--rr-bad); }
-:is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button:disabled { color: var(--rr-subtle); opacity: .6; cursor: default; }
+:is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > button:disabled { color: var(--rr-subtle); opacity: .5; cursor: not-allowed; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-menu > hr { height: 1px; margin: 6px 12px; background: var(--rr-line); border: 0; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-prod { width: 23%; }
 :is(main .rr.rr, .rr-layer.rr-layer) .rr-tbl col.rr-c-cargo { width: 10%; }

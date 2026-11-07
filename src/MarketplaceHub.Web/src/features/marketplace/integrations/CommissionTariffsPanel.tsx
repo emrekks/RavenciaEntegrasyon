@@ -397,7 +397,7 @@ export function CommissionTariffsPanel({ connectionId, platformName }: { connect
           <div className="commission-period-actions">
             <button type="button" className="secondary commission-period-days" aria-expanded={editing?.groupId === group.id} disabled={changeDays.isPending}
               onClick={() => setEditing(editing?.groupId === group.id ? null : { groupId: group.id, days: validityDays(group.periods) })}>Tarihleri Değiştir</button>
-            <button type="button" className="secondary commission-period-delete" disabled={remove.isPending} onClick={() => void askDelete(group)} aria-label={`${group.periods.map(period => period.periodText).join(' ve ')} tarifesini sil`}>Sil</button>
+            <button type="button" className="secondary commission-period-delete is-danger-outline" disabled={remove.isPending} onClick={() => void askDelete(group)} aria-label={`${group.periods.map(period => period.periodText).join(' ve ')} tarifesini sil`}>Sil</button>
           </div>
           {editing?.groupId === group.id && (() => {
             const problem = validityProblem(editing.days)

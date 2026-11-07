@@ -105,7 +105,7 @@
   font-weight: 600 !important;
 }
 .mc-choice > button:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 2px; }
-.mc-choice > button:disabled { cursor: not-allowed; opacity: .55; }
+.mc-choice > button:disabled { cursor: not-allowed; opacity: .5; }
 .mc-choice-check { flex: none; width: 14px; height: 14px; }
 .mc-choice small { color: var(--rv-color-muted); font-size: 12px; font-weight: 400; }
 .mc-choice > button[aria-checked='true'] small { color: inherit; opacity: .8; }
@@ -129,21 +129,21 @@
   min-height: 0;
   padding: 0 14px;
   color: #fff;
-  background: var(--rv-color-primary-fill);
-  border: 1px solid var(--rv-color-primary-fill);
+  background: var(--rv-color-primary);
+  border: 1px solid var(--rv-color-primary);
   border-radius: 7px;
   box-shadow: none;
   font-size: 13px;
   font-weight: 600 !important;
   white-space: nowrap;
 }
-.app-shell.stitch-shell main .cm-extra-modal .mc-cross-row .mc-apply:hover:not(:disabled) { background: var(--rv-color-primary-fill-hover); border-color: var(--rv-color-primary-fill-hover); }
+.app-shell.stitch-shell main .cm-extra-modal .mc-cross-row .mc-apply:hover:not(:disabled) { background: var(--rv-color-primary-hover); border-color: var(--rv-color-primary-hover); }
 .mc-cross-row .mc-apply:disabled,
 .app-shell.stitch-shell main .cm-extra-modal .mc-cross-row .mc-apply:disabled {
   color: var(--rv-color-ink);
   background: var(--rv-color-surface);
   border-color: var(--rv-color-border-strong);
-  opacity: .55;
+  opacity: .5;
 }
 
 @media (max-width: 640px) {

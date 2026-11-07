@@ -30,7 +30,7 @@
   box-shadow: none;
 }
 .value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-soft)); border-color: var(--rv-color-border); }
-.value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:disabled { color: var(--rv-color-subtle); opacity: .6; }
+.value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:disabled { color: var(--rv-color-subtle); opacity: .5; }
 .value-mapping-editor .value-mapping-commandbar .value-mapping-command-group > button.secondary:focus-visible { outline: 2px solid var(--rv-color-primary); outline-offset: 1px; }
 .value-mapping-editor .value-mapping-commandbar button > svg { width: var(--rv-icon-size-sm); height: var(--rv-icon-size-sm); flex: 0 0 auto; color: var(--rv-color-muted); }
 .value-mapping-editor .value-mapping-command-count {
@@ -525,7 +525,7 @@
 /* Saved mappings head: tabs, search and sort share one 48px line, all centred on it (the search and A–Z were 36px and
    sat higher than the tab card). */
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools.mapping-saved-header-tools { align-items: center; }
-.app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > :is(input, .mapping-sort-button) { box-sizing: border-box; align-self: center; height: 48px !important; min-height: 48px !important; max-height: none !important; margin: 0; }
+.app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > :is(input, .mapping-sort-button) { box-sizing: border-box; align-self: center; height: 36px !important; min-height: 36px !important; max-height: none !important; margin: 0; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .mapping-platform-tabs { align-self: center; }
 .app-shell.stitch-shell main section.mapping-page .mapping-saved-card .mapping-saved-header-tools > .mapping-sort-button { min-width: 64px; }
 

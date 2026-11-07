@@ -16,7 +16,7 @@
 .rv-notification-mark-all, .rv-notification-clear { display: inline-flex; align-items: center; gap: 6px; height: 30px; min-height: 30px; padding: 0 10px; color: var(--rv-color-muted); background: transparent; border: 0; border-radius: 7px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
 .rv-notification-mark-all:hover:not(:disabled), .rv-notification-clear:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
 .rv-notification-clear:hover:not(:disabled) { color: var(--rv-color-danger); }
-.rv-notification-mark-all:disabled, .rv-notification-clear:disabled { cursor: not-allowed; opacity: .4; }
+.rv-notification-mark-all:disabled, .rv-notification-clear:disabled { cursor: not-allowed; opacity: .5; }
 
 /* The filter row uses the shared view tabs (shared/view-tabs.css); only a little side room here. */
 .rv-notification-history .rv-notification-filters.rv-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs.rv-view-tabs { width: auto !important; margin: 0 12px 4px; }

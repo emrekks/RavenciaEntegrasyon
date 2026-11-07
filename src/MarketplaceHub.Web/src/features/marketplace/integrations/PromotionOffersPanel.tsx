@@ -161,7 +161,7 @@ export function PromotionOffersPanel({ connectionId, kind }: { connectionId: str
         <span className="commission-period-title">{summary.periodText ?? summary.fileName}</span>
         <small>{summary.rowCount.toLocaleString('tr-TR')} {kind === 'FLASH' ? 'model' : 'ürün'} · {summary.matchedRowCount.toLocaleString('tr-TR')} barkod panelde eşleşti · {summary.fileName} · {formatIstanbul(summary.uploadedAt, { dateStyle: 'medium', timeStyle: 'short' })}</small>
       </div>
-      <button type="button" className="secondary commission-period-delete" disabled={remove.isPending} onClick={() => void askDelete()}>Sil</button>
+      <button type="button" className="secondary commission-period-delete is-danger-outline" disabled={remove.isPending} onClick={() => void askDelete()}>Sil</button>
     </div>}
     {summary && detail.isLoading && <Busy />}
     {detail.isError && <ErrorBox error={detail.error} onRetry={() => void detail.refetch()} />}

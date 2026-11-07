@@ -25,8 +25,8 @@
 .app-shell.stitch-shell main .ss-page .ss-gtabs > button.is-on { color: var(--rv-color-ink); border-bottom-color: var(--rv-color-primary); }
 .ss-page .ss-card { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .ss-page .ss-stabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 16px 0 0; }
-.ss-page .ss-seg { display: inline-flex; gap: 3px; max-width: 100%; padding: 3px; overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; scrollbar-width: none; }
-.app-shell.stitch-shell main .ss-page .ss-seg > button { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 30px; min-height: 30px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; }
+.ss-page .ss-seg { display: inline-flex; gap: 2px; max-width: 100%; padding: 1px; overflow-x: auto; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; scrollbar-width: none; }
+.app-shell.stitch-shell main .ss-page .ss-seg > button { display: inline-flex; flex: none; align-items: center; gap: 8px; height: 32px; min-height: 32px; padding: 0 12px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 12.5px; font-weight: 500 !important; }
 .app-shell.stitch-shell main .ss-page .ss-seg > button:hover { color: var(--rv-color-ink); background: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg > button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
 .ss-page .ss-seg .ss-count { min-width: 18px; height: 16px; font-size: 10px; }
@@ -69,8 +69,8 @@
 /* Buttons */
 .app-shell.stitch-shell main .ss-page .ss-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; min-height: 36px; padding: 0 12px; color: var(--rv-color-ink); white-space: nowrap; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; letter-spacing: 0; line-height: 1; text-transform: none; transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-btn:hover:not(:disabled) { background: var(--rv-hover, var(--rv-color-surface-soft)); }
-.app-shell.stitch-shell main .ss-page .ss-btn.is-primary { color: #fff; background: var(--rv-color-primary-fill); border-color: var(--rv-color-primary); }
-.app-shell.stitch-shell main .ss-page .ss-btn.is-primary:hover:not(:disabled) { background: var(--rv-color-primary); filter: brightness(1.08); }
+.app-shell.stitch-shell main .ss-page .ss-btn.is-primary { color: #fff; background: var(--rv-color-primary); border-color: var(--rv-color-primary); padding-inline: 14px; font-weight: 600; }
+.app-shell.stitch-shell main .ss-page .ss-btn.is-primary:hover:not(:disabled) { background: var(--rv-color-primary-hover); border-color: var(--rv-color-primary-hover); }
 .app-shell.stitch-shell main .ss-page .ss-btn.is-quiet { color: var(--rv-color-muted); background: none; border-color: transparent; }
 .app-shell.stitch-shell main .ss-page .ss-btn.is-quiet:hover:not(:disabled) { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
 .app-shell.stitch-shell main .ss-page .ss-btn.is-danger { color: var(--rv-color-danger); border-color: color-mix(in srgb, var(--rv-color-danger) 45%, var(--rv-color-border-strong)); }
@@ -79,8 +79,8 @@
 .app-shell.stitch-shell main .ss-page .ss-btn.is-danger.is-quiet:hover:not(:disabled) { background: color-mix(in srgb, var(--rv-color-danger) 10%, transparent); }
 .app-shell.stitch-shell main .ss-page .ss-btn.is-danger.is-solid { color: #fff; background: var(--rv-color-danger); border-color: var(--rv-color-danger); }
 .app-shell.stitch-shell main .ss-page .ss-btn.is-danger.is-solid:hover:not(:disabled) { background: var(--rv-color-danger); filter: brightness(1.06); }
-.app-shell.stitch-shell main .ss-page .ss-btn.is-xs { height: 28px; min-height: 28px; padding: 0 8px; }
-.app-shell.stitch-shell main .ss-page .ss-btn:disabled { opacity: .45; cursor: default; filter: none; }
+.app-shell.stitch-shell main .ss-page .ss-btn.is-xs { height: 36px; min-height: 36px; padding: 0 12px; }
+.app-shell.stitch-shell main .ss-page .ss-btn:disabled { opacity: .5; cursor: not-allowed; filter: none; }
 .app-shell.stitch-shell main .ss-page .ss-btn:focus-visible { outline: none; border-color: var(--rv-color-primary); box-shadow: var(--ss-focus); }
 .ss-page .ss-btn .ss-count { margin-left: 2px; }
 
@@ -223,8 +223,8 @@
 .ss-page .ss-dz { display: grid; }
 .ss-page .ss-dz-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--rv-color-border); }
 .app-shell.stitch-shell main .ss-page .ss-dz-template { width: 190px; }
-.ss-page .ss-seg2 { display: inline-flex; gap: 3px; padding: 3px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; }
-.app-shell.stitch-shell main .ss-page .ss-seg2 button { display: inline-flex; align-items: center; gap: 6px; height: 26px; min-height: 26px; padding: 0 10px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 500 !important; text-transform: none; }
+.ss-page .ss-seg2 { display: inline-flex; gap: 2px; padding: 1px; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; }
+.app-shell.stitch-shell main .ss-page .ss-seg2 button { display: inline-flex; align-items: center; gap: 6px; height: 32px; min-height: 32px; padding: 0 10px; color: var(--rv-color-muted); white-space: nowrap; background: none; border: 1px solid transparent; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 12.5px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button small { color: var(--rv-color-subtle); font-size: 12px; font-weight: 400; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button:hover { color: var(--rv-color-ink); background: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg2 button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); border-color: var(--ss-violet-line); }
@@ -257,10 +257,9 @@
 .ss-page .ss-ibody { display: grid; gap: 14px; align-content: start; padding: 14px 16px 16px; }
 .ss-page .ss-ibody-title { font-size: 14px; font-weight: 600; }
 .ss-page .ss-empty { padding: 28px 16px; color: var(--rv-color-muted); text-align: center; font-size: 13px; }
-.ss-page .ss-seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 36px; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 7px; }
+.ss-page .ss-seg3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; height: 36px; padding: 1px; overflow: hidden; background: var(--rv-color-surface); border: 1px solid var(--rv-color-border-strong); border-radius: 12px; }
 .ss-page .ss-seg3.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.app-shell.stitch-shell main .ss-page .ss-seg3 button { height: 100%; min-height: 0; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-left: 1px solid var(--rv-color-border); border-radius: 0; box-shadow: none; cursor: pointer; font-size: 13px; font-weight: 400 !important; text-transform: none; }
-.app-shell.stitch-shell main .ss-page .ss-seg3 button:first-child { border-left: 0; }
+.app-shell.stitch-shell main .ss-page .ss-seg3 button { height: 32px; min-height: 32px; padding: 0; color: var(--rv-color-muted); background: none; border: 0; border-radius: 7px; box-shadow: none; cursor: pointer; font-size: 12.5px; font-weight: 500 !important; text-transform: none; }
 .app-shell.stitch-shell main .ss-page .ss-seg3 button:hover { color: var(--rv-color-ink); background: var(--rv-hover, var(--rv-color-surface-raised)); }
 .app-shell.stitch-shell main .ss-page .ss-seg3 button.is-on { color: var(--ss-violet); background: var(--rv-color-primary-soft); }
 .ss-page .ss-fchips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -523,7 +522,7 @@
 .ss-page .ss-secret-state { display: inline-flex; flex: none; align-items: center; gap: 5px; color: var(--rv-color-success, var(--rv-color-ink)); font-size: 12.5px; font-weight: 500; }
 .ss-page .ss-secret-state .ss-st { width: 14px; height: 14px; }
 /* Değiştir is a quiet purple text link inside the field, not a framed button. */
-.app-shell.stitch-shell main .ss-page .ss-secret .ss-btn.is-xs { flex: none; height: 28px; min-height: 0; padding: 0 8px; color: var(--rv-color-primary); background: transparent; border: 0; box-shadow: none; font-weight: 600; }
+.app-shell.stitch-shell main .ss-page .ss-secret .ss-btn.is-xs { flex: none; height: 34px; min-height: 0; padding: 0 10px; color: var(--rv-color-primary); background: transparent; border: 0; box-shadow: none; font-weight: 600; }
 .app-shell.stitch-shell main .ss-page .ss-secret .ss-btn.is-xs:hover { color: var(--rv-color-primary-strong, var(--rv-color-primary)); background: transparent; text-decoration: underline; text-underline-offset: 3px; }
 .ss-page .ss-secret-edit > .ss-in { flex: 1 1 auto; }
 
